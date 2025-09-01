@@ -135,7 +135,7 @@ export interface IStorage {
 
   // Pantry-Based Recipe Suggestions
   getRecipesFromPantryItems(userId: string, options: { requireAllIngredients?: boolean; maxMissingIngredients?: number; includeExpiringSoon?: boolean; limit?: number }): Promise<any[]>;
-  getSuggestedIngredientsForRecipe(recipeId: string, userId: string): Promise<any>;
+  getSuggestedIngredientsForRecipe(recipeId: string, userId: string): Promise<{ recipe: any; missingIngredients: string[]; suggestedSubstitutions: any[]; availableInMarketplace: any[] }>;
 }
 
 export class DrizzleStorage implements IStorage {
@@ -759,10 +759,12 @@ export class DrizzleStorage implements IStorage {
       .orderBy(asc(pantryItems.expirationDate));
   }
 
+  // ===== INGREDIENT SUBSTITUTION METHODS =====
+
   async addIngredientSubstitution(originalIngredient: string, substituteIngredient: string, ratio: string, notes?: string, category?: string): Promise<any> {
     const result = await db.insert(ingredientSubstitutions).values({
-      originalIngredient,
-      substituteIngredient,
+      originalIngredient: originalIngredient.toLowerCase(),
+      substituteIngredient: substituteIngredient.toLowerCase(),
       ratio,
       notes,
       category
@@ -772,96 +774,184 @@ export class DrizzleStorage implements IStorage {
   }
 
   async getIngredientSubstitutions(ingredient: string): Promise<any[]> {
+    const normalizedIngredient = ingredient.toLowerCase();
+    
     return db.select()
       .from(ingredientSubstitutions)
-      .where(or(
-        eq(ingredientSubstitutions.originalIngredient, ingredient),
-        eq(ingredientSubstitutions.substituteIngredient, ingredient)
-      ));
+      .where(eq(ingredientSubstitutions.originalIngredient, normalizedIngredient))
+      .orderBy(asc(ingredientSubstitutions оригинальноIngredient));
   }
 
   async getAllSubstitutions(): Promise<any[]> {
     return db.select()
       .from(ingredientSubstitutions)
-      .orderBy(asc(ingredientSubstitutions.originalIngredient));
+      .orderBy(asc(ingredientSubstitutions.originalIngredient), asc(ingredientSubstitutions.category));
   }
 
   async searchSubstitutions(query: string): Promise<any[]> {
+    const normalizedQuery = query.toLowerCase();
+    
     return db.select()
       .from(ingredientSubstitutions)
-      .where(or(
-        sql`${ingredientSubstitutions.originalIngredient} ILIKE ${'%' + query + '%'}`,
-        sql`${ingredientSubstitutions.substituteIngredient} ILIKE ${'%' + query + '%'}`,
-        sql`${ingredientSubstitutions.notes} ILIKE ${'%' + query + '%'}`
-      ))
+      .where(
+        or(
+          sql`${ingredientSubstitutions.originalIngredient} ILIKE ${'%' + normalizedQuery + '%'}`,
+          sql`${ingredientSubstitutions.substituteIngredient} ILIKE ${'%' + normalizedQuery + '%'}`
+        )!
+      )
       .orderBy(asc(ingredientSubstitutions.originalIngredient));
   }
 
-  async getRecipesFromPantryItems(userId: string, options: { requireAllIngredients?: boolean; maxMissingIngredients?: number; includeExpiringSoon?: boolean; limit?: number } = {}): Promise<any[]> {
-    const { requireAllIngredients = false, maxMissingIngredients = 2, includeExpiringSoon = false, limit = 10 } = options;
-    
+  // ===== PANTRY-BASED RECIPE SUGGESTION METHODS =====
+
+  async getRecipesFromPantryItems(userId: string, options: {
+    requireAllIngredients?: boolean;
+    maxMissingIngredients?: number;
+    includeExpiringSoon?: boolean;
+    limit?: number;
+  } = {}): Promise<any[]> {
+    const {
+      requireAllIngredients = false,
+      maxMissingIngredients = 3,
+      includeExpiringSoon = true,
+      limit = 20
+    } = options;
+
     const pantryItems = await this.getPantryItems(userId);
-    const pantryItemNames = pantryItems.map(item => item.name.toLowerCase());
     
-    let query = db.select({
+    if (pantryItems.length === 0) {
+      return [];
+    }
+
+    const allRecipes = await db.select({
       recipe: recipes,
       post: posts,
       user: users
     })
     .from(recipes)
     .innerJoin(posts, eq(recipes.postId, posts.id))
-    .innerJoin(users, eq(posts.userId, users.id));
+    .innerJoin(users, eq(posts.userId, users.id))
+    .limit(100);
+
+    const pantryIngredients = new Set(
+      pantryItems.map(item => item.name.toLowerCase().trim())
+    );
+
+    const scoredRecipes = allRecipes.map(row => {
+      const recipe = row.recipe;
+      const recipeIngredients = recipe.ingredients || [];
+      
+      let matches = 0;
+      let missingIngredients: string[] = [];
+      
+      recipeIngredients.forEach(ingredient => {
+        const normalizedIngredient = ingredient.toLowerCase().trim();
+        
+        const hasIngredient = Array.from(pantryIngredients).some(pantryItem => 
+          pantryItem.includes(normalizedIngredient) || normalizedIngredient.includes(pantryItem)
+        );
+        
+        if (hasIngredient) {
+          matches++;
+        } else {
+          missingIngredients.push(ingredient);
+        }
+      });
+      
+      const totalIngredients = recipeIngredients.length;
+      const matchPercentage = totalIngredients > 0 ? (matches / totalIngredients) * 100 : 0;
+      const missing = missingIngredients.length;
+      
+      return {
+        ...row.recipe,
+        post: { ...row.post, user: row.user },
+        matchScore: matchPercentage,
+        ingredientMatches: matches,
+        totalIngredients,
+        missingIngredients,
+        missingCount: missing,
+        canMake: missing === 0
+      };
+    });
+
+    let filteredRecipes = scoredRecipes;
     
-    if (includeExpiringSoon) {
-      const expiringItems = await this.getExpiringItems(userId, 7);
-      const expiringItemNames = expiringItems.map(item => item.name.toLowerCase());
-      query = query.where(
-        sql`EXISTS (
-          SELECT 1
-          FROM jsonb_array_elements(${recipes.ingredients}) AS ingredient
-          WHERE LOWER(ingredient->>'name') = ANY(${expiringItemNames})
-        )`
+    if (requireAllIngredients) {
+      filteredRecipes = scoredRecipes.filter(recipe => recipe.canMake);
+    } else {
+      filteredRecipes = scoredRecipes.filter(recipe => 
+        recipe.missingCount <= maxMissingIngredients
       );
     }
-    
-    const recipesResult = await query.orderBy(desc(posts.createdAt)).limit(limit);
-    
-    const filteredRecipes = recipesResult.filter(row => {
-      const recipeIngredients = row.recipe.ingredients.map((ing: any) => ing.name.toLowerCase());
-      const missingIngredients = recipeIngredients.filter((ing: string) => !pantryItemNames.includes(ing));
-      
-      if (requireAllIngredients) {
-        return missingIngredients.length === 0;
+
+    filteredRecipes.sort((a, b) => {
+      if (a.matchScore !== b.matchScore) {
+        return b.matchScore - a.matchScore;
       }
-      return missingIngredients.length <= maxMissingIngredients;
+      return a.missingCount - b.missingCount;
     });
-    
-    return filteredRecipes.map(row => ({
-      ...row.recipe,
-      post: { ...row.post, user: row.user }
-    }));
+
+    return filteredRecipes.slice(0, limit);
   }
 
-  async getSuggestedIngredientsForRecipe(recipeId: string, userId: string): Promise<any> {
+  async getSuggestedIngredientsForRecipe(recipeId: string, userId: string): Promise<{
+    recipe: any;
+    missingIngredients: string[];
+    suggestedSubstitutions: any[];
+    availableInMarketplace: any[];
+  }> {
     const recipe = await this.getRecipe(recipeId);
-    if (!recipe) return { missingIngredients: [], substitutions: [] };
-    
+    if (!recipe) {
+      throw new Error("Recipe not found");
+    }
+
     const pantryItems = await this.getPantryItems(userId);
-    const pantryItemNames = pantryItems.map(item => item.name.toLowerCase());
-    
-    const recipeIngredients = recipe.ingredients.map((ing: any) => ing.name.toLowerCase());
-    const missingIngredients = recipeIngredients.filter((ing: string) => !pantryItemNames.includes(ing));
-    
-    const substitutions = await Promise.all(
-      missingIngredients.map(async (ingredient: string) => {
-        const subs = await this.getIngredientSubstitutions(ingredient);
-        return { ingredient, substitutes: subs };
-      })
+    const pantryIngredients = new Set(
+      pantryItems.map(item => item.name.toLowerCase().trim())
     );
+
+    const missingIngredients: string[] = [];
+    const recipeIngredients = recipe.ingredients || [];
     
+    recipeIngredients.forEach(ingredient => {
+      const normalizedIngredient = ingredient.toLowerCase().trim();
+      
+      const hasIngredient = Array.from(pantryIngredients).some(pantryItem => 
+        pantryItem.includes(normalizedIngredient) || normalizedIngredient.includes(pantryItem)
+      );
+      
+      if (!hasIngredient) {
+        missingIngredients.push(ingredient);
+      }
+    });
+
+    const suggestedSubstitutions: any[] = [];
+    for (const ingredient of missingIngredients) {
+      const substitutions = await this.getIngredientSubstitutions(ingredient);
+      if (substitutions.length > 0) {
+        suggestedSubstitutions.push({
+          originalIngredient: ingredient,
+          substitutions: substitutions
+        });
+      }
+    }
+
+    const availableInMarketplace: any[] = [];
+    for (const ingredient of missingIngredients) {
+      const marketplaceItems = await this.searchProducts(ingredient, "ingredients", undefined, 0, 5);
+      if (marketplaceItems.length > 0) {
+        availableInMarketplace.push({
+          ingredient,
+          products: marketplaceItems
+        });
+      }
+    }
+
     return {
+      recipe,
       missingIngredients,
-      substitutions: substitutions.filter(sub => sub.substitutes.length > 0)
+      suggestedSubstitutions,
+      availableInMarketplace
     };
   }
 }
