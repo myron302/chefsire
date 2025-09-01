@@ -285,6 +285,214 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== CATERING API ROUTES =====
+
+  // Enable catering for a user
+  app.post("/api/users/:id/catering/enable", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const enableCateringSchema = z.object({
+        location: z.string().min(5, "Postal code required"),
+        radius: z.number().min(5).max(100),
+        bio: z.string().optional()
+      });
+      
+      const { location, radius, bio } = enableCateringSchema.parse(req.body);
+      
+      const updatedUser = await storage.enableCatering(userId, location, radius, bio);
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json({ 
+        message: "Catering enabled successfully",
+        user: updatedUser 
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to enable catering" });
+    }
+  });
+
+  // Disable catering for a user
+  app.post("/api/users/:id/catering/disable", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      
+      const updatedUser = await storage.disableCatering(userId);
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json({ 
+        message: "Catering disabled successfully",
+        user: updatedUser 
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to disable catering" });
+    }
+  });
+
+  // Update catering settings
+  app.put("/api/users/:id/catering/settings", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const updateSchema = z.object({
+        location: z.string().min(5).optional(),
+        radius: z.number().min(5).max(100).optional(),
+        bio: z.string().optional(),
+        available: z.boolean().optional()
+      });
+      
+      const settings = updateSchema.parse(req.body);
+      
+      const updatedUser = await storage.updateCateringSettings(userId, settings);
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json({ 
+        message: "Catering settings updated",
+        user: updatedUser 
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update catering settings" });
+    }
+  });
+
+  // Find chefs within radius
+  app.get("/api/catering/chefs/search", async (req, res) => {
+    try {
+      const searchSchema = z.object({
+        location: z.string().min(5, "Postal code required"),
+        radius: z.coerce.number().min(5).max(100).default(25),
+        limit: z.coerce.number().max(50).default(20)
+      });
+      
+      const { location, radius, limit } = searchSchema.parse(req.query);
+      
+      const chefs = await storage.findChefsInRadius(location, radius, limit);
+      
+      res.json({
+        chefs,
+        searchParams: { location, radius },
+        total: chefs.length
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid search parameters", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to search for chefs" });
+    }
+  });
+
+  // Create catering inquiry (booking request)
+  app.post("/api/catering/inquiries", async (req, res) => {
+    try {
+      const inquirySchema = z.object({
+        customerId: z.string(),
+        chefId: z.string(),
+        eventDate: z.string().transform(str => new Date(str)),
+        guestCount: z.number().min(1).optional(),
+        eventType: z.string().optional(),
+        cuisinePreferences: z.array(z.string()).default([]),
+        budget: z.string().optional(),
+        message: z.string().min(10, "Please provide more details about your event")
+      });
+      
+      const inquiryData = inquirySchema.parse(req.body);
+      
+      const inquiry = await storage.createCateringInquiry(inquiryData);
+      
+      res.status(201).json({
+        message: "Catering inquiry sent successfully",
+        inquiry
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid inquiry data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create catering inquiry" });
+    }
+  });
+
+  // Get catering inquiries for a chef
+  app.get("/api/users/:id/catering/inquiries", async (req, res) => {
+    try {
+      const chefId = req.params.id;
+      
+      const inquiries = await storage.getCateringInquiries(chefId);
+      
+      res.json({
+        inquiries,
+        total: inquiries.length
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch catering inquiries" });
+    }
+  });
+
+  // Update catering inquiry status (accept/decline)
+  app.put("/api/catering/inquiries/:id", async (req, res) => {
+    try {
+      const inquiryId = req.params.id;
+      const updateSchema = z.object({
+        status: z.enum(["pending", "accepted", "declined", "completed"]).optional(),
+        message: z.string().optional()
+      });
+      
+      const updates = updateSchema.parse(req.body);
+      
+      const inquiry = await storage.updateCateringInquiry(inquiryId, updates);
+      
+      if (!inquiry) {
+        return res.status(404).json({ message: "Inquiry not found" });
+      }
+      
+      res.json({
+        message: "Inquiry updated successfully",
+        inquiry
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid update data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update inquiry" });
+    }
+  });
+
+  // Get user's catering status and settings
+  app.get("/api/users/:id/catering/status", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json({
+        cateringEnabled: user.cateringEnabled || false,
+        cateringAvailable: user.cateringAvailable || false,
+        cateringLocation: user.cateringLocation,
+        cateringRadius: user.cateringRadius,
+        cateringBio: user.cateringBio,
+        isChef: user.isChef
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch catering status" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
