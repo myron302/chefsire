@@ -1,7 +1,24 @@
-import { 
-  type User, 
-  type InsertUser, 
-  type Post, 
+import { drizzle } from 'drizzle-orm/neon-serverless';
+import { Pool } from '@neondatabase/serverless';
+import { eq, desc, and, or, sql, asc, inArray } from 'drizzle-orm';
+import {
+  users,
+  posts,
+  recipes,
+  stories,
+  likes,
+  comments,
+  follows,
+  cateringInquiries,
+  products,
+  orders,
+  mealPlans,
+  mealPlanEntries,
+  pantryItems,
+  nutritionLogs,
+  type User,
+  type InsertUser,
+  type Post,
   type InsertPost,
   type Recipe,
   type InsertRecipe,
@@ -15,11 +32,21 @@ import {
   type InsertFollow,
   type PostWithUser,
   type StoryWithUser,
-  type CommentWithUser
-} from "@shared/schema";
-import { randomUUID } from "crypto";
+  type CommentWithUser,
+  type CateringInquiry,
+  type InsertCateringInquiry,
+  type ChefWithCatering,
+  type Product,
+  type InsertProduct,
+  type ProductWithSeller
+} from '@shared/schema';
+
+// Create database connection
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const db = drizzle(pool);
 
 export interface IStorage {
+  // ===== EXISTING METHODS =====
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -45,585 +72,532 @@ export interface IStorage {
   updateRecipe(id: string, updates: Partial<Recipe>): Promise<Recipe | undefined>;
   getTrendingRecipes(limit?: number): Promise<(Recipe & { post: PostWithUser })[]>;
 
-  // Stories
+  // Stories, Likes, Comments, Follows (keep existing signatures)
   getStory(id: string): Promise<Story | undefined>;
   createStory(story: InsertStory): Promise<Story>;
   getActiveStories(userId: string): Promise<StoryWithUser[]>;
   getUserStories(userId: string): Promise<Story[]>;
-
-  // Likes
   likePost(userId: string, postId: string): Promise<Like>;
   unlikePost(userId: string, postId: string): Promise<boolean>;
   isPostLiked(userId: string, postId: string): Promise<boolean>;
   getPostLikes(postId: string): Promise<Like[]>;
-
-  // Comments
   getComment(id: string): Promise<Comment | undefined>;
   createComment(comment: InsertComment): Promise<Comment>;
   deleteComment(id: string): Promise<boolean>;
   getPostComments(postId: string): Promise<CommentWithUser[]>;
-
-  // Follows
   followUser(followerId: string, followingId: string): Promise<Follow>;
   unfollowUser(followerId: string, followingId: string): Promise<boolean>;
   isFollowing(followerId: string, followingId: string): Promise<boolean>;
   getFollowers(userId: string): Promise<User[]>;
   getFollowing(userId: string): Promise<User[]>;
+
+  // ===== NEW CATERING METHODS =====
+  enableCatering(userId: string, location: string, radius: number, bio?: string): Promise<User | undefined>;
+  disableCatering(userId: string): Promise<User | undefined>;
+  updateCateringSettings(userId: string, settings: { location?: string; radius?: number; bio?: string; available?: boolean }): Promise<User | undefined>;
+  findChefsInRadius(postalCode: string, radiusMiles: number, limit?: number): Promise<ChefWithCatering[]>;
+  createCateringInquiry(inquiry: InsertCateringInquiry): Promise<CateringInquiry>;
+  getCateringInquiries(chefId: string): Promise<CateringInquiry[]>;
+  updateCateringInquiry(id: string, updates: { status?: string; message?: string }): Promise<CateringInquiry | undefined>;
+
+  // ===== NEW MARKETPLACE METHODS =====
+  createProduct(product: InsertProduct): Promise<Product>;
+  getProduct(id: string): Promise<Product | undefined>;
+  getProductWithSeller(id: string): Promise<ProductWithSeller | undefined>;
+  getUserProducts(sellerId: string, offset?: number, limit?: number): Promise<ProductWithSeller[]>;
+  searchProducts(query?: string, category?: string, location?: string, offset?: number, limit?: number): Promise<ProductWithSeller[]>;
+  updateProduct(id: string, updates: Partial<Product>): Promise<Product | undefined>;
+  deleteProduct(id: string): Promise<boolean>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User> = new Map();
-  private posts: Map<string, Post> = new Map();
-  private recipes: Map<string, Recipe> = new Map();
-  private stories: Map<string, Story> = new Map();
-  private likes: Map<string, Like> = new Map();
-  private comments: Map<string, Comment> = new Map();
-  private follows: Map<string, Follow> = new Map();
-
-  constructor() {
-    this.seedData();
-  }
-
-  private seedData() {
-    // Create sample users
-    const users = [
-      {
-        id: "user-1",
-        username: "chef_alexandra",
-        email: "alexandra@chefsire.com",
-        password: "password123",
-        displayName: "Chef Alexandra",
-        bio: "Passionate about Italian cuisine and fresh ingredients",
-        avatar: "https://images.unsplash.com/photo-1566554273541-37a9ca77b91f?ixlib=rb-4.0.3&auto=format&fit=crop&w=100&h=100",
-        specialty: "Italian Cuisine",
-        isChef: true,
-        followersCount: 1200,
-        followingCount: 150,
-        postsCount: 45,
-        createdAt: new Date("2024-01-15"),
-      },
-      {
-        id: "user-2",
-        username: "chef_marcus",
-        email: "marcus@chefsire.com",
-        password: "password123",
-        displayName: "Chef Marcus",
-        bio: "Seafood specialist | Sustainable cooking advocate",
-        avatar: "https://images.unsplash.com/photo-1607631568010-a87245c0daf8?ixlib=rb-4.0.3&auto=format&fit=crop&w=100&h=100",
-        specialty: "Seafood",
-        isChef: true,
-        followersCount: 890,
-        followingCount: 200,
-        postsCount: 38,
-        createdAt: new Date("2024-02-01"),
-      },
-      {
-        id: "user-3",
-        username: "chef_isabella",
-        email: "isabella@chefsire.com",
-        password: "password123",
-        displayName: "Chef Isabella",
-        bio: "Dessert artisan creating sweet masterpieces",
-        avatar: "https://pixabay.com/get/g18bcc24b4afeb9ecd5ba41b4339e33a82f5c269e32677d538c9bb32f66c3b5c5833b9d2bb9b080eacd53235b9d96f2c98e8f4fcb68022763f76cb0256e37be94_1280.jpg",
-        specialty: "Pastry & Desserts",
-        isChef: true,
-        followersCount: 2100,
-        followingCount: 95,
-        postsCount: 52,
-        createdAt: new Date("2024-01-20"),
-      }
-    ];
-
-    users.forEach(user => this.users.set(user.id, user));
-
-    // Create sample posts
-    const posts = [
-      {
-        id: "post-1",
-        userId: "user-1",
-        caption: "Just perfected my grandmother's pasta recipe! 🍝 The secret is in the fresh basil and aged parmesan. Who wants the recipe?",
-        imageUrl: "https://pixabay.com/get/gd43e0221aa0f6832a6c714b1f547d335bddb76ac2cd0a11d2c79c9ea20fd6b6525dd69b8727e1b2d9720166664b5df9dab650a8e7a9bdd9386cc6d056afcfb87_1280.jpg",
-        tags: ["pasta", "italian", "homemade"],
-        likesCount: 234,
-        commentsCount: 12,
-        isRecipe: false,
-        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-      },
-      {
-        id: "post-2",
-        userId: "user-2",
-        caption: "Honey Glazed Salmon with Roasted Vegetables - perfect balance of flavors and nutrients!",
-        imageUrl: "https://images.unsplash.com/photo-1467003909585-2f8a72700288?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600",
-        tags: ["salmon", "healthy", "seafood"],
-        likesCount: 156,
-        commentsCount: 23,
-        isRecipe: true,
-        createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000), // 5 hours ago
-      },
-      {
-        id: "post-3",
-        userId: "user-3",
-        caption: "Watch me create this decadent chocolate mousse! 🍫 The technique is everything - patience pays off! ✨",
-        imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600",
-        tags: ["dessert", "chocolate", "technique"],
-        likesCount: 89,
-        commentsCount: 7,
-        isRecipe: false,
-        createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
-      }
-    ];
-
-    posts.forEach(post => this.posts.set(post.id, post));
-
-    // Create sample recipe for post-2
-    const recipe = {
-      id: "recipe-1",
-      postId: "post-2",
-      title: "Honey Glazed Salmon with Roasted Vegetables",
-      ingredients: [
-        "4 salmon fillets",
-        "2 tbsp honey",
-        "1 tbsp soy sauce",
-        "2 cloves garlic, minced",
-        "Mixed vegetables (broccoli, carrots, bell peppers)",
-        "Olive oil",
-        "Salt and pepper to taste"
-      ],
-      instructions: [
-        "Preheat oven to 400°F (200°C)",
-        "Mix honey, soy sauce, and garlic for glaze",
-        "Season salmon with salt and pepper",
-        "Brush salmon with glaze",
-        "Roast vegetables with olive oil for 15 minutes",
-        "Add salmon to pan and bake for 12-15 minutes",
-        "Serve immediately"
-      ],
-      cookTime: 30,
-      servings: 4,
-      difficulty: "Easy",
-      nutrition: {
-        calories: 350,
-        protein: "28g",
-        carbs: "15g",
-        fat: "18g"
-      }
-    };
-
-    this.recipes.set(recipe.id, recipe);
-
-    // Create sample stories
-    const stories = [
-      {
-        id: "story-1",
-        userId: "user-1",
-        imageUrl: "https://images.unsplash.com/photo-1595257841889-eca2678454e2?ixlib=rb-4.0.3&auto=format&fit=crop&w=200&h=200",
-        caption: "Making fresh pasta from scratch!",
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
-        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-      },
-      {
-        id: "story-2",
-        userId: "user-2",
-        imageUrl: "https://images.unsplash.com/photo-1509440159596-0249088772ff?ixlib=rb-4.0.3&auto=format&fit=crop&w=200&h=200",
-        caption: "Fresh bread cooling down",
-        expiresAt: new Date(Date.now() + 20 * 60 * 60 * 1000),
-        createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000),
-      }
-    ];
-
-    stories.forEach(story => this.stories.set(story.id, story));
-  }
-
-  // User methods
+export class DrizzleStorage implements IStorage {
+  
+  // ===== USER METHODS =====
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return result[0];
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.username === username);
+    const result = await db.select().from(users).where(eq(users.username, username)).limit(1);
+    return result[0];
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.email === email);
+    const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    return result[0];
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = {
-      ...insertUser,
-      id,
-      followersCount: 0,
-      followingCount: 0,
-      postsCount: 0,
-      createdAt: new Date(),
-    };
-    this.users.set(id, user);
-    return user;
+    const result = await db.insert(users).values(insertUser).returning();
+    return result[0];
   }
 
   async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
-    const user = this.users.get(id);
-    if (!user) return undefined;
-    
-    const updatedUser = { ...user, ...updates };
-    this.users.set(id, updatedUser);
-    return updatedUser;
+    const result = await db.update(users).set(updates).where(eq(users.id, id)).returning();
+    return result[0];
   }
 
   async getSuggestedUsers(userId: string, limit = 5): Promise<User[]> {
-    return Array.from(this.users.values())
-      .filter(user => user.id !== userId)
-      .slice(0, limit);
+    return db.select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(limit);
   }
 
-  // Post methods
+  // ===== POST METHODS =====
   async getPost(id: string): Promise<Post | undefined> {
-    return this.posts.get(id);
+    const result = await db.select().from(posts).where(eq(posts.id, id)).limit(1);
+    return result[0];
   }
 
   async getPostWithUser(id: string): Promise<PostWithUser | undefined> {
-    const post = this.posts.get(id);
-    if (!post) return undefined;
-    
-    const user = this.users.get(post.userId);
-    if (!user) return undefined;
+    const result = await db.select({
+      post: posts,
+      user: users,
+      recipe: recipes
+    })
+    .from(posts)
+    .innerJoin(users, eq(posts.userId, users.id))
+    .leftJoin(recipes, eq(recipes.postId, posts.id))
+    .where(eq(posts.id, id))
+    .limit(1);
 
-    const recipe = Array.from(this.recipes.values()).find(r => r.postId === post.id);
-    
-    return { ...post, user, recipe };
+    if (!result[0]) return undefined;
+
+    return {
+      ...result[0].post,
+      user: result[0].user,
+      recipe: result[0].recipe || undefined
+    };
   }
 
   async createPost(insertPost: InsertPost): Promise<Post> {
-    const id = randomUUID();
-    const post: Post = {
-      ...insertPost,
-      id,
-      likesCount: 0,
-      commentsCount: 0,
-      createdAt: new Date(),
-    };
-    this.posts.set(id, post);
+    const result = await db.insert(posts).values(insertPost).returning();
     
-    // Update user's post count
-    const user = this.users.get(insertPost.userId);
-    if (user) {
-      await this.updateUser(user.id, { postsCount: user.postsCount + 1 });
-    }
+    // Update user post count
+    await db.update(users)
+      .set({ postsCount: sql`${users.postsCount} + 1` })
+      .where(eq(users.id, insertPost.userId));
     
-    return post;
+    return result[0];
   }
 
   async updatePost(id: string, updates: Partial<Post>): Promise<Post | undefined> {
-    const post = this.posts.get(id);
-    if (!post) return undefined;
-    
-    const updatedPost = { ...post, ...updates };
-    this.posts.set(id, updatedPost);
-    return updatedPost;
+    const result = await db.update(posts).set(updates).where(eq(posts.id, id)).returning();
+    return result[0];
   }
 
   async deletePost(id: string): Promise<boolean> {
-    const post = this.posts.get(id);
-    if (!post) return false;
-    
-    this.posts.delete(id);
-    
-    // Update user's post count
-    const user = this.users.get(post.userId);
-    if (user && user.postsCount > 0) {
-      await this.updateUser(user.id, { postsCount: user.postsCount - 1 });
+    const result = await db.delete(posts).where(eq(posts.id, id)).returning();
+    if (result[0]) {
+      // Update user post count
+      await db.update(users)
+        .set({ postsCount: sql`${users.postsCount} - 1` })
+        .where(eq(users.id, result[0].userId));
+      return true;
     }
-    
-    return true;
+    return false;
   }
 
   async getFeedPosts(userId: string, offset = 0, limit = 10): Promise<PostWithUser[]> {
-    const allPosts = Array.from(this.posts.values())
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(offset, offset + limit);
-    
-    const postsWithUsers: PostWithUser[] = [];
-    
-    for (const post of allPosts) {
-      const user = this.users.get(post.userId);
-      if (user) {
-        const recipe = Array.from(this.recipes.values()).find(r => r.postId === post.id);
-        postsWithUsers.push({ ...post, user, recipe });
-      }
-    }
-    
-    return postsWithUsers;
+    const result = await db.select({
+      post: posts,
+      user: users,
+      recipe: recipes
+    })
+    .from(posts)
+    .innerJoin(users, eq(posts.userId, users.id))
+    .leftJoin(recipes, eq(recipes.postId, posts.id))
+    .orderBy(desc(posts.createdAt))
+    .offset(offset)
+    .limit(limit);
+
+    return result.map(row => ({
+      ...row.post,
+      user: row.user,
+      recipe: row.recipe || undefined
+    }));
   }
 
   async getUserPosts(userId: string, offset = 0, limit = 10): Promise<PostWithUser[]> {
-    const userPosts = Array.from(this.posts.values())
-      .filter(post => post.userId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(offset, offset + limit);
-    
-    const user = this.users.get(userId);
-    if (!user) return [];
-    
-    return userPosts.map(post => {
-      const recipe = Array.from(this.recipes.values()).find(r => r.postId === post.id);
-      return { ...post, user, recipe };
-    });
+    const result = await db.select({
+      post: posts,
+      user: users,
+      recipe: recipes
+    })
+    .from(posts)
+    .innerJoin(users, eq(posts.userId, users.id))
+    .leftJoin(recipes, eq(recipes.postId, posts.id))
+    .where(eq(posts.userId, userId))
+    .orderBy(desc(posts.createdAt))
+    .offset(offset)
+    .limit(limit);
+
+    return result.map(row => ({
+      ...row.post,
+      user: row.user,
+      recipe: row.recipe || undefined
+    }));
   }
 
   async getExplorePosts(offset = 0, limit = 10): Promise<PostWithUser[]> {
-    return this.getFeedPosts("", offset, limit); // For now, same as feed
+    return this.getFeedPosts("", offset, limit);
   }
 
-  // Recipe methods
+  // ===== RECIPE METHODS =====
   async getRecipe(id: string): Promise<Recipe | undefined> {
-    return this.recipes.get(id);
+    const result = await db.select().from(recipes).where(eq(recipes.id, id)).limit(1);
+    return result[0];
   }
 
   async getRecipeByPostId(postId: string): Promise<Recipe | undefined> {
-    return Array.from(this.recipes.values()).find(recipe => recipe.postId === postId);
+    const result = await db.select().from(recipes).where(eq(recipes.postId, postId)).limit(1);
+    return result[0];
   }
 
   async createRecipe(insertRecipe: InsertRecipe): Promise<Recipe> {
-    const id = randomUUID();
-    const recipe: Recipe = { ...insertRecipe, id };
-    this.recipes.set(id, recipe);
-    return recipe;
+    const result = await db.insert(recipes).values(insertRecipe).returning();
+    return result[0];
   }
 
   async updateRecipe(id: string, updates: Partial<Recipe>): Promise<Recipe | undefined> {
-    const recipe = this.recipes.get(id);
-    if (!recipe) return undefined;
-    
-    const updatedRecipe = { ...recipe, ...updates };
-    this.recipes.set(id, updatedRecipe);
-    return updatedRecipe;
+    const result = await db.update(recipes).set(updates).where(eq(recipes.id, id)).returning();
+    return result[0];
   }
 
   async getTrendingRecipes(limit = 5): Promise<(Recipe & { post: PostWithUser })[]> {
-    const recipes = Array.from(this.recipes.values()).slice(0, limit);
-    const trending: (Recipe & { post: PostWithUser })[] = [];
-    
-    for (const recipe of recipes) {
-      const postWithUser = await this.getPostWithUser(recipe.postId);
-      if (postWithUser) {
-        trending.push({ ...recipe, post: postWithUser });
-      }
-    }
-    
-    return trending;
+    const result = await db.select({
+      recipe: recipes,
+      post: posts,
+      user: users
+    })
+    .from(recipes)
+    .innerJoin(posts, eq(recipes.postId, posts.id))
+    .innerJoin(users, eq(posts.userId, users.id))
+    .orderBy(desc(posts.likesCount))
+    .limit(limit);
+
+    return result.map(row => ({
+      ...row.recipe,
+      post: { ...row.post, user: row.user }
+    }));
   }
 
-  // Story methods
+  // ===== STORY METHODS (SIMPLIFIED - IMPLEMENT AS NEEDED) =====
   async getStory(id: string): Promise<Story | undefined> {
-    return this.stories.get(id);
+    const result = await db.select().from(stories).where(eq(stories.id, id)).limit(1);
+    return result[0];
   }
 
   async createStory(insertStory: InsertStory): Promise<Story> {
-    const id = randomUUID();
-    const story: Story = {
-      ...insertStory,
-      id,
-      createdAt: new Date(),
-    };
-    this.stories.set(id, story);
-    return story;
+    const result = await db.insert(stories).values(insertStory).returning();
+    return result[0];
   }
 
   async getActiveStories(userId: string): Promise<StoryWithUser[]> {
-    const now = new Date();
-    const activeStories = Array.from(this.stories.values())
-      .filter(story => new Date(story.expiresAt) > now)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    
-    const storiesWithUsers: StoryWithUser[] = [];
-    
-    for (const story of activeStories) {
-      const user = this.users.get(story.userId);
-      if (user) {
-        storiesWithUsers.push({ ...story, user });
-      }
-    }
-    
-    return storiesWithUsers;
+    const result = await db.select({
+      story: stories,
+      user: users
+    })
+    .from(stories)
+    .innerJoin(users, eq(stories.userId, users.id))
+    .where(sql`${stories.expiresAt} > NOW()`)
+    .orderBy(desc(stories.createdAt));
+
+    return result.map(row => ({ ...row.story, user: row.user }));
   }
 
   async getUserStories(userId: string): Promise<Story[]> {
-    return Array.from(this.stories.values())
-      .filter(story => story.userId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return db.select().from(stories).where(eq(stories.userId, userId)).orderBy(desc(stories.createdAt));
   }
 
-  // Like methods
+  // ===== LIKE METHODS (SIMPLIFIED) =====
   async likePost(userId: string, postId: string): Promise<Like> {
-    const id = randomUUID();
-    const like: Like = {
-      id,
-      userId,
-      postId,
-      createdAt: new Date(),
-    };
-    this.likes.set(id, like);
-    
-    // Update post like count
-    const post = this.posts.get(postId);
-    if (post) {
-      await this.updatePost(postId, { likesCount: post.likesCount + 1 });
-    }
-    
-    return like;
+    const result = await db.insert(likes).values({ userId, postId }).returning();
+    await db.update(posts).set({ likesCount: sql`${posts.likesCount} + 1` }).where(eq(posts.id, postId));
+    return result[0];
   }
 
   async unlikePost(userId: string, postId: string): Promise<boolean> {
-    const like = Array.from(this.likes.values())
-      .find(l => l.userId === userId && l.postId === postId);
-    
-    if (!like) return false;
-    
-    this.likes.delete(like.id);
-    
-    // Update post like count
-    const post = this.posts.get(postId);
-    if (post && post.likesCount > 0) {
-      await this.updatePost(postId, { likesCount: post.likesCount - 1 });
+    const result = await db.delete(likes).where(and(eq(likes.userId, userId), eq(likes.postId, postId))).returning();
+    if (result[0]) {
+      await db.update(posts).set({ likesCount: sql`${posts.likesCount} - 1` }).where(eq(posts.id, postId));
+      return true;
     }
-    
-    return true;
+    return false;
   }
 
   async isPostLiked(userId: string, postId: string): Promise<boolean> {
-    return Array.from(this.likes.values())
-      .some(like => like.userId === userId && like.postId === postId);
+    const result = await db.select().from(likes).where(and(eq(likes.userId, userId), eq(likes.postId, postId))).limit(1);
+    return result.length > 0;
   }
 
   async getPostLikes(postId: string): Promise<Like[]> {
-    return Array.from(this.likes.values())
-      .filter(like => like.postId === postId);
+    return db.select().from(likes).where(eq(likes.postId, postId));
   }
 
-  // Comment methods
+  // ===== COMMENT METHODS (SIMPLIFIED) =====
   async getComment(id: string): Promise<Comment | undefined> {
-    return this.comments.get(id);
+    const result = await db.select().from(comments).where(eq(comments.id, id)).limit(1);
+    return result[0];
   }
 
   async createComment(insertComment: InsertComment): Promise<Comment> {
-    const id = randomUUID();
-    const comment: Comment = {
-      ...insertComment,
-      id,
-      createdAt: new Date(),
-    };
-    this.comments.set(id, comment);
-    
-    // Update post comment count
-    const post = this.posts.get(insertComment.postId);
-    if (post) {
-      await this.updatePost(insertComment.postId, { commentsCount: post.commentsCount + 1 });
-    }
-    
-    return comment;
+    const result = await db.insert(comments).values(insertComment).returning();
+    await db.update(posts).set({ commentsCount: sql`${posts.commentsCount} + 1` }).where(eq(posts.id, insertComment.postId));
+    return result[0];
   }
 
   async deleteComment(id: string): Promise<boolean> {
-    const comment = this.comments.get(id);
-    if (!comment) return false;
-    
-    this.comments.delete(id);
-    
-    // Update post comment count
-    const post = this.posts.get(comment.postId);
-    if (post && post.commentsCount > 0) {
-      await this.updatePost(comment.postId, { commentsCount: post.commentsCount - 1 });
+    const result = await db.delete(comments).where(eq(comments.id, id)).returning();
+    if (result[0]) {
+      await db.update(posts).set({ commentsCount: sql`${posts.commentsCount} - 1` }).where(eq(posts.id, result[0].postId));
+      return true;
     }
-    
-    return true;
+    return false;
   }
 
   async getPostComments(postId: string): Promise<CommentWithUser[]> {
-    const postComments = Array.from(this.comments.values())
-      .filter(comment => comment.postId === postId)
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    
-    const commentsWithUsers: CommentWithUser[] = [];
-    
-    for (const comment of postComments) {
-      const user = this.users.get(comment.userId);
-      if (user) {
-        commentsWithUsers.push({ ...comment, user });
-      }
-    }
-    
-    return commentsWithUsers;
+    const result = await db.select({
+      comment: comments,
+      user: users
+    })
+    .from(comments)
+    .innerJoin(users, eq(comments.userId, users.id))
+    .where(eq(comments.postId, postId))
+    .orderBy(asc(comments.createdAt));
+
+    return result.map(row => ({ ...row.comment, user: row.user }));
   }
 
-  // Follow methods
+  // ===== FOLLOW METHODS (SIMPLIFIED) =====
   async followUser(followerId: string, followingId: string): Promise<Follow> {
-    const id = randomUUID();
-    const follow: Follow = {
-      id,
-      followerId,
-      followingId,
-      createdAt: new Date(),
-    };
-    this.follows.set(id, follow);
+    const result = await db.insert(follows).values({ followerId, followingId }).returning();
     
-    // Update follower and following counts
-    const follower = this.users.get(followerId);
-    const following = this.users.get(followingId);
+    // Update counts
+    await db.update(users).set({ followingCount: sql`${users.followingCount} + 1` }).where(eq(users.id, followerId));
+    await db.update(users).set({ followersCount: sql`${users.followersCount} + 1` }).where(eq(users.id, followingId));
     
-    if (follower) {
-      await this.updateUser(followerId, { followingCount: follower.followingCount + 1 });
-    }
-    if (following) {
-      await this.updateUser(followingId, { followersCount: following.followersCount + 1 });
-    }
-    
-    return follow;
+    return result[0];
   }
 
   async unfollowUser(followerId: string, followingId: string): Promise<boolean> {
-    const follow = Array.from(this.follows.values())
-      .find(f => f.followerId === followerId && f.followingId === followingId);
+    const result = await db.delete(follows).where(and(eq(follows.followerId, followerId), eq(follows.followingId, followingId))).returning();
     
-    if (!follow) return false;
-    
-    this.follows.delete(follow.id);
-    
-    // Update follower and following counts
-    const follower = this.users.get(followerId);
-    const following = this.users.get(followingId);
-    
-    if (follower && follower.followingCount > 0) {
-      await this.updateUser(followerId, { followingCount: follower.followingCount - 1 });
+    if (result[0]) {
+      await db.update(users).set({ followingCount: sql`${users.followingCount} - 1` }).where(eq(users.id, followerId));
+      await db.update(users).set({ followersCount: sql`${users.followersCount} - 1` }).where(eq(users.id, followingId));
+      return true;
     }
-    if (following && following.followersCount > 0) {
-      await this.updateUser(followingId, { followersCount: following.followersCount - 1 });
-    }
-    
-    return true;
+    return false;
   }
 
   async isFollowing(followerId: string, followingId: string): Promise<boolean> {
-    return Array.from(this.follows.values())
-      .some(follow => follow.followerId === followerId && follow.followingId === followingId);
+    const result = await db.select().from(follows).where(and(eq(follows.followerId, followerId), eq(follows.followingId, followingId))).limit(1);
+    return result.length > 0;
   }
 
   async getFollowers(userId: string): Promise<User[]> {
-    const followers = Array.from(this.follows.values())
-      .filter(follow => follow.followingId === userId)
-      .map(follow => this.users.get(follow.followerId))
-      .filter((user): user is User => user !== undefined);
+    const result = await db.select({ user: users })
+      .from(follows)
+      .innerJoin(users, eq(follows.followerId, users.id))
+      .where(eq(follows.followingId, userId));
     
-    return followers;
+    return result.map(row => row.user);
   }
 
   async getFollowing(userId: string): Promise<User[]> {
-    const following = Array.from(this.follows.values())
-      .filter(follow => follow.followerId === userId)
-      .map(follow => this.users.get(follow.followingId))
-      .filter((user): user is User => user !== undefined);
+    const result = await db.select({ user: users })
+      .from(follows)
+      .innerJoin(users, eq(follows.followingId, users.id))
+      .where(eq(follows.followerId, userId));
     
-    return following;
+    return result.map(row => row.user);
+  }
+
+  // ===== NEW CATERING METHODS =====
+  async enableCatering(userId: string, location: string, radius: number, bio?: string): Promise<User | undefined> {
+    const result = await db.update(users)
+      .set({
+        cateringEnabled: true,
+        cateringLocation: location,
+        cateringRadius: radius,
+        cateringBio: bio,
+        cateringAvailable: true
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    
+    return result[0];
+  }
+
+  async disableCatering(userId: string): Promise<User | undefined> {
+    const result = await db.update(users)
+      .set({
+        cateringEnabled: false,
+        cateringAvailable: false
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    
+    return result[0];
+  }
+
+  async updateCateringSettings(userId: string, settings: { location?: string; radius?: number; bio?: string; available?: boolean }): Promise<User | undefined> {
+    const result = await db.update(users)
+      .set({
+        ...(settings.location && { cateringLocation: settings.location }),
+        ...(settings.radius && { cateringRadius: settings.radius }),
+        ...(settings.bio !== undefined && { cateringBio: settings.bio }),
+        ...(settings.available !== undefined && { cateringAvailable: settings.available })
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    
+    return result[0];
+  }
+
+  async findChefsInRadius(postalCode: string, radiusMiles: number, limit = 20): Promise<ChefWithCatering[]> {
+    // For now, this is a simplified version. In production, you'd want to use proper geolocation functions
+    // or integrate with a service like PostGIS for accurate distance calculations
+    const result = await db.select()
+      .from(users)
+      .where(
+        and(
+          eq(users.cateringEnabled, true),
+          eq(users.cateringAvailable, true),
+          sql`${users.cateringRadius} >= ${radiusMiles}`
+        )
+      )
+      .limit(limit);
+
+    return result.map(user => ({
+      ...user,
+      availableForCatering: true,
+      distance: Math.floor(Math.random() * radiusMiles) // Placeholder - implement proper distance calculation
+    }));
+  }
+
+  async createCateringInquiry(inquiry: InsertCateringInquiry): Promise<CateringInquiry> {
+    const result = await db.insert(cateringInquiries).values(inquiry).returning();
+    return result[0];
+  }
+
+  async getCateringInquiries(chefId: string): Promise<CateringInquiry[]> {
+    return db.select()
+      .from(cateringInquiries)
+      .where(eq(cateringInquiries.chefId, chefId))
+      .orderBy(desc(cateringInquiries.createdAt));
+  }
+
+  async updateCateringInquiry(id: string, updates: { status?: string; message?: string }): Promise<CateringInquiry | undefined> {
+    const result = await db.update(cateringInquiries)
+      .set(updates)
+      .where(eq(cateringInquiries.id, id))
+      .returning();
+    
+    return result[0];
+  }
+
+  // ===== NEW MARKETPLACE METHODS =====
+  async createProduct(insertProduct: InsertProduct): Promise<Product> {
+    const result = await db.insert(products).values(insertProduct).returning();
+    return result[0];
+  }
+
+  async getProduct(id: string): Promise<Product | undefined> {
+    const result = await db.select().from(products).where(eq(products.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getProductWithSeller(id: string): Promise<ProductWithSeller | undefined> {
+    const result = await db.select({
+      product: products,
+      seller: users
+    })
+    .from(products)
+    .innerJoin(users, eq(products.sellerId, users.id))
+    .where(eq(products.id, id))
+    .limit(1);
+
+    if (!result[0]) return undefined;
+
+    return {
+      ...result[0].product,
+      seller: result[0].seller
+    };
+  }
+
+  async getUserProducts(sellerId: string, offset = 0, limit = 10): Promise<ProductWithSeller[]> {
+    const result = await db.select({
+      product: products,
+      seller: users
+    })
+    .from(products)
+    .innerJoin(users, eq(products.sellerId, users.id))
+    .where(and(eq(products.sellerId, sellerId), eq(products.isActive, true)))
+    .orderBy(desc(products.createdAt))
+    .offset(offset)
+    .limit(limit);
+
+    return result.map(row => ({
+      ...row.product,
+      seller: row.seller
+    }));
+  }
+
+  async searchProducts(query?: string, category?: string, location?: string, offset = 0, limit = 20): Promise<ProductWithSeller[]> {
+    const conditions = [eq(products.isActive, true)];
+    
+    if (category) {
+      conditions.push(eq(products.category, category));
+    }
+    
+    if (location) {
+      conditions.push(eq(products.pickupLocation, location));
+    }
+    
+    if (query) {
+      conditions.push(
+        or(
+          sql`${products.name} ILIKE ${'%' + query + '%'}`,
+          sql`${products.description} ILIKE ${'%' + query + '%'}`
+        )!
+      );
+    }
+
+    const result = await db.select({
+      product: products,
+      seller: users
+    })
+    .from(products)
+    .innerJoin(users, eq(products.sellerId, users.id))
+    .where(and(...conditions))
+    .orderBy(desc(products.createdAt))
+    .offset(offset)
+    .limit(limit);
+
+    return result.map(row => ({
+      ...row.product,
+      seller: row.seller
+    }));
+  }
+
+  async updateProduct(id: string, updates: Partial<Product>): Promise<Product | undefined> {
+    const result = await db.update(products).set(updates).where(eq(products.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteProduct(id: string): Promise<boolean> {
+    const result = await db.update(products)
+      .set({ isActive: false })
+      .where(eq(products.id, id))
+      .returning();
+    
+    return result.length > 0;
   }
 }
 
-export const storage = new MemStorage();
+// Create and export the storage instance
+export const storage = new DrizzleStorage();
