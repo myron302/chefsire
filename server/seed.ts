@@ -1,106 +1,237 @@
-{
-  "name": "rest-express",
-  "version": "1.0.0",
-  "type": "module",
-  "license": "MIT",
-  "scripts": {
-    "dev": "NODE_ENV=development tsx server/index.ts",
-    "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist && npm run db:push",
-    "start": "NODE_ENV=production node dist/index.js",
-    "check": "tsc",
-    "db:push": "drizzle-kit push",
-    "db:seed": "tsx server/seed.ts"
-  },
-  "dependencies": {
-    "@hookform/resolvers": "^3.10.0",
-    "@jridgewell/trace-mapping": "^0.3.25",
-    "@neondatabase/serverless": "^0.10.4",
-    "@radix-ui/react-accordion": "^1.2.4",
-    "@radix-ui/react-alert-dialog": "^1.1.7",
-    "@radix-ui/react-aspect-ratio": "^1.1.3",
-    "@radix-ui/react-avatar": "^1.1.4",
-    "@radix-ui/react-checkbox": "^1.1.5",
-    "@radix-ui/react-collapsible": "^1.1.4",
-    "@radix-ui/react-context-menu": "^2.2.7",
-    "@radix-ui/react-dialog": "^1.1.7",
-    "@radix-ui/react-dropdown-menu": "^2.1.7",
-    "@radix-ui/react-hover-card": "^1.1.7",
-    "@radix-ui/react-label": "^2.1.3",
-    "@radix-ui/react-menubar": "^1.1.7",
-    "@radix-ui/react-navigation-menu": "^1.2.6",
-    "@radix-ui/react-popover": "^1.1.7",
-    "@radix-ui/react-progress": "^1.1.3",
-    "@radix-ui/react-radio-group": "^1.2.4",
-    "@radix-ui/react-scroll-area": "^1.2.4",
-    "@radix-ui/react-select": "^2.1.7",
-    "@radix-ui/react-separator": "^1.1.3",
-    "@radix-ui/react-slider": "^1.2.4",
-    "@radix-ui/react-slot": "^1.2.0",
-    "@radix-ui/react-switch": "^1.1.4",
-    "@radix-ui/react-tabs": "^1.1.4",
-    "@radix-ui/react-toast": "^1.2.7",
-    "@radix-ui/react-toggle": "^1.1.3",
-    "@radix-ui/react-toggle-group": "^1.1.3",
-    "@radix-ui/react-tooltip": "^1.2.0",
-    "@tanstack/react-query": "^5.60.5",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "cmdk": "^1.1.1",
-    "connect-pg-simple": "^10.0.0",
-    "date-fns": "^3.6.0",
-    "drizzle-orm": "^0.39.1",
-    "drizzle-zod": "^0.7.0",
-    "embla-carousel-react": "^8.6.0",
-    "express": "^4.21.2",
-    "express-session": "^1.18.1",
-    "framer-motion": "^11.13.1",
-    "input-otp": "^1.4.2",
-    "lucide-react": "^0.453.0",
-    "memorystore": "^1.6.7",
-    "next-themes": "^0.4.6",
-    "passport": "^0.7.0",
-    "passport-local": "^1.0.0",
-    "react": "^18.3.1",
-    "react-day-picker": "^8.10.1",
-    "react-dom": "^18.3.1",
-    "react-hook-form": "^7.55.0",
-    "react-icons": "^5.4.0",
-    "react-resizable-panels": "^2.1.7",
-    "recharts": "^2.15.2",
-    "tailwind-merge": "^2.6.0",
-    "tailwindcss-animate": "^1.0.7",
-    "tw-animate-css": "^1.2.5",
-    "vaul": "^1.1.2",
-    "wouter": "^3.3.5",
-    "ws": "^8.18.0",
-    "zod": "^3.24.2",
-    "zod-validation-error": "^3.4.0"
-  },
-  "devDependencies": {
-    "@replit/vite-plugin-cartographer": "^0.3.0",
-    "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
-    "@tailwindcss/typography": "^0.5.15",
-    "@tailwindcss/vite": "^4.1.3",
-    "@types/connect-pg-simple": "^7.0.3",
-    "@types/express": "4.17.21",
-    "@types/express-session": "^1.18.0",
-    "@types/node": "20.16.11",
-    "@types/passport": "^1.0.16",
-    "@types/passport-local": "^1.0.38",
-    "@types/react": "^18.3.11",
-    "@types/react-dom": "^18.3.1",
-    "@types/ws": "^8.5.13",
-    "@vitejs/plugin-react": "^4.3.2",
-    "autoprefixer": "^10.4.20",
-    "drizzle-kit": "^0.30.4",
-    "esbuild": "^0.25.0",
-    "postcss": "^8.4.47",
-    "tailwindcss": "^3.4.17",
-    "tsx": "^4.19.1",
-    "typescript": "5.6.3",
-    "vite": "^5.4.19"
-  },
-  "optionalDependencies": {
-    "bufferutil": "^4.0.8"
+import { drizzle } from "drizzle-orm/neon-serverless";
+import { Pool } from "@neondatabase/serverless";
+import { users, posts, recipes, stories, likes, follows } from "../shared/schema.js";
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const db = drizzle(pool);
+
+async function seedDatabase() {
+  console.log("Starting database seeding...");
+
+  try {
+    console.log("Clearing existing data...");
+    await db.delete(likes);
+    await db.delete(follows);
+    await db.delete(recipes);
+    await db.delete(stories);
+    await db.delete(posts);
+    await db.delete(users);
+
+    console.log("Creating sample users...");
+    const sampleUsers = [
+      {
+        id: "user-1",
+        username: "chef_alexandra",
+        email: "alexandra@chefsire.com",
+        password: "password123",
+        displayName: "Chef Alexandra",
+        bio: "Passionate about Italian cuisine and fresh ingredients",
+        avatar: "https://images.unsplash.com/photo-1566554273541-37a9ca77b91f?ixlib=rb-4.0.3&auto=format&fit=crop&w=100&h=100",
+        specialty: "Italian Cuisine",
+        isChef: true,
+        followersCount: 1200,
+        followingCount: 150,
+        postsCount: 1,
+        cateringEnabled: true,
+        cateringLocation: "06360",
+        cateringRadius: 50,
+        cateringBio: "Specializing in authentic Italian cuisine for weddings and special events",
+        cateringAvailable: true,
+        subscriptionTier: "professional",
+        subscriptionStatus: "active",
+        nutritionPremium: true
+      },
+      {
+        id: "user-2",
+        username: "chef_marcus",
+        email: "marcus@chefsire.com",
+        password: "password123",
+        displayName: "Chef Marcus",
+        bio: "Seafood specialist | Sustainable cooking advocate",
+        avatar: "https://images.unsplash.com/photo-1607631568010-a87245c0daf8?ixlib=rb-4.0.3&auto=format&fit=crop&w=100&h=100",
+        specialty: "Seafood",
+        isChef: true,
+        followersCount: 890,
+        followingCount: 200,
+        postsCount: 1,
+        cateringEnabled: true,
+        cateringLocation: "06360",
+        cateringRadius: 25,
+        cateringBio: "Fresh seafood and sustainable cooking for corporate events",
+        cateringAvailable: true,
+        subscriptionTier: "starter",
+        subscriptionStatus: "active",
+        nutritionPremium: false
+      },
+      {
+        id: "user-3",
+        username: "chef_isabella",
+        email: "isabella@chefsire.com",
+        password: "password123",
+        displayName: "Chef Isabella",
+        bio: "Dessert artisan creating sweet masterpieces",
+        avatar: "https://images.unsplash.com/photo-1580489944761-15a19d654956?ixlib=rb-4.0.3&auto=format&fit=crop&w=100&h=100",
+        specialty: "Pastry & Desserts",
+        isChef: true,
+        followersCount: 2100,
+        followingCount: 95,
+        postsCount: 1,
+        cateringEnabled: false,
+        subscriptionTier: "free",
+        subscriptionStatus: "active",
+        nutritionPremium: false
+      }
+    ];
+
+    await db.insert(users).values(sampleUsers);
+    console.log("Sample users created");
+
+    console.log("Creating sample posts...");
+    const samplePosts = [
+      {
+        id: "post-1",
+        userId: "user-1",
+        caption: "Just perfected my grandmother's pasta recipe! The secret is in the fresh basil and aged parmesan. Who wants the recipe?",
+        imageUrl: "https://images.unsplash.com/photo-1621996346565-e3dbc6d2c5f7?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600",
+        tags: ["pasta", "italian", "homemade"],
+        likesCount: 234,
+        commentsCount: 12,
+        isRecipe: false,
+        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000)
+      },
+      {
+        id: "post-2",
+        userId: "user-2",
+        caption: "Honey Glazed Salmon with Roasted Vegetables - perfect balance of flavors and nutrients!",
+        imageUrl: "https://images.unsplash.com/photo-1467003909585-2f8a72700288?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600",
+        tags: ["salmon", "healthy", "seafood"],
+        likesCount: 156,
+        commentsCount: 23,
+        isRecipe: true,
+        createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000)
+      },
+      {
+        id: "post-3",
+        userId: "user-3",
+        caption: "Watch me create this decadent chocolate mousse! The technique is everything - patience pays off!",
+        imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600",
+        tags: ["dessert", "chocolate", "technique"],
+        likesCount: 89,
+        commentsCount: 7,
+        isRecipe: false,
+        createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000)
+      }
+    ];
+
+    await db.insert(posts).values(samplePosts);
+    console.log("Sample posts created");
+
+    console.log("Creating sample recipe...");
+    const sampleRecipe = {
+      id: "recipe-1",
+      postId: "post-2",
+      title: "Honey Glazed Salmon with Roasted Vegetables",
+      ingredients: [
+        "4 salmon fillets",
+        "2 tbsp honey",
+        "1 tbsp soy sauce",
+        "2 cloves garlic, minced",
+        "Mixed vegetables (broccoli, carrots, bell peppers)",
+        "Olive oil",
+        "Salt and pepper to taste"
+      ],
+      instructions: [
+        "Preheat oven to 400°F (200°C)",
+        "Mix honey, soy sauce, and garlic for glaze",
+        "Season salmon with salt and pepper",
+        "Brush salmon with glaze",
+        "Roast vegetables with olive oil for 15 minutes",
+        "Add salmon to pan and bake for 12-15 minutes",
+        "Serve immediately"
+      ],
+      cookTime: 30,
+      servings: 4,
+      difficulty: "Easy",
+      nutrition: {
+        calories: 350,
+        protein: "28g",
+        carbs: "15g",
+        fat: "18g"
+      },
+      calories: 350,
+      protein: "28.0",
+      carbs: "15.0",
+      fat: "18.0",
+      fiber: "3.0"
+    };
+
+    await db.insert(recipes).values([sampleRecipe]);
+    console.log("Sample recipe created");
+
+    console.log("Creating sample stories...");
+    const sampleStories = [
+      {
+        id: "story-1",
+        userId: "user-1",
+        imageUrl: "https://images.unsplash.com/photo-1595257841889-eca2678454e2?ixlib=rb-4.0.3&auto=format&fit=crop&w=200&h=200",
+        caption: "Making fresh pasta from scratch!",
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000)
+      },
+      {
+        id: "story-2",
+        userId: "user-2",
+        imageUrl: "https://images.unsplash.com/photo-1509440159596-0249088772ff?ixlib=rb-4.0.3&auto=format&fit=crop&w=200&h=200",
+        caption: "Fresh bread cooling down",
+        expiresAt: new Date(Date.now() + 20 * 60 * 60 * 1000),
+        createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000)
+      }
+    ];
+
+    await db.insert(stories).values(sampleStories);
+    console.log("Sample stories created");
+
+    console.log("Creating sample likes...");
+    const sampleLikes = [
+      { id: "like-1", userId: "user-2", postId: "post-1" },
+      { id: "like-2", userId: "user-3", postId: "post-1" },
+      { id: "like-3", userId: "user-1", postId: "post-2" },
+      { id: "like-4", userId: "user-3", postId: "post-2" },
+      { id: "like-5", userId: "user-1", postId: "post-3" },
+      { id: "like-6", userId: "user-2", postId: "post-3" }
+    ];
+
+    await db.insert(likes).values(sampleLikes);
+    console.log("Sample likes created");
+
+    console.log("Creating sample follows...");
+    const sampleFollows = [
+      { id: "follow-1", followerId: "user-1", followingId: "user-2" },
+      { id: "follow-2", followerId: "user-1", followingId: "user-3" },
+      { id: "follow-3", followerId: "user-2", followingId: "user-1" },
+      { id: "follow-4", followerId: "user-2", followingId: "user-3" },
+      { id: "follow-5", followerId: "user-3", followingId: "user-1" },
+      { id: "follow-6", followerId: "user-3", followingId: "user-2" }
+    ];
+
+    await db.insert(follows).values(sampleFollows);
+    console.log("Sample follows created");
+
+    console.log("Database seeding completed successfully!");
+    console.log("Sample data created:");
+    console.log("- 3 chef users (with catering enabled for 2 of them)");
+    console.log("- 3 posts (1 with recipe)");
+    console.log("- 1 detailed recipe");
+    console.log("- 2 active stories");
+    console.log("- 6 likes");
+    console.log("- 6 follow relationships");
+
+  } catch (error) {
+    console.error("Error seeding database:", error);
+    throw error;
+  } finally {
+    await pool.end();
   }
 }
+
+seedDatabase().catch(console.error);
