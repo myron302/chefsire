@@ -806,6 +806,337 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== NUTRITION TRACKING API ROUTES =====
+
+  app.post("/api/users/:id/nutrition/trial", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      
+      const updatedUser = await storage.enableNutritionPremium(userId, 30);
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json({
+        message: "Nutrition premium trial activated",
+        user: updatedUser,
+        trialEndsAt: updatedUser.nutritionTrialEndsAt
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to start nutrition trial" });
+    }
+  });
+
+  app.put("/api/users/:id/nutrition/goals", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const goalsSchema = z.object({
+        dailyCalorieGoal: z.number().min(800).max(5000).optional(),
+        macroGoals: z.object({
+          protein: z.number().min(0).max(100),
+          carbs: z.number().min(0).max(100),
+          fat: z.number().min(0).max(100)
+        }).optional(),
+        dietaryRestrictions: z.array(z.string()).optional()
+      });
+      
+      const goals = goalsSchema.parse(req.body);
+      
+      const updatedUser = await storage.updateNutritionGoals(userId, goals);
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json({
+        message: "Nutrition goals updated",
+        user: updatedUser
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid goals data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update nutrition goals" });
+    }
+  });
+
+  app.post("/api/nutrition/log", async (req, res) => {
+    try {
+      const logSchema = z.object({
+        userId: z.string(),
+        date: z.string().transform(str => new Date(str)),
+        mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]),
+        recipeId: z.string().optional(),
+        customFoodName: z.string().optional(),
+        servings: z.number().min(0.1).max(20).default(1),
+        calories: z.number().min(0),
+        protein: z.number().min(0).optional(),
+        carbs: z.number().min(0).optional(),
+        fat: z.number().min(0).optional(),
+        fiber: z.number().min(0).optional(),
+        imageUrl: z.string().url().optional()
+      });
+      
+      const logData = logSchema.parse(req.body);
+      
+      const nutritionLog = await storage.logNutrition(logData.userId, logData);
+      
+      res.status(201).json({
+        message: "Nutrition logged successfully",
+        log: nutritionLog
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid nutrition data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to log nutrition" });
+    }
+  });
+
+  app.get("/api/users/:id/nutrition/daily/:date", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const date = new Date(req.params.date);
+      
+      if (isNaN(date.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+      
+      const summary = await storage.getDailyNutritionSummary(userId, date);
+      const user = await storage.getUser(userId);
+      
+      const response = {
+        date: req.params.date,
+        summary,
+        goals: user ? {
+          dailyCalorieGoal: user.dailyCalorieGoal,
+          macroGoals: user.macroGoals
+        } : null,
+        progress: user?.dailyCalorieGoal ? {
+          calorieProgress: Math.round((summary.totalCalories / user.dailyCalorieGoal) * 100)
+        } : null
+      };
+      
+      res.json(response);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch daily nutrition" });
+    }
+  });
+
+  app.get("/api/users/:id/nutrition/logs", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const startDate = new Date(req.query.startDate as string);
+      const endDate = new Date(req.query.endDate as string);
+      
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+      
+      const logs = await storage.getNutritionLogs(userId, startDate, endDate);
+      
+      res.json({
+        logs,
+        dateRange: {
+          startDate: startDate.toISOString().split('T')[0],
+          endDate: endDate.toISOString().split('T')[0]
+        },
+        total: logs.length
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch nutrition logs" });
+    }
+  });
+
+  app.post("/api/meal-plans", async (req, res) => {
+    try {
+      const planSchema = z.object({
+        userId: z.string(),
+        name: z.string().min(1, "Meal plan name required"),
+        startDate: z.string().transform(str => new Date(str)),
+        endDate: z.string().transform(str => new Date(str)),
+        isTemplate: z.boolean().default(false)
+      });
+      
+      const planData = planSchema.parse(req.body);
+      
+      if (planData.startDate >= planData.endDate) {
+        return res.status(400).json({ message: "End date must be after start date" });
+      }
+      
+      const mealPlan = await storage.createMealPlan(planData.userId, planData);
+      
+      res.status(201).json({
+        message: "Meal plan created successfully",
+        mealPlan
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid meal plan data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create meal plan" });
+    }
+  });
+
+  app.get("/api/meal-plans/:id", async (req, res) => {
+    try {
+      const mealPlan = await storage.getMealPlan(req.params.id);
+      
+      if (!mealPlan) {
+        return res.status(404).json({ message: "Meal plan not found" });
+      }
+      
+      res.json(mealPlan);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch meal plan" });
+    }
+  });
+
+  app.get("/api/users/:id/meal-plans", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const mealPlans = await storage.getUserMealPlans(userId);
+      
+      res.json({
+        mealPlans,
+        total: mealPlans.length
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch meal plans" });
+    }
+  });
+
+  app.post("/api/meal-plans/:id/entries", async (req, res) => {
+    try {
+      const planId = req.params.id;
+      const entrySchema = z.object({
+        recipeId: z.string().optional(),
+        date: z.string().transform(str => new Date(str)),
+        mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]),
+        servings: z.number().min(0.1).max(20).default(1),
+        customName: z.string().optional(),
+        customCalories: z.number().min(0).optional()
+      });
+      
+      const entryData = entrySchema.parse(req.body);
+      
+      const entry = await storage.addMealPlanEntry(planId, entryData);
+      
+      res.status(201).json({
+        message: "Meal plan entry added",
+        entry
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid entry data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to add meal plan entry" });
+    }
+  });
+
+  app.post("/api/users/:id/pantry", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const itemSchema = z.object({
+        name: z.string().min(1, "Item name required"),
+        category: z.string().optional(),
+        quantity: z.number().min(0).optional(),
+        unit: z.string().optional(),
+        expirationDate: z.string().transform(str => new Date(str)).optional(),
+        notes: z.string().optional()
+      });
+      
+      const itemData = itemSchema.parse(req.body);
+      
+      const pantryItem = await storage.addPantryItem(userId, itemData);
+      
+      res.status(201).json({
+        message: "Pantry item added",
+        item: pantryItem
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid item data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to add pantry item" });
+    }
+  });
+
+  app.get("/api/users/:id/pantry", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const pantryItems = await storage.getPantryItems(userId);
+      
+      res.json({
+        pantryItems,
+        total: pantryItems.length
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch pantry items" });
+    }
+  });
+
+  app.put("/api/pantry/:itemId", async (req, res) => {
+    try {
+      const itemId = req.params.itemId;
+      const updateSchema = z.object({
+        quantity: z.number().min(0).optional(),
+        expirationDate: z.string().transform(str => new Date(str)).optional(),
+        notes: z.string().optional()
+      });
+      
+      const updates = updateSchema.parse(req.body);
+      
+      const item = await storage.updatePantryItem(itemId, updates);
+      
+      if (!item) {
+        return res.status(404).json({ message: "Pantry item not found" });
+      }
+      
+      res.json({
+        message: "Pantry item updated",
+        item
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid update data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update pantry item" });
+    }
+  });
+
+  app.delete("/api/pantry/:itemId", async (req, res) => {
+    try {
+      const success = await storage.deletePantryItem(req.params.itemId);
+      
+      if (!success) {
+        return res.status(404).json({ message: "Pantry item not found" });
+      }
+      
+      res.json({ message: "Pantry item deleted" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete pantry item" });
+    }
+  });
+
+  app.get("/api/users/:id/pantry/expiring", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const daysAhead = parseInt(req.query.days as string) || 7;
+      
+      const expiringItems = await storage.getExpiringItems(userId, daysAhead);
+      
+      res.json({
+        expiringItems,
+        daysAhead,
+        total: expiringItems.length
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch expiring items" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
