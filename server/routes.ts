@@ -811,7 +811,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/users/:id/nutrition/trial", async (req, res) => {
     try {
       const userId = req.params.id;
-      
       const updatedUser = await storage.enableNutritionPremium(userId, 30);
       
       if (!updatedUser) {
@@ -1136,390 +1135,125 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch expiring items" });
     }
   });
-// Add these routes to your server/routes.ts file
-// Paste them right before: const httpServer = createServer(app);
 
-// ===== NUTRITION TRACKING API ROUTES =====
+  // ===== PANTRY RECIPE SUGGESTIONS API ROUTES =====
+
+  app.get("/api/users/:id/pantry/recipe-suggestions", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const optionsSchema = z.object({
+        requireAllIngredients: z.coerce.boolean().default(false),
+        maxMissingIngredients: z.coerce.number().min(0).max(10).default(3),
+        includeExpiringSoon: z.coerce.boolean().default(true),
+        limit: z.coerce.number().min(1).max(50).default(20)
+      });
+      
+      const options = optionsSchema.parse(req.query);
+      const suggestions = await storage.getRecipesFromPantryItems(userId, options);
+      
+      res.json({
+        suggestions,
+        options,
+        total: suggestions.length,
+        message: suggestions.length === 0 ? "No recipes found. Try adding more ingredients to your pantry." : undefined
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid parameters", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to get recipe suggestions" });
+    }
+  });
+
+  app.get("/api/recipes/:id/shopping-analysis/:userId", async (req, res) => {
+    try {
+      const recipeId = req.params.id;
+      const userId = req.params.userId;
+      
+      const analysis = await storage.getSuggestedIngredientsForRecipe(recipeId, userId);
+      
+      res.json({
+        ...analysis,
+        summary: {
+          totalIngredients: analysis.recipe.ingredients?.length || 0,
+          missingCount: analysis.missingIngredients.length,
+          canMakeWithSubstitutions: analysis.suggestedSubstitutions.length > 0,
+          availableInMarketplace: analysis.availableInMarketplace.length > 0
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to analyze recipe requirements" });
+    }
+  });
+
+  app.get("/api/ingredients/:ingredient/substitutions", async (req, res) => {
+    try {
+      const ingredient = decodeURIComponent(req.params.ingredient);
+      const substitutions = await storage.getIngredientSubstitutions(ingredient);
+      
+      res.json({
+        ingredient,
+        substitutions,
+        total: substitutions.length,
+        categories: [...new Set(substitutions.map(sub => sub.category).filter(Boolean))]
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get ingredient substitutions" });
+    }
+  });
+
+  app.get("/api/ingredients/substitutions/search", async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      
+      if (!query || query.length < 2) {
+        return res.status(400).json({ message: "Search query must be at least 2 characters long" });
+      }
+      
+      const results = await storage.searchSubstitutions(query);
+      
+      res.json({
+        query,
+        results,
+        total: results.length
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to search substitutions" });
+    }
+  });
+
+  app.post("/api/ingredients/substitutions", async (req, res) => {
+    try {
+      const substitutionSchema = z.object({
+        originalIngredient: z.string().min(1, "Original ingredient required"),
+        substituteIngredient: z.string().min(1, "Substitute ingredient required"),
+        ratio: z.string().min(1, "Ratio required"),
+        notes: z.string().optional(),
+        category: z.string().optional()
+      });
+      
+      const substitutionData = substitutionSchema.parse(req.body);
+      
+      const substitution = await storage.addIngredientSubstitution(
+        substitutionData.originalIngredient,
+        substitutionData.substituteIngredient,
+        substitutionData.ratio,
+        substitutionData.notes,
+        substitutionData.category
+      );
+      
+      res.status(201).json({
+        message: "Ingredient substitution added successfully",
+        substitution
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid substitution data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to add ingredient substitution" });
+    }
+  });
 
-app.post(”/api/users/:id/nutrition/trial”, async (req, res) => {
-try {
-const userId = req.params.id;
-const updatedUser = await storage.enableNutritionPremium(userId, 30);
-
-```
-if (!updatedUser) {
-  return res.status(404).json({ message: "User not found" });
-}
-
-res.json({
-  message: "Nutrition premium trial activated",
-  user: updatedUser,
-  trialEndsAt: updatedUser.nutritionTrialEndsAt
-});
-```
-
-} catch (error) {
-res.status(500).json({ message: “Failed to start nutrition trial” });
-}
-});
-
-app.put(”/api/users/:id/nutrition/goals”, async (req, res) => {
-try {
-const userId = req.params.id;
-const goalsSchema = z.object({
-dailyCalorieGoal: z.number().min(800).max(5000).optional(),
-macroGoals: z.object({
-protein: z.number().min(0).max(100),
-carbs: z.number().min(0).max(100),
-fat: z.number().min(0).max(100)
-}).optional(),
-dietaryRestrictions: z.array(z.string()).optional()
-});
-
-```
-const goals = goalsSchema.parse(req.body);
-const updatedUser = await storage.updateNutritionGoals(userId, goals);
-
-if (!updatedUser) {
-  return res.status(404).json({ message: "User not found" });
-}
-
-res.json({ message: "Nutrition goals updated", user: updatedUser });
-```
-
-} catch (error) {
-if (error instanceof z.ZodError) {
-return res.status(400).json({ message: “Invalid goals data”, errors: error.errors });
-}
-res.status(500).json({ message: “Failed to update nutrition goals” });
-}
-});
-
-app.post(”/api/nutrition/log”, async (req, res) => {
-try {
-const logSchema = z.object({
-userId: z.string(),
-date: z.string().transform(str => new Date(str)),
-mealType: z.enum([“breakfast”, “lunch”, “dinner”, “snack”]),
-recipeId: z.string().optional(),
-customFoodName: z.string().optional(),
-servings: z.number().min(0.1).max(20).default(1),
-calories: z.number().min(0),
-protein: z.number().min(0).optional(),
-carbs: z.number().min(0).optional(),
-fat: z.number().min(0).optional(),
-fiber: z.number().min(0).optional(),
-imageUrl: z.string().url().optional()
-});
-
-```
-const logData = logSchema.parse(req.body);
-const nutritionLog = await storage.logNutrition(logData.userId, logData);
-
-res.status(201).json({
-  message: "Nutrition logged successfully",
-  log: nutritionLog
-});
-```
-
-} catch (error) {
-if (error instanceof z.ZodError) {
-return res.status(400).json({ message: “Invalid nutrition data”, errors: error.errors });
-}
-res.status(500).json({ message: “Failed to log nutrition” });
-}
-});
-
-app.get(”/api/users/:id/nutrition/daily/:date”, async (req, res) => {
-try {
-const userId = req.params.id;
-const date = new Date(req.params.date);
-
-```
-if (isNaN(date.getTime())) {
-  return res.status(400).json({ message: "Invalid date format" });
-}
-
-const summary = await storage.getDailyNutritionSummary(userId, date);
-const user = await storage.getUser(userId);
-
-const response = {
-  date: req.params.date,
-  summary,
-  goals: user ? {
-    dailyCalorieGoal: user.dailyCalorieGoal,
-    macroGoals: user.macroGoals
-  } : null,
-  progress: user?.dailyCalorieGoal ? {
-    calorieProgress: Math.round((summary.totalCalories / user.dailyCalorieGoal) * 100)
-  } : null
-};
-
-res.json(response);
-```
-
-} catch (error) {
-res.status(500).json({ message: “Failed to fetch daily nutrition” });
-}
-});
-
-app.get(”/api/users/:id/nutrition/logs”, async (req, res) => {
-try {
-const userId = req.params.id;
-const startDate = new Date(req.query.startDate as string);
-const endDate = new Date(req.query.endDate as string);
-
-```
-if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-  return res.status(400).json({ message: "Invalid date format" });
-}
-
-const logs = await storage.getNutritionLogs(userId, startDate, endDate);
-
-res.json({
-  logs,
-  dateRange: {
-    startDate: startDate.toISOString().split('T')[0],
-    endDate: endDate.toISOString().split('T')[0]
-  },
-  total: logs.length
-});
-```
-
-} catch (error) {
-res.status(500).json({ message: “Failed to fetch nutrition logs” });
-}
-});
-
-app.post(”/api/meal-plans”, async (req, res) => {
-try {
-const planSchema = z.object({
-userId: z.string(),
-name: z.string().min(1, “Meal plan name required”),
-startDate: z.string().transform(str => new Date(str)),
-endDate: z.string().transform(str => new Date(str)),
-isTemplate: z.boolean().default(false)
-});
-
-```
-const planData = planSchema.parse(req.body);
-
-if (planData.startDate >= planData.endDate) {
-  return res.status(400).json({ message: "End date must be after start date" });
-}
-
-const mealPlan = await storage.createMealPlan(planData.userId, planData);
-
-res.status(201).json({
-  message: "Meal plan created successfully",
-  mealPlan
-});
-```
-
-} catch (error) {
-if (error instanceof z.ZodError) {
-return res.status(400).json({ message: “Invalid meal plan data”, errors: error.errors });
-}
-res.status(500).json({ message: “Failed to create meal plan” });
-}
-});
-
-app.get(”/api/meal-plans/:id”, async (req, res) => {
-try {
-const mealPlan = await storage.getMealPlan(req.params.id);
-
-```
-if (!mealPlan) {
-  return res.status(404).json({ message: "Meal plan not found" });
-}
-
-res.json(mealPlan);
-```
-
-} catch (error) {
-res.status(500).json({ message: “Failed to fetch meal plan” });
-}
-});
-
-app.get(”/api/users/:id/meal-plans”, async (req, res) => {
-try {
-const userId = req.params.id;
-const mealPlans = await storage.getUserMealPlans(userId);
-
-```
-res.json({
-  mealPlans,
-  total: mealPlans.length
-});
-```
-
-} catch (error) {
-res.status(500).json({ message: “Failed to fetch meal plans” });
-}
-});
-
-app.post(”/api/meal-plans/:id/entries”, async (req, res) => {
-try {
-const planId = req.params.id;
-const entrySchema = z.object({
-recipeId: z.string().optional(),
-date: z.string().transform(str => new Date(str)),
-mealType: z.enum([“breakfast”, “lunch”, “dinner”, “snack”]),
-servings: z.number().min(0.1).max(20).default(1),
-customName: z.string().optional(),
-customCalories: z.number().min(0).optional()
-});
-
-```
-const entryData = entrySchema.parse(req.body);
-const entry = await storage.addMealPlanEntry(planId, entryData);
-
-res.status(201).json({
-  message: "Meal plan entry added",
-  entry
-});
-```
-
-} catch (error) {
-if (error instanceof z.ZodError) {
-return res.status(400).json({ message: “Invalid entry data”, errors: error.errors });
-}
-res.status(500).json({ message: “Failed to add meal plan entry” });
-}
-});
-
-// ===== PANTRY RECIPE SUGGESTIONS API ROUTES =====
-
-app.get(”/api/users/:id/pantry/recipe-suggestions”, async (req, res) => {
-try {
-const userId = req.params.id;
-const optionsSchema = z.object({
-requireAllIngredients: z.coerce.boolean().default(false),
-maxMissingIngredients: z.coerce.number().min(0).max(10).default(3),
-includeExpiringSoon: z.coerce.boolean().default(true),
-limit: z.coerce.number().min(1).max(50).default(20)
-});
-
-```
-const options = optionsSchema.parse(req.query);
-const suggestions = await storage.getRecipesFromPantryItems(userId, options);
-
-res.json({
-  suggestions,
-  options,
-  total: suggestions.length,
-  message: suggestions.length === 0 ? "No recipes found. Try adding more ingredients to your pantry." : undefined
-});
-```
-
-} catch (error) {
-if (error instanceof z.ZodError) {
-return res.status(400).json({ message: “Invalid parameters”, errors: error.errors });
-}
-res.status(500).json({ message: “Failed to get recipe suggestions” });
-}
-});
-
-app.get(”/api/recipes/:id/shopping-analysis/:userId”, async (req, res) => {
-try {
-const recipeId = req.params.id;
-const userId = req.params.userId;
-
-```
-const analysis = await storage.getSuggestedIngredientsForRecipe(recipeId, userId);
-
-res.json({
-  ...analysis,
-  summary: {
-    totalIngredients: analysis.recipe.ingredients?.length || 0,
-    missingCount: analysis.missingIngredients.length,
-    canMakeWithSubstitutions: analysis.suggestedSubstitutions.length > 0,
-    availableInMarketplace: analysis.availableInMarketplace.length > 0
-  }
-});
-```
-
-} catch (error) {
-res.status(500).json({ message: “Failed to analyze recipe requirements” });
-}
-});
-
-app.get(”/api/ingredients/:ingredient/substitutions”, async (req, res) => {
-try {
-const ingredient = decodeURIComponent(req.params.ingredient);
-const substitutions = await storage.getIngredientSubstitutions(ingredient);
-
-```
-res.json({
-  ingredient,
-  substitutions,
-  total: substitutions.length,
-  categories: [...new Set(substitutions.map(sub => sub.category).filter(Boolean))]
-});
-```
-
-} catch (error) {
-res.status(500).json({ message: “Failed to get ingredient substitutions” });
-}
-});
-
-app.get(”/api/ingredients/substitutions/search”, async (req, res) => {
-try {
-const query = req.query.q as string;
-
-```
-if (!query || query.length < 2) {
-  return res.status(400).json({ message: "Search query must be at least 2 characters long" });
-}
-
-const results = await storage.searchSubstitutions(query);
-
-res.json({
-  query,
-  results,
-  total: results.length
-});
-```
-
-} catch (error) {
-res.status(500).json({ message: “Failed to search substitutions” });
-}
-});
-
-app.post(”/api/ingredients/substitutions”, async (req, res) => {
-try {
-const substitutionSchema = z.object({
-originalIngredient: z.string().min(1, “Original ingredient required”),
-substituteIngredient: z.string().min(1, “Substitute ingredient required”),
-ratio: z.string().min(1, “Ratio required”),
-notes: z.string().optional(),
-category: z.string().optional()
-});
-
-```
-const substitutionData = substitutionSchema.parse(req.body);
-
-const substitution = await storage.addIngredientSubstitution(
-  substitutionData.originalIngredient,
-  substitutionData.substituteIngredient,
-  substitutionData.ratio,
-  substitutionData.notes,
-  substitutionData.category
-);
-
-res.status(201).json({
-  message: "Ingredient substitution added successfully",
-  substitution
-});
-```
-
-} catch (error) {
-if (error instanceof z.ZodError) {
-return res.status(400).json({ message: “Invalid substitution data”, errors: error.errors });
-}
-res.status(500).json({ message: “Failed to add ingredient substitution” });
-}
-});
   const httpServer = createServer(app);
   return httpServer;
 }
