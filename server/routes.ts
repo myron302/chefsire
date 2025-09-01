@@ -287,7 +287,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===== CATERING API ROUTES =====
 
-  // Enable catering for a user
   app.post("/api/users/:id/catering/enable", async (req, res) => {
     try {
       const userId = req.params.id;
@@ -317,7 +316,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Disable catering for a user
   app.post("/api/users/:id/catering/disable", async (req, res) => {
     try {
       const userId = req.params.id;
@@ -337,7 +335,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update catering settings
   app.put("/api/users/:id/catering/settings", async (req, res) => {
     try {
       const userId = req.params.id;
@@ -368,7 +365,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Find chefs within radius
   app.get("/api/catering/chefs/search", async (req, res) => {
     try {
       const searchSchema = z.object({
@@ -394,7 +390,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Create catering inquiry (booking request)
   app.post("/api/catering/inquiries", async (req, res) => {
     try {
       const inquirySchema = z.object({
@@ -424,7 +419,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get catering inquiries for a chef
   app.get("/api/users/:id/catering/inquiries", async (req, res) => {
     try {
       const chefId = req.params.id;
@@ -440,7 +434,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update catering inquiry status (accept/decline)
   app.put("/api/catering/inquiries/:id", async (req, res) => {
     try {
       const inquiryId = req.params.id;
@@ -469,7 +462,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get user's catering status and settings
   app.get("/api/users/:id/catering/status", async (req, res) => {
     try {
       const userId = req.params.id;
@@ -490,6 +482,327 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch catering status" });
+    }
+  });
+
+  // ===== MARKETPLACE API ROUTES =====
+
+  app.post("/api/marketplace/products", async (req, res) => {
+    try {
+      const productSchema = z.object({
+        sellerId: z.string(),
+        name: z.string().min(1, "Product name required"),
+        description: z.string().optional(),
+        price: z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid price format"),
+        category: z.enum(["spices", "ingredients", "cookware", "cookbooks", "sauces", "other"]),
+        images: z.array(z.string().url()).default([]),
+        inventory: z.number().min(0).default(0),
+        shippingEnabled: z.boolean().default(true),
+        localPickupEnabled: z.boolean().default(false),
+        pickupLocation: z.string().optional(),
+        pickupInstructions: z.string().optional(),
+        shippingCost: z.string().optional(),
+        isExternal: z.boolean().default(false),
+        externalUrl: z.string().url().optional()
+      });
+
+      const productData = productSchema.parse(req.body);
+      const product = await storage.createProduct(productData);
+      
+      res.status(201).json({
+        message: "Product created successfully",
+        product
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid product data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create product" });
+    }
+  });
+
+  app.get("/api/marketplace/products/:id", async (req, res) => {
+    try {
+      const product = await storage.getProductWithSeller(req.params.id);
+      
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+      
+      await storage.updateProduct(req.params.id, { 
+        viewsCount: (product.viewsCount || 0) + 1 
+      });
+      
+      res.json(product);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch product" });
+    }
+  });
+
+  app.get("/api/marketplace/products", async (req, res) => {
+    try {
+      const searchSchema = z.object({
+        query: z.string().optional(),
+        category: z.enum(["spices", "ingredients", "cookware", "cookbooks", "sauces", "other"]).optional(),
+        location: z.string().optional(),
+        localPickupOnly: z.coerce.boolean().default(false),
+        offset: z.coerce.number().min(0).default(0),
+        limit: z.coerce.number().min(1).max(50).default(20)
+      });
+      
+      const filters = searchSchema.parse(req.query);
+      
+      const products = await storage.searchProducts(
+        filters.query,
+        filters.category,
+        filters.location,
+        filters.offset,
+        filters.limit
+      );
+      
+      res.json({
+        products,
+        filters,
+        total: products.length
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid search parameters", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to search products" });
+    }
+  });
+
+  app.get("/api/marketplace/sellers/:sellerId/products", async (req, res) => {
+    try {
+      const offset = parseInt(req.query.offset as string) || 0;
+      const limit = parseInt(req.query.limit as string) || 20;
+      
+      const products = await storage.getUserProducts(req.params.sellerId, offset, limit);
+      
+      res.json({
+        products,
+        total: products.length,
+        sellerId: req.params.sellerId
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch seller products" });
+    }
+  });
+
+  app.put("/api/marketplace/products/:id", async (req, res) => {
+    try {
+      const updateSchema = z.object({
+        name: z.string().min(1).optional(),
+        description: z.string().optional(),
+        price: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
+        inventory: z.number().min(0).optional(),
+        shippingEnabled: z.boolean().optional(),
+        localPickupEnabled: z.boolean().optional(),
+        pickupLocation: z.string().optional(),
+        pickupInstructions: z.string().optional(),
+        shippingCost: z.string().optional(),
+        isActive: z.boolean().optional()
+      });
+      
+      const updates = updateSchema.parse(req.body);
+      
+      const product = await storage.updateProduct(req.params.id, updates);
+      
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+      
+      res.json({
+        message: "Product updated successfully",
+        product
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid update data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update product" });
+    }
+  });
+
+  app.delete("/api/marketplace/products/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteProduct(req.params.id);
+      
+      if (!success) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+      
+      res.json({ message: "Product deactivated successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete product" });
+    }
+  });
+
+  app.put("/api/users/:id/subscription", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const subscriptionSchema = z.object({
+        tier: z.enum(["free", "starter", "professional", "enterprise", "premium_plus"]),
+        paymentMethod: z.string().optional()
+      });
+      
+      const { tier, paymentMethod } = subscriptionSchema.parse(req.body);
+      
+      const subscriptionEndsAt = new Date();
+      subscriptionEndsAt.setDate(subscriptionEndsAt.getDate() + 30);
+      
+      const updatedUser = await storage.updateUser(userId, {
+        subscriptionTier: tier,
+        subscriptionStatus: "active",
+        subscriptionEndsAt: subscriptionEndsAt
+      });
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json({
+        message: "Subscription updated successfully",
+        user: updatedUser
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid subscription data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update subscription" });
+    }
+  });
+
+  app.get("/api/users/:id/subscription/info", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      const getCommissionRate = (tier: string, monthlyRevenue: number) => {
+        const rates = {
+          free: { base: 10, thresholds: [] },
+          starter: { base: 8, thresholds: [{ amount: 1000, rate: 7 }, { amount: 2500, rate: 6 }] },
+          professional: { base: 5, thresholds: [{ amount: 2500, rate: 4 }, { amount: 5000, rate: 3 }] },
+          enterprise: { base: 3, thresholds: [{ amount: 5000, rate: 2.5 }, { amount: 10000, rate: 2 }] },
+          premium_plus: { base: 1, thresholds: [{ amount: 10000, rate: 0.5 }] }
+        };
+        
+        const tierRates = rates[tier as keyof typeof rates] || rates.free;
+        
+        for (const threshold of tierRates.thresholds.reverse()) {
+          if (monthlyRevenue >= threshold.amount) {
+            return threshold.rate;
+          }
+        }
+        
+        return tierRates.base;
+      };
+      
+      const currentRate = getCommissionRate(user.subscriptionTier || "free", parseFloat(user.monthlyRevenue || "0"));
+      
+      res.json({
+        subscriptionTier: user.subscriptionTier,
+        subscriptionStatus: user.subscriptionStatus,
+        subscriptionEndsAt: user.subscriptionEndsAt,
+        monthlyRevenue: user.monthlyRevenue,
+        currentCommissionRate: currentRate,
+        tierPricing: {
+          starter: { price: 15, baseRate: 8 },
+          professional: { price: 35, baseRate: 5 },
+          enterprise: { price: 75, baseRate: 3 },
+          premium_plus: { price: 150, baseRate: 1 }
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch subscription info" });
+    }
+  });
+
+  app.get("/api/marketplace/storefront/:username", async (req, res) => {
+    try {
+      const user = await storage.getUserByUsername(req.params.username);
+      
+      if (!user) {
+        return res.status(404).json({ message: "Storefront not found" });
+      }
+      
+      const products = await storage.getUserProducts(user.id, 0, 50);
+      
+      res.json({
+        storefront: {
+          seller: {
+            id: user.id,
+            username: user.username,
+            displayName: user.displayName,
+            bio: user.bio,
+            avatar: user.avatar,
+            specialty: user.specialty,
+            isChef: user.isChef,
+            followersCount: user.followersCount
+          },
+          products,
+          subscriptionTier: user.subscriptionTier
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch storefront" });
+    }
+  });
+
+  app.get("/api/marketplace/sellers/:sellerId/analytics", async (req, res) => {
+    try {
+      const sellerId = req.params.sellerId;
+      const user = await storage.getUser(sellerId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "Seller not found" });
+      }
+      
+      const products = await storage.getUserProducts(sellerId, 0, 100);
+      
+      const analytics = {
+        totalProducts: products.length,
+        activeProducts: products.filter(p => p.isActive).length,
+        totalViews: products.reduce((sum, p) => sum + (p.viewsCount || 0), 0),
+        totalSales: products.reduce((sum, p) => sum + (p.salesCount || 0), 0),
+        monthlyRevenue: parseFloat(user.monthlyRevenue || "0"),
+        subscriptionTier: user.subscriptionTier,
+        currentCommissionRate: user.subscriptionTier === "free" ? 10 : 
+                              user.subscriptionTier === "starter" ? 8 :
+                              user.subscriptionTier === "professional" ? 5 :
+                              user.subscriptionTier === "enterprise" ? 3 : 1
+      };
+      
+      res.json(analytics);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch analytics" });
+    }
+  });
+
+  app.get("/api/marketplace/categories", async (req, res) => {
+    try {
+      const allProducts = await storage.searchProducts(undefined, undefined, undefined, 0, 1000);
+      
+      const categories = {
+        spices: allProducts.filter(p => p.category === "spices").length,
+        ingredients: allProducts.filter(p => p.category === "ingredients").length,
+        cookware: allProducts.filter(p => p.category === "cookware").length,
+        cookbooks: allProducts.filter(p => p.category === "cookbooks").length,
+        sauces: allProducts.filter(p => p.category === "sauces").length,
+        other: allProducts.filter(p => p.category === "other").length
+      };
+      
+      res.json({
+        categories,
+        totalProducts: allProducts.length
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch categories" });
     }
   });
 
