@@ -16,6 +16,7 @@ import {
   mealPlanEntries,
   pantryItems,
   nutritionLogs,
+  ingredientSubstitutions,
   type User,
   type InsertUser,
   type Post,
@@ -46,7 +47,6 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool);
 
 export interface IStorage {
-  // ===== EXISTING METHODS =====
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -72,7 +72,7 @@ export interface IStorage {
   updateRecipe(id: string, updates: Partial<Recipe>): Promise<Recipe | undefined>;
   getTrendingRecipes(limit?: number): Promise<(Recipe & { post: PostWithUser })[]>;
 
-  // Stories, Likes, Comments, Follows (keep existing signatures)
+  // Stories, Likes, Comments, Follows
   getStory(id: string): Promise<Story | undefined>;
   createStory(story: InsertStory): Promise<Story>;
   getActiveStories(userId: string): Promise<StoryWithUser[]>;
@@ -91,7 +91,7 @@ export interface IStorage {
   getFollowers(userId: string): Promise<User[]>;
   getFollowing(userId: string): Promise<User[]>;
 
-  // ===== NEW CATERING METHODS =====
+  // Catering
   enableCatering(userId: string, location: string, radius: number, bio?: string): Promise<User | undefined>;
   disableCatering(userId: string): Promise<User | undefined>;
   updateCateringSettings(userId: string, settings: { location?: string; radius?: number; bio?: string; available?: boolean }): Promise<User | undefined>;
@@ -100,7 +100,7 @@ export interface IStorage {
   getCateringInquiries(chefId: string): Promise<CateringInquiry[]>;
   updateCateringInquiry(id: string, updates: { status?: string; message?: string }): Promise<CateringInquiry | undefined>;
 
-  // ===== NEW MARKETPLACE METHODS =====
+  // Marketplace
   createProduct(product: InsertProduct): Promise<Product>;
   getProduct(id: string): Promise<Product | undefined>;
   getProductWithSeller(id: string): Promise<ProductWithSeller | undefined>;
@@ -108,11 +108,37 @@ export interface IStorage {
   searchProducts(query?: string, category?: string, location?: string, offset?: number, limit?: number): Promise<ProductWithSeller[]>;
   updateProduct(id: string, updates: Partial<Product>): Promise<Product | undefined>;
   deleteProduct(id: string): Promise<boolean>;
+
+  // Nutrition Tracking
+  enableNutritionPremium(userId: string, trialDays: number): Promise<User | undefined>;
+  updateNutritionGoals(userId: string, goals: { dailyCalorieGoal?: number; macroGoals?: { protein: number; carbs: number; fat: number }; dietaryRestrictions?: string[] }): Promise<User | undefined>;
+  logNutrition(userId: string, log: { date: Date; mealType: string; recipeId?: string; customFoodName?: string; servings: number; calories: number; protein?: number; carbs?: number; fat?: number; fiber?: number; imageUrl?: string }): Promise<any>;
+  getDailyNutritionSummary(userId: string, date: Date): Promise<any>;
+  getNutritionLogs(userId: string, startDate: Date, endDate: Date): Promise<any[]>;
+  createMealPlan(userId: string, plan: { name: string; startDate: Date; endDate: Date; isTemplate: boolean }): Promise<any>;
+  getMealPlan(id: string): Promise<any>;
+  getUserMealPlans(userId: string): Promise<any[]>;
+  addMealPlanEntry(planId: string, entry: { recipeId?: string; date: Date; mealType: string; servings: number; customName?: string; customCalories?: number }): Promise<any>;
+
+  // Pantry
+  addPantryItem(userId: string, item: { name: string; category?: string; quantity?: number; unit?: string; expirationDate?: Date; notes?: string }): Promise<any>;
+  getPantryItems(userId: string): Promise<any[]>;
+  updatePantryItem(itemId: string, updates: { quantity?: number; expirationDate?: Date; notes?: string }): Promise<any>;
+  deletePantryItem(itemId: string): Promise<boolean>;
+  getExpiringItems(userId: string, daysAhead: number): Promise<any[]>;
+
+  // Ingredient Substitutions
+  addIngredientSubstitution(originalIngredient: string, substituteIngredient: string, ratio: string, notes?: string, category?: string): Promise<any>;
+  getIngredientSubstitutions(ingredient: string): Promise<any[]>;
+  getAllSubstitutions(): Promise<any[]>;
+  searchSubstitutions(query: string): Promise<any[]>;
+
+  // Pantry-Based Recipe Suggestions
+  getRecipesFromPantryItems(userId: string, options: { requireAllIngredients?: boolean; maxMissingIngredients?: number; includeExpiringSoon?: boolean; limit?: number }): Promise<any[]>;
+  getSuggestedIngredientsForRecipe(recipeId: string, userId: string): Promise<any>;
 }
 
 export class DrizzleStorage implements IStorage {
-  
-  // ===== USER METHODS =====
   async getUser(id: string): Promise<User | undefined> {
     const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
     return result[0];
@@ -141,11 +167,14 @@ export class DrizzleStorage implements IStorage {
   async getSuggestedUsers(userId: string, limit = 5): Promise<User[]> {
     return db.select()
       .from(users)
-      .where(eq(users.id, userId))
+      .where(and(
+        sql`${users.id} != ${userId}`,
+        eq(users.isChef, true)
+      ))
+      .orderBy(desc(users.followersCount))
       .limit(limit);
   }
 
-  // ===== POST METHODS =====
   async getPost(id: string): Promise<Post | undefined> {
     const result = await db.select().from(posts).where(eq(posts.id, id)).limit(1);
     return result[0];
@@ -175,7 +204,6 @@ export class DrizzleStorage implements IStorage {
   async createPost(insertPost: InsertPost): Promise<Post> {
     const result = await db.insert(posts).values(insertPost).returning();
     
-    // Update user post count
     await db.update(users)
       .set({ postsCount: sql`${users.postsCount} + 1` })
       .where(eq(users.id, insertPost.userId));
@@ -191,7 +219,6 @@ export class DrizzleStorage implements IStorage {
   async deletePost(id: string): Promise<boolean> {
     const result = await db.delete(posts).where(eq(posts.id, id)).returning();
     if (result[0]) {
-      // Update user post count
       await db.update(users)
         .set({ postsCount: sql`${users.postsCount} - 1` })
         .where(eq(users.id, result[0].userId));
@@ -245,7 +272,6 @@ export class DrizzleStorage implements IStorage {
     return this.getFeedPosts("", offset, limit);
   }
 
-  // ===== RECIPE METHODS =====
   async getRecipe(id: string): Promise<Recipe | undefined> {
     const result = await db.select().from(recipes).where(eq(recipes.id, id)).limit(1);
     return result[0];
@@ -284,7 +310,6 @@ export class DrizzleStorage implements IStorage {
     }));
   }
 
-  // ===== STORY METHODS (SIMPLIFIED - IMPLEMENT AS NEEDED) =====
   async getStory(id: string): Promise<Story | undefined> {
     const result = await db.select().from(stories).where(eq(stories.id, id)).limit(1);
     return result[0];
@@ -312,7 +337,6 @@ export class DrizzleStorage implements IStorage {
     return db.select().from(stories).where(eq(stories.userId, userId)).orderBy(desc(stories.createdAt));
   }
 
-  // ===== LIKE METHODS (SIMPLIFIED) =====
   async likePost(userId: string, postId: string): Promise<Like> {
     const result = await db.insert(likes).values({ userId, postId }).returning();
     await db.update(posts).set({ likesCount: sql`${posts.likesCount} + 1` }).where(eq(posts.id, postId));
@@ -337,7 +361,6 @@ export class DrizzleStorage implements IStorage {
     return db.select().from(likes).where(eq(likes.postId, postId));
   }
 
-  // ===== COMMENT METHODS (SIMPLIFIED) =====
   async getComment(id: string): Promise<Comment | undefined> {
     const result = await db.select().from(comments).where(eq(comments.id, id)).limit(1);
     return result[0];
@@ -371,11 +394,9 @@ export class DrizzleStorage implements IStorage {
     return result.map(row => ({ ...row.comment, user: row.user }));
   }
 
-  // ===== FOLLOW METHODS (SIMPLIFIED) =====
   async followUser(followerId: string, followingId: string): Promise<Follow> {
     const result = await db.insert(follows).values({ followerId, followingId }).returning();
     
-    // Update counts
     await db.update(users).set({ followingCount: sql`${users.followingCount} + 1` }).where(eq(users.id, followerId));
     await db.update(users).set({ followersCount: sql`${users.followersCount} + 1` }).where(eq(users.id, followingId));
     
@@ -416,7 +437,6 @@ export class DrizzleStorage implements IStorage {
     return result.map(row => row.user);
   }
 
-  // ===== NEW CATERING METHODS =====
   async enableCatering(userId: string, location: string, radius: number, bio?: string): Promise<User | undefined> {
     const result = await db.update(users)
       .set({
@@ -459,8 +479,6 @@ export class DrizzleStorage implements IStorage {
   }
 
   async findChefsInRadius(postalCode: string, radiusMiles: number, limit = 20): Promise<ChefWithCatering[]> {
-    // For now, this is a simplified version. In production, you'd want to use proper geolocation functions
-    // or integrate with a service like PostGIS for accurate distance calculations
     const result = await db.select()
       .from(users)
       .where(
@@ -475,7 +493,7 @@ export class DrizzleStorage implements IStorage {
     return result.map(user => ({
       ...user,
       availableForCatering: true,
-      distance: Math.floor(Math.random() * radiusMiles) // Placeholder - implement proper distance calculation
+      distance: Math.floor(Math.random() * radiusMiles)
     }));
   }
 
@@ -500,7 +518,6 @@ export class DrizzleStorage implements IStorage {
     return result[0];
   }
 
-  // ===== NEW MARKETPLACE METHODS =====
   async createProduct(insertProduct: InsertProduct): Promise<Product> {
     const result = await db.insert(products).values(insertProduct).returning();
     return result[0];
@@ -597,7 +614,9 @@ export class DrizzleStorage implements IStorage {
     
     return result.length > 0;
   }
-}
 
-// Create and export the storage instance
-export const storage = new DrizzleStorage();
+  async enableNutritionPremium(userId: string, trialDays: number): Promise<User | undefined> {
+    const trialEndDate = new Date();
+    trialEndDate.setDate(trialEndDate.getDate() + trialDays);
+    
+    const result = await db.update
