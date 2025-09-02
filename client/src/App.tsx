@@ -10,6 +10,7 @@ import Profile from "@/pages/profile";
 import CreatePost from "@/pages/create-post";
 import Pantry from "@/components/Pantry";
 import IngredientSubstitutions from "@/components/IngredientSubstitutions";
+import Marketplace from "@/components/Marketplace";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -22,7 +23,7 @@ function Router() {
         <Route path="/recipes" component={NotFound} /> {/* Placeholder */}
         <Route path="/pantry" component={Pantry} />
         <Route path="/substitutions" component={IngredientSubstitutions} />
-        <Route path="/marketplace" component={NotFound} /> {/* Placeholder */}
+        <Route path="/marketplace" component={Marketplace} />
         <Route path="/nutrition" component={NotFound} /> {/* Placeholder */}
         <Route path="/profile/:userId?" component={Profile} />
         <Route path="/create" component={CreatePost} />
