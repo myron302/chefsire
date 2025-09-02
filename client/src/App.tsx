@@ -11,6 +11,7 @@ import CreatePost from "@/pages/create-post";
 import Pantry from "@/components/Pantry";
 import IngredientSubstitutions from "@/components/IngredientSubstitutions";
 import Marketplace from "@/components/Marketplace";
+import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -24,7 +25,7 @@ function Router() {
         <Route path="/pantry" component={Pantry} />
         <Route path="/substitutions" component={IngredientSubstitutions} />
         <Route path="/marketplace" component={Marketplace} />
-        <Route path="/nutrition" component={NotFound} /> {/* Placeholder */}
+        <Route path="/nutrition" component={NutritionMealPlanner} />
         <Route path="/profile/:userId?" component={Profile} />
         <Route path="/create" component={CreatePost} />
         <Route path="/saved" component={NotFound} /> {/* Placeholder */}
