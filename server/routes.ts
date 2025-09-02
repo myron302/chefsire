@@ -12,6 +12,13 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 
+// Add this middleware function at the top
+const authenticateUser = (req: any, res: any, next: any) => {
+  // For now, we'll create a mock user - replace this with real authentication later
+  req.user = { id: "user-123" }; // Mock user ID
+  next();
+};
+
 export async function registerRoutes(app: Express): Promise<Server> {
   
   // User routes
@@ -282,6 +289,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ isFollowing });
     } catch (error) {
       res.status(500).json({ message: "Failed to check follow status" });
+    }
+  });
+
+  // ===== NEW PANTRY ROUTES FOR REACT COMPONENT =====
+
+  // GET /api/pantry - Get user's pantry items
+  app.get("/api/pantry", authenticateUser, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const pantryItems = await storage.getPantryItems(userId);
+      res.json(pantryItems);
+    } catch (error) {
+      console.error('Error fetching pantry items:', error);
+      res.status(500).json({ error: 'Failed to fetch pantry items' });
+    }
+  });
+
+  // POST /api/pantry - Add item to pantry
+  app.post("/api/pantry", authenticateUser, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const { name, category, quantity, unit, expirationDate, notes } = req.body;
+
+      if (!name) {
+        return res.status(400).json({ error: 'Item name is required' });
+      }
+
+      const item = await storage.addPantryItem(userId, {
+        name: name.trim(),
+        category: category || 'other',
+        quantity: quantity || 1,
+        unit: unit || 'piece',
+        expirationDate: expirationDate ? new Date(expirationDate) : null,
+        notes
+      });
+
+      res.status(201).json(item);
+    } catch (error) {
+      console.error('Error adding pantry item:', error);
+      res.status(500).json({ error: 'Failed to add pantry item' });
+    }
+  });
+
+  // DELETE /api/pantry/:id - Remove item from pantry
+  app.delete("/api/pantry/:id", authenticateUser, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deletePantryItem(id);
+      
+      if (!success) {
+        return res.status(404).json({ error: 'Pantry item not found' });
+      }
+
+      res.json({ message: 'Pantry item deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting pantry item:', error);
+      res.status(500).json({ error: 'Failed to delete pantry item' });
+    }
+  });
+
+  // GET /api/pantry/recipe-suggestions - Get recipe suggestions based on pantry
+  app.get("/api/pantry/recipe-suggestions", authenticateUser, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const requireAllIngredients = req.query.requireAll === 'true';
+      const maxMissingIngredients = parseInt(req.query.maxMissing as string) || 3;
+      const includeExpiringSoon = req.query.includeExpiring !== 'false';
+      const limit = parseInt(req.query.limit as string) || 20;
+
+      const suggestions = await storage.getRecipesFromPantryItems(userId, {
+        requireAllIngredients,
+        maxMissingIngredients,
+        includeExpiringSoon,
+        limit
+      });
+
+      res.json(suggestions);
+    } catch (error) {
+      console.error('Error fetching recipe suggestions:', error);
+      res.status(500).json({ error: 'Failed to fetch recipe suggestions' });
     }
   });
 
