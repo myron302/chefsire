@@ -9,7 +9,8 @@ import {
   Bookmark,
   Users,
   Settings,
-  ChefHat
+  ChefHat,
+  Shuffle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +26,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
     { name: "Explore", href: "/explore", icon: Compass },
     { name: "Recipes", href: "/recipes", icon: BookOpen },
     { name: "My Pantry", href: "/pantry", icon: ChefHat },
+    { name: "Substitutions", href: "/substitutions", icon: Shuffle },
     { name: "Profile", href: "/profile", icon: User },
   ];
   
