@@ -9,6 +9,7 @@ import Explore from "@/pages/explore";
 import Profile from "@/pages/profile";
 import CreatePost from "@/pages/create-post";
 import Pantry from "@/components/Pantry";
+import IngredientSubstitutions from "@/components/IngredientSubstitutions";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -18,9 +19,16 @@ function Router() {
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
         <Route path="/explore" component={Explore} />
+        <Route path="/recipes" component={NotFound} /> {/* Placeholder */}
+        <Route path="/pantry" component={Pantry} />
+        <Route path="/substitutions" component={IngredientSubstitutions} />
+        <Route path="/marketplace" component={NotFound} /> {/* Placeholder */}
+        <Route path="/nutrition" component={NotFound} /> {/* Placeholder */}
         <Route path="/profile/:userId?" component={Profile} />
         <Route path="/create" component={CreatePost} />
-        <Route path="/pantry" component={Pantry} />
+        <Route path="/saved" component={NotFound} /> {/* Placeholder */}
+        <Route path="/following" component={NotFound} /> {/* Placeholder */}
+        <Route path="/settings" component={NotFound} /> {/* Placeholder */}
         <Route component={NotFound} />
       </Switch>
     </Layout>
