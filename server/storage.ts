@@ -955,3 +955,5 @@ export class DrizzleStorage implements IStorage {
     };
   }
 }
+// Export a default storage instance
+export const storage = new DrizzleStorage();
