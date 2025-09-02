@@ -1,4 +1,4 @@
-import { Link, useLocation } from “wouter”;
+import { Link, useLocation } from "wouter";
 import { Button } from “@/components/ui/button”;
 import { Home, Compass, Plus, User, ChefHat, Shuffle } from “lucide-react”;
 import { cn } from “@/lib/utils”;
