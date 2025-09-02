@@ -8,7 +8,7 @@ import Feed from "@/pages/feed";
 import Explore from "@/pages/explore";
 import Profile from "@/pages/profile";
 import CreatePost from "@/pages/create-post";
-import Pantry from "@/components/Pantry";
+import Pantry from "./components/Pantry";
 import NotFound from "@/pages/not-found";
 
 function Router() {
