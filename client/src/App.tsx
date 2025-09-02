@@ -8,7 +8,6 @@ import Feed from "@/pages/feed";
 import Explore from "@/pages/explore";
 import Profile from "@/pages/profile";
 import CreatePost from "@/pages/create-post";
-import Pantry from "./components/Pantry";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -20,7 +19,6 @@ function Router() {
         <Route path="/explore" component={Explore} />
         <Route path="/profile/:userId?" component={Profile} />
         <Route path="/create" component={CreatePost} />
-        <Route path="/pantry" component={Pantry} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
