@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Home, Compass, Plus, User } from "lucide-react";
+import { Home, Compass, Plus, User, ChefHat } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MobileNavProps {
@@ -9,14 +9,15 @@ interface MobileNavProps {
 
 export default function MobileNav({ onCreatePost }: MobileNavProps) {
   const [location] = useLocation();
-
+  
   const navigation = [
     { name: "Feed", href: "/feed", icon: Home },
     { name: "Explore", href: "/explore", icon: Compass },
     { name: "Create", action: onCreatePost, icon: Plus },
+    { name: "Pantry", href: "/pantry", icon: ChefHat },
     { name: "Profile", href: "/profile", icon: User },
   ];
-
+  
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border z-40">
       <div className="flex items-center justify-around py-2">
@@ -35,7 +36,6 @@ export default function MobileNav({ onCreatePost }: MobileNavProps) {
               </Button>
             );
           }
-
           return (
             <Link key={item.name} href={item.href!}>
               <Button
