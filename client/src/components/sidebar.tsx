@@ -8,7 +8,8 @@ import {
   Plus,
   Bookmark,
   Users,
-  Settings
+  Settings,
+  ChefHat
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,20 +19,21 @@ interface SidebarProps {
 
 export default function Sidebar({ onCreatePost }: SidebarProps) {
   const [location] = useLocation();
-
+  
   const navigation = [
     { name: "Feed", href: "/feed", icon: Home },
     { name: "Explore", href: "/explore", icon: Compass },
     { name: "Recipes", href: "/recipes", icon: BookOpen },
+    { name: "My Pantry", href: "/pantry", icon: ChefHat },
     { name: "Profile", href: "/profile", icon: User },
   ];
-
+  
   const quickActions = [
     { name: "Saved Recipes", href: "/saved", icon: Bookmark },
     { name: "Following", href: "/following", icon: Users },
     { name: "Settings", href: "/settings", icon: Settings },
   ];
-
+  
   return (
     <nav className="hidden lg:flex fixed left-0 top-16 h-full w-64 bg-card border-r border-border p-6">
       <div className="space-y-6 w-full">
@@ -45,7 +47,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
                   "w-full justify-start space-x-3 h-12",
                   location === item.href && "bg-primary text-primary-foreground"
                 )}
-                data-testid={`nav-${item.name.toLowerCase()}`}
+                data-testid={`nav-${item.name.toLowerCase().replace(' ', '-')}`}
               >
                 <item.icon className="h-5 w-5" />
                 <span className="font-medium">{item.name}</span>
@@ -53,7 +55,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
             </Link>
           ))}
         </div>
-
+        
         {/* Create Button */}
         <Button 
           onClick={onCreatePost}
@@ -63,7 +65,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
           <Plus className="h-5 w-5 mr-2" />
           Create Post
         </Button>
-
+        
         {/* Quick Actions */}
         <div className="space-y-2 pt-4 border-t border-border">
           {quickActions.map((item) => (
