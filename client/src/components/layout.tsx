@@ -94,7 +94,7 @@ export default function Layout({ children }: LayoutProps) {
                   <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 </button>
                 
-                {/* Dropdown Menu */}
+                {/* Dropdown Menu - Improved styling */}
                 {isDropdownOpen && (
                   <>
                     {/* Backdrop to close dropdown */}
@@ -103,48 +103,72 @@ export default function Layout({ children }: LayoutProps) {
                       onClick={() => setIsDropdownOpen(false)}
                     />
                     
-                    <div className="absolute right-0 top-full mt-2 w-56 bg-background rounded-lg shadow-lg border border-border z-20">
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-xl border-2 border-gray-200 dark:border-gray-700 z-20 overflow-hidden">
+                      {/* Chef's Corner Section */}
+                      <div className="bg-orange-50 dark:bg-orange-900/20 border-b border-orange-200 dark:border-orange-800 px-4 py-3">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
+                            <span className="text-white text-xs font-bold">🍳</span>
+                          </div>
+                          <span className="font-semibold text-orange-900 dark:text-orange-100 text-sm">Chef's Corner</span>
+                        </div>
+                      </div>
+                      
+                      {/* Navigation Links */}
                       <div className="py-2">
                         <Link href="/profile" onClick={() => setIsDropdownOpen(false)}>
-                          <div className="flex items-center px-4 py-2 text-sm text-foreground hover:bg-muted cursor-pointer">
-                            <User className="w-4 h-4 mr-3" />
-                            Profile
+                          <div className="flex items-center px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors">
+                            <User className="w-5 h-5 mr-3 text-gray-600 dark:text-gray-400" />
+                            My Profile
                           </div>
                         </Link>
                         
-                        <Link href="/pantry" onClick={() => setIsDropdownOpen(false)}>
-                          <div className="flex items-center px-4 py-2 text-sm text-foreground hover:bg-muted cursor-pointer">
-                            <ChefHat className="w-4 h-4 mr-3" />
-                            My Pantry
+                        {/* Recipe Tools Submenu */}
+                        <div className="px-4 py-2">
+                          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                            Recipe Tools
                           </div>
-                        </Link>
+                          <div className="space-y-1 ml-2">
+                            <Link href="/pantry" onClick={() => setIsDropdownOpen(false)}>
+                              <div className="flex items-center px-2 py-2 text-sm text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer transition-colors">
+                                <ChefHat className="w-4 h-4 mr-3 text-gray-600 dark:text-gray-400" />
+                                My Pantry
+                              </div>
+                            </Link>
+                            
+                            <Link href="/substitutions" onClick={() => setIsDropdownOpen(false)}>
+                              <div className="flex items-center px-2 py-2 text-sm text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer transition-colors">
+                                <Shuffle className="w-4 h-4 mr-3 text-gray-600 dark:text-gray-400" />
+                                Ingredient Substitutions
+                              </div>
+                            </Link>
+                          </div>
+                        </div>
+                        
+                        <div className="border-t border-gray-200 dark:border-gray-700 my-2"></div>
                         
                         <Link href="/nutrition" onClick={() => setIsDropdownOpen(false)}>
-                          <div className="flex items-center px-4 py-2 text-sm text-foreground hover:bg-muted cursor-pointer">
-                            <Activity className="w-4 h-4 mr-3" />
-                            Nutrition & Meal Plans
+                          <div className="flex items-center px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors">
+                            <Activity className="w-5 h-5 mr-3 text-gray-600 dark:text-gray-400" />
+                            <div>
+                              <div>Nutrition & Meal Plans</div>
+                              <div className="text-xs text-orange-600 dark:text-orange-400 font-medium">Premium</div>
+                            </div>
                           </div>
                         </Link>
                         
                         <Link href="/marketplace" onClick={() => setIsDropdownOpen(false)}>
-                          <div className="flex items-center px-4 py-2 text-sm text-foreground hover:bg-muted cursor-pointer">
-                            <ShoppingCart className="w-4 h-4 mr-3" />
+                          <div className="flex items-center px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors">
+                            <ShoppingCart className="w-5 h-5 mr-3 text-gray-600 dark:text-gray-400" />
                             Marketplace
                           </div>
                         </Link>
                         
-                        <Link href="/substitutions" onClick={() => setIsDropdownOpen(false)}>
-                          <div className="flex items-center px-4 py-2 text-sm text-foreground hover:bg-muted cursor-pointer">
-                            <Shuffle className="w-4 h-4 mr-3" />
-                            Substitutions
-                          </div>
-                        </Link>
-                        
-                        <div className="border-t border-border my-2"></div>
+                        <div className="border-t border-gray-200 dark:border-gray-700 my-2"></div>
                         
                         <Link href="/settings" onClick={() => setIsDropdownOpen(false)}>
-                          <div className="flex items-center px-4 py-2 text-sm text-foreground hover:bg-muted cursor-pointer">
-                            <Settings className="w-4 h-4 mr-3" />
+                          <div className="flex items-center px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors">
+                            <Settings className="w-5 h-5 mr-3 text-gray-600 dark:text-gray-400" />
                             Settings
                           </div>
                         </Link>
@@ -153,10 +177,11 @@ export default function Layout({ children }: LayoutProps) {
                           onClick={() => {
                             setIsDropdownOpen(false);
                             // Add logout logic here
+                            console.log('Logging out...');
                           }}
-                          className="flex items-center w-full px-4 py-2 text-sm text-foreground hover:bg-muted text-left"
+                          className="flex items-center w-full px-4 py-3 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 text-left transition-colors"
                         >
-                          <LogOut className="w-4 h-4 mr-3" />
+                          <LogOut className="w-5 h-5 mr-3" />
                           Sign Out
                         </button>
                       </div>
