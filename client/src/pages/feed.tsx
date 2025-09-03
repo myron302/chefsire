@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import PostCard from "@/components/post-card";
 import RecipeCard from "@/components/recipe-card";
-import StorySection from "@/components/story-section";
+import { StoriesRow } from "@/components/StoriesRow";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import type { PostWithUser, User, Recipe } from "@shared/schema";
@@ -51,10 +51,7 @@ export default function Feed() {
       {/* Main Feed */}
       <div className="flex-1 max-w-4xl px-4 py-6">
         {/* Stories Section */}
-        <StorySection 
-          userId={currentUserId} 
-          onCreateStory={() => console.log("Create story")} 
-        />
+        <StoriesRow />
 
         {/* Feed Posts */}
         <div className="space-y-8">
