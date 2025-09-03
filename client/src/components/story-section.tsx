@@ -15,17 +15,32 @@ export default function StorySection({ userId, onCreateStory }: StorySectionProp
     queryKey: ["/api/bites/active", userId],
   });
 
-  // Mock data for sample bites (remove after API is populated)
+  // Mock data for 5 sample bites with unique images (remove after API is populated)
   const sampleBites: StoryWithUser[] = [
     {
       id: "1",
-      imageUrl: "https://via.placeholder.com/150?text=Chef+Bite+1",
+      imageUrl: "https://via.placeholder.com/150?text=Chef+John+Bite",
       user: { displayName: "Chef John" },
     },
     {
       id: "2",
-      imageUrl: "https://via.placeholder.com/150?text=Chef+Bite+2",
+      imageUrl: "https://via.placeholder.com/150?text=Chef+Maria+Bite",
       user: { displayName: "Chef Maria" },
+    },
+    {
+      id: "3",
+      imageUrl: "https://via.placeholder.com/150?text=Chef+Alex+Bite",
+      user: { displayName: "Chef Alex" },
+    },
+    {
+      id: "4",
+      imageUrl: "https://via.placeholder.com/150?text=Chef+Emma+Bite",
+      user: { displayName: "Chef Emma" },
+    },
+    {
+      id: "5",
+      imageUrl: "https://via.placeholder.com/150?text=Chef+Luca+Bite",
+      user: { displayName: "Chef Luca" },
     },
   ];
 
@@ -74,7 +89,7 @@ export default function StorySection({ userId, onCreateStory }: StorySectionProp
               >
                 <Avatar className="w-full h-full">
                   <AvatarImage src={bite.imageUrl} alt={bite.user.displayName} />
-                  <AvatarFallback>{bite.user.displayName[0]}</AvatarFallback>
+                  <AvatarFallback>{bite.user.displayName[0]}</Fallback>
                 </Avatar>
               </Button>
               <span className="text-xs text-muted-foreground block mt-2 truncate w-16">
