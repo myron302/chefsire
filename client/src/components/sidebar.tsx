@@ -31,7 +31,6 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
   const navigation = [
     { name: "Feed", href: "/feed", icon: Home },
     { name: "Explore", href: "/explore", icon: Compass },
-    { name: "Bites", href: "/bites", icon: Zap },
     { 
       name: "Recipes", 
       href: "/recipes", 
