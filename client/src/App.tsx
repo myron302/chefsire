@@ -13,8 +13,7 @@ import IngredientSubstitutions from "@/components/IngredientSubstitutions";
 import Marketplace from "@/components/Marketplace";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import NotFound from "@/pages/not-found";
-// Add this missing import:
-import Bites from "@/pages/bites"; // or wherever your Bites component is located
+import Bites from "@/pages/bites";
 
 function Router() {
   return (
@@ -48,3 +47,18 @@ function Router() {
     </Layout>
   );
 }
+
+// Add this App function that was missing:
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Router />
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}
+
+// Add this export statement:
+export default App;
