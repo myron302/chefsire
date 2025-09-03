@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import PostCard from "@/components/post-card";
 import RecipeCard from "@/components/recipe-card";
-import { StoriesRow } from "@/components/StoriesRow";
+import { BitesRow } from "@/components/BitesRow";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import type { PostWithUser, User, Recipe } from "@shared/schema";
@@ -50,7 +50,7 @@ export default function Feed() {
     <div className="flex max-w-7xl mx-auto">
       {/* Main Feed */}
       <div className="flex-1 max-w-4xl px-4 py-6">
-        {/* Stories Section */}
+        {/* Bites Section */}
         <BitesRow />
 
         {/* Feed Posts */}
