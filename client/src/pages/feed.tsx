@@ -51,7 +51,7 @@ export default function Feed() {
       {/* Main Feed */}
       <div className="flex-1 max-w-4xl px-4 py-6">
         {/* Stories Section */}
-        <StoriesRow />
+        <BitesRow />
 
         {/* Feed Posts */}
         <div className="space-y-8">
