@@ -13,40 +13,38 @@ import IngredientSubstitutions from "@/components/IngredientSubstitutions";
 import Marketplace from "@/components/Marketplace";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import NotFound from "@/pages/not-found";
+// Add this missing import:
+import Bites from "@/pages/bites"; // or wherever your Bites component is located
 
 function Router() {
   return (
     <Layout>
       <Switch>
-        <Route path="/bites" component={Bites} />
+        {/* Most specific routes first */}
+        <Route path="/profile/:userId?" component={Profile} />
+        
+        {/* Main navigation routes */}
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
+        <Route path="/bites" component={Bites} />
         <Route path="/explore" component={Explore} />
-        <Route path="/recipes" component={NotFound} /> {/* Placeholder */}
+        <Route path="/create" component={CreatePost} />
+        
+        {/* Feature routes */}
         <Route path="/pantry" component={Pantry} />
         <Route path="/substitutions" component={IngredientSubstitutions} />
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/nutrition" component={NutritionMealPlanner} />
-        <Route path="/profile/:userId?" component={Profile} />
-        <Route path="/create" component={CreatePost} />
-        <Route path="/saved" component={NotFound} /> {/* Placeholder */}
-        <Route path="/following" component={NotFound} /> {/* Placeholder */}
-        <Route path="/settings" component={NotFound} /> {/* Placeholder */}
+        
+        {/* Placeholder routes */}
+        <Route path="/recipes" component={NotFound} />
+        <Route path="/saved" component={NotFound} />
+        <Route path="/following" component={NotFound} />
+        <Route path="/settings" component={NotFound} />
+        
+        {/* Catch-all route - must be last */}
         <Route component={NotFound} />
       </Switch>
     </Layout>
   );
 }
-
-function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
-    </QueryClientProvider>
-  );
-}
-
-export default App;
