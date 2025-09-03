@@ -30,7 +30,7 @@ export const users = pgTable("users", {
   nutritionTrialEndsAt: timestamp("nutrition_trial_ends_at"),
   dailyCalorieGoal: integer("daily_calorie_goal"),
   macroGoals: jsonb("macro_goals").$type<{ protein: number; carbs: number; fat: number }>(),
-  dietaryRestrictions: jsonb("dietary_restrictions").$type<string[]>().default([]),
+  dietaryRestrictions: jsonb("dietary_restrictions").$type<string[]>().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   cateringLocationIdx: index("catering_location_idx").on(table.cateringLocation),
@@ -42,7 +42,7 @@ export const posts = pgTable("posts", {
   userId: varchar("user_id").references(() => users.id).notNull(),
   caption: text("caption"),
   imageUrl: text("image_url").notNull(),
-  tags: jsonb("tags").$type<string[]>().default([]),
+  tags: jsonb("tags").$type<string[]>().default(sql`'[]'::jsonb`),
   likesCount: integer("likes_count").default(0),
   commentsCount: integer("comments_count").default(0),
   isRecipe: boolean("is_recipe").default(false),
@@ -107,7 +107,7 @@ export const cateringInquiries = pgTable("catering_inquiries", {
   eventDate: timestamp("event_date").notNull(),
   guestCount: integer("guest_count"),
   eventType: text("event_type"), // wedding, corporate, birthday, etc
-  cuisinePreferences: jsonb("cuisine_preferences").$type<string[]>().default([]),
+  cuisinePreferences: jsonb("cuisine_preferences").$type<string[]>().default(sql`'[]'::jsonb`),
   budget: decimal("budget", { precision: 10, scale: 2 }),
   message: text("message"),
   status: text("status").default("pending"), // pending, accepted, declined, completed
@@ -122,7 +122,7 @@ export const products = pgTable("products", {
   description: text("description"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   category: text("category").notNull(), // spices, ingredients, cookware, cookbooks
-  images: jsonb("images").$type<string[]>().default([]),
+  images: jsonb("images").$type<string[]>().default(sql`'[]'::jsonb`),
   inventory: integer("inventory").default(0),
   shippingEnabled: boolean("shipping_enabled").default(true),
   localPickupEnabled: boolean("local_pickup_enabled").default(false),
@@ -314,6 +314,11 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
   createdAt: true,
 });
 
+export const insertSubscriptionHistorySchema = createInsertSchema(subscriptionHistory).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertMealPlanSchema = createInsertSchema(mealPlans).omit({
   id: true,
   createdAt: true,
@@ -329,6 +334,11 @@ export const insertPantryItemSchema = createInsertSchema(pantryItems).omit({
 });
 
 export const insertNutritionLogSchema = createInsertSchema(nutritionLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertIngredientSubstitutionSchema = createInsertSchema(ingredientSubstitutions).omit({
   id: true,
   createdAt: true,
 });
@@ -349,14 +359,23 @@ export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Follow = typeof follows.$inferSelect;
 export type InsertFollow = z.infer<typeof insertFollowSchema>;
 export type CateringInquiry = typeof cateringInquiries.$inferSelect;
+export type InsertCateringInquiry = z.infer<typeof insertCateringInquirySchema>;
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Order = typeof orders.$inferSelect;
+export type InsertOrder = z.infer<typeof insertOrderSchema>;
+export type SubscriptionHistory = typeof subscriptionHistory.$inferSelect;
+export type InsertSubscriptionHistory = z.infer<typeof insertSubscriptionHistorySchema>;
 export type MealPlan = typeof mealPlans.$inferSelect;
+export type InsertMealPlan = z.infer<typeof insertMealPlanSchema>;
 export type MealPlanEntry = typeof mealPlanEntries.$inferSelect;
+export type InsertMealPlanEntry = z.infer<typeof insertMealPlanEntrySchema>;
 export type PantryItem = typeof pantryItems.$inferSelect;
+export type InsertPantryItem = z.infer<typeof insertPantryItemSchema>;
 export type NutritionLog = typeof nutritionLogs.$inferSelect;
+export type InsertNutritionLog = z.infer<typeof insertNutritionLogSchema>;
 export type IngredientSubstitution = typeof ingredientSubstitutions.$inferSelect;
+export type InsertIngredientSubstitution = z.infer<typeof insertIngredientSubstitutionSchema>;
 
 // Extended types for API responses
 export type PostWithUser = Post & { user: User; recipe?: Recipe; isLiked?: boolean; isSaved?: boolean };
