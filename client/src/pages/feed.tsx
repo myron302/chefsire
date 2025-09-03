@@ -149,17 +149,13 @@ interface BitesRowProps {
 export function BitesRow({ className = "" }: BitesRowProps) {
   const [userBites, setUserBites] = useState<UserBites[]>(mockUserBites);
   const [isViewing, setIsViewing] = useState(false);
-  const [currentGlobalIndex, setCurrentGlobalIndex] = useState(0);
+  const [currentUserIndex, setCurrentUserIndex] = useState(0);
+  const [currentBiteIndex, setCurrentBiteIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
 
-  // Flatten all bites into one continuous array
-  const getAllBites = () => {
-    return userBites.flatMap(user => user.bites);
-  };
-
-  const allBites = getAllBites();
-  const currentBite = allBites[currentGlobalIndex];
+  const currentUser = userBites[currentUserIndex];
+  const currentBite = currentUser?.bites[currentBiteIndex];
 
   // Auto-advance bites
   useEffect(() => {
@@ -179,50 +175,70 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     }, 100);
 
     return () => clearInterval(interval);
-  }, [isViewing, currentGlobalIndex, isPaused, currentBite]);
+  }, [isViewing, currentUserIndex, currentBiteIndex, isPaused, currentBite]);
 
   const openUserBites = (userBite: UserBites) => {
-    // Find the starting index for this user's first bite
-    const startIndex = allBites.findIndex(bite => bite.userId === userBite.userId);
-    setCurrentGlobalIndex(startIndex);
+    // Find the user index to start from
+    const userIndex = userBites.findIndex(ub => ub.userId === userBite.userId);
+    setCurrentUserIndex(userIndex);
+    setCurrentBiteIndex(0);
     setIsViewing(true);
     setProgress(0);
     
-    // Mark all users up to this point as viewed
-    markUsersAsViewed(startIndex);
+    // Mark this user as viewed
+    markUserAsViewed(userBite.userId);
   };
 
   const closeBites = () => {
     setIsViewing(false);
-    setCurrentGlobalIndex(0);
+    setCurrentUserIndex(0);
+    setCurrentBiteIndex(0);
     setProgress(0);
   };
 
   const handleNextBite = () => {
-    if (currentGlobalIndex < allBites.length - 1) {
-      const newIndex = currentGlobalIndex + 1;
-      setCurrentGlobalIndex(newIndex);
+    if (!currentUser) return;
+    
+    if (currentBiteIndex < currentUser.bites.length - 1) {
+      // Move to next bite in current user's collection
+      setCurrentBiteIndex(prev => prev + 1);
       setProgress(0);
-      markUsersAsViewed(newIndex);
     } else {
-      closeBites();
+      // Finished current user's bites, move to next user
+      if (currentUserIndex < userBites.length - 1) {
+        const nextUserIndex = currentUserIndex + 1;
+        setCurrentUserIndex(nextUserIndex);
+        setCurrentBiteIndex(0);
+        setProgress(0);
+        
+        // Mark next user as viewed
+        markUserAsViewed(userBites[nextUserIndex].userId);
+      } else {
+        // No more users, close the viewer
+        closeBites();
+      }
     }
   };
 
   const handlePrevBite = () => {
-    if (currentGlobalIndex > 0) {
-      setCurrentGlobalIndex(prev => prev - 1);
+    if (currentBiteIndex > 0) {
+      // Go to previous bite in current user
+      setCurrentBiteIndex(prev => prev - 1);
+      setProgress(0);
+    } else if (currentUserIndex > 0) {
+      // Go to previous user's last bite
+      const prevUserIndex = currentUserIndex - 1;
+      const prevUser = userBites[prevUserIndex];
+      setCurrentUserIndex(prevUserIndex);
+      setCurrentBiteIndex(prevUser.bites.length - 1);
       setProgress(0);
     }
   };
 
-  const markUsersAsViewed = (biteIndex: number) => {
-    const currentBite = allBites[biteIndex];
-    if (currentBite) {
-      setUserBites(prev => prev.map(ub => 
-        ub.userId === currentBite.userId ? { ...ub, isViewed: true, hasNewBites: false } : ub
-      ));
-    }
+  const markUserAsViewed = (userId: string) => {
+    setUserBites(prev => prev.map(ub => 
+      ub.userId === userId ? { ...ub, isViewed: true, hasNewBites: false } : ub
+    ));
   };
 
   const handleLike = (biteId: string) => {
@@ -243,6 +259,23 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     if (diff < 3600) return `${Math.floor(diff / 60)}m`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
     return `${Math.floor(diff / 86400)}d`;
+  };
+
+  // Calculate progress for each user segment
+  const getUserProgress = (userIndex: number) => {
+    if (userIndex < currentUserIndex) {
+      return 100; // Completed users
+    } else if (userIndex === currentUserIndex) {
+      // Current user - calculate based on bite progress
+      const user = userBites[userIndex];
+      const completedBites = currentBiteIndex;
+      const totalBites = user.bites.length;
+      const currentBiteProgress = progress;
+      
+      return ((completedBites + (currentBiteProgress / 100)) / totalBites) * 100;
+    } else {
+      return 0; // Future users
+    }
   };
 
   return (
@@ -303,15 +336,13 @@ export function BitesRow({ className = "" }: BitesRowProps) {
       {/* Bite Viewer Modal */}
       {isViewing && currentBite && (
         <div className="fixed inset-0 bg-black z-50 flex items-center justify-center">
-          {/* Progress bars for ALL bites */}
+          {/* Progress bars - one for each USER */}
           <div className="absolute top-4 left-4 right-4 flex space-x-1 z-10">
-            {allBites.map((_, index) => (
-              <div key={index} className="flex-1 h-1 bg-white/30 rounded-full overflow-hidden">
+            {userBites.map((user, index) => (
+              <div key={user.userId} className="flex-1 h-1 bg-white/30 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-white rounded-full transition-all duration-100"
-                  style={{
-                    width: index === currentGlobalIndex ? `${progress}%` : index < currentGlobalIndex ? '100%' : '0%'
-                  }}
+                  style={{ width: `${getUserProgress(index)}%` }}
                 />
               </div>
             ))}
