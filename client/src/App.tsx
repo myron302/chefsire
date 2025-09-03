@@ -18,6 +18,7 @@ function Router() {
   return (
     <Layout>
       <Switch>
+        <Route path="/bites" component={Bites} />
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
         <Route path="/explore" component={Explore} />
