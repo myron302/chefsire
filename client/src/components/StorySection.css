@@ -1,0 +1,20 @@
+.story-section {
+  @apply p-5 mb-8;
+}
+
+.chef-corner-border {
+  @apply border-2 border-[#FFA500] p-4 rounded-lg mt-2.5;
+}
+
+h2 {
+  @apply text-[#FFA500] text-xl mb-2.5;
+}
+
+@media (max-width: 768px) {
+  .story-section {
+    @apply p-2.5;
+  }
+  .chef-corner-border {
+    @apply p-2;
+  }
+}
