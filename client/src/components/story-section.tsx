@@ -3,7 +3,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import type { StoryWithUser } from "@shared/schema";
-import './StorySection.css';
+import "./StorySection.css";
 
 interface StorySectionProps {
   userId: string;
@@ -15,11 +15,27 @@ export default function StorySection({ userId, onCreateStory }: StorySectionProp
     queryKey: ["/api/bites/active", userId],
   });
 
+  // Mock data for sample bites (remove after API is populated)
+  const sampleBites: StoryWithUser[] = [
+    {
+      id: "1",
+      imageUrl: "https://via.placeholder.com/150?text=Chef+Bite+1",
+      user: { displayName: "Chef John" },
+    },
+    {
+      id: "2",
+      imageUrl: "https://via.placeholder.com/150?text=Chef+Bite+2",
+      user: { displayName: "Chef Maria" },
+    },
+  ];
+
+  const displayBites = bites && bites.length > 0 ? bites : sampleBites;
+
   if (isLoading) {
     return (
       <section className="mb-8">
         <div className="flex space-x-4 pb-4 overflow-x-auto">
-          {[...Array(4)].map((_, i) => ( // Updated to 4 placeholders
+          {[...Array(4)].map((_, i) => (
             <div key={i} className="flex-shrink-0 text-center animate-pulse">
               <div className="w-16 h-16 bg-muted rounded-full mb-2" />
               <div className="w-12 h-3 bg-muted rounded mx-auto" />
@@ -49,11 +65,11 @@ export default function StorySection({ userId, onCreateStory }: StorySectionProp
           </div>
 
           {/* Bites */}
-          {bites?.map((bite) => (
+          {displayBites.map((bite) => (
             <div key={bite.id} className="flex-shrink-0 text-center">
               <Button
                 variant="ghost"
-                className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-r from-[#FFA500] to-[#FF7518] hover:scale-105 transition-transform"
+                className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-r from-[#FFA500]/20 to-[#FF7518]/20 hover:scale-105 transition-transform"
                 data-testid={`bite-${bite.id}`}
               >
                 <Avatar className="w-full h-full">
@@ -62,7 +78,7 @@ export default function StorySection({ userId, onCreateStory }: StorySectionProp
                 </Avatar>
               </Button>
               <span className="text-xs text-muted-foreground block mt-2 truncate w-16">
-                {bite.user.displayName.split(' ')[0]}
+                {bite.user.displayName.split(" ")[0]}
               </span>
             </div>
           ))}
