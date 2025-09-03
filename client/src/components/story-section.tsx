@@ -3,6 +3,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import type { StoryWithUser } from "@shared/schema";
+import './StorySection.css';
 
 interface StorySectionProps {
   userId: string;
@@ -11,14 +12,14 @@ interface StorySectionProps {
 
 export default function StorySection({ userId, onCreateStory }: StorySectionProps) {
   const { data: bites, isLoading } = useQuery<StoryWithUser[]>({
-    queryKey: ["/api/bites/active", userId], // Updated endpoint
+    queryKey: ["/api/bites/active", userId],
   });
 
   if (isLoading) {
     return (
       <section className="mb-8">
         <div className="flex space-x-4 pb-4 overflow-x-auto">
-          {[...Array(5)].map((_, i) => (
+          {[...Array(4)].map((_, i) => ( // Updated to 4 placeholders
             <div key={i} className="flex-shrink-0 text-center animate-pulse">
               <div className="w-16 h-16 bg-muted rounded-full mb-2" />
               <div className="w-12 h-3 bg-muted rounded mx-auto" />
