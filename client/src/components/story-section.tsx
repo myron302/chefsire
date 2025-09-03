@@ -89,7 +89,7 @@ export default function StorySection({ userId, onCreateStory }: StorySectionProp
               >
                 <Avatar className="w-full h-full">
                   <AvatarImage src={bite.imageUrl} alt={bite.user.displayName} />
-                  <AvatarFallback>{bite.user.displayName[0]}</Fallback>
+                  <AvatarFallback>{bite.user.displayName[0]}</AvatarFallback> {/* Fixed closing tag */}
                 </Avatar>
               </Button>
               <span className="text-xs text-muted-foreground block mt-2 truncate w-16">
