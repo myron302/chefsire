@@ -10,8 +10,8 @@ interface StorySectionProps {
 }
 
 export default function StorySection({ userId, onCreateStory }: StorySectionProps) {
-  const { data: stories, isLoading } = useQuery<StoryWithUser[]>({
-    queryKey: ["/api/stories/active", userId],
+  const { data: bites, isLoading } = useQuery<StoryWithUser[]>({
+    queryKey: ["/api/bites/active", userId], // Updated endpoint
   });
 
   if (isLoading) {
@@ -31,38 +31,41 @@ export default function StorySection({ userId, onCreateStory }: StorySectionProp
 
   return (
     <section className="mb-8">
-      <div className="flex space-x-4 pb-4 overflow-x-auto">
-        {/* Add Your Story */}
-        <div className="flex-shrink-0 text-center">
-          <Button
-            onClick={onCreateStory}
-            variant="ghost"
-            className="w-16 h-16 rounded-full bg-muted border-2 border-dashed border-border p-0 hover:scale-105 transition-transform"
-            data-testid="button-create-story"
-          >
-            <Plus className="h-6 w-6 text-muted-foreground" />
-          </Button>
-          <span className="text-xs text-muted-foreground block mt-2">Your Story</span>
-        </div>
-
-        {/* Stories */}
-        {stories?.map((story) => (
-          <div key={story.id} className="flex-shrink-0 text-center">
+      <h2>Chef's Corner</h2>
+      <div className="chef-corner-border">
+        <div className="flex space-x-4 pb-4 overflow-x-auto">
+          {/* Add Your Bite */}
+          <div className="flex-shrink-0 text-center">
             <Button
+              onClick={onCreateStory}
               variant="ghost"
-              className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-r from-primary to-accent hover:scale-105 transition-transform"
-              data-testid={`story-${story.id}`}
+              className="w-16 h-16 rounded-full bg-muted border-2 border-dashed border-border p-0 hover:scale-105 transition-transform"
+              data-testid="button-create-bite"
             >
-              <Avatar className="w-full h-full">
-                <AvatarImage src={story.imageUrl} alt={story.user.displayName} />
-                <AvatarFallback>{story.user.displayName[0]}</AvatarFallback>
-              </Avatar>
+              <Plus className="h-6 w-6 text-muted-foreground" />
             </Button>
-            <span className="text-xs text-muted-foreground block mt-2 truncate w-16">
-              {story.user.displayName.split(' ')[0]}
-            </span>
+            <span className="text-xs text-muted-foreground block mt-2">Your Bite</span>
           </div>
-        ))}
+
+          {/* Bites */}
+          {bites?.map((bite) => (
+            <div key={bite.id} className="flex-shrink-0 text-center">
+              <Button
+                variant="ghost"
+                className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-r from-[#FFA500] to-[#FF7518] hover:scale-105 transition-transform"
+                data-testid={`bite-${bite.id}`}
+              >
+                <Avatar className="w-full h-full">
+                  <AvatarImage src={bite.imageUrl} alt={bite.user.displayName} />
+                  <AvatarFallback>{bite.user.displayName[0]}</AvatarFallback>
+                </Avatar>
+              </Button>
+              <span className="text-xs text-muted-foreground block mt-2 truncate w-16">
+                {bite.user.displayName.split(' ')[0]}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );
