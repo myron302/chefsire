@@ -14,7 +14,8 @@ import {
   ShoppingCart,
   Activity,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Zap
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -30,6 +31,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
   const navigation = [
     { name: "Feed", href: "/feed", icon: Home },
     { name: "Explore", href: "/explore", icon: Compass },
+    { name: "Bites", href: "/bites", icon: Zap },
     { 
       name: "Recipes", 
       href: "/recipes", 
@@ -57,6 +59,17 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
   return (
     <nav className="hidden lg:flex fixed left-0 top-16 h-full w-64 bg-card border-r border-border p-6 overflow-y-auto">
       <div className="space-y-6 w-full">
+        {/* Chef's Corner Section */}
+        <div className="chef-corner-border">
+          <h2 className="text-orange-500 text-lg font-bold mb-2 flex items-center">
+            <span className="mr-2">👑</span>
+            Chef's Corner
+          </h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Quick cooking tips and ingredient spotlights
+          </p>
+        </div>
+
         {/* Navigation Items */}
         <div className="space-y-2">
           {navigation.map((item) => (
