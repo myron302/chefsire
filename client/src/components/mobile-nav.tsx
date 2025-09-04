@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Home, Compass, Plus, User, Utensils } from "lucide-react";
-import { cn } from "@/lib/utils";
+// import { cn } from "@/lib/utils";
 
 interface MobileNavProps {
   onCreatePost: () => void;
@@ -42,10 +42,9 @@ export default function MobileNav({ onCreatePost }: MobileNavProps) {
             <Link key={item.name} href={item.href!}>
               <Button
                 variant="ghost"
-                className={cn(
-                  "flex flex-col items-center p-2 h-auto min-w-0",
+                className={`flex flex-col items-center p-2 h-auto min-w-0 ${
                   location === item.href ? "text-primary" : "text-muted-foreground"
-                )}
+                }`}
                 data-testid={`mobile-nav-${item.name.toLowerCase()}`}
               >
                 <item.icon className="h-6 w-6 mb-1" />
