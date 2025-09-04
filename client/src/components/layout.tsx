@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
+// import CreatePostModal from "@/components/create-post-modal";
+
 // Import logo from the current location
 import chefLogo from "../asset/logo.jpg";
 
@@ -31,7 +33,7 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
-export default function Layout({ children }: LayoutProps) {
+function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -240,7 +242,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
           </div>
 
-          {/* 👇 Secondary Navigation (new code added) */}
+          {/* Secondary Navigation */}
           <nav className="mt-2">
             <ul className="flex space-x-6 justify-center">
               <li><Link href="/" className="text-sm font-medium text-muted-foreground hover:text-orange-600 transition-colors">Home</Link></li>
@@ -265,13 +267,13 @@ export default function Layout({ children }: LayoutProps) {
       {/* Mobile Navigation */}
       <MobileNav onCreatePost={handleCreatePost} />
       
-      {/* Create Post Modal - TEMPORARILY COMMENTED OUT */}
-      {/* 
+      {/* Create Post Modal */}
       <CreatePostModal 
         open={isCreateModalOpen} 
         onOpenChange={setIsCreateModalOpen}
       />
-      */}
     </div>
   );
 }
+
+export default Layout;
