@@ -271,7 +271,6 @@ export function CateringMarketplace() {
           </Select>
 
           <div>
-            <Label>Zip Code</Label>
             <Input
               type="text"
               placeholder="Enter your zip code (e.g., 06360)"
@@ -377,110 +376,4 @@ export function CateringMarketplace() {
                               <SelectItem value="wedding">Wedding</SelectItem>
                               <SelectItem value="corporate">Corporate Event</SelectItem>
                               <SelectItem value="birthday">Birthday Party</SelectItem>
-                              <SelectItem value="anniversary">Anniversary</SelectItem>
-                              <SelectItem value="private">Private Dining</SelectItem>
-                              <SelectItem value="other">Other</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        
-                        <div>
-                          <Label>Number of Guests</Label>
-                          <Input
-                            type="number"
-                            placeholder="e.g. 25"
-                            value={bookingForm.guestCount}
-                            onChange={(e) => setBookingForm({...bookingForm, guestCount: e.target.value})}
-                            min={chef.minOrder}
-                          />
-                          <p className="text-xs text-gray-500 mt-1">Minimum {chef.minOrder} guests</p>
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label>Event Location</Label>
-                        <Input
-                          placeholder="Event address or venue"
-                          value={bookingForm.eventLocation}
-                          onChange={(e) => setBookingForm({...bookingForm, eventLocation: e.target.value})}
-                        />
-                        <p className="text-xs text-gray-500 mt-1">Must be within {chef.cateringRadius} miles of {chef.cateringLocation}</p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label>Contact Email</Label>
-                          <Input
-                            type="email"
-                            placeholder="your@email.com"
-                            value={bookingForm.contactEmail}
-                            onChange={(e) => setBookingForm({...bookingForm, contactEmail: e.target.value})}
-                          />
-                        </div>
-                        
-                        <div>
-                          <Label>Contact Phone</Label>
-                          <Input
-                            type="tel"
-                            placeholder="(555) 123-4567"
-                            value={bookingForm.contactPhone}
-                            onChange={(e) => setBookingForm({...bookingForm, contactPhone: e.target.value})}
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label>Event Date</Label>
-                        <div className="mt-2">
-                          <Calendar
-                            mode="single"
-                            selected={bookingForm.eventDate}
-                            onSelect={(date) => setBookingForm({...bookingForm, eventDate: date})}
-                            disabled={(date) => date < new Date()}
-                            className="rounded-md border"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label>Additional Notes</Label>
-                        <Textarea
-                          placeholder="Dietary restrictions, menu preferences, special requests..."
-                          value={bookingForm.additionalNotes}
-                          onChange={(e) => setBookingForm({...bookingForm, additionalNotes: e.target.value})}
-                          rows={4}
-                        />
-                      </div>
-
-                      <Button 
-                        onClick={() => handleBookingSubmit(chef.id)}
-                        className="w-full"
-                        disabled={!bookingForm.eventDate || !bookingForm.eventType || !bookingForm.guestCount || !bookingForm.contactEmail}
-                      >
-                        Submit Catering Request
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-
-                <Button variant="outline" size="sm">
-                  View Profile
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {filteredChefs.length === 0 && (
-        <div className="text-center py-12">
-          <ChefHat className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No chefs found</h3>
-          <p className="text-gray-600">Try adjusting your search criteria or filters.</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default CateringMarketplace;
+                              <SelectItem value
