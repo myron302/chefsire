@@ -17,7 +17,7 @@ import {
   Utensils // Add this import for catering icon
 } from "lucide-react";
 
-// Update your navigation array:
+// Navigation array
 const navigation = [
   { name: "Feed", href: "/feed", icon: Home },
   { name: "Explore", href: "/explore", icon: Compass },
@@ -32,8 +32,10 @@ const navigation = [
       { name: "Substitutions", href: "/substitutions", icon: Shuffle },
     ]
   },
-  { name: "Catering", href: "/catering", icon: Utensils }, // Add this line
+  { name: "Catering", href: "/catering", icon: Utensils }, // Catering link
   { name: "Marketplace", href: "/marketplace", icon: ShoppingCart },
   { name: "Nutrition", href: "/nutrition", icon: Activity, isPremium: true },
   { name: "Profile", href: "/profile", icon: User },
 ];
+
+export default navigation;
