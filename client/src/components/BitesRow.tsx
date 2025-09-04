@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
-import { Heart, MessageCircle, Share, Eye, Clock, ChevronLeft, ChevronRight, X, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import Image from "next/image";
+import { useState, useEffect } from 'react';
+import { Heart, MessageCircle, Share, Eye, Clock, ChevronLeft, ChevronRight, X, Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 
 interface Bite {
   id: string;
@@ -11,7 +10,7 @@ interface Bite {
   username: string;
   avatar: string;
   content: {
-    type: "image" | "video";
+    type: 'image' | 'video';
     url: string;
     thumbnail?: string;
   };
@@ -33,114 +32,114 @@ interface UserBites {
   isViewed: boolean;
 }
 
-// Reverted mock data with placeholder URLs
+// Mock data
 const mockUserBites: UserBites[] = [
   {
-    userId: "1",
-    username: "chefmaria",
-    avatar: "/api/placeholder/60/60",
+    userId: '1',
+    username: 'chefmaria',
+    avatar: '/api/placeholder/60/60',
     hasNewBites: true,
     isViewed: false,
     bites: [
       {
-        id: "1",
-        userId: "1",
-        username: "chefmaria",
-        avatar: "/api/placeholder/40/40",
-        content: { type: "image", url: "/api/placeholder/400/600" },
-        caption: "🍝 Fresh pasta making process!",
-        timestamp: new Date("2024-01-15T10:30:00Z"),
+        id: '1',
+        userId: '1',
+        username: 'chefmaria',
+        avatar: '/api/placeholder/40/40',
+        content: { type: 'image', url: '/api/placeholder/400/600' },
+        caption: '🍝 Fresh pasta making process!',
+        timestamp: new Date('2024-01-15T10:30:00Z'),
         duration: 5,
         views: 127,
         likes: 23,
         isLiked: false,
-        tags: ["pasta", "homemade", "italian"],
+        tags: ['pasta', 'homemade', 'italian']
       },
       {
-        id: "2",
-        userId: "1",
-        username: "chefmaria",
-        avatar: "/api/placeholder/40/40",
-        content: { type: "image", url: "/api/placeholder/400/600" },
-        caption: "The final result! Nothing beats fresh pasta 😋",
-        timestamp: new Date("2024-01-15T10:35:00Z"),
+        id: '2',
+        userId: '1',
+        username: 'chefmaria',
+        avatar: '/api/placeholder/40/40',
+        content: { type: 'image', url: '/api/placeholder/400/600' },
+        caption: 'The final result! Nothing beats fresh pasta 😋',
+        timestamp: new Date('2024-01-15T10:35:00Z'),
         duration: 5,
         views: 98,
         likes: 31,
         isLiked: true,
-        tags: ["pasta", "delicious", "foodie"],
-      },
-    ],
+        tags: ['pasta', 'delicious', 'foodie']
+      }
+    ]
   },
   {
-    userId: "2",
-    username: "bakerben",
-    avatar: "/api/placeholder/60/60",
+    userId: '2',
+    username: 'bakerben',
+    avatar: '/api/placeholder/60/60',
     hasNewBites: false,
     isViewed: true,
     bites: [
       {
-        id: "3",
-        userId: "2",
-        username: "bakerben",
-        avatar: "/api/placeholder/40/40",
-        content: { type: "image", url: "/api/placeholder/400/600" },
-        caption: "🥖 Early morning bread prep",
-        timestamp: new Date("2024-01-15T06:00:00Z"),
+        id: '3',
+        userId: '2',
+        username: 'bakerben',
+        avatar: '/api/placeholder/40/40',
+        content: { type: 'image', url: '/api/placeholder/400/600' },
+        caption: '🥖 Early morning bread prep',
+        timestamp: new Date('2024-01-15T06:00:00Z'),
         duration: 4,
         views: 234,
         likes: 67,
         isLiked: false,
-        tags: ["bread", "baking"],
-      },
-    ],
+        tags: ['bread', 'baking']
+      }
+    ]
   },
   {
-    userId: "3",
-    username: "veggievibes",
-    avatar: "/api/placeholder/60/60",
+    userId: '3',
+    username: 'veggievibes',
+    avatar: '/api/placeholder/60/60',
     hasNewBites: true,
     isViewed: false,
     bites: [
       {
-        id: "4",
-        userId: "3",
-        username: "veggievibes",
-        avatar: "/api/placeholder/40/40",
-        content: { type: "image", url: "/api/placeholder/400/600" },
-        caption: "Rainbow veggie prep! 🌈",
-        timestamp: new Date("2024-01-14T15:20:00Z"),
+        id: '4',
+        userId: '3',
+        username: 'veggievibes',
+        avatar: '/api/placeholder/40/40',
+        content: { type: 'image', url: '/api/placeholder/400/600' },
+        caption: 'Rainbow veggie prep! 🌈',
+        timestamp: new Date('2024-01-14T15:20:00Z'),
         duration: 6,
         views: 89,
         likes: 42,
         isLiked: true,
-        tags: ["mealprep", "vegetables"],
-      },
-    ],
+        tags: ['mealprep', 'vegetables']
+      }
+    ]
   },
   {
-    userId: "4",
-    username: "dessertqueen",
-    avatar: "/api/placeholder/60/60",
+    userId: '4',
+    username: 'dessertqueen',
+    avatar: '/api/placeholder/60/60',
     hasNewBites: true,
     isViewed: false,
     bites: [
       {
-        id: "5",
-        userId: "4",
-        username: "dessertqueen",
-        avatar: "/api/placeholder/40/40",
-        content: { type: "image", url: "/api/placeholder/400/600" },
-        caption: "Chocolate soufflé perfection ✨",
-        timestamp: new Date("2024-01-15T14:20:00Z"),
+        id: '5',
+        userId: '4',
+        username: 'dessertqueen',
+        avatar: '/api/placeholder/40/40',
+        content: { type: 'image', url: '/api/placeholder/400/600' },
+        caption: 'Chocolate soufflé perfection ✨',
+        timestamp: new Date('2024-01-15T14:20:00Z'),
         duration: 4,
         views: 156,
         likes: 78,
         isLiked: false,
-        tags: ["dessert", "chocolate"],
-      },
-    ],
-  },
+        tags: ['dessert', 'chocolate']
+      }
+    ]
+  }
 ];
 
 interface BitesRowProps {
@@ -166,7 +165,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
       setProgress((prev) => {
         const increment = 100 / (currentBite.duration * 10);
         const newProgress = prev + increment;
-
+        
         if (newProgress >= 100) {
           handleNextBite();
           return 0;
@@ -179,12 +178,14 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   }, [isViewing, currentUserIndex, currentBiteIndex, isPaused, currentBite]);
 
   const openUserBites = (userBite: UserBites) => {
-    const userIndex = userBites.findIndex((ub) => ub.userId === userBite.userId);
+    // Find the user index to start from
+    const userIndex = userBites.findIndex(ub => ub.userId === userBite.userId);
     setCurrentUserIndex(userIndex);
     setCurrentBiteIndex(0);
     setIsViewing(true);
     setProgress(0);
-
+    
+    // Mark this user as viewed
     markUserAsViewed(userBite.userId);
   };
 
@@ -197,27 +198,35 @@ export function BitesRow({ className = "" }: BitesRowProps) {
 
   const handleNextBite = () => {
     if (!currentUser) return;
-
+    
     if (currentBiteIndex < currentUser.bites.length - 1) {
-      setCurrentBiteIndex((prev) => prev + 1);
+      // Move to next bite in current user's collection
+      setCurrentBiteIndex(prev => prev + 1);
       setProgress(0);
-    } else if (currentUserIndex < userBites.length - 1) {
-      const nextUserIndex = currentUserIndex + 1;
-      setCurrentUserIndex(nextUserIndex);
-      setCurrentBiteIndex(0);
-      setProgress(0);
-
-      markUserAsViewed(userBites[nextUserIndex].userId);
     } else {
-      closeBites();
+      // Finished current user's bites, move to next user
+      if (currentUserIndex < userBites.length - 1) {
+        const nextUserIndex = currentUserIndex + 1;
+        setCurrentUserIndex(nextUserIndex);
+        setCurrentBiteIndex(0);
+        setProgress(0);
+        
+        // Mark next user as viewed
+        markUserAsViewed(userBites[nextUserIndex].userId);
+      } else {
+        // No more users, close the viewer
+        closeBites();
+      }
     }
   };
 
   const handlePrevBite = () => {
     if (currentBiteIndex > 0) {
-      setCurrentBiteIndex((prev) => prev - 1);
+      // Go to previous bite in current user
+      setCurrentBiteIndex(prev => prev - 1);
       setProgress(0);
     } else if (currentUserIndex > 0) {
+      // Go to previous user's last bite
       const prevUserIndex = currentUserIndex - 1;
       const prevUser = userBites[prevUserIndex];
       setCurrentUserIndex(prevUserIndex);
@@ -227,30 +236,26 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   };
 
   const markUserAsViewed = (userId: string) => {
-    setUserBites((prev) =>
-      prev.map((ub) =>
-        ub.userId === userId ? { ...ub, isViewed: true, hasNewBites: false } : ub
-      )
-    );
+    setUserBites(prev => prev.map(ub => 
+      ub.userId === userId ? { ...ub, isViewed: true, hasNewBites: false } : ub
+    ));
   };
 
   const handleLike = (biteId: string) => {
-    setUserBites((prev) =>
-      prev.map((user) => ({
-        ...user,
-        bites: user.bites.map((bite) =>
-          bite.id === biteId
-            ? { ...bite, isLiked: !bite.isLiked, likes: bite.isLiked ? bite.likes - 1 : bite.likes + 1 }
-            : bite
-        ),
-      }))
-    );
+    setUserBites(prev => prev.map(user => ({
+      ...user,
+      bites: user.bites.map(bite =>
+        bite.id === biteId 
+          ? { ...bite, isLiked: !bite.isLiked, likes: bite.isLiked ? bite.likes - 1 : bite.likes + 1 }
+          : bite
+      )
+    })));
   };
 
   const formatTimeAgo = (date: Date) => {
     const now = new Date();
     const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
-
+    
     if (diff < 3600) return `${Math.floor(diff / 60)}m`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
     return `${Math.floor(diff / 86400)}d`;
@@ -262,7 +267,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
       <div className={`bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 ${className}`}>
         <div className="container mx-auto px-4 py-4">
           <h2 className="text-orange-500 text-lg font-bold mb-4 flex items-center">
-            <Image src="/assets/chefsire-logo.png" alt="Chefsire Logo" className="h-6 w-auto mr-2" />
+            <span className="mr-2">👑</span>
             Chef's Corner - Quick Bites
           </h2>
           <div className="flex items-center space-x-4 overflow-x-auto pb-2 scrollbar-hide">
@@ -286,11 +291,11 @@ export function BitesRow({ className = "" }: BitesRowProps) {
                 onClick={() => openUserBites(userBite)}
               >
                 <div className={`relative p-0.5 rounded-full ${
-                  userBite.hasNewBites
-                    ? "bg-gradient-to-tr from-orange-400 via-red-500 to-pink-600"
-                    : userBite.isViewed
-                    ? "bg-gray-300 dark:bg-gray-600"
-                    : "bg-gradient-to-tr from-orange-400 via-red-500 to-pink-600"
+                  userBite.hasNewBites 
+                    ? 'bg-gradient-to-tr from-orange-400 via-red-500 to-pink-600' 
+                    : userBite.isViewed 
+                      ? 'bg-gray-300 dark:bg-gray-600' 
+                      : 'bg-gradient-to-tr from-orange-400 via-red-500 to-pink-600'
                 }`}>
                   <Avatar className="w-16 h-16 border-2 border-white dark:border-gray-900">
                     <AvatarImage src={userBite.avatar} alt={userBite.username} />
@@ -318,10 +323,10 @@ export function BitesRow({ className = "" }: BitesRowProps) {
           <div className="absolute top-4 left-4 right-4 flex space-x-1 z-10">
             {currentUser.bites.map((_, index) => (
               <div key={index} className="flex-1 h-1 bg-white/30 rounded-full overflow-hidden">
-                <div
+                <div 
                   className="h-full bg-white rounded-full transition-all duration-100"
                   style={{
-                    width: index === currentBiteIndex ? `${progress}%` : index < currentBiteIndex ? "100%" : "0%",
+                    width: index === currentBiteIndex ? `${progress}%` : index < currentBiteIndex ? '100%' : '0%'
                   }}
                 />
               </div>
@@ -337,7 +342,9 @@ export function BitesRow({ className = "" }: BitesRowProps) {
               </Avatar>
               <div>
                 <p className="text-white font-medium">{currentBite.username}</p>
-                <p className="text-white/70 text-sm">{formatTimeAgo(currentBite.timestamp)}</p>
+                <p className="text-white/70 text-sm">
+                  {formatTimeAgo(currentBite.timestamp)}
+                </p>
               </div>
             </div>
             <Button
@@ -353,8 +360,8 @@ export function BitesRow({ className = "" }: BitesRowProps) {
           {/* Navigation areas */}
           <div className="absolute inset-0 flex">
             <div className="flex-1 cursor-pointer" onClick={handlePrevBite} />
-            <div
-              className="flex-1 cursor-pointer"
+            <div 
+              className="flex-1 cursor-pointer" 
               onClick={handleNextBite}
               onMouseDown={() => setIsPaused(true)}
               onMouseUp={() => setIsPaused(false)}
@@ -373,7 +380,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
               <ChevronLeft className="w-6 h-6" />
             </Button>
           )}
-
+          
           <Button
             variant="ghost"
             size="icon"
@@ -383,16 +390,18 @@ export function BitesRow({ className = "" }: BitesRowProps) {
             <ChevronRight className="w-6 h-6" />
           </Button>
           <div className="relative w-full max-w-md mx-auto aspect-[9/16]">
-            <img
+            <img 
               src={currentBite.content.url}
               alt={currentBite.caption}
               className="w-full h-full object-cover rounded-lg"
             />
-
+            
             {/* Caption and actions */}
             <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
               <div className="flex items-start justify-between mb-2">
-                <p className="text-white text-sm flex-1 mr-4">{currentBite.caption}</p>
+                <p className="text-white text-sm flex-1 mr-4">
+                  {currentBite.caption}
+                </p>
                 <div className="flex flex-col items-center space-y-3">
                   <Button
                     variant="ghost"
@@ -400,14 +409,18 @@ export function BitesRow({ className = "" }: BitesRowProps) {
                     className="text-white hover:bg-white/20"
                     onClick={() => handleLike(currentBite.id)}
                   >
-                    <Heart
+                    <Heart 
                       className={`w-6 h-6 ${
-                        currentBite.isLiked ? "fill-red-500 text-red-500" : "text-white"
-                      }`}
+                        currentBite.isLiked 
+                          ? 'fill-red-500 text-red-500' 
+                          : 'text-white'
+                      }`} 
                     />
                   </Button>
-                  <span className="text-white text-xs">{currentBite.likes}</span>
-
+                  <span className="text-white text-xs">
+                    {currentBite.likes}
+                  </span>
+                  
                   <Button
                     variant="ghost"
                     size="icon"
@@ -415,7 +428,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
                   >
                     <MessageCircle className="w-6 h-6" />
                   </Button>
-
+                  
                   <Button
                     variant="ghost"
                     size="icon"
@@ -425,16 +438,12 @@ export function BitesRow({ className = "" }: BitesRowProps) {
                   </Button>
                 </div>
               </div>
-
+              
               {/* Tags */}
               {currentBite.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
                   {currentBite.tags.map((tag) => (
-                    <Badge
-                      key={tag}
-                      variant="secondary"
-                      className="text-xs bg-white/20 text-white border-none"
-                    >
+                    <Badge key={tag} variant="secondary" className="text-xs bg-white/20 text-white border-none">
                       #{tag}
                     </Badge>
                   ))}
