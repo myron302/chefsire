@@ -12,9 +12,22 @@ interface Drink {
 
 export default function PotentPotables() {
   const [drinks, setDrinks] = useState<Drink[]>([
-    { id: 1, name: "Mojito", type: "cocktail", ingredients: "Rum, Mint, Lime, Sugar, Soda", image: "https://via.placeholder.com/300x200" },
-    { id: 2, name: "Virgin Piña Colada", type: "mocktail", ingredients: "Pineapple, Coconut Cream, Ice", image: "https://via.placeholder.com/300x200" },
+    { 
+      id: 1, 
+      name: "Mojito", 
+      type: "cocktail", 
+      ingredients: "Rum, Mint, Lime, Sugar, Soda", 
+      image: "https://picsum.photos/300/200?random=1" 
+    },
+    { 
+      id: 2, 
+      name: "Virgin Piña Colada", 
+      type: "mocktail", 
+      ingredients: "Pineapple, Coconut Cream, Ice", 
+      image: "https://picsum.photos/300/200?random=2" 
+    },
   ]);
+
   const [showForm, setShowForm] = useState(false);
   const [newDrink, setNewDrink] = useState({ name: '', type: '', ingredients: '', image: '' });
 
@@ -27,8 +40,7 @@ export default function PotentPotables() {
   };
 
   useEffect(() => {
-    // Placeholder for future API call, e.g., fetch('/api/drinks')
-    // setDrinks(response.data);
+    // Placeholder for future API call
   }, []);
 
   return (
@@ -37,7 +49,12 @@ export default function PotentPotables() {
       <div className="grid gap-4">
         {drinks.map((drink) => (
           <div key={drink.id} className="bg-white p-4 rounded shadow border">
-            <img src={drink.image} alt={drink.name} className="w-full h-48 object-cover rounded-t" />
+            <img 
+              src={drink.image} 
+              alt={drink.name} 
+              className="w-full h-48 object-cover rounded-t"
+              onError={(e) => (e.currentTarget.src = "https://picsum.photos/300/200?grayscale")}
+            />
             <h3 className="text-lg font-semibold mt-2">{drink.name}</h3>
             <p className="text-sm text-gray-600">{drink.type}</p>
             <p className="text-sm">{drink.ingredients}</p>
