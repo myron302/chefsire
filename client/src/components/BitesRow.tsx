@@ -261,23 +261,6 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     return `${Math.floor(diff / 86400)}d`;
   };
 
-  // Calculate progress for each user segment
-  const getUserProgress = (userIndex: number) => {
-    if (userIndex < currentUserIndex) {
-      return 100; // Completed users
-    } else if (userIndex === currentUserIndex) {
-      // Current user - calculate based on bite progress
-      const user = userBites[userIndex];
-      const completedBites = currentBiteIndex;
-      const totalBites = user.bites.length;
-      const currentBiteProgress = progress;
-      
-      return ((completedBites + (currentBiteProgress / 100)) / totalBites) * 100;
-    } else {
-      return 0; // Future users
-    }
-  };
-
   return (
     <>
       {/* Bites Row */}
