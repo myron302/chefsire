@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
-import CreatePostModal from "@/components/create-post-modal";
+// import CreatePostModal from "@/components/create-post-modal";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -46,6 +46,12 @@ export default function Layout({ children }: LayoutProps) {
       document.head.removeChild(link);
     };
   }, []);
+
+  // Temporary create post handler - just show alert instead of modal
+  const handleCreatePost = () => {
+    alert('Create post functionality temporarily disabled - modal component has issues');
+    setIsCreateModalOpen(false);
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -227,7 +233,7 @@ export default function Layout({ children }: LayoutProps) {
       
       <div className="flex flex-1">
         {/* Desktop Sidebar */}
-        <Sidebar onCreatePost={() => setIsCreateModalOpen(true)} />
+        <Sidebar onCreatePost={handleCreatePost} />
         
         {/* Main Content */}
         <main className="flex-1 lg:ml-64 pb-16 lg:pb-0">
@@ -236,13 +242,15 @@ export default function Layout({ children }: LayoutProps) {
       </div>
       
       {/* Mobile Navigation */}
-      <MobileNav onCreatePost={() => setIsCreateModalOpen(true)} />
+      <MobileNav onCreatePost={handleCreatePost} />
       
-      {/* Create Post Modal */}
+      {/* Create Post Modal - TEMPORARILY COMMENTED OUT */}
+      {/* 
       <CreatePostModal 
         open={isCreateModalOpen} 
         onOpenChange={setIsCreateModalOpen}
       />
+      */}
     </div>
   );
 }
