@@ -146,7 +146,7 @@ const mockUserBites: UserBites[] = [
 const CustomLogo = () => (
   <div className="flex items-center">
     <img 
-      src="/src/asset/logo.jpg" 
+      src="/asset/logo.jpg" 
       alt="Logo" 
       className="w-8 h-8 rounded-full object-cover"
     />
@@ -157,8 +157,7 @@ interface BitesRowProps {
   className?: string;
 }
 
-// Changed from "export function" to just "function"
-function BitesRow({ className = "" }: BitesRowProps) {
+export function BitesRow({ className = "" }: BitesRowProps) {
   const [userBites, setUserBites] = useState<UserBites[]>(mockUserBites);
   const [isViewing, setIsViewing] = useState(false);
   const [currentUserIndex, setCurrentUserIndex] = useState(0);
@@ -471,5 +470,4 @@ function BitesRow({ className = "" }: BitesRowProps) {
   );
 }
 
-// Correct export for BitesRow
 export default BitesRow;
