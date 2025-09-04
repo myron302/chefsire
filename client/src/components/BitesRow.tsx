@@ -1,473 +1,400 @@
-import { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Share, Eye, Clock, ChevronLeft, ChevronRight, X, Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
+import { useState, useEffect } from "react";
+import { 
+  Search, 
+  Bell, 
+  MessageCircle, 
+  Home, 
+  Compass, 
+  BookOpen, 
+  User, 
+  Plus,
+  Bookmark,
+  Users,
+  Settings,
+  ChevronDown,
+  LogOut,
+  Activity,
+  Shuffle,
+  ShoppingCart,
+  ChefHat,
+  Menu,
+  X
+} from "lucide-react";
 
-interface Bite {
-  id: string;
-  userId: string;
-  username: string;
-  avatar: string;
-  content: {
-    type: 'image' | 'video';
-    url: string;
-    thumbnail?: string;
+// Inline UI Components (replacing shadcn imports)
+const Input = ({ className = "", ...props }) => (
+  <input
+    className={`flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-800 dark:bg-gray-950 dark:ring-offset-gray-950 dark:placeholder:text-gray-400 dark:focus-visible:ring-gray-300 ${className}`}
+    {...props}
+  />
+);
+
+const Button = ({ variant = "default", size = "default", className = "", children, ...props }) => {
+  const variants = {
+    default: "bg-gray-900 text-white hover:bg-gray-800 dark:bg-gray-50 dark:text-gray-900 dark:hover:bg-gray-200",
+    ghost: "hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800 dark:hover:text-gray-50",
   };
-  caption: string;
-  timestamp: Date;
-  duration: number;
-  views: number;
-  likes: number;
-  isLiked: boolean;
-  tags: string[];
-}
+  
+  const sizes = {
+    default: "h-10 px-4 py-2",
+    sm: "h-9 rounded-md px-3",
+  };
+  
+  return (
+    <button
+      className={`inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-950 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 dark:ring-offset-gray-950 dark:focus-visible:ring-gray-300 ${variants[variant]} ${sizes[size]} ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+};
 
-interface UserBites {
-  userId: string;
-  username: string;
-  avatar: string;
-  bites: Bite[];
-  hasNewBites: boolean;
-  isViewed: boolean;
-}
-
-// Mock data
-const mockUserBites: UserBites[] = [
-  {
-    userId: '1',
-    username: 'chefmaria',
-    avatar: '/api/placeholder/60/60',
-    hasNewBites: true,
-    isViewed: false,
-    bites: [
-      {
-        id: '1',
-        userId: '1',
-        username: 'chefmaria',
-        avatar: '/api/placeholder/40/40',
-        content: { type: 'image', url: '/api/placeholder/400/600' },
-        caption: '🍝 Fresh pasta making process!',
-        timestamp: new Date('2024-01-15T10:30:00Z'),
-        duration: 5,
-        views: 127,
-        likes: 23,
-        isLiked: false,
-        tags: ['pasta', 'homemade', 'italian']
-      },
-      {
-        id: '2',
-        userId: '1',
-        username: 'chefmaria',
-        avatar: '/api/placeholder/40/40',
-        content: { type: 'image', url: '/api/placeholder/400/600' },
-        caption: 'The final result! Nothing beats fresh pasta 😋',
-        timestamp: new Date('2024-01-15T10:35:00Z'),
-        duration: 5,
-        views: 98,
-        likes: 31,
-        isLiked: true,
-        tags: ['pasta', 'delicious', 'foodie']
-      }
-    ]
-  },
-  {
-    userId: '2',
-    username: 'bakerben',
-    avatar: '/api/placeholder/60/60',
-    hasNewBites: false,
-    isViewed: true,
-    bites: [
-      {
-        id: '3',
-        userId: '2',
-        username: 'bakerben',
-        avatar: '/api/placeholder/40/40',
-        content: { type: 'image', url: '/api/placeholder/400/600' },
-        caption: '🥖 Early morning bread prep',
-        timestamp: new Date('2024-01-15T06:00:00Z'),
-        duration: 4,
-        views: 234,
-        likes: 67,
-        isLiked: false,
-        tags: ['bread', 'baking']
-      }
-    ]
-  },
-  {
-    userId: '3',
-    username: 'veggievibes',
-    avatar: '/api/placeholder/60/60',
-    hasNewBites: true,
-    isViewed: false,
-    bites: [
-      {
-        id: '4',
-        userId: '3',
-        username: 'veggievibes',
-        avatar: '/api/placeholder/40/40',
-        content: { type: 'image', url: '/api/placeholder/400/600' },
-        caption: 'Rainbow veggie prep! 🌈',
-        timestamp: new Date('2024-01-14T15:20:00Z'),
-        duration: 6,
-        views: 89,
-        likes: 42,
-        isLiked: true,
-        tags: ['mealprep', 'vegetables']
-      }
-    ]
-  },
-  {
-    userId: '4',
-    username: 'dessertqueen',
-    avatar: '/api/placeholder/60/60',
-    hasNewBites: true,
-    isViewed: false,
-    bites: [
-      {
-        id: '5',
-        userId: '4',
-        username: 'dessertqueen',
-        avatar: '/api/placeholder/40/40',
-        content: { type: 'image', url: '/api/placeholder/400/600' },
-        caption: 'Chocolate soufflé perfection ✨',
-        timestamp: new Date('2024-01-15T14:20:00Z'),
-        duration: 4,
-        views: 156,
-        likes: 78,
-        isLiked: false,
-        tags: ['dessert', 'chocolate']
-      }
-    ]
-  }
-];
-
-// Custom Logo Component
-const CustomLogo = () => (
-  <div className="flex items-center">
-    <img 
-      src="/src/asset/logo.jpg" 
-      alt="Logo" 
-      className="w-8 h-8 rounded-full object-cover"
-    />
+const Avatar = ({ className = "", children }) => (
+  <div className={`relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full ${className}`}>
+    {children}
   </div>
 );
 
-interface BitesRowProps {
-  className?: string;
+const AvatarImage = ({ src, alt = "" }) => (
+  <img className="aspect-square h-full w-full object-cover" src={src} alt={alt} />
+);
+
+const AvatarFallback = ({ children }) => (
+  <div className="flex h-full w-full items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
+    {children}
+  </div>
+);
+
+// Simple Link component replacement
+const Link = ({ href, children, onClick }) => (
+  <a href={href} onClick={(e) => { e.preventDefault(); onClick && onClick(); }}>
+    {children}
+  </a>
+);
+
+// Logo as inline SVG (since we can't import external images)
+const ChefLogo = () => (
+  <svg viewBox="0 0 100 100" className="w-full h-full">
+    <circle cx="50" cy="50" r="45" fill="#ff6b35"/>
+    <path d="M50 25 C30 25 25 35 25 45 C25 65 35 75 50 75 C65 75 75 65 75 45 C75 35 70 25 50 25 Z" fill="white"/>
+    <circle cx="40" cy="45" r="3" fill="#ff6b35"/>
+    <circle cx="60" cy="45" r="3" fill="#ff6b35"/>
+    <path d="M40 58 Q50 65 60 58" stroke="#ff6b35" strokeWidth="2" fill="none"/>
+  </svg>
+);
+
+// Sidebar Component
+const Sidebar = ({ onCreatePost }) => {
+  const navItems = [
+    { icon: Home, label: "Home", href: "/" },
+    { icon: Compass, label: "Explore", href: "/explore" },
+    { icon: BookOpen, label: "Recipes", href: "/recipes" },
+    { icon: Bookmark, label: "Saved", href: "/saved" },
+    { icon: Users, label: "Community", href: "/community" },
+    { icon: User, label: "Profile", href: "/profile" },
+  ];
+
+  return (
+    <aside className="hidden lg:flex flex-col fixed left-0 top-16 h-[calc(100vh-4rem)] w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 p-4">
+      <nav className="space-y-2">
+        {navItems.map((item) => (
+          <Link key={item.label} href={item.href}>
+            <div className="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer">
+              <item.icon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.label}</span>
+            </div>
+          </Link>
+        ))}
+      </nav>
+      <div className="mt-4">
+        <Button 
+          onClick={onCreatePost}
+          className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Create Post
+        </Button>
+      </div>
+    </aside>
+  );
+};
+
+// Mobile Navigation Component
+const MobileNav = ({ onCreatePost }) => {
+  const navItems = [
+    { icon: Home, label: "Home" },
+    { icon: Compass, label: "Explore" },
+    { icon: Plus, label: "Create", isCreate: true },
+    { icon: Bookmark, label: "Saved" },
+    { icon: User, label: "Profile" },
+  ];
+
+  return (
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
+      <div className="flex items-center justify-around py-2">
+        {navItems.map((item) => (
+          <button
+            key={item.label}
+            onClick={item.isCreate ? onCreatePost : undefined}
+            className={`p-3 rounded-lg transition-colors ${
+              item.isCreate 
+                ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white' 
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+          >
+            <item.icon className="w-5 h-5" />
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+};
+
+interface LayoutProps {
+  children: React.ReactNode;
 }
 
-export function BitesRow({ className = "" }: BitesRowProps) {
-  const [userBites, setUserBites] = useState<UserBites[]>(mockUserBites);
-  const [isViewing, setIsViewing] = useState(false);
-  const [currentUserIndex, setCurrentUserIndex] = useState(0);
-  const [currentBiteIndex, setCurrentBiteIndex] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
+export default function Layout({ children }: LayoutProps) {
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const currentUser = userBites[currentUserIndex];
-  const currentBite = currentUser?.bites[currentBiteIndex];
-
-  // Auto-advance bites
+  // Load Google Fonts
   useEffect(() => {
-    if (!isViewing || isPaused || !currentBite) return;
-
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const increment = 100 / (currentBite.duration * 10);
-        const newProgress = prev + increment;
-        
-        if (newProgress >= 100) {
-          handleNextBite();
-          return 0;
-        }
-        return newProgress;
-      });
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [isViewing, currentUserIndex, currentBiteIndex, isPaused, currentBite]);
-
-  const openUserBites = (userBite: UserBites) => {
-    // Find the user index to start from
-    const userIndex = userBites.findIndex(ub => ub.userId === userBite.userId);
-    setCurrentUserIndex(userIndex);
-    setCurrentBiteIndex(0);
-    setIsViewing(true);
-    setProgress(0);
+    const link = document.createElement('link');
+    link.href = 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&display=swap';
+    link.rel = 'stylesheet';
+    document.head.appendChild(link);
     
-    // Mark this user as viewed
-    markUserAsViewed(userBite.userId);
-  };
+    return () => {
+      document.head.removeChild(link);
+    };
+  }, []);
 
-  const closeBites = () => {
-    setIsViewing(false);
-    setCurrentUserIndex(0);
-    setCurrentBiteIndex(0);
-    setProgress(0);
-  };
-
-  const handleNextBite = () => {
-    if (!currentUser) return;
-    
-    if (currentBiteIndex < currentUser.bites.length - 1) {
-      // Move to next bite in current user's collection
-      setCurrentBiteIndex(prev => prev + 1);
-      setProgress(0);
-    } else {
-      // Finished current user's bites, move to next user
-      if (currentUserIndex < userBites.length - 1) {
-        const nextUserIndex = currentUserIndex + 1;
-        setCurrentUserIndex(nextUserIndex);
-        setCurrentBiteIndex(0);
-        setProgress(0);
-        
-        // Mark next user as viewed
-        markUserAsViewed(userBites[nextUserIndex].userId);
-      } else {
-        // No more users, close the viewer
-        closeBites();
-      }
-    }
-  };
-
-  const handlePrevBite = () => {
-    if (currentBiteIndex > 0) {
-      // Go to previous bite in current user
-      setCurrentBiteIndex(prev => prev - 1);
-      setProgress(0);
-    } else if (currentUserIndex > 0) {
-      // Go to previous user's last bite
-      const prevUserIndex = currentUserIndex - 1;
-      const prevUser = userBites[prevUserIndex];
-      setCurrentUserIndex(prevUserIndex);
-      setCurrentBiteIndex(prevUser.bites.length - 1);
-      setProgress(0);
-    }
-  };
-
-  const markUserAsViewed = (userId: string) => {
-    setUserBites(prev => prev.map(ub => 
-      ub.userId === userId ? { ...ub, isViewed: true, hasNewBites: false } : ub
-    ));
-  };
-
-  const handleLike = (biteId: string) => {
-    setUserBites(prev => prev.map(user => ({
-      ...user,
-      bites: user.bites.map(bite =>
-        bite.id === biteId 
-          ? { ...bite, isLiked: !bite.isLiked, likes: bite.isLiked ? bite.likes - 1 : bite.likes + 1 }
-          : bite
-      )
-    })));
-  };
-
-  const formatTimeAgo = (date: Date) => {
-    const now = new Date();
-    const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
-    
-    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-    return `${Math.floor(diff / 86400)}d`;
+  const handleCreatePost = () => {
+    alert('Create post functionality - implement your create post logic here');
+    setIsCreateModalOpen(false);
   };
 
   return (
-    <>
-      {/* Bites Row */}
-      <div className={`bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 ${className}`}>
-        <div className="container mx-auto px-4 py-4">
-          <h2 className="text-orange-500 text-lg font-bold mb-4 flex items-center">
-            <CustomLogo />
-            <span className="ml-3">Chef's Corner - Quick Bites</span>
-          </h2>
-          <div className="flex items-center space-x-4 overflow-x-auto pb-2 scrollbar-hide">
-            {/* Your Bite (Create) */}
-            <div className="flex-shrink-0 cursor-pointer group">
-              <div className="relative">
-                <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-full flex items-center justify-center group-hover:border-primary transition-colors">
-                  <Plus className="w-6 h-6 text-gray-400 group-hover:text-primary" />
-                </div>
-              </div>
-              <p className="text-xs text-center mt-2 max-w-[70px] truncate text-gray-600 dark:text-gray-400">
-                Your bite
-              </p>
-            </div>
+    <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-950">
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-white/95 dark:bg-gray-900/95 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:supports-[backdrop-filter]:bg-gray-900/60 border-b border-gray-200 dark:border-gray-800">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="lg:hidden p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
 
-            {/* Other User Bites */}
-            {userBites.map((userBite) => (
-              <div
-                key={userBite.userId}
-                className="flex-shrink-0 cursor-pointer group"
-                onClick={() => openUserBites(userBite)}
-              >
-                <div className={`relative p-0.5 rounded-full ${
-                  userBite.hasNewBites 
-                    ? 'bg-gradient-to-tr from-orange-400 via-red-500 to-pink-600' 
-                    : userBite.isViewed 
-                      ? 'bg-gray-300 dark:bg-gray-600' 
-                      : 'bg-gradient-to-tr from-orange-400 via-red-500 to-pink-600'
-                }`}>
-                  <Avatar className="w-16 h-16 border-2 border-white dark:border-gray-900">
-                    <AvatarImage src={userBite.avatar} alt={userBite.username} />
-                    <AvatarFallback>{userBite.username[0].toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                  {userBite.hasNewBites && (
-                    <div className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">{userBite.bites.length}</span>
-                    </div>
-                  )}
+            {/* Logo */}
+            <Link href="/" onClick={() => {}}>
+              <div className="flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-full overflow-hidden shadow-lg flex items-center justify-center bg-white">
+                  <ChefLogo />
                 </div>
-                <p className="text-xs text-center mt-2 max-w-[70px] truncate text-gray-700 dark:text-gray-300">
-                  {userBite.username}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Bite Viewer Modal */}
-      {isViewing && currentBite && (
-        <div className="fixed inset-0 bg-black z-50 flex items-center justify-center">
-          {/* Progress bars - only for CURRENT user's bites */}
-          <div className="absolute top-4 left-4 right-4 flex space-x-1 z-10">
-            {currentUser.bites.map((_, index) => (
-              <div key={index} className="flex-1 h-1 bg-white/30 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-white rounded-full transition-all duration-100"
-                  style={{
-                    width: index === currentBiteIndex ? `${progress}%` : index < currentBiteIndex ? '100%' : '0%'
+                <h1 
+                  className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent"
+                  style={{ 
+                    fontFamily: "'Playfair Display', serif",
+                    fontWeight: 700,
+                    letterSpacing: '-0.5px'
                   }}
+                >
+                  ChefSire
+                </h1>
+              </div>
+            </Link>
+            
+            {/* Search Bar */}
+            <div className="hidden md:flex flex-1 max-w-lg mx-8">
+              <div className="relative w-full">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 h-4 w-4" />
+                <Input
+                  type="text"
+                  placeholder="Search recipes, chefs, or ingredients..."
+                  className="w-full pl-10 bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 rounded-full"
                 />
               </div>
-            ))}
-          </div>
-
-          {/* Header */}
-          <div className="absolute top-6 left-4 right-4 flex items-center justify-between z-10 mt-6">
-            <div className="flex items-center space-x-3">
-              <Avatar className="w-10 h-10 border-2 border-white">
-                <AvatarImage src={currentBite.avatar} />
-                <AvatarFallback>{currentBite.username[0].toUpperCase()}</AvatarFallback>
-              </Avatar>
-              <div>
-                <p className="text-white font-medium">{currentBite.username}</p>
-                <p className="text-white/70 text-sm">
-                  {formatTimeAgo(currentBite.timestamp)}
-                </p>
-              </div>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/20"
-              onClick={closeBites}
-            >
-              <X className="w-5 h-5" />
-            </Button>
-          </div>
-
-          {/* Navigation areas */}
-          <div className="absolute inset-0 flex">
-            <div className="flex-1 cursor-pointer" onClick={handlePrevBite} />
-            <div 
-              className="flex-1 cursor-pointer" 
-              onClick={handleNextBite}
-              onMouseDown={() => setIsPaused(true)}
-              onMouseUp={() => setIsPaused(false)}
-              onMouseLeave={() => setIsPaused(false)}
-            />
-          </div>
-
-          {/* Navigation arrows (desktop) */}
-          {(currentUserIndex > 0 || currentBiteIndex > 0) && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 hidden md:flex z-20"
-              onClick={handlePrevBite}
-            >
-              <ChevronLeft className="w-6 h-6" />
-            </Button>
-          )}
-          
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 hidden md:flex z-20"
-            onClick={handleNextBite}
-          >
-            <ChevronRight className="w-6 h-6" />
-          </Button>
-
-          {/* Bite Content */}
-          <div className="relative w-full max-w-md mx-auto aspect-[9/16]">
-            <img 
-              src={currentBite.content.url}
-              alt={currentBite.caption}
-              className="w-full h-full object-cover rounded-lg"
-            />
             
-            {/* Caption and actions */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
-              <div className="flex items-start justify-between mb-2">
-                <p className="text-white text-sm flex-1 mr-4">
-                  {currentBite.caption}
-                </p>
-                <div className="flex flex-col items-center space-y-3">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-white hover:bg-white/20"
-                    onClick={() => handleLike(currentBite.id)}
-                  >
-                    <Heart 
-                      className={`w-6 h-6 ${
-                        currentBite.isLiked 
-                          ? 'fill-red-500 text-red-500' 
-                          : 'text-white'
-                      }`} 
-                    />
-                  </Button>
-                  <span className="text-white text-xs">
-                    {currentBite.likes}
-                  </span>
-                  
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-white hover:bg-white/20"
-                  >
-                    <MessageCircle className="w-6 h-6" />
-                  </Button>
-                  
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-white hover:bg-white/20"
-                  >
-                    <Share className="w-6 h-6" />
-                  </Button>
-                </div>
-              </div>
+            {/* Actions */}
+            <div className="flex items-center space-x-4">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full"
+              >
+                <Bell className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full"
+              >
+                <MessageCircle className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+              </Button>
               
-              {/* Tags */}
-              {currentBite.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {currentBite.tags.map((tag) => (
-                    <Badge key={tag} variant="secondary" className="text-xs bg-white/20 text-white border-none">
-                      #{tag}
-                    </Badge>
-                  ))}
-                </div>
-              )}
+              {/* User Dropdown */}
+              <div className="relative">
+                <button 
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className="flex items-center space-x-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full p-1 transition-colors"
+                >
+                  <Avatar className="w-8 h-8">
+                    <AvatarImage src="https://images.unsplash.com/photo-1566554273541-37a9ca77b91f" />
+                    <AvatarFallback>CA</AvatarFallback>
+                  </Avatar>
+                  <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                </button>
+                
+                {/* Dropdown Menu */}
+                {isDropdownOpen && (
+                  <>
+                    {/* Backdrop to close dropdown */}
+                    <div 
+                      className="fixed inset-0 z-10" 
+                      onClick={() => setIsDropdownOpen(false)}
+                    />
+                    
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-xl border-2 border-gray-200 dark:border-gray-700 z-20 overflow-hidden">
+                      {/* Chef's Corner Section */}
+                      <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-b-2 border-orange-200 dark:border-orange-800 px-4 py-3">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-7 h-7 bg-white rounded-full overflow-hidden shadow-md flex-shrink-0">
+                            <ChefLogo />
+                          </div>
+                          <div>
+                            <span 
+                              className="font-bold text-orange-900 dark:text-orange-100 text-base"
+                              style={{ fontFamily: "'Playfair Display', serif" }}
+                            >
+                              Chef's Corner
+                            </span>
+                            <div className="text-xs text-orange-700 dark:text-orange-300">
+                              Your culinary kingdom awaits
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Navigation Links */}
+                      <div className="py-2">
+                        <Link href="/profile" onClick={() => setIsDropdownOpen(false)}>
+                          <div className="flex items-center px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors">
+                            <User className="w-5 h-5 mr-3 text-gray-600 dark:text-gray-400" />
+                            My Profile
+                          </div>
+                        </Link>
+                        
+                        {/* Recipe Tools Submenu */}
+                        <div className="px-4 py-2">
+                          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                            Recipe Tools
+                          </div>
+                          <div className="space-y-1 ml-2">
+                            <Link href="/pantry" onClick={() => setIsDropdownOpen(false)}>
+                              <div className="flex items-center px-2 py-2 text-sm text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer transition-colors">
+                                <ChefHat className="w-4 h-4 mr-3 text-gray-600 dark:text-gray-400" />
+                                My Pantry
+                              </div>
+                            </Link>
+                            
+                            <Link href="/substitutions" onClick={() => setIsDropdownOpen(false)}>
+                              <div className="flex items-center px-2 py-2 text-sm text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer transition-colors">
+                                <Shuffle className="w-4 h-4 mr-3 text-gray-600 dark:text-gray-400" />
+                                Ingredient Substitutions
+                              </div>
+                            </Link>
+                          </div>
+                        </div>
+                        
+                        <div className="border-t border-gray-200 dark:border-gray-700 my-2"></div>
+                        
+                        <Link href="/nutrition" onClick={() => setIsDropdownOpen(false)}>
+                          <div className="flex items-center px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors">
+                            <Activity className="w-5 h-5 mr-3 text-gray-600 dark:text-gray-400" />
+                            <div>
+                              <div>Nutrition & Meal Plans</div>
+                              <div className="text-xs text-orange-600 dark:text-orange-400 font-medium">Premium</div>
+                            </div>
+                          </div>
+                        </Link>
+                        
+                        <Link href="/marketplace" onClick={() => setIsDropdownOpen(false)}>
+                          <div className="flex items-center px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors">
+                            <ShoppingCart className="w-5 h-5 mr-3 text-gray-600 dark:text-gray-400" />
+                            Marketplace
+                          </div>
+                        </Link>
+                        
+                        <div className="border-t border-gray-200 dark:border-gray-700 my-2"></div>
+                        
+                        <Link href="/settings" onClick={() => setIsDropdownOpen(false)}>
+                          <div className="flex items-center px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors">
+                            <Settings className="w-5 h-5 mr-3 text-gray-600 dark:text-gray-400" />
+                            Settings
+                          </div>
+                        </Link>
+                        
+                        <button 
+                          onClick={() => {
+                            setIsDropdownOpen(false);
+                            console.log('Logging out...');
+                          }}
+                          className="flex items-center w-full px-4 py-3 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 text-left transition-colors"
+                        >
+                          <LogOut className="w-5 h-5 mr-3" />
+                          Sign Out
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      )}
-    </>
+      </header>
+      
+      <div className="flex flex-1">
+        {/* Desktop Sidebar */}
+        <Sidebar onCreatePost={handleCreatePost} />
+        
+        {/* Main Content */}
+        <main className="flex-1 lg:ml-64 pb-16 lg:pb-0 p-4">
+          {/* Demo Content */}
+          <div className="max-w-4xl mx-auto">
+            <h2 className="text-2xl font-bold mb-4">Welcome to ChefSire</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">Your culinary social platform</p>
+            
+            {/* Sample content cards */}
+            <div className="grid gap-4">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold mb-2">Featured Recipe</h3>
+                <p className="text-gray-600 dark:text-gray-400">Discover amazing recipes from talented chefs</p>
+              </div>
+              
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold mb-2">Community Posts</h3>
+                <p className="text-gray-600 dark:text-gray-400">See what's cooking in your community</p>
+              </div>
+            </div>
+          </div>
+          
+          {/* Children would be rendered here in actual implementation */}
+          {children}
+        </main>
+      </div>
+      
+      {/* Mobile Navigation */}
+      <MobileNav onCreatePost={handleCreatePost} />
+    </div>
   );
 }
 
-export default BitesRow;
+export default Layout;
