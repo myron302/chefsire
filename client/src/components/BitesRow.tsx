@@ -369,7 +369,26 @@ export function BitesRow({ className = "" }: BitesRowProps) {
             />
           </div>
 
-          {/* Content */}
+          {/* Navigation arrows (desktop) */}
+          {(currentUserIndex > 0 || currentBiteIndex > 0) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 hidden md:flex z-20"
+              onClick={handlePrevBite}
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </Button>
+          )}
+          
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 hidden md:flex z-20"
+            onClick={handleNextBite}
+          >
+            <ChevronRight className="w-6 h-6" />
+          </Button>
           <div className="relative w-full max-w-md mx-auto aspect-[9/16]">
             <img 
               src={currentBite.content.url}
