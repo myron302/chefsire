@@ -3,6 +3,7 @@ import { Heart, MessageCircle, Share, Eye, Clock, ChevronLeft, ChevronRight, X, 
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import chefLogo from '../asset/logo.jpg'; // Add import to match layout
 
 interface Bite {
   id: string;
@@ -146,7 +147,7 @@ const mockUserBites: UserBites[] = [
 const CustomLogo = () => (
   <div className="flex items-center">
     <img 
-      src="/asset/logo.jpg" 
+      src={chefLogo} 
       alt="Logo" 
       className="w-8 h-8 rounded-full object-cover"
     />
@@ -189,14 +190,12 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   }, [isViewing, currentUserIndex, currentBiteIndex, isPaused, currentBite]);
 
   const openUserBites = (userBite: UserBites) => {
-    // Find the user index to start from
     const userIndex = userBites.findIndex(ub => ub.userId === userBite.userId);
     setCurrentUserIndex(userIndex);
     setCurrentBiteIndex(0);
     setIsViewing(true);
     setProgress(0);
     
-    // Mark this user as viewed
     markUserAsViewed(userBite.userId);
   };
 
@@ -211,33 +210,25 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     if (!currentUser) return;
     
     if (currentBiteIndex < currentUser.bites.length - 1) {
-      // Move to next bite in current user's collection
       setCurrentBiteIndex(prev => prev + 1);
       setProgress(0);
+    } else if (currentUserIndex < userBites.length - 1) {
+      const nextUserIndex = currentUserIndex + 1;
+      setCurrentUserIndex(nextUserIndex);
+      setCurrentBiteIndex(0);
+      setProgress(0);
+      
+      markUserAsViewed(userBites[nextUserIndex].userId);
     } else {
-      // Finished current user's bites, move to next user
-      if (currentUserIndex < userBites.length - 1) {
-        const nextUserIndex = currentUserIndex + 1;
-        setCurrentUserIndex(nextUserIndex);
-        setCurrentBiteIndex(0);
-        setProgress(0);
-        
-        // Mark next user as viewed
-        markUserAsViewed(userBites[nextUserIndex].userId);
-      } else {
-        // No more users, close the viewer
-        closeBites();
-      }
+      closeBites();
     }
   };
 
   const handlePrevBite = () => {
     if (currentBiteIndex > 0) {
-      // Go to previous bite in current user
       setCurrentBiteIndex(prev => prev - 1);
       setProgress(0);
     } else if (currentUserIndex > 0) {
-      // Go to previous user's last bite
       const prevUserIndex = currentUserIndex - 1;
       const prevUser = userBites[prevUserIndex];
       setCurrentUserIndex(prevUserIndex);
