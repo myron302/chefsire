@@ -239,6 +239,16 @@ export default function Layout({ children }: LayoutProps) {
               </div>
             </div>
           </div>
+
+          {/* 👇 Secondary Navigation (new code added) */}
+          <nav className="mt-2">
+            <ul className="flex space-x-6 justify-center">
+              <li><Link href="/" className="text-sm font-medium text-muted-foreground hover:text-orange-600 transition-colors">Home</Link></li>
+              <li><Link href="/potent-potables" className="text-sm font-medium text-muted-foreground hover:text-orange-600 transition-colors">Potent Potables</Link></li>
+              <li><Link href="/catering" className="text-sm font-medium text-muted-foreground hover:text-orange-600 transition-colors">Catering</Link></li>
+              <li><Link href="/store" className="text-sm font-medium text-muted-foreground hover:text-orange-600 transition-colors">Store</Link></li>
+            </ul>
+          </nav>
         </div>
       </header>
       
