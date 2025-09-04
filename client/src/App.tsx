@@ -12,7 +12,8 @@ import Pantry from "@/components/Pantry";
 import IngredientSubstitutions from "@/components/IngredientSubstitutions";
 import Marketplace from "@/components/Marketplace";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
-import CateringMarketplace from "@/pages/catering"; // Add this import
+import CateringMarketplace from "@/pages/catering";
+import PotentPotables from "@/pages/potent-potables"; // 👈 NEW IMPORT
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -32,7 +33,8 @@ function Router() {
         <Route path="/pantry" component={Pantry} />
         <Route path="/substitutions" component={IngredientSubstitutions} />
         <Route path="/marketplace" component={Marketplace} />
-        <Route path="/catering" component={CateringMarketplace} /> {/* Add this route */}
+        <Route path="/catering" component={CateringMarketplace} />
+        <Route path="/potent-potables" component={PotentPotables} /> {/* 👈 NEW ROUTE */}
         <Route path="/nutrition" component={NutritionMealPlanner} />
         
         {/* Placeholder routes */}
