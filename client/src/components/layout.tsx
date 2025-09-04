@@ -26,6 +26,9 @@ import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
 // import CreatePostModal from "@/components/create-post-modal";
 
+// Add this import for your logo image:
+import chefLogo from "./asset/logo.jpg";
+
 interface LayoutProps {
   children: React.ReactNode;
 }
@@ -61,8 +64,14 @@ export default function Layout({ children }: LayoutProps) {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <Link href="/" className="flex items-center space-x-3">
-              <div className="w-9 h-9 bg-gradient-to-br from-orange-500 to-red-600 rounded-full flex items-center justify-center shadow-lg">
-                <span className="text-white text-lg font-bold">👑</span>
+              <div className="w-9 h-9 rounded-full overflow-hidden shadow-lg flex items-center justify-center bg-white">
+                {/* Use your image here */}
+                <img 
+                  src={chefLogo} 
+                  alt="ChefSire Logo" 
+                  className="object-cover w-full h-full" 
+                  style={{ display: 'block' }}
+                />
               </div>
               <h1 
                 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent"
@@ -135,7 +144,13 @@ export default function Layout({ children }: LayoutProps) {
                       <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-b-2 border-orange-200 dark:border-orange-800 px-4 py-3">
                         <div className="flex items-center space-x-3">
                           <div className="w-7 h-7 bg-gradient-to-br from-orange-500 to-red-600 rounded-full flex items-center justify-center shadow-md">
-                            <span className="text-white text-sm font-bold">👑</span>
+                            {/* If you want the logo in dropdown too: */}
+                            <img 
+                              src={chefLogo} 
+                              alt="ChefSire Logo" 
+                              className="object-cover w-full h-full" 
+                              style={{ width: '100%', height: '100%', borderRadius: '50%' }}
+                            />
                           </div>
                           <div>
                             <span 
