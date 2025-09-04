@@ -26,7 +26,7 @@ async function seedDatabase() {
         password: "password123",
         displayName: "Chef Alexandra",
         bio: "Passionate about Italian cuisine and fresh ingredients",
-        avatar: "https://picsum.photos/seed/chef-alexandra/100/100",
+        avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=100&h=100", // Italian chef
         specialty: "Italian Cuisine",
         isChef: true,
         followersCount: 1200,
@@ -48,7 +48,7 @@ async function seedDatabase() {
         password: "password123",
         displayName: "Chef Marcus",
         bio: "Seafood specialist | Sustainable cooking advocate",
-        avatar: "https://picsum.photos/seed/chef-marcus/100/100",
+        avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=100&h=100", // Generic chef (reuse for now)
         specialty: "Seafood",
         isChef: true,
         followersCount: 890,
@@ -70,7 +70,7 @@ async function seedDatabase() {
         password: "password123",
         displayName: "Chef Isabella",
         bio: "Dessert artisan creating sweet masterpieces",
-        avatar: "https://picsum.photos/seed/chef-isabella/100/100",
+        avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=100&h=100", // Generic chef
         specialty: "Pastry & Desserts",
         isChef: true,
         followersCount: 2100,
@@ -88,7 +88,7 @@ async function seedDatabase() {
         password: "password123",
         displayName: "Chef Maria",
         bio: "Fresh pasta and authentic Italian recipes",
-        avatar: "https://picsum.photos/seed/chefmaria/100/100",
+        avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=100&h=100", // Generic chef
         specialty: "Italian Pasta",
         isChef: true,
         followersCount: 850,
@@ -110,7 +110,7 @@ async function seedDatabase() {
         password: "password123",
         displayName: "Baker Ben",
         bio: "Artisan breads and morning pastries",
-        avatar: "https://picsum.photos/seed/bakerben/100/100",
+        avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=100&h=100", // Generic chef
         specialty: "Bakery & Breads",
         isChef: true,
         followersCount: 650,
@@ -128,7 +128,7 @@ async function seedDatabase() {
         password: "password123",
         displayName: "Veggie Vibes",
         bio: "Plant-based nutrition and colorful meals",
-        avatar: "https://picsum.photos/seed/veggievibes/100/100",
+        avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=100&h=100", // Generic chef
         specialty: "Plant-Based",
         isChef: true,
         followersCount: 920,
@@ -150,7 +150,7 @@ async function seedDatabase() {
         password: "password123",
         displayName: "Dessert Queen",
         bio: "Decadent desserts and sweet creations",
-        avatar: "https://picsum.photos/seed/dessertqueen/100/100",
+        avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=100&h=100", // Generic chef
         specialty: "Desserts & Sweets",
         isChef: true,
         followersCount: 1100,
@@ -176,7 +176,7 @@ async function seedDatabase() {
         id: "post-1",
         userId: "user-1",
         caption: "Just perfected my grandmother's pasta recipe! The secret is in the fresh basil and aged parmesan. Who wants the recipe?",
-        imageUrl: "https://picsum.photos/seed/pasta-recipe/800/600",
+        imageUrl: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=800&h=600", // Pasta dish
         tags: ["pasta", "italian", "homemade"],
         likesCount: 234,
         commentsCount: 12,
@@ -187,7 +187,7 @@ async function seedDatabase() {
         id: "post-2",
         userId: "user-2",
         caption: "Honey Glazed Salmon with Roasted Vegetables - perfect balance of flavors and nutrients!",
-        imageUrl: "https://picsum.photos/seed/salmon-dish/800/600",
+        imageUrl: "https://images.unsplash.com/photo-1490818387583-1baba5e638af?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=800&h=600", // Salmon dish
         tags: ["salmon", "healthy", "seafood"],
         likesCount: 156,
         commentsCount: 23,
@@ -198,7 +198,7 @@ async function seedDatabase() {
         id: "post-3",
         userId: "user-3",
         caption: "Watch me create this decadent chocolate mousse! The technique is everything - patience pays off!",
-        imageUrl: "https://picsum.photos/seed/chocolate-mousse/800/600",
+        imageUrl: "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=800&h=600", // Chocolate dessert
         tags: ["dessert", "chocolate", "technique"],
         likesCount: 89,
         commentsCount: 7,
@@ -209,7 +209,7 @@ async function seedDatabase() {
         id: "post-4",
         userId: "user-4",
         caption: "Fresh handmade fettuccine with wild mushroom ragu. Nothing beats the texture of fresh pasta!",
-        imageUrl: "https://picsum.photos/seed/fettuccine/800/600",
+        imageUrl: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=800&h=600", // Pasta dish
         tags: ["pasta", "mushrooms", "handmade"],
         likesCount: 178,
         commentsCount: 15,
@@ -220,7 +220,7 @@ async function seedDatabase() {
         id: "post-5",
         userId: "user-5",
         caption: "Early morning sourdough batch fresh from the oven. The aroma fills the entire kitchen!",
-        imageUrl: "https://picsum.photos/seed/sourdough/800/600",
+        imageUrl: "https://images.unsplash.com/photo-1547592166-23ac421f4e1b?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=800&h=600", // Bread
         tags: ["bread", "sourdough", "artisan"],
         likesCount: 145,
         commentsCount: 9,
@@ -321,7 +321,7 @@ async function seedDatabase() {
       {
         id: "story-1",
         userId: "user-4",
-        imageUrl: "https://picsum.photos/seed/pasta-process/400/600",
+        imageUrl: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=400&h=600", // Pasta process
         caption: "Fresh pasta making process!",
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000)
@@ -329,7 +329,7 @@ async function seedDatabase() {
       {
         id: "story-2",
         userId: "user-4",
-        imageUrl: "https://picsum.photos/seed/pasta-final/400/600",
+        imageUrl: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=400&h=600", // Pasta final
         caption: "The final result! Nothing beats fresh pasta",
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         createdAt: new Date(Date.now() - 1 * 60 * 60 * 1000)
@@ -337,7 +337,7 @@ async function seedDatabase() {
       {
         id: "story-3",
         userId: "user-5",
-        imageUrl: "https://picsum.photos/seed/bread-prep/400/600",
+        imageUrl: "https://images.unsplash.com/photo-1547592166-23ac421f4e1b?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=400&h=600", // Bread prep
         caption: "Early morning bread prep",
         expiresAt: new Date(Date.now() + 20 * 60 * 60 * 1000),
         createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000)
@@ -345,7 +345,7 @@ async function seedDatabase() {
       {
         id: "story-4",
         userId: "user-6",
-        imageUrl: "https://picsum.photos/seed/veggie-prep/400/600",
+        imageUrl: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=400&h=600", // Veggie prep
         caption: "Rainbow veggie prep for the week!",
         expiresAt: new Date(Date.now() + 18 * 60 * 60 * 1000),
         createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000)
@@ -353,7 +353,7 @@ async function seedDatabase() {
       {
         id: "story-5",
         userId: "user-7",
-        imageUrl: "https://picsum.photos/seed/chocolate-dessert/400/600",
+        imageUrl: "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=400&h=600", // Chocolate dessert
         caption: "Chocolate soufflé perfection",
         expiresAt: new Date(Date.now() + 16 * 60 * 60 * 1000),
         createdAt: new Date(Date.now() - 8 * 60 * 60 * 1000)
