@@ -9,7 +9,8 @@ import {
   ShoppingCart,
   Activity,
   ChevronRight,
-  Utensils // Catering icon
+  Utensils, // Catering icon
+  GlassWater // 👈 icon for Potent Potables (you can swap this if you prefer another)
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -27,6 +28,7 @@ const navigation = [
       { name: "Substitutions", href: "/substitutions", icon: Shuffle },
     ]
   },
+  { name: "Potent Potables", href: "/potent-potables", icon: GlassWater }, // 👈 Added new link
   { name: "Catering", href: "/catering", icon: Utensils },
   { name: "Marketplace", href: "/marketplace", icon: ShoppingCart },
   { name: "Nutrition", href: "/nutrition", icon: Activity, isPremium: true },
