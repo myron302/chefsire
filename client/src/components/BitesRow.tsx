@@ -148,16 +148,19 @@ interface BitesRowProps {
 
 export function BitesRow({ className = "" }: BitesRowProps) {
   const [userBites, setUserBites] = useState<UserBites[]>(mockUserBites);
-  const [selectedUserBites, setSelectedUserBites] = useState<UserBites | null>(null);
+  const [isViewing, setIsViewing] = useState(false);
+  const [currentUserIndex, setCurrentUserIndex] = useState(0);
   const [currentBiteIndex, setCurrentBiteIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
 
+  const currentUser = userBites[currentUserIndex];
+  const currentBite = currentUser?.bites[currentBiteIndex];
+
   // Auto-advance bites
   useEffect(() => {
-    if (!selectedUserBites || isPaused) return;
+    if (!isViewing || isPaused || !currentBite) return;
 
-    const currentBite = selectedUserBites.bites[currentBiteIndex];
     const interval = setInterval(() => {
       setProgress((prev) => {
         const increment = 100 / (currentBite.duration * 10);
@@ -172,53 +175,81 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     }, 100);
 
     return () => clearInterval(interval);
-  }, [selectedUserBites, currentBiteIndex, isPaused]);
+  }, [isViewing, currentUserIndex, currentBiteIndex, isPaused, currentBite]);
 
   const openUserBites = (userBite: UserBites) => {
-    setSelectedUserBites(userBite);
+    // Find the user index to start from
+    const userIndex = userBites.findIndex(ub => ub.userId === userBite.userId);
+    setCurrentUserIndex(userIndex);
     setCurrentBiteIndex(0);
+    setIsViewing(true);
     setProgress(0);
     
-    // Mark user's bites as viewed
-    setUserBites(prev => prev.map(ub => 
-      ub.userId === userBite.userId ? { ...ub, isViewed: true, hasNewBites: false } : ub
-    ));
+    // Mark this user as viewed
+    markUserAsViewed(userBite.userId);
   };
 
   const closeBites = () => {
-    setSelectedUserBites(null);
+    setIsViewing(false);
+    setCurrentUserIndex(0);
     setCurrentBiteIndex(0);
     setProgress(0);
   };
 
   const handleNextBite = () => {
-    if (!selectedUserBites) return;
+    if (!currentUser) return;
     
-    if (currentBiteIndex < selectedUserBites.bites.length - 1) {
+    if (currentBiteIndex < currentUser.bites.length - 1) {
+      // Move to next bite in current user's collection
       setCurrentBiteIndex(prev => prev + 1);
       setProgress(0);
     } else {
-      closeBites();
+      // Finished current user's bites, move to next user
+      if (currentUserIndex < userBites.length - 1) {
+        const nextUserIndex = currentUserIndex + 1;
+        setCurrentUserIndex(nextUserIndex);
+        setCurrentBiteIndex(0);
+        setProgress(0);
+        
+        // Mark next user as viewed
+        markUserAsViewed(userBites[nextUserIndex].userId);
+      } else {
+        // No more users, close the viewer
+        closeBites();
+      }
     }
   };
 
   const handlePrevBite = () => {
     if (currentBiteIndex > 0) {
+      // Go to previous bite in current user
       setCurrentBiteIndex(prev => prev - 1);
+      setProgress(0);
+    } else if (currentUserIndex > 0) {
+      // Go to previous user's last bite
+      const prevUserIndex = currentUserIndex - 1;
+      const prevUser = userBites[prevUserIndex];
+      setCurrentUserIndex(prevUserIndex);
+      setCurrentBiteIndex(prevUser.bites.length - 1);
       setProgress(0);
     }
   };
 
+  const markUserAsViewed = (userId: string) => {
+    setUserBites(prev => prev.map(ub => 
+      ub.userId === userId ? { ...ub, isViewed: true, hasNewBites: false } : ub
+    ));
+  };
+
   const handleLike = (biteId: string) => {
-    if (!selectedUserBites) return;
-    
-    const updatedBites = selectedUserBites.bites.map(bite =>
-      bite.id === biteId 
-        ? { ...bite, isLiked: !bite.isLiked, likes: bite.isLiked ? bite.likes - 1 : bite.likes + 1 }
-        : bite
-    );
-    
-    setSelectedUserBites({ ...selectedUserBites, bites: updatedBites });
+    setUserBites(prev => prev.map(user => ({
+      ...user,
+      bites: user.bites.map(bite =>
+        bite.id === biteId 
+          ? { ...bite, isLiked: !bite.isLiked, likes: bite.isLiked ? bite.likes - 1 : bite.likes + 1 }
+          : bite
+      )
+    })));
   };
 
   const formatTimeAgo = (date: Date) => {
@@ -228,6 +259,23 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     if (diff < 3600) return `${Math.floor(diff / 60)}m`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
     return `${Math.floor(diff / 86400)}d`;
+  };
+
+  // Calculate progress for each user segment
+  const getUserProgress = (userIndex: number) => {
+    if (userIndex < currentUserIndex) {
+      return 100; // Completed users
+    } else if (userIndex === currentUserIndex) {
+      // Current user - calculate based on bite progress
+      const user = userBites[userIndex];
+      const completedBites = currentBiteIndex;
+      const totalBites = user.bites.length;
+      const currentBiteProgress = progress;
+      
+      return ((completedBites + (currentBiteProgress / 100)) / totalBites) * 100;
+    } else {
+      return 0; // Future users
+    }
   };
 
   return (
@@ -286,11 +334,11 @@ export function BitesRow({ className = "" }: BitesRowProps) {
       </div>
 
       {/* Bite Viewer Modal */}
-      {selectedUserBites && (
+      {isViewing && currentBite && (
         <div className="fixed inset-0 bg-black z-50 flex items-center justify-center">
-          {/* Progress bars */}
+          {/* Progress bars - only for CURRENT user's bites */}
           <div className="absolute top-4 left-4 right-4 flex space-x-1 z-10">
-            {selectedUserBites.bites.map((_, index) => (
+            {currentUser.bites.map((_, index) => (
               <div key={index} className="flex-1 h-1 bg-white/30 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-white rounded-full transition-all duration-100"
@@ -306,13 +354,13 @@ export function BitesRow({ className = "" }: BitesRowProps) {
           <div className="absolute top-6 left-4 right-4 flex items-center justify-between z-10 mt-6">
             <div className="flex items-center space-x-3">
               <Avatar className="w-10 h-10 border-2 border-white">
-                <AvatarImage src={selectedUserBites.avatar} />
-                <AvatarFallback>{selectedUserBites.username[0].toUpperCase()}</AvatarFallback>
+                <AvatarImage src={currentBite.avatar} />
+                <AvatarFallback>{currentBite.username[0].toUpperCase()}</AvatarFallback>
               </Avatar>
               <div>
-                <p className="text-white font-medium">{selectedUserBites.username}</p>
+                <p className="text-white font-medium">{currentBite.username}</p>
                 <p className="text-white/70 text-sm">
-                  {formatTimeAgo(selectedUserBites.bites[currentBiteIndex].timestamp)}
+                  {formatTimeAgo(currentBite.timestamp)}
                 </p>
               </div>
             </div>
@@ -341,8 +389,8 @@ export function BitesRow({ className = "" }: BitesRowProps) {
           {/* Content */}
           <div className="relative w-full max-w-md mx-auto aspect-[9/16]">
             <img 
-              src={selectedUserBites.bites[currentBiteIndex].content.url}
-              alt={selectedUserBites.bites[currentBiteIndex].caption}
+              src={currentBite.content.url}
+              alt={currentBite.caption}
               className="w-full h-full object-cover rounded-lg"
             />
             
@@ -350,25 +398,25 @@ export function BitesRow({ className = "" }: BitesRowProps) {
             <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
               <div className="flex items-start justify-between mb-2">
                 <p className="text-white text-sm flex-1 mr-4">
-                  {selectedUserBites.bites[currentBiteIndex].caption}
+                  {currentBite.caption}
                 </p>
                 <div className="flex flex-col items-center space-y-3">
                   <Button
                     variant="ghost"
                     size="icon"
                     className="text-white hover:bg-white/20"
-                    onClick={() => handleLike(selectedUserBites.bites[currentBiteIndex].id)}
+                    onClick={() => handleLike(currentBite.id)}
                   >
                     <Heart 
                       className={`w-6 h-6 ${
-                        selectedUserBites.bites[currentBiteIndex].isLiked 
+                        currentBite.isLiked 
                           ? 'fill-red-500 text-red-500' 
                           : 'text-white'
                       }`} 
                     />
                   </Button>
                   <span className="text-white text-xs">
-                    {selectedUserBites.bites[currentBiteIndex].likes}
+                    {currentBite.likes}
                   </span>
                   
                   <Button
@@ -390,9 +438,9 @@ export function BitesRow({ className = "" }: BitesRowProps) {
               </div>
               
               {/* Tags */}
-              {selectedUserBites.bites[currentBiteIndex].tags.length > 0 && (
+              {currentBite.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
-                  {selectedUserBites.bites[currentBiteIndex].tags.map((tag) => (
+                  {currentBite.tags.map((tag) => (
                     <Badge key={tag} variant="secondary" className="text-xs bg-white/20 text-white border-none">
                       #{tag}
                     </Badge>
