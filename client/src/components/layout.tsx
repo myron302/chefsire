@@ -26,8 +26,8 @@ import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
 // import CreatePostModal from "@/components/create-post-modal";
 
-// Add this import for your logo image:
-import chefLogo from "./asset/logo.jpg";
+// Correct import for logo image:
+import chefLogo from "../asset/logo.jpg";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -65,11 +65,10 @@ export default function Layout({ children }: LayoutProps) {
             {/* Logo */}
             <Link href="/" className="flex items-center space-x-3">
               <div className="w-9 h-9 rounded-full overflow-hidden shadow-lg flex items-center justify-center bg-white">
-                {/* Use your image here */}
                 <img 
                   src={chefLogo} 
                   alt="ChefSire Logo" 
-                  className="object-cover w-full h-full" 
+                  className="object-cover w-full h-full"
                   style={{ display: 'block' }}
                 />
               </div>
@@ -148,7 +147,7 @@ export default function Layout({ children }: LayoutProps) {
                             <img 
                               src={chefLogo} 
                               alt="ChefSire Logo" 
-                              className="object-cover w-full h-full" 
+                              className="object-cover w-full h-full"
                               style={{ width: '100%', height: '100%', borderRadius: '50%' }}
                             />
                           </div>
