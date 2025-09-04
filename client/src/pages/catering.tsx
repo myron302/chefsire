@@ -14,7 +14,6 @@ import {
   MapPin, 
   Users, 
   Clock, 
-  Star, 
   Filter,
   Search,
   ChefHat,
@@ -22,6 +21,45 @@ import {
   Mail,
   Calendar as CalendarIcon
 } from 'lucide-react';
+
+// Spoon Rating Component
+const SpoonRating = ({ rating, size = 'w-4 h-4' }: { rating: number; size?: string }) => {
+  const spoons = [];
+  const fullSpoons = Math.floor(rating);
+  const hasHalfSpoon = rating % 1 !== 0;
+
+  for (let i = 0; i < 5; i++) {
+    if (i < fullSpoons) {
+      // Full spoon
+      spoons.push(
+        <svg key={i} className={`${size} text-orange-400 fill-current`} viewBox="0 0 24 24">
+          <path d="M12.5 2c-1.9 0-3.5 1.6-3.5 3.5 0 1.3.7 2.4 1.8 3l-.8 13.5c0 .6.4 1 1 1h3c.6 0 1-.4 1-1L14.2 8.5c1.1-.6 1.8-1.7 1.8-3C16 3.6 14.4 2 12.5 2z"/>
+        </svg>
+      );
+    } else if (i === fullSpoons && hasHalfSpoon) {
+      // Half spoon
+      spoons.push(
+        <div key={i} className="relative">
+          <svg className={`${size} text-gray-300`} viewBox="0 0 24 24">
+            <path d="M12.5 2c-1.9 0-3.5 1.6-3.5 3.5 0 1.3.7 2.4 1.8 3l-.8 13.5c0 .6.4 1 1 1h3c.6 0 1-.4 1-1L14.2 8.5c1.1-.6 1.8-1.7 1.8-3C16 3.6 14.4 2 12.5 2z"/>
+          </svg>
+          <svg className={`${size} text-orange-400 fill-current absolute top-0 left-0`} viewBox="0 0 24 24" style={{clipPath: 'inset(0 50% 0 0)'}}>
+            <path d="M12.5 2c-1.9 0-3.5 1.6-3.5 3.5 0 1.3.7 2.4 1.8 3l-.8 13.5c0 .6.4 1 1 1h3c.6 0 1-.4 1-1L14.2 8.5c1.1-.6 1.8-1.7 1.8-3C16 3.6 14.4 2 12.5 2z"/>
+          </svg>
+        </div>
+      );
+    } else {
+      // Empty spoon
+      spoons.push(
+        <svg key={i} className={`${size} text-gray-300`} viewBox="0 0 24 24">
+          <path d="M12.5 2c-1.9 0-3.5 1.6-3.5 3.5 0 1.3.7 2.4 1.8 3l-.8 13.5c0 .6.4 1 1 1h3c.6 0 1-.4 1-1L14.2 8.5c1.1-.6 1.8-1.7 1.8-3C16 3.6 14.4 2 12.5 2z"/>
+        </svg>
+      );
+    }
+  }
+
+  return <div className="flex items-center space-x-1">{spoons}</div>;
+};
 
 interface CateringChef {
   id: string;
