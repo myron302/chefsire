@@ -24,9 +24,7 @@ import {
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
-// import CreatePostModal from "@/components/create-post-modal";
-
-// Correct import for logo image:
+// Import logo from the current location
 import chefLogo from "../asset/logo.jpg";
 
 interface LayoutProps {
@@ -142,8 +140,7 @@ export default function Layout({ children }: LayoutProps) {
                       {/* Chef's Corner Section */}
                       <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-b-2 border-orange-200 dark:border-orange-800 px-4 py-3">
                         <div className="flex items-center space-x-3">
-                          <div className="w-7 h-7 bg-gradient-to-br from-orange-500 to-red-600 rounded-full flex items-center justify-center shadow-md">
-                            {/* If you want the logo in dropdown too: */}
+                          <div className="w-7 h-7 rounded-full overflow-hidden bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-md">
                             <img 
                               src={chefLogo} 
                               alt="ChefSire Logo" 
