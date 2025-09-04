@@ -3,6 +3,7 @@ import { Heart, MessageCircle, Share, Eye, Clock, ChevronLeft, ChevronRight, X, 
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import Image from "next/image";
 
 interface Bite {
   id: string;
@@ -32,12 +33,12 @@ interface UserBites {
   isViewed: boolean;
 }
 
-// Updated mock data with seed-aligned URLs
+// Reverted mock data with placeholder URLs
 const mockUserBites: UserBites[] = [
   {
     userId: "1",
     username: "chefmaria",
-    avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=60&h=60",
+    avatar: "/api/placeholder/60/60",
     hasNewBites: true,
     isViewed: false,
     bites: [
@@ -45,8 +46,8 @@ const mockUserBites: UserBites[] = [
         id: "1",
         userId: "1",
         username: "chefmaria",
-        avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=40&h=40",
-        content: { type: "image", url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=400&h=600" },
+        avatar: "/api/placeholder/40/40",
+        content: { type: "image", url: "/api/placeholder/400/600" },
         caption: "🍝 Fresh pasta making process!",
         timestamp: new Date("2024-01-15T10:30:00Z"),
         duration: 5,
@@ -59,8 +60,8 @@ const mockUserBites: UserBites[] = [
         id: "2",
         userId: "1",
         username: "chefmaria",
-        avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=40&h=40",
-        content: { type: "image", url: "https://images.unsplash.com/photo-1547592166-23ac421f4e1b?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=400&h=600" },
+        avatar: "/api/placeholder/40/40",
+        content: { type: "image", url: "/api/placeholder/400/600" },
         caption: "The final result! Nothing beats fresh pasta 😋",
         timestamp: new Date("2024-01-15T10:35:00Z"),
         duration: 5,
@@ -74,7 +75,7 @@ const mockUserBites: UserBites[] = [
   {
     userId: "2",
     username: "bakerben",
-    avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=60&h=60",
+    avatar: "/api/placeholder/60/60",
     hasNewBites: false,
     isViewed: true,
     bites: [
@@ -82,8 +83,8 @@ const mockUserBites: UserBites[] = [
         id: "3",
         userId: "2",
         username: "bakerben",
-        avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=40&h=40",
-        content: { type: "image", url: "https://images.unsplash.com/photo-1546548970-717b2486a8aa?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=400&h=600" },
+        avatar: "/api/placeholder/40/40",
+        content: { type: "image", url: "/api/placeholder/400/600" },
         caption: "🥖 Early morning bread prep",
         timestamp: new Date("2024-01-15T06:00:00Z"),
         duration: 4,
@@ -97,7 +98,7 @@ const mockUserBites: UserBites[] = [
   {
     userId: "3",
     username: "veggievibes",
-    avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=60&h=60",
+    avatar: "/api/placeholder/60/60",
     hasNewBites: true,
     isViewed: false,
     bites: [
@@ -105,8 +106,8 @@ const mockUserBites: UserBites[] = [
         id: "4",
         userId: "3",
         username: "veggievibes",
-        avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=40&h=40",
-        content: { type: "image", url: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=400&h=600" },
+        avatar: "/api/placeholder/40/40",
+        content: { type: "image", url: "/api/placeholder/400/600" },
         caption: "Rainbow veggie prep! 🌈",
         timestamp: new Date("2024-01-14T15:20:00Z"),
         duration: 6,
@@ -120,7 +121,7 @@ const mockUserBites: UserBites[] = [
   {
     userId: "4",
     username: "dessertqueen",
-    avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=60&h=60",
+    avatar: "/api/placeholder/60/60",
     hasNewBites: true,
     isViewed: false,
     bites: [
@@ -128,8 +129,8 @@ const mockUserBites: UserBites[] = [
         id: "5",
         userId: "4",
         username: "dessertqueen",
-        avatar: "https://images.unsplash.com/photo-1505576399279-568717e7e7f0?crop=faces&fit=crop&w=40&h=40",
-        content: { type: "image", url: "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=400&h=600" },
+        avatar: "/api/placeholder/40/40",
+        content: { type: "image", url: "/api/placeholder/400/600" },
         caption: "Chocolate soufflé perfection ✨",
         timestamp: new Date("2024-01-15T14:20:00Z"),
         duration: 4,
@@ -261,8 +262,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
       <div className={`bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 ${className}`}>
         <div className="container mx-auto px-4 py-4">
           <h2 className="text-orange-500 text-lg font-bold mb-4 flex items-center">
-            {/* Replace crown with new logo */}
-            <img src="https://example.com/new-logo.png" alt="Chefsire Logo" className="h-6 w-auto mr-2" />
+            <Image src="/assets/chefsire-logo.png" alt="Chefsire Logo" className="h-6 w-auto mr-2" />
             Chef's Corner - Quick Bites
           </h2>
           <div className="flex items-center space-x-4 overflow-x-auto pb-2 scrollbar-hide">
