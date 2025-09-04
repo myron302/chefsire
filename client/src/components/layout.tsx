@@ -267,11 +267,13 @@ function Layout({ children }: LayoutProps) {
       {/* Mobile Navigation */}
       <MobileNav onCreatePost={handleCreatePost} />
       
-      {/* Create Post Modal */}
+      {/* Create Post Modal - Component needs to be created */}
+      {/* 
       <CreatePostModal 
         open={isCreateModalOpen} 
         onOpenChange={setIsCreateModalOpen}
       />
+      */}
     </div>
   );
 }
