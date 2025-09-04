@@ -142,6 +142,17 @@ const mockUserBites: UserBites[] = [
   }
 ];
 
+// Custom Logo Component
+const CustomLogo = () => (
+  <div className="flex items-center">
+    <img 
+      src="/src/asset/logo.jpg" 
+      alt="Logo" 
+      className="w-8 h-8 rounded-full object-cover"
+    />
+  </div>
+);
+
 interface BitesRowProps {
   className?: string;
 }
@@ -267,8 +278,8 @@ export function BitesRow({ className = "" }: BitesRowProps) {
       <div className={`bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 ${className}`}>
         <div className="container mx-auto px-4 py-4">
           <h2 className="text-orange-500 text-lg font-bold mb-4 flex items-center">
-            <span className="mr-2">👑</span>
-            Chef's Corner - Quick Bites
+            <CustomLogo />
+            <span className="ml-3">Chef's Corner - Quick Bites</span>
           </h2>
           <div className="flex items-center space-x-4 overflow-x-auto pb-2 scrollbar-hide">
             {/* Your Bite (Create) */}
@@ -389,6 +400,8 @@ export function BitesRow({ className = "" }: BitesRowProps) {
           >
             <ChevronRight className="w-6 h-6" />
           </Button>
+
+          {/* Bite Content */}
           <div className="relative w-full max-w-md mx-auto aspect-[9/16]">
             <img 
               src={currentBite.content.url}
