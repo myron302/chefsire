@@ -182,6 +182,7 @@ export function CateringMarketplace() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('all');
   const [selectedPriceRange, setSelectedPriceRange] = useState('all');
+  const [userZipCode, setUserZipCode] = useState(''); // New state for user zip code
   const [bookingForm, setBookingForm] = useState<CateringBookingForm>({
     eventDate: undefined,
     eventType: '',
@@ -192,21 +193,26 @@ export function CateringMarketplace() {
     contactPhone: ''
   });
 
+  // Simplified distance check: assumes chefs are available if zip codes match or are within a "range"
+  const isWithinRadius = (chefZip: string, userZip: string, radius: number) => {
+    if (!userZip) return true; // Show all if no zip entered
+    return chefZip === userZip || Math.abs(parseInt(chefZip) - parseInt(userZip)) <= radius / 10; // Rough approximation
+  };
+
   const filteredChefs = mockCateringChefs.filter(chef => {
     const matchesSearch = chef.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          chef.specialty.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSpecialty = selectedSpecialty === 'all' || chef.specialty.toLowerCase().includes(selectedSpecialty.toLowerCase());
     const matchesPriceRange = selectedPriceRange === 'all' || chef.priceRange === selectedPriceRange;
+    const matchesRadius = isWithinRadius(chef.cateringLocation, userZipCode, chef.cateringRadius);
     
-    return matchesSearch && matchesSpecialty && matchesPriceRange;
+    return matchesSearch && matchesSpecialty && matchesPriceRange && matchesRadius && chef.cateringAvailable;
   });
 
   const handleBookingSubmit = (chefId: string) => {
     console.log('Booking submitted for chef:', chefId, bookingForm);
-    // Here you would typically send the booking request to your API
     alert('Catering request submitted! The chef will contact you soon.');
     
-    // Reset form
     setBookingForm({
       eventDate: undefined,
       eventType: '',
@@ -228,7 +234,7 @@ export function CateringMarketplace() {
 
       {/* Search and Filters */}
       <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
             <Input
@@ -263,6 +269,17 @@ export function CateringMarketplace() {
               <SelectItem value="$$$$">$$$$ - Premium</SelectItem>
             </SelectContent>
           </Select>
+
+          <div>
+            <Label>Zip Code</Label>
+            <Input
+              type="text"
+              placeholder="Enter your zip code (e.g., 06360)"
+              value={userZipCode}
+              onChange={(e) => setUserZipCode(e.target.value)}
+              maxLength={5}
+            />
+          </div>
 
           <Button className="w-full">
             <Filter className="w-4 h-4 mr-2" />
