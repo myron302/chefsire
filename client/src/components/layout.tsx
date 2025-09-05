@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   Search, Bell, MessageCircle, User, ChevronDown,
   ChefHat, Shuffle, Activity, ShoppingCart, Settings, LogOut,
-  Home, Compass, BookOpen, GlassWater, Utensils
+  Home, Compass, BookOpen, GlassWater, Utensils, Heart
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
@@ -144,12 +144,22 @@ function Layout({ children }: LayoutProps) {
                                 Potent Potables
                               </div>
                             </Link>
-                            <Link href="/catering" onClick={() => setIsDropdownOpen(false)}>
-                              <div className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-                                <Utensils className="w-4 h-4 mr-3" />
-                                Catering
-                              </div>
-                            </Link>
+                            
+                            {/* Catering with submenu */}
+                            <div className="space-y-1">
+                              <Link href="/catering" onClick={() => setIsDropdownOpen(false)}>
+                                <div className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                  <Utensils className="w-4 h-4 mr-3" />
+                                  Catering
+                                </div>
+                              </Link>
+                              <Link href="/catering/wedding-planning" onClick={() => setIsDropdownOpen(false)}>
+                                <div className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm">
+                                  <Heart className="w-3 h-3 mr-2" />
+                                  Wedding Planning
+                                </div>
+                              </Link>
+                            </div>
                           </div>
                         </div>
                         
