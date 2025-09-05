@@ -1,5 +1,4 @@
 import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -13,8 +12,10 @@ import IngredientSubstitutions from "@/components/IngredientSubstitutions";
 import Marketplace from "@/components/Marketplace";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import CateringMarketplace from "@/pages/catering";
+import WeddingPlanning from "@/pages/wedding-planning"; // New import
 import PotentPotables from "@/pages/potent-potables";
 import NotFound from "@/pages/not-found";
+import { queryClient } from "./lib/queryClient";
 
 function Router() {
   return (
@@ -34,6 +35,7 @@ function Router() {
         <Route path="/substitutions" component={IngredientSubstitutions} />
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/catering" component={CateringMarketplace} />
+        <Route path="/catering/wedding-planning" component={WeddingPlanning} /> {/* New route */}
         <Route path="/potent-potables" component={PotentPotables} />
         <Route path="/nutrition" component={NutritionMealPlanner} />
         
