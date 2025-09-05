@@ -9,8 +9,9 @@ import {
   ShoppingCart,
   Activity,
   ChevronRight,
-  Utensils, // Catering icon
-  GlassWater // 👈 icon for Potent Potables (you can swap this if you prefer another)
+  Utensils,
+  GlassWater,
+  Heart
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -28,8 +29,17 @@ const navigation = [
       { name: "Substitutions", href: "/substitutions", icon: Shuffle },
     ]
   },
-  { name: "Potent Potables", href: "/potent-potables", icon: GlassWater }, // 👈 Added new link
-  { name: "Catering", href: "/catering", icon: Utensils },
+  { name: "Potent Potables", href: "/potent-potables", icon: GlassWater },
+  { 
+    name: "Catering", 
+    href: "/catering", 
+    icon: Utensils,
+    hasSubmenu: true,
+    submenu: [
+      { name: "Browse Caterers", href: "/catering", icon: Utensils },
+      { name: "Wedding Planning", href: "/catering/wedding-planning", icon: Heart },
+    ]
+  },
   { name: "Marketplace", href: "/marketplace", icon: ShoppingCart },
   { name: "Nutrition", href: "/nutrition", icon: Activity, isPremium: true },
   { name: "Profile", href: "/profile", icon: User },
@@ -42,17 +52,19 @@ export default function Sidebar({ onCreatePost }) {
         {navigation.map(item =>
           item.hasSubmenu ? (
             <div key={item.name}>
-              <div className="flex items-center mb-1">
-                <item.icon className="w-5 h-5 mr-2" />
-                <span className="font-bold">{item.name}</span>
-                <ChevronRight className="w-4 h-4 ml-auto" />
-              </div>
+              <Link href={item.href}>
+                <div className="flex items-center mb-1 hover:bg-muted rounded px-2 py-1 cursor-pointer">
+                  <item.icon className="w-5 h-5 mr-2" />
+                  <span className="font-bold">{item.name}</span>
+                  <ChevronRight className="w-4 h-4 ml-auto" />
+                </div>
+              </Link>
               <div className="ml-6 space-y-1">
                 {item.submenu.map(sub =>
                   <Link key={sub.name} href={sub.href}>
                     <div className="flex items-center py-1 hover:bg-muted rounded px-2 cursor-pointer">
                       <sub.icon className="w-4 h-4 mr-2" />
-                      <span>{sub.name}</span>
+                      <span className="text-sm">{sub.name}</span>
                     </div>
                   </Link>
                 )}
