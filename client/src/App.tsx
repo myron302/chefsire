@@ -14,7 +14,6 @@ import Marketplace from "@/components/Marketplace";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import CateringMarketplace from "@/pages/catering";
 import PotentPotables from "@/pages/potent-potables";
-import WeddingPlanner from "@/pages/wedding-planner"; // Kept from your reference
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -36,7 +35,6 @@ function Router() {
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/catering" component={CateringMarketplace} />
         <Route path="/potent-potables" component={PotentPotables} />
-        <Route path="/wedding-planner" component={WeddingPlanner} /> {/* Kept from your reference */}
         <Route path="/nutrition" component={NutritionMealPlanner} />
         
         {/* Placeholder routes */}
