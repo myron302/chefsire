@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   Search, Bell, MessageCircle, User, ChevronDown,
-  ChefHat, Shuffle, Activity, ShoppingCart, Settings, LogOut
+  ChefHat, Shuffle, Activity, ShoppingCart, Settings, LogOut,
+  Home, Compass, BookOpen, GlassWater, Utensils
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
@@ -113,12 +114,54 @@ function Layout({ children }: LayoutProps) {
 
                       {/* Links */}
                       <div className="py-2">
+                        {/* Navigation Links */}
+                        <div className="px-4 py-2">
+                          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
+                            Navigation
+                          </div>
+                          <div className="space-y-1 ml-2">
+                            <Link href="/feed" onClick={() => setIsDropdownOpen(false)}>
+                              <div className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <Home className="w-4 h-4 mr-3" />
+                                Feed
+                              </div>
+                            </Link>
+                            <Link href="/explore" onClick={() => setIsDropdownOpen(false)}>
+                              <div className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <Compass className="w-4 h-4 mr-3" />
+                                Explore
+                              </div>
+                            </Link>
+                            <Link href="/recipes" onClick={() => setIsDropdownOpen(false)}>
+                              <div className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <BookOpen className="w-4 h-4 mr-3" />
+                                Browse Recipes
+                              </div>
+                            </Link>
+                            <Link href="/potent-potables" onClick={() => setIsDropdownOpen(false)}>
+                              <div className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <GlassWater className="w-4 h-4 mr-3" />
+                                Potent Potables
+                              </div>
+                            </Link>
+                            <Link href="/catering" onClick={() => setIsDropdownOpen(false)}>
+                              <div className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <Utensils className="w-4 h-4 mr-3" />
+                                Catering
+                              </div>
+                            </Link>
+                          </div>
+                        </div>
+                        
+                        <div className="border-t my-2" />
+                        
                         <Link href="/profile" onClick={() => setIsDropdownOpen(false)}>
                           <div className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
                             <User className="w-5 h-5 mr-3" />
                             My Profile
                           </div>
                         </Link>
+                        
                         <div className="px-4 py-2">
                           <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
                             Recipe Tools
@@ -138,26 +181,33 @@ function Layout({ children }: LayoutProps) {
                             </Link>
                           </div>
                         </div>
+                        
                         <div className="border-t my-2" />
-                        <Link href="/nutrition" onClick={() => setIsDropdownOpen(false)}>
-                          <div className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
-                            <Activity className="w-5 h-5 mr-3" />
-                            Nutrition & Meal Plans
-                          </div>
-                        </Link>
+                        
                         <Link href="/marketplace" onClick={() => setIsDropdownOpen(false)}>
                           <div className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
                             <ShoppingCart className="w-5 h-5 mr-3" />
                             Marketplace
                           </div>
                         </Link>
+                        
+                        <Link href="/nutrition" onClick={() => setIsDropdownOpen(false)}>
+                          <div className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
+                            <Activity className="w-5 h-5 mr-3" />
+                            Nutrition & Meal Plans
+                            <span className="ml-auto px-2 py-0.5 bg-yellow-300 dark:bg-yellow-600 text-xs rounded">Premium</span>
+                          </div>
+                        </Link>
+                        
                         <div className="border-t my-2" />
+                        
                         <Link href="/settings" onClick={() => setIsDropdownOpen(false)}>
                           <div className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
                             <Settings className="w-5 h-5 mr-3" />
                             Settings
                           </div>
                         </Link>
+                        
                         <button
                           onClick={() => {
                             setIsDropdownOpen(false);
