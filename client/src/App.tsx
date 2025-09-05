@@ -13,7 +13,9 @@ import IngredientSubstitutions from "@/components/IngredientSubstitutions";
 import Marketplace from "@/components/Marketplace";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import CateringMarketplace from "@/pages/catering";
-import PotentPotables from "@/pages/potent-potables"; // 👈 NEW IMPORT
+import PotentPotables from "@/pages/potent-potables";
+import LocalReviews from "@/pages/local-reviews"; // 👈 NEW IMPORT for Local Reviews
+import WeddingPlanner from "@/pages/wedding-planner"; // 👈 NEW IMPORT for Wedding Planner
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -34,7 +36,9 @@ function Router() {
         <Route path="/substitutions" component={IngredientSubstitutions} />
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/catering" component={CateringMarketplace} />
-        <Route path="/potent-potables" component={PotentPotables} /> {/* 👈 NEW ROUTE */}
+        <Route path="/potent-potables" component={PotentPotables} />
+        <Route path="/local-reviews" component={LocalReviews} /> {/* 👈 NEW ROUTE for Local Reviews */}
+        <Route path="/wedding-planner" component={WeddingPlanner} /> {/* 👈 NEW ROUTE for Wedding Planner */}
         <Route path="/nutrition" component={NutritionMealPlanner} />
         
         {/* Placeholder routes */}
