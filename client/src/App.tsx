@@ -15,39 +15,62 @@ import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import CateringMarketplace from "@/pages/catering";
 import PotentPotables from "@/pages/potent-potables";
 import WeddingPlanning from "@/pages/wedding-planning";
-import SubstitutionsPage from "@/pages/substitutions";      // ✅ new wrapper page
-import AISubstitutionPage from "@/pages/ai-substitution";  // ✅ new wrapper page
 import NotFound from "@/pages/not-found";
+
+// NEW: AI Substitution page import (ensure this file exists)
+import AISubstitutionPage from "@/pages/ai-substitution";
+
+import ErrorBoundary from "@/components/ErrorBoundary";
+import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole";
 
 function Router() {
   return (
     <Layout>
+      {shouldShowDebugConsole() && <DebugConsole />}
+
       <Switch>
         {/* Most specific routes first */}
         <Route path="/profile/:userId?" component={Profile} />
-        
+
         {/* Main navigation routes */}
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
         <Route path="/explore" component={Explore} />
         <Route path="/create" component={CreatePost} />
-        
-        {/* Feature routes */}
-        <Route path="/pantry" component={Pantry} />
-        <Route path="/substitutions" component={SubstitutionsPage} />       {/* ✅ new */}
-        <Route path="/ai-substitution" component={AISubstitutionPage} />    {/* ✅ new */}
+
+        {/* Feature routes (wrapped so errors show on-screen) */}
+        <Route path="/pantry">
+          <ErrorBoundary>
+            <Pantry />
+          </ErrorBoundary>
+        </Route>
+
+        <Route path="/substitutions">
+          <ErrorBoundary>
+            <IngredientSubstitutions />
+          </ErrorBoundary>
+        </Route>
+
+        {/* NEW: /ai-substitution route */}
+        <Route path="/ai-substitution">
+          <ErrorBoundary>
+            <AISubstitutionPage />
+          </ErrorBoundary>
+        </Route>
+
+        {/* Others */}
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/catering" component={CateringMarketplace} />
         <Route path="/catering/wedding-planning" component={WeddingPlanning} />
         <Route path="/potent-potables" component={PotentPotables} />
         <Route path="/nutrition" component={NutritionMealPlanner} />
-        
+
         {/* Placeholder routes */}
         <Route path="/recipes" component={NotFound} />
         <Route path="/saved" component={NotFound} />
         <Route path="/following" component={NotFound} />
         <Route path="/settings" component={NotFound} />
-        
+
         {/* Catch-all route - must be last */}
         <Route component={NotFound} />
       </Switch>
