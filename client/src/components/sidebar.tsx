@@ -11,7 +11,8 @@ import {
   ChevronRight,
   Utensils,
   GlassWater,
-  Heart
+  Heart,
+  Lightbulb,            // ✅ added
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -27,6 +28,7 @@ const navigation = [
       { name: "Browse Recipes", href: "/recipes", icon: BookOpen },
       { name: "My Pantry", href: "/pantry", icon: ChefHat },
       { name: "Substitutions", href: "/substitutions", icon: Shuffle },
+      { name: "AI Substitution", href: "/ai-substitution", icon: Lightbulb }, // ✅ new
     ]
   },
   { name: "Potent Potables", href: "/potent-potables", icon: GlassWater },
