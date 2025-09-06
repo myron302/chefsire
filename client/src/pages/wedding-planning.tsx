@@ -5,7 +5,8 @@ import {
   Filter, Search, ArrowRight, Check, Info, Phone,
   Mail, Instagram, Globe, ChevronDown, TrendingUp,
   Award, Shield, Bookmark, Share2, MessageCircle,
-  Gift, Calendar as CalendarIcon, Link2, Plus, X, BellRing
+  Gift, Calendar as CalendarIcon, Link2, Plus, X, BellRing,
+  AlertCircle, Zap
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -26,22 +27,22 @@ export default function WeddingPlanner() {
   const [savedVendors, setSavedVendors] = useState(new Set());
   const [activeView, setActiveView] = useState('grid');
   const [showBudgetCalculator, setShowBudgetCalculator] = useState(false);
+  const [showTrialBanner, setShowTrialBanner] = useState(true);
+  const [requestedQuotes, setRequestedQuotes] = useState(new Set());
 
-  // New state for Gift Registry and Calendar
   const [registryLinks, setRegistryLinks] = useState([
     { id: 1, name: 'Amazon', url: '', icon: '🎁' },
     { id: 2, name: 'Target', url: '', icon: '🎯' },
-    { id: 3, name: 'Custom', url: '', icon: '💝' }
+    { id: 3, name: 'Zola', url: '', icon: '💑' }
   ]);
 
   const [calendarEvents, setCalendarEvents] = useState([
-    { date: '2025-03-15', title: 'Venue Tour - Grand Ballroom', type: 'appointment', reminder: true },
-    { date: '2025-03-20', title: 'Cake Tasting', type: 'appointment', reminder: true },
-    { date: '2025-04-01', title: 'Catering Deposit Due', type: 'payment', reminder: true },
-    { date: '2025-04-15', title: 'Send Save the Dates', type: 'task', reminder: false }
+    { id: 1, date: '2025-03-15', title: 'Venue Tour - Grand Ballroom', type: 'appointment', reminder: true },
+    { id: 2, date: '2025-03-20', title: 'Cake Tasting', type: 'appointment', reminder: true },
+    { id: 3, date: '2025-04-01', title: 'Catering Deposit Due', type: 'payment', reminder: true },
+    { id: 4, date: '2025-04-15', title: 'Send Save the Dates', type: 'task', reminder: false }
   ]);
 
-  // Sample vendor data - in production this would come from your database
   const vendors = [
     {
       id: 1,
@@ -54,12 +55,14 @@ export default function WeddingPlanner() {
       specialty: 'Farm-to-Table',
       verified: true,
       featured: true,
+      sponsored: true,
       availability: 'Available',
       minGuests: 50,
       maxGuests: 500,
       description: 'Award-winning catering with locally sourced ingredients',
       amenities: ['Tastings', 'Custom Menus', 'Dietary Options', 'Bar Service'],
-      responseTime: '2 hours'
+      responseTime: '2 hours',
+      viewsToday: 23
     },
     {
       id: 2,
@@ -142,13 +145,48 @@ export default function WeddingPlanner() {
     });
   };
 
+  const requestQuote = (vendorId) => {
+    setRequestedQuotes(prev => new Set(prev).add(vendorId));
+  };
+
   const filteredVendors = selectedVendorType === 'all' 
     ? vendors 
     : vendors.filter(v => v.type === selectedVendorType);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      {/* Header Section */}
+      {showTrialBanner && (
+        <Card className="mb-6 border-2 border-purple-500 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Sparkles className="w-8 h-8 text-purple-600" />
+                  <Badge className="absolute -top-2 -right-2 bg-green-500 text-white">
+                    FREE
+                  </Badge>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg">Start Your 14-Day Premium Trial</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Unlimited vendor messaging • Priority responses • Advanced planning tools
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setShowTrialBanner(false)}>
+                  <X className="w-4 h-4" />
+                </Button>
+                <Button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white" size="sm">
+                  <Zap className="w-4 h-4 mr-2" />
+                  Start Free Trial
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="mb-8">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -164,14 +202,13 @@ export default function WeddingPlanner() {
               <DollarSign className="w-4 h-4 mr-2" />
               Budget Calculator
             </Button>
-            <Button className="bg-gradient-to-r from-pink-600 to-purple-600">
+            <Button className="bg-gradient-to-r from-pink-600 to-purple-600 text-white">
               <Heart className="w-4 h-4 mr-2" />
               Start Planning
             </Button>
           </div>
         </div>
 
-        {/* Planning Progress Bar */}
         <Card className="mb-6">
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
@@ -194,7 +231,6 @@ export default function WeddingPlanner() {
           </CardContent>
         </Card>
 
-        {/* Budget Calculator Modal */}
         {showBudgetCalculator && (
           <Card className="mb-6">
             <CardHeader>
@@ -246,7 +282,6 @@ export default function WeddingPlanner() {
           </Card>
         )}
 
-        {/* Quick Filters */}
         <Card className="mb-6">
           <CardContent className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -308,7 +343,6 @@ export default function WeddingPlanner() {
         </Card>
       </div>
 
-      {/* Vendor Categories */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
         {vendorCategories.map((category) => {
           const Icon = category.icon;
@@ -326,7 +360,6 @@ export default function WeddingPlanner() {
         })}
       </div>
 
-      {/* Results Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <h2 className="text-xl font-semibold">
@@ -356,7 +389,6 @@ export default function WeddingPlanner() {
         </div>
       </div>
 
-      {/* Vendor Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         {filteredVendors.map((vendor) => (
           <Card key={vendor.id} className="overflow-hidden hover:shadow-lg transition-shadow">
@@ -366,7 +398,13 @@ export default function WeddingPlanner() {
                 alt={vendor.name}
                 className="w-full h-48 object-cover"
               />
-              {vendor.featured && (
+              {vendor.sponsored && (
+                <Badge className="absolute top-2 left-2 bg-gradient-to-r from-yellow-500 to-orange-500">
+                  <TrendingUp className="w-3 h-3 mr-1" />
+                  Sponsored
+                </Badge>
+              )}
+              {vendor.featured && !vendor.sponsored && (
                 <Badge className="absolute top-2 left-2 bg-gradient-to-r from-pink-600 to-purple-600">
                   <Sparkles className="w-3 h-3 mr-1" />
                   Featured
@@ -432,18 +470,35 @@ export default function WeddingPlanner() {
                 </div>
               )}
 
+              {vendor.viewsToday && (
+                <Alert className="mb-3 p-2">
+                  <AlertCircle className="h-3 w-3" />
+                  <AlertDescription className="text-xs">
+                    {vendor.viewsToday} couples viewed today
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="flex items-center justify-between pt-3 border-t">
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Clock className="w-3 h-3" />
                   Responds in {vendor.responseTime}
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline">
-                    <MessageCircle className="w-4 h-4" />
-                  </Button>
-                  <Button size="sm" className="bg-gradient-to-r from-pink-600 to-purple-600">
-                    View Details
-                  </Button>
+                  {requestedQuotes.has(vendor.id) ? (
+                    <Badge variant="secondary" className="text-xs">
+                      Quote Requested
+                    </Badge>
+                  ) : (
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => requestQuote(vendor.id)}>
+                        Get Quote
+                      </Button>
+                      <Button size="sm" className="bg-gradient-to-r from-pink-600 to-purple-600">
+                        View Details
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -451,7 +506,6 @@ export default function WeddingPlanner() {
         ))}
       </div>
 
-      {/* Gift Registry Section */}
       <Card className="mb-8">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -492,7 +546,7 @@ export default function WeddingPlanner() {
 
             <div className="border-t pt-4 mt-6">
               <h4 className="font-medium mb-3">Share Your Registries</h4>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm">
                   <Share2 className="w-4 h-4 mr-2" />
                   Facebook
@@ -502,7 +556,7 @@ export default function WeddingPlanner() {
                   Instagram
                 </Button>
                 <Button variant="outline" size="sm">
-                  <Share2 className="w-4 h-4 mr-2" />
+                  <Mail className="w-4 h-4 mr-2" />
                   Email
                 </Button>
                 <Button variant="outline" size="sm">
@@ -522,7 +576,6 @@ export default function WeddingPlanner() {
         </CardContent>
       </Card>
 
-      {/* Wedding Planning Calendar */}
       <Card className="mb-8">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -535,13 +588,12 @@ export default function WeddingPlanner() {
         </CardHeader>
         <CardContent>
           <div className="grid md:grid-cols-2 gap-6">
-            {/* Upcoming Events */}
             <div>
               <h4 className="font-medium mb-3">Upcoming Events</h4>
               <div className="space-y-2">
-                {calendarEvents.map((event, idx) => (
-                  <div key={idx} className="flex items-start gap-3 p-3 bg-muted rounded-lg">
-                    <div className="text-center">
+                {calendarEvents.map((event) => (
+                  <div key={event.id} className="flex items-start gap-3 p-3 bg-muted rounded-lg">
+                    <div className="text-center min-w-[50px]">
                       <div className="text-xs text-muted-foreground">
                         {new Date(event.date).toLocaleDateString('en-US', { month: 'short' })}
                       </div>
@@ -571,7 +623,6 @@ export default function WeddingPlanner() {
               </div>
             </div>
 
-            {/* Add New Event */}
             <div>
               <h4 className="font-medium mb-3">Add Event</h4>
               <div className="space-y-3">
@@ -604,14 +655,12 @@ export default function WeddingPlanner() {
           <Alert className="mt-6">
             <TrendingUp className="h-4 w-4" />
             <AlertDescription>
-              <strong>Pro tip:</strong> Most couples book venues 10-12 months before their wedding date. 
-              You have 3 venue tours scheduled this month!
+              <strong>Pro tip:</strong> Most couples book venues 10-12 months before their wedding date.
             </AlertDescription>
           </Alert>
         </CardContent>
       </Card>
 
-      {/* Call to Action Section */}
       <Card className="bg-gradient-to-r from-pink-50 to-purple-50 dark:from-pink-950 dark:to-purple-950 border-pink-200 dark:border-pink-800">
         <CardContent className="p-8 text-center">
           <Sparkles className="w-12 h-12 mx-auto mb-4 text-pink-600" />
@@ -632,7 +681,6 @@ export default function WeddingPlanner() {
         </CardContent>
       </Card>
 
-      {/* Trending Venues Alert */}
       <Alert className="mt-6">
         <TrendingUp className="h-4 w-4" />
         <AlertDescription>
