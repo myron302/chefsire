@@ -116,4 +116,8 @@
   .dark .glass-effect {
     background: rgba(0, 0, 0, 0.9);
   }
+
+  /* ✅ Hide scrollbar but keep horizontal scroll for secondary navs */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 }
