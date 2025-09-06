@@ -15,6 +15,8 @@ import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import CateringMarketplace from "@/pages/catering";
 import PotentPotables from "@/pages/potent-potables";
 import WeddingPlanning from "@/pages/wedding-planning";
+import SubstitutionsPage from "@/pages/substitutions";      // ✅ new wrapper page
+import AISubstitutionPage from "@/pages/ai-substitution";  // ✅ new wrapper page
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -32,7 +34,8 @@ function Router() {
         
         {/* Feature routes */}
         <Route path="/pantry" component={Pantry} />
-        <Route path="/substitutions" component={IngredientSubstitutions} />
+        <Route path="/substitutions" component={SubstitutionsPage} />       {/* ✅ new */}
+        <Route path="/ai-substitution" component={AISubstitutionPage} />    {/* ✅ new */}
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/catering" component={CateringMarketplace} />
         <Route path="/catering/wedding-planning" component={WeddingPlanning} />
