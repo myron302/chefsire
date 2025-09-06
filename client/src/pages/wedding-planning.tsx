@@ -4,7 +4,8 @@ import {
   ChefHat, Camera, Music, Flower, Sparkles, Star,
   Filter, Search, ArrowRight, Check, Info, Phone,
   Mail, Instagram, Globe, ChevronDown, TrendingUp,
-  Award, Shield, Bookmark, Share2, MessageCircle
+  Award, Shield, Bookmark, Share2, MessageCircle,
+  Gift, Calendar as CalendarIcon, Link2, Plus, X, BellRing
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Textarea } from '@/components/ui/textarea';
 
 export default function WeddingPlanner() {
   const [selectedVendorType, setSelectedVendorType] = useState('all');
@@ -24,6 +26,20 @@ export default function WeddingPlanner() {
   const [savedVendors, setSavedVendors] = useState(new Set());
   const [activeView, setActiveView] = useState('grid');
   const [showBudgetCalculator, setShowBudgetCalculator] = useState(false);
+
+  // New state for Gift Registry and Calendar
+  const [registryLinks, setRegistryLinks] = useState([
+    { id: 1, name: 'Amazon', url: '', icon: '🎁' },
+    { id: 2, name: 'Target', url: '', icon: '🎯' },
+    { id: 3, name: 'Custom', url: '', icon: '💝' }
+  ]);
+
+  const [calendarEvents, setCalendarEvents] = useState([
+    { date: '2025-03-15', title: 'Venue Tour - Grand Ballroom', type: 'appointment', reminder: true },
+    { date: '2025-03-20', title: 'Cake Tasting', type: 'appointment', reminder: true },
+    { date: '2025-04-01', title: 'Catering Deposit Due', type: 'payment', reminder: true },
+    { date: '2025-04-15', title: 'Send Save the Dates', type: 'task', reminder: false }
+  ]);
 
   // Sample vendor data - in production this would come from your database
   const vendors = [
@@ -434,6 +450,166 @@ export default function WeddingPlanner() {
           </Card>
         ))}
       </div>
+
+      {/* Gift Registry Section */}
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Gift className="w-5 h-5" />
+            Gift Registry Hub
+          </CardTitle>
+          <CardDescription>
+            Manage all your registries in one place and share with guests
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {registryLinks.map((registry) => (
+              <div key={registry.id} className="flex items-center gap-3">
+                <span className="text-2xl">{registry.icon}</span>
+                <div className="flex-1">
+                  <Input
+                    placeholder={`${registry.name} Registry URL`}
+                    value={registry.url}
+                    onChange={(e) => {
+                      setRegistryLinks(prev => 
+                        prev.map(r => r.id === registry.id ? {...r, url: e.target.value} : r)
+                      );
+                    }}
+                    className="w-full"
+                  />
+                </div>
+                <Button size="sm" variant="ghost">
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+            
+            <Button variant="outline" className="w-full">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Another Registry
+            </Button>
+
+            <div className="border-t pt-4 mt-6">
+              <h4 className="font-medium mb-3">Share Your Registries</h4>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm">
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Facebook
+                </Button>
+                <Button variant="outline" size="sm">
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Instagram
+                </Button>
+                <Button variant="outline" size="sm">
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Email
+                </Button>
+                <Button variant="outline" size="sm">
+                  <Link2 className="w-4 h-4 mr-2" />
+                  Copy Link
+                </Button>
+              </div>
+              
+              <Alert className="mt-4">
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  Your unique registry page: <strong>chefsire.com/registry/sarah-john-2025</strong>
+                </AlertDescription>
+              </Alert>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Wedding Planning Calendar */}
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarIcon className="w-5 h-5" />
+            Planning Calendar
+          </CardTitle>
+          <CardDescription>
+            Track important dates, appointments, and deadlines
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Upcoming Events */}
+            <div>
+              <h4 className="font-medium mb-3">Upcoming Events</h4>
+              <div className="space-y-2">
+                {calendarEvents.map((event, idx) => (
+                  <div key={idx} className="flex items-start gap-3 p-3 bg-muted rounded-lg">
+                    <div className="text-center">
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(event.date).toLocaleDateString('en-US', { month: 'short' })}
+                      </div>
+                      <div className="text-lg font-bold">
+                        {new Date(event.date).getDate()}
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium">{event.title}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant={
+                          event.type === 'payment' ? 'destructive' : 
+                          event.type === 'appointment' ? 'default' : 'secondary'
+                        } className="text-xs">
+                          {event.type}
+                        </Badge>
+                        {event.reminder && (
+                          <BellRing className="w-3 h-3 text-muted-foreground" />
+                        )}
+                      </div>
+                    </div>
+                    <Button size="sm" variant="ghost">
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Add New Event */}
+            <div>
+              <h4 className="font-medium mb-3">Add Event</h4>
+              <div className="space-y-3">
+                <Input type="date" placeholder="Date" />
+                <Input placeholder="Event title" />
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Event type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="appointment">Appointment</SelectItem>
+                    <SelectItem value="payment">Payment Due</SelectItem>
+                    <SelectItem value="task">Task</SelectItem>
+                    <SelectItem value="milestone">Milestone</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Textarea placeholder="Notes (optional)" className="h-20" />
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="reminder" className="rounded" />
+                  <label htmlFor="reminder" className="text-sm">Set reminder</label>
+                </div>
+                <Button className="w-full">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add to Calendar
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <Alert className="mt-6">
+            <TrendingUp className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Pro tip:</strong> Most couples book venues 10-12 months before their wedding date. 
+              You have 3 venue tours scheduled this month!
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
 
       {/* Call to Action Section */}
       <Card className="bg-gradient-to-r from-pink-50 to-purple-50 dark:from-pink-950 dark:to-purple-950 border-pink-200 dark:border-pink-800">
