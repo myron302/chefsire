@@ -4,6 +4,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Layout from "@/components/layout";
+
+// Pages
 import Feed from "@/pages/feed";
 import Explore from "@/pages/explore";
 import Profile from "@/pages/profile";
@@ -20,6 +22,7 @@ import NotFound from "@/pages/not-found";
 // NEW: AI Substitution page import (ensure this file exists)
 import AISubstitutionPage from "@/pages/ai-substitution";
 
+// Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole";
 
@@ -58,6 +61,9 @@ function Router() {
           </ErrorBoundary>
         </Route>
 
+        {/* Store alias so header link "/store" works */}
+        <Route path="/store" component={Marketplace} />
+
         {/* Others */}
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/catering" component={CateringMarketplace} />
@@ -78,7 +84,7 @@ function Router() {
   );
 }
 
-function App() {
+export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -88,5 +94,3 @@ function App() {
     </QueryClientProvider>
   );
 }
-
-export default App;
