@@ -1340,6 +1340,182 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to add ingredient substitution" });
     }
   });
+   // ===== WEDDING PLANNING API ROUTES =====
+
+  // Get wedding vendors with filters
+  app.get("/api/wedding/vendors", async (req, res) => {
+    try {
+      const filterSchema = z.object({
+        category: z.enum(['caterer', 'venue', 'photographer', 'dj', 'florist', 'planner', 'all']).optional(),
+        location: z.string().optional(),
+        date: z.string().optional(),
+        guests: z.coerce.number().optional(),
+        budget: z.string().optional(),
+        offset: z.coerce.number().default(0),
+        limit: z.coerce.number().max(50).default(20)
+      });
+      
+      const filters = filterSchema.parse(req.query);
+      
+      // Mock data for now
+      const vendors = [
+        {
+          id: '1',
+          businessName: 'Bella Vista Catering',
+          category: 'caterer',
+          rating: 4.9,
+          reviewCount: 127,
+          priceRange: '$$$',
+          verified: true,
+          featured: true,
+          sponsored: true,
+          availability: 'available',
+          description: 'Award-winning catering',
+          responseTime: '2 hours'
+        }
+      ];
+      
+      res.json({ vendors, total: vendors.length, filters });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid parameters", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to fetch vendors" });
+    }
+  });
+
+  // Request quote from vendor
+  app.post("/api/wedding/quotes", authenticateUser, async (req, res) => {
+    try {
+      const quoteSchema = z.object({
+        vendorId: z.string(),
+        eventDate: z.string(),
+        guestCount: z.number().min(1),
+        budget: z.string().optional(),
+        message: z.string().min(10)
+      });
+      
+      const quoteData = quoteSchema.parse(req.body);
+      const userId = req.user.id;
+      
+      res.status(201).json({
+        success: true,
+        message: "Quote request sent",
+        quoteId: `quote-${Date.now()}`
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid quote data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to request quote" });
+    }
+  });
+
+  // Save vendor
+  app.post("/api/wedding/saved-vendors/:vendorId", authenticateUser, async (req, res) => {
+    try {
+      const { vendorId } = req.params;
+      const userId = req.user.id;
+      
+      res.json({
+        success: true,
+        saved: true,
+        message: "Vendor saved"
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to save vendor" });
+    }
+  });
+
+  // Get calendar events
+  app.get("/api/wedding/calendar", authenticateUser, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      
+      const events = [
+        {
+          id: '1',
+          date: '2025-03-15',
+          title: 'Venue Tour',
+          type: 'appointment',
+          reminder: true
+        }
+      ];
+      
+      res.json({ events, total: events.length });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch events" });
+    }
+  });
+
+  // Add calendar event
+  app.post("/api/wedding/calendar", authenticateUser, async (req, res) => {
+    try {
+      const eventSchema = z.object({
+        date: z.string(),
+        title: z.string().min(1),
+        type: z.enum(['appointment', 'payment', 'task', 'milestone']),
+        reminder: z.boolean().default(false)
+      });
+      
+      const eventData = eventSchema.parse(req.body);
+      const userId = req.user.id;
+      
+      res.status(201).json({
+        success: true,
+        event: { ...eventData, id: `event-${Date.now()}` }
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid event", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to add event" });
+    }
+  });
+
+  // Get registry
+  app.get("/api/wedding/registry", authenticateUser, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      
+      const registry = {
+        id: '1',
+        userId,
+        registries: [],
+        publicUrl: `chefsire.com/registry/${userId}`
+      };
+      
+      res.json(registry);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch registry" });
+    }
+  });
+
+  // Update registry
+  app.put("/api/wedding/registry", authenticateUser, async (req, res) => {
+    try {
+      const registrySchema = z.object({
+        registries: z.array(z.object({
+          name: z.string(),
+          url: z.string(),
+          icon: z.string()
+        }))
+      });
+      
+      const data = registrySchema.parse(req.body);
+      const userId = req.user.id;
+      
+      res.json({
+        success: true,
+        registry: data
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update registry" });
+    }
+  });
 
   const httpServer = createServer(app);
   return httpServer;
