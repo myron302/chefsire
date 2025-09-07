@@ -1,30 +1,23 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import {
-  Compass,
-  Plus,
-  User,
-  Activity,
-  Shuffle,
-  Lightbulb,
-} from "lucide-react";
+import { Compass, Plus, User, Activity, Shuffle, Lightbulb } from "lucide-react";
 
 interface MobileNavProps {
-  onCreatePost?: () => void; // optional
+  onCreatePost?: () => void;
 }
+
+type NavLink =
+  | { name: string; href: string; icon: React.ComponentType<any> }
+  | { name: string; action: () => void; icon: React.ComponentType<any> };
 
 export default function MobileNav({ onCreatePost }: MobileNavProps) {
   const [location] = useLocation();
   const handleCreate = onCreatePost ?? (() => {});
 
-  // Order: left 2, center FAB, right 3
-  const navigation: (
-    | { name: string; href: string; icon: React.ComponentType<any> }
-    | { name: string; action: () => void; icon: React.ComponentType<any> }
-  )[] = [
+  const nav: NavLink[] = [
     { name: "Explore", href: "/explore", icon: Compass },
     { name: "Subs", href: "/substitutions", icon: Shuffle },
-    { name: "Create", action: handleCreate, icon: Plus }, // centered FAB
+    { name: "Create", action: handleCreate, icon: Plus }, // center FAB
     { name: "AI Subs", href: "/ai-substitution", icon: Lightbulb },
     { name: "Nutrition", href: "/nutrition", icon: Activity },
     { name: "Profile", href: "/profile", icon: User },
@@ -33,28 +26,20 @@ export default function MobileNav({ onCreatePost }: MobileNavProps) {
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border z-40 pb-[env(safe-area-inset-bottom)]">
       <div className="relative flex items-center justify-around py-2">
-        {navigation.map((item, idx) => {
-          // Center FAB
+        {nav.map((item) => {
           if ("action" in item) {
+            // Center FAB
             return (
-              <div
-                key={item.name}
-                className="absolute -top-7 left-1/2 -translate-x-1/2"
-              >
+              <div key={item.name} className="absolute -top-7 left-1/2 -translate-x-1/2">
                 <button
                   onClick={item.action}
                   aria-label="Create"
                   className={[
-                    // size/shape
-                    "w-16 h-16 rounded-full",
-                    // gradient + ring
-                    "bg-gradient-to-br from-orange-500 to-red-500 text-white ring-4 ring-orange-500/20",
-                    // layout
+                    "w-16 h-16 rounded-full text-white",
+                    "bg-gradient-to-br from-orange-500 to-red-500 ring-4 ring-orange-500/20",
                     "flex items-center justify-center",
-                    // effects
                     "shadow-xl hover:shadow-2xl transition-all duration-200 hover:scale-105 active:scale-95",
-                    // glow pulse (see CSS below)
-                    "animate-glow",
+                    "animate-pulse",
                   ].join(" ")}
                   data-testid="mobile-nav-create"
                 >
@@ -64,8 +49,8 @@ export default function MobileNav({ onCreatePost }: MobileNavProps) {
             );
           }
 
-          // Regular tabs
-          const isActive = location === item.href;
+          const isActive =
+            location === item.href || location.startsWith(item.href + "/");
 
           return (
             <Link key={item.name} href={item.href}>
