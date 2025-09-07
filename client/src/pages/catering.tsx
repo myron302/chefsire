@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from '@/components/ui/calendar';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Link } from 'wouter';
 import { 
   MapPin, 
   Users, 
@@ -19,7 +20,9 @@ import {
   ChefHat,
   Phone,
   Mail,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  Heart,
+  ArrowRight
 } from 'lucide-react';
 
 // Spoon Rating Component
@@ -208,8 +211,7 @@ export function CateringMarketplace() {
     
     return matchesSearch && matchesSpecialty && matchesPriceRange && matchesRadius && chef.cateringAvailable;
   });
-
-  const handleBookingSubmit = (chefId: string) => {
+const handleBookingSubmit = (chefId: string) => {
     console.log('Booking submitted for chef:', chefId, bookingForm);
     alert('Catering request submitted! The chef will contact you soon.');
     
@@ -231,6 +233,41 @@ export function CateringMarketplace() {
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Catering Services</h1>
         <p className="text-gray-600">Book professional chefs for your events and special occasions</p>
       </div>
+
+      {/* Wedding Planning Hub Card */}
+      <Link href="/catering/wedding-planning">
+        <Card className="mb-6 hover:shadow-xl transition-all duration-300 cursor-pointer bg-gradient-to-r from-pink-50 to-purple-50 dark:from-pink-950/20 dark:to-purple-950/20 border-2 border-pink-200 dark:border-pink-800 overflow-hidden group">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <div className="w-14 h-14 rounded-full bg-gradient-to-r from-pink-600 to-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Heart className="w-7 h-7 text-white" />
+                  </div>
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                    Wedding Planning Hub
+                  </h3>
+                  <p className="text-muted-foreground mt-1">
+                    Complete vendor marketplace, gift registry & planning tools
+                  </p>
+                  <div className="flex gap-2 mt-2">
+                    <Badge className="bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300">
+                      New Feature
+                    </Badge>
+                    <Badge variant="secondary">
+                      Free 14-Day Trial
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+              <ArrowRight className="w-6 h-6 text-muted-foreground group-hover:text-pink-600 group-hover:translate-x-1 transition-all" />
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
 
       {/* Search and Filters */}
       <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
@@ -287,7 +324,7 @@ export function CateringMarketplace() {
         </div>
       </div>
 
-      {/* Chef Cards Grid */}
+      {/* Chef Cards Grid - rest of your existing code continues here */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredChefs.map((chef) => (
           <Card key={chef.id} className="hover:shadow-lg transition-shadow">
