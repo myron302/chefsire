@@ -855,8 +855,6 @@ function EmptyState({ onClear, query, category }: { onClear: () => void; query: 
     setLfOnly(false);
     setSort("trending");
   }
-}
-
 /* ===== Header, RangeRow, ToggleRow, EmptyState ===== */
 
 function Header({
