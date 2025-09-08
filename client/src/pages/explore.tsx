@@ -736,7 +736,7 @@ function EmptyState({ onClear, query, category }: { onClear: () => void; query: 
     setIncludeIngr([]); setExcludeIngr([]); setSavedOnly(false); setVerifiedChefs(false);
     setGfOnly(false); setLfOnly(false); setSort("trending");
   }
-} // <-- this closes Explore (do NOT add extra })nction Header({
+ // <-- this closes Explore (do NOT add extra })nction Header({
   searchTerm, setSearchTerm,
   selectedCategory, setSelectedCategory,
   viewMode, setViewMode,
