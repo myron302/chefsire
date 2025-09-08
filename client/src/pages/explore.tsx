@@ -593,15 +593,9 @@ function EmptyState({ onClear, query, category }: { onClear: () => void; query: 
       {/* Posts */}
       {allPosts.length > 0 ? (
         viewMode === "grid" ? (
-          <div
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4"
-            data-testid="grid-explore"
-          >
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4" data-testid="grid-explore">
             {allPosts.map((post, i) => (
-              <Card
-                key={post.id ?? `post-${i}`}
-                className="group cursor-pointer hover:shadow-lg transition-shadow overflow-hidden"
-              >
+              <Card key={post.id ?? `post-${i}`} className="group cursor-pointer hover:shadow-lg transition-shadow overflow-hidden">
                 <div className="relative overflow-hidden">
                   <div className="w-full aspect-[4/3] bg-muted">
                     <img
@@ -615,9 +609,7 @@ function EmptyState({ onClear, query, category }: { onClear: () => void; query: 
                     />
                   </div>
                   {post?.isRecipe && (
-                    <Badge className="absolute top-2 right-2 bg-accent text-accent-foreground">
-                      Recipe
-                    </Badge>
+                    <Badge className="absolute top-2 right-2 bg-accent text-accent-foreground">Recipe</Badge>
                   )}
                 </div>
                 <CardContent className="p-4">
@@ -630,20 +622,12 @@ function EmptyState({ onClear, query, category }: { onClear: () => void; query: 
                       loading="lazy"
                       decoding="async"
                     />
-                    <span className="text-sm font-medium">
-                      {post?.user?.displayName || "Unknown Chef"}
-                    </span>
+                    <span className="text-sm font-medium">{post?.user?.displayName || "Unknown Chef"}</span>
                   </div>
-                  <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
-                    {post?.caption || "—"}
-                  </p>
+                  <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{post?.caption || "—"}</p>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span aria-label={`${post?.likesCount ?? 0} likes`}>
-                      ♥ {post?.likesCount ?? 0}
-                    </span>
-                    <span aria-label={`${post?.commentsCount ?? 0} comments`}>
-                      💬 {post?.commentsCount ?? 0}
-                    </span>
+                    <span aria-label={`${post?.likesCount ?? 0} likes`}>♥ {post?.likesCount ?? 0}</span>
+                    <span aria-label={`${post?.commentsCount ?? 0} comments`}>💬 {post?.commentsCount ?? 0}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -659,11 +643,7 @@ function EmptyState({ onClear, query, category }: { onClear: () => void; query: 
           </div>
         )
       ) : (
-        <EmptyState
-          onClear={() => resetAll()}
-          query={debouncedQuery}
-          category={selectedCategory}
-        />
+        <EmptyState onClear={() => resetAll()} query={debouncedQuery} category={selectedCategory} />
       )}
 
       {/* Infinite load */}
@@ -672,13 +652,7 @@ function EmptyState({ onClear, query, category }: { onClear: () => void; query: 
           {hasNextPage ? (
             <>
               <div ref={sentinelRef} />
-              <Button
-                onClick={() => fetchNextPage()}
-                disabled={isFetchingNextPage}
-                variant="outline"
-                size="sm"
-                className="mx-auto"
-              >
+              <Button onClick={() => fetchNextPage()} disabled={isFetchingNextPage} variant="outline" size="sm" className="mx-auto">
                 {isFetchingNextPage ? "Loading…" : "Load more"}
               </Button>
             </>
@@ -691,70 +665,21 @@ function EmptyState({ onClear, query, category }: { onClear: () => void; query: 
       {/* Filters Sheet */}
       <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
         <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
-          <SheetHeader className="mb-2">
-            <SheetTitle>Filters</SheetTitle>
-          </SheetHeader>
+          <SheetHeader className="mb-2"><SheetTitle>Filters</SheetTitle></SheetHeader>
 
           <div className="grid gap-4">
-            <MultiSelectCombobox
-              options={CUISINES}
-              value={cuisines}
-              onChange={setCuisines}
-              buttonLabel="Cuisine / Ethnicity"
-              placeholder="Search cuisines…"
-              className="w-full"
-            />
-            <MultiSelectCombobox
-              options={DIETS}
-              value={diets}
-              onChange={setDiets}
-              buttonLabel="Diet"
-              placeholder="Search diets…"
-              className="w-full"
-            />
-            <MultiSelectCombobox
-              options={COURSES}
-              value={courses}
-              onChange={setCourses}
-              buttonLabel="Course"
-              placeholder="Search courses…"
-              className="w-full"
-            />
-            <MultiSelectCombobox
-              options={DIFFICULTIES}
-              value={difficulties}
-              onChange={setDifficulties}
-              buttonLabel="Difficulty"
-              placeholder="Filter difficulty…"
-              className="w-full"
-            />
-            <MultiSelectCombobox
-              options={ALLERGENS}
-              value={allergens}
-              onChange={setAllergens}
-              buttonLabel="Exclude allergens"
-              placeholder="Select allergens…"
-              className="w-full"
-            />
+            <MultiSelectCombobox options={CUISINES} value={cuisines} onChange={setCuisines} buttonLabel="Cuisine / Ethnicity" placeholder="Search cuisines…" className="w-full" />
+            <MultiSelectCombobox options={DIETS} value={diets} onChange={setDiets} buttonLabel="Diet" placeholder="Search diets…" className="w-full" />
+            <MultiSelectCombobox options={COURSES} value={courses} onChange={setCourses} buttonLabel="Course" placeholder="Search courses…" className="w-full" />
+            <MultiSelectCombobox options={DIFFICULTIES} value={difficulties} onChange={setDifficulties} buttonLabel="Difficulty" placeholder="Filter difficulty…" className="w-full" />
+            <MultiSelectCombobox options={ALLERGENS} value={allergens} onChange={setAllergens} buttonLabel="Exclude allergens" placeholder="Select allergens…" className="w-full" />
 
             {/* Time & calories */}
-            <RangeRow
-              label="Prep time (min)"
-              value={prepRange}
-              onChange={setPrepRange}
-              max={120}
-            />
-            <RangeRow
-              label="Cook time (min)"
-              value={cookRange}
-              onChange={setCookRange}
-              max={240}
-            />
+            <RangeRow label="Prep time (min)" value={prepRange} onChange={setPrepRange} max={120} />
+            <RangeRow label="Cook time (min)" value={cookRange} onChange={setCookRange} max={240} />
 
             <div className="flex items-center justify-between gap-3">
-              <label className="text-sm text-muted-foreground">
-                Max calories (per serving)
-              </label>
+              <label className="text-sm text-muted-foreground">Max calories (per serving)</label>
               <div className="flex items-center gap-2">
                 <Input
                   type="number"
@@ -762,59 +687,29 @@ function EmptyState({ onClear, query, category }: { onClear: () => void; query: 
                   min={0}
                   placeholder="e.g., 500"
                   value={maxCalories ?? ""}
-                  onChange={(e) =>
-                    setMaxCalories(
-                      e.target.value === "" ? null : Math.max(0, Number(e.target.value))
-                    )
-                  }
+                  onChange={(e) => setMaxCalories(e.target.value === "" ? null : Math.max(0, Number(e.target.value)))}
                   className="w-28"
                 />
                 {maxCalories != null && (
-                  <Button variant="ghost" size="sm" onClick={() => setMaxCalories(null)}>
-                    Clear
-                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setMaxCalories(null)}>Clear</Button>
                 )}
               </div>
             </div>
 
             {/* Ingredients include / exclude */}
-            <TagInput
-              label="Include ingredients"
-              value={includeIngr}
-              onChange={setIncludeIngr}
-              placeholder="e.g., chicken, basil…"
-            />
-            <TagInput
-              label="Exclude ingredients"
-              value={excludeIngr}
-              onChange={setExcludeIngr}
-              placeholder="e.g., peanuts, cilantro…"
-            />
+            <TagInput label="Include ingredients" value={includeIngr} onChange={setIncludeIngr} placeholder="e.g., chicken, basil…" />
+            <TagInput label="Exclude ingredients" value={excludeIngr} onChange={setExcludeIngr} placeholder="e.g., peanuts, cilantro…" />
 
             {/* Toggles */}
             <ToggleRow label="Gluten-free only" checked={gfOnly} onCheckedChange={setGfOnly} />
             <ToggleRow label="Lactose-free only" checked={lfOnly} onCheckedChange={setLfOnly} />
-            <ToggleRow
-              label="Saved only"
-              hint="Show recipes you’ve saved"
-              checked={savedOnly}
-              onCheckedChange={setSavedOnly}
-            />
-            <ToggleRow
-              label="Verified chefs only"
-              hint="Creators with verified badge"
-              checked={verifiedChefs}
-              onCheckedChange={setVerifiedChefs}
-            />
+            <ToggleRow label="Saved only" hint="Show recipes you’ve saved" checked={savedOnly} onCheckedChange={setSavedOnly} />
+            <ToggleRow label="Verified chefs only" hint="Creators with verified badge" checked={verifiedChefs} onCheckedChange={setVerifiedChefs} />
 
             {/* Sort */}
             <div className="flex items-center justify-between gap-3">
               <label className="text-sm text-muted-foreground">Sort</label>
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as any)}
-                className="h-9 rounded-md border bg-background px-2 text-sm"
-              >
+              <select value={sort} onChange={(e) => setSort(e.target.value as any)} className="h-9 rounded-md border bg-background px-2 text-sm">
                 <option value="trending">Trending</option>
                 <option value="newest">Newest</option>
                 <option value="most_liked">Most liked</option>
@@ -824,9 +719,7 @@ function EmptyState({ onClear, query, category }: { onClear: () => void; query: 
 
           <SheetFooter className="mt-4">
             <div className="flex w-full items-center justify-between gap-2">
-              <Button variant="ghost" onClick={() => resetAll()}>
-                Reset
-              </Button>
+              <Button variant="ghost" onClick={() => resetAll()}>Reset</Button>
               <Button onClick={() => setIsFilterOpen(false)}>Apply</Button>
             </div>
           </SheetFooter>
@@ -837,27 +730,13 @@ function EmptyState({ onClear, query, category }: { onClear: () => void; query: 
 
   /* helpers */
   function resetAll() {
-    setSelectedCategory(null);
-    setSearchTerm("");
-    setCuisines([]);
-    setDiets([]);
-    setCourses([]);
-    setDifficulties([]);
-    setAllergens([]);
-    setPrepRange([0, 60]);
-    setCookRange([0, 90]);
-    setMaxCalories(null);
-    setIncludeIngr([]);
-    setExcludeIngr([]);
-    setSavedOnly(false);
-    setVerifiedChefs(false);
-    setGfOnly(false);
-    setLfOnly(false);
-    setSort("trending");
+    setSelectedCategory(null); setSearchTerm("");
+    setCuisines([]); setDiets([]); setCourses([]); setDifficulties([]); setAllergens([]);
+    setPrepRange([0, 60]); setCookRange([0, 90]); setMaxCalories(null);
+    setIncludeIngr([]); setExcludeIngr([]); setSavedOnly(false); setVerifiedChefs(false);
+    setGfOnly(false); setLfOnly(false); setSort("trending");
   }
-/* ===== Header, RangeRow, ToggleRow, EmptyState ===== */
-
-function Header({
+} // <-- this closes Explore (do NOT add extra })nction Header({
   searchTerm, setSearchTerm,
   selectedCategory, setSelectedCategory,
   viewMode, setViewMode,
