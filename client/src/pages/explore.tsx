@@ -742,9 +742,9 @@ function EmptyState({ onClear, query, category }: { onClear: () => void; query: 
   viewMode, setViewMode,
   sort, setSort,
   foundLabel, openFilters,
-  diets, setDiets,
+   diets, setDiets,
   CATEGORIES,
-any) ;
+}: any) {
   return (
     <div className="mb-4 sticky top-0 z-10 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70 py-4 sticky-ancestor-fix">
       <h1 className="text-3xl font-bold mb-4">Explore</h1>
