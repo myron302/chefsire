@@ -28,18 +28,21 @@ export default function MobileNav({ onCreatePost }: MobileNavProps) {
       <div className="relative flex items-center justify-around py-2">
         {nav.map((item) => {
           if ("action" in item) {
-            // Center FAB
+            // Center FAB — no continuous animation; only hover/press feedback
             return (
-              <div key={item.name} className="absolute -top-7 left-1/2 -translate-x-1/2">
+              <div
+                key={item.name}
+                className="absolute -top-7 left-1/2 -translate-x-1/2 pointer-events-none z-50"
+              >
                 <button
                   onClick={item.action}
                   aria-label="Create"
                   className={[
-                    "w-16 h-16 rounded-full text-white",
+                    "w-16 h-16 rounded-full text-white pointer-events-auto",
                     "bg-gradient-to-br from-orange-500 to-red-500 ring-4 ring-orange-500/20",
                     "flex items-center justify-center",
-                    "shadow-xl hover:shadow-2xl transition-all duration-200 hover:scale-105 active:scale-95",
-                    "animate-pulse",
+                    "shadow-xl transition-transform duration-200 hover:scale-105 active:scale-95",
+                    // 🔕 removed: animate-pulse (this was causing the nonstop flashing)
                   ].join(" ")}
                   data-testid="mobile-nav-create"
                 >
