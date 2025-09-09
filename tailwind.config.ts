@@ -1,45 +1,48 @@
-import type { Config } from "tailwindcss";
-
-export default {
+/** @type {import('tailwindcss').Config} */
+module.exports = {
   darkMode: ["class"],
-  content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
+  content: [
+    "./client/index.html",
+    "./client/src/**/*.{js,ts,jsx,tsx}",
+    "./src/components/ui/**/*.{js,ts,jsx,tsx}"
+  ],
   theme: {
     extend: {
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        sm: "calc(var(--radius) - 4px)"
       },
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
         card: {
           DEFAULT: "var(--card)",
-          foreground: "var(--card-foreground)",
+          foreground: "var(--card-foreground)"
         },
         popover: {
           DEFAULT: "var(--popover)",
-          foreground: "var(--popover-foreground)",
+          foreground: "var(--popover-foreground)"
         },
         primary: {
           DEFAULT: "var(--primary)",
-          foreground: "var(--primary-foreground)",
+          foreground: "var(--primary-foreground)"
         },
         secondary: {
           DEFAULT: "var(--secondary)",
-          foreground: "var(--secondary-foreground)",
+          foreground: "var(--secondary-foreground)"
         },
         muted: {
           DEFAULT: "var(--muted)",
-          foreground: "var(--muted-foreground)",
+          foreground: "var(--muted-foreground)"
         },
         accent: {
           DEFAULT: "var(--accent)",
-          foreground: "var(--accent-foreground)",
+          foreground: "var(--accent-foreground)"
         },
         destructive: {
           DEFAULT: "var(--destructive)",
-          foreground: "var(--destructive-foreground)",
+          foreground: "var(--destructive-foreground)"
         },
         border: "var(--border)",
         input: "var(--input)",
@@ -49,7 +52,7 @@ export default {
           "2": "var(--chart-2)",
           "3": "var(--chart-3)",
           "4": "var(--chart-4)",
-          "5": "var(--chart-5)",
+          "5": "var(--chart-5)"
         },
         sidebar: {
           DEFAULT: "var(--sidebar)",
@@ -59,37 +62,33 @@ export default {
           accent: "var(--sidebar-accent)",
           "accent-foreground": "var(--sidebar-accent-foreground)",
           border: "var(--sidebar-border)",
-          ring: "var(--sidebar-ring)",
-        },
+          ring: "var(--sidebar-ring)"
+        }
       },
       fontFamily: {
         sans: ["Inter", "var(--font-sans)"],
         serif: ["var(--font-serif)"],
-        mono: ["var(--font-mono)"],
+        mono: ["var(--font-mono)"]
       },
       keyframes: {
         "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" }
         },
         "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
-          },
-          to: {
-            height: "0",
-          },
-        },
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" }
+        }
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
-        "accordion-up": "accordion-up 0.2s ease-out",
-      },
-    },
+        "accordion-up": "accordion-up 0.2s ease-out"
+      }
+    }
   },
-  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
-} satisfies Config;
+  plugins: [
+    require("tailwindcss-animate"),
+    require("@tailwindcss/typography"),
+    require("@tailwindcss/forms")
+  ]
+};
