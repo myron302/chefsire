@@ -450,81 +450,79 @@ export default function Explore() {
       />
 
       {/* Posts */}
-      {allPosts.length > 0 ? (
-        view攻略
-        viewMode === "grid" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4" data-testid="grid-explore">
-            {allPosts.map((post, i) => (
-              <Card
-                key={post.id ?? `post-${i}`}
-                className="group cursor-pointer hover:shadow-lg transition-shadow overflow-hidden"
-              >
-                <div className="relative overflow-hidden">
-                  <div className="w-full aspect-[4/3] bg-muted">
-                    <img
-                      src={getPostImageUrl(post)}
-                      onError={onImgError}
-                      alt={post?.caption || "Post image"}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      loading="lazy"
-                      decoding="async"
-                      data-testid={`img-explore-post-${post.id ?? i}`}
-                    />
-                    {post?.isRecipe && (
-                      <Badge className="absolute top-2 right-2 bg-accent text-accent-foreground">
-                        Recipe
-                      </Badge>
-                    )}
-                  </div>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <img
-                        src={(post?.user?.avatar && String(post.user.avatar)) || PLACEHOLDER_IMG}
-                        onError={onImgError}
-                        alt={post?.user?.displayName || "Creator"}
-                        className="w-6 h-6 rounded-full bg-muted"
-                        loading="lazy"
-                        decoding="async"
-                      />
-                      <span className="text-sm font-medium">
-                        {post?.user?.displayName || "Unknown Chef"}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
-                      {post?.caption || "—"}
-                    </p>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span aria-label={`${post?.likesCount ?? 0} likes`}>
-                        ♥ {post?.likesCount ?? 0}
-                      </span>
-                      <span aria-label={`${post?.commentsCount ?? 0} comments`}>
-                        💬 {post?.commentsCount ?? 0}
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            }
-          </div>
+{allPosts.length > 0 ? (
+  viewMode === "grid" ? (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4" data-testid="grid-explore">
+      {allPosts.map((post, i) => (
+        <Card
+          key={post.id ?? `post-${i}`}
+          className="group cursor-pointer hover:shadow-lg transition-shadow overflow-hidden"
+        >
+          <div className="relative overflow-hidden">
+            <div className="w-full aspect-[4/3] bg-muted">
+              <img
+                src={getPostImageUrl(post)}
+                onError={onImgError}
+                alt={post?.caption || "Post image"}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                loading="lazy"
+                decoding="async"
+                data-testid={`img-explore-post-${post.id ?? i}`}
+              />
+              {post?.isRecipe && (
+                <Badge className="absolute top-2 right-2 bg-accent text-accent-foreground">
+                  Recipe
+                </Badge>
+              )}
+            </div>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <img
+                  src={(post?.user?.avatar && String(post.user.avatar)) || PLACEHOLDER_IMG}
+                  onError={onImgError}
+                  alt={post?.user?.displayName || "Creator"}
+                  className="w-6 h-6 rounded-full bg-muted"
+                  loading="lazy"
+                  decoding="async"
+                />
+                <span className="text-sm font-medium">
+                  {post?.user?.displayName || "Unknown Chef"}
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
+                {post?.caption || "—"}
+              </p>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span aria-label={`${post?.likesCount ?? 0} likes`}>
+                  ♥ {post?.likesCount ?? 0}
+                </span>
+                <span aria-label={`${post?.commentsCount ?? 0} comments`}>
+                  💬 {post?.commentsCount ?? 0}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </Card>
+      ))}
+    </div>
+  ) : (
+    <div className="space-y-8 mt-4" data-testid="list-explore">
+      {allPosts.map((post, i) =>
+        post?.isRecipe ? (
+          post ? (
+            <RecipeCard key={post.id ?? `r-${i}`} post={post} />
+          ) : null
         ) : (
-          <div className="space-y-8 mt-4" data-testid="list-explore">
-            {allPosts.map((post, i) =>
-              post?.isRecipe ? (
-                post ? (
-                  <RecipeCard key={post.id ?? `r-${i}`} post={post} />
-                ) : null
-              ) : (
-                post ? (
-                  <PostCard key={post.id ?? `p-${i}`} post={post} />
-                ) : null
-              )
-            )}
-          </div>
+          post ? (
+            <PostCard key={post.id ?? `p-${i}`} post={post} />
+          ) : null
         )
-      ) : (
-        <EmptyState onClear={resetAll} query={debouncedQuery} category={selectedCategory} />
       )}
-
+    </div>
+  )
+) : (
+  <EmptyState onClear={resetAll} query={debouncedQuery} category={selectedCategory} />
+)}
       {/* Infinite load */}
       {allPosts.length > 0 && (
         <div className="flex items-center justify-center mt-8">
