@@ -1,619 +1,795 @@
-// pages/explore.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
-import PostCard from "@/components/post-card";
-import RecipeCard from "@/components/recipe-card";
-import { Search, Grid, List, RefreshCw, SlidersHorizontal } from "lucide-react";
-import type { PostWithUser } from "@shared/schema";
-import { MultiSelectCombobox } from "@/components/multi-select-combobox";
-import { TagInput } from "@/components/tag-input";
-import { CUISINES, DIETS, COURSES, POPULAR_DIET_CHIPS, DIFFICULTIES, ALLERGENS } from "@/lib/filters";
 import { Slider } from "@/components/ui/slider";
+import { 
+  Search, 
+  Grid, 
+  List, 
+  SlidersHorizontal, 
+  Heart, 
+  MessageCircle, 
+  Clock, 
+  Users,
+  TrendingUp,
+  Calendar,
+  Filter,
+  X,
+  ChefHat,
+  Star,
+  Sparkles
+} from "lucide-react";
 
-/* ===== safe helpers ===== */
-const PLACEHOLDER_IMG =
-  "data:image/svg+xml;utf8," +
-  encodeURIComponent(
-    `<svg xmlns='http://www.w3.org/2000/svg' width='800' height='600'>
-      <rect width='100%' height='100%' fill='%23eee'/>
-      <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%23999' font-family='sans-serif' font-size='20'>No image</text>
-    </svg>`
-  );
+const MOCK_POSTS = [
+  {
+    id: "1",
+    caption: "Creamy Tuscan Chicken with sun-dried tomatoes and spinach",
+    imageUrl: "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=800&h=600&fit=crop",
+    isRecipe: true,
+    user: {
+      displayName: "Chef Maria",
+      avatar: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&crop=face",
+      verified: true
+    },
+    likesCount: 245,
+    commentsCount: 32,
+    tags: ["Italian", "Chicken", "Healthy"],
+    difficulty: "Medium",
+    prepTime: 15,
+    cookTime: 25,
+    calories: 420
+  },
+  {
+    id: "2",
+    caption: "Vegan Buddha Bowl with quinoa and tahini dressing",
+    imageUrl: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800&h=600&fit=crop",
+    isRecipe: true,
+    user: {
+      displayName: "GreenKitchen",
+      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face",
+      verified: false
+    },
+    likesCount: 189,
+    commentsCount: 28,
+    tags: ["Vegan", "Healthy", "Quick"],
+    difficulty: "Easy",
+    prepTime: 20,
+    cookTime: 0,
+    calories: 350
+  },
+  {
+    id: "3",
+    caption: "Chocolate lava cake that melts in your mouth",
+    imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=800&h=600&fit=crop",
+    isRecipe: true,
+    user: {
+      displayName: "SweetTooth",
+      avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&crop=face",
+      verified: true
+    },
+    likesCount: 567,
+    commentsCount: 89,
+    tags: ["Desserts", "Chocolate"],
+    difficulty: "Hard",
+    prepTime: 30,
+    cookTime: 15,
+    calories: 650
+  },
+  {
+    id: "4",
+    caption: "Fresh sushi rolls with salmon and avocado",
+    imageUrl: "https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=800&h=600&fit=crop",
+    isRecipe: true,
+    user: {
+      displayName: "Tokyo Chef",
+      avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face",
+      verified: true
+    },
+    likesCount: 334,
+    commentsCount: 45,
+    tags: ["Asian", "Seafood", "Healthy"],
+    difficulty: "Medium",
+    prepTime: 45,
+    cookTime: 0,
+    calories: 280
+  },
+  {
+    id: "5",
+    caption: "Mediterranean grilled vegetables with herbs",
+    imageUrl: "https://images.unsplash.com/photo-1540420773420-3366772f4999?w=800&h=600&fit=crop",
+    isRecipe: true,
+    user: {
+      displayName: "Mediterranean Life",
+      avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=face",
+      verified: false
+    },
+    likesCount: 156,
+    commentsCount: 23,
+    tags: ["Healthy", "Vegan", "Mediterranean"],
+    difficulty: "Easy",
+    prepTime: 15,
+    cookTime: 20,
+    calories: 180
+  },
+  {
+    id: "6",
+    caption: "Classic Italian carbonara with pancetta",
+    imageUrl: "https://images.unsplash.com/photo-1621996346565-e3dbc136d52a?w=800&h=600&fit=crop",
+    isRecipe: true,
+    user: {
+      displayName: "Nonna's Kitchen",
+      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=face",
+      verified: true
+    },
+    likesCount: 789,
+    commentsCount: 134,
+    tags: ["Italian", "Pasta", "Traditional"],
+    difficulty: "Medium",
+    prepTime: 10,
+    cookTime: 15,
+    calories: 520
+  }
+];
 
-function onImgError(e: React.SyntheticEvent<HTMLImageElement>) {
-  const img = e.currentTarget;
-  if (img.src !== PLACEHOLDER_IMG) img.src = PLACEHOLDER_IMG;
-}
+const CATEGORIES = ["All", "Italian", "Healthy", "Desserts", "Quick", "Vegan", "Seafood", "Asian", "Mediterranean"];
+const POPULAR_DIETS = ["Vegan", "Gluten-Free", "Keto", "Low-Carb"];
+const DIFFICULTIES = ["Easy", "Medium", "Hard"];
 
-function getPostImageUrl(post: Partial<PostWithUser> | undefined) {
-  return (post?.imageUrl && String(post.imageUrl).trim()) || PLACEHOLDER_IMG;
-}
-
-function isPostLike(x: any): x is PostWithUser {
-  return x && typeof x === "object";
-}
-/* ===== end helpers ===== */
-
-/* ===== utilities ===== */
-function useDebouncedValue<T>(value: T, delay = 300) {
+function useDebouncedValue(value, delay = 300) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
-    const id = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(id);
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
   }, [value, delay]);
   return debounced;
 }
 
-function useLocalStorage<T>(key: string, initial: T) {
-  const [val, setVal] = useState<T>(() => {
+function useLocalStorage(key, initialValue) {
+  const [storedValue, setStoredValue] = useState(() => {
     try {
-      const raw = localStorage.getItem(key);
-      return raw ? (JSON.parse(raw) as T) : initial;
+      return JSON.parse(localStorage.getItem(key)) ?? initialValue;
     } catch {
-      return initial;
+      return initialValue;
     }
   });
-  useEffect(() => {
+
+  const setValue = useCallback((value) => {
     try {
-      localStorage.setItem(key, JSON.stringify(val));
-    } catch {}
-  }, [key, val]);
-  return [val, setVal] as const;
+      setStoredValue(value);
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving to localStorage:', error);
+    }
+  }, [key]);
+
+  return [storedValue, setValue];
 }
 
-/* ===== component ===== */
 export default function Explore() {
-  // basic
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useLocalStorage<string | null>("explore:selectedCategory", null);
-  const [viewMode, setViewMode] = useLocalStorage<"grid" | "list">("explore:viewMode", "grid");
-  const [sort, setSort] = useLocalStorage<"trending" | "newest" | "most_liked">("explore:sort", "trending");
-  const debouncedQuery = useDebouncedValue(searchTerm.trim(), 350);
+  const [selectedCategory, setSelectedCategory] = useLocalStorage("explore:category", null);
+  const [viewMode, setViewMode] = useLocalStorage("explore:viewMode", "grid");
+  const [sortBy, setSortBy] = useLocalStorage("explore:sortBy", "trending");
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  
+  const [selectedDiets, setSelectedDiets] = useLocalStorage("explore:diets", []);
+  const [selectedDifficulties, setSelectedDifficulties] = useLocalStorage("explore:difficulties", []);
+  const [timeRange, setTimeRange] = useLocalStorage("explore:timeRange", [0, 60]);
+  const [calorieRange, setCalorieRange] = useLocalStorage("explore:calorieRange", [0, 800]);
+  const [verifiedOnly, setVerifiedOnly] = useLocalStorage("explore:verifiedOnly", false);
 
-  // advanced filters
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [cuisines, setCuisines] = useLocalStorage<string[]>("explore:cuisines", []);
-  const [diets, setDiets] = useLocalStorage<string[]>("explore:diets", []);
-  const [courses, setCourses] = useLocalStorage<string[]>("explore:courses", []);
-  const [difficulties, setDifficulties] = useLocalStorage<string[]>("explore:difficulties", []);
-  const [allergens, setAllergens] = useLocalStorage<string[]>("explore:allergens", []);
+  const debouncedSearch = useDebouncedValue(searchTerm, 300);
 
-  // time/calories
-  const [prepRange, setPrepRange] = useLocalStorage<[number, number]>("explore:prepRange", [0, 60]);   // minutes
-  const [cookRange, setCookRange] = useLocalStorage<[number, number]>("explore:cookRange", [0, 90]);   // minutes
-  const [maxCalories, setMaxCalories] = useLocalStorage<number | null>("explore:maxCalories", null);
-
-  // ingredients include/exclude
-  const [includeIngr, setIncludeIngr] = useLocalStorage<string[]>("explore:includeIngr", []);
-  const [excludeIngr, setExcludeIngr] = useLocalStorage<string[]>("explore:excludeIngr", []);
-
-  // toggles
-  const [savedOnly, setSavedOnly] = useLocalStorage<boolean>("explore:savedOnly", false);
-  const [verifiedChefs, setVerifiedChefs] = useLocalStorage<boolean>("explore:verifiedChefs", false);
-  const [gfOnly, setGfOnly] = useLocalStorage<boolean>("explore:gfOnly", false);
-  const [lfOnly, setLfOnly] = useLocalStorage<boolean>("explore:lfOnly", false);
-
-  const LIMIT = 18;
-
-  // data
   const {
-    data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, refetch, isFetching,
-  } = useInfiniteQuery<{
-    items: PostWithUser[]; nextCursor?: string | null; total?: number;
-  }>({
-    queryKey: ["/api/posts/explore", {
-      q: debouncedQuery, category: selectedCategory, sort, limit: LIMIT,
-      cuisines, diets: gfOnly ? Array.from(new Set([...diets, "Gluten-Free"])) : diets,
-      courses, difficulties, allergens,
-      prepRange, cookRange, maxCalories,
-      includeIngr, excludeIngr,
-      savedOnly, verifiedChefs, lfOnly,
-    }],
-    queryFn: async ({ pageParam }) => {
-      const params = new URLSearchParams();
-      if (debouncedQuery) params.set("q", debouncedQuery);
-      if (selectedCategory && selectedCategory !== "All") params.set("category", selectedCategory);
-      params.set("sort", sort);
-      params.set("limit", String(LIMIT));
-      if (pageParam) params.set("cursor", String(pageParam));
-
-      cuisines.forEach((c) => params.append("cuisine", c));
-      const dietsFinal = gfOnly ? Array.from(new Set([...diets, "Gluten-Free"])) : diets;
-      dietsFinal.forEach((d) => params.append("diet", d));
-      courses.forEach((c) => params.append("course", c));
-      difficulties.forEach((d) => params.append("difficulty", d));
-      allergens.forEach((a) => params.append("allergen", a));
-
-      // ranges / numbers
-      params.set("prep_min", String(prepRange[0]));
-      params.set("prep_max", String(prepRange[1]));
-      params.set("cook_min", String(cookRange[0]));
-      params.set("cook_max", String(cookRange[1]));
-      if (maxCalories != null) params.set("max_calories", String(maxCalories));
-
-      // ingredients
-      includeIngr.forEach((i) => params.append("include", i));
-      excludeIngr.forEach((i) => params.append("exclude", i));
-
-      // toggles
-      if (savedOnly) params.set("saved_only", "1");
-      if (verifiedChefs) params.set("verified_only", "1");
-      if (lfOnly) params.set("lactose_free_only", "1");
-
-      const res = await fetch(`/api/posts/explore?${params.toString()}`);
-      if (!res.ok) throw new Error(`Failed to load: ${res.status}`);
-      return res.json();
+    data,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage
+  } = useInfiniteQuery({
+    queryKey: ['explore', debouncedSearch, selectedCategory, sortBy, selectedDiets, selectedDifficulties, timeRange, calorieRange, verifiedOnly],
+    queryFn: async ({ pageParam = 0 }) => {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      let filtered = [...MOCK_POSTS];
+      
+      if (debouncedSearch) {
+        filtered = filtered.filter(post => 
+          post.caption.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+          post.user.displayName.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+          post.tags.some(tag => tag.toLowerCase().includes(debouncedSearch.toLowerCase()))
+        );
+      }
+      
+      if (selectedCategory && selectedCategory !== "All") {
+        filtered = filtered.filter(post => 
+          post.tags.some(tag => tag.toLowerCase() === selectedCategory.toLowerCase())
+        );
+      }
+      
+      if (selectedDiets.length > 0) {
+        filtered = filtered.filter(post =>
+          selectedDiets.some(diet => post.tags.includes(diet))
+        );
+      }
+      
+      if (selectedDifficulties.length > 0) {
+        filtered = filtered.filter(post =>
+          selectedDifficulties.includes(post.difficulty)
+        );
+      }
+      
+      if (verifiedOnly) {
+        filtered = filtered.filter(post => post.user.verified);
+      }
+      
+      filtered = filtered.filter(post => {
+        const totalTime = post.prepTime + post.cookTime;
+        return totalTime >= timeRange[0] && totalTime <= timeRange[1];
+      });
+      
+      filtered = filtered.filter(post =>
+        post.calories >= calorieRange[0] && post.calories <= calorieRange[1]
+      );
+      
+      if (sortBy === "newest") {
+        filtered.reverse();
+      } else if (sortBy === "most_liked") {
+        filtered.sort((a, b) => b.likesCount - a.likesCount);
+      }
+      
+      const pageSize = 6;
+      const start = pageParam * pageSize;
+      const items = filtered.slice(start, start + pageSize);
+      
+      return {
+        items,
+        nextCursor: start + pageSize < filtered.length ? pageParam + 1 : undefined,
+        total: filtered.length
+      };
     },
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    staleTime: 30_000,
-    keepPreviousData: true,
+    getNextPageParam: (lastPage) => lastPage.nextCursor
   });
 
-  // Flatten pages safely and ignore bad entries
-  const allPostsRaw = useMemo(
-    () => data?.pages?.flatMap((p) => (Array.isArray(p?.items) ? p.items : [])) ?? [],
+  const allPosts = useMemo(
+    () => data?.pages.flatMap(page => page.items) || [],
     [data]
   );
-  const allPosts = allPostsRaw.filter(isPostLike);
-  const total = data?.pages?.[0]?.total ?? allPosts.length;
 
-  // infinite scroll
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const total = data?.pages[0]?.total || 0;
+
+  const sentinelRef = useRef();
   useEffect(() => {
-    const node = sentinelRef.current; if (!node) return;
-    const io = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage();
-    }, { rootMargin: "800px 0px 800px 0px" });
-    io.observe(node); return () => io.disconnect();
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: '100px' }
+    );
 
-  // shortcuts
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "g") setViewMode("grid"); if (e.key === "l") setViewMode("list"); };
-    window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey);
-  }, [setViewMode]);
+    if (sentinelRef.current) {
+      observer.observe(sentinelRef.current);
+    }
 
-  const foundLabel = isFetching && !allPosts.length ? "Loading..." : `${total} ${total === 1 ? "post" : "posts"} found`;
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  // categories row
-  const CATEGORIES = ["All","Italian","Healthy","Desserts","Quick","Vegan","Seafood","Asian"] as const;
+  const resetFilters = () => {
+    setSearchTerm("");
+    setSelectedCategory(null);
+    setSelectedDiets([]);
+    setSelectedDifficulties([]);
+    setTimeRange([0, 60]);
+    setCalorieRange([0, 800]);
+    setVerifiedOnly(false);
+    setSortBy("trending");
+  };
 
-  /* ===== UI ===== */
-  if (isLoading && !data) {
-    return (
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        <Header
-          searchTerm={searchTerm} setSearchTerm={setSearchTerm}
-          selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory}
-          viewMode={viewMode} setViewMode={setViewMode}
-          sort={sort} setSort={setSort}
-          foundLabel="Loading…" openFilters={() => setIsFilterOpen(true)}
-          diets={diets} setDiets={setDiets} CATEGORIES={CATEGORIES as any}
+  const activeFiltersCount = [
+    selectedCategory && selectedCategory !== "All" ? 1 : 0,
+    selectedDiets.length,
+    selectedDifficulties.length,
+    verifiedOnly ? 1 : 0,
+    timeRange[0] !== 0 || timeRange[1] !== 60 ? 1 : 0,
+    calorieRange[0] !== 0 || calorieRange[1] !== 800 ? 1 : 0
+  ].reduce((sum, count) => sum + count, 0);
+
+  if (isLoading && allPosts.length === 0) {
+    return <LoadingSkeleton />;
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-red-50">
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl">
+              <ChefHat className="h-8 w-8 text-white" />
+            </div>
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
+                Explore Recipes
+              </h1>
+              <p className="text-muted-foreground">Discover amazing dishes from talented chefs worldwide</p>
+            </div>
+          </div>
+
+          <div className="relative mb-6 max-w-2xl">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground h-5 w-5" />
+            <Input
+              type="text"
+              placeholder="Search for recipes, ingredients, or chefs..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-12 pr-4 h-12 text-lg border-2 border-orange-100 focus:border-orange-300 rounded-xl bg-white/80 backdrop-blur-sm"
+            />
+            {searchTerm && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2 mb-6">
+            {CATEGORIES.map((category) => {
+              const isActive = selectedCategory === category || (!selectedCategory && category === "All");
+              return (
+                <Badge
+                  key={category}
+                  variant={isActive ? "default" : "outline"}
+                  className={`cursor-pointer px-4 py-2 text-sm transition-all duration-200 hover:scale-105 ${
+                    isActive 
+                      ? "bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg" 
+                      : "bg-white/80 hover:bg-orange-50 border-orange-200"
+                  }`}
+                  onClick={() => setSelectedCategory(
+                    isActive && category !== "All" ? null : category
+                  )}
+                >
+                  {category}
+                </Badge>
+              );
+            })}
+          </div>
+<div className="flex flex-wrap gap-2 mb-6">
+            {POPULAR_DIETS.map((diet) => {
+              const isActive = selectedDiets.includes(diet);
+              return (
+                <Badge
+                  key={diet}
+                  variant={isActive ? "default" : "outline"}
+                  className={`cursor-pointer px-3 py-1 text-xs transition-all duration-200 hover:scale-105 ${
+                    isActive 
+                      ? "bg-green-500 text-white shadow-md" 
+                      : "bg-white/80 hover:bg-green-50 border-green-200"
+                  }`}
+                  onClick={() => {
+                    if (isActive) {
+                      setSelectedDiets(selectedDiets.filter(d => d !== diet));
+                    } else {
+                      setSelectedDiets([...selectedDiets, diet]);
+                    }
+                  }}
+                >
+                  {diet}
+                </Badge>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+            <div className="flex items-center gap-4">
+              <p className="text-sm text-muted-foreground font-medium">
+                <span className="text-orange-600 font-semibold">{total}</span> recipes found
+              </p>
+              {activeFiltersCount > 0 && (
+                <Badge variant="secondary" className="gap-1">
+                  <Filter className="h-3 w-3" />
+                  {activeFiltersCount} filter{activeFiltersCount !== 1 ? 's' : ''}
+                </Badge>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsFiltersOpen(true)}
+                className="gap-2 bg-white/80 hover:bg-orange-50 border-orange-200"
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                Filters
+                {activeFiltersCount > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 text-xs">
+                    {activeFiltersCount}
+                  </Badge>
+                )}
+              </Button>
+
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="h-9 rounded-lg border border-orange-200 bg-white/80 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+              >
+                <option value="trending">🔥 Trending</option>
+                <option value="newest">📅 Newest</option>
+                <option value="most_liked">❤️ Most Liked</option>
+              </select>
+
+              <div className="flex bg-white/80 rounded-lg border border-orange-200 p-1">
+                <Button
+                  variant={viewMode === "grid" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("grid")}
+                  className={`h-7 px-2 ${viewMode === "grid" ? "bg-orange-500 text-white" : ""}`}
+                >
+                  <Grid className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={viewMode === "list" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("list")}
+                  className={`h-7 px-2 ${viewMode === "list" ? "bg-orange-500 text-white" : ""}`}
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {allPosts.length > 0 ? (
+          <>
+            {viewMode === "grid" ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {allPosts.map((post, index) => (
+                  <PostCard key={post.id} post={post} index={index} />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {allPosts.map((post, index) => (
+                  <PostListItem key={post.id} post={post} index={index} />
+                ))}
+              </div>
+            )}
+
+            <div ref={sentinelRef} className="mt-8 flex justify-center">
+              {isFetchingNextPage ? (
+                <div className="flex items-center gap-2 py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500"></div>
+                  <span className="text-muted-foreground">Loading more recipes...</span>
+                </div>
+              ) : hasNextPage ? (
+                <Button onClick={() => fetchNextPage()} variant="outline" className="mt-4">
+                  Load More
+                </Button>
+              ) : allPosts.length > 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  🍽️ You've seen all recipes! Try adjusting your filters for more results.
+                </p>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <EmptyState onReset={resetFilters} />
+        )}
+
+        <FiltersSheet
+          isOpen={isFiltersOpen}
+          onClose={() => setIsFiltersOpen(false)}
+          selectedDiets={selectedDiets}
+          setSelectedDiets={setSelectedDiets}
+          selectedDifficulties={selectedDifficulties}
+          setSelectedDifficulties={setSelectedDifficulties}
+          timeRange={timeRange}
+          setTimeRange={setTimeRange}
+          calorieRange={calorieRange}
+          setCalorieRange={setCalorieRange}
+          verifiedOnly={verifiedOnly}
+          setVerifiedOnly={setVerifiedOnly}
+          onReset={resetFilters}
         />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-          {Array.from({ length: 9 }).map((_, i) => (
-            <Card key={i} className="animate-pulse overflow-hidden">
-              <div className="w-full aspect-[4/3] bg-muted" />
+      </div>
+    </div>
+  );
+}
+
+function PostCard({ post, index }) {
+  return (
+    <Card className="group cursor-pointer overflow-hidden bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-2">
+      <div className="relative overflow-hidden">
+        <img
+          src={post.imageUrl}
+          alt={post.caption}
+          className="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-500"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        
+        {post.isRecipe && (
+          <Badge className="absolute top-3 right-3 bg-orange-500 text-white shadow-lg">
+            <ChefHat className="h-3 w-3 mr-1" />
+            Recipe
+          </Badge>
+        )}
+
+        {post.user.verified && (
+          <Badge className="absolute top-3 left-3 bg-blue-500 text-white shadow-lg">
+            <Star className="h-3 w-3 mr-1" />
+            Verified
+          </Badge>
+        )}
+      </div>
+
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <img
+            src={post.user.avatar}
+            alt={post.user.displayName}
+            className="w-8 h-8 rounded-full ring-2 ring-orange-100"
+          />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {post.user.displayName}
+            </p>
+            {post.difficulty && (
+              <p className="text-xs text-muted-foreground">
+                {post.difficulty} • {post.prepTime + post.cookTime} min
+              </p>
+            )}
+          </div>
+        </div>
+
+        <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-orange-600 transition-colors">
+          {post.caption}
+        </h3>
+
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1">
+              <Heart className="h-4 w-4 text-red-500" />
+              {post.likesCount}
+            </span>
+            <span className="flex items-center gap-1">
+              <MessageCircle className="h-4 w-4 text-blue-500" />
+              {post.commentsCount}
+            </span>
+          </div>
+          {post.calories && (
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+              {post.calories} cal
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PostListItem({ post, index }) {
+  return (
+    <Card className="group cursor-pointer overflow-hidden bg-white/80 backdrop-blur-sm border-0 shadow-md hover:shadow-xl transition-all duration-300">
+      <div className="flex">
+        <div className="relative w-48 h-32 overflow-hidden">
+          <img
+            src={post.imageUrl}
+            alt={post.caption}
+            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+            loading="lazy"
+          />
+        </div>
+        
+        <CardContent className="flex-1 p-4">
+          <div className="flex justify-between items-start mb-2">
+            <div className="flex items-center gap-2">
+              <img
+                src={post.user.avatar}
+                alt={post.user.displayName}
+                className="w-6 h-6 rounded-full"
+              />
+              <span className="text-sm font-medium">{post.user.displayName}</span>
+              {post.user.verified && <Star className="h-4 w-4 text-blue-500" />}
+            </div>
+            {post.isRecipe && (
+              <Badge variant="secondary" className="text-xs">
+                Recipe
+              </Badge>
+            )}
+          </div>
+          
+          <h3 className="font-semibold text-lg mb-2 group-hover:text-orange-600 transition-colors">
+            {post.caption}
+          </h3>
+          
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Heart className="h-4 w-4 text-red-500" />
+                {post.likesCount}
+              </span>
+              <span className="flex items-center gap-1">
+                <MessageCircle className="h-4 w-4 text-blue-500" />
+                {post.commentsCount}
+              </span>
+              <span className="flex items-center gap-1">
+                <Clock className="h-4 w-4" />
+                {post.prepTime + post.cookTime} min
+              </span>
+            </div>
+            {post.calories && (
+              <span className="text-sm bg-green-100 text-green-700 px-3 py-1 rounded-full">
+                {post.calories} calories
+              </span>
+            )}
+          </div>
+        </CardContent>
+      </div>
+    </Card>
+  );
+}
+function LoadingSkeleton() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-red-50">
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-14 h-14 bg-gradient-to-r from-orange-200 to-red-200 rounded-2xl animate-pulse" />
+            <div>
+              <div className="w-48 h-8 bg-gradient-to-r from-orange-200 to-red-200 rounded animate-pulse mb-2" />
+              <div className="w-64 h-4 bg-gray-200 rounded animate-pulse" />
+            </div>
+          </div>
+          <div className="w-full max-w-2xl h-12 bg-gray-200 rounded-xl animate-pulse mb-6" />
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="overflow-hidden animate-pulse">
+              <div className="w-full h-48 bg-gray-200" />
               <CardContent className="p-4">
-                <div className="space-y-2">
-                  <div className="w-3/4 h-4 bg-muted rounded" />
-                  <div className="w-1/2 h-3 bg-muted rounded" />
+                <div className="space-y-3">
+                  <div className="w-3/4 h-4 bg-gray-200 rounded" />
+                  <div className="w-1/2 h-3 bg-gray-200 rounded" />
+                  <div className="flex justify-between">
+                    <div className="w-20 h-3 bg-gray-200 rounded" />
+                    <div className="w-16 h-3 bg-gray-200 rounded" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="max-w-6xl mx-auto px-4 py-10 text-center">
-        <h2 className="text-2xl font-semibold mb-2">We burnt something 😢</h2>
-        <p className="text-muted-foreground mb-6">{(error as Error)?.message || "Something went wrong loading Explore."}</p>
-        <Button onClick={() => refetch()} size="sm"><RefreshCw className="h-4 w-4 mr-2" />Try again</Button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
-      <Header
-        searchTerm={searchTerm} setSearchTerm={setSearchTerm}
-        selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory}
-        viewMode={viewMode} setViewMode={setViewMode}
-        sort={sort} setSort={setSort}
-        foundLabel={foundLabel} openFilters={() => setIsFilterOpen(true)}
-        diets={diets} setDiets={setDiets} CATEGORIES={CATEGORIES as any}
-      />
-
-      {/* Posts */}
-      {allPosts.length > 0 ? (
-        viewMode === "grid" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4" data-testid="grid-explore">
-            {allPosts.map((post, i) => (
-              <Card key={post.id ?? `post-${i}`} className="group cursor-pointer hover:shadow-lg transition-shadow overflow-hidden">
-                <div className="relative overflow-hidden">
-                  <div className="w-full aspect-[4/3] bg-muted">
-                    <img
-                      src={getPostImageUrl(post)}
-                      onError={onImgError}
-                      alt={post?.caption || "Post image"}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      loading="lazy"
-                      decoding="async"
-                      data-testid={`img-explore-post-${post.id ?? i}`}
-                    />
-                  </div>
-                  {post?.isRecipe && (
-                    <Badge className="absolute top-2 right-2 bg-accent text-accent-foreground">Recipe</Badge>
-                  )}
-                </div>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <img
-                      src={(post?.user?.avatar && String(post.user.avatar)) || PLACEHOLDER_IMG}
-                      onError={onImgError}
-                      alt={post?.user?.displayName || "Creator"}
-                      className="w-6 h-6 rounded-full bg-muted"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                    <span className="text-sm font-medium">{post?.user?.displayName || "Unknown Chef"}</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{post?.caption || "—"}</p>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span aria-label={`${post?.likesCount ?? 0} likes`}>♥ {post?.likesCount ?? 0}</span>
-                    <span aria-label={`${post?.commentsCount ?? 0} comments`}>💬 {post?.commentsCount ?? 0}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-8 mt-4" data-testid="list-explore">
-            {allPosts.map((post, i) =>
-              post?.isRecipe
-                ? (post ? <RecipeCard key={post.id ?? `r-${i}`} post={post} /> : null)
-                : (post ? <PostCard key={post.id ?? `p-${i}`} post={post} /> : null)
-            )}
-          </div>
-        )
-      ) : (
-        <EmptyState onClear={() => resetAll()} query={debouncedQuery} category={selectedCategory} />
-      )}
-
-      {/* Infinite load */}
-      {allPosts.length > 0 && (
-        <div className="flex items-center justify-center mt-8">
-          {hasNextPage ? (
-            <>
-              <div ref={sentinelRef} />
-              <Button onClick={() => fetchNextPage()} disabled={isFetchingNextPage} variant="outline" size="sm" className="mx-auto">
-                {isFetchingNextPage ? "Loading…" : "Load more"}
-              </Button>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">You’ve reached the end. 🍽️</p>
-          )}
-        </div>
-      )}
-
-      {/* Filters Sheet */}
-      <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
-          <SheetHeader className="mb-2"><SheetTitle>Filters</SheetTitle></SheetHeader>
-
-          <div className="grid gap-4">
-            <MultiSelectCombobox options={CUISINES} value={cuisines} onChange={setCuisines} buttonLabel="Cuisine / Ethnicity" placeholder="Search cuisines…" className="w-full" />
-            <MultiSelectCombobox options={DIETS} value={diets} onChange={setDiets} buttonLabel="Diet" placeholder="Search diets…" className="w-full" />
-            <MultiSelectCombobox options={COURSES} value={courses} onChange={setCourses} buttonLabel="Course" placeholder="Search courses…" className="w-full" />
-            <MultiSelectCombobox options={DIFFICULTIES} value={difficulties} onChange={setDifficulties} buttonLabel="Difficulty" placeholder="Filter difficulty…" className="w-full" />
-            <MultiSelectCombobox options={ALLERGENS} value={allergens} onChange={setAllergens} buttonLabel="Exclude allergens" placeholder="Select allergens…" className="w-full" />
-
-            {/* Time & calories */}
-            <RangeRow label="Prep time (min)" value={prepRange} onChange={setPrepRange} max={120} />
-            <RangeRow label="Cook time (min)" value={cookRange} onChange={setCookRange} max={240} />
-
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-sm text-muted-foreground">Max calories (per serving)</label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  placeholder="e.g., 500"
-                  value={maxCalories ?? ""}
-                  onChange={(e) => setMaxCalories(e.target.value === "" ? null : Math.max(0,
-
-<Button variant="ghost" size="sm" onClick={() => setMaxCalories(null)}>
-                    Clear
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Ingredients include / exclude */}
-            <TagInput
-              label="Include ingredients"
-              value={includeIngr}
-              onChange={setIncludeIngr}
-              placeholder="e.g., chicken, basil…"
-            />
-            <TagInput
-              label="Exclude ingredients"
-              value={excludeIngr}
-              onChange={setExcludeIngr}
-              placeholder="e.g., peanuts, cilantro…"
-            />
-
-            {/* Toggles */}
-            <ToggleRow label="Gluten-free only" checked={gfOnly} onCheckedChange={setGfOnly} />
-            <ToggleRow label="Lactose-free only" checked={lfOnly} onCheckedChange={setLfOnly} />
-            <ToggleRow
-              label="Saved only"
-              hint="Show recipes you’ve saved"
-              checked={savedOnly}
-              onCheckedChange={setSavedOnly}
-            />
-            <ToggleRow
-              label="Verified chefs only"
-              hint="Creators with verified badge"
-              checked={verifiedChefs}
-              onCheckedChange={setVerifiedChefs}
-            />
-
-            {/* Sort */}
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-sm text-muted-foreground">Sort</label>
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as any)}
-                className="h-9 rounded-md border bg-background px-2 text-sm"
-              >
-                <option value="trending">Trending</option>
-                <option value="newest">Newest</option>
-                <option value="most_liked">Most liked</option>
-              </select>
-            </div>
-          </div>
-
-          <SheetFooter className="mt-4">
-            <div className="flex w-full items-center justify-between gap-2">
-              <Button variant="ghost" onClick={() => resetAll()}>
-                Reset
-              </Button>
-              <Button onClick={() => setIsFilterOpen(false)}>Apply</Button>
-            </div>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-    </div>
-  );
-
-  /* helpers */
-  function resetAll() {
-    setSelectedCategory(null);
-    setSearchTerm("");
-    setCuisines([]);
-    setDiets([]);
-    setCourses([]);
-    setDifficulties([]);
-    setAllergens([]);
-    setPrepRange([0, 60]);
-    setCookRange([0, 90]);
-    setMaxCalories(null);
-    setIncludeIngr([]);
-    setExcludeIngr([]);
-    setSavedOnly(false);
-    setVerifiedChefs(false);
-    setGfOnly(false);
-    setLfOnly(false);
-    setSort("trending");
-  }
-}
-
-/* ===== Header, RangeRow, ToggleRow, EmptyState ===== */
-
-function Header({
-  searchTerm,
-  setSearchTerm,
-  selectedCategory,
-  setSelectedCategory,
-  viewMode,
-  setViewMode,
-  sort,
-  setSort,
-  foundLabel,
-  openFilters,
-  diets,
-  setDiets,
-  CATEGORIES,
-}: any) {
-  return (
-    <div className="mb-4 sticky top-0 z-10 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70 py-4">
-      <h1 className="text-3xl font-bold mb-4">Explore</h1>
-      <div className="relative mb-3">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4 pointer-events-none" />
-        <Input
-          type="text"
-          placeholder="Search recipes, chefs, or ingredients…"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10 max-w-xl"
-          aria-label="Search explore"
-        />
-      </div>
-
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        {/* Category pills */}
-        <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
-          {CATEGORIES.map((category: string) => {
-            const active = selectedCategory === category || (!selectedCategory && category === "All");
-            return (
-              <Badge
-                key={category}
-                variant={active ? "default" : "outline"}
-                className="cursor-pointer shrink-0"
-                onClick={() =>
-                  setSelectedCategory(active && category !== "All" ? null : category)
-                }
-                aria-pressed={active}
-              >
-                {category}
-              </Badge>
-            );
-          })}
-        </div>
-
-        {/* Popular diet chips */}
-        <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
-          {POPULAR_DIET_CHIPS.map((d) => {
-            const active = diets.includes(d);
-            return (
-              <Badge
-                key={d}
-                variant={active ? "default" : "outline"}
-                className="cursor-pointer shrink-0"
-                onClick={() =>
-                  active
-                    ? setDiets(diets.filter((x: string) => x !== d))
-                    : setDiets([...diets, d])
-                }
-                aria-pressed={active}
-                title={`Diet: ${d}`}
-              >
-                {d}
-              </Badge>
-            );
-          })}
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-2 md:ml-auto">
-          <Button variant="outline" size="sm" onClick={openFilters}>
-            <SlidersHorizontal className="h-4 w-4 mr-2" /> Filters
-          </Button>
-          <Button
-            variant={viewMode === "grid" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setViewMode("grid")}
-            aria-pressed={viewMode === "grid"}
-            aria-label="Grid view (g)"
-            title="Grid view (g)"
-          >
-            <Grid className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={viewMode === "list" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setViewMode("list")}
-            aria-pressed={viewMode === "list"}
-            aria-label="List view (l)"
-            title="List view (l)"
-          >
-            <List className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between mt-3">
-        <p className="text-sm text-muted-foreground">{foundLabel}</p>
-        <div className="flex items-center gap-2">
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value)}
-            className="h-9 rounded-md border bg-background px-2 text-sm"
-          >
-            <option value="trending">Trending</option>
-            <option value="newest">Newest</option>
-            <option value="most_liked">Most liked</option>
-          </select>
-        </div>
-      </div>
     </div>
   );
 }
 
-function RangeRow({
-  label,
-  value,
-  onChange,
-  max,
-}: {
-  label: string;
-  value: [number, number];
-  onChange: (v: [number, number]) => void;
-  max: number;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">{label}</span>
-        <span className="text-sm">
-          {value[0]}–{value[1]} min
-        </span>
-      </div>
-      <Slider
-        value={value}
-        min={0}
-        max={max}
-        step={5}
-        onValueChange={(v) => onChange([v[0] ?? value[0], v[1] ?? value[1]])}
-      />
-    </div>
-  );
-}
-
-function ToggleRow({
-  label,
-  hint,
-  checked,
-  onCheckedChange,
-}: {
-  label: string;
-  hint?: string;
-  checked: boolean;
-  onCheckedChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <div>
-        <div className="text-sm">{label}</div>
-        {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
-      </div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
-    </div>
-  );
-}
-
-function EmptyState({
-  onClear,
-  query,
-  category,
-}: {
-  onClear: () => void;
-  query: string;
-  category: string | null;
-}) {
+function EmptyState({ onReset }) {
   return (
     <div className="text-center py-16">
-      <h3 className="text-lg font-semibold mb-2">No posts found</h3>
-      <p className="text-muted-foreground max-w-md mx-auto">
-        {query || (category && category !== "All")
-          ? "Try adjusting your search terms or filters."
-          : "Looks quiet here. Try searching for 'pasta', 'chicken', or 'vegan'."}
+      <div className="w-24 h-24 mx-auto mb-6 opacity-50">
+        <div className="w-full h-full bg-gradient-to-r from-orange-200 to-red-200 rounded-full flex items-center justify-center">
+          <Search className="h-12 w-12 text-orange-500" />
+        </div>
+      </div>
+      <h3 className="text-2xl font-semibold text-gray-900 mb-3">No recipes found</h3>
+      <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+        We couldn't find any recipes matching your criteria. Try adjusting your search terms or filters.
       </p>
-      <Button onClick={onClear} className="mt-4" size="sm">
-        Reset filters
+      <Button onClick={onReset} className="bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600">
+        Reset Filters
       </Button>
     </div>
   );
+}
+
+function FiltersSheet({ isOpen, onClose, selectedDiets, setSelectedDiets, selectedDifficulties, setSelectedDifficulties, timeRange, setTimeRange, calorieRange, setCalorieRange, verifiedOnly, setVerifiedOnly, onReset }) {
+  return (
+    <Sheet open={isOpen} onOpenChange={onClose}>
+      <SheetContent side="right" className="w-[400px] sm:w-[540px]">
+        <SheetHeader>
+          <SheetTitle>Advanced Filters</SheetTitle>
+        </SheetHeader>
+        
+        <div className="mt-6 space-y-6">
+          <div>
+            <label className="text-sm font-medium mb-3 block">Dietary Preferences</label>
+            <div className="flex flex-wrap gap-2">
+              {POPULAR_DIETS.map((diet) => (
+               <Badge
+                 key={diet}
+                 variant={selectedDiets.includes(diet) ? "default" : "outline"}
+                 className="cursor-pointer"
+                 onClick={() => {
+                   if (selectedDiets.includes(diet)) {
+                     setSelectedDiets(selectedDiets.filter(d => d !== diet));
+                   } else {
+                     setSelectedDiets([...selectedDiets, diet]);
+                   }
+                 }}
+               >
+                 {diet}
+               </Badge>
+             ))}
+           </div>
+         </div>
+
+         <div>
+           <label className="text-sm font-medium mb-3 block">Difficulty</label>
+           <div className="flex flex-wrap gap-2">
+             {DIFFICULTIES.map((difficulty) => (
+               <Badge
+                 key={difficulty}
+                 variant={selectedDifficulties.includes(difficulty) ? "default" : "outline"}
+                 className="cursor-pointer"
+                 onClick={() => {
+                   if (selectedDifficulties.includes(difficulty)) {
+                     setSelectedDifficulties(selectedDifficulties.filter(d => d !== difficulty));
+                   } else {
+                     setSelectedDifficulties([...selectedDifficulties, difficulty]);
+                   }
+                 }}
+               >
+                 {difficulty}
+               </Badge>
+             ))}
+           </div>
+         </div>
+
+         <div>
+           <label className="text-sm font-medium mb-3 block">
+             Total Time: {timeRange[0]} - {timeRange[1]} minutes
+           </label>
+           <Slider
+             value={timeRange}
+             onValueChange={setTimeRange}
+             max={120}
+             step={5}
+             className="w-full"
+           />
+         </div>
+
+         <div>
+           <label className="text-sm font-medium mb-3 block">
+             Calories: {calorieRange[0]} - {calorieRange[1]} per serving
+           </label>
+           <Slider
+             value={calorieRange}
+             onValueChange={setCalorieRange}
+             max={1000}
+             step={50}
+             className="w-full"
+           />
+         </div>
+
+         <div className="flex items-center justify-between">
+           <label className="text-sm font-medium">Verified chefs only</label>
+           <Switch checked={verifiedOnly} onCheckedChange={setVerifiedOnly} />
+         </div>
+       </div>
+
+       <SheetFooter className="mt-8">
+         <Button variant="outline" onClick={onReset} className="w-full">
+           Reset All Filters
+         </Button>
+         <Button onClick={onClose} className="w-full">
+           Apply Filters
+         </Button>
+       </SheetFooter>
+     </SheetContent>
+   </Sheet>
+ );
 }
