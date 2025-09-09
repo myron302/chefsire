@@ -451,7 +451,7 @@ export default function Explore() {
 
       {/* Posts */}
       {allPosts.length > 0 ? (
-        view攻略
+        viewMode
         viewMode === "grid" ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4" data-testid="grid-explore">
             {allPosts.map((post, i) => (
