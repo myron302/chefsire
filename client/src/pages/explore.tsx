@@ -1,41 +1,86 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import PostCard from "@/components/post-card";
 import RecipeCard from "@/components/recipe-card";
-import { Search, Grid, List, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { Search, Grid, List, RefreshCw, SlidersHorizontal, X } from "lucide-react";
 import type { PostWithUser } from "@shared/schema";
 import { MultiSelectCombobox } from "@/components/multi-select-combobox";
 import { TagInput } from "@/components/tag-input";
-import { CUISINES, DIETS, COURSES, POPULAR_DIET_CHIPS, DIFFICULTIES, ALLERGENS } from "@/lib/filters";
+import {
+  CUISINES,
+  DIETS,
+  COURSES,
+  POPULAR_DIET_CHIPS,
+  DIFFICULTIES,
+  ALLERGENS,
+} from "@/lib/filters";
 import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/use-toast";
 
-/* ===== Helpers ===== */
+// ===== Types =====
+interface FilterState {
+  cuisines: string[];
+  diets: string[];
+  courses: string[];
+  difficulties: string[];
+  allergens: string[];
+  prepRange: [number, number];
+  cookRange: [number, number];
+  maxCalories: number | null;
+  includeIngr: string[];
+  excludeIngr: string[];
+  savedOnly: boolean;
+  verifiedChefs: boolean;
+  gfOnly: boolean;
+  lfOnly: boolean;
+  sort: "trending" | "newest" | "most_liked";
+}
+
+// ===== Constants =====
 const PLACEHOLDER_IMG =
-  "image/svg+xml;utf8," +
+  "data:image/svg+xml;utf8," +
   encodeURIComponent(
-    `<svg xmlns='http://www.w3.org/2000/svg' width='800' height='600'> <rect width='100%' height='100%' fill='%23eee'/> <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%23999' font-family='sans-serif' font-size='20'>No image</text> </svg>`
+    `<svg xmlns='http://www.w3.org/2000/svg' width='800' height='600'> <rect width='100%' height='100%' fill='#eee'/> <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='#999' font-family='sans-serif' font-size='20'>No image</text> </svg>`
   );
 
-function onImgError(e: React.SyntheticEvent<HTMLImageElement>) {
+const LIMIT = 18;
+const CATEGORIES = [
+  "All",
+  "Italian",
+  "Healthy",
+  "Desserts",
+  "Quick",
+  "Vegan",
+  "Seafood",
+  "Asian",
+] as const;
+
+// ===== Helpers =====
+const onImgError = (e: React.SyntheticEvent<HTMLImageElement>) => {
   const img = e.currentTarget;
   if (img.src !== PLACEHOLDER_IMG) img.src = PLACEHOLDER_IMG;
-}
+};
 
-function getPostImageUrl(post: Partial<PostWithUser> | undefined) {
-  return (post?.imageUrl && String(post.imageUrl).trim()) || PLACEHOLDER_IMG;
-}
+const getPostImageUrl = (post: Partial<PostWithUser> | undefined) =>
+  (post?.imageUrl && String(post.imageUrl).trim()) || PLACEHOLDER_IMG;
 
-function isPostLike(x: any): x is PostWithUser {
-  return x && typeof x === "object";
-}
+const isPostLike = (x: any): x is PostWithUser => x && typeof x === "object";
 
-/* ===== Utilities ===== */
+// Debounce hook
 function useDebouncedValue<T>(value: T, delay = 300) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -45,6 +90,7 @@ function useDebouncedValue<T>(value: T, delay = 300) {
   return debounced;
 }
 
+// Local storage hook with error handling
 function useLocalStorage<T>(key: string, initial: T) {
   const [val, setVal] = useState<T>(() => {
     try {
@@ -57,46 +103,93 @@ function useLocalStorage<T>(key: string, initial: T) {
   useEffect(() => {
     try {
       localStorage.setItem(key, JSON.stringify(val));
-    } catch {}
+    } catch {
+      console.warn(`Failed to save ${key} to localStorage`);
+    }
   }, [key, val]);
   return [val, setVal] as const;
 }
 
-/* ===== Component ===== */
+// Calculate active filter count
+const getFilterCount = (filters: FilterState) => {
+  let count = 0;
+  count += filters.cuisines.length;
+  count += filters.diets.length;
+  count += filters.courses.length;
+  count += filters.difficulties.length;
+  count += filters.allergens.length;
+  count += filters.includeIngr.length;
+  count += filters.excludeIngr.length;
+  count += filters.prepRange[0] !== 0 || filters.prepRange[1] !== 60 ? 1 : 0;
+  count += filters.cookRange[0] !== 0 || filters.cookRange[1] !== 90 ? 1 : 0;
+  count += filters.maxCalories !== null ? 1 : 0;
+  count += filters.savedOnly ? 1 : 0;
+  count += filters.verifiedChefs ? 1 : 0;
+  count += filters.gfOnly ? 1 : 0;
+  count += filters.lfOnly ? 1 : 0;
+  return count;
+};
+
+// ===== Component =====
 export default function Explore() {
-  // Basic filters and UI states
+  const { toast } = useToast();
+
+  // State
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useLocalStorage<string | null>("explore:selectedCategory", null);
-  const [viewMode, setViewMode] = useLocalStorage<"grid" | "list">("explore:viewMode", "grid");
-  const [sort, setSort] = useLocalStorage<"trending" | "newest" | "most_liked">("explore:sort", "trending");
-  const debouncedQuery = useDebouncedValue(searchTerm.trim(), 350);
+  const [selectedCategory, setSelectedCategory] = useLocalStorage<string | null>(
+    "explore:selectedCategory",
+    null
+  );
+  const [viewMode, setViewMode] = useLocalStorage<"grid" | "list">(
+    "explore:viewMode",
+    "grid"
+  );
+  const [sort, setSort] = useLocalStorage<"trending" | "newest" | "most_liked">(
+    "explore:sort",
+    "trending"
+  );
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   // Advanced filters
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [cuisines, setCuisines] = useLocalStorage<string[]>("explore:cuisines", []);
   const [diets, setDiets] = useLocalStorage<string[]>("explore:diets", []);
   const [courses, setCourses] = useLocalStorage<string[]>("explore:courses", []);
-  const [difficulties, setDifficulties] = useLocalStorage<string[]>("explore:difficulties", []);
+  const [difficulties, setDifficulties] = useLocalStorage<string[]>(
+    "explore:difficulties",
+    []
+  );
   const [allergens, setAllergens] = useLocalStorage<string[]>("explore:allergens", []);
-
-  // Time and calorie ranges
-  const [prepRange, setPrepRange] = useLocalStorage<[number, number]>("explore:prepRange", [0, 60]);
-  const [cookRange, setCookRange] = useLocalStorage<[number, number]>("explore:cookRange", [0, 90]);
-  const [maxCalories, setMaxCalories] = useLocalStorage<number | null>("explore:maxCalories", null);
-
-  // Include / exclude ingredients
-  const [includeIngr, setIncludeIngr] = useLocalStorage<string[]>("explore:includeIngr", []);
-  const [excludeIngr, setExcludeIngr] = useLocalStorage<string[]>("explore:excludeIngr", []);
-
-  // Toggles
+  const [prepRange, setPrepRange] = useLocalStorage<[number, number]>(
+    "explore:prepRange",
+    [0, 60]
+  );
+  const [cookRange, setCookRange] = useLocalStorage<[number, number]>(
+    "explore:cookRange",
+    [0, 90]
+  );
+  const [maxCalories, setMaxCalories] = useLocalStorage<number | null>(
+    "explore:maxCalories",
+    null
+  );
+  const [includeIngr, setIncludeIngr] = useLocalStorage<string[]>(
+    "explore:includeIngr",
+    []
+  );
+  const [excludeIngr, setExcludeIngr] = useLocalStorage<string[]>(
+    "explore:excludeIngr",
+    []
+  );
   const [savedOnly, setSavedOnly] = useLocalStorage<boolean>("explore:savedOnly", false);
-  const [verifiedChefs, setVerifiedChefs] = useLocalStorage<boolean>("explore:verifiedChefs", false);
+  const [verifiedChefs, setVerifiedChefs] = useLocalStorage<boolean>(
+    "explore:verifiedChefs",
+    false
+  );
   const [gfOnly, setGfOnly] = useLocalStorage<boolean>("explore:gfOnly", false);
   const [lfOnly, setLfOnly] = useLocalStorage<boolean>("explore:lfOnly", false);
 
-  const LIMIT = 18;
+  const debouncedQuery = useDebouncedValue(searchTerm.trim(), 350);
 
-  // Infinite Query to fetch data from backend API
+  // Data fetching
   const {
     data,
     isLoading,
@@ -137,7 +230,8 @@ export default function Explore() {
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams();
       if (debouncedQuery) params.set("q", debouncedQuery);
-      if (selectedCategory && selectedCategory !== "All") params.set("category", selectedCategory);
+      if (selectedCategory && selectedCategory !== "All")
+        params.set("category", selectedCategory);
       params.set("sort", sort);
       params.set("limit", String(LIMIT));
       if (pageParam) params.set("cursor", String(pageParam));
@@ -163,7 +257,9 @@ export default function Explore() {
       if (lfOnly) params.set("lactose_free_only", "1");
 
       const res = await fetch(`/api/posts/explore?${params.toString()}`);
-      if (!res.ok) throw new Error(`Failed to load: ${res.status}`);
+      if (!res.ok) {
+        throw new Error(`Failed to load: ${res.status} ${res.statusText}`);
+      }
       return res.json();
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -171,22 +267,26 @@ export default function Explore() {
     keepPreviousData: true,
   });
 
-  // Flatten pages safely and ignore bad entries
-  const allPostsRaw = useMemo(
-    () => data?.pages?.flatMap((p) => (Array.isArray(p?.items) ? p.items : [])) ?? [],
+  // Memoized posts
+  const allPosts = useMemo(
+    () =>
+      data?.pages
+        ?.flatMap((p) => (Array.isArray(p?.items) ? p.items : []))
+        .filter(isPostLike) ?? [],
     [data]
   );
-  const allPosts = allPostsRaw.filter(isPostLike);
   const total = data?.pages?.[0]?.total ?? allPosts.length;
 
-  // Infinite scroll sentinel logic
+  // Infinite scroll
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const node = sentinelRef.current;
     if (!node) return;
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage();
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
       },
       { rootMargin: "800px 0px 800px 0px" }
     );
@@ -194,21 +294,91 @@ export default function Explore() {
     return () => io.disconnect();
   }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
-  // Keyboard shortcuts for grid/list toggle
+  // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "g") setViewMode("grid");
       if (e.key === "l") setViewMode("list");
+      if (e.key === "f") setIsFilterOpen(true);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [setViewMode]);
 
-  const foundLabel = isFetching && !allPosts.length ? "Loading..." : `${total} ${total === 1 ? "post" : "posts"} found`;
+  // Reset filters with confirmation
+  const resetAll = useCallback(() => {
+    toast({
+      title: "Reset Filters",
+      description: "Are you sure you want to reset all filters?",
+      action: (
+        <Button
+          onClick={() => {
+            setSelectedCategory(null);
+            setSearchTerm("");
+            setCuisines([]);
+            setDiets([]);
+            setCourses([]);
+            setDifficulties([]);
+            setAllergens([]);
+            setPrepRange([0, 60]);
+            setCookRange([0, 90]);
+            setMaxCalories(null);
+            setIncludeIngr([]);
+            setExcludeIngr([]);
+            setSavedOnly(false);
+            setVerifiedChefs(false);
+            setGfOnly(false);
+            setLfOnly(false);
+            setSort("trending");
+            setIsFilterOpen(false);
+          }}
+        >
+          Confirm
+        </Button>
+      ),
+    });
+  }, [
+    setSelectedCategory,
+    setSearchTerm,
+    setCuisines,
+    setDiets,
+    setCourses,
+    setDifficulties,
+    setAllergens,
+    setPrepRange,
+    setCookRange,
+    setMaxCalories,
+    setIncludeIngr,
+    setExcludeIngr,
+    setSavedOnly,
+    setVerifiedChefs,
+    setGfOnly,
+    setLfOnly,
+    setSort,
+    toast,
+  ]);
 
-  const CATEGORIES = ["All", "Italian", "Healthy", "Desserts", "Quick", "Vegan", "Seafood", "Asian"] as const;
+  const filterCount = getFilterCount({
+    cuisines,
+    diets,
+    courses,
+    difficulties,
+    allergens,
+    prepRange,
+    cookRange,
+    maxCalories,
+    includeIngr,
+    excludeIngr,
+    savedOnly,
+    verifiedChefs,
+    gfOnly,
+    lfOnly,
+    sort,
+  });
 
-  /* ===== UI ===== */
+  const foundLabel = isFetching && !allPosts.length ? "Loading…" : `${total} ${total === 1 ? "post" : "posts"} found`;
+
+  // UI
   if (isLoading && !data) {
     return (
       <div className="max-w-6xl mx-auto px-4 py-6">
@@ -221,11 +391,12 @@ export default function Explore() {
           setViewMode={setViewMode}
           sort={sort}
           setSort={setSort}
-          foundLabel="Loading..."
+          foundLabel="Loading…"
           openFilters={() => setIsFilterOpen(true)}
           diets={diets}
           setDiets={setDiets}
-          CATEGORIES={CATEGORIES as any}
+          CATEGORIES={CATEGORIES}
+          filterCount={filterCount}
         />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
           {Array.from({ length: 9 }).map((_, i) => (
@@ -248,7 +419,9 @@ export default function Explore() {
     return (
       <div className="max-w-6xl mx-auto px-4 py-10 text-center">
         <h2 className="text-2xl font-semibold mb-2">We burnt something 😢</h2>
-        <p className="text-muted-foreground mb-6">{(error as Error)?.message || "Something went wrong loading Explore."}</p>
+        <p className="text-muted-foreground mb-6">
+          {(error as Error)?.message || "Something went wrong loading Explore."}
+        </p>
         <Button onClick={() => refetch()} size="sm">
           <RefreshCw className="h-4 w-4 mr-2" />
           Try again
@@ -272,11 +445,13 @@ export default function Explore() {
         openFilters={() => setIsFilterOpen(true)}
         diets={diets}
         setDiets={setDiets}
-        CATEGORIES={CATEGORIES as any}
+        CATEGORIES={CATEGORIES}
+        filterCount={filterCount}
       />
 
       {/* Posts */}
       {allPosts.length > 0 ? (
+        view攻略
         viewMode === "grid" ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4" data-testid="grid-explore">
             {allPosts.map((post, i) => (
@@ -295,45 +470,59 @@ export default function Explore() {
                       decoding="async"
                       data-testid={`img-explore-post-${post.id ?? i}`}
                     />
+                    {post?.isRecipe && (
+                      <Badge className="absolute top-2 right-2 bg-accent text-accent-foreground">
+                        Recipe
+                      </Badge>
+                    )}
                   </div>
-                  {post?.isRecipe && (
-                    <Badge className="absolute top-2 right-2 bg-accent text-accent-foreground">Recipe</Badge>
-                  )}
-                </div>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <img
-                      src={(post?.user?.avatar && String(post.user.avatar)) || PLACEHOLDER_IMG}
-                      onError={onImgError}
-                      alt={post?.user?.displayName || "Creator"}
-                      className="w-6 h-6 rounded-full bg-muted"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                    <span className="text-sm font-medium">{post?.user?.displayName || "Unknown Chef"}</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{post?.caption || "—"}</p>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span aria-label={`${post?.likesCount ?? 0} likes`}>♥ {post?.likesCount ?? 0}</span>
-                    <span aria-label={`${post?.commentsCount ?? 0} comments`}>💬 {post?.commentsCount ?? 0}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <img
+                        src={(post?.user?.avatar && String(post.user.avatar)) || PLACEHOLDER_IMG}
+                        onError={onImgError}
+                        alt={post?.user?.displayName || "Creator"}
+                        className="w-6 h-6 rounded-full bg-muted"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                      <span className="text-sm font-medium">
+                        {post?.user?.displayName || "Unknown Chef"}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
+                      {post?.caption || "—"}
+                    </p>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span aria-label={`${post?.likesCount ?? 0} likes`}>
+                        ♥ {post?.likesCount ?? 0}
+                      </span>
+                      <span aria-label={`${post?.commentsCount ?? 0} comments`}>
+                        💬 {post?.commentsCount ?? 0}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            }
           </div>
         ) : (
           <div className="space-y-8 mt-4" data-testid="list-explore">
             {allPosts.map((post, i) =>
               post?.isRecipe ? (
-                post ? <RecipeCard key={post.id ?? `r-${i}`} post={post} /> : null
+                post ? (
+                  <RecipeCard key={post.id ?? `r-${i}`} post={post} />
+                ) : null
               ) : (
-                post ? <PostCard key={post.id ?? `p-${i}`} post={post} /> : null
+                post ? (
+                  <PostCard key={post.id ?? `p-${i}`} post={post} />
+                ) : null
               )
             )}
           </div>
         )
       ) : (
-        <EmptyState onClear={() => resetAll()} query={debouncedQuery} category={selectedCategory} />
+        <EmptyState onClear={resetAll} query={debouncedQuery} category={selectedCategory} />
       )}
 
       {/* Infinite load */}
@@ -342,7 +531,13 @@ export default function Explore() {
           {hasNextPage ? (
             <>
               <div ref={sentinelRef} />
-              <Button onClick={() => fetchNextPage()} disabled={isFetchingNextPage} variant="outline" size="sm" className="mx-auto">
+              <Button
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+                variant="outline"
+                size="sm"
+                className="mx-auto"
+              >
                 {isFetchingNextPage ? "Loading…" : "Load more"}
               </Button>
             </>
@@ -355,23 +550,73 @@ export default function Explore() {
       {/* Filters Sheet */}
       <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
         <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
-          <SheetHeader className="mb-2">
-            <SheetTitle>Filters</SheetTitle>
+          <SheetHeader className="mb-4">
+            <SheetTitle>Filters ({filterCount} active)</SheetTitle>
           </SheetHeader>
 
-          <div className="grid gap-4">
-            <MultiSelectCombobox options={CUISINES} value={cuisines} onChange={setCuisines} buttonLabel="Cuisine / Ethnicity" placeholder="Search cuisines…" className="w-full" />
-            <MultiSelectCombobox options={DIETS} value={diets} onChange={setDiets} buttonLabel="Diet" placeholder="Search diets…" className="w-full" />
-            <MultiSelectCombobox options={COURSES} value={courses} onChange={setCourses} buttonLabel="Course" placeholder="Search courses…" className="w-full" />
-            <MultiSelectCombobox options={DIFFICULTIES} value={difficulties} onChange={setDifficulties} buttonLabel="Difficulty" placeholder="Filter difficulty…" className="w-full" />
-            <MultiSelectCombobox options={ALLERGENS} value={allergens} onChange={setAllergens} buttonLabel="Exclude allergens" placeholder="Select allergens…" className="w-full" />
+          <div className="grid gap-6">
+            {/* Filter Categories */}
+            <div className="space-y-2">
+              <Label>Cuisine / Ethnicity</Label>
+              <MultiSelectCombobox
+                options={CUISINES}
+                value={cuisines}
+                onChange={setCuisines}
+                buttonLabel="Select cuisines"
+                placeholder="Search cuisines…"
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Diet</Label>
+              <MultiSelectCombobox
+                options={DIETS}
+                value={diets}
+                onChange={setDiets}
+                buttonLabel="Select diets"
+                placeholder="Search diets…"
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Course</Label>
+              <MultiSelectCombobox
+                options={COURSES}
+                value={courses}
+                onChange={setCourses}
+                buttonLabel="Select courses"
+                placeholder="Search courses…"
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Difficulty</Label>
+              <MultiSelectCombobox
+                options={DIFFICULTIES}
+                value={difficulties}
+                onChange={setDifficulties}
+                buttonLabel="Select difficulty"
+                placeholder="Filter difficulty…"
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Exclude Allergens</Label>
+              <MultiSelectCombobox
+                options={ALLERGENS}
+                value={allergens}
+                onChange={setAllergens}
+                buttonLabel="Select allergens"
+                placeholder="Select allergens…"
+                className="w-full"
+              />
+            </div>
 
-            {/* Time & calories */}
+            {/* Time & Calories */}
             <RangeRow label="Prep time (min)" value={prepRange} onChange={setPrepRange} max={120} />
             <RangeRow label="Cook time (min)" value={cookRange} onChange={setCookRange} max={240} />
-
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-sm text-muted-foreground">Max calories (per serving)</label>
+            <div className="space-y-2">
+              <Label>Max Calories (per serving)</Label>
               <div className="flex items-center gap-2">
                 <Input
                   type="number"
@@ -379,73 +624,85 @@ export default function Explore() {
                   min={0}
                   placeholder="e.g., 500"
                   value={maxCalories ?? ""}
-                  onChange={(e) => setMaxCalories(e.target.value === "" ? null : Math.max(0, Number(e.target.value)))}
-                  className="max-w-[100px]"
+                  onChange={(e) =>
+                    setMaxCalories(e.target.value === "" ? null : Math.max(0, Number(e.target.value)))
+                  }
+                  className="w-32"
                 />
                 <Button variant="ghost" size="sm" onClick={() => setMaxCalories(null)}>
-                  Clear
+                  <X className="h-4 w-4" />
                 </Button>
               </div>
             </div>
 
-            {/* Ingredients include / exclude */}
-            <TagInput label="Include ingredients" value={includeIngr} onChange={setIncludeIngr} placeholder="e.g., chicken, basil…" />
-            <TagInput label="Exclude ingredients" value={excludeIngr} onChange={setExcludeIngr} placeholder="e.g., peanuts, cilantro…" />
+            {/* Ingredients */}
+            <TagInput
+              label="Include Ingredients"
+              value={includeIngr}
+              onChange={setIncludeIngr}
+              placeholder="e.g., chicken, basil…"
+            />
+            <TagInput
+              label="Exclude Ingredients"
+              value={excludeIngr}
+              onChange={setExcludeIngr}
+              placeholder="e.g., peanuts, cilantro…"
+            />
 
             {/* Toggles */}
-            <ToggleRow label="Gluten-free only" checked={gfOnly} onCheckedChange={setGfOnly} />
-            <ToggleRow label="Lactose-free only" checked={lfOnly} onCheckedChange={setLfOnly} />
-            <ToggleRow label="Saved only" hint="Show recipes you’ve saved" checked={savedOnly} onCheckedChange={setSavedOnly} />
-            <ToggleRow label="Verified chefs only" hint="Creators with verified badge" checked={verifiedChefs} onCheckedChange={setVerifiedChefs} />
+            <ToggleRow
+              label="Gluten-Free Only"
+              checked={gfOnly}
+              onCheckedChange={setGfOnly}
+            />
+            <ToggleRow
+              label="Lactose-Free Only"
+              checked={lfOnly}
+              onCheckedChange={setLfOnly}
+            />
+            <ToggleRow
+              label="Saved Only"
+              hint="Show recipes you’ve saved"
+              checked={savedOnly}
+              onCheckedChange={setSavedOnly}
+            />
+            <ToggleRow
+              label="Verified Chefs Only"
+              hint="Creators with verified badge"
+              checked={verifiedChefs}
+              onCheckedChange={setVerifiedChefs}
+            />
 
             {/* Sort */}
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-sm text-muted-foreground">Sort</label>
-              <select value={sort} onChange={(e) => setSort(e.target.value as any)} className="h-9 rounded-md border bg-background px-2 text-sm">
+            <div className="space-y-2">
+              <Label>Sort</Label>
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as any)}
+                className="h-9 rounded-md border bg-background px-2 text-sm w-full"
+              >
                 <option value="trending">Trending</option>
                 <option value="newest">Newest</option>
-                <option value="most_liked">Most liked</option>
+                <option value="most_liked">Most Liked</option>
               </select>
             </div>
           </div>
 
-          <SheetFooter className="mt-4">
+          <SheetFooter className="mt-6">
             <div className="flex w-full items-center justify-between gap-2">
-              <Button variant="ghost" onClick={() => resetAll()}>
-                Reset
+              <Button variant="ghost" onClick={resetAll}>
+                Reset All
               </Button>
-              <Button onClick={() => setIsFilterOpen(false)}>Apply</Button>
+              <Button onClick={() => setIsFilterOpen(false)}>Apply Filters</Button>
             </div>
           </SheetFooter>
         </SheetContent>
       </Sheet>
     </div>
   );
-
-  /* Helpers */
-  function resetAll() {
-    setSelectedCategory(null);
-    setSearchTerm("");
-    setCuisines([]);
-    setDiets([]);
-    setCourses([]);
-    setDifficulties([]);
-    setAllergens([]);
-    setPrepRange([0, 60]);
-    setCookRange([0, 90]);
-    setMaxCalories(null);
-    setIncludeIngr([]);
-    setExcludeIngr([]);
-    setSavedOnly(false);
-    setVerifiedChefs(false);
-    setGfOnly(false);
-    setLfOnly(false);
-    setSort("trending");
-  }
 }
 
-/* ===== Subcomponents ===== */
-
+// ===== Sub-Components =====
 function Header({
   searchTerm,
   setSearchTerm,
@@ -460,7 +717,23 @@ function Header({
   diets,
   setDiets,
   CATEGORIES,
-}: any) {
+  filterCount,
+}: {
+  searchTerm: string;
+  setSearchTerm: (value: string) => void;
+  selectedCategory: string | null;
+  setSelectedCategory: (value: string | null) => void;
+  viewMode: "grid" | "list";
+  setViewMode: (value: "grid" | "list") => void;
+  sort: string;
+  setSort: (value: string) => void;
+  foundLabel: string;
+  openFilters: () => void;
+  diets: string[];
+  setDiets: (value: string[]) => void;
+  CATEGORIES: readonly string[];
+  filterCount: number;
+}) {
   return (
     <div className="mb-4 sticky top-0 z-10 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70 py-4">
       <h1 className="text-3xl font-bold mb-4">Explore</h1>
@@ -479,15 +752,19 @@ function Header({
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         {/* Category pills */}
         <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
-          {CATEGORIES.map((category: string) => {
-            const active = selectedCategory === category || (!selectedCategory && category === "All");
+          {CATEGORIES.map((category) => {
+            const active =
+              selectedCategory === category || (!selectedCategory && category === "All");
             return (
               <Badge
                 key={category}
                 variant={active ? "default" : "outline"}
                 className="cursor-pointer shrink-0"
-                onClick={() => setSelectedCategory(active && category !== "All" ? null : category)}
+                onClick={() =>
+                  setSelectedCategory(active && category !== "All" ? null : category)
+                }
                 aria-pressed={active}
+                data-testid={`category-filter-${category.toLowerCase()}`}
               >
                 {category}
               </Badge>
@@ -505,10 +782,13 @@ function Header({
                 variant={active ? "default" : "outline"}
                 className="cursor-pointer shrink-0"
                 onClick={() =>
-                  active ? setDiets(diets.filter((x: string) => x !== d)) : setDiets([...diets, d])
+                  active
+                    ? setDiets(diets.filter((x) => x !== d))
+                    : setDiets([...diets, d])
                 }
                 aria-pressed={active}
                 title={`Diet: ${d}`}
+                data-testid={`diet-chip-${d.toLowerCase()}`}
               >
                 {d}
               </Badge>
@@ -518,8 +798,14 @@ function Header({
 
         {/* Actions */}
         <div className="flex items-center gap-2 md:ml-auto">
-          <Button variant="outline" size="sm" onClick={openFilters}>
-            <SlidersHorizontal className="h-4 w-4 mr-2" /> Filters
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={openFilters}
+            aria-label={`Open filters (${filterCount} active)`}
+          >
+            <SlidersHorizontal className="h-4 w-4 mr-2" />
+            Filters {filterCount > 0 && `(${filterCount})`}
           </Button>
           <Button
             variant={viewMode === "grid" ? "default" : "outline"}
@@ -528,6 +814,7 @@ function Header({
             aria-pressed={viewMode === "grid"}
             aria-label="Grid view (g)"
             title="Grid view (g)"
+            data-testid="button-grid-view"
           >
             <Grid className="h-4 w-4" />
           </Button>
@@ -538,6 +825,7 @@ function Header({
             aria-pressed={viewMode === "list"}
             aria-label="List view (l)"
             title="List view (l)"
+            data-testid="button-list-view"
           >
             <List className="h-4 w-4" />
           </Button>
@@ -546,17 +834,16 @@ function Header({
 
       <div className="flex items-center justify-between mt-3">
         <p className="text-sm text-muted-foreground">{foundLabel}</p>
-        <div className="flex items-center gap-2">
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value)}
-            className="h-9 rounded-md border bg-background px-2 text-sm"
-          >
-            <option value="trending">Trending</option>
-            <option value="newest">Newest</option>
-            <option value="most_liked">Most liked</option>
-          </select>
-        </div>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+          className="h-9 rounded-md border bg-background px-2 text-sm"
+          aria-label="Sort posts"
+        >
+          <option value="trending">Trending</option>
+          <option value="newest">Newest</option>
+          <option value="most_liked">Most Liked</option>
+        </select>
       </div>
     </div>
   );
@@ -576,12 +863,19 @@ function RangeRow({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">{label}</span>
+        <Label>{label}</Label>
         <span className="text-sm">
           {value[0]}–{value[1]} min
         </span>
       </div>
-      <Slider value={value} min={0} max={max} step={5} onValueChange={(v) => onChange([v[0] ?? value[0], v[1] ?? value[1]])} />
+      <Slider
+        value={value}
+        min={0}
+        max={max}
+        step={5}
+        onValueChange={(v) => onChange([v[0] ?? value[0], v[1] ?? value[1]])}
+        className="w-full"
+      />
     </div>
   );
 }
@@ -598,25 +892,35 @@ function ToggleRow({
   onCheckedChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between py-2">
       <div>
-        <div className="text-sm">{label}</div>
-        {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
+        <Label className="text-sm">{label}</Label>
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+      <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={label} />
     </div>
   );
 }
 
-function EmptyState({ onClear, query, category }: { onClear: () => void; query: string; category: string | null }) {
+function EmptyState({
+  onClear,
+  query,
+  category,
+}: {
+  onClear: () => void;
+  query: string;
+  category: string | null;
+}) {
   return (
     <div className="text-center py-16">
       <h3 className="text-lg font-semibold mb-2">No posts found</h3>
       <p className="text-muted-foreground max-w-md mx-auto">
-        {query || (category && category !== "All") ? "Try adjusting your search terms or filters." : "Looks quiet here. Try searching for ‘pasta’, ‘chicken’, or ‘vegan’."}
+        {query || (category && category !== "All")
+          ? "Try adjusting your search terms or filters."
+          : "Looks quiet here. Try searching for 'pasta', 'chicken', or 'vegan'."}
       </p>
       <Button onClick={onClear} className="mt-4" size="sm">
-        Reset filters
+        Reset Filters
       </Button>
     </div>
   );
