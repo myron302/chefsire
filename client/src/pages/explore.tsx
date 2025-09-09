@@ -501,8 +501,8 @@ export default function Explore() {
                 </span>
               </div>
             </CardContent>
-          </Card>
-        </div>
+          </div>
+        </Card>
       ))}
     </div>
   ) : (
