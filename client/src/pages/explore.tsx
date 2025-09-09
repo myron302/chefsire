@@ -502,7 +502,7 @@ export default function Explore() {
               </div>
             </CardContent>
           </Card>
-        </Card>
+        </div>
       ))}
     </div>
   ) : (
