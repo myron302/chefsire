@@ -24,9 +24,9 @@ export function MultiSelectCombobox(props: {
   onChange: (next: string[]) => void;
   placeholder?: string;
   emptyLabel?: string;
-  buttonLabel?: string; // visible label, e.g. "Cuisine"
+  buttonLabel?: string;
   className?: string;
-  maxBadges?: number; // how many selected to show as badges in button
+  maxBadges?: number;
 }) {
   const {
     options,
@@ -84,7 +84,7 @@ export function MultiSelectCombobox(props: {
       <PopoverContent className="p-0 w-[320px]" align="start">
         <Command>
           <CommandInput placeholder={placeholder} />
-          <CommandList>
+          <CommandList className="max-h-[300px] overflow-y-auto">
             <CommandEmpty>{emptyLabel}</CommandEmpty>
             <CommandGroup>
               {options.map((opt) => {
