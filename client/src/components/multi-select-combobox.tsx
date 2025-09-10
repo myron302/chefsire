@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, ChevronUp, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -41,6 +41,10 @@ export function MultiSelectCombobox(props: {
 
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
+  const [showUpButton, setShowUpButton] = React.useState(false);
+  const [showDownButton, setShowDownButton] = React.useState(true);
+  const listRef = React.useRef<HTMLDivElement>(null);
+
   const selected = React.useMemo(
     () => options.filter((o) => value.includes(o.value)),
     [options, value]
@@ -67,6 +71,35 @@ export function MultiSelectCombobox(props: {
       : selected.length <= maxBadges
       ? selected.map((s) => s.label).join(", ")
       : `${selected.length} selected`;
+
+  // Handle scroll to show/hide buttons
+  React.useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+
+    const updateButtons = () => {
+      setShowUpButton(list.scrollTop > 0);
+      setShowDownButton(
+        list.scrollTop + list.clientHeight < list.scrollHeight - 1
+      );
+    };
+
+    list.addEventListener("scroll", updateButtons);
+    updateButtons(); // Initial check
+    return () => list.removeEventListener("scroll", updateButtons);
+  }, []);
+
+  const scrollUp = () => {
+    if (listRef.current) {
+      listRef.current.scrollBy({ top: -50, behavior: "smooth" });
+    }
+  };
+
+  const scrollDown = () => {
+    if (listRef.current) {
+      listRef.current.scrollBy({ top: 50, behavior: "smooth" });
+    }
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -100,7 +133,34 @@ export function MultiSelectCombobox(props: {
             onValueChange={setSearch}
             className="h-9"
           />
-          <CommandList className="max-h-[300px] overflow-y-auto touch-action-auto">
+          <div className="flex justify-between p-2">
+            {showUpButton && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={scrollUp}
+                aria-label="Scroll up"
+              >
+                <ChevronUp className="h-4 w-4" />
+              </Button>
+            )}
+            <div className={cn(showUpButton ? "" : "flex-1")} />
+            {showDownButton && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={scrollDown}
+                aria-label="Scroll down"
+              >
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          <CommandList
+            ref={listRef}
+            className="max-h-[250px] overflow-y-auto touch-action-pan-y overscroll-contain"
+            style={{ WebkitOverflowScrolling: "touch" }}
+          >
             <CommandEmpty>{emptyLabel}</CommandEmpty>
             <CommandGroup>
               {filteredOptions.map((opt) => {
