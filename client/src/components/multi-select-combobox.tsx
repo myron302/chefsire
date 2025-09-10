@@ -40,9 +40,20 @@ export function MultiSelectCombobox(props: {
   } = props;
 
   const [open, setOpen] = React.useState(false);
+  const [search, setSearch] = React.useState("");
   const selected = React.useMemo(
     () => options.filter((o) => value.includes(o.value)),
     [options, value]
+  );
+
+  const filteredOptions = React.useMemo(
+    () =>
+      search
+        ? options.filter((opt) =>
+            opt.label.toLowerCase().includes(search.toLowerCase())
+          )
+        : options,
+    [options, search]
   );
 
   const toggle = (val: string) => {
@@ -83,19 +94,30 @@ export function MultiSelectCombobox(props: {
       </PopoverTrigger>
       <PopoverContent className="p-0 w-[320px]" align="start">
         <Command>
-          <CommandInput placeholder={placeholder} />
-          <CommandList className="max-h-[300px] overflow-y-auto">
+          <CommandInput
+            placeholder={placeholder}
+            value={search}
+            onValueChange={setSearch}
+            className="h-9"
+          />
+          <CommandList className="max-h-[300px] overflow-y-auto touch-action-auto">
             <CommandEmpty>{emptyLabel}</CommandEmpty>
             <CommandGroup>
-              {options.map((opt) => {
+              {filteredOptions.map((opt) => {
                 const checked = value.includes(opt.value);
                 return (
                   <CommandItem
                     key={opt.value}
+                    value={opt.value}
                     onSelect={() => toggle(opt.value)}
                     className="cursor-pointer"
                   >
-                    <Check className={cn("mr-2 h-4 w-4", checked ? "opacity-100" : "opacity-0")} />
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        checked ? "opacity-100" : "opacity-0"
+                      )}
+                    />
                     {opt.label}
                   </CommandItem>
                 );
