@@ -2,12 +2,28 @@ import * as React from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { LayoutGrid, List, Filter } from "lucide-react";
-import { useExploreFilters, ViewMode, MealType, Difficulty } from "./useExploreFilters";
+import { LayoutGrid, List, Filter, RefreshCw } from "lucide-react";
+import { useExploreFilters } from "./useExploreFilters";
 import { SpoonIcon } from "./ExploreShared";
+import { useExploreData } from "./useExploreData";
 
-/** Demo post type (replace with your API type) */
-type Post = {
+function GridSkeleton() {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="overflow-hidden rounded-lg border bg-card animate-pulse">
+          <div className="aspect-square bg-muted" />
+          <div className="p-3 space-y-2">
+            <div className="h-4 w-3/4 bg-muted rounded" />
+            <div className="h-3 w-1/2 bg-muted rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type CardPost = {
   id: string;
   title: string;
   image: string;
@@ -15,76 +31,13 @@ type Post = {
   isRecipe: boolean;
   author: string;
   cookTime: number;
-  difficulty: Difficulty;
-  rating: number; // spoons 0..5
-  likes: number;
-  mealType: MealType;
+  rating: number;
+  difficulty: string;
+  mealType: string;
   dietary: string[];
-  ethnicity: string[];
-  allergens: string[];
-  preparation?: string[]; // Halal, Kosher, Jain, etc.
-  createdAt: string; // ISO date
 };
 
-/** Minimal demo data; swap to live data later */
-const DEMO_POSTS: Post[] = [
-  {
-    id: "1",
-    title: "Margherita Pizza",
-    image:
-      "https://images.unsplash.com/photo-1548365328-8b84986da7b3?q=80&w=1200&auto=format&fit=crop",
-    cuisine: "Italian",
-    isRecipe: true,
-    author: "Giulia",
-    cookTime: 25,
-    difficulty: "Easy",
-    rating: 4.7,
-    likes: 223,
-    mealType: "Dinner",
-    dietary: ["Vegetarian"],
-    ethnicity: ["Italian", "European"],
-    allergens: ["Gluten", "Dairy"],
-    createdAt: "2025-09-08T12:00:00Z",
-  },
-  {
-    id: "2",
-    title: "Rainbow Salad",
-    image:
-      "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=1200&auto=format&fit=crop",
-    cuisine: "Healthy",
-    isRecipe: false,
-    author: "Ava",
-    cookTime: 10,
-    difficulty: "Easy",
-    rating: 4.2,
-    likes: 150,
-    mealType: "Lunch",
-    dietary: ["Vegan", "Gluten-Free"],
-    ethnicity: ["American"],
-    allergens: [],
-    createdAt: "2025-09-07T10:00:00Z",
-  },
-  {
-    id: "3",
-    title: "Spicy Ramen",
-    image:
-      "https://images.unsplash.com/photo-1546549039-49cc4f5b3c89?q=80&w=1200&auto=format&fit=crop",
-    cuisine: "Asian",
-    isRecipe: true,
-    author: "Rin",
-    cookTime: 30,
-    difficulty: "Medium",
-    rating: 4.5,
-    likes: 340,
-    mealType: "Dinner",
-    dietary: [],
-    ethnicity: ["Japanese", "East Asian"],
-    allergens: ["Gluten", "Eggs"],
-    createdAt: "2025-09-03T21:15:00Z",
-  },
-];
-
-const GridCard = React.memo(function GridCard({ post }: { post: Post }) {
+const GridCard = React.memo(function GridCard({ post }: { post: CardPost }) {
   return (
     <article className="overflow-hidden rounded-lg border bg-card">
       <div className="aspect-square overflow-hidden">
@@ -114,7 +67,7 @@ const GridCard = React.memo(function GridCard({ post }: { post: Post }) {
   );
 });
 
-const ListRow = React.memo(function ListRow({ post }: { post: Post }) {
+const ListRow = React.memo(function ListRow({ post }: { post: CardPost }) {
   return (
     <article className="flex gap-3 rounded-lg border bg-card p-2">
       <div className="h-20 w-20 shrink-0 overflow-hidden rounded-md">
@@ -144,47 +97,25 @@ const ListRow = React.memo(function ListRow({ post }: { post: Post }) {
 export default function ExploreListPage() {
   const {
     viewMode, setViewMode,
-    onlyRecipes, setOnlyRecipes,
-    sortBy, setSortBy,
+    onlyRecipes, sortBy,
     selectedCuisines, selectedMealTypes, selectedDietary,
     selectedDifficulty, maxCookTime, minRating,
     selectedEthnicities, excludedAllergens, selectedPreparation,
     resetFilters,
   } = useExploreFilters();
 
-  const posts = DEMO_POSTS;
-
-  const filteredPosts = React.useMemo(() => {
-    const filtered = posts.filter((p) => {
-      if (onlyRecipes && !p.isRecipe) return false;
-      if (selectedCuisines.length && !selectedCuisines.includes(p.cuisine)) return false;
-      if (selectedMealTypes.length && !selectedMealTypes.includes(p.mealType)) return false;
-      if (selectedDietary.length && !selectedDietary.every((d) => p.dietary.includes(d))) return false;
-      if (selectedDifficulty && p.difficulty !== selectedDifficulty) return false;
-      if (maxCookTime && p.cookTime > maxCookTime) return false;
-      if (minRating && p.rating < minRating) return false;
-      if (selectedEthnicities.length) {
-        if (!p.ethnicity?.some((e) => selectedEthnicities.includes(e))) return false;
-      }
-      if (excludedAllergens.length) {
-        if (p.allergens?.some((a) => excludedAllergens.includes(a))) return false;
-      }
-      if (selectedPreparation.length) {
-        if (!selectedPreparation.every((tag) => p.preparation?.includes(tag))) return false;
-      }
-      return true;
-    });
-
-    switch (sortBy) {
-      case "rating": return [...filtered].sort((a, b) => b.rating - a.rating);
-      case "likes":  return [...filtered].sort((a, b) => b.likes - a.likes);
-      default:       return [...filtered].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
-    }
-  }, [
-    posts, onlyRecipes, selectedCuisines, selectedMealTypes, selectedDietary,
-    selectedDifficulty, maxCookTime, minRating, sortBy,
-    selectedEthnicities, excludedAllergens, selectedPreparation,
-  ]);
+  const {
+    items: posts,
+    total,
+    isLoading,
+    isFetching,
+    isError,
+    error,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useExploreData();
 
   return (
     <div className="mx-auto max-w-6xl px-4 md:px-6">
@@ -236,8 +167,19 @@ export default function ExploreListPage() {
         </Button>
       </div>
 
-      {/* Results */}
-      {filteredPosts.length === 0 ? (
+      {/* Loading / Error / Content */}
+      {isLoading ? (
+        <GridSkeleton />
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
+          <p className="mb-3 text-sm text-destructive">
+            {(error as Error)?.message || "Failed to load posts."}
+          </p>
+          <Button onClick={() => refetch()} variant="outline" className="gap-2">
+            <RefreshCw className="h-4 w-4" /> Try again
+          </Button>
+        </div>
+      ) : posts.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
           <p className="text-sm text-muted-foreground">No posts match these filters.</p>
           <Button className="mt-3" variant="secondary" onClick={resetFilters}>
@@ -246,15 +188,60 @@ export default function ExploreListPage() {
         </div>
       ) : viewMode === "grid" ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {filteredPosts.map((p) => (
-            <GridCard key={p.id} post={p} />
+          {posts.map((p) => (
+            <GridCard
+              key={p.id}
+              post={{
+                id: p.id,
+                title: p.title,
+                image: p.image,
+                cuisine: p.cuisine,
+                isRecipe: p.isRecipe,
+                author: p.author,
+                cookTime: p.cookTime,
+                rating: p.rating,
+                difficulty: p.difficulty,
+                mealType: p.mealType,
+                dietary: p.dietary,
+              }}
+            />
           ))}
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredPosts.map((p) => (
-            <ListRow key={p.id} post={p} />
+          {posts.map((p) => (
+            <ListRow
+              key={p.id}
+              post={{
+                id: p.id,
+                title: p.title,
+                image: p.image,
+                cuisine: p.cuisine,
+                isRecipe: p.isRecipe,
+                author: p.author,
+                cookTime: p.cookTime,
+                rating: p.rating,
+                difficulty: p.difficulty,
+                mealType: p.mealType,
+                dietary: p.dietary,
+              }}
+            />
           ))}
+        </div>
+      )}
+
+      {/* Load more */}
+      {posts.length > 0 && (
+        <div className="flex justify-center my-6">
+          {hasNextPage ? (
+            <Button onClick={() => fetchNextPage()} disabled={isFetchingNextPage} variant="outline">
+              {isFetchingNextPage ? "Loading…" : "Load more"}
+            </Button>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {isFetching ? "Loading…" : "You’re all caught up."}
+            </p>
+          )}
         </div>
       )}
     </div>
