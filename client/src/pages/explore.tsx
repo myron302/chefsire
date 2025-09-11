@@ -12,8 +12,7 @@ import {
   SheetClose,
 } from "@/components/ui/sheet";
 import { Slider } from "@/components/ui/slider";
-import { Label } from "@/components/ui/label";
-import { LayoutGrid, List, Filter, X, Star } from "lucide-react";
+import { LayoutGrid, List, Filter, X } from "lucide-react";
 
 /** -------------------------------
  * Types + demo data (replace later)
@@ -33,7 +32,7 @@ type Post = {
   author: string;
   cookTime: number; // minutes
   difficulty: Difficulty;
-  rating: number; // 0..5
+  rating: number; // 0..5 (spoons)
   likes: number;
   mealType: MealType;
   dietary: Dietary[];
@@ -43,62 +42,179 @@ type Post = {
 };
 
 const CUISINES = [
-  "Italian",
-  "Healthy",
-  "Desserts",
-  "Quick",
-  "Vegan",
-  "Seafood",
   "Asian",
-  "Mexican",
-  "Mediterranean",
   "BBQ",
   "Breakfast",
   "Burgers",
+  "Desserts",
+  "Healthy",
+  "Italian",
+  "Mediterranean",
+  "Mexican",
+  "Quick",
   "Salads",
+  "Seafood",
+  "Vegan",
 ];
 
 const MEAL_TYPES: MealType[] = ["Breakfast", "Lunch", "Dinner", "Snack", "Dessert"];
-const DIETARY: Dietary[] = ["Vegan", "Vegetarian", "Gluten-Free", "Dairy-Free", "Keto"];
+const DIETARY: Dietary[] = ["Dairy-Free", "Gluten-Free", "Keto", "Vegan", "Vegetarian"];
 const DIFFICULTY: Difficulty[] = ["Easy", "Medium", "Hard"];
 
-// NEW: Ethnicity / Cultural Origin options (expand/adjust as needed)
-const ETHNICITIES = [
-  // Africa & Diaspora
-  "African","West African","East African","North African","Ethiopian/Eritrean","Nigerian","Ghanaian","Senegalese",
-  "Moroccan","Tunisian","Egyptian","Afro-Caribbean","Caribbean","Jamaican","Trinidadian/Tobagonian","Haitian",
-  // Middle East
-  "Middle Eastern","Levantine","Persian/Iranian","Turkish",
-  // Europe
-  "Mediterranean","Greek","Italian","French","Spanish","Portuguese","British/Irish","German","Nordic/Scandinavian","Eastern European","Balkan",
-  // Asia
-  "East Asian","Chinese","Japanese","Korean","South Asian","Indian","Pakistani","Bangladeshi","Sri Lankan","Nepali",
-  "Southeast Asian","Thai","Vietnamese","Filipino","Indonesian","Malaysian","Singaporean","Cambodian","Lao","Burmese/Myanmar",
-  "Central Asian","Uzbek","Kazakh",
-  // Pacific & Oceania
-  "Pacific Islander","Hawaiian","Polynesian","Micronesian","Melanesian","Maori",
-  // The Americas & other
-  "Latinx","Mexican","Central American","South American","Brazilian","Argentine","Indigenous / First Nations / Native American",
-  "Ashkenazi Jewish","Sephardi Jewish","Mizrahi Jewish","Fusion/Contemporary","Other",
+// utils
+const sortAlpha = (xs: string[]) => [...xs].sort((a, b) => a.localeCompare(b));
+
+// Spoon icon (simple, lightweight)
+function SpoonIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" {...props}>
+      <path
+        d="M12.5 2c2.485 0 4 1.79 4 4.25 0 1.9-1.12 3.64-2.79 4.21l-.21.07V14a3.5 3.5 0 0 1-2 3.16V22a1 1 0 1 1-2 0v-4.84A3.5 3.5 0 0 1 7.5 14V10.5l-.21-.07C5.6 9.89 4.5 8.15 4.5 6.25 4.5 3.79 6.015 2 8.5 2c1.33 0 2.53.6 3.25 1.55A4.18 4.18 0 0 1 12.5 2Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+// NEW: Ethnicity / Cultural Origin grouped + alphabetized
+const ETHNICITY_GROUPS: { label: string; options: string[] }[] = [
+  {
+    label: "Africa & Diaspora",
+    options: sortAlpha([
+      "African",
+      "Afro-Caribbean",
+      "Caribbean",
+      "Central African",
+      "East African",
+      "Egyptian",
+      "Ethiopian/Eritrean",
+      "Ghanaian",
+      "Haitian",
+      "Jamaican",
+      "Moroccan",
+      "Nigerian",
+      "North African",
+      "Senegalese",
+      "Southern African",
+      "Trinidadian/Tobagonian",
+      "Tunisian",
+      "West African",
+    ]),
+  },
+  {
+    label: "Middle East",
+    options: sortAlpha([
+      "Gulf/Khaleeji",
+      "Levantine",
+      "Middle Eastern",
+      "Persian/Iranian",
+      "Turkish",
+    ]),
+  },
+  {
+    label: "Europe",
+    options: sortAlpha([
+      "Balkan",
+      "British/Irish",
+      "Eastern European",
+      "European",
+      "French",
+      "German",
+      "Greek",
+      "Italian",
+      "Mediterranean",
+      "Nordic/Scandinavian",
+      "Portuguese",
+      "Spanish",
+    ]),
+  },
+  {
+    label: "Asia — East",
+    options: sortAlpha(["Chinese", "East Asian", "Japanese", "Korean"]),
+  },
+  {
+    label: "Asia — South",
+    options: sortAlpha([
+      "Bangladeshi",
+      "Indian",
+      "Nepali",
+      "Pakistani",
+      "South Asian",
+      "Sri Lankan",
+    ]),
+  },
+  {
+    label: "Asia — Southeast",
+    options: sortAlpha([
+      "Burmese/Myanmar",
+      "Cambodian",
+      "Filipino",
+      "Indonesian",
+      "Lao",
+      "Malaysian",
+      "Singaporean",
+      "Southeast Asian",
+      "Thai",
+      "Vietnamese",
+    ]),
+  },
+  {
+    label: "Asia — Central",
+    options: sortAlpha(["Central Asian", "Kazakh", "Uzbek"]),
+  },
+  {
+    label: "Pacific & Oceania",
+    options: sortAlpha([
+      "Hawaiian",
+      "Maori",
+      "Melanesian",
+      "Micronesian",
+      "Pacific Islander",
+      "Polynesian",
+    ]),
+  },
+  {
+    label: "The Americas",
+    options: sortAlpha([
+      "Argentine",
+      "Brazilian",
+      "Central American",
+      "Latinx",
+      "Mexican",
+      "South American",
+    ]),
+  },
+  {
+    label: "Jewish Traditions",
+    options: sortAlpha(["Ashkenazi Jewish", "Mizrahi Jewish", "Sephardi Jewish"]),
+  },
+  {
+    label: "Indigenous & Other",
+    options: sortAlpha([
+      "Indigenous / First Nations / Native American",
+      "Fusion/Contemporary",
+      "Other",
+    ]),
+  },
 ];
 
-// NEW: Common allergens (used for exclusion)
-const ALLERGENS = [
-  "Peanuts",
-  "Tree Nuts",
-  "Sesame",
-  "Soy",
+// NEW: Common allergens (used for exclusion) — alphabetized
+const ALLERGENS = sortAlpha([
+  "Celery",
   "Dairy",
   "Eggs",
   "Fish",
-  "Shellfish",
   "Gluten",
-  "Wheat",
-  "Mustard",
-  "Celery",
   "Lupin",
+  "Mustard",
+  "Peanuts",
+  "Sesame",
+  "Shellfish",
+  "Soy",
   "Sulfites",
-];
+  "Tree Nuts",
+  "Wheat",
+]);
 
 const DEMO_POSTS: Post[] = [
   {
@@ -114,8 +230,8 @@ const DEMO_POSTS: Post[] = [
     likes: 223,
     mealType: "Dinner",
     dietary: ["Vegetarian"],
-    ethnicity: ["Italian","Mediterranean"],        // NEW
-    allergens: ["Gluten","Dairy"],                 // NEW
+    ethnicity: ["Italian", "Mediterranean"],
+    allergens: ["Gluten", "Dairy"],
     createdAt: "2025-09-08T12:00:00Z",
   },
   {
@@ -131,8 +247,8 @@ const DEMO_POSTS: Post[] = [
     likes: 150,
     mealType: "Lunch",
     dietary: ["Vegan", "Gluten-Free"],
-    ethnicity: ["Fusion/Contemporary"],            // NEW
-    allergens: [],                                 // NEW
+    ethnicity: ["Fusion/Contemporary"],
+    allergens: [],
     createdAt: "2025-09-07T10:00:00Z",
   },
   {
@@ -148,8 +264,8 @@ const DEMO_POSTS: Post[] = [
     likes: 512,
     mealType: "Dessert",
     dietary: ["Vegetarian"],
-    ethnicity: ["French","European"],               // NEW
-    allergens: ["Dairy"],                           // NEW
+    ethnicity: ["French", "European"],
+    allergens: ["Dairy"],
     createdAt: "2025-09-05T18:30:00Z",
   },
   {
@@ -165,8 +281,8 @@ const DEMO_POSTS: Post[] = [
     likes: 340,
     mealType: "Dinner",
     dietary: [],
-    ethnicity: ["Japanese","East Asian"],           // NEW
-    allergens: ["Gluten","Eggs","Soy"],             // NEW
+    ethnicity: ["Japanese", "East Asian"],
+    allergens: ["Gluten", "Eggs", "Soy"],
     createdAt: "2025-09-03T21:15:00Z",
   },
   {
@@ -182,8 +298,8 @@ const DEMO_POSTS: Post[] = [
     likes: 98,
     mealType: "Dinner",
     dietary: [],
-    ethnicity: ["American","Fusion/Contemporary"],  // NEW
-    allergens: [],                                   // NEW
+    ethnicity: ["American", "Fusion/Contemporary"],
+    allergens: [],
     createdAt: "2025-09-09T14:45:00Z",
   },
   {
@@ -199,8 +315,8 @@ const DEMO_POSTS: Post[] = [
     likes: 77,
     mealType: "Breakfast",
     dietary: ["Vegetarian"],
-    ethnicity: ["British/Irish","Fusion/Contemporary"], // NEW
-    allergens: ["Gluten"],                                // NEW
+    ethnicity: ["British/Irish", "Fusion/Contemporary"],
+    allergens: ["Gluten"],
     createdAt: "2025-09-10T08:05:00Z",
   },
 ];
@@ -274,8 +390,8 @@ export default function Explore() {
     maxCookTime,
     minRating,
     sortBy,
-    selectedEthnicities,     // NEW
-    excludedAllergens,       // NEW
+    selectedEthnicities,
+    excludedAllergens,
   ]);
 
   function resetFilters() {
@@ -287,8 +403,8 @@ export default function Explore() {
     setMinRating(0);
     setOnlyRecipes(false);
     setSortBy("newest");
-    setSelectedEthnicities([]);  // NEW
-    setExcludedAllergens([]);    // NEW
+    setSelectedEthnicities([]);
+    setExcludedAllergens([]);
     // keep current viewMode
   }
 
@@ -322,7 +438,7 @@ export default function Explore() {
 
       {/* Main content */}
       <main className="min-w-0">
-        {/* Mobile controls row (kept simple; no duplicates inside the sheet) */}
+        {/* Mobile controls row */}
         <div className="md:hidden mb-3 flex items-center justify-between gap-2">
           <MobileFiltersSheet
             selectedCuisines={selectedCuisines}
@@ -368,23 +484,27 @@ export default function Explore() {
           </div>
         </div>
 
-        {/* Active filter count (mobile + desktop) */}
+        {/* Active filter count */}
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline">Cuisines: {selectedCuisines.length}</Badge>
           <Badge variant="outline">Meal Types: {selectedMealTypes.length}</Badge>
           <Badge variant="outline">Dietary: {selectedDietary.length}</Badge>
-          <Badge variant="outline">Ethnicity: {selectedEthnicities.length}</Badge> {/* NEW */}
-          <Badge variant="outline">No {excludedAllergens.length ? excludedAllergens.join(", ") : "—"}</Badge> {/* NEW */}
+          <Badge variant="outline">Ethnicity: {selectedEthnicities.length}</Badge>
+          <Badge variant="outline">No {excludedAllergens.length ? excludedAllergens.join(", ") : "—"}</Badge>
           {selectedDifficulty && <Badge variant="outline">Difficulty: {selectedDifficulty}</Badge>}
           {onlyRecipes && <Badge variant="outline">Recipe-only</Badge>}
           <Badge variant="outline">≤ {maxCookTime} min</Badge>
-          <Badge variant="outline">★ {minRating}+</Badge>
+          <Badge variant="outline">
+            <span className="inline-flex items-center gap-1">
+              <SpoonIcon className="h-3.5 w-3.5" /> {minRating}+
+            </span>
+          </Badge>
           <Badge variant="outline">Sort: {sortBy}</Badge>
           {(selectedCuisines.length ||
             selectedMealTypes.length ||
             selectedDietary.length ||
-            selectedEthnicities.length ||            // NEW
-            excludedAllergens.length ||              // NEW
+            selectedEthnicities.length ||
+            excludedAllergens.length ||
             selectedDifficulty ||
             onlyRecipes ||
             minRating ||
@@ -482,7 +602,7 @@ function DesktopFiltersSidebar(props: {
             className="grid grid-cols-1 gap-2 max-h-[28rem] overflow-y-auto pr-1"
             style={{ WebkitOverflowScrolling: "touch" as any }}
           >
-            {CUISINES.map((c) => (
+            {sortAlpha(CUISINES).map((c) => (
               <label key={c} className="flex items-center gap-2">
                 <Checkbox
                   checked={selectedCuisines.includes(c)}
@@ -496,20 +616,31 @@ function DesktopFiltersSidebar(props: {
           </div>
         </FilterSection>
 
-        {/* NEW: Ethnicity / Cultural Origin */}
+        {/* NEW: Ethnicity / Cultural Origin (grouped) */}
         <FilterSection title="Ethnicity / Cultural Origin">
-          <div
-            className="grid grid-cols-1 gap-2 max-h-[16rem] overflow-y-auto pr-1"
-            style={{ WebkitOverflowScrolling: "touch" as any }}
-          >
-            {ETHNICITIES.map((e) => (
-              <label key={e} className="flex items-center gap-2">
-                <Checkbox
-                  checked={selectedEthnicities.includes(e)}
-                  onCheckedChange={() => toggleFromArray(selectedEthnicities, setSelectedEthnicities, e)}
-                />
-                <span className="text-sm">{e}</span>
-              </label>
+          <div className="space-y-4">
+            {ETHNICITY_GROUPS.map((group) => (
+              <div key={group.label}>
+                <h5 className="mb-2 text-xs font-medium text-muted-foreground">
+                  {group.label}
+                </h5>
+                <div
+                  className="grid grid-cols-1 gap-2 max-h-[12rem] overflow-y-auto pr-1"
+                  style={{ WebkitOverflowScrolling: "touch" as any }}
+                >
+                  {group.options.map((e) => (
+                    <label key={e} className="flex items-center gap-2">
+                      <Checkbox
+                        checked={selectedEthnicities.includes(e)}
+                        onCheckedChange={() =>
+                          toggleFromArray(selectedEthnicities, setSelectedEthnicities, e)
+                        }
+                      />
+                      <span className="text-sm">{e}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </FilterSection>
@@ -586,9 +717,9 @@ function DesktopFiltersSidebar(props: {
           />
         </FilterSection>
 
-        {/* Min rating */}
-        <FilterSection title={`Min Rating: ${minRating || 0}★`}>
-          <StarSelect value={minRating} onChange={setMinRating} />
+        {/* Min spoons (rating) */}
+        <FilterSection title={`Min Spoons: ${minRating || 0}`}>
+          <SpoonSelect value={minRating} onChange={setMinRating} />
         </FilterSection>
 
         {/* Flags & sort */}
@@ -609,7 +740,7 @@ function DesktopFiltersSidebar(props: {
                 variant={sortBy === s ? "default" : "outline"}
                 onClick={() => setSortBy(s)}
               >
-                {s === "newest" ? "Newest" : s === "rating" ? "Top Rated" : "Most Liked"}
+                {s === "newest" ? "Newest" : s === "rating" ? "Top Spoons" : "Most Liked"}
               </Button>
             ))}
           </div>
@@ -626,7 +757,7 @@ function DesktopFiltersSidebar(props: {
 }
 
 /** -------------------------------
- * Mobile sheet (scrollable, one X, no duplicate grid/list)
+ * Mobile sheet (scrollable, one X)
  * -------------------------------- */
 function MobileFiltersSheet(props: {
   selectedCuisines: string[];
@@ -692,8 +823,8 @@ function MobileFiltersSheet(props: {
           {(selectedCuisines.length +
             selectedMealTypes.length +
             selectedDietary.length +
-            selectedEthnicities.length +   // NEW
-            excludedAllergens.length +     // NEW
+            selectedEthnicities.length +
+            excludedAllergens.length +
             (selectedDifficulty ? 1 : 0) +
             (onlyRecipes ? 1 : 0) +
             (minRating ? 1 : 0) +
@@ -704,8 +835,8 @@ function MobileFiltersSheet(props: {
                 selectedCuisines.length > 0,
                 selectedMealTypes.length > 0,
                 selectedDietary.length > 0,
-                selectedEthnicities.length > 0, // NEW
-                excludedAllergens.length > 0,   // NEW
+                selectedEthnicities.length > 0,
+                excludedAllergens.length > 0,
                 Boolean(selectedDifficulty),
                 onlyRecipes,
                 Boolean(minRating),
@@ -742,7 +873,7 @@ function MobileFiltersSheet(props: {
         >
           <FilterSection title="Cuisines">
             <div className="grid grid-cols-2 gap-2">
-              {CUISINES.map((c) => (
+              {sortAlpha(CUISINES).map((c) => (
                 <label key={c} className="flex items-center gap-2 rounded-md border p-2">
                   <Checkbox
                     checked={selectedCuisines.includes(c)}
@@ -754,19 +885,26 @@ function MobileFiltersSheet(props: {
             </div>
           </FilterSection>
 
-          {/* NEW: Ethnicity / Cultural Origin */}
+          {/* NEW: Ethnicity / Cultural Origin (grouped) */}
           <FilterSection title="Ethnicity / Cultural Origin">
-            <div className="grid grid-cols-2 gap-2">
-              {ETHNICITIES.map((e) => (
-                <label key={e} className="flex items-center gap-2 rounded-md border p-2">
-                  <Checkbox
-                    checked={selectedEthnicities.includes(e)}
-                    onCheckedChange={() =>
-                      toggleFromArray(selectedEthnicities, setSelectedEthnicities, e)
-                    }
-                  />
-                  <span className="text-sm">{e}</span>
-                </label>
+            <div className="space-y-5">
+              {ETHNICITY_GROUPS.map((group) => (
+                <div key={group.label}>
+                  <h5 className="mb-2 text-xs font-medium text-muted-foreground">{group.label}</h5>
+                  <div className="grid grid-cols-2 gap-2">
+                    {group.options.map((e) => (
+                      <label key={e} className="flex items-center gap-2 rounded-md border p-2">
+                        <Checkbox
+                          checked={selectedEthnicities.includes(e)}
+                          onCheckedChange={() =>
+                            toggleFromArray(selectedEthnicities, setSelectedEthnicities, e)
+                          }
+                        />
+                        <span className="text-sm">{e}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </FilterSection>
@@ -839,8 +977,9 @@ function MobileFiltersSheet(props: {
             />
           </FilterSection>
 
-          <FilterSection title={`Min Rating: ${minRating || 0}★`}>
-            <StarSelect value={minRating} onChange={setMinRating} />
+          {/* Min spoons (rating) */}
+          <FilterSection title={`Min Spoons: ${minRating || 0}`}>
+            <SpoonSelect value={minRating} onChange={setMinRating} />
           </FilterSection>
 
           <FilterSection title="More">
@@ -860,14 +999,14 @@ function MobileFiltersSheet(props: {
                   variant={sortBy === s ? "default" : "outline"}
                   onClick={() => setSortBy(s)}
                 >
-                  {s === "newest" ? "Newest" : s === "rating" ? "Top Rated" : "Most Liked"}
+                  {s === "newest" ? "Newest" : s === "rating" ? "Top Spoons" : "Most Liked"}
                 </Button>
               ))}
             </div>
           </FilterSection>
         </div>
 
-        {/* Sticky footer — no grid/list, just Reset & Apply */}
+        {/* Sticky footer */}
         <div className="sticky bottom-0 border-t bg-background p-4">
           <div className="flex gap-2">
             <Button variant="secondary" onClick={onReset} className="flex-1">
@@ -895,7 +1034,8 @@ function FilterSection({ title, children }: { title: string; children: React.Rea
   );
 }
 
-function StarSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+// Star → Spoon selector
+function SpoonSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
     <div className="flex items-center gap-1">
       {[1, 2, 3, 4, 5].map((n) => (
@@ -903,10 +1043,11 @@ function StarSelect({ value, onChange }: { value: number; onChange: (v: number) 
           key={n}
           type="button"
           className="p-1"
-          aria-label={`${n} stars & up`}
+          aria-label={`${n} spoons & up`}
           onClick={() => onChange(n === value ? 0 : n)}
+          title={`${n} spoons & up`}
         >
-          <Star className={`h-5 w-5 ${value >= n ? "" : "opacity-30"}`} />
+          <SpoonIcon className={`h-5 w-5 ${value >= n ? "" : "opacity-30"}`} />
         </button>
       ))}
       <Button size="sm" variant="ghost" className="ml-1 h-7 px-2" onClick={() => onChange(0)}>
@@ -939,7 +1080,9 @@ function GridCard({ post }: { post: Post }) {
           </Badge>
         </div>
         <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-          <span>★ {post.rating.toFixed(1)}</span>
+          <span className="inline-flex items-center gap-1">
+            <SpoonIcon className="h-3.5 w-3.5" /> {post.rating.toFixed(1)}
+          </span>
           <span>{post.cookTime} min</span>
         </div>
         {post.isRecipe && (
@@ -972,7 +1115,9 @@ function ListRow({ post }: { post: Post }) {
           {post.dietary.length > 0 && <span>• {post.dietary.join(", ")}</span>}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          <span>★ {post.rating.toFixed(1)}</span>
+          <span className="inline-flex items-center gap-1">
+            <SpoonIcon className="h-3.5 w-3.5" /> {post.rating.toFixed(1)}
+          </span>
           <span>{post.cookTime} min</span>
           <span>{post.difficulty}</span>
           {post.isRecipe && <span className="text-emerald-600">Recipe</span>}
