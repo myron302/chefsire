@@ -40,7 +40,7 @@ export default function Layout({ children }: LayoutProps) {
     { href: "/ai-substitution", label: "AI Substitution" },
     { href: "/potent-potables", label: "Potent Potables" },
     { href: "/catering", label: "Catering" },
-    { href: "/store", label: "Store" }, // uses /store alias we added in App.tsx
+    { href: "/store", label: "Store" },
   ];
 
   const handleCreatePost = () => {
@@ -294,16 +294,16 @@ export default function Layout({ children }: LayoutProps) {
           {/* Secondary Navigation */}
           <nav className="border-t border-border bg-background">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              {/* UPDATED classes here */}
-              <ul className="secondary-tabs flex items-center overflow-x-auto no-scrollbar py-2 px-2 touch-pan-x">
+              {/* Key fixes: flex-nowrap, gap, li:flex-none, touch-pan-x */}
+              <ul className="flex flex-nowrap gap-4 overflow-x-auto no-scrollbar py-2 px-1 touch-pan-x">
                 {secondaryLinks.map((item) => {
                   const isActive = pathname === item.href;
                   return (
-                    <li key={item.href}>
+                    <li key={item.href} className="flex-none">
                       <Link
                         href={item.href}
                         className={[
-                          "text-sm font-medium whitespace-nowrap px-2 py-1 rounded transition-colors",
+                          "inline-block text-sm font-medium whitespace-nowrap px-2 py-1 rounded transition-colors",
                           isActive
                             ? "text-orange-600 underline decoration-2 underline-offset-4"
                             : "text-muted-foreground hover:text-orange-600",
