@@ -7,7 +7,10 @@ import Layout from "@/components/layout";
 
 // Pages
 import Feed from "@/pages/feed";
-import Explore from "@/pages/explore";
+// ⬇️ Replace the single Explore import with the two-page setup
+import ExploreListPage from "@/pages/explore/ExploreListPage";
+import ExploreFiltersPage from "@/pages/explore/ExploreFiltersPage";
+
 import Profile from "@/pages/profile";
 import CreatePost from "@/pages/create-post";
 import Pantry from "@/components/Pantry";
@@ -38,7 +41,11 @@ function Router() {
         {/* Main navigation routes */}
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
-        <Route path="/explore" component={Explore} />
+
+        {/* Explore split into two pages */}
+        <Route path="/explore/filters" component={ExploreFiltersPage} />
+        <Route path="/explore" component={ExploreListPage} />
+
         <Route path="/create" component={CreatePost} />
 
         {/* Feature routes (wrapped so errors show on-screen) */}
