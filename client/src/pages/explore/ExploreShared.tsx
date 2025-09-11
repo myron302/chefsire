@@ -2,113 +2,223 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 
-export const sortAlpha = (xs: string[]) => [...xs].sort((a, b) => a.localeCompare(b));
-
-// Pull from your lib when available (kept fallback here too)
+// Prefer your central filter lists, but keep fallbacks for local dev
 import {
   DIETS as MASTER_DIETS,
   ALLERGENS as MASTER_ALLERGENS,
   CUISINES as MASTER_CUISINES,
 } from "@/lib/filters";
 
-/* ----- Flat, alphabetized helpers ----- */
-const toFlatAlpha = (arr: { label: string; value: string }[] | undefined, fallback: string[]) =>
-  (arr ? Array.from(new Set(arr.map((x) => x.label))) : fallback).sort((a, b) => a.localeCompare(b));
+export const sortAlpha = (xs: string[]) => [...xs].sort((a, b) => a.localeCompare(b));
 
+const toFlatAlpha = (
+  arr: { label: string; value: string }[] | undefined,
+  fallback: string[]
+) =>
+  (arr ? Array.from(new Set(arr.map((x) => x.label))) : fallback).sort((a, b) =>
+    a.localeCompare(b)
+  );
+
+// Flat, alphabetized helpers (fallback values are minimal, because your main list is rich)
 export const CUISINES = toFlatAlpha(MASTER_CUISINES as any, [
-  "Asian","BBQ","Breakfast","Burgers","Desserts","Healthy","Italian",
-  "Mediterranean","Mexican","Quick","Salads","Seafood","Vegan",
+  "Italian",
+  "Asian",
+  "Mexican",
+  "Mediterranean",
+  "BBQ",
+  "Breakfast",
+  "Desserts",
+  "Healthy",
+  "Seafood",
+  "Vegan",
+  "Salads",
+  "Quick",
+  "Burgers",
 ]);
 
 export const ALLERGENS = toFlatAlpha(MASTER_ALLERGENS as any, [
-  "Celery","Dairy","Eggs","Fish","Gluten","Lupin","Mustard","Peanuts",
-  "Sesame","Shellfish","Soy","Sulfites","Tree Nuts","Wheat",
+  "Gluten",
+  "Dairy",
+  "Eggs",
+  "Peanuts",
+  "Tree Nuts",
+  "Soy",
+  "Fish",
+  "Shellfish",
+  "Sesame",
+  "Mustard",
 ]);
 
-// Diet build from master list; hide "-Free" (goes in Allergens) and Halal/Kosher (goes in Preparation)
+// Build Diet list from master; exclude "*-Free" (those live under Allergens) and Halal/Kosher here
 const removeFromDiet = new Set(["Halal", "Kosher"]);
-export const DIETARY: string[] = Array.from(new Set((MASTER_DIETS as any[]).map((d) => d.label)))
+export const DIETARY: string[] = Array.from(
+  new Set((MASTER_DIETS as any[]).map((d) => d.label))
+)
   .filter((label) => !/-Free$/i.test(label))
   .filter((label) => !removeFromDiet.has(label))
   .sort((a, b) => a.localeCompare(b));
 
-/* ----- Ethnicity groups (alphabetized, from your list) ----- */
+/* ----- Ethnicity / Cultural Origin (grouped + alphabetical) ----- */
 export const ETHNICITY_GROUPS: { label: string; options: string[] }[] = [
   {
     label: "Africa",
     options: sortAlpha([
-      "Algerian","Cameroonian","Egyptian","Eritrean","Ethiopian","Ghanaian","Ivorian",
-      "Kenyan","Moroccan","Nigerian","Senegalese","Somali","South African","Tanzanian",
-      "Tunisian","Ugandan",
+      "Algerian",
+      "Cameroonian",
+      "Egyptian",
+      "Eritrean",
+      "Ethiopian",
+      "Ghanaian",
+      "Ivorian",
+      "Kenyan",
+      "Moroccan",
+      "Nigerian",
+      "Senegalese",
+      "Somali",
+      "South African",
+      "Tanzanian",
+      "Tunisian",
+      "Ugandan",
     ]),
   },
   {
     label: "Middle East / Southwest Asia",
     options: sortAlpha([
-      "Armenian","Georgian","Gulf (Khaleeji)","Israeli","Jordanian","Kurdish","Lebanese",
-      "Levantine","Middle Eastern","Palestinian","Persian (Iranian)","Syrian","Turkish","Yemeni",
+      "Armenian",
+      "Georgian",
+      "Gulf (Khaleeji)",
+      "Israeli",
+      "Jordanian",
+      "Kurdish",
+      "Lebanese",
+      "Levantine",
+      "Middle Eastern",
+      "Palestinian",
+      "Persian (Iranian)",
+      "Syrian",
+      "Turkish",
+      "Yemeni",
     ]),
   },
   {
     label: "South Asia",
     options: sortAlpha([
-      "Bangladeshi","Bengali","Goan","Gujarati","Hyderabadi","Kashmiri","Maharashtrian",
-      "Nepali","North Indian (Punjabi)","Pakistani","Rajasthani","South Indian (Tamil)","Sri Lankan",
+      "Bangladeshi",
+      "Bengali",
+      "Goan",
+      "Gujarati",
+      "Hyderabadi",
+      "Jain",
+      "Kashmiri",
+      "Maharashtrian",
+      "Nepali",
+      "North Indian (Punjabi)",
+      "Pakistani",
+      "Rajasthani",
+      "South Indian (Tamil)",
+      "Sri Lankan",
     ]),
   },
   {
     label: "East Asia",
     options: sortAlpha([
-      "Chinese (Cantonese)","Chinese (Hunan)","Chinese (Shandong)","Chinese (Sichuan)",
-      "Japanese","Korean","Mongolian","Taiwanese",
+      "Chinese (Cantonese)",
+      "Chinese (Hunan)",
+      "Chinese (Shandong)",
+      "Chinese (Sichuan)",
+      "Japanese",
+      "Korean",
+      "Mongolian",
+      "Taiwanese",
     ]),
   },
   {
     label: "Southeast Asia",
-    options: sortAlpha(["Filipino","Indonesian","Malaysian","Singaporean","Thai","Vietnamese"]),
+    options: sortAlpha([
+      "Filipino",
+      "Indonesian",
+      "Khmer (Cambodian)",
+      "Lao",
+      "Malaysian",
+      "Singaporean",
+      "Thai",
+      "Vietnamese",
+    ]),
   },
   {
     label: "Central Asia",
-    options: sortAlpha(["Kazakh","Uighur","Uzbek"]),
+    options: sortAlpha(["Kazakh", "Uighur", "Uzbek"]),
   },
   {
     label: "Europe",
     options: sortAlpha([
-      "Austrian","Balkan","Basque","Belgian","British","Bulgarian","Catalan","Czech","Dutch",
-      "Finnish","French","German","Greek","Hungarian","Irish","Italian","Polish","Portuguese",
-      "Romanian","Russian","Scandinavian","Scottish","Sicilian","Slovak","Spanish","Swiss","Ukrainian",
+      "Austrian",
+      "Balkan",
+      "Basque",
+      "Belgian",
+      "British",
+      "Bulgarian",
+      "Catalan",
+      "Czech",
+      "Dutch",
+      "Finnish",
+      "French",
+      "German",
+      "Greek",
+      "Hungarian",
+      "Irish",
+      "Italian",
+      "Polish",
+      "Portuguese",
+      "Romanian",
+      "Russian",
+      "Scandinavian",
+      "Scottish",
+      "Sicilian",
+      "Slovak",
+      "Spanish",
+      "Swiss",
+      "Ukrainian",
     ]),
   },
   {
     label: "The Americas — United States",
     options: sortAlpha([
-      "Alaskan","American","Californian","Cajun","Creole","Hawaiian","New Mexican",
-      "Pacific Northwest","Southern / Soul Food","Tex-Mex",
+      "Alaskan",
+      "American",
+      "Californian",
+      "Cajun",
+      "Creole",
+      "Hawaiian",
+      "New Mexican",
+      "Pacific Northwest",
+      "Southern / Soul Food",
+      "Tex-Mex",
     ]),
   },
   {
     label: "The Americas — Mexico",
-    options: sortAlpha(["Baja","Mexican","Oaxacan","Yucatecan"]),
+    options: sortAlpha(["Baja", "Mexican", "Oaxacan", "Yucatecan"]),
   },
   {
     label: "The Americas — Caribbean",
-    options: sortAlpha(["Caribbean","Cuban","Dominican","Jamaican","Puerto Rican"]),
+    options: sortAlpha(["Caribbean", "Cuban", "Dominican", "Jamaican", "Puerto Rican"]),
   },
   {
     label: "The Americas — Central & South",
-    options: sortAlpha(["Argentinian","Brazilian","Chilean","Colombian","Peruvian","Venezuelan"]),
+    options: sortAlpha(["Argentinian", "Brazilian", "Chilean", "Colombian", "Peruvian", "Venezuelan"]),
   },
   {
     label: "Broad / Other",
-    options: sortAlpha(["Fusion","Mediterranean","North African","Pan-Asian"]),
+    options: sortAlpha(["Fusion", "Mediterranean", "North African", "Pan-Asian"]),
   },
 ];
 
-/* ----- Small shared UI ----- */
+/* ----- Shared UI atoms ----- */
 export function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h4 className="mb-2 text-sm font-semibold text-foreground">{title}</h4>
+      <h4 className="mb-2 text-[1.05rem] font-semibold text-foreground">{title}</h4>
       {children}
     </section>
   );
@@ -147,7 +257,7 @@ export function SpoonSelect({ value, onChange }: { value: number; onChange: (v: 
   );
 }
 
-// A small searchable checkbox group (used for Ethnicity regions)
+// Searchable checkbox group (used for Ethnicity regions)
 export function SearchableGroup({
   label,
   options,
@@ -170,7 +280,7 @@ export function SearchableGroup({
 
   return (
     <div>
-      <h5 className="mb-2 inline-block rounded-md bg-muted px-2 py-1 text-[0.95rem] font-semibold text-foreground">
+      <h5 className="mb-2 inline-block rounded-md bg-muted px-2 py-1 text-[1rem] font-bold text-foreground">
         {label}
       </h5>
       <input
