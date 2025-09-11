@@ -1,3 +1,4 @@
+// client/src/pages/explore/ExploreListPage.tsx
 import * as React from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,9 @@ function MobileRowBalancer({
   if (badges.length <= 3) {
     return (
       <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        {badges.map((b) => <React.Fragment key={b.key}>{b.node}</React.Fragment>)}
+        {badges.map((b) => (
+          <React.Fragment key={b.key}>{b.node}</React.Fragment>
+        ))}
       </div>
     );
   }
@@ -36,7 +39,7 @@ function MobileRowBalancer({
       ))}
       {/* force line break only on small screens */}
       <div className="basis-full sm:hidden" />
-      {/* Row 2 (mobile) + on desktop they all just flow inline */}
+      {/* Row 2 (mobile); on desktop they all just flow inline */}
       {secondRow.map((b) => (
         <React.Fragment key={b.key}>{b.node}</React.Fragment>
       ))}
@@ -62,38 +65,48 @@ function GridSkeleton() {
 }
 
 type CardPost = {
-  id: string;
-  title: string;
-  image: string;
-  cuisine: string;
-  isRecipe: boolean;
-  author: string;
-  cookTime: number;
-  rating: number;
-  difficulty: string;
-  mealType: string;
-  dietary: string[];
+  id: string | number;
+  title?: string;
+  image?: string;
+  cuisine?: string;
+  isRecipe?: boolean;
+  author?: string;
+  cookTime?: number;
+  rating?: number;
+  difficulty?: string;
+  mealType?: string;
+  dietary?: string[];
 };
 
+const PLACEHOLDER_IMG =
+  "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
+
 const GridCard = React.memo(function GridCard({ post }: { post: CardPost }) {
+  const title = post.title ?? "Untitled";
+  const image = post.image ?? PLACEHOLDER_IMG;
+  const cuisine = post.cuisine ?? "—";
+  const author = post.author ?? "Unknown";
+  const cookTime = typeof post.cookTime === "number" ? post.cookTime : 0;
+  const rating = typeof post.rating === "number" ? post.rating : 0;
+
   return (
     <article className="overflow-hidden rounded-lg border bg-card">
       <div className="aspect-square overflow-hidden">
-        <img src={post.image} alt={post.title} className="h-full w-full object-cover" loading="lazy" />
+        <img src={image} alt={title} className="h-full w-full object-cover" loading="lazy" />
       </div>
       <div className="p-3">
-        <h3 className="line-clamp-1 text-sm font-semibold">{post.title}</h3>
+        <h3 className="line-clamp-1 text-sm font-semibold">{title}</h3>
         <div className="mt-1 flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">{post.author}</span>
+          <span className="text-xs text-muted-foreground">{author}</span>
           <Badge variant="outline" className="text-xs">
-            {post.cuisine}
+            {cuisine}
           </Badge>
         </div>
         <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
-            <SpoonIcon className="h-3.5 w-3.5" /> {post.rating.toFixed(1)}
+            <SpoonIcon className="h-3.5 w-3.5" /> {rating.toFixed(1)}
           </span>
-          <span>{post.cookTime} min</span>
+          <span>{cookTime} min</span>
         </div>
         {post.isRecipe && (
           <span className="mt-2 inline-block text-[10px] uppercase tracking-wide text-emerald-600">
@@ -106,25 +119,35 @@ const GridCard = React.memo(function GridCard({ post }: { post: CardPost }) {
 });
 
 const ListRow = React.memo(function ListRow({ post }: { post: CardPost }) {
+  const title = post.title ?? "Untitled";
+  const image = post.image ?? PLACEHOLDER_IMG;
+  const cuisine = post.cuisine ?? "—";
+  const author = post.author ?? "Unknown";
+  const cookTime = typeof post.cookTime === "number" ? post.cookTime : 0;
+  const rating = typeof post.rating === "number" ? post.rating : 0;
+  const difficulty = post.difficulty ?? "—";
+  const mealType = post.mealType ?? "—";
+  const dietary = Array.isArray(post.dietary) ? post.dietary : [];
+
   return (
     <article className="flex gap-3 rounded-lg border bg-card p-2">
       <div className="h-20 w-20 shrink-0 overflow-hidden rounded-md">
-        <img src={post.image} alt={post.title} className="h-full w-full object-cover" loading="lazy" />
+        <img src={image} alt={title} className="h-full w-full object-cover" loading="lazy" />
       </div>
       <div className="min-w-0 flex-1">
-        <h3 className="line-clamp-1 text-sm font-semibold">{post.title}</h3>
+        <h3 className="line-clamp-1 text-sm font-semibold">{title}</h3>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>by {post.author}</span>
-          <span>• {post.cuisine}</span>
-          <span>• {post.mealType}</span>
-          {post.dietary.length > 0 && <span>• {post.dietary.join(", ")}</span>}
+          <span>by {author}</span>
+          <span>• {cuisine}</span>
+          <span>• {mealType}</span>
+          {dietary.length > 0 && <span>• {dietary.join(", ")}</span>}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
-            <SpoonIcon className="h-3.5 w-3.5" /> {post.rating.toFixed(1)}
+            <SpoonIcon className="h-3.5 w-3.5" /> {rating.toFixed(1)}
           </span>
-          <span>{post.cookTime} min</span>
-          <span>{post.difficulty}</span>
+          <span>{cookTime} min</span>
+          <span>{difficulty}</span>
           {post.isRecipe && <span className="text-emerald-600">Recipe</span>}
         </div>
       </div>
@@ -134,11 +157,19 @@ const ListRow = React.memo(function ListRow({ post }: { post: CardPost }) {
 
 export default function ExploreListPage() {
   const {
-    viewMode, setViewMode,
-    onlyRecipes, sortBy,
-    selectedCuisines, selectedMealTypes, selectedDietary,
-    selectedDifficulty, maxCookTime, minRating,
-    selectedEthnicities, excludedAllergens, selectedPreparation,
+    viewMode,
+    setViewMode,
+    onlyRecipes,
+    sortBy,
+    selectedCuisines,
+    selectedMealTypes,
+    selectedDietary,
+    selectedDifficulty,
+    maxCookTime,
+    minRating,
+    selectedEthnicities,
+    excludedAllergens,
+    selectedPreparation,
     resetFilters,
   } = useExploreFilters();
 
@@ -158,30 +189,109 @@ export default function ExploreListPage() {
   // Build the badge list once, so MobileRowBalancer can move the longest to row 2
   const badges = React.useMemo(
     () => [
-      { key: "cuisines", node: <Badge variant="outline">Cuisines: {selectedCuisines.length}</Badge>, labelForLength: "Cuisines" },
-      { key: "meals",    node: <Badge variant="outline">Meal Types: {selectedMealTypes.length}</Badge>, labelForLength: "Meal Types" },
-      { key: "diets",    node: <Badge variant="outline">Dietary: {selectedDietary.length}</Badge>, labelForLength: "Dietary" },
-      { key: "eth",      node: <Badge variant="outline">Ethnicity: {selectedEthnicities.length}</Badge>, labelForLength: "Ethnicity" },
-      { key: "std",      node: <Badge variant="outline">Standards: {selectedPreparation.length}</Badge>, labelForLength: "Standards" },
-      { key: "all",      node: <Badge variant="outline">No {excludedAllergens.length ? excludedAllergens.join(", ") : "—"}</Badge>, labelForLength: excludedAllergens.join(", ") || "None" },
-      ...(selectedDifficulty ? [{ key: "diff", node: <Badge variant="outline">Difficulty: {selectedDifficulty}</Badge>, labelForLength: selectedDifficulty }] : []),
-      ...(onlyRecipes ? [{ key: "recipe", node: <Badge variant="outline">Recipe-only</Badge>, labelForLength: "Recipe-only" }] : []),
-      { key: "time",     node: <Badge variant="outline">≤ {maxCookTime} min</Badge>, labelForLength: `${maxCookTime} min` },
-      { key: "rating",   node: (
+      {
+        key: "cuisines",
+        node: <Badge variant="outline">Cuisines: {selectedCuisines.length}</Badge>,
+        labelForLength: "Cuisines",
+      },
+      {
+        key: "meals",
+        node: <Badge variant="outline">Meal Types: {selectedMealTypes.length}</Badge>,
+        labelForLength: "Meal Types",
+      },
+      {
+        key: "diets",
+        node: <Badge variant="outline">Dietary: {selectedDietary.length}</Badge>,
+        labelForLength: "Dietary",
+      },
+      {
+        key: "eth",
+        node: <Badge variant="outline">Ethnicity: {selectedEthnicities.length}</Badge>,
+        labelForLength: "Ethnicity",
+      },
+      {
+        key: "std",
+        node: <Badge variant="outline">Standards: {selectedPreparation.length}</Badge>,
+        labelForLength: "Standards",
+      },
+      {
+        key: "all",
+        node: (
+          <Badge variant="outline">
+            No {excludedAllergens.length ? excludedAllergens.join(", ") : "—"}
+          </Badge>
+        ),
+        labelForLength: excludedAllergens.join(", ") || "None",
+      },
+      ...(selectedDifficulty
+        ? [
+            {
+              key: "diff",
+              node: <Badge variant="outline">Difficulty: {selectedDifficulty}</Badge>,
+              labelForLength: selectedDifficulty,
+            },
+          ]
+        : []),
+      ...(onlyRecipes
+        ? [
+            {
+              key: "recipe",
+              node: <Badge variant="outline">Recipe-only</Badge>,
+              labelForLength: "Recipe-only",
+            },
+          ]
+        : []),
+      {
+        key: "time",
+        node: <Badge variant="outline">≤ {maxCookTime} min</Badge>,
+        labelForLength: `${maxCookTime} min`,
+      },
+      {
+        key: "rating",
+        node: (
           <Badge variant="outline">
             <span className="inline-flex items-center gap-1">
               <SpoonIcon className="h-3.5 w-3.5" /> {minRating}+
             </span>
           </Badge>
-        ), labelForLength: `${minRating} spoons` },
-      { key: "sort",     node: <Badge variant="outline">Sort: {sortBy}</Badge>, labelForLength: `Sort: ${sortBy}` },
-      { key: "reset",    node: <Button size="sm" variant="ghost" className="h-7 px-2" onClick={resetFilters}>Reset</Button>, labelForLength: "Reset" },
+        ),
+        labelForLength: `${minRating} spoons`,
+      },
+      {
+        key: "sort",
+        node: <Badge variant="outline">Sort: {sortBy}</Badge>,
+        labelForLength: `Sort: ${sortBy}`,
+      },
+      {
+        key: "reset",
+        node: (
+          <Button size="sm" variant="ghost" className="h-7 px-2" onClick={resetFilters}>
+            Reset
+          </Button>
+        ),
+        labelForLength: "Reset",
+      },
     ],
     [
-      selectedCuisines, selectedMealTypes, selectedDietary, selectedEthnicities,
-      selectedPreparation, excludedAllergens, selectedDifficulty, onlyRecipes,
-      maxCookTime, minRating, sortBy, resetFilters
+      selectedCuisines,
+      selectedMealTypes,
+      selectedDietary,
+      selectedEthnicities,
+      selectedPreparation,
+      excludedAllergens,
+      selectedDifficulty,
+      onlyRecipes,
+      maxCookTime,
+      minRating,
+      sortBy,
+      resetFilters,
     ]
+  );
+
+  // Defensive rendering: ignore null/undefined and items without an id
+  const safePosts = React.useMemo(
+    () => (posts || []).filter((p: any) => p && p.id != null),
+    [posts]
   );
 
   return (
@@ -227,7 +337,7 @@ export default function ExploreListPage() {
             <RefreshCw className="h-4 w-4" /> Try again
           </Button>
         </div>
-      ) : posts.length === 0 ? (
+      ) : safePosts.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
           <p className="text-sm text-muted-foreground">No posts match these filters.</p>
           <Button className="mt-3" variant="secondary" onClick={resetFilters}>
@@ -236,15 +346,15 @@ export default function ExploreListPage() {
         </div>
       ) : viewMode === "grid" ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {posts.map((p) => (
+          {safePosts.map((p: any) => (
             <GridCard
-              key={p.id}
+              key={String(p.id)}
               post={{
-                id: p.id,
+                id: String(p.id),
                 title: p.title,
                 image: p.image,
                 cuisine: p.cuisine,
-                isRecipe: p.isRecipe,
+                isRecipe: Boolean(p.isRecipe),
                 author: p.author,
                 cookTime: p.cookTime,
                 rating: p.rating,
@@ -257,15 +367,15 @@ export default function ExploreListPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {posts.map((p) => (
+          {safePosts.map((p: any) => (
             <ListRow
-              key={p.id}
+              key={String(p.id)}
               post={{
-                id: p.id,
+                id: String(p.id),
                 title: p.title,
                 image: p.image,
                 cuisine: p.cuisine,
-                isRecipe: p.isRecipe,
+                isRecipe: Boolean(p.isRecipe),
                 author: p.author,
                 cookTime: p.cookTime,
                 rating: p.rating,
@@ -279,7 +389,7 @@ export default function ExploreListPage() {
       )}
 
       {/* Load more */}
-      {posts.length > 0 && (
+      {safePosts.length > 0 && (
         <div className="flex justify-center my-6">
           {hasNextPage ? (
             <Button onClick={() => fetchNextPage()} disabled={isFetchingNextPage} variant="outline">
