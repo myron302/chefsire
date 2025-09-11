@@ -131,6 +131,7 @@
     animation: glow 2.4s ease-in-out infinite;
   }
 
+  /* Respect reduced motion preferences */
   @media (prefers-reduced-motion: reduce) {
     .animate-glow { animation: none; }
   }
@@ -170,5 +171,21 @@
   .sticky-ancestor-fix {
     overflow: visible;
     contain: layout paint;
+  }
+
+  /* =========================
+     👇 NEW: mobile drag scroll in dropdowns
+     ========================= */
+  /* Let touches pass through Radix popper wrapper so inner lists can pan */
+  [data-radix-popper-content-wrapper],
+  [data-radix-popper-content-wrapper] * {
+    touch-action: auto !important;
+  }
+
+  /* Momentum scrolling + safe overscroll for long option lists */
+  .cmd-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
   }
 }
