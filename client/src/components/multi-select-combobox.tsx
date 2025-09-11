@@ -41,8 +41,8 @@ export function MultiSelectCombobox(props: {
 
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
-  const [showUpButton, setShowUpButton] = React.useState(false);
-  const [showDownButton, setShowDownButton] = React.useState(true);
+  const [canUp, setCanUp] = React.useState(false);
+  const [canDown, setCanDown] = React.useState(true);
   const listRef = React.useRef<HTMLDivElement>(null);
 
   const selected = React.useMemo(
@@ -72,51 +72,62 @@ export function MultiSelectCombobox(props: {
       ? selected.map((s) => s.label).join(", ")
       : `${selected.length} selected`;
 
-  // Keep the up/down buttons in sync with scroll position
+  // Keep Up/Down enabled states in sync with scroll
   const updateButtons = React.useCallback(() => {
-    const list = listRef.current;
-    if (!list) return;
-    setShowUpButton(list.scrollTop > 0);
-    setShowDownButton(list.scrollTop + list.clientHeight < list.scrollHeight - 1);
+    const el = listRef.current;
+    if (!el) return;
+    const up = el.scrollTop > 0;
+    const down = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+    setCanUp(up);
+    setCanDown(down);
   }, []);
 
   React.useEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
-    list.addEventListener("scroll", updateButtons, { passive: true });
+    const el = listRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", updateButtons, { passive: true });
     updateButtons();
-    return () => list.removeEventListener("scroll", updateButtons);
+    return () => el.removeEventListener("scroll", updateButtons);
   }, [updateButtons]);
 
-  // Smooth scrolling helpers (used by buttons & wheel)
+  // Recompute when opening, searching, or the filtered list changes
+  React.useEffect(() => {
+    if (open) {
+      // wait a tick for layout
+      const id = setTimeout(updateButtons, 0);
+      return () => clearTimeout(id);
+    }
+  }, [open, search, filteredOptions.length, updateButtons]);
+
+  // Smooth scroll helpers for buttons & wheel
   const scrollByAmount = (amount: number) => {
     listRef.current?.scrollBy({ top: amount, behavior: "smooth" });
   };
   const scrollUp = () => scrollByAmount(-64);
   const scrollDown = () => scrollByAmount(64);
 
-  // Enable desktop mouse wheel scrolling + mobile touch drag.
-  // - touch drag works by default via CSS (overflow + touch-action)
-  // - wheel: ensure the list consumes the wheel and scrolls smoothly
+  // Desktop wheel (mobile uses native finger drag)
   const onWheel: React.WheelEventHandler<HTMLDivElement> = (e) => {
-    // If the list is scrollable, use the delta to scroll
-    const list = listRef.current;
-    if (!list) return;
-
-    // Only prevent default if we can actually scroll; otherwise let the page scroll.
+    const el = listRef.current;
+    if (!el) return;
     const canScroll =
-      list.scrollHeight > list.clientHeight &&
-      ((e.deltaY < 0 && list.scrollTop > 0) ||
-        (e.deltaY > 0 && list.scrollTop + list.clientHeight < list.scrollHeight));
-
+      el.scrollHeight > el.clientHeight &&
+      ((e.deltaY < 0 && el.scrollTop > 0) ||
+        (e.deltaY > 0 && el.scrollTop + el.clientHeight < el.scrollHeight));
     if (canScroll) {
       e.preventDefault();
-      list.scrollBy({ top: e.deltaY, behavior: "smooth" });
+      el.scrollBy({ top: e.deltaY, behavior: "smooth" });
     }
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (o) setTimeout(updateButtons, 0);
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -140,7 +151,8 @@ export function MultiSelectCombobox(props: {
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent className="p-0 w-[320px]" align="start">
+      {/* Bigger popover on mobile so more options fit */}
+      <PopoverContent className="p-0 w-[320px] max-h-[75vh]" align="start">
         <Command>
           <CommandInput
             placeholder={placeholder}
@@ -149,30 +161,26 @@ export function MultiSelectCombobox(props: {
             className="h-9"
           />
 
-          {/* Quick scroll controls */}
+          {/* Scroll controls always visible; disabled when not applicable */}
           <div className="flex justify-between p-2">
-            {showUpButton ? (
-              <Button variant="ghost" size="sm" onClick={scrollUp} aria-label="Scroll up">
-                <ChevronUp className="h-4 w-4" />
-              </Button>
-            ) : (
-              <span />
-            )}
-            {showDownButton ? (
-              <Button variant="ghost" size="sm" onClick={scrollDown} aria-label="Scroll down">
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            ) : (
-              <span />
-            )}
+            <Button variant="ghost" size="sm" onClick={scrollUp} disabled={!canUp} aria-label="Scroll up">
+              <ChevronUp className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={scrollDown} disabled={!canDown} aria-label="Scroll down">
+              <ChevronDown className="h-4 w-4" />
+            </Button>
           </div>
 
-          {/* Scrollable list: mouse wheel + touch drag */}
+          {/* Native scrolling: touch drag on mobile, wheel on desktop */}
           <CommandList
             ref={listRef}
             onWheel={onWheel}
-            className="max-h-[260px] overflow-y-auto touch-action-pan-y overscroll-contain"
-            style={{ WebkitOverflowScrolling: "touch" }}
+            className="max-h-[60vh] overflow-y-auto overscroll-contain"
+            style={{
+              // iOS momentum + allow vertical finger-drag
+              WebkitOverflowScrolling: "touch",
+              touchAction: "pan-y",
+            }}
             aria-label="Options"
           >
             <CommandEmpty>{emptyLabel}</CommandEmpty>
