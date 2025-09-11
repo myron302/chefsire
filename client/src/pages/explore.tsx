@@ -12,8 +12,7 @@ import {
   SheetClose,
 } from "@/components/ui/sheet";
 import { Slider } from "@/components/ui/slider";
-import { Label } from "@/components/ui/label";
-import { LayoutGrid, List, Filter, X, Star } from "lucide-react";
+import { LayoutGrid, List, Filter, Star } from "lucide-react";
 
 /** -------------------------------
  * Types + demo data (replace later)
@@ -30,29 +29,26 @@ type Post = {
   cuisine: string;
   isRecipe: boolean;
   author: string;
-  cookTime: number; // minutes
+  cookTime: number;        // minutes
   difficulty: Difficulty;
-  rating: number; // 0..5
+  rating: number;          // 0..5
   likes: number;
   mealType: MealType;
   dietary: Dietary[];
-  createdAt: string; // ISO date
+  createdAt: string;       // ISO date
+  ethnicities: string[];   // NEW: tags like ["Caribbean","African Diaspora"]
 };
 
 const CUISINES = [
-  "Italian",
-  "Healthy",
-  "Desserts",
-  "Quick",
-  "Vegan",
-  "Seafood",
-  "Asian",
-  "Mexican",
-  "Mediterranean",
-  "BBQ",
-  "Breakfast",
-  "Burgers",
-  "Salads",
+  "Italian","Healthy","Desserts","Quick","Vegan","Seafood","Asian","Mexican",
+  "Mediterranean","BBQ","Breakfast","Burgers","Salads",
+];
+
+// NEW: Ethnicity filter buckets (adjust to your data model)
+const ETHNICITIES = [
+  "African","African Diaspora","Afro-Caribbean","Caribbean","East Asian","South Asian",
+  "Southeast Asian","Middle Eastern","North African","Latinx","Indigenous","European",
+  "Pacific Islander","Other",
 ];
 
 const MEAL_TYPES: MealType[] = ["Breakfast", "Lunch", "Dinner", "Snack", "Dessert"];
@@ -74,6 +70,7 @@ const DEMO_POSTS: Post[] = [
     mealType: "Dinner",
     dietary: ["Vegetarian"],
     createdAt: "2025-09-08T12:00:00Z",
+    ethnicities: ["European"],
   },
   {
     id: "2",
@@ -89,6 +86,7 @@ const DEMO_POSTS: Post[] = [
     mealType: "Lunch",
     dietary: ["Vegan", "Gluten-Free"],
     createdAt: "2025-09-07T10:00:00Z",
+    ethnicities: ["Other"],
   },
   {
     id: "3",
@@ -104,6 +102,7 @@ const DEMO_POSTS: Post[] = [
     mealType: "Dessert",
     dietary: ["Vegetarian"],
     createdAt: "2025-09-05T18:30:00Z",
+    ethnicities: ["European"],
   },
   {
     id: "4",
@@ -119,6 +118,7 @@ const DEMO_POSTS: Post[] = [
     mealType: "Dinner",
     dietary: [],
     createdAt: "2025-09-03T21:15:00Z",
+    ethnicities: ["East Asian"],
   },
   {
     id: "5",
@@ -134,6 +134,7 @@ const DEMO_POSTS: Post[] = [
     mealType: "Dinner",
     dietary: [],
     createdAt: "2025-09-09T14:45:00Z",
+    ethnicities: ["African Diaspora","Afro-Caribbean"],
   },
   {
     id: "6",
@@ -149,6 +150,7 @@ const DEMO_POSTS: Post[] = [
     mealType: "Breakfast",
     dietary: ["Vegetarian"],
     createdAt: "2025-09-10T08:05:00Z",
+    ethnicities: ["Other"],
   },
 ];
 
@@ -165,9 +167,10 @@ export default function Explore() {
   const [selectedMealTypes, setSelectedMealTypes] = React.useState<MealType[]>([]);
   const [selectedDietary, setSelectedDietary] = React.useState<Dietary[]>([]);
   const [selectedDifficulty, setSelectedDifficulty] = React.useState<Difficulty | "">("");
-  const [maxCookTime, setMaxCookTime] = React.useState<number>(60); // minutes
+  const [maxCookTime, setMaxCookTime] = React.useState<number>(60);
   const [minRating, setMinRating] = React.useState<number>(0);
   const [sortBy, setSortBy] = React.useState<"newest" | "rating" | "likes">("newest");
+  const [selectedEthnicities, setSelectedEthnicities] = React.useState<string[]>([]); // NEW
 
   // TODO: swap DEMO_POSTS with your fetched data
   const posts = DEMO_POSTS;
@@ -177,10 +180,12 @@ export default function Explore() {
       if (onlyRecipes && !p.isRecipe) return false;
       if (selectedCuisines.length && !selectedCuisines.includes(p.cuisine)) return false;
       if (selectedMealTypes.length && !selectedMealTypes.includes(p.mealType)) return false;
-      if (selectedDietary.length && !selectedDietary.every((d) => p.dietary.includes(d))) return false; // must include all selected dietaries
+      if (selectedDietary.length && !selectedDietary.every((d) => p.dietary.includes(d))) return false; // all chosen dietaries must be present
       if (selectedDifficulty && p.difficulty !== selectedDifficulty) return false;
       if (maxCookTime && p.cookTime > maxCookTime) return false;
       if (minRating && p.rating < minRating) return false;
+      // NEW: ethnicity — inclusive OR (any match)
+      if (selectedEthnicities.length && !p.ethnicities.some(e => selectedEthnicities.includes(e))) return false;
       return true;
     });
 
@@ -204,6 +209,7 @@ export default function Explore() {
     maxCookTime,
     minRating,
     sortBy,
+    selectedEthnicities, // NEW
   ]);
 
   function resetFilters() {
@@ -215,12 +221,12 @@ export default function Explore() {
     setMinRating(0);
     setOnlyRecipes(false);
     setSortBy("newest");
-    // keep current viewMode
+    setSelectedEthnicities([]); // NEW
   }
 
   return (
     <div className="mx-auto max-w-6xl md:grid md:grid-cols-[18rem_1fr] gap-6 px-4 md:px-6">
-      {/* Desktop sidebar (no dropdowns, scrollable) */}
+      {/* Desktop sidebar */}
       <DesktopFiltersSidebar
         selectedCuisines={selectedCuisines}
         setSelectedCuisines={setSelectedCuisines}
@@ -238,12 +244,14 @@ export default function Explore() {
         setOnlyRecipes={setOnlyRecipes}
         sortBy={sortBy}
         setSortBy={setSortBy}
+        selectedEthnicities={selectedEthnicities}                 // NEW
+        setSelectedEthnicities={setSelectedEthnicities}           // NEW
         onReset={resetFilters}
       />
 
       {/* Main content */}
       <main className="min-w-0">
-        {/* Mobile controls row (kept simple; no duplicates inside the sheet) */}
+        {/* Mobile controls row */}
         <div className="md:hidden mb-3 flex items-center justify-between gap-2">
           <MobileFiltersSheet
             selectedCuisines={selectedCuisines}
@@ -262,6 +270,8 @@ export default function Explore() {
             setOnlyRecipes={setOnlyRecipes}
             sortBy={sortBy}
             setSortBy={setSortBy}
+            selectedEthnicities={selectedEthnicities}             // NEW
+            setSelectedEthnicities={setSelectedEthnicities}       // NEW
             onReset={resetFilters}
           />
           <div className="flex gap-2">
@@ -284,11 +294,12 @@ export default function Explore() {
           </div>
         </div>
 
-        {/* Active filter count (mobile + desktop) */}
+        {/* Active filter chips */}
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline">Cuisines: {selectedCuisines.length}</Badge>
           <Badge variant="outline">Meal Types: {selectedMealTypes.length}</Badge>
           <Badge variant="outline">Dietary: {selectedDietary.length}</Badge>
+          <Badge variant="outline">Ethnicity: {selectedEthnicities.length}</Badge>
           {selectedDifficulty && <Badge variant="outline">Difficulty: {selectedDifficulty}</Badge>}
           {onlyRecipes && <Badge variant="outline">Recipe-only</Badge>}
           <Badge variant="outline">≤ {maxCookTime} min</Badge>
@@ -297,6 +308,7 @@ export default function Explore() {
           {(selectedCuisines.length ||
             selectedMealTypes.length ||
             selectedDietary.length ||
+            selectedEthnicities.length ||              // NEW
             selectedDifficulty ||
             onlyRecipes ||
             minRating ||
@@ -349,25 +361,20 @@ function DesktopFiltersSidebar(props: {
   setOnlyRecipes: (v: boolean) => void;
   sortBy: "newest" | "rating" | "likes";
   setSortBy: (v: "newest" | "rating" | "likes") => void;
+  selectedEthnicities: string[];                               // NEW
+  setSelectedEthnicities: (v: string[]) => void;               // NEW
   onReset: () => void;
 }) {
   const {
-    selectedCuisines,
-    setSelectedCuisines,
-    selectedMealTypes,
-    setSelectedMealTypes,
-    selectedDietary,
-    setSelectedDietary,
-    selectedDifficulty,
-    setSelectedDifficulty,
-    maxCookTime,
-    setMaxCookTime,
-    minRating,
-    setMinRating,
-    onlyRecipes,
-    setOnlyRecipes,
-    sortBy,
-    setSortBy,
+    selectedCuisines, setSelectedCuisines,
+    selectedMealTypes, setSelectedMealTypes,
+    selectedDietary, setSelectedDietary,
+    selectedDifficulty, setSelectedDifficulty,
+    maxCookTime, setMaxCookTime,
+    minRating, setMinRating,
+    onlyRecipes, setOnlyRecipes,
+    sortBy, setSortBy,
+    selectedEthnicities, setSelectedEthnicities, // NEW
     onReset,
   } = props;
 
@@ -380,19 +387,23 @@ function DesktopFiltersSidebar(props: {
       <div className="sticky top-20 space-y-5">
         {/* Cuisines */}
         <FilterSection title="Cuisines">
-          <div
-            className="grid grid-cols-1 gap-2 max-h-[28rem] overflow-y-auto pr-1"
-            style={{ WebkitOverflowScrolling: "touch" as any }}
-          >
+          <div className="grid grid-cols-1 gap-2 max-h-[24rem] overflow-y-auto pr-1" style={{ WebkitOverflowScrolling: "touch" as any }}>
             {CUISINES.map((c) => (
               <label key={c} className="flex items-center gap-2">
-                <Checkbox
-                  checked={selectedCuisines.includes(c)}
-                  onCheckedChange={() =>
-                    toggleFromArray(selectedCuisines, setSelectedCuisines, c)
-                  }
-                />
+                <Checkbox checked={selectedCuisines.includes(c)} onCheckedChange={() => toggleFromArray(selectedCuisines, setSelectedCuisines, c)} />
                 <span className="text-sm">{c}</span>
+              </label>
+            ))}
+          </div>
+        </FilterSection>
+
+        {/* Ethnicity (NEW) */}
+        <FilterSection title="Ethnicity / Cultural Origin">
+          <div className="grid grid-cols-1 gap-2 max-h-[16rem] overflow-y-auto pr-1" style={{ WebkitOverflowScrolling: "touch" as any }}>
+            {ETHNICITIES.map((e) => (
+              <label key={e} className="flex items-center gap-2">
+                <Checkbox checked={selectedEthnicities.includes(e)} onCheckedChange={() => toggleFromArray(selectedEthnicities, setSelectedEthnicities, e)} />
+                <span className="text-sm">{e}</span>
               </label>
             ))}
           </div>
@@ -403,10 +414,7 @@ function DesktopFiltersSidebar(props: {
           <div className="grid grid-cols-2 gap-2">
             {MEAL_TYPES.map((m) => (
               <label key={m} className="flex items-center gap-2">
-                <Checkbox
-                  checked={selectedMealTypes.includes(m)}
-                  onCheckedChange={() => toggleFromArray(selectedMealTypes, setSelectedMealTypes, m)}
-                />
+                <Checkbox checked={selectedMealTypes.includes(m)} onCheckedChange={() => toggleFromArray(selectedMealTypes, setSelectedMealTypes, m)} />
                 <span className="text-sm">{m}</span>
               </label>
             ))}
@@ -418,10 +426,7 @@ function DesktopFiltersSidebar(props: {
           <div className="grid grid-cols-2 gap-2">
             {DIETARY.map((d) => (
               <label key={d} className="flex items-center gap-2">
-                <Checkbox
-                  checked={selectedDietary.includes(d)}
-                  onCheckedChange={() => toggleFromArray(selectedDietary, setSelectedDietary, d)}
-                />
+                <Checkbox checked={selectedDietary.includes(d)} onCheckedChange={() => toggleFromArray(selectedDietary, setSelectedDietary, d)} />
                 <span className="text-sm">{d}</span>
               </label>
             ))}
@@ -432,12 +437,7 @@ function DesktopFiltersSidebar(props: {
         <FilterSection title="Difficulty">
           <div className="flex flex-wrap gap-2">
             {DIFFICULTY.map((d) => (
-              <Button
-                key={d}
-                size="sm"
-                variant={selectedDifficulty === d ? "default" : "outline"}
-                onClick={() => setSelectedDifficulty(selectedDifficulty === d ? "" : d)}
-              >
+              <Button key={d} size="sm" variant={selectedDifficulty === d ? "default" : "outline"} onClick={() => setSelectedDifficulty(selectedDifficulty === d ? "" : d)}>
                 {d}
               </Button>
             ))}
@@ -446,13 +446,7 @@ function DesktopFiltersSidebar(props: {
 
         {/* Max cook time */}
         <FilterSection title={`Max Cook Time: ${maxCookTime} min`}>
-          <Slider
-            value={[maxCookTime]}
-            min={5}
-            max={240}
-            step={5}
-            onValueChange={(v) => setMaxCookTime(v[0] ?? 60)}
-          />
+          <Slider value={[maxCookTime]} min={5} max={240} step={5} onValueChange={(v) => setMaxCookTime(v[0] ?? 60)} />
         </FilterSection>
 
         {/* Min rating */}
@@ -463,21 +457,13 @@ function DesktopFiltersSidebar(props: {
         {/* Flags & sort */}
         <FilterSection title="More">
           <label className="flex items-center gap-2">
-            <Checkbox
-              checked={onlyRecipes}
-              onCheckedChange={(v) => setOnlyRecipes(Boolean(v))}
-            />
+            <Checkbox checked={onlyRecipes} onCheckedChange={(v) => setOnlyRecipes(Boolean(v))} />
             <span className="text-sm">Show recipe posts only</span>
           </label>
 
           <div className="mt-3 flex flex-wrap gap-2">
             {(["newest", "rating", "likes"] as const).map((s) => (
-              <Button
-                key={s}
-                size="sm"
-                variant={sortBy === s ? "default" : "outline"}
-                onClick={() => setSortBy(s)}
-              >
+              <Button key={s} size="sm" variant={sortBy === s ? "default" : "outline"} onClick={() => setSortBy(s)}>
                 {s === "newest" ? "Newest" : s === "rating" ? "Top Rated" : "Most Liked"}
               </Button>
             ))}
@@ -495,7 +481,7 @@ function DesktopFiltersSidebar(props: {
 }
 
 /** -------------------------------
- * Mobile sheet (scrollable, one X, no duplicate grid/list)
+ * Mobile sheet (scrollable; rely on built-in X only)
  * -------------------------------- */
 function MobileFiltersSheet(props: {
   selectedCuisines: string[];
@@ -514,25 +500,20 @@ function MobileFiltersSheet(props: {
   setOnlyRecipes: (v: boolean) => void;
   sortBy: "newest" | "rating" | "likes";
   setSortBy: (v: "newest" | "rating" | "likes") => void;
+  selectedEthnicities: string[];                         // NEW
+  setSelectedEthnicities: (v: string[]) => void;         // NEW
   onReset: () => void;
 }) {
   const {
-    selectedCuisines,
-    setSelectedCuisines,
-    selectedMealTypes,
-    setSelectedMealTypes,
-    selectedDietary,
-    setSelectedDietary,
-    selectedDifficulty,
-    setSelectedDifficulty,
-    maxCookTime,
-    setMaxCookTime,
-    minRating,
-    setMinRating,
-    onlyRecipes,
-    setOnlyRecipes,
-    sortBy,
-    setSortBy,
+    selectedCuisines, setSelectedCuisines,
+    selectedMealTypes, setSelectedMealTypes,
+    selectedDietary, setSelectedDietary,
+    selectedDifficulty, setSelectedDifficulty,
+    maxCookTime, setMaxCookTime,
+    minRating, setMinRating,
+    onlyRecipes, setOnlyRecipes,
+    sortBy, setSortBy,
+    selectedEthnicities, setSelectedEthnicities, // NEW
     onReset,
   } = props;
 
@@ -548,20 +529,16 @@ function MobileFiltersSheet(props: {
         <Button variant="outline" className="gap-2">
           <Filter className="h-4 w-4" />
           Filters
-          {(selectedCuisines.length +
-            selectedMealTypes.length +
-            selectedDietary.length +
-            (selectedDifficulty ? 1 : 0) +
-            (onlyRecipes ? 1 : 0) +
-            (minRating ? 1 : 0) +
-            (maxCookTime !== 60 ? 1 : 0) +
-            (sortBy !== "newest" ? 1 : 0)) > 0 && (
+          {(selectedCuisines.length + selectedMealTypes.length + selectedDietary.length +
+            (selectedDifficulty ? 1 : 0) + (onlyRecipes ? 1 : 0) + (minRating ? 1 : 0) +
+            (maxCookTime !== 60 ? 1 : 0) + (sortBy !== "newest" ? 1 : 0) +
+            selectedEthnicities.length) > 0 && (
             <Badge variant="secondary" className="ml-2">
-              {/* simple count of active groups */}
               {[
                 selectedCuisines.length > 0,
                 selectedMealTypes.length > 0,
                 selectedDietary.length > 0,
+                selectedEthnicities.length > 0,
                 Boolean(selectedDifficulty),
                 onlyRecipes,
                 Boolean(minRating),
@@ -574,14 +551,9 @@ function MobileFiltersSheet(props: {
       </SheetTrigger>
 
       <SheetContent side="bottom" className="h-[88dvh] p-0">
-        {/* ONE close button */}
+        {/* NOTE: We rely on the built-in close (X) in SheetContent; no custom X here */}
         <SheetHeader className="p-4 border-b">
-          <div className="flex items-center justify-between">
-            <SheetTitle>Filters</SheetTitle>
-            <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close">
-              <X className="h-5 w-5" />
-            </Button>
-          </div>
+          <SheetTitle>Filters</SheetTitle>
         </SheetHeader>
 
         {/* Scrollable body */}
@@ -600,11 +572,20 @@ function MobileFiltersSheet(props: {
             <div className="grid grid-cols-2 gap-2">
               {CUISINES.map((c) => (
                 <label key={c} className="flex items-center gap-2 rounded-md border p-2">
-                  <Checkbox
-                    checked={selectedCuisines.includes(c)}
-                    onCheckedChange={() => toggleFromArray(selectedCuisines, setSelectedCuisines, c)}
-                  />
+                  <Checkbox checked={selectedCuisines.includes(c)} onCheckedChange={() => toggleFromArray(selectedCuisines, setSelectedCuisines, c)} />
                   <span className="text-sm">{c}</span>
+                </label>
+              ))}
+            </div>
+          </FilterSection>
+
+          {/* Ethnicity (NEW) */}
+          <FilterSection title="Ethnicity / Cultural Origin">
+            <div className="grid grid-cols-2 gap-2">
+              {ETHNICITIES.map((e) => (
+                <label key={e} className="flex items-center gap-2 rounded-md border p-2">
+                  <Checkbox checked={selectedEthnicities.includes(e)} onCheckedChange={() => toggleFromArray(selectedEthnicities, setSelectedEthnicities, e)} />
+                  <span className="text-sm">{e}</span>
                 </label>
               ))}
             </div>
@@ -614,10 +595,7 @@ function MobileFiltersSheet(props: {
             <div className="grid grid-cols-2 gap-2">
               {MEAL_TYPES.map((m) => (
                 <label key={m} className="flex items-center gap-2 rounded-md border p-2">
-                  <Checkbox
-                    checked={selectedMealTypes.includes(m)}
-                    onCheckedChange={() => toggleFromArray(selectedMealTypes, setSelectedMealTypes, m)}
-                  />
+                  <Checkbox checked={selectedMealTypes.includes(m)} onCheckedChange={() => toggleFromArray(selectedMealTypes, setSelectedMealTypes, m)} />
                   <span className="text-sm">{m}</span>
                 </label>
               ))}
@@ -628,10 +606,7 @@ function MobileFiltersSheet(props: {
             <div className="grid grid-cols-2 gap-2">
               {DIETARY.map((d) => (
                 <label key={d} className="flex items-center gap-2 rounded-md border p-2">
-                  <Checkbox
-                    checked={selectedDietary.includes(d)}
-                    onCheckedChange={() => toggleFromArray(selectedDietary, setSelectedDietary, d)}
-                  />
+                  <Checkbox checked={selectedDietary.includes(d)} onCheckedChange={() => toggleFromArray(selectedDietary, setSelectedDietary, d)} />
                   <span className="text-sm">{d}</span>
                 </label>
               ))}
@@ -641,12 +616,7 @@ function MobileFiltersSheet(props: {
           <FilterSection title="Difficulty">
             <div className="flex flex-wrap gap-2">
               {DIFFICULTY.map((d) => (
-                <Button
-                  key={d}
-                  size="sm"
-                  variant={selectedDifficulty === d ? "default" : "outline"}
-                  onClick={() => setSelectedDifficulty(selectedDifficulty === d ? "" : d)}
-                >
+                <Button key={d} size="sm" variant={selectedDifficulty === d ? "default" : "outline"} onClick={() => setSelectedDifficulty(selectedDifficulty === d ? "" : d)}>
                   {d}
                 </Button>
               ))}
@@ -654,13 +624,7 @@ function MobileFiltersSheet(props: {
           </FilterSection>
 
           <FilterSection title={`Max Cook Time: ${maxCookTime} min`}>
-            <Slider
-              value={[maxCookTime]}
-              min={5}
-              max={240}
-              step={5}
-              onValueChange={(v) => setMaxCookTime(v[0] ?? 60)}
-            />
+            <Slider value={[maxCookTime]} min={5} max={240} step={5} onValueChange={(v) => setMaxCookTime(v[0] ?? 60)} />
           </FilterSection>
 
           <FilterSection title={`Min Rating: ${minRating || 0}★`}>
@@ -669,21 +633,13 @@ function MobileFiltersSheet(props: {
 
           <FilterSection title="More">
             <label className="flex items-center gap-2">
-              <Checkbox
-                checked={onlyRecipes}
-                onCheckedChange={(v) => setOnlyRecipes(Boolean(v))}
-              />
+              <Checkbox checked={onlyRecipes} onCheckedChange={(v) => setOnlyRecipes(Boolean(v))} />
               <span className="text-sm">Show recipe posts only</span>
             </label>
 
             <div className="mt-3 flex flex-wrap gap-2">
               {(["newest", "rating", "likes"] as const).map((s) => (
-                <Button
-                  key={s}
-                  size="sm"
-                  variant={sortBy === s ? "default" : "outline"}
-                  onClick={() => setSortBy(s)}
-                >
+                <Button key={s} size="sm" variant={sortBy === s ? "default" : "outline"} onClick={() => setSortBy(s)}>
                   {s === "newest" ? "Newest" : s === "rating" ? "Top Rated" : "Most Liked"}
                 </Button>
               ))}
@@ -691,7 +647,7 @@ function MobileFiltersSheet(props: {
           </FilterSection>
         </div>
 
-        {/* Sticky footer — no grid/list, just Reset & Apply */}
+        {/* Sticky footer */}
         <div className="sticky bottom-0 border-t bg-background p-4">
           <div className="flex gap-2">
             <Button variant="secondary" onClick={onReset} className="flex-1">
@@ -723,13 +679,7 @@ function StarSelect({ value, onChange }: { value: number; onChange: (v: number) 
   return (
     <div className="flex items-center gap-1">
       {[1, 2, 3, 4, 5].map((n) => (
-        <button
-          key={n}
-          type="button"
-          className="p-1"
-          aria-label={`${n} stars & up`}
-          onClick={() => onChange(n === value ? 0 : n)}
-        >
+        <button key={n} type="button" className="p-1" aria-label={`${n} stars & up`} onClick={() => onChange(n === value ? 0 : n)}>
           <Star className={`h-5 w-5 ${value >= n ? "" : "opacity-30"}`} />
         </button>
       ))}
@@ -747,25 +697,23 @@ function GridCard({ post }: { post: Post }) {
   return (
     <article className="overflow-hidden rounded-lg border bg-card">
       <div className="aspect-square overflow-hidden">
-        <img
-          src={post.image}
-          alt={post.title}
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
+        <img src={post.image} alt={post.title} className="h-full w-full object-cover" loading="lazy" />
       </div>
       <div className="p-3">
         <h3 className="line-clamp-1 text-sm font-semibold">{post.title}</h3>
         <div className="mt-1 flex items-center justify-between">
           <span className="text-xs text-muted-foreground">{post.author}</span>
-          <Badge variant="outline" className="text-xs">
-            {post.cuisine}
-          </Badge>
+          <Badge variant="outline" className="text-xs">{post.cuisine}</Badge>
         </div>
         <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
           <span>★ {post.rating.toFixed(1)}</span>
           <span>{post.cookTime} min</span>
         </div>
+        {post.ethnicities.length > 0 && (
+          <div className="mt-1 text-[10px] text-muted-foreground truncate">
+            {post.ethnicities.join(", ")}
+          </div>
+        )}
         {post.isRecipe && (
           <span className="mt-2 inline-block text-[10px] uppercase tracking-wide text-emerald-600">
             Recipe
@@ -780,12 +728,7 @@ function ListRow({ post }: { post: Post }) {
   return (
     <article className="flex gap-3 rounded-lg border bg-card p-2">
       <div className="h-20 w-20 shrink-0 overflow-hidden rounded-md">
-        <img
-          src={post.image}
-          alt={post.title}
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
+        <img src={post.image} alt={post.title} className="h-full w-full object-cover" loading="lazy" />
       </div>
       <div className="min-w-0 flex-1">
         <h3 className="line-clamp-1 text-sm font-semibold">{post.title}</h3>
@@ -793,7 +736,7 @@ function ListRow({ post }: { post: Post }) {
           <span>by {post.author}</span>
           <span>• {post.cuisine}</span>
           <span>• {post.mealType}</span>
-          {post.dietary.length > 0 && <span>• {post.dietary.join(", ")}</span>}
+          {post.ethnicities.length > 0 && <span>• {post.ethnicities.join(", ")}</span>}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <span>★ {post.rating.toFixed(1)}</span>
