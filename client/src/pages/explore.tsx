@@ -1227,4 +1227,3 @@ function EmptyState({ onReset }: { onReset: () => void }) {
     </div>
   );
 }
-p
