@@ -294,7 +294,8 @@ export default function Layout({ children }: LayoutProps) {
           {/* Secondary Navigation */}
           <nav className="border-t border-border bg-background">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <ul className="flex items-center space-x-4 overflow-x-auto no-scrollbar py-2">
+              {/* UPDATED classes here */}
+              <ul className="secondary-tabs flex items-center overflow-x-auto no-scrollbar py-2 px-2 touch-pan-x">
                 {secondaryLinks.map((item) => {
                   const isActive = pathname === item.href;
                   return (
