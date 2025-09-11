@@ -14,15 +14,21 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { LayoutGrid, List, Filter, X } from "lucide-react";
 
+// 🔗 Pull your master DIETS (and optionally ALLERGENS/CUISINES) from your filters library
+// Your pasted list shows DIETS as [{label, value}, ...]
+import {
+  DIETS as MASTER_DIETS,      // from your snippet (array of {label,value})
+  ALLERGENS as MASTER_ALLERGENS, // optional ({label,value})
+  CUISINES as MASTER_CUISINES,   // optional ({label,value})
+} from "@/lib/filters";
+
 /** -------------------------------
  * Types + demo data (replace later)
  * -------------------------------- */
 type ViewMode = "grid" | "list";
 type Difficulty = "Easy" | "Medium" | "Hard";
 type MealType = "Breakfast" | "Lunch" | "Dinner" | "Snack" | "Dessert";
-type Dietary = "Vegan" | "Vegetarian" | "Gluten-Free" | "Dairy-Free" | "Keto";
 
-// NEW: add ethnicity + allergens + preparation fields for filtering
 type Post = {
   id: string;
   title: string;
@@ -35,37 +41,39 @@ type Post = {
   rating: number; // 0..5 (spoons)
   likes: number;
   mealType: MealType;
-  dietary: Dietary[];
+  dietary: string[];   // now generic strings to match master DIETS
   ethnicity: string[];
   allergens: string[];
-  preparation?: string[]; // NEW (e.g., Halal, Kosher, Jain)
+  preparation?: string[]; // e.g., Halal, Kosher, Jain
   createdAt: string; // ISO date
 };
 
-const CUISINES = [
-  "Asian",
-  "BBQ",
-  "Breakfast",
-  "Burgers",
-  "Desserts",
-  "Healthy",
-  "Italian",
-  "Mediterranean",
-  "Mexican",
-  "Quick",
-  "Salads",
-  "Seafood",
-  "Vegan",
-];
+// Simple dataset fallbacks if your lib doesn’t export cuisines/allergens as strings
+const toFlatAlpha = (arr: { label: string; value: string }[] | undefined, fallback: string[]) =>
+  (arr ? Array.from(new Set(arr.map((x) => x.label))) : fallback).sort((a, b) => a.localeCompare(b));
+
+const CUISINES = toFlatAlpha(MASTER_CUISINES as any, [
+  "Asian","BBQ","Breakfast","Burgers","Desserts","Healthy","Italian",
+  "Mediterranean","Mexican","Quick","Salads","Seafood","Vegan",
+]);
+
+const ALLERGENS = toFlatAlpha(MASTER_ALLERGENS as any, [
+  "Celery","Dairy","Eggs","Fish","Gluten","Lupin","Mustard","Peanuts",
+  "Sesame","Shellfish","Soy","Sulfites","Tree Nuts","Wheat",
+]);
+
+// Build DIETARY list from your master DIETS. We remove duplicates and
+// (by default) hide “-Free” items (go to Allergens) and Halal/Kosher (go to Preparation).
+const removeFromDiet = new Set(["Halal", "Kosher"]); // ← keep Diet menu clean. Delete to show them in Diets too.
+const DIETARY: string[] = Array.from(new Set((MASTER_DIETS as any[]).map((d) => d.label)))
+  .filter((label) => !/-Free$/i.test(label)) // move -Free to Allergens UI
+  .filter((label) => !removeFromDiet.has(label))
+  .sort((a, b) => a.localeCompare(b));
 
 const MEAL_TYPES: MealType[] = ["Breakfast", "Lunch", "Dinner", "Snack", "Dessert"];
-const DIETARY: Dietary[] = ["Dairy-Free", "Gluten-Free", "Keto", "Vegan", "Vegetarian"];
-const DIFFICULTY: Difficulty[] = ["Easy", "Medium", "Hard"];
+const DIFFICULTY: Difficulty[] = ["Easy", "Medium", "Hard"] as const;
 
-// utils
-const sortAlpha = (xs: string[]) => [...xs].sort((a, b) => a.localeCompare(b));
-
-// Spoon icon (simple, lightweight)
+// Spoon icon
 function SpoonIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" {...props}>
@@ -77,149 +85,85 @@ function SpoonIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-// NEW: Ethnicity / Cultural Origin grouped + alphabetized
+/** -------------------------------
+ * Ethnicity — grouped + alphabetized (matches your master list)
+ * -------------------------------- */
+const sortAlpha = (xs: string[]) => [...xs].sort((a, b) => a.localeCompare(b));
+
 const ETHNICITY_GROUPS: { label: string; options: string[] }[] = [
   {
-    label: "Africa & Diaspora",
+    label: "Africa",
     options: sortAlpha([
-      "African",
-      "Afro-Caribbean",
-      "Caribbean",
-      "Central African",
-      "East African",
-      "Egyptian",
-      "Ethiopian/Eritrean",
-      "Ghanaian",
-      "Haitian",
-      "Jamaican",
-      "Moroccan",
-      "Nigerian",
-      "North African",
-      "Senegalese",
-      "Southern African",
-      "Trinidadian/Tobagonian",
-      "Tunisian",
-      "West African",
+      "Algerian","Cameroonian","Egyptian","Eritrean","Ethiopian","Ghanaian","Ivorian",
+      "Kenyan","Moroccan","Nigerian","Senegalese","Somali","South African","Tanzanian",
+      "Tunisian","Ugandan",
     ]),
   },
   {
-    label: "Middle East",
+    label: "Middle East / Southwest Asia",
     options: sortAlpha([
-      "Gulf/Khaleeji",
-      "Levantine",
-      "Middle Eastern",
-      "Persian/Iranian",
-      "Turkish",
+      "Armenian","Georgian","Gulf (Khaleeji)","Israeli","Jordanian","Kurdish","Lebanese",
+      "Levantine","Middle Eastern","Palestinian","Persian (Iranian)","Syrian","Turkish","Yemeni",
     ]),
+  },
+  {
+    label: "South Asia",
+    options: sortAlpha([
+      "Bangladeshi","Bengali","Goan","Gujarati","Hyderabadi","Kashmiri","Maharashtrian",
+      "Nepali","North Indian (Punjabi)","Pakistani","Rajasthani","South Indian (Tamil)","Sri Lankan",
+    ]),
+  },
+  {
+    label: "East Asia",
+    options: sortAlpha([
+      "Chinese (Cantonese)","Chinese (Hunan)","Chinese (Shandong)","Chinese (Sichuan)",
+      "Japanese","Korean","Mongolian","Taiwanese",
+    ]),
+  },
+  {
+    label: "Southeast Asia",
+    options: sortAlpha(["Filipino","Indonesian","Malaysian","Singaporean","Thai","Vietnamese"]),
+  },
+  {
+    label: "Central Asia",
+    options: sortAlpha(["Kazakh","Uighur","Uzbek"]),
   },
   {
     label: "Europe",
     options: sortAlpha([
-      "Balkan",
-      "British/Irish",
-      "Eastern European",
-      "European",
-      "French",
-      "German",
-      "Greek",
-      "Italian",
-      "Mediterranean",
-      "Nordic/Scandinavian",
-      "Portuguese",
-      "Spanish",
+      "Austrian","Balkan","Basque","Belgian","British","Bulgarian","Catalan","Czech","Dutch",
+      "Finnish","French","German","Greek","Hungarian","Irish","Italian","Polish","Portuguese",
+      "Romanian","Russian","Scandinavian","Scottish","Sicilian","Slovak","Spanish","Swiss","Ukrainian",
     ]),
   },
   {
-    label: "Asia — East",
-    options: sortAlpha(["Chinese", "East Asian", "Japanese", "Korean"]),
-  },
-  {
-    label: "Asia — South",
+    label: "The Americas — United States",
     options: sortAlpha([
-      "Bangladeshi",
-      "Indian",
-      "Nepali",
-      "Pakistani",
-      "South Asian",
-      "Sri Lankan",
+      "Alaskan","American","Californian","Cajun","Creole","Hawaiian","New Mexican",
+      "Pacific Northwest","Southern / Soul Food","Tex-Mex",
     ]),
   },
   {
-    label: "Asia — Southeast",
-    options: sortAlpha([
-      "Burmese/Myanmar",
-      "Cambodian",
-      "Filipino",
-      "Indonesian",
-      "Lao",
-      "Malaysian",
-      "Singaporean",
-      "Southeast Asian",
-      "Thai",
-      "Vietnamese",
-    ]),
+    label: "The Americas — Mexico",
+    options: sortAlpha(["Baja","Mexican","Oaxacan","Yucatecan"]),
   },
   {
-    label: "Asia — Central",
-    options: sortAlpha(["Central Asian", "Kazakh", "Uzbek"]),
+    label: "The Americas — Caribbean",
+    options: sortAlpha(["Caribbean","Cuban","Dominican","Jamaican","Puerto Rican"]),
   },
   {
-    label: "Pacific & Oceania",
-    options: sortAlpha([
-      "Hawaiian",
-      "Maori",
-      "Melanesian",
-      "Micronesian",
-      "Pacific Islander",
-      "Polynesian",
-    ]),
+    label: "The Americas — Central & South",
+    options: sortAlpha(["Argentinian","Brazilian","Chilean","Colombian","Peruvian","Venezuelan"]),
   },
   {
-    label: "The Americas",
-    options: sortAlpha([
-      "Argentine",
-      "Brazilian",
-      "Central American",
-      "Latinx",
-      "Mexican",
-      "South American",
-    ]),
-  },
-  {
-    label: "Jewish Traditions",
-    options: sortAlpha(["Ashkenazi Jewish", "Mizrahi Jewish", "Sephardi Jewish"]),
-  },
-  {
-    label: "Indigenous & Other",
-    options: sortAlpha([
-      "Indigenous / First Nations / Native American",
-      "Fusion/Contemporary",
-      "Other",
-    ]),
+    label: "Broad / Other",
+    options: sortAlpha(["Fusion","Mediterranean","North African","Pan-Asian"]),
   },
 ];
 
-// NEW: Common allergens (alphabetized)
-const ALLERGENS = sortAlpha([
-  "Celery",
-  "Dairy",
-  "Eggs",
-  "Fish",
-  "Gluten",
-  "Lupin",
-  "Mustard",
-  "Peanuts",
-  "Sesame",
-  "Shellfish",
-  "Soy",
-  "Sulfites",
-  "Tree Nuts",
-  "Wheat",
-]);
-
-// NEW: Preparation / Religious standards (alphabetized)
-const PREPARATION = sortAlpha(["Halal", "Jain", "Kosher"]);
-
+/** -------------------------------
+ * Demo posts (unchanged logic, updated to strings)
+ * -------------------------------- */
 const DEMO_POSTS: Post[] = [
   {
     id: "1",
@@ -234,9 +178,9 @@ const DEMO_POSTS: Post[] = [
     likes: 223,
     mealType: "Dinner",
     dietary: ["Vegetarian"],
-    ethnicity: ["Italian", "Mediterranean"],
-    allergens: ["Gluten", "Dairy"],
-    preparation: ["Kosher"], // NEW
+    ethnicity: ["Italian","Mediterranean"],
+    allergens: ["Gluten","Dairy"],
+    preparation: ["Kosher"],
     createdAt: "2025-09-08T12:00:00Z",
   },
   {
@@ -251,10 +195,10 @@ const DEMO_POSTS: Post[] = [
     rating: 4.2,
     likes: 150,
     mealType: "Lunch",
-    dietary: ["Vegan", "Gluten-Free"],
-    ethnicity: ["Fusion/Contemporary"],
+    dietary: ["Vegan","Gluten-Free"],
+    ethnicity: ["Fusion"],
     allergens: [],
-    preparation: ["Halal", "Kosher", "Jain"], // NEW
+    preparation: ["Halal","Kosher","Jain"],
     createdAt: "2025-09-07T10:00:00Z",
   },
   {
@@ -270,9 +214,9 @@ const DEMO_POSTS: Post[] = [
     likes: 512,
     mealType: "Dessert",
     dietary: ["Vegetarian"],
-    ethnicity: ["French", "European"],
+    ethnicity: ["French","European"],
     allergens: ["Dairy"],
-    preparation: [], // NEW
+    preparation: [],
     createdAt: "2025-09-05T18:30:00Z",
   },
   {
@@ -288,9 +232,9 @@ const DEMO_POSTS: Post[] = [
     likes: 340,
     mealType: "Dinner",
     dietary: [],
-    ethnicity: ["Japanese", "East Asian"],
-    allergens: ["Gluten", "Eggs", "Soy"],
-    preparation: ["Halal"], // NEW
+    ethnicity: ["Japanese","East Asian"],
+    allergens: ["Gluten","Eggs","Soy"],
+    preparation: ["Halal"],
     createdAt: "2025-09-03T21:15:00Z",
   },
   {
@@ -306,9 +250,9 @@ const DEMO_POSTS: Post[] = [
     likes: 98,
     mealType: "Dinner",
     dietary: [],
-    ethnicity: ["American", "Fusion/Contemporary"],
+    ethnicity: ["American","Fusion"],
     allergens: [],
-    preparation: [], // NEW
+    preparation: [],
     createdAt: "2025-09-09T14:45:00Z",
   },
   {
@@ -324,12 +268,97 @@ const DEMO_POSTS: Post[] = [
     likes: 77,
     mealType: "Breakfast",
     dietary: ["Vegetarian"],
-    ethnicity: ["British/Irish", "Fusion/Contemporary"],
+    ethnicity: ["British","Fusion"],
     allergens: ["Gluten"],
-    preparation: ["Kosher"], // NEW
+    preparation: ["Kosher"],
     createdAt: "2025-09-10T08:05:00Z",
   },
 ];
+
+/** -------------------------------
+ * Small reusable pieces
+ * -------------------------------- */
+function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h4 className="mb-2 text-sm font-medium">{title}</h4>
+      {children}
+    </section>
+  );
+}
+
+// Star → Spoon selector
+function SpoonSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          className="p-1"
+          aria-label={`${n} spoons & up`}
+          onClick={() => onChange(n === value ? 0 : n)}
+          title={`${n} spoons & up`}
+        >
+          <SpoonIcon className={`h-5 w-5 ${value >= n ? "" : "opacity-30"}`} />
+        </button>
+      ))}
+      <Button size="sm" variant="ghost" className="ml-1 h-7 px-2" onClick={() => onChange(0)}>
+        Clear
+      </Button>
+    </div>
+  );
+}
+
+// New: reusable searchable group (for Ethnicity groups; can also be reused elsewhere)
+function SearchableGroup({
+  label,
+  options,
+  selected,
+  onToggle,
+  columns = 1,
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onToggle: (value: string) => void;
+  columns?: 1 | 2;
+}) {
+  const [q, setQ] = React.useState("");
+  const filtered = React.useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return options;
+    return options.filter((o) => o.toLowerCase().includes(s));
+  }, [q, options]);
+
+  return (
+    <div>
+      <h5 className="mb-2 inline-block rounded-md bg-muted px-2 py-1 text-sm font-semibold text-foreground">
+        {label}
+      </h5>
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder={`Search ${label}…`}
+        className="mb-2 h-8 w-full rounded-md border bg-background px-2 text-sm"
+      />
+      <div className={columns === 2 ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 gap-2"}>
+        {filtered.map((name) => (
+          <label key={name} className="flex items-center gap-2">
+            <Checkbox
+              checked={selected.includes(name)}
+              onCheckedChange={() => onToggle(name)}
+            />
+            <span className="text-sm">{name}</span>
+          </label>
+        ))}
+      </div>
+      {filtered.length === 0 && (
+        <p className="mt-1 text-xs text-muted-foreground">No matches.</p>
+      )}
+    </div>
+  );
+}
 
 /** -------------------------------
  * Explore Page
@@ -342,7 +371,7 @@ export default function Explore() {
   // filters
   const [selectedCuisines, setSelectedCuisines] = React.useState<string[]>([]);
   const [selectedMealTypes, setSelectedMealTypes] = React.useState<MealType[]>([]);
-  const [selectedDietary, setSelectedDietary] = React.useState<Dietary[]>([]);
+  const [selectedDietary, setSelectedDietary] = React.useState<string[]>([]);
   const [selectedDifficulty, setSelectedDifficulty] = React.useState<Difficulty | "">("");
   const [maxCookTime, setMaxCookTime] = React.useState<number>(60); // minutes
   const [minRating, setMinRating] = React.useState<number>(0);
@@ -351,7 +380,19 @@ export default function Explore() {
   // NEW: Ethnicity + Allergen + Preparation filters
   const [selectedEthnicities, setSelectedEthnicities] = React.useState<string[]>([]);
   const [excludedAllergens, setExcludedAllergens] = React.useState<string[]>([]);
-  const [selectedPreparation, setSelectedPreparation] = React.useState<string[]>([]); // NEW
+  const [selectedPreparation, setSelectedPreparation] = React.useState<string[]>([]);
+
+  // Diet search UX
+  const [dietQuery, setDietQuery] = React.useState("");
+  const filteredDietOptions = React.useMemo(() => {
+    const s = dietQuery.trim().toLowerCase();
+    if (!s) return DIETARY;
+    return DIETARY.filter((d) => d.toLowerCase().includes(s));
+  }, [dietQuery]);
+
+  // Cuisine list memo (if coming from lib)
+  const cuisinesList = React.useMemo(() => CUISINES, []);
+  const allergensList = React.useMemo(() => ALLERGENS, []);
 
   const posts = DEMO_POSTS;
 
@@ -360,7 +401,7 @@ export default function Explore() {
       if (onlyRecipes && !p.isRecipe) return false;
       if (selectedCuisines.length && !selectedCuisines.includes(p.cuisine)) return false;
       if (selectedMealTypes.length && !selectedMealTypes.includes(p.mealType)) return false;
-      if (selectedDietary.length && !selectedDietary.every((d) => p.dietary.includes(d))) return false;
+      if (selectedDietary.length && !selectedDietary.every((d) => p.dietary.includes(d))) return false; // strict include-all
       if (selectedDifficulty && p.difficulty !== selectedDifficulty) return false;
       if (maxCookTime && p.cookTime > maxCookTime) return false;
       if (minRating && p.rating < minRating) return false;
@@ -422,7 +463,8 @@ export default function Explore() {
     setSortBy("newest");
     setSelectedEthnicities([]);
     setExcludedAllergens([]);
-    setSelectedPreparation([]); // NEW
+    setSelectedPreparation([]);
+    setDietQuery("");
   }
 
   return (
@@ -452,6 +494,11 @@ export default function Explore() {
         setExcludedAllergens={setExcludedAllergens}
         selectedPreparation={selectedPreparation}
         setSelectedPreparation={setSelectedPreparation}
+        dietQuery={dietQuery}
+        setDietQuery={setDietQuery}
+        filteredDietOptions={filteredDietOptions}
+        cuisinesList={cuisinesList}
+        allergensList={allergensList}
         onReset={resetFilters}
       />
 
@@ -483,6 +530,11 @@ export default function Explore() {
             setExcludedAllergens={setExcludedAllergens}
             selectedPreparation={selectedPreparation}
             setSelectedPreparation={setSelectedPreparation}
+            dietQuery={dietQuery}
+            setDietQuery={setDietQuery}
+            filteredDietOptions={filteredDietOptions}
+            cuisinesList={cuisinesList}
+            allergensList={allergensList}
             onReset={resetFilters}
           />
           <div className="flex gap-2">
@@ -505,7 +557,7 @@ export default function Explore() {
           </div>
         </div>
 
-        {/* Active filter count */}
+        {/* Active filter summary */}
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline">Cuisines: {selectedCuisines.length}</Badge>
           <Badge variant="outline">Meal Types: {selectedMealTypes.length}</Badge>
@@ -568,8 +620,8 @@ function DesktopFiltersSidebar(props: {
   setSelectedCuisines: (v: string[]) => void;
   selectedMealTypes: MealType[];
   setSelectedMealTypes: (v: MealType[]) => void;
-  selectedDietary: Dietary[];
-  setSelectedDietary: (v: Dietary[]) => void;
+  selectedDietary: string[];
+  setSelectedDietary: (v: string[]) => void;
   selectedDifficulty: Difficulty | "";
   setSelectedDifficulty: (v: Difficulty | "") => void;
   maxCookTime: number;
@@ -587,6 +639,11 @@ function DesktopFiltersSidebar(props: {
   setExcludedAllergens: (v: string[]) => void;
   selectedPreparation: string[];
   setSelectedPreparation: (v: string[]) => void;
+  dietQuery: string;
+  setDietQuery: (v: string) => void;
+  filteredDietOptions: string[];
+  cuisinesList: string[];
+  allergensList: string[];
   onReset: () => void;
 }) {
   const {
@@ -613,6 +670,11 @@ function DesktopFiltersSidebar(props: {
     setExcludedAllergens,
     selectedPreparation,
     setSelectedPreparation,
+    dietQuery,
+    setDietQuery,
+    filteredDietOptions,
+    cuisinesList,
+    allergensList,
     onReset,
   } = props;
 
@@ -625,17 +687,12 @@ function DesktopFiltersSidebar(props: {
       <div className="sticky top-20 space-y-5">
         {/* Cuisines */}
         <FilterSection title="Cuisines">
-          <div
-            className="grid grid-cols-1 gap-2 max-h-[28rem] overflow-y-auto pr-1"
-            style={{ WebkitOverflowScrolling: "touch" as any }}
-          >
-            {sortAlpha(CUISINES).map((c) => (
+          <div className="grid grid-cols-1 gap-2 max-h-[28rem] overflow-y-auto pr-1" style={{ WebkitOverflowScrolling: "touch" as any }}>
+            {cuisinesList.map((c) => (
               <label key={c} className="flex items-center gap-2">
                 <Checkbox
                   checked={selectedCuisines.includes(c)}
-                  onCheckedChange={() =>
-                    toggleFromArray(selectedCuisines, setSelectedCuisines, c)
-                  }
+                  onCheckedChange={() => toggleFromArray(selectedCuisines, setSelectedCuisines, c)}
                 />
                 <span className="text-sm">{c}</span>
               </label>
@@ -643,32 +700,22 @@ function DesktopFiltersSidebar(props: {
           </div>
         </FilterSection>
 
-        {/* Ethnicity / Cultural Origin (grouped) */}
+        {/* Ethnicity / Cultural Origin (grouped + searchable) */}
         <FilterSection title="Ethnicity / Cultural Origin">
           <div className="space-y-4">
             {ETHNICITY_GROUPS.map((group) => (
-              <div key={group.label}>
-                {/* Bigger/bolder/darker header pill */}
-                <h5 className="mb-2 inline-block rounded-md bg-muted px-2 py-1 text-sm font-semibold text-foreground">
-                  {group.label}
-                </h5>
-                <div
-                  className="grid grid-cols-1 gap-2 max-h-[12rem] overflow-y-auto pr-1"
-                  style={{ WebkitOverflowScrolling: "touch" as any }}
-                >
-                  {group.options.map((e) => (
-                    <label key={e} className="flex items-center gap-2">
-                      <Checkbox
-                        checked={selectedEthnicities.includes(e)}
-                        onCheckedChange={() =>
-                          toggleFromArray(selectedEthnicities, setSelectedEthnicities, e)
-                        }
-                      />
-                      <span className="text-sm">{e}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <SearchableGroup
+                key={group.label}
+                label={group.label}
+                options={group.options}
+                selected={selectedEthnicities}
+                onToggle={(value) =>
+                  setSelectedEthnicities((arr) =>
+                    arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value]
+                  )
+                }
+                columns={1}
+              />
             ))}
           </div>
         </FilterSection>
@@ -688,10 +735,16 @@ function DesktopFiltersSidebar(props: {
           </div>
         </FilterSection>
 
-        {/* Dietary */}
+        {/* Dietary (Searchable) */}
         <FilterSection title="Dietary">
+          <input
+            value={dietQuery}
+            onChange={(e) => setDietQuery(e.target.value)}
+            placeholder="Search diets…"
+            className="mb-2 h-8 w-full rounded-md border bg-background px-2 text-sm"
+          />
           <div className="grid grid-cols-2 gap-2">
-            {DIETARY.map((d) => (
+            {filteredDietOptions.map((d) => (
               <label key={d} className="flex items-center gap-2">
                 <Checkbox
                   checked={selectedDietary.includes(d)}
@@ -706,7 +759,7 @@ function DesktopFiltersSidebar(props: {
         {/* Exclude Allergens */}
         <FilterSection title="Exclude Allergens">
           <div className="grid grid-cols-2 gap-2">
-            {ALLERGENS.map((a) => (
+            {allergensList.map((a) => (
               <label key={a} className="flex items-center gap-2">
                 <Checkbox
                   checked={excludedAllergens.includes(a)}
@@ -718,10 +771,10 @@ function DesktopFiltersSidebar(props: {
           </div>
         </FilterSection>
 
-        {/* NEW: Preparation / Religious standards */}
+        {/* Preparation / Religious Standards */}
         <FilterSection title="Preparation / Religious Standards">
           <div className="grid grid-cols-2 gap-2">
-            {PREPARATION.map((p) => (
+            {["Halal", "Kosher", "Jain"].map((p) => (
               <label key={p} className="flex items-center gap-2">
                 <Checkbox
                   checked={selectedPreparation.includes(p)}
@@ -807,8 +860,8 @@ function MobileFiltersSheet(props: {
   setSelectedCuisines: (v: string[]) => void;
   selectedMealTypes: MealType[];
   setSelectedMealTypes: (v: MealType[]) => void;
-  selectedDietary: Dietary[];
-  setSelectedDietary: (v: Dietary[]) => void;
+  selectedDietary: string[];
+  setSelectedDietary: (v: string[]) => void;
   selectedDifficulty: Difficulty | "";
   setSelectedDifficulty: (v: Difficulty | "") => void;
   maxCookTime: number;
@@ -826,6 +879,11 @@ function MobileFiltersSheet(props: {
   setExcludedAllergens: (v: string[]) => void;
   selectedPreparation: string[];
   setSelectedPreparation: (v: string[]) => void;
+  dietQuery: string;
+  setDietQuery: (v: string) => void;
+  filteredDietOptions: string[];
+  cuisinesList: string[];
+  allergensList: string[];
   onReset: () => void;
 }) {
   const {
@@ -852,6 +910,11 @@ function MobileFiltersSheet(props: {
     setExcludedAllergens,
     selectedPreparation,
     setSelectedPreparation,
+    dietQuery,
+    setDietQuery,
+    filteredDietOptions,
+    cuisinesList,
+    allergensList,
     onReset,
   } = props;
 
@@ -871,7 +934,7 @@ function MobileFiltersSheet(props: {
             selectedMealTypes.length +
             selectedDietary.length +
             selectedEthnicities.length +
-            selectedPreparation.length + // NEW
+            selectedPreparation.length +
             excludedAllergens.length +
             (selectedDifficulty ? 1 : 0) +
             (onlyRecipes ? 1 : 0) +
@@ -884,7 +947,7 @@ function MobileFiltersSheet(props: {
                 selectedMealTypes.length > 0,
                 selectedDietary.length > 0,
                 selectedEthnicities.length > 0,
-                selectedPreparation.length > 0, // NEW
+                selectedPreparation.length > 0,
                 excludedAllergens.length > 0,
                 Boolean(selectedDifficulty),
                 onlyRecipes,
@@ -922,7 +985,7 @@ function MobileFiltersSheet(props: {
         >
           <FilterSection title="Cuisines">
             <div className="grid grid-cols-2 gap-2">
-              {sortAlpha(CUISINES).map((c) => (
+              {cuisinesList.map((c) => (
                 <label key={c} className="flex items-center gap-2 rounded-md border p-2">
                   <Checkbox
                     checked={selectedCuisines.includes(c)}
@@ -934,29 +997,22 @@ function MobileFiltersSheet(props: {
             </div>
           </FilterSection>
 
-          {/* Ethnicity / Cultural Origin (grouped) */}
+          {/* Ethnicity / Cultural Origin (grouped + searchable) */}
           <FilterSection title="Ethnicity / Cultural Origin">
             <div className="space-y-5">
               {ETHNICITY_GROUPS.map((group) => (
-                <div key={group.label}>
-                  {/* Bigger/bolder/darker header pill */}
-                  <h5 className="mb-2 inline-block rounded-md bg-muted px-2 py-1 text-sm font-semibold text-foreground">
-                    {group.label}
-                  </h5>
-                  <div className="grid grid-cols-2 gap-2">
-                    {group.options.map((e) => (
-                      <label key={e} className="flex items-center gap-2 rounded-md border p-2">
-                        <Checkbox
-                          checked={selectedEthnicities.includes(e)}
-                          onCheckedChange={() =>
-                            toggleFromArray(selectedEthnicities, setSelectedEthnicities, e)
-                          }
-                        />
-                        <span className="text-sm">{e}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                <SearchableGroup
+                  key={group.label}
+                  label={group.label}
+                  options={group.options}
+                  selected={selectedEthnicities}
+                  onToggle={(value) =>
+                    setSelectedEthnicities((arr) =>
+                      arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value]
+                    )
+                  }
+                  columns={2}
+                />
               ))}
             </div>
           </FilterSection>
@@ -975,9 +1031,16 @@ function MobileFiltersSheet(props: {
             </div>
           </FilterSection>
 
+          {/* Dietary (Searchable) */}
           <FilterSection title="Dietary">
+            <input
+              value={dietQuery}
+              onChange={(e) => setDietQuery(e.target.value)}
+              placeholder="Search diets…"
+              className="mb-2 h-8 w-full rounded-md border bg-background px-2 text-sm"
+            />
             <div className="grid grid-cols-2 gap-2">
-              {DIETARY.map((d) => (
+              {filteredDietOptions.map((d) => (
                 <label key={d} className="flex items-center gap-2 rounded-md border p-2">
                   <Checkbox
                     checked={selectedDietary.includes(d)}
@@ -992,7 +1055,7 @@ function MobileFiltersSheet(props: {
           {/* Exclude Allergens */}
           <FilterSection title="Exclude Allergens">
             <div className="grid grid-cols-2 gap-2">
-              {ALLERGENS.map((a) => (
+              {allergensList.map((a) => (
                 <label key={a} className="flex items-center gap-2 rounded-md border p-2">
                   <Checkbox
                     checked={excludedAllergens.includes(a)}
@@ -1004,10 +1067,10 @@ function MobileFiltersSheet(props: {
             </div>
           </FilterSection>
 
-          {/* NEW: Preparation / Religious standards */}
+          {/* Preparation / Religious standards */}
           <FilterSection title="Preparation / Religious Standards">
             <div className="grid grid-cols-2 gap-2">
-              {PREPARATION.map((p) => (
+              {["Halal", "Kosher", "Jain"].map((p) => (
                 <label key={p} className="flex items-center gap-2 rounded-md border p-2">
                   <Checkbox
                     checked={selectedPreparation.includes(p)}
@@ -1090,44 +1153,9 @@ function MobileFiltersSheet(props: {
 }
 
 /** -------------------------------
- * Little utilities
- * -------------------------------- */
-function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section>
-      <h4 className="mb-2 text-sm font-medium">{title}</h4>
-      {children}
-    </section>
-  );
-}
-
-// Star → Spoon selector
-function SpoonSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  return (
-    <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map((n) => (
-        <button
-          key={n}
-          type="button"
-          className="p-1"
-          aria-label={`${n} spoons & up`}
-          onClick={() => onChange(n === value ? 0 : n)}
-          title={`${n} spoons & up`}
-        >
-          <SpoonIcon className={`h-5 w-5 ${value >= n ? "" : "opacity-30"}`} />
-        </button>
-      ))}
-      <Button size="sm" variant="ghost" className="ml-1 h-7 px-2" onClick={() => onChange(0)}>
-        Clear
-      </Button>
-    </div>
-  );
-}
-
-/** -------------------------------
  * Cards & empty state
  * -------------------------------- */
-function GridCard({ post }: { post: Post }) {
+const GridCard = React.memo(function GridCard({ post }: { post: Post }) {
   return (
     <article className="overflow-hidden rounded-lg border bg-card">
       <div className="aspect-square overflow-hidden">
@@ -1150,7 +1178,7 @@ function GridCard({ post }: { post: Post }) {
           <span className="inline-flex items-center gap-1">
             <SpoonIcon className="h-3.5 w-3.5" /> {post.rating.toFixed(1)}
           </span>
-            <span>{post.cookTime} min</span>
+          <span>{post.cookTime} min</span>
         </div>
         {post.isRecipe && (
           <span className="mt-2 inline-block text-[10px] uppercase tracking-wide text-emerald-600">
@@ -1160,18 +1188,13 @@ function GridCard({ post }: { post: Post }) {
       </div>
     </article>
   );
-}
+});
 
-function ListRow({ post }: { post: Post }) {
+const ListRow = React.memo(function ListRow({ post }: { post: Post }) {
   return (
     <article className="flex gap-3 rounded-lg border bg-card p-2">
       <div className="h-20 w-20 shrink-0 overflow-hidden rounded-md">
-        <img
-          src={post.image}
-          alt={post.title}
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
+        <img src={post.image} alt={post.title} className="h-full w-full object-cover" loading="lazy" />
       </div>
       <div className="min-w-0 flex-1">
         <h3 className="line-clamp-1 text-sm font-semibold">{post.title}</h3>
@@ -1192,7 +1215,7 @@ function ListRow({ post }: { post: Post }) {
       </div>
     </article>
   );
-}
+});
 
 function EmptyState({ onReset }: { onReset: () => void }) {
   return (
@@ -1204,3 +1227,4 @@ function EmptyState({ onReset }: { onReset: () => void }) {
     </div>
   );
 }
+p
