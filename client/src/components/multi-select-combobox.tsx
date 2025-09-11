@@ -41,9 +41,13 @@ export function MultiSelectCombobox(props: {
 
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
+
+  const listRef = React.useRef<HTMLDivElement>(null);
+  const startYRef = React.useRef<number | null>(null);
+  const draggingRef = React.useRef<boolean>(false);
+
   const [showUpButton, setShowUpButton] = React.useState(false);
   const [showDownButton, setShowDownButton] = React.useState(true);
-  const listRef = React.useRef<HTMLDivElement>(null);
 
   const selected = React.useMemo(
     () => options.filter((o) => value.includes(o.value)),
@@ -72,22 +76,46 @@ export function MultiSelectCombobox(props: {
       ? selected.map((s) => s.label).join(", ")
       : `${selected.length} selected`;
 
-  // Keep scroll buttons in sync (desktop shows both; mobile: up shows only after you scroll)
+  // keep buttons in sync with scroll position
   React.useEffect(() => {
     const list = listRef.current;
     if (!list) return;
 
     const updateButtons = () => {
       setShowUpButton(list.scrollTop > 0);
-      setShowDownButton(
-        list.scrollTop + list.clientHeight < list.scrollHeight - 1
-      );
+      setShowDownButton(list.scrollTop + list.clientHeight < list.scrollHeight - 1);
     };
 
+    // defer to ensure layout is measured after popover opens / options render
+    const id = requestAnimationFrame(updateButtons);
     list.addEventListener("scroll", updateButtons);
-    updateButtons(); // Initial check
-    return () => list.removeEventListener("scroll", updateButtons);
-  }, []);
+    return () => {
+      cancelAnimationFrame(id);
+      list.removeEventListener("scroll", updateButtons);
+    };
+  }, [filteredOptions.length, open]);
+
+  // touch drag logic: allow vertical pan without triggering selection
+  const onTouchStart = (e: React.TouchEvent) => {
+    startYRef.current = e.touches[0]?.clientY ?? null;
+    draggingRef.current = false;
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    const startY = startYRef.current;
+    if (startY == null) return;
+    const y = e.touches[0]?.clientY ?? startY;
+    // once we move more than ~8px, consider it a scroll gesture
+    if (Math.abs(y - startY) > 8) {
+      draggingRef.current = true;
+    }
+  };
+
+  const onItemSelect = (val: string) => {
+    // if we were dragging, ignore the "select" that can fire at touchend
+    if (draggingRef.current) return;
+    toggle(val);
+  };
 
   const scrollUp = () => listRef.current?.scrollBy({ top: -60, behavior: "smooth" });
   const scrollDown = () => listRef.current?.scrollBy({ top: 60, behavior: "smooth" });
@@ -117,7 +145,7 @@ export function MultiSelectCombobox(props: {
         </Button>
       </PopoverTrigger>
 
-      {/* NOTE: allow taller list on mobile and enable touch scroll */}
+      {/* Wider on sm+ screens; taller list so more visible items */}
       <PopoverContent className="p-0 w-[320px] sm:w-[360px]" align="start">
         <Command>
           <CommandInput
@@ -127,36 +155,32 @@ export function MultiSelectCombobox(props: {
             className="h-9"
           />
 
-          {/* Scroll controls (helpful on desktop; optional on mobile) */}
+          {/* Desktop helper buttons; on mobile they’re there but you can also drag */}
           <div className="flex justify-between p-2">
             {showUpButton && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={scrollUp}
-                aria-label="Scroll up"
-              >
+              <Button variant="ghost" size="sm" onClick={scrollUp} aria-label="Scroll up">
                 <ChevronUp className="h-4 w-4" />
               </Button>
             )}
             <div className={cn(showUpButton ? "" : "flex-1")} />
             {showDownButton && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={scrollDown}
-                aria-label="Scroll down"
-              >
+              <Button variant="ghost" size="sm" onClick={scrollDown} aria-label="Scroll down">
                 <ChevronDown className="h-4 w-4" />
               </Button>
             )}
           </div>
 
-          {/* KEY: touch-friendly vertical scroll + prevent text selection highlight */}
           <CommandList
             ref={listRef}
-            className="max-h-[320px] overflow-y-auto touch-pan-y select-none"
-            style={{ WebkitOverflowScrolling: "touch" }}
+            // IMPORTANT: make this area truly touch-scrollable on iOS/Android
+            className="max-h-[320px] overflow-y-auto select-none"
+            style={{
+              WebkitOverflowScrolling: "touch",
+              overscrollBehavior: "contain",
+              touchAction: "pan-y",
+            }}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
           >
             <CommandEmpty>{emptyLabel}</CommandEmpty>
             <CommandGroup>
@@ -166,8 +190,8 @@ export function MultiSelectCombobox(props: {
                   <CommandItem
                     key={opt.value}
                     value={opt.value}
-                    onSelect={() => toggle(opt.value)}
-                    // Prevent text selection “orange highlight” from stealing the drag gesture
+                    onSelect={() => onItemSelect(opt.value)}
+                    // Prevent text selection stealing the gesture; allow taps
                     onMouseDown={(e) => e.preventDefault()}
                     className="cursor-pointer select-none"
                   >
