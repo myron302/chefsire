@@ -22,7 +22,7 @@ type Difficulty = "Easy" | "Medium" | "Hard";
 type MealType = "Breakfast" | "Lunch" | "Dinner" | "Snack" | "Dessert";
 type Dietary = "Vegan" | "Vegetarian" | "Gluten-Free" | "Dairy-Free" | "Keto";
 
-// NEW: add ethnicity + allergens fields for filtering
+// NEW: add ethnicity + allergens + preparation fields for filtering
 type Post = {
   id: string;
   title: string;
@@ -36,8 +36,9 @@ type Post = {
   likes: number;
   mealType: MealType;
   dietary: Dietary[];
-  ethnicity: string[];       // NEW
-  allergens: string[];       // NEW
+  ethnicity: string[];
+  allergens: string[];
+  preparation?: string[]; // NEW (e.g., Halal, Kosher, Jain)
   createdAt: string; // ISO date
 };
 
@@ -198,7 +199,7 @@ const ETHNICITY_GROUPS: { label: string; options: string[] }[] = [
   },
 ];
 
-// NEW: Common allergens (used for exclusion) — alphabetized
+// NEW: Common allergens (alphabetized)
 const ALLERGENS = sortAlpha([
   "Celery",
   "Dairy",
@@ -216,6 +217,9 @@ const ALLERGENS = sortAlpha([
   "Wheat",
 ]);
 
+// NEW: Preparation / Religious standards (alphabetized)
+const PREPARATION = sortAlpha(["Halal", "Jain", "Kosher"]);
+
 const DEMO_POSTS: Post[] = [
   {
     id: "1",
@@ -232,6 +236,7 @@ const DEMO_POSTS: Post[] = [
     dietary: ["Vegetarian"],
     ethnicity: ["Italian", "Mediterranean"],
     allergens: ["Gluten", "Dairy"],
+    preparation: ["Kosher"], // NEW
     createdAt: "2025-09-08T12:00:00Z",
   },
   {
@@ -249,6 +254,7 @@ const DEMO_POSTS: Post[] = [
     dietary: ["Vegan", "Gluten-Free"],
     ethnicity: ["Fusion/Contemporary"],
     allergens: [],
+    preparation: ["Halal", "Kosher", "Jain"], // NEW
     createdAt: "2025-09-07T10:00:00Z",
   },
   {
@@ -266,6 +272,7 @@ const DEMO_POSTS: Post[] = [
     dietary: ["Vegetarian"],
     ethnicity: ["French", "European"],
     allergens: ["Dairy"],
+    preparation: [], // NEW
     createdAt: "2025-09-05T18:30:00Z",
   },
   {
@@ -283,6 +290,7 @@ const DEMO_POSTS: Post[] = [
     dietary: [],
     ethnicity: ["Japanese", "East Asian"],
     allergens: ["Gluten", "Eggs", "Soy"],
+    preparation: ["Halal"], // NEW
     createdAt: "2025-09-03T21:15:00Z",
   },
   {
@@ -300,6 +308,7 @@ const DEMO_POSTS: Post[] = [
     dietary: [],
     ethnicity: ["American", "Fusion/Contemporary"],
     allergens: [],
+    preparation: [], // NEW
     createdAt: "2025-09-09T14:45:00Z",
   },
   {
@@ -317,6 +326,7 @@ const DEMO_POSTS: Post[] = [
     dietary: ["Vegetarian"],
     ethnicity: ["British/Irish", "Fusion/Contemporary"],
     allergens: ["Gluten"],
+    preparation: ["Kosher"], // NEW
     createdAt: "2025-09-10T08:05:00Z",
   },
 ];
@@ -338,11 +348,11 @@ export default function Explore() {
   const [minRating, setMinRating] = React.useState<number>(0);
   const [sortBy, setSortBy] = React.useState<"newest" | "rating" | "likes">("newest");
 
-  // NEW: Ethnicity + Allergen filters
+  // NEW: Ethnicity + Allergen + Preparation filters
   const [selectedEthnicities, setSelectedEthnicities] = React.useState<string[]>([]);
   const [excludedAllergens, setExcludedAllergens] = React.useState<string[]>([]);
+  const [selectedPreparation, setSelectedPreparation] = React.useState<string[]>([]); // NEW
 
-  // TODO: swap DEMO_POSTS with your fetched data
   const posts = DEMO_POSTS;
 
   const filteredPosts = React.useMemo(() => {
@@ -350,21 +360,27 @@ export default function Explore() {
       if (onlyRecipes && !p.isRecipe) return false;
       if (selectedCuisines.length && !selectedCuisines.includes(p.cuisine)) return false;
       if (selectedMealTypes.length && !selectedMealTypes.includes(p.mealType)) return false;
-      if (selectedDietary.length && !selectedDietary.every((d) => p.dietary.includes(d))) return false; // must include all selected dietaries
+      if (selectedDietary.length && !selectedDietary.every((d) => p.dietary.includes(d))) return false;
       if (selectedDifficulty && p.difficulty !== selectedDifficulty) return false;
       if (maxCookTime && p.cookTime > maxCookTime) return false;
       if (minRating && p.rating < minRating) return false;
 
-      // NEW: Ethnicity — require at least one overlap
+      // Ethnicity — require at least one overlap
       if (selectedEthnicities.length) {
         const hasEthnicity = p.ethnicity?.some((e) => selectedEthnicities.includes(e));
         if (!hasEthnicity) return false;
       }
 
-      // NEW: Exclude allergens — reject if any intersection
+      // Exclude allergens — reject if any intersection
       if (excludedAllergens.length) {
         const hasExcluded = p.allergens?.some((a) => excludedAllergens.includes(a));
         if (hasExcluded) return false;
+      }
+
+      // Preparation/Religious — require all selected to be present (strict match)
+      if (selectedPreparation.length) {
+        const satisfiesAll = selectedPreparation.every((tag) => p.preparation?.includes(tag));
+        if (!satisfiesAll) return false;
       }
 
       return true;
@@ -392,6 +408,7 @@ export default function Explore() {
     sortBy,
     selectedEthnicities,
     excludedAllergens,
+    selectedPreparation,
   ]);
 
   function resetFilters() {
@@ -405,12 +422,12 @@ export default function Explore() {
     setSortBy("newest");
     setSelectedEthnicities([]);
     setExcludedAllergens([]);
-    // keep current viewMode
+    setSelectedPreparation([]); // NEW
   }
 
   return (
     <div className="mx-auto max-w-6xl md:grid md:grid-cols-[18rem_1fr] gap-6 px-4 md:px-6">
-      {/* Desktop sidebar (no dropdowns, scrollable) */}
+      {/* Desktop sidebar */}
       <DesktopFiltersSidebar
         selectedCuisines={selectedCuisines}
         setSelectedCuisines={setSelectedCuisines}
@@ -433,6 +450,8 @@ export default function Explore() {
         setSelectedEthnicities={setSelectedEthnicities}
         excludedAllergens={excludedAllergens}
         setExcludedAllergens={setExcludedAllergens}
+        selectedPreparation={selectedPreparation}
+        setSelectedPreparation={setSelectedPreparation}
         onReset={resetFilters}
       />
 
@@ -462,6 +481,8 @@ export default function Explore() {
             setSelectedEthnicities={setSelectedEthnicities}
             excludedAllergens={excludedAllergens}
             setExcludedAllergens={setExcludedAllergens}
+            selectedPreparation={selectedPreparation}
+            setSelectedPreparation={setSelectedPreparation}
             onReset={resetFilters}
           />
           <div className="flex gap-2">
@@ -490,6 +511,7 @@ export default function Explore() {
           <Badge variant="outline">Meal Types: {selectedMealTypes.length}</Badge>
           <Badge variant="outline">Dietary: {selectedDietary.length}</Badge>
           <Badge variant="outline">Ethnicity: {selectedEthnicities.length}</Badge>
+          <Badge variant="outline">Standards: {selectedPreparation.length}</Badge>
           <Badge variant="outline">No {excludedAllergens.length ? excludedAllergens.join(", ") : "—"}</Badge>
           {selectedDifficulty && <Badge variant="outline">Difficulty: {selectedDifficulty}</Badge>}
           {onlyRecipes && <Badge variant="outline">Recipe-only</Badge>}
@@ -504,6 +526,7 @@ export default function Explore() {
             selectedMealTypes.length ||
             selectedDietary.length ||
             selectedEthnicities.length ||
+            selectedPreparation.length ||
             excludedAllergens.length ||
             selectedDifficulty ||
             onlyRecipes ||
@@ -562,6 +585,8 @@ function DesktopFiltersSidebar(props: {
   setSelectedEthnicities: (v: string[]) => void;
   excludedAllergens: string[];
   setExcludedAllergens: (v: string[]) => void;
+  selectedPreparation: string[];
+  setSelectedPreparation: (v: string[]) => void;
   onReset: () => void;
 }) {
   const {
@@ -586,6 +611,8 @@ function DesktopFiltersSidebar(props: {
     setSelectedEthnicities,
     excludedAllergens,
     setExcludedAllergens,
+    selectedPreparation,
+    setSelectedPreparation,
     onReset,
   } = props;
 
@@ -616,12 +643,13 @@ function DesktopFiltersSidebar(props: {
           </div>
         </FilterSection>
 
-        {/* NEW: Ethnicity / Cultural Origin (grouped) */}
+        {/* Ethnicity / Cultural Origin (grouped) */}
         <FilterSection title="Ethnicity / Cultural Origin">
           <div className="space-y-4">
             {ETHNICITY_GROUPS.map((group) => (
               <div key={group.label}>
-                <h5 className="mb-2 text-xs font-medium text-muted-foreground">
+                {/* Bigger/bolder/darker header pill */}
+                <h5 className="mb-2 inline-block rounded-md bg-muted px-2 py-1 text-sm font-semibold text-foreground">
                   {group.label}
                 </h5>
                 <div
@@ -675,7 +703,7 @@ function DesktopFiltersSidebar(props: {
           </div>
         </FilterSection>
 
-        {/* NEW: Exclude Allergens */}
+        {/* Exclude Allergens */}
         <FilterSection title="Exclude Allergens">
           <div className="grid grid-cols-2 gap-2">
             {ALLERGENS.map((a) => (
@@ -685,6 +713,21 @@ function DesktopFiltersSidebar(props: {
                   onCheckedChange={() => toggleFromArray(excludedAllergens, setExcludedAllergens, a)}
                 />
                 <span className="text-sm">{a}</span>
+              </label>
+            ))}
+          </div>
+        </FilterSection>
+
+        {/* NEW: Preparation / Religious standards */}
+        <FilterSection title="Preparation / Religious Standards">
+          <div className="grid grid-cols-2 gap-2">
+            {PREPARATION.map((p) => (
+              <label key={p} className="flex items-center gap-2">
+                <Checkbox
+                  checked={selectedPreparation.includes(p)}
+                  onCheckedChange={() => toggleFromArray(selectedPreparation, setSelectedPreparation, p)}
+                />
+                <span className="text-sm">{p}</span>
               </label>
             ))}
           </div>
@@ -781,6 +824,8 @@ function MobileFiltersSheet(props: {
   setSelectedEthnicities: (v: string[]) => void;
   excludedAllergens: string[];
   setExcludedAllergens: (v: string[]) => void;
+  selectedPreparation: string[];
+  setSelectedPreparation: (v: string[]) => void;
   onReset: () => void;
 }) {
   const {
@@ -805,6 +850,8 @@ function MobileFiltersSheet(props: {
     setSelectedEthnicities,
     excludedAllergens,
     setExcludedAllergens,
+    selectedPreparation,
+    setSelectedPreparation,
     onReset,
   } = props;
 
@@ -824,6 +871,7 @@ function MobileFiltersSheet(props: {
             selectedMealTypes.length +
             selectedDietary.length +
             selectedEthnicities.length +
+            selectedPreparation.length + // NEW
             excludedAllergens.length +
             (selectedDifficulty ? 1 : 0) +
             (onlyRecipes ? 1 : 0) +
@@ -836,6 +884,7 @@ function MobileFiltersSheet(props: {
                 selectedMealTypes.length > 0,
                 selectedDietary.length > 0,
                 selectedEthnicities.length > 0,
+                selectedPreparation.length > 0, // NEW
                 excludedAllergens.length > 0,
                 Boolean(selectedDifficulty),
                 onlyRecipes,
@@ -885,12 +934,15 @@ function MobileFiltersSheet(props: {
             </div>
           </FilterSection>
 
-          {/* NEW: Ethnicity / Cultural Origin (grouped) */}
+          {/* Ethnicity / Cultural Origin (grouped) */}
           <FilterSection title="Ethnicity / Cultural Origin">
             <div className="space-y-5">
               {ETHNICITY_GROUPS.map((group) => (
                 <div key={group.label}>
-                  <h5 className="mb-2 text-xs font-medium text-muted-foreground">{group.label}</h5>
+                  {/* Bigger/bolder/darker header pill */}
+                  <h5 className="mb-2 inline-block rounded-md bg-muted px-2 py-1 text-sm font-semibold text-foreground">
+                    {group.label}
+                  </h5>
                   <div className="grid grid-cols-2 gap-2">
                     {group.options.map((e) => (
                       <label key={e} className="flex items-center gap-2 rounded-md border p-2">
@@ -937,7 +989,7 @@ function MobileFiltersSheet(props: {
             </div>
           </FilterSection>
 
-          {/* NEW: Exclude Allergens */}
+          {/* Exclude Allergens */}
           <FilterSection title="Exclude Allergens">
             <div className="grid grid-cols-2 gap-2">
               {ALLERGENS.map((a) => (
@@ -947,6 +999,21 @@ function MobileFiltersSheet(props: {
                     onCheckedChange={() => toggleFromArray(excludedAllergens, setExcludedAllergens, a)}
                   />
                   <span className="text-sm">{a}</span>
+                </label>
+              ))}
+            </div>
+          </FilterSection>
+
+          {/* NEW: Preparation / Religious standards */}
+          <FilterSection title="Preparation / Religious Standards">
+            <div className="grid grid-cols-2 gap-2">
+              {PREPARATION.map((p) => (
+                <label key={p} className="flex items-center gap-2 rounded-md border p-2">
+                  <Checkbox
+                    checked={selectedPreparation.includes(p)}
+                    onCheckedChange={() => toggleFromArray(selectedPreparation, setSelectedPreparation, p)}
+                  />
+                  <span className="text-sm">{p}</span>
                 </label>
               ))}
             </div>
@@ -1083,7 +1150,7 @@ function GridCard({ post }: { post: Post }) {
           <span className="inline-flex items-center gap-1">
             <SpoonIcon className="h-3.5 w-3.5" /> {post.rating.toFixed(1)}
           </span>
-          <span>{post.cookTime} min</span>
+            <span>{post.cookTime} min</span>
         </div>
         {post.isRecipe && (
           <span className="mt-2 inline-block text-[10px] uppercase tracking-wide text-emerald-600">
