@@ -1,12 +1,12 @@
 import * as React from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LayoutGrid, List, Filter } from "lucide-react";
 import { useExploreFilters, ViewMode, MealType, Difficulty } from "./useExploreFilters";
 import { SpoonIcon } from "./ExploreShared";
 
-/* Demo post type & data; swap to your data source */
+/** Demo post type (replace with your API type) */
 type Post = {
   id: string;
   title: string;
@@ -16,18 +16,72 @@ type Post = {
   author: string;
   cookTime: number;
   difficulty: Difficulty;
-  rating: number;
+  rating: number; // spoons 0..5
   likes: number;
   mealType: MealType;
   dietary: string[];
   ethnicity: string[];
   allergens: string[];
-  preparation?: string[];
-  createdAt: string;
+  preparation?: string[]; // Halal, Kosher, Jain, etc.
+  createdAt: string; // ISO date
 };
 
+/** Minimal demo data; swap to live data later */
 const DEMO_POSTS: Post[] = [
-  // ... same demo data you had before ...
+  {
+    id: "1",
+    title: "Margherita Pizza",
+    image:
+      "https://images.unsplash.com/photo-1548365328-8b84986da7b3?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Italian",
+    isRecipe: true,
+    author: "Giulia",
+    cookTime: 25,
+    difficulty: "Easy",
+    rating: 4.7,
+    likes: 223,
+    mealType: "Dinner",
+    dietary: ["Vegetarian"],
+    ethnicity: ["Italian", "European"],
+    allergens: ["Gluten", "Dairy"],
+    createdAt: "2025-09-08T12:00:00Z",
+  },
+  {
+    id: "2",
+    title: "Rainbow Salad",
+    image:
+      "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Healthy",
+    isRecipe: false,
+    author: "Ava",
+    cookTime: 10,
+    difficulty: "Easy",
+    rating: 4.2,
+    likes: 150,
+    mealType: "Lunch",
+    dietary: ["Vegan", "Gluten-Free"],
+    ethnicity: ["American"],
+    allergens: [],
+    createdAt: "2025-09-07T10:00:00Z",
+  },
+  {
+    id: "3",
+    title: "Spicy Ramen",
+    image:
+      "https://images.unsplash.com/photo-1546549039-49cc4f5b3c89?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Asian",
+    isRecipe: true,
+    author: "Rin",
+    cookTime: 30,
+    difficulty: "Medium",
+    rating: 4.5,
+    likes: 340,
+    mealType: "Dinner",
+    dietary: [],
+    ethnicity: ["Japanese", "East Asian"],
+    allergens: ["Gluten", "Eggs"],
+    createdAt: "2025-09-03T21:15:00Z",
+  },
 ];
 
 const GridCard = React.memo(function GridCard({ post }: { post: Post }) {
@@ -88,7 +142,6 @@ const ListRow = React.memo(function ListRow({ post }: { post: Post }) {
 });
 
 export default function ExploreListPage() {
-  const nav = useNavigate();
   const {
     viewMode, setViewMode,
     onlyRecipes, setOnlyRecipes,
@@ -138,10 +191,12 @@ export default function ExploreListPage() {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Explore</h1>
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2" onClick={() => nav("/explore/filters")}>
-            <Filter className="h-4 w-4" />
-            Filters
-          </Button>
+          <Link href="/explore/filters">
+            <Button variant="outline" className="gap-2">
+              <Filter className="h-4 w-4" />
+              Filters
+            </Button>
+          </Link>
           <Button
             variant={viewMode === "grid" ? "default" : "outline"}
             onClick={() => setViewMode("grid")}
@@ -171,7 +226,9 @@ export default function ExploreListPage() {
         {onlyRecipes && <Badge variant="outline">Recipe-only</Badge>}
         <Badge variant="outline">≤ {maxCookTime} min</Badge>
         <Badge variant="outline">
-          <span className="inline-flex items-center gap-1"><SpoonIcon className="h-3.5 w-3.5" /> {minRating}+</span>
+          <span className="inline-flex items-center gap-1">
+            <SpoonIcon className="h-3.5 w-3.5" /> {minRating}+
+          </span>
         </Badge>
         <Badge variant="outline">Sort: {sortBy}</Badge>
         <Button size="sm" variant="ghost" className="h-7 px-2" onClick={resetFilters}>
@@ -189,11 +246,15 @@ export default function ExploreListPage() {
         </div>
       ) : viewMode === "grid" ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {filteredPosts.map((p) => <GridCard key={p.id} post={p} />)}
+          {filteredPosts.map((p) => (
+            <GridCard key={p.id} post={p} />
+          ))}
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredPosts.map((p) => <ListRow key={p.id} post={p} />)}
+          {filteredPosts.map((p) => (
+            <ListRow key={p.id} post={p} />
+          ))}
         </div>
       )}
     </div>
