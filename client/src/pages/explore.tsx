@@ -9,21 +9,34 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
+  SheetClose,
 } from "@/components/ui/sheet";
-import { LayoutGrid, List, Filter, X } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
+import { LayoutGrid, List, Filter, X, Star } from "lucide-react";
 
 /** -------------------------------
  * Types + demo data (replace later)
  * -------------------------------- */
 type ViewMode = "grid" | "list";
+type Difficulty = "Easy" | "Medium" | "Hard";
+type MealType = "Breakfast" | "Lunch" | "Dinner" | "Snack" | "Dessert";
+type Dietary = "Vegan" | "Vegetarian" | "Gluten-Free" | "Dairy-Free" | "Keto";
 
 type Post = {
   id: string;
   title: string;
   image: string;
-  cuisine: string; // one of CUISINES
+  cuisine: string;
   isRecipe: boolean;
   author: string;
+  cookTime: number; // minutes
+  difficulty: Difficulty;
+  rating: number; // 0..5
+  likes: number;
+  mealType: MealType;
+  dietary: Dietary[];
+  createdAt: string; // ISO date
 };
 
 const CUISINES = [
@@ -42,65 +55,213 @@ const CUISINES = [
   "Salads",
 ];
 
+const MEAL_TYPES: MealType[] = ["Breakfast", "Lunch", "Dinner", "Snack", "Dessert"];
+const DIETARY: Dietary[] = ["Vegan", "Vegetarian", "Gluten-Free", "Dairy-Free", "Keto"];
+const DIFFICULTY: Difficulty[] = ["Easy", "Medium", "Hard"];
+
 const DEMO_POSTS: Post[] = [
-  { id: "1", title: "Margherita Pizza", image: "https://images.unsplash.com/photo-1548365328-8b84986da7b3?q=80&w=1200&auto=format&fit=crop", cuisine: "Italian", isRecipe: true, author: "Giulia" },
-  { id: "2", title: "Rainbow Salad", image: "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=1200&auto=format&fit=crop", cuisine: "Healthy", isRecipe: false, author: "Ava" },
-  { id: "3", title: "Choco Truffles", image: "https://images.unsplash.com/photo-1541781286675-09c7e9d404bc?q=80&w=1200&auto=format&fit=crop", cuisine: "Desserts", isRecipe: true, author: "Noah" },
-  { id: "4", title: "Spicy Ramen", image: "https://images.unsplash.com/photo-1546549039-49cc4f5b3c89?q=80&w=1200&auto=format&fit=crop", cuisine: "Asian", isRecipe: true, author: "Rin" },
-  { id: "5", title: "BBQ Brisket", image: "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop", cuisine: "BBQ", isRecipe: false, author: "Mason" },
-  { id: "6", title: "Avocado Toast", image: "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?q=80&w=1200&auto=format&fit=crop", cuisine: "Breakfast", isRecipe: true, author: "Ivy" },
+  {
+    id: "1",
+    title: "Margherita Pizza",
+    image: "https://images.unsplash.com/photo-1548365328-8b84986da7b3?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Italian",
+    isRecipe: true,
+    author: "Giulia",
+    cookTime: 25,
+    difficulty: "Easy",
+    rating: 4.7,
+    likes: 223,
+    mealType: "Dinner",
+    dietary: ["Vegetarian"],
+    createdAt: "2025-09-08T12:00:00Z",
+  },
+  {
+    id: "2",
+    title: "Rainbow Salad",
+    image: "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Healthy",
+    isRecipe: false,
+    author: "Ava",
+    cookTime: 10,
+    difficulty: "Easy",
+    rating: 4.2,
+    likes: 150,
+    mealType: "Lunch",
+    dietary: ["Vegan", "Gluten-Free"],
+    createdAt: "2025-09-07T10:00:00Z",
+  },
+  {
+    id: "3",
+    title: "Choco Truffles",
+    image: "https://images.unsplash.com/photo-1541781286675-09c7e9d404bc?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Desserts",
+    isRecipe: true,
+    author: "Noah",
+    cookTime: 45,
+    difficulty: "Medium",
+    rating: 4.9,
+    likes: 512,
+    mealType: "Dessert",
+    dietary: ["Vegetarian"],
+    createdAt: "2025-09-05T18:30:00Z",
+  },
+  {
+    id: "4",
+    title: "Spicy Ramen",
+    image: "https://images.unsplash.com/photo-1546549039-49cc4f5b3c89?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Asian",
+    isRecipe: true,
+    author: "Rin",
+    cookTime: 30,
+    difficulty: "Medium",
+    rating: 4.5,
+    likes: 340,
+    mealType: "Dinner",
+    dietary: [],
+    createdAt: "2025-09-03T21:15:00Z",
+  },
+  {
+    id: "5",
+    title: "BBQ Brisket",
+    image: "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "BBQ",
+    isRecipe: false,
+    author: "Mason",
+    cookTime: 240,
+    difficulty: "Hard",
+    rating: 4.1,
+    likes: 98,
+    mealType: "Dinner",
+    dietary: [],
+    createdAt: "2025-09-09T14:45:00Z",
+  },
+  {
+    id: "6",
+    title: "Avocado Toast",
+    image: "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Breakfast",
+    isRecipe: true,
+    author: "Ivy",
+    cookTime: 8,
+    difficulty: "Easy",
+    rating: 4.0,
+    likes: 77,
+    mealType: "Breakfast",
+    dietary: ["Vegetarian"],
+    createdAt: "2025-09-10T08:05:00Z",
+  },
 ];
 
 /** -------------------------------
  * Explore Page
  * -------------------------------- */
 export default function Explore() {
-  // state
-  const [selectedCuisines, setSelectedCuisines] = React.useState<string[]>([]);
-  const [onlyRecipes, setOnlyRecipes] = React.useState(false);
+  // view + main toggles
   const [viewMode, setViewMode] = React.useState<ViewMode>("grid");
+  const [onlyRecipes, setOnlyRecipes] = React.useState(false);
 
-  // TODO: swap DEMO_POSTS for your fetched data
+  // filters
+  const [selectedCuisines, setSelectedCuisines] = React.useState<string[]>([]);
+  const [selectedMealTypes, setSelectedMealTypes] = React.useState<MealType[]>([]);
+  const [selectedDietary, setSelectedDietary] = React.useState<Dietary[]>([]);
+  const [selectedDifficulty, setSelectedDifficulty] = React.useState<Difficulty | "">("");
+  const [maxCookTime, setMaxCookTime] = React.useState<number>(60); // minutes
+  const [minRating, setMinRating] = React.useState<number>(0);
+  const [sortBy, setSortBy] = React.useState<"newest" | "rating" | "likes">("newest");
+
+  // TODO: swap DEMO_POSTS with your fetched data
   const posts = DEMO_POSTS;
 
-  // filtering
   const filteredPosts = React.useMemo(() => {
-    return posts.filter((p) => {
-      const cuisineOK =
-        selectedCuisines.length === 0 || selectedCuisines.includes(p.cuisine);
-      const recipeOK = !onlyRecipes || p.isRecipe;
-      return cuisineOK && recipeOK;
+    const filtered = posts.filter((p) => {
+      if (onlyRecipes && !p.isRecipe) return false;
+      if (selectedCuisines.length && !selectedCuisines.includes(p.cuisine)) return false;
+      if (selectedMealTypes.length && !selectedMealTypes.includes(p.mealType)) return false;
+      if (selectedDietary.length && !selectedDietary.every((d) => p.dietary.includes(d))) return false; // must include all selected dietaries
+      if (selectedDifficulty && p.difficulty !== selectedDifficulty) return false;
+      if (maxCookTime && p.cookTime > maxCookTime) return false;
+      if (minRating && p.rating < minRating) return false;
+      return true;
     });
-  }, [posts, selectedCuisines, onlyRecipes]);
+
+    switch (sortBy) {
+      case "rating":
+        return [...filtered].sort((a, b) => b.rating - a.rating);
+      case "likes":
+        return [...filtered].sort((a, b) => b.likes - a.likes);
+      default:
+        return [...filtered].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+    }
+  }, [
+    posts,
+    onlyRecipes,
+    selectedCuisines,
+    selectedMealTypes,
+    selectedDietary,
+    selectedDifficulty,
+    maxCookTime,
+    minRating,
+    sortBy,
+  ]);
 
   function resetFilters() {
     setSelectedCuisines([]);
+    setSelectedMealTypes([]);
+    setSelectedDietary([]);
+    setSelectedDifficulty("");
+    setMaxCookTime(60);
+    setMinRating(0);
     setOnlyRecipes(false);
-    setViewMode("grid");
+    setSortBy("newest");
+    // keep current viewMode
   }
 
   return (
-    <div className="mx-auto max-w-6xl md:grid md:grid-cols-[16rem_1fr] gap-6 px-4 md:px-6">
-      {/* Desktop sidebar */}
+    <div className="mx-auto max-w-6xl md:grid md:grid-cols-[18rem_1fr] gap-6 px-4 md:px-6">
+      {/* Desktop sidebar (no dropdowns, scrollable) */}
       <DesktopFiltersSidebar
         selectedCuisines={selectedCuisines}
         setSelectedCuisines={setSelectedCuisines}
+        selectedMealTypes={selectedMealTypes}
+        setSelectedMealTypes={setSelectedMealTypes}
+        selectedDietary={selectedDietary}
+        setSelectedDietary={setSelectedDietary}
+        selectedDifficulty={selectedDifficulty}
+        setSelectedDifficulty={setSelectedDifficulty}
+        maxCookTime={maxCookTime}
+        setMaxCookTime={setMaxCookTime}
+        minRating={minRating}
+        setMinRating={setMinRating}
         onlyRecipes={onlyRecipes}
         setOnlyRecipes={setOnlyRecipes}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
         onReset={resetFilters}
       />
 
       {/* Main content */}
       <main className="min-w-0">
-        {/* Mobile controls */}
+        {/* Mobile controls row (kept simple; no duplicates inside the sheet) */}
         <div className="md:hidden mb-3 flex items-center justify-between gap-2">
           <MobileFiltersSheet
             selectedCuisines={selectedCuisines}
             setSelectedCuisines={setSelectedCuisines}
+            selectedMealTypes={selectedMealTypes}
+            setSelectedMealTypes={setSelectedMealTypes}
+            selectedDietary={selectedDietary}
+            setSelectedDietary={setSelectedDietary}
+            selectedDifficulty={selectedDifficulty}
+            setSelectedDifficulty={setSelectedDifficulty}
+            maxCookTime={maxCookTime}
+            setMaxCookTime={setMaxCookTime}
+            minRating={minRating}
+            setMinRating={setMinRating}
             onlyRecipes={onlyRecipes}
             setOnlyRecipes={setOnlyRecipes}
-            viewMode={viewMode}
-            setViewMode={setViewMode}
+            sortBy={sortBy}
+            setSortBy={setSortBy}
             onReset={resetFilters}
           />
           <div className="flex gap-2">
@@ -121,6 +282,30 @@ export default function Explore() {
               List
             </Button>
           </div>
+        </div>
+
+        {/* Active filter count (mobile + desktop) */}
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant="outline">Cuisines: {selectedCuisines.length}</Badge>
+          <Badge variant="outline">Meal Types: {selectedMealTypes.length}</Badge>
+          <Badge variant="outline">Dietary: {selectedDietary.length}</Badge>
+          {selectedDifficulty && <Badge variant="outline">Difficulty: {selectedDifficulty}</Badge>}
+          {onlyRecipes && <Badge variant="outline">Recipe-only</Badge>}
+          <Badge variant="outline">≤ {maxCookTime} min</Badge>
+          <Badge variant="outline">★ {minRating}+</Badge>
+          <Badge variant="outline">Sort: {sortBy}</Badge>
+          {(selectedCuisines.length ||
+            selectedMealTypes.length ||
+            selectedDietary.length ||
+            selectedDifficulty ||
+            onlyRecipes ||
+            minRating ||
+            maxCookTime !== 60 ||
+            sortBy !== "newest") && (
+            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={resetFilters}>
+              Reset
+            </Button>
+          )}
         </div>
 
         {/* Results */}
@@ -145,95 +330,217 @@ export default function Explore() {
 }
 
 /** -------------------------------
- * Components used on the page
+ * Desktop sidebar (sticky, scrollable)
  * -------------------------------- */
-
-// Desktop sidebar with real scroll (no dropdowns)
-function DesktopFiltersSidebar({
-  selectedCuisines,
-  setSelectedCuisines,
-  onlyRecipes,
-  setOnlyRecipes,
-  onReset,
-}: {
+function DesktopFiltersSidebar(props: {
   selectedCuisines: string[];
   setSelectedCuisines: (v: string[]) => void;
+  selectedMealTypes: MealType[];
+  setSelectedMealTypes: (v: MealType[]) => void;
+  selectedDietary: Dietary[];
+  setSelectedDietary: (v: Dietary[]) => void;
+  selectedDifficulty: Difficulty | "";
+  setSelectedDifficulty: (v: Difficulty | "") => void;
+  maxCookTime: number;
+  setMaxCookTime: (v: number) => void;
+  minRating: number;
+  setMinRating: (v: number) => void;
   onlyRecipes: boolean;
   setOnlyRecipes: (v: boolean) => void;
+  sortBy: "newest" | "rating" | "likes";
+  setSortBy: (v: "newest" | "rating" | "likes") => void;
   onReset: () => void;
 }) {
-  function toggleCuisine(c: string) {
-    setSelectedCuisines(
-      selectedCuisines.includes(c)
-        ? selectedCuisines.filter((x) => x !== c)
-        : [...selectedCuisines, c]
-    );
-  }
+  const {
+    selectedCuisines,
+    setSelectedCuisines,
+    selectedMealTypes,
+    setSelectedMealTypes,
+    selectedDietary,
+    setSelectedDietary,
+    selectedDifficulty,
+    setSelectedDifficulty,
+    maxCookTime,
+    setMaxCookTime,
+    minRating,
+    setMinRating,
+    onlyRecipes,
+    setOnlyRecipes,
+    sortBy,
+    setSortBy,
+    onReset,
+  } = props;
+
+  const toggleFromArray = <T extends string>(arr: T[], setArr: (v: T[]) => void, value: T) => {
+    setArr(arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value]);
+  };
 
   return (
-    <aside className="hidden md:block w-64 shrink-0">
-      <div className="sticky top-20 space-y-4">
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Cuisines</p>
+    <aside className="hidden md:block w-72 shrink-0">
+      <div className="sticky top-20 space-y-5">
+        {/* Cuisines */}
+        <FilterSection title="Cuisines">
           <div
-            className="grid grid-cols-1 gap-2 max-h-[60vh] overflow-y-auto pr-1"
+            className="grid grid-cols-1 gap-2 max-h-[28rem] overflow-y-auto pr-1"
             style={{ WebkitOverflowScrolling: "touch" as any }}
           >
             {CUISINES.map((c) => (
               <label key={c} className="flex items-center gap-2">
                 <Checkbox
                   checked={selectedCuisines.includes(c)}
-                  onCheckedChange={() => toggleCuisine(c)}
+                  onCheckedChange={() =>
+                    toggleFromArray(selectedCuisines, setSelectedCuisines, c)
+                  }
                 />
                 <span className="text-sm">{c}</span>
               </label>
             ))}
           </div>
-        </div>
+        </FilterSection>
 
-        <label className="flex items-center gap-2">
-          <Checkbox
-            checked={onlyRecipes}
-            onCheckedChange={(v) => setOnlyRecipes(Boolean(v))}
+        {/* Meal type */}
+        <FilterSection title="Meal Type">
+          <div className="grid grid-cols-2 gap-2">
+            {MEAL_TYPES.map((m) => (
+              <label key={m} className="flex items-center gap-2">
+                <Checkbox
+                  checked={selectedMealTypes.includes(m)}
+                  onCheckedChange={() => toggleFromArray(selectedMealTypes, setSelectedMealTypes, m)}
+                />
+                <span className="text-sm">{m}</span>
+              </label>
+            ))}
+          </div>
+        </FilterSection>
+
+        {/* Dietary */}
+        <FilterSection title="Dietary">
+          <div className="grid grid-cols-2 gap-2">
+            {DIETARY.map((d) => (
+              <label key={d} className="flex items-center gap-2">
+                <Checkbox
+                  checked={selectedDietary.includes(d)}
+                  onCheckedChange={() => toggleFromArray(selectedDietary, setSelectedDietary, d)}
+                />
+                <span className="text-sm">{d}</span>
+              </label>
+            ))}
+          </div>
+        </FilterSection>
+
+        {/* Difficulty */}
+        <FilterSection title="Difficulty">
+          <div className="flex flex-wrap gap-2">
+            {DIFFICULTY.map((d) => (
+              <Button
+                key={d}
+                size="sm"
+                variant={selectedDifficulty === d ? "default" : "outline"}
+                onClick={() => setSelectedDifficulty(selectedDifficulty === d ? "" : d)}
+              >
+                {d}
+              </Button>
+            ))}
+          </div>
+        </FilterSection>
+
+        {/* Max cook time */}
+        <FilterSection title={`Max Cook Time: ${maxCookTime} min`}>
+          <Slider
+            value={[maxCookTime]}
+            min={5}
+            max={240}
+            step={5}
+            onValueChange={(v) => setMaxCookTime(v[0] ?? 60)}
           />
-          <span className="text-sm">Show recipe posts only</span>
-        </label>
+        </FilterSection>
 
-        <Button variant="secondary" onClick={onReset}>
-          Reset filters
-        </Button>
+        {/* Min rating */}
+        <FilterSection title={`Min Rating: ${minRating || 0}★`}>
+          <StarSelect value={minRating} onChange={setMinRating} />
+        </FilterSection>
+
+        {/* Flags & sort */}
+        <FilterSection title="More">
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={onlyRecipes}
+              onCheckedChange={(v) => setOnlyRecipes(Boolean(v))}
+            />
+            <span className="text-sm">Show recipe posts only</span>
+          </label>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {(["newest", "rating", "likes"] as const).map((s) => (
+              <Button
+                key={s}
+                size="sm"
+                variant={sortBy === s ? "default" : "outline"}
+                onClick={() => setSortBy(s)}
+              >
+                {s === "newest" ? "Newest" : s === "rating" ? "Top Rated" : "Most Liked"}
+              </Button>
+            ))}
+          </div>
+        </FilterSection>
+
+        <div className="pt-2">
+          <Button variant="secondary" onClick={onReset} className="w-full">
+            Reset filters
+          </Button>
+        </div>
       </div>
     </aside>
   );
 }
 
-// Mobile sheet: scrollable, touch-friendly
-function MobileFiltersSheet({
-  selectedCuisines,
-  setSelectedCuisines,
-  onlyRecipes,
-  setOnlyRecipes,
-  viewMode,
-  setViewMode,
-  onReset,
-}: {
+/** -------------------------------
+ * Mobile sheet (scrollable, one X, no duplicate grid/list)
+ * -------------------------------- */
+function MobileFiltersSheet(props: {
   selectedCuisines: string[];
   setSelectedCuisines: (v: string[]) => void;
+  selectedMealTypes: MealType[];
+  setSelectedMealTypes: (v: MealType[]) => void;
+  selectedDietary: Dietary[];
+  setSelectedDietary: (v: Dietary[]) => void;
+  selectedDifficulty: Difficulty | "";
+  setSelectedDifficulty: (v: Difficulty | "") => void;
+  maxCookTime: number;
+  setMaxCookTime: (v: number) => void;
+  minRating: number;
+  setMinRating: (v: number) => void;
   onlyRecipes: boolean;
   setOnlyRecipes: (v: boolean) => void;
-  viewMode: ViewMode;
-  setViewMode: (v: ViewMode) => void;
+  sortBy: "newest" | "rating" | "likes";
+  setSortBy: (v: "newest" | "rating" | "likes") => void;
   onReset: () => void;
 }) {
+  const {
+    selectedCuisines,
+    setSelectedCuisines,
+    selectedMealTypes,
+    setSelectedMealTypes,
+    selectedDietary,
+    setSelectedDietary,
+    selectedDifficulty,
+    setSelectedDifficulty,
+    maxCookTime,
+    setMaxCookTime,
+    minRating,
+    setMinRating,
+    onlyRecipes,
+    setOnlyRecipes,
+    sortBy,
+    setSortBy,
+    onReset,
+  } = props;
+
   const [open, setOpen] = React.useState(false);
 
-  function toggleCuisine(c: string) {
-    setSelectedCuisines(
-      selectedCuisines.includes(c)
-        ? selectedCuisines.filter((x) => x !== c)
-        : [...selectedCuisines, c]
-    );
-  }
+  const toggleFromArray = <T extends string>(arr: T[], setArr: (v: T[]) => void, value: T) => {
+    setArr(arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value]);
+  };
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -241,19 +548,37 @@ function MobileFiltersSheet({
         <Button variant="outline" className="gap-2">
           <Filter className="h-4 w-4" />
           Filters
-          {selectedCuisines.length > 0 && (
+          {(selectedCuisines.length +
+            selectedMealTypes.length +
+            selectedDietary.length +
+            (selectedDifficulty ? 1 : 0) +
+            (onlyRecipes ? 1 : 0) +
+            (minRating ? 1 : 0) +
+            (maxCookTime !== 60 ? 1 : 0) +
+            (sortBy !== "newest" ? 1 : 0)) > 0 && (
             <Badge variant="secondary" className="ml-2">
-              {selectedCuisines.length}
+              {/* simple count of active groups */}
+              {[
+                selectedCuisines.length > 0,
+                selectedMealTypes.length > 0,
+                selectedDietary.length > 0,
+                Boolean(selectedDifficulty),
+                onlyRecipes,
+                Boolean(minRating),
+                maxCookTime !== 60,
+                sortBy !== "newest",
+              ].filter(Boolean).length}
             </Badge>
           )}
         </Button>
       </SheetTrigger>
 
       <SheetContent side="bottom" className="h-[88dvh] p-0">
+        {/* ONE close button */}
         <SheetHeader className="p-4 border-b">
           <div className="flex items-center justify-between">
             <SheetTitle>Filters</SheetTitle>
-            <Button variant="ghost" size="icon" onClick={() => setOpen(false)}>
+            <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close">
               <X className="h-5 w-5" />
             </Button>
           </div>
@@ -267,53 +592,82 @@ function MobileFiltersSheet({
             p-4
             touch-pan-y
             overscroll-contain
+            space-y-6
           "
           style={{ WebkitOverflowScrolling: "touch" as any }}
         >
-          {/* Top quick toggles */}
-          <div className="mb-4 flex items-center gap-2">
-            <Button
-              variant={viewMode === "grid" ? "default" : "outline"}
-              onClick={() => setViewMode("grid")}
-              className="gap-2"
-            >
-              <LayoutGrid className="h-4 w-4" />
-              Grid
-            </Button>
-            <Button
-              variant={viewMode === "list" ? "default" : "outline"}
-              onClick={() => setViewMode("list")}
-              className="gap-2"
-            >
-              <List className="h-4 w-4" />
-              List
-            </Button>
-            <Button variant="ghost" onClick={onReset} className="ml-auto">
-              Reset filters
-            </Button>
-          </div>
-
-          {/* Multi-select as checkboxes */}
-          <div className="space-y-3">
-            <p className="text-sm font-medium">Cuisines</p>
+          <FilterSection title="Cuisines">
             <div className="grid grid-cols-2 gap-2">
               {CUISINES.map((c) => (
-                <label
-                  key={c}
-                  className="flex items-center gap-2 rounded-md border p-2 active:scale-[.995] transition"
-                >
+                <label key={c} className="flex items-center gap-2 rounded-md border p-2">
                   <Checkbox
                     checked={selectedCuisines.includes(c)}
-                    onCheckedChange={() => toggleCuisine(c)}
+                    onCheckedChange={() => toggleFromArray(selectedCuisines, setSelectedCuisines, c)}
                   />
                   <span className="text-sm">{c}</span>
                 </label>
               ))}
             </div>
-          </div>
+          </FilterSection>
 
-          {/* Recipe-only filter */}
-          <div className="mt-6">
+          <FilterSection title="Meal Type">
+            <div className="grid grid-cols-2 gap-2">
+              {MEAL_TYPES.map((m) => (
+                <label key={m} className="flex items-center gap-2 rounded-md border p-2">
+                  <Checkbox
+                    checked={selectedMealTypes.includes(m)}
+                    onCheckedChange={() => toggleFromArray(selectedMealTypes, setSelectedMealTypes, m)}
+                  />
+                  <span className="text-sm">{m}</span>
+                </label>
+              ))}
+            </div>
+          </FilterSection>
+
+          <FilterSection title="Dietary">
+            <div className="grid grid-cols-2 gap-2">
+              {DIETARY.map((d) => (
+                <label key={d} className="flex items-center gap-2 rounded-md border p-2">
+                  <Checkbox
+                    checked={selectedDietary.includes(d)}
+                    onCheckedChange={() => toggleFromArray(selectedDietary, setSelectedDietary, d)}
+                  />
+                  <span className="text-sm">{d}</span>
+                </label>
+              ))}
+            </div>
+          </FilterSection>
+
+          <FilterSection title="Difficulty">
+            <div className="flex flex-wrap gap-2">
+              {DIFFICULTY.map((d) => (
+                <Button
+                  key={d}
+                  size="sm"
+                  variant={selectedDifficulty === d ? "default" : "outline"}
+                  onClick={() => setSelectedDifficulty(selectedDifficulty === d ? "" : d)}
+                >
+                  {d}
+                </Button>
+              ))}
+            </div>
+          </FilterSection>
+
+          <FilterSection title={`Max Cook Time: ${maxCookTime} min`}>
+            <Slider
+              value={[maxCookTime]}
+              min={5}
+              max={240}
+              step={5}
+              onValueChange={(v) => setMaxCookTime(v[0] ?? 60)}
+            />
+          </FilterSection>
+
+          <FilterSection title={`Min Rating: ${minRating || 0}★`}>
+            <StarSelect value={minRating} onChange={setMinRating} />
+          </FilterSection>
+
+          <FilterSection title="More">
             <label className="flex items-center gap-2">
               <Checkbox
                 checked={onlyRecipes}
@@ -321,36 +675,31 @@ function MobileFiltersSheet({
               />
               <span className="text-sm">Show recipe posts only</span>
             </label>
-          </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(["newest", "rating", "likes"] as const).map((s) => (
+                <Button
+                  key={s}
+                  size="sm"
+                  variant={sortBy === s ? "default" : "outline"}
+                  onClick={() => setSortBy(s)}
+                >
+                  {s === "newest" ? "Newest" : s === "rating" ? "Top Rated" : "Most Liked"}
+                </Button>
+              ))}
+            </div>
+          </FilterSection>
         </div>
 
-        {/* Sticky footer */}
+        {/* Sticky footer — no grid/list, just Reset & Apply */}
         <div className="sticky bottom-0 border-t bg-background p-4">
           <div className="flex gap-2">
-            <Button
-              variant={viewMode === "grid" ? "default" : "outline"}
-              onClick={() => setViewMode("grid")}
-              className="flex-1 gap-2"
-            >
-              <LayoutGrid className="h-4 w-4" />
-              Grid
-            </Button>
-            <Button
-              variant={viewMode === "list" ? "default" : "outline"}
-              onClick={() => setViewMode("list")}
-              className="flex-1 gap-2"
-            >
-              <List className="h-4 w-4" />
-              List
-            </Button>
-          </div>
-          <div className="mt-3 flex gap-2">
             <Button variant="secondary" onClick={onReset} className="flex-1">
               Reset
             </Button>
-            <Button onClick={() => setOpen(false)} className="flex-1">
-              Apply
-            </Button>
+            <SheetClose asChild>
+              <Button className="flex-1">Apply</Button>
+            </SheetClose>
           </div>
         </div>
       </SheetContent>
@@ -358,7 +707,42 @@ function MobileFiltersSheet({
   );
 }
 
-// Grid card + List row
+/** -------------------------------
+ * Little utilities
+ * -------------------------------- */
+function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h4 className="mb-2 text-sm font-medium">{title}</h4>
+      {children}
+    </section>
+  );
+}
+
+function StarSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          className="p-1"
+          aria-label={`${n} stars & up`}
+          onClick={() => onChange(n === value ? 0 : n)}
+        >
+          <Star className={`h-5 w-5 ${value >= n ? "" : "opacity-30"}`} />
+        </button>
+      ))}
+      <Button size="sm" variant="ghost" className="ml-1 h-7 px-2" onClick={() => onChange(0)}>
+        Clear
+      </Button>
+    </div>
+  );
+}
+
+/** -------------------------------
+ * Cards & empty state
+ * -------------------------------- */
 function GridCard({ post }: { post: Post }) {
   return (
     <article className="overflow-hidden rounded-lg border bg-card">
@@ -374,7 +758,13 @@ function GridCard({ post }: { post: Post }) {
         <h3 className="line-clamp-1 text-sm font-semibold">{post.title}</h3>
         <div className="mt-1 flex items-center justify-between">
           <span className="text-xs text-muted-foreground">{post.author}</span>
-          <Badge variant="outline" className="text-xs">{post.cuisine}</Badge>
+          <Badge variant="outline" className="text-xs">
+            {post.cuisine}
+          </Badge>
+        </div>
+        <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+          <span>★ {post.rating.toFixed(1)}</span>
+          <span>{post.cookTime} min</span>
         </div>
         {post.isRecipe && (
           <span className="mt-2 inline-block text-[10px] uppercase tracking-wide text-emerald-600">
@@ -401,21 +791,21 @@ function ListRow({ post }: { post: Post }) {
         <h3 className="line-clamp-1 text-sm font-semibold">{post.title}</h3>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>by {post.author}</span>
-          <span>•</span>
-          <span>{post.cuisine}</span>
-          {post.isRecipe && (
-            <>
-              <span>•</span>
-              <span className="text-emerald-600">Recipe</span>
-            </>
-          )}
+          <span>• {post.cuisine}</span>
+          <span>• {post.mealType}</span>
+          {post.dietary.length > 0 && <span>• {post.dietary.join(", ")}</span>}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <span>★ {post.rating.toFixed(1)}</span>
+          <span>{post.cookTime} min</span>
+          <span>{post.difficulty}</span>
+          {post.isRecipe && <span className="text-emerald-600">Recipe</span>}
         </div>
       </div>
     </article>
   );
 }
 
-// Empty state
 function EmptyState({ onReset }: { onReset: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
