@@ -1,920 +1,993 @@
 // client/src/pages/explore.tsx
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { Input } from "@/components/ui/input";
+import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
-import { useToast } from "@/components/ui/use-toast";
-
-import PostCard from "@/components/post-card";
-import RecipeCard from "@/components/recipe-card";
-import { Search, Grid, List, RefreshCw, SlidersHorizontal, X } from "lucide-react";
-import type { PostWithUser } from "@shared/schema";
-
-import { MultiSelectCombobox } from "@/components/multi-select-combobox";
-import { TagInput } from "@/components/tag-input";
-
 import {
-  CUISINES,
-  DIETS,
-  COURSES,
-  POPULAR_DIET_CHIPS,
-  DIFFICULTIES,
-  ALLERGENS,
-} from "@/lib/filters";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetClose,
+} from "@/components/ui/sheet";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
+import { LayoutGrid, List, Filter, X, Star } from "lucide-react";
 
-/* =========================
-   Ethnicity / Cultural Origin list (expanded)
-   ========================= */
+/** -------------------------------
+ * Types + demo data (replace later)
+ * -------------------------------- */
+type ViewMode = "grid" | "list";
+type Difficulty = "Easy" | "Medium" | "Hard";
+type MealType = "Breakfast" | "Lunch" | "Dinner" | "Snack" | "Dessert";
+type Dietary = "Vegan" | "Vegetarian" | "Gluten-Free" | "Dairy-Free" | "Keto";
+
+// NEW: add ethnicity + allergens fields for filtering
+type Post = {
+  id: string;
+  title: string;
+  image: string;
+  cuisine: string;
+  isRecipe: boolean;
+  author: string;
+  cookTime: number; // minutes
+  difficulty: Difficulty;
+  rating: number; // 0..5
+  likes: number;
+  mealType: MealType;
+  dietary: Dietary[];
+  ethnicity: string[];       // NEW
+  allergens: string[];       // NEW
+  createdAt: string; // ISO date
+};
+
+const CUISINES = [
+  "Italian",
+  "Healthy",
+  "Desserts",
+  "Quick",
+  "Vegan",
+  "Seafood",
+  "Asian",
+  "Mexican",
+  "Mediterranean",
+  "BBQ",
+  "Breakfast",
+  "Burgers",
+  "Salads",
+];
+
+const MEAL_TYPES: MealType[] = ["Breakfast", "Lunch", "Dinner", "Snack", "Dessert"];
+const DIETARY: Dietary[] = ["Vegan", "Vegetarian", "Gluten-Free", "Dairy-Free", "Keto"];
+const DIFFICULTY: Difficulty[] = ["Easy", "Medium", "Hard"];
+
+// NEW: Ethnicity / Cultural Origin options (expand/adjust as needed)
 const ETHNICITIES = [
   // Africa & Diaspora
-  "African","West African","East African","Central African","Southern African","North African",
-  "Ethiopian/Eritrean","Nigerian","Ghanaian","Senegalese","Moroccan","Tunisian","Egyptian",
-  "African American / African Diaspora","Afro-Caribbean","Caribbean","Jamaican","Trinidadian/Tobagonian","Haitian",
-  // Middle East & North Africa
-  "Middle Eastern","Levantine (Lebanon/Syria/Jordan/Palestine)","Gulf/Khaleeji","Persian/Iranian",
+  "African","West African","East African","North African","Ethiopian/Eritrean","Nigerian","Ghanaian","Senegalese",
+  "Moroccan","Tunisian","Egyptian","Afro-Caribbean","Caribbean","Jamaican","Trinidadian/Tobagonian","Haitian",
+  // Middle East
+  "Middle Eastern","Levantine","Persian/Iranian","Turkish",
   // Europe
-  "European","Mediterranean","Greek","Turkish","Italian","French","Spanish","Portuguese",
-  "British/Irish","German","Nordic/Scandinavian","Eastern European","Balkan",
+  "Mediterranean","Greek","Italian","French","Spanish","Portuguese","British/Irish","German","Nordic/Scandinavian","Eastern European","Balkan",
   // Asia
-  "East Asian","Chinese","Japanese","Korean",
-  "South Asian","Indian","Pakistani","Bangladeshi","Sri Lankan","Nepali",
-  "Southeast Asian","Thai","Vietnamese","Filipino","Indonesian","Malaysian","Singaporean","Khmer (Cambodian)","Lao","Burmese/Myanmar",
+  "East Asian","Chinese","Japanese","Korean","South Asian","Indian","Pakistani","Bangladeshi","Sri Lankan","Nepali",
+  "Southeast Asian","Thai","Vietnamese","Filipino","Indonesian","Malaysian","Singaporean","Cambodian","Lao","Burmese/Myanmar",
   "Central Asian","Uzbek","Kazakh",
   // Pacific & Oceania
   "Pacific Islander","Hawaiian","Polynesian","Micronesian","Melanesian","Maori",
-  // The Americas
-  "Latinx","Mexican","Central American","South American","Andean","Brazilian","Argentine",
-  // Indigenous & Jewish traditions
-  "Indigenous / First Nations / Native American","Ashkenazi Jewish","Sephardi Jewish","Mizrahi Jewish",
-  // Other
-  "Fusion/Contemporary","Other",
+  // The Americas & other
+  "Latinx","Mexican","Central American","South American","Brazilian","Argentine","Indigenous / First Nations / Native American",
+  "Ashkenazi Jewish","Sephardi Jewish","Mizrahi Jewish","Fusion/Contemporary","Other",
 ];
 
-/* =========================
-   Safe helpers
-   ========================= */
-const PLACEHOLDER_IMG =
-  "data:image/svg+xml;utf8," +
-  encodeURIComponent(
-    `<svg xmlns='http://www.w3.org/2000/svg' width='800' height='600'>
-      <rect width='100%' height='100%' fill='#eee'/>
-      <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='#999' font-family='sans-serif' font-size='20'>No image</text>
-    </svg>`
-  );
+// NEW: Common allergens (used for exclusion)
+const ALLERGENS = [
+  "Peanuts",
+  "Tree Nuts",
+  "Sesame",
+  "Soy",
+  "Dairy",
+  "Eggs",
+  "Fish",
+  "Shellfish",
+  "Gluten",
+  "Wheat",
+  "Mustard",
+  "Celery",
+  "Lupin",
+  "Sulfites",
+];
 
-function onImgError(e: React.SyntheticEvent<HTMLImageElement>) {
-  const img = e.currentTarget;
-  if (img.src !== PLACEHOLDER_IMG) img.src = PLACEHOLDER_IMG;
-}
-function getPostImageUrl(post: Partial<PostWithUser> | undefined) {
-  return (post?.imageUrl && String(post.imageUrl).trim()) || PLACEHOLDER_IMG;
-}
-function isPostLike(x: any): x is PostWithUser {
-  return x && typeof x === "object";
-}
+const DEMO_POSTS: Post[] = [
+  {
+    id: "1",
+    title: "Margherita Pizza",
+    image: "https://images.unsplash.com/photo-1548365328-8b84986da7b3?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Italian",
+    isRecipe: true,
+    author: "Giulia",
+    cookTime: 25,
+    difficulty: "Easy",
+    rating: 4.7,
+    likes: 223,
+    mealType: "Dinner",
+    dietary: ["Vegetarian"],
+    ethnicity: ["Italian","Mediterranean"],        // NEW
+    allergens: ["Gluten","Dairy"],                 // NEW
+    createdAt: "2025-09-08T12:00:00Z",
+  },
+  {
+    id: "2",
+    title: "Rainbow Salad",
+    image: "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Healthy",
+    isRecipe: false,
+    author: "Ava",
+    cookTime: 10,
+    difficulty: "Easy",
+    rating: 4.2,
+    likes: 150,
+    mealType: "Lunch",
+    dietary: ["Vegan", "Gluten-Free"],
+    ethnicity: ["Fusion/Contemporary"],            // NEW
+    allergens: [],                                 // NEW
+    createdAt: "2025-09-07T10:00:00Z",
+  },
+  {
+    id: "3",
+    title: "Choco Truffles",
+    image: "https://images.unsplash.com/photo-1541781286675-09c7e9d404bc?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Desserts",
+    isRecipe: true,
+    author: "Noah",
+    cookTime: 45,
+    difficulty: "Medium",
+    rating: 4.9,
+    likes: 512,
+    mealType: "Dessert",
+    dietary: ["Vegetarian"],
+    ethnicity: ["French","European"],               // NEW
+    allergens: ["Dairy"],                           // NEW
+    createdAt: "2025-09-05T18:30:00Z",
+  },
+  {
+    id: "4",
+    title: "Spicy Ramen",
+    image: "https://images.unsplash.com/photo-1546549039-49cc4f5b3c89?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Asian",
+    isRecipe: true,
+    author: "Rin",
+    cookTime: 30,
+    difficulty: "Medium",
+    rating: 4.5,
+    likes: 340,
+    mealType: "Dinner",
+    dietary: [],
+    ethnicity: ["Japanese","East Asian"],           // NEW
+    allergens: ["Gluten","Eggs","Soy"],             // NEW
+    createdAt: "2025-09-03T21:15:00Z",
+  },
+  {
+    id: "5",
+    title: "BBQ Brisket",
+    image: "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "BBQ",
+    isRecipe: false,
+    author: "Mason",
+    cookTime: 240,
+    difficulty: "Hard",
+    rating: 4.1,
+    likes: 98,
+    mealType: "Dinner",
+    dietary: [],
+    ethnicity: ["American","Fusion/Contemporary"],  // NEW
+    allergens: [],                                   // NEW
+    createdAt: "2025-09-09T14:45:00Z",
+  },
+  {
+    id: "6",
+    title: "Avocado Toast",
+    image: "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Breakfast",
+    isRecipe: true,
+    author: "Ivy",
+    cookTime: 8,
+    difficulty: "Easy",
+    rating: 4.0,
+    likes: 77,
+    mealType: "Breakfast",
+    dietary: ["Vegetarian"],
+    ethnicity: ["British/Irish","Fusion/Contemporary"], // NEW
+    allergens: ["Gluten"],                                // NEW
+    createdAt: "2025-09-10T08:05:00Z",
+  },
+];
 
-/* =========================
-   Hooks
-   ========================= */
-function useDebouncedValue<T>(value: T, delay = 300) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(id);
-  }, [value, delay]);
-  return debounced;
-}
-function useLocalStorage<T>(key: string, initial: T) {
-  const [val, setVal] = useState<T>(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? (JSON.parse(raw) as T) : initial;
-    } catch {
-      return initial;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(key, JSON.stringify(val));
-    } catch {
-      // ignore
-    }
-  }, [key, val]);
-  return [val, setVal] as const;
-}
-
-/* =========================
-   Types & constants
-   ========================= */
-type ViewMode = "grid" | "list";
-type SortMode = "trending" | "newest" | "most_liked";
-
-interface FilterState {
-  cuisines: string[];
-  ethnicities: string[];
-  diets: string[];
-  courses: string[];
-  difficulties: string[];
-  allergens: string[];
-  prepRange: [number, number];
-  cookRange: [number, number];
-  maxCalories: number | null;
-  includeIngr: string[];
-  excludeIngr: string[];
-  savedOnly: boolean;
-  verifiedChefs: boolean;
-  gfOnly: boolean; // force Gluten-Free into Diets
-  lfOnly: boolean; // lactose-free toggle
-  sort: SortMode;
-}
-
-const LIMIT = 18;
-const CATEGORIES = ["All", "Italian", "Healthy", "Desserts", "Quick", "Vegan", "Seafood", "Asian"] as const;
-
-function countActiveFilters(f: FilterState) {
-  let n = 0;
-  n += f.cuisines.length;
-  n += f.ethnicities.length;
-  n += f.diets.length + (f.gfOnly ? (f.diets.includes("Gluten-Free") ? 0 : 1) : 0);
-  n += f.courses.length;
-  n += f.difficulties.length;
-  n += f.allergens.length;
-  n += f.includeIngr.length;
-  n += f.excludeIngr.length;
-  n += f.prepRange[0] !== 0 || f.prepRange[1] !== 60 ? 1 : 0;
-  n += f.cookRange[0] !== 0 || f.cookRange[1] !== 90 ? 1 : 0;
-  n += f.maxCalories != null ? 1 : 0;
-  n += f.savedOnly ? 1 : 0;
-  n += f.verifiedChefs ? 1 : 0;
-  n += f.lfOnly ? 1 : 0;
-  return n;
-}
-
-/* =========================
-   Page
-   ========================= */
+/** -------------------------------
+ * Explore Page
+ * -------------------------------- */
 export default function Explore() {
-  const { toast } = useToast();
+  // view + main toggles
+  const [viewMode, setViewMode] = React.useState<ViewMode>("grid");
+  const [onlyRecipes, setOnlyRecipes] = React.useState(false);
 
-  // basics
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useLocalStorage<string | null>("explore:selectedCategory", null);
-  const [viewMode, setViewMode] = useLocalStorage<ViewMode>("explore:viewMode", "grid");
-  const [sort, setSort] = useLocalStorage<SortMode>("explore:sort", "trending");
-  const debouncedQuery = useDebouncedValue(searchTerm.trim(), 350);
+  // filters
+  const [selectedCuisines, setSelectedCuisines] = React.useState<string[]>([]);
+  const [selectedMealTypes, setSelectedMealTypes] = React.useState<MealType[]>([]);
+  const [selectedDietary, setSelectedDietary] = React.useState<Dietary[]>([]);
+  const [selectedDifficulty, setSelectedDifficulty] = React.useState<Difficulty | "">("");
+  const [maxCookTime, setMaxCookTime] = React.useState<number>(60); // minutes
+  const [minRating, setMinRating] = React.useState<number>(0);
+  const [sortBy, setSortBy] = React.useState<"newest" | "rating" | "likes">("newest");
 
-  // advanced filters
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [cuisines, setCuisines] = useLocalStorage<string[]>("explore:cuisines", []);
-  const [ethnicities, setEthnicities] = useLocalStorage<string[]>("explore:ethnicities", []);
-  const [diets, setDiets] = useLocalStorage<string[]>("explore:diets", []);
-  const [courses, setCourses] = useLocalStorage<string[]>("explore:courses", []);
-  const [difficulties, setDifficulties] = useLocalStorage<string[]>("explore:difficulties", []);
-  const [allergens, setAllergens] = useLocalStorage<string[]>("explore:allergens", []);
-  const [prepRange, setPrepRange] = useLocalStorage<[number, number]>("explore:prepRange", [0, 60]);
-  const [cookRange, setCookRange] = useLocalStorage<[number, number]>("explore:cookRange", [0, 90]);
-  const [maxCalories, setMaxCalories] = useLocalStorage<number | null>("explore:maxCalories", null);
-  const [includeIngr, setIncludeIngr] = useLocalStorage<string[]>("explore:includeIngr", []);
-  const [excludeIngr, setExcludeIngr] = useLocalStorage<string[]>("explore:excludeIngr", []);
-  const [savedOnly, setSavedOnly] = useLocalStorage<boolean>("explore:savedOnly", false);
-  const [verifiedChefs, setVerifiedChefs] = useLocalStorage<boolean>("explore:verifiedChefs", false);
-  const [gfOnly, setGfOnly] = useLocalStorage<boolean>("explore:gfOnly", false);
-  const [lfOnly, setLfOnly] = useLocalStorage<boolean>("explore:lfOnly", false);
+  // NEW: Ethnicity + Allergen filters
+  const [selectedEthnicities, setSelectedEthnicities] = React.useState<string[]>([]);
+  const [excludedAllergens, setExcludedAllergens] = React.useState<string[]>([]);
 
-  const filterCount = countActiveFilters({
-    cuisines,
-    ethnicities,
-    diets,
-    courses,
-    difficulties,
-    allergens,
-    prepRange,
-    cookRange,
-    maxCalories,
-    includeIngr,
-    excludeIngr,
-    savedOnly,
-    verifiedChefs,
-    gfOnly,
-    lfOnly,
-    sort,
-  });
+  // TODO: swap DEMO_POSTS with your fetched data
+  const posts = DEMO_POSTS;
 
-  // data
-  const {
-    data,
-    isLoading,
-    isError,
-    error,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    refetch,
-    isFetching,
-  } = useInfiniteQuery<{
-    items: PostWithUser[];
-    nextCursor?: string | null;
-    total?: number;
-  }>({
-    queryKey: [
-      "/api/posts/explore",
-      {
-        q: debouncedQuery,
-        category: selectedCategory,
-        sort,
-        limit: LIMIT,
-        cuisines,
-        ethnicities,
-        diets: gfOnly ? Array.from(new Set([...diets, "Gluten-Free"])) : diets,
-        courses,
-        difficulties,
-        allergens,
-        prepRange,
-        cookRange,
-        maxCalories,
-        includeIngr,
-        excludeIngr,
-        savedOnly,
-        verifiedChefs,
-        lfOnly,
-      },
-    ],
-    queryFn: async ({ pageParam }) => {
-      const params = new URLSearchParams();
-      if (debouncedQuery) params.set("q", debouncedQuery);
-      if (selectedCategory && selectedCategory !== "All") params.set("category", selectedCategory);
-      params.set("sort", sort);
-      params.set("limit", String(LIMIT));
-      if (pageParam) params.set("cursor", String(pageParam));
+  const filteredPosts = React.useMemo(() => {
+    const filtered = posts.filter((p) => {
+      if (onlyRecipes && !p.isRecipe) return false;
+      if (selectedCuisines.length && !selectedCuisines.includes(p.cuisine)) return false;
+      if (selectedMealTypes.length && !selectedMealTypes.includes(p.mealType)) return false;
+      if (selectedDietary.length && !selectedDietary.every((d) => p.dietary.includes(d))) return false; // must include all selected dietaries
+      if (selectedDifficulty && p.difficulty !== selectedDifficulty) return false;
+      if (maxCookTime && p.cookTime > maxCookTime) return false;
+      if (minRating && p.rating < minRating) return false;
 
-      cuisines.forEach((c) => params.append("cuisine", c));
-      ethnicities.forEach((e) => params.append("ethnicity", e));
+      // NEW: Ethnicity — require at least one overlap
+      if (selectedEthnicities.length) {
+        const hasEthnicity = p.ethnicity?.some((e) => selectedEthnicities.includes(e));
+        if (!hasEthnicity) return false;
+      }
 
-      const dietsFinal = gfOnly ? Array.from(new Set([...diets, "Gluten-Free"])) : diets;
-      dietsFinal.forEach((d) => params.append("diet", d));
-      courses.forEach((c) => params.append("course", c));
-      difficulties.forEach((d) => params.append("difficulty", d));
-      allergens.forEach((a) => params.append("allergen", a));
+      // NEW: Exclude allergens — reject if any intersection
+      if (excludedAllergens.length) {
+        const hasExcluded = p.allergens?.some((a) => excludedAllergens.includes(a));
+        if (hasExcluded) return false;
+      }
 
-      params.set("prep_min", String(prepRange[0]));
-      params.set("prep_max", String(prepRange[1]));
-      params.set("cook_min", String(cookRange[0]));
-      params.set("cook_max", String(cookRange[1]));
-      if (maxCalories != null) params.set("max_calories", String(maxCalories));
+      return true;
+    });
 
-      includeIngr.forEach((i) => params.append("include", i));
-      excludeIngr.forEach((i) => params.append("exclude", i));
-
-      if (savedOnly) params.set("saved_only", "1");
-      if (verifiedChefs) params.set("verified_only", "1");
-      if (lfOnly) params.set("lactose_free_only", "1");
-
-      const res = await fetch(`/api/posts/explore?${params.toString()}`);
-      if (!res.ok) throw new Error(`Failed to load: ${res.status} ${res.statusText}`);
-      return res.json();
-    },
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    staleTime: 30_000,
-    keepPreviousData: true,
-  });
-
-  // flatten + guard
-  const allPosts = useMemo(
-    () => data?.pages?.flatMap((p) => (Array.isArray(p?.items) ? p.items : [])).filter(isPostLike) ?? [],
-    [data]
-  );
-  const total = data?.pages?.[0]?.total ?? allPosts.length;
-
-  // infinite scroll
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const node = sentinelRef.current;
-    if (!node) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage();
-      },
-      { rootMargin: "800px 0px 800px 0px" }
-    );
-    io.observe(node);
-    return () => io.disconnect();
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
-
-  // shortcuts
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "g") setViewMode("grid");
-      if (e.key === "l") setViewMode("list");
-      if (e.key === "f") setIsFilterOpen(true);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [setViewMode]);
-
-  const foundLabel =
-    isFetching && !allPosts.length ? "Loading…" : `${total} ${total === 1 ? "post" : "posts"} found`;
-
-  // reset (simple)
-  const resetAll = useCallback(() => {
-    setSelectedCategory(null);
-    setSearchTerm("");
-    setCuisines([]);
-    setEthnicities([]);
-    setDiets([]);
-    setCourses([]);
-    setDifficulties([]);
-    setAllergens([]);
-    setPrepRange([0, 60]);
-    setCookRange([0, 90]);
-    setMaxCalories(null);
-    setIncludeIngr([]);
-    setExcludeIngr([]);
-    setSavedOnly(false);
-    setVerifiedChefs(false);
-    setGfOnly(false);
-    setLfOnly(false);
-    setSort("trending");
-    setIsFilterOpen(false);
-    toast({ description: "Filters reset." });
+    switch (sortBy) {
+      case "rating":
+        return [...filtered].sort((a, b) => b.rating - a.rating);
+      case "likes":
+        return [...filtered].sort((a, b) => b.likes - a.likes);
+      default:
+        return [...filtered].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+    }
   }, [
-    toast,
-    setSelectedCategory,
-    setSearchTerm,
-    setCuisines,
-    setEthnicities,
-    setDiets,
-    setCourses,
-    setDifficulties,
-    setAllergens,
-    setPrepRange,
-    setCookRange,
-    setMaxCalories,
-    setIncludeIngr,
-    setExcludeIngr,
-    setSavedOnly,
-    setVerifiedChefs,
-    setGfOnly,
-    setLfOnly,
-    setSort,
+    posts,
+    onlyRecipes,
+    selectedCuisines,
+    selectedMealTypes,
+    selectedDietary,
+    selectedDifficulty,
+    maxCookTime,
+    minRating,
+    sortBy,
+    selectedEthnicities,     // NEW
+    excludedAllergens,       // NEW
   ]);
 
-  /* =========================
-     Render
-     ========================= */
-  if (isLoading && !data) {
-    return (
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        <Header
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          selectedCategory={selectedCategory}
-          setSelectedCategory={setSelectedCategory}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-          sort={sort}
-          setSort={setSort}
-          foundLabel="Loading…"
-          openFilters={() => setIsFilterOpen(true)}
-          diets={diets}
-          setDiets={setDiets}
-          CATEGORIES={CATEGORIES}
-          filterCount={filterCount}
-        />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-          {Array.from({ length: 9 }).map((_, i) => (
-            <Card key={i} className="animate-pulse overflow-hidden">
-              <div className="w-full aspect-[4/3] bg-muted" />
-              <CardContent className="p-4">
-                <div className="space-y-2">
-                  <div className="w-3/4 h-4 bg-muted rounded" />
-                  <div className="w-1/2 h-3 bg-muted rounded" />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="max-w-6xl mx-auto px-4 py-10 text-center">
-        <h2 className="text-2xl font-semibold mb-2">We burnt something 😢</h2>
-        <p className="text-muted-foreground mb-6">
-          {(error as Error)?.message || "Something went wrong loading Explore."}
-        </p>
-        <Button onClick={() => refetch()} size="sm">
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Try again
-        </Button>
-      </div>
-    );
+  function resetFilters() {
+    setSelectedCuisines([]);
+    setSelectedMealTypes([]);
+    setSelectedDietary([]);
+    setSelectedDifficulty("");
+    setMaxCookTime(60);
+    setMinRating(0);
+    setOnlyRecipes(false);
+    setSortBy("newest");
+    setSelectedEthnicities([]);  // NEW
+    setExcludedAllergens([]);    // NEW
+    // keep current viewMode
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
-      <Header
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-        selectedCategory={selectedCategory}
-        setSelectedCategory={setSelectedCategory}
-        viewMode={viewMode}
-        setViewMode={setViewMode}
-        sort={sort}
-        setSort={setSort}
-        foundLabel={foundLabel}
-        openFilters={() => setIsFilterOpen(true)}
-        diets={diets}
-        setDiets={setDiets}
-        CATEGORIES={CATEGORIES}
-        filterCount={filterCount}
+    <div className="mx-auto max-w-6xl md:grid md:grid-cols-[18rem_1fr] gap-6 px-4 md:px-6">
+      {/* Desktop sidebar (no dropdowns, scrollable) */}
+      <DesktopFiltersSidebar
+        selectedCuisines={selectedCuisines}
+        setSelectedCuisines={setSelectedCuisines}
+        selectedMealTypes={selectedMealTypes}
+        setSelectedMealTypes={setSelectedMealTypes}
+        selectedDietary={selectedDietary}
+        setSelectedDietary={setSelectedDietary}
+        selectedDifficulty={selectedDifficulty}
+        setSelectedDifficulty={setSelectedDifficulty}
+        maxCookTime={maxCookTime}
+        setMaxCookTime={setMaxCookTime}
+        minRating={minRating}
+        setMinRating={setMinRating}
+        onlyRecipes={onlyRecipes}
+        setOnlyRecipes={setOnlyRecipes}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
+        // NEW
+        selectedEthnicities={selectedEthnicities}
+        setSelectedEthnicities={setSelectedEthnicities}
+        excludedAllergens={excludedAllergens}
+        setExcludedAllergens={setExcludedAllergens}
+        onReset={resetFilters}
       />
 
-      {/* Posts */}
-      {allPosts.length > 0 ? (
-        viewMode === "grid" ? (
-          <div
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4"
-            data-testid="grid-explore"
-          >
-            {allPosts.map((post, i) => (
-              <Card
-                key={post.id ?? `post-${i}`}
-                className="group cursor-pointer hover:shadow-lg transition-shadow overflow-hidden"
-              >
-                <div className="relative overflow-hidden">
-                  <div className="w-full aspect-[4/3] bg-muted">
-                    <img
-                      src={getPostImageUrl(post)}
-                      onError={onImgError}
-                      alt={post?.caption || "Post image"}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      loading="lazy"
-                      decoding="async"
-                      data-testid={`img-explore-post-${post.id ?? i}`}
-                    />
-                  </div>
-                  {post?.isRecipe && (
-                    <Badge className="absolute top-2 right-2 bg-accent text-accent-foreground">
-                      Recipe
-                    </Badge>
-                  )}
-                </div>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <img
-                      src={(post?.user?.avatar && String(post.user.avatar)) || PLACEHOLDER_IMG}
-                      onError={onImgError}
-                      alt={post?.user?.displayName || "Creator"}
-                      className="w-6 h-6 rounded-full bg-muted"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                    <span className="text-sm font-medium">
-                      {post?.user?.displayName || "Unknown Chef"}
-                    </span>
-                  </div>
-                  <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
-                    {post?.caption || "—"}
-                  </p>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span aria-label={`${post?.likesCount ?? 0} likes`}>♥ {post?.likesCount ?? 0}</span>
-                    <span aria-label={`${post?.commentsCount ?? 0} comments`}>
-                      💬 {post?.commentsCount ?? 0}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
+      {/* Main content */}
+      <main className="min-w-0">
+        {/* Mobile controls row (kept simple; no duplicates inside the sheet) */}
+        <div className="md:hidden mb-3 flex items-center justify-between gap-2">
+          <MobileFiltersSheet
+            selectedCuisines={selectedCuisines}
+            setSelectedCuisines={setSelectedCuisines}
+            selectedMealTypes={selectedMealTypes}
+            setSelectedMealTypes={setSelectedMealTypes}
+            selectedDietary={selectedDietary}
+            setSelectedDietary={setSelectedDietary}
+            selectedDifficulty={selectedDifficulty}
+            setSelectedDifficulty={setSelectedDifficulty}
+            maxCookTime={maxCookTime}
+            setMaxCookTime={setMaxCookTime}
+            minRating={minRating}
+            setMinRating={setMinRating}
+            onlyRecipes={onlyRecipes}
+            setOnlyRecipes={setOnlyRecipes}
+            sortBy={sortBy}
+            setSortBy={setSortBy}
+            // NEW
+            selectedEthnicities={selectedEthnicities}
+            setSelectedEthnicities={setSelectedEthnicities}
+            excludedAllergens={excludedAllergens}
+            setExcludedAllergens={setExcludedAllergens}
+            onReset={resetFilters}
+          />
+          <div className="flex gap-2">
+            <Button
+              variant={viewMode === "grid" ? "default" : "outline"}
+              onClick={() => setViewMode("grid")}
+              className="gap-2"
+            >
+              <LayoutGrid className="h-4 w-4" />
+              Grid
+            </Button>
+            <Button
+              variant={viewMode === "list" ? "default" : "outline"}
+              onClick={() => setViewMode("list")}
+              className="gap-2"
+            >
+              <List className="h-4 w-4" />
+              List
+            </Button>
+          </div>
+        </div>
+
+        {/* Active filter count (mobile + desktop) */}
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant="outline">Cuisines: {selectedCuisines.length}</Badge>
+          <Badge variant="outline">Meal Types: {selectedMealTypes.length}</Badge>
+          <Badge variant="outline">Dietary: {selectedDietary.length}</Badge>
+          <Badge variant="outline">Ethnicity: {selectedEthnicities.length}</Badge> {/* NEW */}
+          <Badge variant="outline">No {excludedAllergens.length ? excludedAllergens.join(", ") : "—"}</Badge> {/* NEW */}
+          {selectedDifficulty && <Badge variant="outline">Difficulty: {selectedDifficulty}</Badge>}
+          {onlyRecipes && <Badge variant="outline">Recipe-only</Badge>}
+          <Badge variant="outline">≤ {maxCookTime} min</Badge>
+          <Badge variant="outline">★ {minRating}+</Badge>
+          <Badge variant="outline">Sort: {sortBy}</Badge>
+          {(selectedCuisines.length ||
+            selectedMealTypes.length ||
+            selectedDietary.length ||
+            selectedEthnicities.length ||            // NEW
+            excludedAllergens.length ||              // NEW
+            selectedDifficulty ||
+            onlyRecipes ||
+            minRating ||
+            maxCookTime !== 60 ||
+            sortBy !== "newest") && (
+            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={resetFilters}>
+              Reset
+            </Button>
+          )}
+        </div>
+
+        {/* Results */}
+        {filteredPosts.length === 0 ? (
+          <EmptyState onReset={resetFilters} />
+        ) : viewMode === "grid" ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {filteredPosts.map((p) => (
+              <GridCard key={p.id} post={p} />
             ))}
           </div>
         ) : (
-          <div className="space-y-8 mt-4" data-testid="list-explore">
-            {allPosts.map((post, i) =>
-              post?.isRecipe
-                ? post && <RecipeCard key={post.id ?? `r-${i}`} post={post} />
-                : post && <PostCard key={post.id ?? `p-${i}`} post={post} />
-            )}
+          <div className="space-y-3">
+            {filteredPosts.map((p) => (
+              <ListRow key={p.id} post={p} />
+            ))}
           </div>
-        )
-      ) : (
-        <EmptyState onClear={resetAll} query={debouncedQuery} category={selectedCategory} />
-      )}
-
-      {/* Infinite load */}
-      {allPosts.length > 0 && (
-        <div className="flex items-center justify-center mt-8">
-          {hasNextPage ? (
-            <>
-              <div ref={sentinelRef} />
-              <Button
-                onClick={() => fetchNextPage()}
-                disabled={isFetchingNextPage}
-                variant="outline"
-                size="sm"
-                className="mx-auto"
-              >
-                {isFetchingNextPage ? "Loading…" : "Load more"}
-              </Button>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">You’ve reached the end. 🍽️</p>
-          )}
-        </div>
-      )}
-
-      {/* Filters Sheet */}
-      <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
-          <SheetHeader className="mb-4">
-            <SheetTitle>Filters {filterCount > 0 ? `(${filterCount} active)` : ""}</SheetTitle>
-          </SheetHeader>
-
-          <div className="grid gap-6">
-            {/* Cuisine */}
-            <div className="space-y-2">
-              <Label>Cuisine</Label>
-              <MultiSelectCombobox
-                options={CUISINES}
-                value={cuisines}
-                onChange={setCuisines}
-                buttonLabel="Select cuisines"
-                placeholder="Search cuisines…"
-                className="w-full"
-              />
-            </div>
-
-            {/* Ethnicity / Cultural Origin */}
-            <div className="space-y-2">
-              <Label>Ethnicity / Cultural Origin</Label>
-              <MultiSelectCombobox
-                options={ETHNICITIES}
-                value={ethnicities}
-                onChange={setEthnicities}
-                buttonLabel="Select ethnicities"
-                placeholder="Search origins…"
-                className="w-full"
-              />
-            </div>
-
-            {/* Diet */}
-            <div className="space-y-2">
-              <Label>Diet</Label>
-              <MultiSelectCombobox
-                options={DIETS}
-                value={diets}
-                onChange={setDiets}
-                buttonLabel="Select diets"
-                placeholder="Search diets…"
-                className="w-full"
-              />
-            </div>
-
-            {/* Course */}
-            <div className="space-y-2">
-              <Label>Course</Label>
-              <MultiSelectCombobox
-                options={COURSES}
-                value={courses}
-                onChange={setCourses}
-                buttonLabel="Select courses"
-                placeholder="Search courses…"
-                className="w-full"
-              />
-            </div>
-
-            {/* Difficulty */}
-            <div className="space-y-2">
-              <Label>Difficulty</Label>
-              <MultiSelectCombobox
-                options={DIFFICULTIES}
-                value={difficulties}
-                onChange={setDifficulties}
-                buttonLabel="Select difficulty"
-                placeholder="Filter difficulty…"
-                className="w-full"
-              />
-            </div>
-
-            {/* Allergens (exclude) */}
-            <div className="space-y-2">
-              <Label>Exclude Allergens</Label>
-              <MultiSelectCombobox
-                options={ALLERGENS}
-                value={allergens}
-                onChange={setAllergens}
-                buttonLabel="Select allergens"
-                placeholder="Select allergens…"
-                className="w-full"
-              />
-            </div>
-
-            {/* Time & Calories */}
-            <RangeRow label="Prep time (min)" value={prepRange} onChange={setPrepRange} max={120} />
-            <RangeRow label="Cook time (min)" value={cookRange} onChange={setCookRange} max={240} />
-            <div className="space-y-2">
-              <Label>Max Calories (per serving)</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  placeholder="e.g., 500"
-                  value={maxCalories ?? ""}
-                  onChange={(e) =>
-                    setMaxCalories(e.target.value === "" ? null : Math.max(0, Number(e.target.value)))
-                  }
-                  className="w-32"
-                />
-                <Button variant="ghost" size="sm" onClick={() => setMaxCalories(null)} aria-label="Clear calories">
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Ingredients */}
-            <TagInput
-              label="Include Ingredients"
-              value={includeIngr}
-              onChange={setIncludeIngr}
-              placeholder="e.g., chicken, basil…"
-            />
-            <TagInput
-              label="Exclude Ingredients"
-              value={excludeIngr}
-              onChange={setExcludeIngr}
-              placeholder="e.g., peanuts, cilantro…"
-            />
-
-            {/* Toggles */}
-            <ToggleRow label="Gluten-Free Only" checked={gfOnly} onCheckedChange={setGfOnly} />
-            <ToggleRow label="Lactose-Free Only" checked={lfOnly} onCheckedChange={setLfOnly} />
-            <ToggleRow
-              label="Saved Only"
-              hint="Show recipes you’ve saved"
-              checked={savedOnly}
-              onCheckedChange={setSavedOnly}
-            />
-            <ToggleRow
-              label="Verified Chefs Only"
-              hint="Creators with verified badge"
-              checked={verifiedChefs}
-              onCheckedChange={setVerifiedChefs}
-            />
-
-            {/* Sort */}
-            <div className="space-y-2">
-              <Label>Sort</Label>
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortMode)}
-                className="h-9 rounded-md border bg-background px-2 text-sm w-full"
-              >
-                <option value="trending">Trending</option>
-                <option value="newest">Newest</option>
-                <option value="most_liked">Most Liked</option>
-              </select>
-            </div>
-          </div>
-
-          <SheetFooter className="mt-6">
-            <div className="flex w-full items-center justify-between gap-2">
-              <Button variant="ghost" onClick={resetAll}>Reset All</Button>
-              <Button onClick={() => setIsFilterOpen(false)}>Apply Filters</Button>
-            </div>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+        )}
+      </main>
     </div>
   );
 }
 
-/* =========================
-   Sub-components
-   ========================= */
-function Header({
-  searchTerm,
-  setSearchTerm,
-  selectedCategory,
-  setSelectedCategory,
-  viewMode,
-  setViewMode,
-  sort,
-  setSort,
-  foundLabel,
-  openFilters,
-  diets,
-  setDiets,
-  CATEGORIES,
-  filterCount,
-}: {
-  searchTerm: string;
-  setSearchTerm: (value: string) => void;
-  selectedCategory: string | null;
-  setSelectedCategory: (value: string | null) => void;
-  viewMode: "grid" | "list";
-  setViewMode: (value: "grid" | "list") => void;
-  sort: string;
-  setSort: (value: string) => void;
-  foundLabel: string;
-  openFilters: () => void;
-  diets: string[];
-  setDiets: (value: string[]) => void;
-  CATEGORIES: readonly string[];
-  filterCount: number;
+/** -------------------------------
+ * Desktop sidebar (sticky, scrollable)
+ * -------------------------------- */
+function DesktopFiltersSidebar(props: {
+  selectedCuisines: string[];
+  setSelectedCuisines: (v: string[]) => void;
+  selectedMealTypes: MealType[];
+  setSelectedMealTypes: (v: MealType[]) => void;
+  selectedDietary: Dietary[];
+  setSelectedDietary: (v: Dietary[]) => void;
+  selectedDifficulty: Difficulty | "";
+  setSelectedDifficulty: (v: Difficulty | "") => void;
+  maxCookTime: number;
+  setMaxCookTime: (v: number) => void;
+  minRating: number;
+  setMinRating: (v: number) => void;
+  onlyRecipes: boolean;
+  setOnlyRecipes: (v: boolean) => void;
+  sortBy: "newest" | "rating" | "likes";
+  setSortBy: (v: "newest" | "rating" | "likes") => void;
+  // NEW:
+  selectedEthnicities: string[];
+  setSelectedEthnicities: (v: string[]) => void;
+  excludedAllergens: string[];
+  setExcludedAllergens: (v: string[]) => void;
+  onReset: () => void;
 }) {
+  const {
+    selectedCuisines,
+    setSelectedCuisines,
+    selectedMealTypes,
+    setSelectedMealTypes,
+    selectedDietary,
+    setSelectedDietary,
+    selectedDifficulty,
+    setSelectedDifficulty,
+    maxCookTime,
+    setMaxCookTime,
+    minRating,
+    setMinRating,
+    onlyRecipes,
+    setOnlyRecipes,
+    sortBy,
+    setSortBy,
+    // NEW
+    selectedEthnicities,
+    setSelectedEthnicities,
+    excludedAllergens,
+    setExcludedAllergens,
+    onReset,
+  } = props;
+
+  const toggleFromArray = <T extends string>(arr: T[], setArr: (v: T[]) => void, value: T) => {
+    setArr(arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value]);
+  };
+
   return (
-    <div className="mb-4 sticky top-0 z-10 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70 py-4">
-      <h1 className="text-3xl font-bold mb-4">Explore</h1>
+    <aside className="hidden md:block w-72 shrink-0">
+      <div className="sticky top-20 space-y-5">
+        {/* Cuisines */}
+        <FilterSection title="Cuisines">
+          <div
+            className="grid grid-cols-1 gap-2 max-h-[28rem] overflow-y-auto pr-1"
+            style={{ WebkitOverflowScrolling: "touch" as any }}
+          >
+            {CUISINES.map((c) => (
+              <label key={c} className="flex items-center gap-2">
+                <Checkbox
+                  checked={selectedCuisines.includes(c)}
+                  onCheckedChange={() =>
+                    toggleFromArray(selectedCuisines, setSelectedCuisines, c)
+                  }
+                />
+                <span className="text-sm">{c}</span>
+              </label>
+            ))}
+          </div>
+        </FilterSection>
 
-      {/* Search */}
-      <div className="relative mb-3">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4 pointer-events-none" />
-        <Input
-          type="text"
-          placeholder="Search recipes, chefs, or ingredients…"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10 max-w-xl"
-          aria-label="Search explore"
-        />
-      </div>
+        {/* NEW: Ethnicity / Cultural Origin */}
+        <FilterSection title="Ethnicity / Cultural Origin">
+          <div
+            className="grid grid-cols-1 gap-2 max-h-[16rem] overflow-y-auto pr-1"
+            style={{ WebkitOverflowScrolling: "touch" as any }}
+          >
+            {ETHNICITIES.map((e) => (
+              <label key={e} className="flex items-center gap-2">
+                <Checkbox
+                  checked={selectedEthnicities.includes(e)}
+                  onCheckedChange={() => toggleFromArray(selectedEthnicities, setSelectedEthnicities, e)}
+                />
+                <span className="text-sm">{e}</span>
+              </label>
+            ))}
+          </div>
+        </FilterSection>
 
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        {/* Category pills */}
-        <div className="flex gap-2 overflow-x-auto no-scrollbar py-1 touch-pan-x edge-fade-x">
-          {CATEGORIES.map((category) => {
-            const active = selectedCategory === category || (!selectedCategory && category === "All");
-            return (
-              <Badge
-                key={category}
-                variant={active ? "default" : "outline"}
-                className="cursor-pointer shrink-0"
-                onClick={() =>
-                  setSelectedCategory(active && category !== "All" ? null : category)
-                }
-                aria-pressed={active}
-                data-testid={`category-filter-${category.toLowerCase()}`}
-              >
-                {category}
-              </Badge>
-            );
-          })}
-        </div>
+        {/* Meal type */}
+        <FilterSection title="Meal Type">
+          <div className="grid grid-cols-2 gap-2">
+            {MEAL_TYPES.map((m) => (
+              <label key={m} className="flex items-center gap-2">
+                <Checkbox
+                  checked={selectedMealTypes.includes(m)}
+                  onCheckedChange={() => toggleFromArray(selectedMealTypes, setSelectedMealTypes, m)}
+                />
+                <span className="text-sm">{m}</span>
+              </label>
+            ))}
+          </div>
+        </FilterSection>
 
-        {/* Popular diet chips */}
-        <div className="flex gap-2 overflow-x-auto no-scrollbar py-1 touch-pan-x edge-fade-x">
-          {POPULAR_DIET_CHIPS.map((d) => {
-            const active = diets.includes(d);
-            return (
-              <Badge
+        {/* Dietary */}
+        <FilterSection title="Dietary">
+          <div className="grid grid-cols-2 gap-2">
+            {DIETARY.map((d) => (
+              <label key={d} className="flex items-center gap-2">
+                <Checkbox
+                  checked={selectedDietary.includes(d)}
+                  onCheckedChange={() => toggleFromArray(selectedDietary, setSelectedDietary, d)}
+                />
+                <span className="text-sm">{d}</span>
+              </label>
+            ))}
+          </div>
+        </FilterSection>
+
+        {/* NEW: Exclude Allergens */}
+        <FilterSection title="Exclude Allergens">
+          <div className="grid grid-cols-2 gap-2">
+            {ALLERGENS.map((a) => (
+              <label key={a} className="flex items-center gap-2">
+                <Checkbox
+                  checked={excludedAllergens.includes(a)}
+                  onCheckedChange={() => toggleFromArray(excludedAllergens, setExcludedAllergens, a)}
+                />
+                <span className="text-sm">{a}</span>
+              </label>
+            ))}
+          </div>
+        </FilterSection>
+
+        {/* Difficulty */}
+        <FilterSection title="Difficulty">
+          <div className="flex flex-wrap gap-2">
+            {DIFFICULTY.map((d) => (
+              <Button
                 key={d}
-                variant={active ? "default" : "outline"}
-                className="cursor-pointer shrink-0"
-                onClick={() =>
-                  active ? setDiets(diets.filter((x) => x !== d)) : setDiets([...diets, d])
-                }
-                aria-pressed={active}
-                title={`Diet: ${d}`}
-                data-testid={`diet-chip-${d.toLowerCase()}`}
+                size="sm"
+                variant={selectedDifficulty === d ? "default" : "outline"}
+                onClick={() => setSelectedDifficulty(selectedDifficulty === d ? "" : d)}
               >
                 {d}
-              </Badge>
-            );
-          })}
-        </div>
+              </Button>
+            ))}
+          </div>
+        </FilterSection>
 
-        {/* Actions */}
-        <div className="flex items-center gap-2 md:ml-auto">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={openFilters}
-            aria-label={`Open filters (${filterCount} active)`}
-          >
-            <SlidersHorizontal className="h-4 w-4 mr-2" />
-            Filters {filterCount > 0 && `(${filterCount})`}
-          </Button>
-          <Button
-            variant={viewMode === "grid" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setViewMode("grid")}
-            aria-pressed={viewMode === "grid"}
-            aria-label="Grid view (g)"
-            title="Grid view (g)"
-            data-testid="button-grid-view"
-          >
-            <Grid className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={viewMode === "list" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setViewMode("list")}
-            aria-pressed={viewMode === "list"}
-            aria-label="List view (l)"
-            title="List view (l)"
-            data-testid="button-list-view"
-          >
-            <List className="h-4 w-4" />
+        {/* Max cook time */}
+        <FilterSection title={`Max Cook Time: ${maxCookTime} min`}>
+          <Slider
+            value={[maxCookTime]}
+            min={5}
+            max={240}
+            step={5}
+            onValueChange={(v) => setMaxCookTime(v[0] ?? 60)}
+          />
+        </FilterSection>
+
+        {/* Min rating */}
+        <FilterSection title={`Min Rating: ${minRating || 0}★`}>
+          <StarSelect value={minRating} onChange={setMinRating} />
+        </FilterSection>
+
+        {/* Flags & sort */}
+        <FilterSection title="More">
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={onlyRecipes}
+              onCheckedChange={(v) => setOnlyRecipes(Boolean(v))}
+            />
+            <span className="text-sm">Show recipe posts only</span>
+          </label>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {(["newest", "rating", "likes"] as const).map((s) => (
+              <Button
+                key={s}
+                size="sm"
+                variant={sortBy === s ? "default" : "outline"}
+                onClick={() => setSortBy(s)}
+              >
+                {s === "newest" ? "Newest" : s === "rating" ? "Top Rated" : "Most Liked"}
+              </Button>
+            ))}
+          </div>
+        </FilterSection>
+
+        <div className="pt-2">
+          <Button variant="secondary" onClick={onReset} className="w-full">
+            Reset filters
           </Button>
         </div>
       </div>
+    </aside>
+  );
+}
 
-      <div className="flex items-center justify-between mt-3">
-        <p className="text-sm text-muted-foreground">{foundLabel}</p>
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value)}
-          className="h-9 rounded-md border bg-background px-2 text-sm"
-          aria-label="Sort posts"
+/** -------------------------------
+ * Mobile sheet (scrollable, one X, no duplicate grid/list)
+ * -------------------------------- */
+function MobileFiltersSheet(props: {
+  selectedCuisines: string[];
+  setSelectedCuisines: (v: string[]) => void;
+  selectedMealTypes: MealType[];
+  setSelectedMealTypes: (v: MealType[]) => void;
+  selectedDietary: Dietary[];
+  setSelectedDietary: (v: Dietary[]) => void;
+  selectedDifficulty: Difficulty | "";
+  setSelectedDifficulty: (v: Difficulty | "") => void;
+  maxCookTime: number;
+  setMaxCookTime: (v: number) => void;
+  minRating: number;
+  setMinRating: (v: number) => void;
+  onlyRecipes: boolean;
+  setOnlyRecipes: (v: boolean) => void;
+  sortBy: "newest" | "rating" | "likes";
+  setSortBy: (v: "newest" | "rating" | "likes") => void;
+  // NEW:
+  selectedEthnicities: string[];
+  setSelectedEthnicities: (v: string[]) => void;
+  excludedAllergens: string[];
+  setExcludedAllergens: (v: string[]) => void;
+  onReset: () => void;
+}) {
+  const {
+    selectedCuisines,
+    setSelectedCuisines,
+    selectedMealTypes,
+    setSelectedMealTypes,
+    selectedDietary,
+    setSelectedDietary,
+    selectedDifficulty,
+    setSelectedDifficulty,
+    maxCookTime,
+    setMaxCookTime,
+    minRating,
+    setMinRating,
+    onlyRecipes,
+    setOnlyRecipes,
+    sortBy,
+    setSortBy,
+    // NEW
+    selectedEthnicities,
+    setSelectedEthnicities,
+    excludedAllergens,
+    setExcludedAllergens,
+    onReset,
+  } = props;
+
+  const [open, setOpen] = React.useState(false);
+
+  const toggleFromArray = <T extends string>(arr: T[], setArr: (v: T[]) => void, value: T) => {
+    setArr(arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value]);
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button variant="outline" className="gap-2">
+          <Filter className="h-4 w-4" />
+          Filters
+          {(selectedCuisines.length +
+            selectedMealTypes.length +
+            selectedDietary.length +
+            selectedEthnicities.length +   // NEW
+            excludedAllergens.length +     // NEW
+            (selectedDifficulty ? 1 : 0) +
+            (onlyRecipes ? 1 : 0) +
+            (minRating ? 1 : 0) +
+            (maxCookTime !== 60 ? 1 : 0) +
+            (sortBy !== "newest" ? 1 : 0)) > 0 && (
+            <Badge variant="secondary" className="ml-2">
+              {[
+                selectedCuisines.length > 0,
+                selectedMealTypes.length > 0,
+                selectedDietary.length > 0,
+                selectedEthnicities.length > 0, // NEW
+                excludedAllergens.length > 0,   // NEW
+                Boolean(selectedDifficulty),
+                onlyRecipes,
+                Boolean(minRating),
+                maxCookTime !== 60,
+                sortBy !== "newest",
+              ].filter(Boolean).length}
+            </Badge>
+          )}
+        </Button>
+      </SheetTrigger>
+
+      <SheetContent side="bottom" className="h-[88dvh] p-0">
+        {/* ONE close button */}
+        <SheetHeader className="p-4 border-b">
+          <div className="flex items-center justify-between">
+            <SheetTitle>Filters</SheetTitle>
+            <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close">
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+        </SheetHeader>
+
+        {/* Scrollable body */}
+        <div
+          className="
+            overflow-y-auto
+            max-h-[calc(88dvh-56px-72px)]
+            p-4
+            touch-pan-y
+            overscroll-contain
+            space-y-6
+          "
+          style={{ WebkitOverflowScrolling: "touch" as any }}
         >
-          <option value="trending">Trending</option>
-          <option value="newest">Newest</option>
-          <option value="most_liked">Most Liked</option>
-        </select>
-      </div>
+          <FilterSection title="Cuisines">
+            <div className="grid grid-cols-2 gap-2">
+              {CUISINES.map((c) => (
+                <label key={c} className="flex items-center gap-2 rounded-md border p-2">
+                  <Checkbox
+                    checked={selectedCuisines.includes(c)}
+                    onCheckedChange={() => toggleFromArray(selectedCuisines, setSelectedCuisines, c)}
+                  />
+                  <span className="text-sm">{c}</span>
+                </label>
+              ))}
+            </div>
+          </FilterSection>
+
+          {/* NEW: Ethnicity / Cultural Origin */}
+          <FilterSection title="Ethnicity / Cultural Origin">
+            <div className="grid grid-cols-2 gap-2">
+              {ETHNICITIES.map((e) => (
+                <label key={e} className="flex items-center gap-2 rounded-md border p-2">
+                  <Checkbox
+                    checked={selectedEthnicities.includes(e)}
+                    onCheckedChange={() =>
+                      toggleFromArray(selectedEthnicities, setSelectedEthnicities, e)
+                    }
+                  />
+                  <span className="text-sm">{e}</span>
+                </label>
+              ))}
+            </div>
+          </FilterSection>
+
+          <FilterSection title="Meal Type">
+            <div className="grid grid-cols-2 gap-2">
+              {MEAL_TYPES.map((m) => (
+                <label key={m} className="flex items-center gap-2 rounded-md border p-2">
+                  <Checkbox
+                    checked={selectedMealTypes.includes(m)}
+                    onCheckedChange={() => toggleFromArray(selectedMealTypes, setSelectedMealTypes, m)}
+                  />
+                  <span className="text-sm">{m}</span>
+                </label>
+              ))}
+            </div>
+          </FilterSection>
+
+          <FilterSection title="Dietary">
+            <div className="grid grid-cols-2 gap-2">
+              {DIETARY.map((d) => (
+                <label key={d} className="flex items-center gap-2 rounded-md border p-2">
+                  <Checkbox
+                    checked={selectedDietary.includes(d)}
+                    onCheckedChange={() => toggleFromArray(selectedDietary, setSelectedDietary, d)}
+                  />
+                  <span className="text-sm">{d}</span>
+                </label>
+              ))}
+            </div>
+          </FilterSection>
+
+          {/* NEW: Exclude Allergens */}
+          <FilterSection title="Exclude Allergens">
+            <div className="grid grid-cols-2 gap-2">
+              {ALLERGENS.map((a) => (
+                <label key={a} className="flex items-center gap-2 rounded-md border p-2">
+                  <Checkbox
+                    checked={excludedAllergens.includes(a)}
+                    onCheckedChange={() => toggleFromArray(excludedAllergens, setExcludedAllergens, a)}
+                  />
+                  <span className="text-sm">{a}</span>
+                </label>
+              ))}
+            </div>
+          </FilterSection>
+
+          <FilterSection title="Difficulty">
+            <div className="flex flex-wrap gap-2">
+              {DIFFICULTY.map((d) => (
+                <Button
+                  key={d}
+                  size="sm"
+                  variant={selectedDifficulty === d ? "default" : "outline"}
+                  onClick={() => setSelectedDifficulty(selectedDifficulty === d ? "" : d)}
+                >
+                  {d}
+                </Button>
+              ))}
+            </div>
+          </FilterSection>
+
+          <FilterSection title={`Max Cook Time: ${maxCookTime} min`}>
+            <Slider
+              value={[maxCookTime]}
+              min={5}
+              max={240}
+              step={5}
+              onValueChange={(v) => setMaxCookTime(v[0] ?? 60)}
+            />
+          </FilterSection>
+
+          <FilterSection title={`Min Rating: ${minRating || 0}★`}>
+            <StarSelect value={minRating} onChange={setMinRating} />
+          </FilterSection>
+
+          <FilterSection title="More">
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={onlyRecipes}
+                onCheckedChange={(v) => setOnlyRecipes(Boolean(v))}
+              />
+              <span className="text-sm">Show recipe posts only</span>
+            </label>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(["newest", "rating", "likes"] as const).map((s) => (
+                <Button
+                  key={s}
+                  size="sm"
+                  variant={sortBy === s ? "default" : "outline"}
+                  onClick={() => setSortBy(s)}
+                >
+                  {s === "newest" ? "Newest" : s === "rating" ? "Top Rated" : "Most Liked"}
+                </Button>
+              ))}
+            </div>
+          </FilterSection>
+        </div>
+
+        {/* Sticky footer — no grid/list, just Reset & Apply */}
+        <div className="sticky bottom-0 border-t bg-background p-4">
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onReset} className="flex-1">
+              Reset
+            </Button>
+            <SheetClose asChild>
+              <Button className="flex-1">Apply</Button>
+            </SheetClose>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/** -------------------------------
+ * Little utilities
+ * -------------------------------- */
+function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h4 className="mb-2 text-sm font-medium">{title}</h4>
+      {children}
+    </section>
+  );
+}
+
+function StarSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          className="p-1"
+          aria-label={`${n} stars & up`}
+          onClick={() => onChange(n === value ? 0 : n)}
+        >
+          <Star className={`h-5 w-5 ${value >= n ? "" : "opacity-30"}`} />
+        </button>
+      ))}
+      <Button size="sm" variant="ghost" className="ml-1 h-7 px-2" onClick={() => onChange(0)}>
+        Clear
+      </Button>
     </div>
   );
 }
 
-function RangeRow({
-  label,
-  value,
-  onChange,
-  max,
-}: {
-  label: string;
-  value: [number, number];
-  onChange: (v: [number, number]) => void;
-  max: number;
-}) {
+/** -------------------------------
+ * Cards & empty state
+ * -------------------------------- */
+function GridCard({ post }: { post: Post }) {
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <Label>{label}</Label>
-        <span className="text-sm">
-          {value[0]}–{value[1]} min
-        </span>
+    <article className="overflow-hidden rounded-lg border bg-card">
+      <div className="aspect-square overflow-hidden">
+        <img
+          src={post.image}
+          alt={post.title}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
       </div>
-      <Slider
-        value={value}
-        min={0}
-        max={max}
-        step={5}
-        onValueChange={(v) => onChange([v[0] ?? value[0], v[1] ?? value[1]])}
-        className="w-full"
-      />
-    </div>
+      <div className="p-3">
+        <h3 className="line-clamp-1 text-sm font-semibold">{post.title}</h3>
+        <div className="mt-1 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">{post.author}</span>
+          <Badge variant="outline" className="text-xs">
+            {post.cuisine}
+          </Badge>
+        </div>
+        <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+          <span>★ {post.rating.toFixed(1)}</span>
+          <span>{post.cookTime} min</span>
+        </div>
+        {post.isRecipe && (
+          <span className="mt-2 inline-block text-[10px] uppercase tracking-wide text-emerald-600">
+            Recipe
+          </span>
+        )}
+      </div>
+    </article>
   );
 }
 
-function ToggleRow({
-  label,
-  hint,
-  checked,
-  onCheckedChange,
-}: {
-  label: string;
-  hint?: string;
-  checked: boolean;
-  onCheckedChange: (v: boolean) => void;
-}) {
+function ListRow({ post }: { post: Post }) {
   return (
-    <div className="flex items-center justify-between py-2">
-      <div>
-        <Label className="text-sm">{label}</Label>
-        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    <article className="flex gap-3 rounded-lg border bg-card p-2">
+      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-md">
+        <img
+          src={post.image}
+          alt={post.title}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
       </div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={label} />
-    </div>
+      <div className="min-w-0 flex-1">
+        <h3 className="line-clamp-1 text-sm font-semibold">{post.title}</h3>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>by {post.author}</span>
+          <span>• {post.cuisine}</span>
+          <span>• {post.mealType}</span>
+          {post.dietary.length > 0 && <span>• {post.dietary.join(", ")}</span>}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <span>★ {post.rating.toFixed(1)}</span>
+          <span>{post.cookTime} min</span>
+          <span>{post.difficulty}</span>
+          {post.isRecipe && <span className="text-emerald-600">Recipe</span>}
+        </div>
+      </div>
+    </article>
   );
 }
 
-function EmptyState({
-  onClear,
-  query,
-  category,
-}: {
-  onClear: () => void;
-  query: string;
-  category: string | null;
-}) {
+function EmptyState({ onReset }: { onReset: () => void }) {
   return (
-    <div className="text-center py-16">
-      <h3 className="text-lg font-semibold mb-2">No posts found</h3>
-      <p className="text-muted-foreground max-w-md mx-auto">
-        {query || (category && category !== "All")
-          ? "Try adjusting your search terms or filters."
-          : "Looks quiet here. Try searching for 'pasta', 'chicken', or 'vegan'."}
-      </p>
-      <Button onClick={onClear} className="mt-4" size="sm">
-        Reset Filters
+    <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
+      <p className="text-sm text-muted-foreground">No posts match these filters.</p>
+      <Button className="mt-3" variant="secondary" onClick={onReset}>
+        Reset filters
       </Button>
     </div>
   );
