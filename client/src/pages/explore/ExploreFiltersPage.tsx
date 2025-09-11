@@ -1,25 +1,28 @@
 import * as React from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { X } from "lucide-react";
 import { useExploreFilters, Difficulty, MealType } from "./useExploreFilters";
 import {
-  FilterSection, SpoonSelect, SearchableGroup,
-  CUISINES, DIETARY, ALLERGENS, ETHNICITY_GROUPS,
+  FilterSection,
+  SpoonSelect,
+  SearchableGroup,
+  CUISINES,
+  DIETARY,
+  ALLERGENS,
+  ETHNICITY_GROUPS,
 } from "./ExploreShared";
 
 const MEAL_TYPES: MealType[] = ["Breakfast", "Lunch", "Dinner", "Snack", "Dessert"];
 const DIFFICULTY: Difficulty[] = ["Easy", "Medium", "Hard"];
 
 export default function ExploreFiltersPage() {
-  const nav = useNavigate();
+  const [, setLocation] = useLocation();
   const {
-    // view flags are irrelevant here
     onlyRecipes, setOnlyRecipes,
     sortBy, setSortBy,
-    // filters
     selectedCuisines, setSelectedCuisines,
     selectedMealTypes, setSelectedMealTypes,
     selectedDietary, setSelectedDietary,
@@ -48,7 +51,7 @@ export default function ExploreFiltersPage() {
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Filters</h1>
-        <Button variant="ghost" size="icon" onClick={() => nav(-1)} aria-label="Close">
+        <Button variant="ghost" size="icon" onClick={() => setLocation("/explore")} aria-label="Close">
           <X className="h-5 w-5" />
         </Button>
       </div>
@@ -70,7 +73,7 @@ export default function ExploreFiltersPage() {
           </div>
         </FilterSection>
 
-        {/* Ethnicity / Cultural Origin (grouped + searchable) */}
+        {/* Ethnicity / Cultural Origin (grouped + searchable, bold region headers) */}
         <FilterSection title="Ethnicity / Cultural Origin">
           <div className="space-y-6">
             {ETHNICITY_GROUPS.map((group) => (
@@ -159,7 +162,7 @@ export default function ExploreFiltersPage() {
         {/* Difficulty */}
         <FilterSection title="Difficulty">
           <div className="flex flex-wrap gap-2">
-            {DIFFICULTY.map((d) => (
+            {(["Easy", "Medium", "Hard"] as const).map((d) => (
               <Button
                 key={d}
                 size="sm"
@@ -174,15 +177,21 @@ export default function ExploreFiltersPage() {
 
         {/* Max cook time */}
         <FilterSection title={`Max Cook Time: ${maxCookTime} min`}>
-          <Slider value={[maxCookTime]} min={5} max={240} step={5} onValueChange={(v) => setMaxCookTime(v[0] ?? 60)} />
+          <Slider
+            value={[maxCookTime]}
+            min={5}
+            max={240}
+            step={5}
+            onValueChange={(v) => setMaxCookTime(v[0] ?? 60)}
+          />
         </FilterSection>
 
-        {/* Min spoons */}
+        {/* Min spoons (rating) */}
         <FilterSection title={`Min Spoons: ${minRating || 0}`}>
           <SpoonSelect value={minRating} onChange={setMinRating} />
         </FilterSection>
 
-        {/* Flags & sort */}
+        {/* More flags + sort */}
         <FilterSection title="More">
           <label className="flex items-center gap-2">
             <Checkbox checked={onlyRecipes} onCheckedChange={(v) => setOnlyRecipes(Boolean(v))} />
@@ -210,7 +219,7 @@ export default function ExploreFiltersPage() {
           <Button variant="secondary" onClick={resetFilters} className="flex-1">
             Reset
           </Button>
-          <Button className="flex-1" onClick={() => nav("/explore")}>
+          <Button className="flex-1" onClick={() => setLocation("/explore")}>
             Apply
           </Button>
         </div>
