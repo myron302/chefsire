@@ -7,6 +7,44 @@ import { useExploreFilters } from "./useExploreFilters";
 import { SpoonIcon } from "./ExploreShared";
 import { useExploreData } from "./useExploreData";
 
+/* ---------- tiny helper to move the longest badge to row 2 on mobile ---------- */
+function MobileRowBalancer({
+  badges,
+}: {
+  badges: { key: string; node: React.ReactNode; labelForLength: string }[];
+}) {
+  if (badges.length <= 3) {
+    return (
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        {badges.map((b) => <React.Fragment key={b.key}>{b.node}</React.Fragment>)}
+      </div>
+    );
+  }
+
+  const longest = badges.reduce((acc, cur) =>
+    cur.labelForLength.length > acc.labelForLength.length ? cur : acc
+  );
+
+  const firstRow = badges.filter((b) => b !== longest);
+  const secondRow = [longest]; // put the single longest first on row 2
+
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      {/* Row 1 (mobile) */}
+      {firstRow.map((b) => (
+        <React.Fragment key={b.key}>{b.node}</React.Fragment>
+      ))}
+      {/* force line break only on small screens */}
+      <div className="basis-full sm:hidden" />
+      {/* Row 2 (mobile) + on desktop they all just flow inline */}
+      {secondRow.map((b) => (
+        <React.Fragment key={b.key}>{b.node}</React.Fragment>
+      ))}
+    </div>
+  );
+}
+/* ----------------------------------------------------------------------------- */
+
 function GridSkeleton() {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -117,6 +155,35 @@ export default function ExploreListPage() {
     isFetchingNextPage,
   } = useExploreData();
 
+  // Build the badge list once, so MobileRowBalancer can move the longest to row 2
+  const badges = React.useMemo(
+    () => [
+      { key: "cuisines", node: <Badge variant="outline">Cuisines: {selectedCuisines.length}</Badge>, labelForLength: "Cuisines" },
+      { key: "meals",    node: <Badge variant="outline">Meal Types: {selectedMealTypes.length}</Badge>, labelForLength: "Meal Types" },
+      { key: "diets",    node: <Badge variant="outline">Dietary: {selectedDietary.length}</Badge>, labelForLength: "Dietary" },
+      { key: "eth",      node: <Badge variant="outline">Ethnicity: {selectedEthnicities.length}</Badge>, labelForLength: "Ethnicity" },
+      { key: "std",      node: <Badge variant="outline">Standards: {selectedPreparation.length}</Badge>, labelForLength: "Standards" },
+      { key: "all",      node: <Badge variant="outline">No {excludedAllergens.length ? excludedAllergens.join(", ") : "—"}</Badge>, labelForLength: excludedAllergens.join(", ") || "None" },
+      ...(selectedDifficulty ? [{ key: "diff", node: <Badge variant="outline">Difficulty: {selectedDifficulty}</Badge>, labelForLength: selectedDifficulty }] : []),
+      ...(onlyRecipes ? [{ key: "recipe", node: <Badge variant="outline">Recipe-only</Badge>, labelForLength: "Recipe-only" }] : []),
+      { key: "time",     node: <Badge variant="outline">≤ {maxCookTime} min</Badge>, labelForLength: `${maxCookTime} min` },
+      { key: "rating",   node: (
+          <Badge variant="outline">
+            <span className="inline-flex items-center gap-1">
+              <SpoonIcon className="h-3.5 w-3.5" /> {minRating}+
+            </span>
+          </Badge>
+        ), labelForLength: `${minRating} spoons` },
+      { key: "sort",     node: <Badge variant="outline">Sort: {sortBy}</Badge>, labelForLength: `Sort: ${sortBy}` },
+      { key: "reset",    node: <Button size="sm" variant="ghost" className="h-7 px-2" onClick={resetFilters}>Reset</Button>, labelForLength: "Reset" },
+    ],
+    [
+      selectedCuisines, selectedMealTypes, selectedDietary, selectedEthnicities,
+      selectedPreparation, excludedAllergens, selectedDifficulty, onlyRecipes,
+      maxCookTime, minRating, sortBy, resetFilters
+    ]
+  );
+
   return (
     <div className="mx-auto max-w-6xl px-4 md:px-6">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -145,27 +212,8 @@ export default function ExploreListPage() {
         </div>
       </div>
 
-      {/* Active filter summary */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <Badge variant="outline">Cuisines: {selectedCuisines.length}</Badge>
-        <Badge variant="outline">Meal Types: {selectedMealTypes.length}</Badge>
-        <Badge variant="outline">Dietary: {selectedDietary.length}</Badge>
-        <Badge variant="outline">Ethnicity: {selectedEthnicities.length}</Badge>
-        <Badge variant="outline">Standards: {selectedPreparation.length}</Badge>
-        <Badge variant="outline">No {excludedAllergens.length ? excludedAllergens.join(", ") : "—"}</Badge>
-        {selectedDifficulty && <Badge variant="outline">Difficulty: {selectedDifficulty}</Badge>}
-        {onlyRecipes && <Badge variant="outline">Recipe-only</Badge>}
-        <Badge variant="outline">≤ {maxCookTime} min</Badge>
-        <Badge variant="outline">
-          <span className="inline-flex items-center gap-1">
-            <SpoonIcon className="h-3.5 w-3.5" /> {minRating}+
-          </span>
-        </Badge>
-        <Badge variant="outline">Sort: {sortBy}</Badge>
-        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={resetFilters}>
-          Reset
-        </Button>
-      </div>
+      {/* Active filter summary — mobile rebalance to move the longest to row 2 */}
+      <MobileRowBalancer badges={badges} />
 
       {/* Loading / Error / Content */}
       {isLoading ? (
