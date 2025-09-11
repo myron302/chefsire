@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/command";
 
 type Option = { label: string; value: string };
+
 function cn(...cls: Array<string | false | null | undefined>) {
   return cls.filter(Boolean).join(" ");
 }
@@ -23,9 +24,9 @@ export function MultiSelectCombobox(props: {
   onChange: (next: string[]) => void;
   placeholder?: string;
   emptyLabel?: string;
-  buttonLabel?: string;
+  buttonLabel?: string; // visible label, e.g. "Cuisine"
   className?: string;
-  maxBadges?: number;
+  maxBadges?: number; // how many selected to show as badges in button
 }) {
   const {
     options,
@@ -71,22 +72,25 @@ export function MultiSelectCombobox(props: {
       ? selected.map((s) => s.label).join(", ")
       : `${selected.length} selected`;
 
+  // Keep scroll buttons in sync (desktop shows both; mobile: up shows only after you scroll)
   React.useEffect(() => {
     const list = listRef.current;
     if (!list) return;
+
     const updateButtons = () => {
       setShowUpButton(list.scrollTop > 0);
       setShowDownButton(
         list.scrollTop + list.clientHeight < list.scrollHeight - 1
       );
     };
+
     list.addEventListener("scroll", updateButtons);
-    updateButtons();
+    updateButtons(); // Initial check
     return () => list.removeEventListener("scroll", updateButtons);
   }, []);
 
-  const scrollUp = () => listRef.current?.scrollBy({ top: -56, behavior: "smooth" });
-  const scrollDown = () => listRef.current?.scrollBy({ top: 56, behavior: "smooth" });
+  const scrollUp = () => listRef.current?.scrollBy({ top: -60, behavior: "smooth" });
+  const scrollDown = () => listRef.current?.scrollBy({ top: 60, behavior: "smooth" });
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -113,7 +117,8 @@ export function MultiSelectCombobox(props: {
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent className="p-0 w-[320px]" align="start">
+      {/* NOTE: allow taller list on mobile and enable touch scroll */}
+      <PopoverContent className="p-0 w-[320px] sm:w-[360px]" align="start">
         <Command>
           <CommandInput
             placeholder={placeholder}
@@ -121,26 +126,37 @@ export function MultiSelectCombobox(props: {
             onValueChange={setSearch}
             className="h-9"
           />
+
+          {/* Scroll controls (helpful on desktop; optional on mobile) */}
           <div className="flex justify-between p-2">
-            {showUpButton ? (
-              <Button variant="ghost" size="sm" onClick={scrollUp} aria-label="Scroll up">
+            {showUpButton && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={scrollUp}
+                aria-label="Scroll up"
+              >
                 <ChevronUp className="h-4 w-4" />
               </Button>
-            ) : (
-              <span />
             )}
+            <div className={cn(showUpButton ? "" : "flex-1")} />
             {showDownButton && (
-              <Button variant="ghost" size="sm" onClick={scrollDown} aria-label="Scroll down">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={scrollDown}
+                aria-label="Scroll down"
+              >
                 <ChevronDown className="h-4 w-4" />
               </Button>
             )}
           </div>
 
+          {/* KEY: touch-friendly vertical scroll + prevent text selection highlight */}
           <CommandList
             ref={listRef}
-            className="cmd-scroll max-h-[60vh] overflow-y-auto overscroll-contain"
-            style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}
-            aria-label="Options"
+            className="max-h-[320px] overflow-y-auto touch-pan-y select-none"
+            style={{ WebkitOverflowScrolling: "touch" }}
           >
             <CommandEmpty>{emptyLabel}</CommandEmpty>
             <CommandGroup>
@@ -151,9 +167,9 @@ export function MultiSelectCombobox(props: {
                     key={opt.value}
                     value={opt.value}
                     onSelect={() => toggle(opt.value)}
-                    className="cursor-pointer"
-                    // allow scroll gestures to start even on the item itself
-                    style={{ touchAction: "pan-y" }}
+                    // Prevent text selection “orange highlight” from stealing the drag gesture
+                    onMouseDown={(e) => e.preventDefault()}
+                    className="cursor-pointer select-none"
                   >
                     <Check
                       className={cn(
