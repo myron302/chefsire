@@ -88,7 +88,6 @@
   * {
     @apply border-border;
   }
-
   body {
     @apply font-sans antialiased bg-background text-foreground;
     font-family: Inter, var(--font-sans);
@@ -96,96 +95,44 @@
 }
 
 @layer utilities {
-  .story-gradient {
-    background: linear-gradient(45deg, var(--primary), var(--accent));
-  }
+  .story-gradient { background: linear-gradient(45deg, var(--primary), var(--accent)); }
+  .hover-scale { transition: transform 0.2s ease-in-out; }
+  .hover-scale:hover { transform: scale(1.05); }
+  .glass-effect { backdrop-filter: blur(10px); background: rgba(255,255,255,0.9); }
+  .dark .glass-effect { background: rgba(0,0,0,0.9); }
 
-  .hover-scale {
-    transition: transform 0.2s ease-in-out;
-  }
-
-  .hover-scale:hover {
-    transform: scale(1.05);
-  }
-
-  .glass-effect {
-    backdrop-filter: blur(10px);
-    background: rgba(255, 255, 255, 0.9);
-  }
-
-  .dark .glass-effect {
-    background: rgba(0, 0, 0, 0.9);
-  }
-
-  /* ✅ Hide scrollbar but keep horizontal scroll for secondary navs */
+  /* Hide scrollbar but keep horizontal scroll */
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-  /* ✅ Soft pulse for the center mobile "Create" FAB */
-  @keyframes glow {
-    0%   { box-shadow: 0 0 0 0 rgba(255, 87, 34, 0.35); }
-    70%  { box-shadow: 0 0 0 12px rgba(255, 87, 34, 0.00); }
-    100% { box-shadow: 0 0 0 0 rgba(255, 87, 34, 0.00); }
-  }
-  .animate-glow {
-    animation: glow 2.4s ease-in-out infinite;
-  }
+  /* Mobile FAB glow */
+  @keyframes glow { 0%{box-shadow:0 0 0 0 rgba(255,87,34,.35)} 70%{box-shadow:0 0 0 12px rgba(255,87,34,0)} 100%{box-shadow:0 0 0 0 rgba(255,87,34,0)} }
+  .animate-glow { animation: glow 2.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .animate-glow { animation: none; } }
 
-  /* Respect reduced motion preferences */
-  @media (prefers-reduced-motion: reduce) {
-    .animate-glow { animation: none; }
-  }
+  /* Page layout safety */
+  html, body, #root, #__next { height: 100%; min-height: 100%; }
+  body { min-height: 100dvh; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+  img { max-width: 100%; height: auto; display: block; }
+  .flex > * { min-width: 0; }
 
-  /* =========================
-     Mobile-safe layout fixes
-     ========================= */
-  html, body, #root, #__next {
-    height: 100%;
-    min-height: 100%;
-  }
-  body {
-    min-height: 100dvh;            /* dynamic viewport height for mobile */
-    overflow-x: hidden;            /* prevent page side scroll */
-    -webkit-tap-highlight-color: transparent;
-  }
-  img {
-    max-width: 100%;
-    height: auto;
-    display: block;
-  }
-  .flex > * {
-    min-width: 0; /* flex children can shrink */
-  }
-
-  /* Horizontal chip rows */
-  .touch-pan-x {
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-  }
+  /* Horizontal chip rows (Explore header) */
+  .touch-pan-x { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
   .edge-fade-x {
     -webkit-mask-image: linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%);
     mask-image: linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%);
   }
+  .chip-row { white-space: nowrap; }
+  .sticky-ancestor-fix { overflow: visible; contain: layout paint; }
 
-  /* Sticky ancestor fix */
-  .sticky-ancestor-fix {
-    overflow: visible;
-    contain: layout paint;
-  }
+  /* CommandList mobile drag scroll */
+  .cmd-scroll { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y; }
+  .cmd-scroll [cmdk-item],
+  .cmd-scroll [role="option"],
+  .cmd-scroll [data-cmdk-item] { touch-action: pan-y !important; }
+  .cmd-scroll, .cmd-scroll * { -webkit-user-select: none; user-select: none; }
 
-  /* =========================
-     👇 NEW: mobile drag scroll in dropdowns
-     ========================= */
-  /* Let touches pass through Radix popper wrapper so inner lists can pan */
-  [data-radix-popper-content-wrapper],
-  [data-radix-popper-content-wrapper] * {
-    touch-action: auto !important;
-  }
-
-  /* Momentum scrolling + safe overscroll for long option lists */
-  .cmd-scroll {
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
-    touch-action: pan-y;
-  }
+  /* Secondary nav spacing (prevents overlap on mobile) */
+  .secondary-tabs { white-space: nowrap; }
+  .secondary-tabs > * + * { margin-left: 0.75rem; } /* ~space-x-3 */
 }
