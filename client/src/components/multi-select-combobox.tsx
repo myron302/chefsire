@@ -24,9 +24,9 @@ export function MultiSelectCombobox(props: {
   onChange: (next: string[]) => void;
   placeholder?: string;
   emptyLabel?: string;
-  buttonLabel?: string;
+  buttonLabel?: string; // visible label, e.g. "Cuisine"
   className?: string;
-  maxBadges?: number;
+  maxBadges?: number; // how many selected to show as badges in button
 }) {
   const {
     options,
@@ -72,32 +72,46 @@ export function MultiSelectCombobox(props: {
       ? selected.map((s) => s.label).join(", ")
       : `${selected.length} selected`;
 
-  // Handle scroll to show/hide buttons
+  // Keep the up/down buttons in sync with scroll position
+  const updateButtons = React.useCallback(() => {
+    const list = listRef.current;
+    if (!list) return;
+    setShowUpButton(list.scrollTop > 0);
+    setShowDownButton(list.scrollTop + list.clientHeight < list.scrollHeight - 1);
+  }, []);
+
   React.useEffect(() => {
     const list = listRef.current;
     if (!list) return;
-
-    const updateButtons = () => {
-      setShowUpButton(list.scrollTop > 0);
-      setShowDownButton(
-        list.scrollTop + list.clientHeight < list.scrollHeight - 1
-      );
-    };
-
-    list.addEventListener("scroll", updateButtons);
-    updateButtons(); // Initial check
+    list.addEventListener("scroll", updateButtons, { passive: true });
+    updateButtons();
     return () => list.removeEventListener("scroll", updateButtons);
-  }, []);
+  }, [updateButtons]);
 
-  const scrollUp = () => {
-    if (listRef.current) {
-      listRef.current.scrollBy({ top: -50, behavior: "smooth" });
-    }
+  // Smooth scrolling helpers (used by buttons & wheel)
+  const scrollByAmount = (amount: number) => {
+    listRef.current?.scrollBy({ top: amount, behavior: "smooth" });
   };
+  const scrollUp = () => scrollByAmount(-64);
+  const scrollDown = () => scrollByAmount(64);
 
-  const scrollDown = () => {
-    if (listRef.current) {
-      listRef.current.scrollBy({ top: 50, behavior: "smooth" });
+  // Enable desktop mouse wheel scrolling + mobile touch drag.
+  // - touch drag works by default via CSS (overflow + touch-action)
+  // - wheel: ensure the list consumes the wheel and scrolls smoothly
+  const onWheel: React.WheelEventHandler<HTMLDivElement> = (e) => {
+    // If the list is scrollable, use the delta to scroll
+    const list = listRef.current;
+    if (!list) return;
+
+    // Only prevent default if we can actually scroll; otherwise let the page scroll.
+    const canScroll =
+      list.scrollHeight > list.clientHeight &&
+      ((e.deltaY < 0 && list.scrollTop > 0) ||
+        (e.deltaY > 0 && list.scrollTop + list.clientHeight < list.scrollHeight));
+
+    if (canScroll) {
+      e.preventDefault();
+      list.scrollBy({ top: e.deltaY, behavior: "smooth" });
     }
   };
 
@@ -125,6 +139,7 @@ export function MultiSelectCombobox(props: {
           <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
         </Button>
       </PopoverTrigger>
+
       <PopoverContent className="p-0 w-[320px]" align="start">
         <Command>
           <CommandInput
@@ -133,33 +148,32 @@ export function MultiSelectCombobox(props: {
             onValueChange={setSearch}
             className="h-9"
           />
+
+          {/* Quick scroll controls */}
           <div className="flex justify-between p-2">
-            {showUpButton && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={scrollUp}
-                aria-label="Scroll up"
-              >
+            {showUpButton ? (
+              <Button variant="ghost" size="sm" onClick={scrollUp} aria-label="Scroll up">
                 <ChevronUp className="h-4 w-4" />
               </Button>
+            ) : (
+              <span />
             )}
-            <div className={cn(showUpButton ? "" : "flex-1")} />
-            {showDownButton && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={scrollDown}
-                aria-label="Scroll down"
-              >
+            {showDownButton ? (
+              <Button variant="ghost" size="sm" onClick={scrollDown} aria-label="Scroll down">
                 <ChevronDown className="h-4 w-4" />
               </Button>
+            ) : (
+              <span />
             )}
           </div>
+
+          {/* Scrollable list: mouse wheel + touch drag */}
           <CommandList
             ref={listRef}
-            className="max-h-[250px] overflow-y-auto touch-action-pan-y overscroll-contain"
+            onWheel={onWheel}
+            className="max-h-[260px] overflow-y-auto touch-action-pan-y overscroll-contain"
             style={{ WebkitOverflowScrolling: "touch" }}
+            aria-label="Options"
           >
             <CommandEmpty>{emptyLabel}</CommandEmpty>
             <CommandGroup>
@@ -171,6 +185,8 @@ export function MultiSelectCombobox(props: {
                     value={opt.value}
                     onSelect={() => toggle(opt.value)}
                     className="cursor-pointer"
+                    aria-selected={checked}
+                    role="option"
                   >
                     <Check
                       className={cn(
