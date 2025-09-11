@@ -1,6 +1,6 @@
 import * as React from "react";
 
-// simple localStorage hook
+// small localStorage state helper
 function useLS<T>(key: string, init: T) {
   const [v, setV] = React.useState<T>(() => {
     try {
@@ -41,7 +41,7 @@ export function useExploreFilters() {
   const [excludedAllergens, setExcludedAllergens] = useLS<string[]>("explore:allergens", []);
   const [selectedPreparation, setSelectedPreparation] = useLS<string[]>("explore:prep", []);
 
-  // search helpers for menus
+  // helpers
   const [dietQuery, setDietQuery] = useLS<string>("explore:dietQuery", "");
 
   const resetFilters = () => {
