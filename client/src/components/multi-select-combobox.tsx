@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/command";
 
 type Option = { label: string; value: string };
-
 function cn(...cls: Array<string | false | null | undefined>) {
   return cls.filter(Boolean).join(" ");
 }
@@ -24,10 +23,9 @@ export function MultiSelectCombobox(props: {
   onChange: (next: string[]) => void;
   placeholder?: string;
   emptyLabel?: string;
-  buttonLabel?: string;  // visible label, e.g. "Cuisine"
+  buttonLabel?: string;
   className?: string;
-  maxBadges?: number;    // show up to this many badges inside the button
-  maxPopupHeight?: number; // optional: override popup list max height (px)
+  maxBadges?: number;
 }) {
   const {
     options,
@@ -38,22 +36,19 @@ export function MultiSelectCombobox(props: {
     buttonLabel = "Select",
     className,
     maxBadges = 2,
-    maxPopupHeight = 480, // ~60vh on most phones
   } = props;
 
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
+  const [showUpButton, setShowUpButton] = React.useState(false);
+  const [showDownButton, setShowDownButton] = React.useState(true);
   const listRef = React.useRef<HTMLDivElement>(null);
-  const [canScrollUp, setCanScrollUp] = React.useState(false);
-  const [canScrollDown, setCanScrollDown] = React.useState(true);
 
-  // Selected options
   const selected = React.useMemo(
     () => options.filter((o) => value.includes(o.value)),
     [options, value]
   );
 
-  // Filter by search
   const filteredOptions = React.useMemo(
     () =>
       search
@@ -64,13 +59,11 @@ export function MultiSelectCombobox(props: {
     [options, search]
   );
 
-  // Toggle a value
   const toggle = (val: string) => {
     if (value.includes(val)) onChange(value.filter((v) => v !== val));
     else onChange([...value, val]);
   };
 
-  // Button text
   const buttonText =
     selected.length === 0
       ? buttonLabel
@@ -78,49 +71,22 @@ export function MultiSelectCombobox(props: {
       ? selected.map((s) => s.label).join(", ")
       : `${selected.length} selected`;
 
-  // Keep the up/down button enablement accurate
-  const updateScrollButtons = React.useCallback(() => {
+  React.useEffect(() => {
     const list = listRef.current;
     if (!list) return;
-    const atTop = list.scrollTop <= 0;
-    const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 1;
-    setCanScrollUp(!atTop);
-    setCanScrollDown(!atBottom);
+    const updateButtons = () => {
+      setShowUpButton(list.scrollTop > 0);
+      setShowDownButton(
+        list.scrollTop + list.clientHeight < list.scrollHeight - 1
+      );
+    };
+    list.addEventListener("scroll", updateButtons);
+    updateButtons();
+    return () => list.removeEventListener("scroll", updateButtons);
   }, []);
 
-  React.useEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
-    const onScroll = () => updateScrollButtons();
-    list.addEventListener("scroll", onScroll, { passive: true });
-    updateScrollButtons();
-    return () => list.removeEventListener("scroll", onScroll);
-  }, [updateScrollButtons, open, filteredOptions.length]);
-
-  // When the popover opens or search changes, re-evaluate buttons
-  React.useEffect(() => {
-    const id = setTimeout(updateScrollButtons, 0);
-    return () => clearTimeout(id);
-  }, [open, search, filteredOptions.length, updateScrollButtons]);
-
-  const scrollByDelta = (delta: number) => {
-    if (listRef.current) {
-      listRef.current.scrollBy({ top: delta, behavior: "smooth" });
-    }
-  };
-  const scrollUp = () => scrollByDelta(-64);
-  const scrollDown = () => scrollByDelta(+64);
-
-  // Wheel support (desktop trackpads sometimes send horizontal deltas)
-  const onWheel: React.WheelEventHandler<HTMLDivElement> = (e) => {
-    if (!listRef.current) return;
-    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-      listRef.current.scrollTop += e.deltaY;
-      e.preventDefault();
-    }
-  };
-
-  // Touch drag should just work with the CSS we add; no JS needed
+  const scrollUp = () => listRef.current?.scrollBy({ top: -56, behavior: "smooth" });
+  const scrollDown = () => listRef.current?.scrollBy({ top: 56, behavior: "smooth" });
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -149,47 +115,31 @@ export function MultiSelectCombobox(props: {
 
       <PopoverContent className="p-0 w-[320px]" align="start">
         <Command>
-          {/* Search */}
           <CommandInput
             placeholder={placeholder}
             value={search}
             onValueChange={setSearch}
             className="h-9"
           />
-
-          {/* Up/Down controls (always visible; disabled when not applicable) */}
-          <div className="flex items-center justify-between px-2 py-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={scrollUp}
-              aria-label="Scroll up"
-              disabled={!canScrollUp}
-            >
-              <ChevronUp className="h-4 w-4" />
-            </Button>
-            <div className="flex-1" />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={scrollDown}
-              aria-label="Scroll down"
-              disabled={!canScrollDown}
-            >
-              <ChevronDown className="h-4 w-4" />
-            </Button>
+          <div className="flex justify-between p-2">
+            {showUpButton ? (
+              <Button variant="ghost" size="sm" onClick={scrollUp} aria-label="Scroll up">
+                <ChevronUp className="h-4 w-4" />
+              </Button>
+            ) : (
+              <span />
+            )}
+            {showDownButton && (
+              <Button variant="ghost" size="sm" onClick={scrollDown} aria-label="Scroll down">
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            )}
           </div>
 
-          {/* Options */}
           <CommandList
             ref={listRef}
-            onWheel={onWheel}
             className="cmd-scroll max-h-[60vh] overflow-y-auto overscroll-contain"
-            style={{
-              WebkitOverflowScrolling: "touch",
-              touchAction: "pan-y",
-              maxHeight: maxPopupHeight,
-            }}
+            style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}
             aria-label="Options"
           >
             <CommandEmpty>{emptyLabel}</CommandEmpty>
@@ -202,6 +152,8 @@ export function MultiSelectCombobox(props: {
                     value={opt.value}
                     onSelect={() => toggle(opt.value)}
                     className="cursor-pointer"
+                    // allow scroll gestures to start even on the item itself
+                    style={{ touchAction: "pan-y" }}
                   >
                     <Check
                       className={cn(
