@@ -218,22 +218,33 @@ export const ETHNICITY_GROUPS: { label: string; options: string[] }[] = [
 export function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
+      {/* region headers: darker/bolder and a bit bigger */}
       <h4 className="mb-2 text-[1.05rem] font-semibold text-foreground">{title}</h4>
       {children}
     </section>
   );
 }
 
-export function SpoonIcon(props: React.SVGProps<SVGSVGElement>) {
+/** Knife + Spoon icon (uniform across the app) */
+export function KnifeSpoonIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" {...props}>
+      {/* Spoon */}
       <path
-        d="M12.5 2c2.485 0 4 1.79 4 4.25 0 1.9-1.12 3.64-2.79 4.21l-.21.07V14a3.5 3.5 0 0 1-2 3.16V22a1 1 0 1 1-2 0v-4.84A3.5 3.5 0 0 1 7.5 14V10.5l-.21-.07C5.6 9.89 4.5 8.15 4.5 6.25 4.5 3.79 6.015 2 8.5 2c1.33 0 2.53.6 3.25 1.55A4.18 4.18 0 0 1 12.5 2Z"
+        d="M8 3c2.2 0 3.8 1.7 3.8 4.1 0 1.9-1.1 3.6-2.7 4.1V14a3 3 0 0 1-1.6 2.7V21a1 1 0 1 1-2 0v-4.3A3 3 0 0 1 4 14V11.2C2.4 10.7 1.3 9 1.3 7.1 1.3 4.7 3 3 5.2 3c.9 0 1.9.3 2.8 1Z"
+        fill="currentColor"
+      />
+      {/* Knife */}
+      <path
+        d="M14.5 3c-.3 0-.5.2-.6.5l-1.2 8.4c-.1.9.7 1.6 1.5 1.2l2.1-1 .7 9.2c.1.4.4.7.8.7h.9c.4 0 .8-.3.8-.7l.8-18.6c0-.4-.3-.7-.7-.7h-5.1Z"
         fill="currentColor"
       />
     </svg>
   );
 }
+
+/** Keep the old name exported so existing usages don’t break */
+export const SpoonIcon = KnifeSpoonIcon;
 
 export function SpoonSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -247,7 +258,7 @@ export function SpoonSelect({ value, onChange }: { value: number; onChange: (v: 
           onClick={() => onChange(n === value ? 0 : n)}
           title={`${n} spoons & up`}
         >
-          <SpoonIcon className={`h-5 w-5 ${value >= n ? "" : "opacity-30"}`} />
+          <KnifeSpoonIcon className={`h-5 w-5 ${value >= n ? "" : "opacity-30"}`} />
         </button>
       ))}
       <Button size="sm" variant="ghost" className="ml-1 h-7 px-2" onClick={() => onChange(0)}>
