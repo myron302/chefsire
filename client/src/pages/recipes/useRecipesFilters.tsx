@@ -4,8 +4,9 @@ export type Difficulty = "Easy" | "Medium" | "Hard";
 export type SortBy = "newest" | "rating" | "likes";
 
 export interface RecipesFiltersState {
-  // NEW: ethnicity tags, multi-select
+  // NEW
   ethnicities: string[];
+  allergens: string[]; // ← exclude any recipe that contains one of these
 
   // existing
   cuisines: string[];
@@ -28,10 +29,12 @@ type RecipesFiltersContextValue = {
   reset: () => void;
 };
 
-const STORAGE_KEY = "recipes:filters:v2";
+const STORAGE_KEY = "recipes:filters:v3";
 
 const DEFAULT_STATE: RecipesFiltersState = {
   ethnicities: [],
+  allergens: [],
+
   cuisines: [],
   mealTypes: [],
   dietary: [],
