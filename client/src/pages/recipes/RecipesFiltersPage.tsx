@@ -11,265 +11,110 @@ import { SpoonIcon } from "./RecipesShared";
 type RegionGroup = { region: string; items: string[] };
 const sortAlpha = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base" });
 
+/* ---------------- Ethnicity regions (alphabetical within each) ---------------- */
 const ETHNICITY_REGIONS: RegionGroup[] = [
   {
     region: "Africa & Diaspora",
     items: [
-      "African (General)",
-      "Central African",
-      "East African",
-      "Ethiopian",
-      "Eritrean",
-      "Somali",
-      "Kenyan",
-      "Tanzanian",
-      "Ugandan",
-      "North African",
-      "Moroccan",
-      "Algerian",
-      "Tunisian",
-      "Egyptian",
-      "Libyan",
-      "Southern African",
-      "South African",
-      "West African",
-      "Nigerian",
-      "Ghanaian",
-      "Ivorian",
-      "Senegalese",
-      "Cameroonian",
-      "Congolese",
-      "Afro-Caribbean",
-      "African American / African Diaspora",
+      "African (General)","Central African","East African","Ethiopian","Eritrean","Somali","Kenyan",
+      "Tanzanian","Ugandan","North African","Moroccan","Algerian","Tunisian","Egyptian","Libyan",
+      "Southern African","South African","West African","Nigerian","Ghanaian","Ivorian","Senegalese",
+      "Cameroonian","Congolese","Afro-Caribbean","African American / African Diaspora",
     ].sort(sortAlpha),
   },
   {
     region: "Middle East & North Africa",
     items: [
-      "Middle Eastern (General)",
-      "Levantine (Palestinian/Lebanese/Syrian/Jordanian)",
-      "Israeli",
-      "Turkish",
-      "Kurdish",
-      "Armenian",
-      "Persian (Iranian)",
-      "Gulf (Khaleeji)",
-      "Yemeni",
+      "Middle Eastern (General)","Levantine (Palestinian/Lebanese/Syrian/Jordanian)","Israeli","Turkish",
+      "Kurdish","Armenian","Persian (Iranian)","Gulf (Khaleeji)","Yemeni",
     ].sort(sortAlpha),
   },
   {
     region: "South Asia",
     items: [
-      "South Asian (General)",
-      "Indian (Punjabi)",
-      "Indian (Tamil)",
-      "Gujarati",
-      "Rajasthani",
-      "Bengali",
-      "Hyderabadi",
-      "Goan",
-      "Maharashtrian",
-      "Kashmiri",
-      "Pakistani",
-      "Bangladeshi",
-      "Sri Lankan",
-      "Nepali",
+      "South Asian (General)","Indian (Punjabi)","Indian (Tamil)","Gujarati","Rajasthani","Bengali","Hyderabadi",
+      "Goan","Maharashtrian","Kashmiri","Pakistani","Bangladeshi","Sri Lankan","Nepali",
     ].sort(sortAlpha),
   },
   {
     region: "East Asia",
     items: [
-      "East Asian (General)",
-      "Chinese (Cantonese)",
-      "Chinese (Sichuan)",
-      "Chinese (Hunan)",
-      "Chinese (Shandong)",
-      "Taiwanese",
-      "Japanese",
-      "Korean",
-      "Mongolian",
+      "East Asian (General)","Chinese (Cantonese)","Chinese (Sichuan)","Chinese (Hunan)","Chinese (Shandong)",
+      "Taiwanese","Japanese","Korean","Mongolian",
     ].sort(sortAlpha),
   },
   {
     region: "Southeast Asia",
     items: [
-      "Southeast Asian (General)",
-      "Thai",
-      "Vietnamese",
-      "Filipino",
-      "Malaysian",
-      "Indonesian",
-      "Singaporean",
-      "Khmer (Cambodian)",
-      "Lao",
-      "Burmese/Myanmar",
+      "Southeast Asian (General)","Thai","Vietnamese","Filipino","Malaysian","Indonesian","Singaporean",
+      "Khmer (Cambodian)","Lao","Burmese/Myanmar",
     ].sort(sortAlpha),
   },
   {
     region: "Central Asia",
-    items: ["Central Asian (General)", "Uzbek", "Kazakh", "Uyghur"].sort(sortAlpha),
+    items: ["Central Asian (General)","Uzbek","Kazakh","Uyghur"].sort(sortAlpha),
   },
   {
     region: "Europe",
     items: [
-      "European (General)",
-      "Mediterranean",
-      "Italian",
-      "Sicilian",
-      "French",
-      "Spanish",
-      "Basque",
-      "Catalan",
-      "Portuguese",
-      "Greek",
-      "Balkan",
-      "Romanian",
-      "Bulgarian",
-      "Hungarian",
-      "Polish",
-      "Czech",
-      "Slovak",
-      "German",
-      "Austrian",
-      "Swiss",
-      "Dutch",
-      "Belgian",
-      "British",
-      "Scottish",
-      "Irish",
-      "Scandinavian",
-      "Finnish",
-      "Russian",
-      "Ukrainian",
-      "Georgian",
+      "European (General)","Mediterranean","Italian","Sicilian","French","Spanish","Basque","Catalan","Portuguese",
+      "Greek","Balkan","Romanian","Bulgarian","Hungarian","Polish","Czech","Slovak","German","Austrian","Swiss",
+      "Dutch","Belgian","British","Scottish","Irish","Scandinavian","Finnish","Russian","Ukrainian","Georgian",
     ].sort(sortAlpha),
   },
   {
     region: "The Americas (North America)",
     items: [
-      "American (General)",
-      "New England",
-      "Midwestern",
-      "Southern / Soul Food",
-      "Cajun",
-      "Creole",
-      "Tex-Mex",
-      "New Mexican",
-      "BBQ",
-      "Pacific Northwest",
-      "Californian",
-      "Hawaiian",
-      "Alaskan",
-      "Canadian",
-      "Québécois",
+      "American (General)","New England","Midwestern","Southern / Soul Food","Cajun","Creole","Tex-Mex","New Mexican",
+      "BBQ","Pacific Northwest","Californian","Hawaiian","Alaskan","Canadian","Québécois",
     ].sort(sortAlpha),
   },
   {
     region: "Latin America & Caribbean",
     items: [
-      "Mexican",
-      "Yucatecan",
-      "Oaxacan",
-      "Baja",
-      "Central American",
-      "Guatemalan",
-      "Salvadoran",
-      "Honduran",
-      "Nicaraguan",
-      "Costa Rican",
-      "Panamanian",
-      "Caribbean (General)",
-      "Jamaican",
-      "Cuban",
-      "Puerto Rican",
-      "Dominican",
-      "Trinidadian/Tobagonian",
-      "Haitian",
-      "South American",
-      "Peruvian",
-      "Brazilian",
-      "Argentinian",
-      "Chilean",
-      "Colombian",
-      "Venezuelan",
-      "Andean",
+      "Mexican","Yucatecan","Oaxacan","Baja","Central American","Guatemalan","Salvadoran","Honduran","Nicaraguan",
+      "Costa Rican","Panamanian","Caribbean (General)","Jamaican","Cuban","Puerto Rican","Dominican",
+      "Trinidadian/Tobagonian","Haitian","South American","Peruvian","Brazilian","Argentinian","Chilean","Colombian",
+      "Venezuelan","Andean",
     ].sort(sortAlpha),
   },
   {
     region: "Pacific & Oceania",
     items: [
-      "Pacific Islander (General)",
-      "Polynesian",
-      "Samoan",
-      "Tongan",
-      "Micronesian",
-      "Melanesian",
-      "Fijian",
-      "Maori",
+      "Pacific Islander (General)","Polynesian","Samoan","Tongan","Micronesian","Melanesian","Fijian","Maori",
     ].sort(sortAlpha),
   },
   {
     region: "Indigenous & Jewish Traditions",
     items: [
-      "Indigenous / First Nations / Native American",
-      "Inuit / Alaska Native",
-      "Ashkenazi Jewish",
-      "Sephardi Jewish",
+      "Indigenous / First Nations / Native American","Inuit / Alaska Native","Ashkenazi Jewish","Sephardi Jewish",
       "Mizrahi Jewish",
     ].sort(sortAlpha),
   },
   {
     region: "Fusion / Contemporary",
-    items: ["Fusion/Contemporary", "Modernist", "Farm-to-Table"].sort(sortAlpha),
+    items: ["Fusion/Contemporary","Modernist","Farm-to-Table"].sort(sortAlpha),
   },
 ];
 
+/* ---------------- Other filter lists ---------------- */
 const CUISINES = [
-  "Italian",
-  "Healthy",
-  "Desserts",
-  "Quick",
-  "Vegan",
-  "Seafood",
-  "Asian",
-  "Mexican",
-  "Mediterranean",
-  "BBQ",
-  "Breakfast",
-  "Burgers",
-  "Salads",
+  "Asian","BBQ","Breakfast","Burgers","Desserts","Healthy","Italian","Mediterranean","Mexican","Quick","Salads","Seafood","Vegan",
 ].sort(sortAlpha);
 
 const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner", "Snack", "Dessert"] as const;
 
 const DIETARY = [
-  "Vegetarian",
-  "Vegan",
-  "Pescatarian",
-  "Keto",
-  "Paleo",
-  "Mediterranean",
-  "Whole30",
-  "Flexitarian",
-  "High-Protein",
-  "High-Fiber",
-  "Low-Carb",
-  "Low-Fat",
-  "Low-Calorie",
-  "Diabetic-Friendly",
-  "Heart-Healthy",
-  "Low-Sodium",
-  "Low-Sugar",
-  "Low-FODMAP",
-  "Gluten-Free",
-  "Lactose-Free",
-  "Dairy-Free",
-  "Egg-Free",
-  "Nut-Free",
-  "Soy-Free",
-  "Shellfish-Free",
-  "Halal",
-  "Kosher",
+  "Vegetarian","Vegan","Pescatarian","Keto","Paleo","Mediterranean","Whole30","Flexitarian",
+  "High-Protein","High-Fiber","Low-Carb","Low-Fat","Low-Calorie",
+  "Diabetic-Friendly","Heart-Healthy","Low-Sodium","Low-Sugar","Low-FODMAP",
+  "Gluten-Free","Lactose-Free","Dairy-Free","Egg-Free","Nut-Free","Soy-Free","Shellfish-Free",
+  "Halal","Kosher",
+].sort(sortAlpha);
+
+// NEW — these are the allergens we exclude if selected
+const ALLERGENS = [
+  "Gluten","Dairy","Eggs","Peanuts","Tree Nuts","Soy","Fish","Shellfish","Sesame","Mustard",
 ].sort(sortAlpha);
 
 const DIFFICULTY: Array<"Easy" | "Medium" | "Hard"> = ["Easy", "Medium", "Hard"];
@@ -292,6 +137,7 @@ export default function RecipesFiltersPage() {
           <Badge variant="outline">Cuisines: {state.cuisines.length}</Badge>
           <Badge variant="outline">Meals: {state.mealTypes.length}</Badge>
           <Badge variant="outline">Dietary: {state.dietary.length}</Badge>
+          <Badge variant="outline">Allergens: {state.allergens.length}</Badge>
           {state.difficulty && <Badge variant="outline">Difficulty: {state.difficulty}</Badge>}
           {state.onlyRecipes && <Badge variant="outline">Recipe-only</Badge>}
           <Badge variant="outline" className="inline-flex items-center gap-1">
@@ -305,14 +151,10 @@ export default function RecipesFiltersPage() {
         <div className="mb-3 flex items-end justify-between gap-3">
           <div>
             <h4 className="text-base font-semibold text-foreground">Ethnicity / Cultural Origin</h4>
-            <p className="text-xs text-muted-foreground">
-              Pick one or more; use search to narrow within regions.
-            </p>
+            <p className="text-xs text-muted-foreground">Pick one or more; use search to narrow within regions.</p>
           </div>
           <div className="w-60">
-            <Label htmlFor="eth-search" className="sr-only">
-              Search ethnicities
-            </Label>
+            <Label htmlFor="eth-search" className="sr-only">Search ethnicities</Label>
             <Input
               id="eth-search"
               placeholder="Search ethnicities…"
@@ -378,7 +220,7 @@ export default function RecipesFiltersPage() {
         </div>
       </section>
 
-      {/* Dietary (includes Halal / Kosher) */}
+      {/* Dietary (incl. Halal/Kosher) */}
       <section>
         <h4 className="mb-2 text-base font-semibold">Dietary</h4>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -389,6 +231,22 @@ export default function RecipesFiltersPage() {
                 onCheckedChange={() => set({ dietary: toggle(state.dietary, d) })}
               />
               <span className="text-sm">{d}</span>
+            </label>
+          ))}
+        </div>
+      </section>
+
+      {/* NEW: Exclude Allergens */}
+      <section>
+        <h4 className="mb-2 text-base font-semibold">Exclude Allergens</h4>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {ALLERGENS.map((a) => (
+            <label key={a} className="flex items-center gap-2 rounded-md border p-2">
+              <Checkbox
+                checked={state.allergens.includes(a)}
+                onCheckedChange={() => set({ allergens: toggle(state.allergens, a) })}
+              />
+              <span className="text-sm">{a}</span>
             </label>
           ))}
         </div>
