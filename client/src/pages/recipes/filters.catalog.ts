@@ -25,11 +25,12 @@ export const CUISINES = [
   "Hawaiian",
   "Indian",
   "Italian",
-  "Japanese",
   "Jamaican",
+  "Japanese",
   "Korean",
   "Mediterranean",
   "Mexican",
+  "Pacific Northwest",
   "Pakistani",
   "Peruvian",
   "Portuguese",
@@ -41,9 +42,8 @@ export const CUISINES = [
   "Sri Lankan",
   "Tex-Mex",
   "Thai",
-  "Vietnamese",
   "Venezuelan",
-  "Pacific Northwest",
+  "Vietnamese",
 ].sort();
 
 export const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner", "Snack", "Dessert"] as const;
@@ -84,6 +84,7 @@ export const DIETARY = [
 
 export const DIFFICULTY = ["Easy", "Medium", "Hard"] as const;
 
+/** 🧪 Allergen filter list (restored) */
 export const ALLERGENS = [
   "Gluten",
   "Dairy",
@@ -95,6 +96,11 @@ export const ALLERGENS = [
   "Shellfish",
   "Sesame",
   "Mustard",
+  // Optional additions (uncomment if you want more granularity):
+  // "Celery",
+  // "Lupin",
+  // "Molluscs",
+  // "Sulphites",
 ];
 
 /** Ethnicities by region (grouped + alphabetized) */
@@ -172,9 +178,9 @@ export const ETHNICITY_REGIONS: Record<string, string[]> = {
   "Central Asia": ["Kazakh", "Uighur", "Uzbek"].sort(),
   Europe: [
     "Austrian",
+    "Balkan",
     "Basque",
     "Belgian",
-    "Balkan",
     "British",
     "Bulgarian",
     "Catalan",
@@ -191,8 +197,8 @@ export const ETHNICITY_REGIONS: Record<string, string[]> = {
     "Portuguese",
     "Romanian",
     "Russian",
-    "Scottish",
     "Scandinavian",
+    "Scottish",
     "Sicilian",
     "Slovak",
     "Spanish",
@@ -205,8 +211,8 @@ export const ETHNICITY_REGIONS: Record<string, string[]> = {
     "Argentinian",
     "Baja",
     "Brazilian",
-    "Californian",
     "Cajun",
+    "Californian",
     "Caribbean",
     "Chilean",
     "Colombian",
@@ -224,8 +230,8 @@ export const ETHNICITY_REGIONS: Record<string, string[]> = {
     "Puerto Rican",
     "Southern / Soul Food",
     "Tex-Mex",
-    "Yucatecan",
     "Venezuelan",
+    "Yucatecan",
   ].sort(),
   "Indigenous & Jewish": [
     "Indigenous / First Nations / Native American",
@@ -233,7 +239,7 @@ export const ETHNICITY_REGIONS: Record<string, string[]> = {
     "Sephardi Jewish",
     "Mizrahi Jewish",
   ].sort(),
-  "Other / Fusion": ["Fusion/Contemporary", "Pan-Asian", "Mediterranean"].sort(),
+  "Other / Fusion": ["Fusion/Contemporary", "Mediterranean", "Pan-Asian"].sort(),
 };
 
 /** Flattened ethnicity list for components that need a single array */
