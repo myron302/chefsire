@@ -67,7 +67,7 @@ function GridSkeleton() {
 type CardPost = {
   id: string | number;
   title?: string;
-  image?: string;
+  image?: string | null;
   cuisine?: string;
   isRecipe?: boolean;
   author?: string;
@@ -78,8 +78,28 @@ type CardPost = {
   dietary?: string[];
 };
 
-const PLACEHOLDER_IMG =
-  "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
+const PLACEHOLDER_IMG = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
+
+/* Normalize any backend post shape → UI CardPost
+   - handles imageUrl/photoUrl
+   - handles author under user.displayName/username
+   - provides safe fallbacks so cards never crash
+*/
+function toCardPost(p: any): CardPost {
+  return {
+    id: p?.id != null ? String(p.id) : "",
+    title: p?.title ?? p?.caption ?? "Untitled",
+    image: p?.image ?? p?.imageUrl ?? p?.photoUrl ?? null,
+    cuisine: p?.cuisine ?? p?.category ?? "—",
+    isRecipe: Boolean(p?.isRecipe),
+    author: p?.author ?? p?.user?.displayName ?? p?.user?.username ?? "Unknown",
+    cookTime: typeof p?.cookTime === "number" ? p.cookTime : 0,
+    rating: typeof p?.rating === "number" ? p.rating : 0,
+    difficulty: p?.difficulty ?? "—",
+    mealType: p?.mealType ?? "—",
+    dietary: Array.isArray(p?.dietary) ? p.dietary : [],
+  };
+}
 
 const GridCard = React.memo(function GridCard({ post }: { post: CardPost }) {
   const title = post.title ?? "Untitled";
@@ -346,45 +366,33 @@ export default function ExploreListPage() {
         </div>
       ) : viewMode === "grid" ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {safePosts.map((p: any) => (
-            <GridCard
-              key={String(p.id)}
-              post={{
-                id: String(p.id),
-                title: p.title,
-                image: p.image,
-                cuisine: p.cuisine,
-                isRecipe: Boolean(p.isRecipe),
-                author: p.author,
-                cookTime: p.cookTime,
-                rating: p.rating,
-                difficulty: p.difficulty,
-                mealType: p.mealType,
-                dietary: p.dietary,
-              }}
-            />
-          ))}
+          {safePosts.map((raw: any) => {
+            const p = toCardPost(raw);
+            return (
+              <GridCard
+                key={String(p.id)}
+                post={{
+                  ...p,
+                  image: p.image ?? PLACEHOLDER_IMG,
+                }}
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="space-y-3">
-          {safePosts.map((p: any) => (
-            <ListRow
-              key={String(p.id)}
-              post={{
-                id: String(p.id),
-                title: p.title,
-                image: p.image,
-                cuisine: p.cuisine,
-                isRecipe: Boolean(p.isRecipe),
-                author: p.author,
-                cookTime: p.cookTime,
-                rating: p.rating,
-                difficulty: p.difficulty,
-                mealType: p.mealType,
-                dietary: p.dietary,
-              }}
-            />
-          ))}
+          {safePosts.map((raw: any) => {
+            const p = toCardPost(raw);
+            return (
+              <ListRow
+                key={String(p.id)}
+                post={{
+                  ...p,
+                  image: p.image ?? PLACEHOLDER_IMG,
+                }}
+              />
+            );
+          })}
         </div>
       )}
 
