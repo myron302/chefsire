@@ -1,415 +1,387 @@
-// client/src/pages/explore/ExploreListPage.tsx
+// client/src/pages/explore/ExploreFiltersPage.tsx
 import * as React from "react";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { LayoutGrid, List, Filter, RefreshCw } from "lucide-react";
+import { X } from "lucide-react";
 import { useExploreFilters } from "./useExploreFilters";
-import { SpoonIcon } from "./ExploreShared";
-import { useExploreData } from "./useExploreData";
+import { SPOON_SCALE, STANDARDS, DIETARY_WITH_RELIGIOUS, MEAL_TYPES, DIFFICULTY, CUISINES, ALLERGENS } from "./ExploreShared";
 
-/* ---------- tiny helper to move the longest badge to row 2 on mobile ---------- */
-function MobileRowBalancer({
-  badges,
-}: {
-  badges: { key: string; node: React.ReactNode; labelForLength: string }[];
-}) {
-  if (badges.length <= 3) {
-    return (
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        {badges.map((b) => (
-          <React.Fragment key={b.key}>{b.node}</React.Fragment>
-        ))}
-      </div>
-    );
-  }
-
-  const longest = badges.reduce((acc, cur) =>
-    cur.labelForLength.length > acc.labelForLength.length ? cur : acc
-  );
-
-  const firstRow = badges.filter((b) => b !== longest);
-  const secondRow = [longest]; // put the single longest first on row 2
-
-  return (
-    <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      {/* Row 1 (mobile) */}
-      {firstRow.map((b) => (
-        <React.Fragment key={b.key}>{b.node}</React.Fragment>
-      ))}
-      {/* force line break only on small screens */}
-      <div className="basis-full sm:hidden" />
-      {/* Row 2 (mobile); on desktop they all just flow inline */}
-      {secondRow.map((b) => (
-        <React.Fragment key={b.key}>{b.node}</React.Fragment>
-      ))}
-    </div>
-  );
-}
-/* ----------------------------------------------------------------------------- */
-
-function GridSkeleton() {
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="overflow-hidden rounded-lg border bg-card animate-pulse">
-          <div className="aspect-square bg-muted" />
-          <div className="p-3 space-y-2">
-            <div className="h-4 w-3/4 bg-muted rounded" />
-            <div className="h-3 w-1/2 bg-muted rounded" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-type CardPost = {
-  id: string | number;
-  title?: string;
-  image?: string | null;
-  cuisine?: string;
-  isRecipe?: boolean;
-  author?: string;
-  cookTime?: number;
-  rating?: number;
-  difficulty?: string;
-  mealType?: string;
-  dietary?: string[];
+const ETHNICITY_REGIONS: Record<
+  string,
+  { label: string; items: string[] }
+> = {
+  "Africa": {
+    label: "Africa",
+    items: [
+      "Ethiopian", "Eritrean", "Somali", "Kenyan", "Tanzanian", "Ugandan",
+      "Nigerian", "Ghanaian", "Ivorian", "Senegalese", "Cameroonian",
+      "South African", "Moroccan", "Algerian", "Tunisian", "Egyptian",
+    ],
+  },
+  "Middle East & SW Asia": {
+    label: "Middle East & SW Asia",
+    items: [
+      "Levantine", "Palestinian", "Lebanese", "Syrian", "Jordanian",
+      "Israeli", "Turkish", "Kurdish", "Armenian", "Georgian",
+      "Persian (Iranian)", "Gulf (Khaleeji)", "Yemeni",
+    ],
+  },
+  "South Asia": {
+    label: "South Asia",
+    items: [
+      "North Indian (Punjabi)", "South Indian (Tamil)", "Gujarati", "Rajasthani",
+      "Bengali", "Hyderabadi", "Goan", "Maharashtrian", "Kashmiri",
+      "Sri Lankan", "Pakistani", "Bangladeshi", "Nepali",
+    ],
+  },
+  "East & Southeast Asia": {
+    label: "East & Southeast Asia",
+    items: [
+      "Chinese (Cantonese)", "Chinese (Sichuan)", "Chinese (Hunan)", "Chinese (Shandong)",
+      "Taiwanese", "Japanese", "Korean", "Mongolian",
+      "Thai", "Vietnamese", "Filipino", "Malaysian", "Indonesian", "Singaporean",
+    ],
+  },
+  "Central Asia": {
+    label: "Central Asia",
+    items: ["Uzbek", "Kazakh", "Uighur"],
+  },
+  "Europe": {
+    label: "Europe",
+    items: [
+      "Italian", "Sicilian", "French", "Spanish", "Basque", "Catalan", "Portuguese",
+      "Greek", "Balkan", "Romanian", "Bulgarian", "Hungarian", "Polish", "Czech", "Slovak",
+      "German", "Austrian", "Swiss", "Dutch", "Belgian", "British", "Scottish", "Irish",
+      "Scandinavian", "Finnish", "Russian", "Ukrainian",
+    ],
+  },
+  "The Americas & Caribbean": {
+    label: "The Americas & Caribbean",
+    items: [
+      "American", "Southern / Soul Food", "Cajun", "Creole", "Tex-Mex", "New Mexican",
+      "Pacific Northwest", "Californian", "Hawaiian", "Alaskan",
+      "Mexican", "Yucatecan", "Oaxacan", "Baja",
+      "Caribbean", "Jamaican", "Cuban", "Puerto Rican", "Dominican",
+      "Peruvian", "Brazilian", "Argentinian", "Chilean", "Colombian", "Venezuelan",
+    ],
+  },
+  "Broad / Fusion": {
+    label: "Broad / Fusion",
+    items: ["Mediterranean", "North African", "Middle Eastern", "Pan-Asian", "Fusion"],
+  },
 };
 
-const PLACEHOLDER_IMG = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
+function RegionEthnicitySection() {
+  const {
+    selectedEthnicities,
+    setSelectedEthnicities,
+  } = useExploreFilters();
+  const [q, setQ] = React.useState("");
 
-/* Normalize any backend post shape → UI CardPost
-   - handles imageUrl/photoUrl
-   - handles author under user.displayName/username
-   - provides safe fallbacks so cards never crash
-*/
-function toCardPost(p: any): CardPost {
-  return {
-    id: p?.id != null ? String(p.id) : "",
-    title: p?.title ?? p?.caption ?? "Untitled",
-    image: p?.image ?? p?.imageUrl ?? p?.photoUrl ?? null,
-    cuisine: p?.cuisine ?? p?.category ?? "—",
-    isRecipe: Boolean(p?.isRecipe),
-    author: p?.author ?? p?.user?.displayName ?? p?.user?.username ?? "Unknown",
-    cookTime: typeof p?.cookTime === "number" ? p.cookTime : 0,
-    rating: typeof p?.rating === "number" ? p.rating : 0,
-    difficulty: p?.difficulty ?? "—",
-    mealType: p?.mealType ?? "—",
-    dietary: Array.isArray(p?.dietary) ? p.dietary : [],
+  // single pool of items but grouped by region
+  const groups = React.useMemo(() => {
+    const norm = q.trim().toLowerCase();
+    const out: [string, string[]][] = [];
+    for (const key of Object.keys(ETHNICITY_REGIONS)) {
+      let items = [...ETHNICITY_REGIONS[key].items].sort((a, b) =>
+        a.localeCompare(b)
+      );
+      if (norm) items = items.filter((x) => x.toLowerCase().includes(norm));
+      if (items.length) out.push([key, items]);
+    }
+    return out;
+  }, [q]);
+
+  const toggle = (value: string) => {
+    setSelectedEthnicities(
+      selectedEthnicities.includes(value)
+        ? selectedEthnicities.filter((x) => x !== value)
+        : [...selectedEthnicities, value]
+    );
   };
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-base font-semibold">Ethnicity / Cultural Origin</h3>
+      </div>
+      <Input
+        placeholder="Search ethnicity…"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+      <div className="space-y-5">
+        {groups.map(([regionKey, items]) => (
+          <div key={regionKey}>
+            <div className="mb-2 text-sm font-semibold text-foreground/90">
+              <span className="text-[0.95rem] font-bold">{ETHNICITY_REGIONS[regionKey].label}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {items.map((v) => (
+                <label key={v} className="flex items-center gap-2 rounded-md border p-2">
+                  <Checkbox
+                    checked={selectedEthnicities.includes(v)}
+                    onCheckedChange={() => toggle(v)}
+                  />
+                  <span className="text-sm">{v}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {selectedEthnicities.length > 0 && (
+        <div className="pt-2">
+          <div className="mb-1 text-xs text-muted-foreground">Selected</div>
+          <div className="flex flex-wrap gap-2">
+            {selectedEthnicities.map((e) => (
+              <Badge key={e} variant="secondary" className="flex items-center gap-1">
+                {e}
+                <button
+                  className="ml-1"
+                  onClick={() =>
+                    setSelectedEthnicities(selectedEthnicities.filter((x) => x !== e))
+                  }
+                  aria-label={`Remove ${e}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }
 
-const GridCard = React.memo(function GridCard({ post }: { post: CardPost }) {
-  const title = post.title ?? "Untitled";
-  const image = post.image ?? PLACEHOLDER_IMG;
-  const cuisine = post.cuisine ?? "—";
-  const author = post.author ?? "Unknown";
-  const cookTime = typeof post.cookTime === "number" ? post.cookTime : 0;
-  const rating = typeof post.rating === "number" ? post.rating : 0;
+function DietsSection() {
+  const { selectedDietary, setSelectedDietary } = useExploreFilters();
+  const [q, setQ] = React.useState("");
+  const options = React.useMemo(
+    () =>
+      DIETARY_WITH_RELIGIOUS.filter((d) =>
+        d.toLowerCase().includes(q.trim().toLowerCase())
+      ),
+    [q]
+  );
+  const toggle = (value: string) =>
+    setSelectedDietary(
+      selectedDietary.includes(value)
+        ? selectedDietary.filter((x) => x !== value)
+        : [...selectedDietary, value]
+    );
 
   return (
-    <article className="overflow-hidden rounded-lg border bg-card">
-      <div className="aspect-square overflow-hidden">
-        <img src={image} alt={title} className="h-full w-full object-cover" loading="lazy" />
+    <section className="space-y-3">
+      <h3 className="text-base font-semibold">Dietary (incl. Halal / Kosher)</h3>
+      <Input placeholder="Search dietary…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {options.map((d) => (
+          <label key={d} className="flex items-center gap-2 rounded-md border p-2">
+            <Checkbox checked={selectedDietary.includes(d)} onCheckedChange={() => toggle(d)} />
+            <span className="text-sm">{d}</span>
+          </label>
+        ))}
       </div>
-      <div className="p-3">
-        <h3 className="line-clamp-1 text-sm font-semibold">{title}</h3>
-        <div className="mt-1 flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">{author}</span>
-          <Badge variant="outline" className="text-xs">
-            {cuisine}
-          </Badge>
-        </div>
-        <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1">
-            <SpoonIcon className="h-3.5 w-3.5" /> {rating.toFixed(1)}
-          </span>
-          <span>{cookTime} min</span>
-        </div>
-        {post.isRecipe && (
-          <span className="mt-2 inline-block text-[10px] uppercase tracking-wide text-emerald-600">
-            Recipe
-          </span>
-        )}
-      </div>
-    </article>
+    </section>
   );
-});
+}
 
-const ListRow = React.memo(function ListRow({ post }: { post: CardPost }) {
-  const title = post.title ?? "Untitled";
-  const image = post.image ?? PLACEHOLDER_IMG;
-  const cuisine = post.cuisine ?? "—";
-  const author = post.author ?? "Unknown";
-  const cookTime = typeof post.cookTime === "number" ? post.cookTime : 0;
-  const rating = typeof post.rating === "number" ? post.rating : 0;
-  const difficulty = post.difficulty ?? "—";
-  const mealType = post.mealType ?? "—";
-  const dietary = Array.isArray(post.dietary) ? post.dietary : [];
+function AllergensSection() {
+  const { excludedAllergens, setExcludedAllergens } = useExploreFilters();
+  const toggle = (value: string) =>
+    setExcludedAllergens(
+      excludedAllergens.includes(value)
+        ? excludedAllergens.filter((x) => x !== value)
+        : [...excludedAllergens, value]
+    );
+  return (
+    <section className="space-y-3">
+      <h3 className="text-base font-semibold">Exclude Allergens</h3>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {ALLERGENS.map((a) => (
+          <label key={a} className="flex items-center gap-2 rounded-md border p-2">
+            <Checkbox checked={excludedAllergens.includes(a)} onCheckedChange={() => toggle(a)} />
+            <span className="text-sm">{a}</span>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export default function ExploreFiltersPage() {
+  const [, navigate] = useLocation();
+  const f = useExploreFilters();
+
+  const reset = () => f.resetFilters();
+  const apply = () => navigate("/explore");
 
   return (
-    <article className="flex gap-3 rounded-lg border bg-card p-2">
-      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-md">
-        <img src={image} alt={title} className="h-full w-full object-cover" loading="lazy" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <h3 className="line-clamp-1 text-sm font-semibold">{title}</h3>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>by {author}</span>
-          <span>• {cuisine}</span>
-          <span>• {mealType}</span>
-          {dietary.length > 0 && <span>• {dietary.join(", ")}</span>}
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1">
-            <SpoonIcon className="h-3.5 w-3.5" /> {rating.toFixed(1)}
-          </span>
-          <span>{cookTime} min</span>
-          <span>{difficulty}</span>
-          {post.isRecipe && <span className="text-emerald-600">Recipe</span>}
+    <div className="mx-auto max-w-5xl px-4 md:px-6 py-4 space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Filters</h1>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={reset}>Reset</Button>
+          <Button onClick={apply}>Apply</Button>
         </div>
       </div>
-    </article>
-  );
-});
 
-export default function ExploreListPage() {
-  const {
-    viewMode,
-    setViewMode,
-    onlyRecipes,
-    sortBy,
-    selectedCuisines,
-    selectedMealTypes,
-    selectedDietary,
-    selectedDifficulty,
-    maxCookTime,
-    minRating,
-    selectedEthnicities,
-    excludedAllergens,
-    selectedPreparation,
-    resetFilters,
-  } = useExploreFilters();
+      {/* Cuisine / Meal / Difficulty / Time / Spoons */}
+      <section className="grid md:grid-cols-2 gap-6">
+        <div className="space-y-6">
+          {/* Cuisine */}
+          <div className="space-y-3">
+            <h3 className="text-base font-semibold">Cuisines</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {CUISINES.map((c) => (
+                <label key={c} className="flex items-center gap-2 rounded-md border p-2">
+                  <Checkbox
+                    checked={f.selectedCuisines.includes(c)}
+                    onCheckedChange={() =>
+                      f.setSelectedCuisines(
+                        f.selectedCuisines.includes(c)
+                          ? f.selectedCuisines.filter((x) => x !== c)
+                          : [...f.selectedCuisines, c]
+                      )
+                    }
+                  />
+                  <span className="text-sm">{c}</span>
+                </label>
+              ))}
+            </div>
+          </div>
 
-  const {
-    items: posts,
-    total,
-    isLoading,
-    isFetching,
-    isError,
-    error,
-    refetch,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useExploreData();
+          {/* Meal Types */}
+          <div className="space-y-3">
+            <h3 className="text-base font-semibold">Meal Type</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {MEAL_TYPES.map((m) => (
+                <label key={m} className="flex items-center gap-2 rounded-md border p-2">
+                  <Checkbox
+                    checked={f.selectedMealTypes.includes(m)}
+                    onCheckedChange={() =>
+                      f.setSelectedMealTypes(
+                        f.selectedMealTypes.includes(m)
+                          ? f.selectedMealTypes.filter((x) => x !== m)
+                          : [...f.selectedMealTypes, m]
+                      )
+                    }
+                  />
+                  <span className="text-sm">{m}</span>
+                </label>
+              ))}
+            </div>
+          </div>
 
-  // Build the badge list once, so MobileRowBalancer can move the longest to row 2
-  const badges = React.useMemo(
-    () => [
-      {
-        key: "cuisines",
-        node: <Badge variant="outline">Cuisines: {selectedCuisines.length}</Badge>,
-        labelForLength: "Cuisines",
-      },
-      {
-        key: "meals",
-        node: <Badge variant="outline">Meal Types: {selectedMealTypes.length}</Badge>,
-        labelForLength: "Meal Types",
-      },
-      {
-        key: "diets",
-        node: <Badge variant="outline">Dietary: {selectedDietary.length}</Badge>,
-        labelForLength: "Dietary",
-      },
-      {
-        key: "eth",
-        node: <Badge variant="outline">Ethnicity: {selectedEthnicities.length}</Badge>,
-        labelForLength: "Ethnicity",
-      },
-      {
-        key: "std",
-        node: <Badge variant="outline">Standards: {selectedPreparation.length}</Badge>,
-        labelForLength: "Standards",
-      },
-      {
-        key: "all",
-        node: (
-          <Badge variant="outline">
-            No {excludedAllergens.length ? excludedAllergens.join(", ") : "—"}
-          </Badge>
-        ),
-        labelForLength: excludedAllergens.join(", ") || "None",
-      },
-      ...(selectedDifficulty
-        ? [
-            {
-              key: "diff",
-              node: <Badge variant="outline">Difficulty: {selectedDifficulty}</Badge>,
-              labelForLength: selectedDifficulty,
-            },
-          ]
-        : []),
-      ...(onlyRecipes
-        ? [
-            {
-              key: "recipe",
-              node: <Badge variant="outline">Recipe-only</Badge>,
-              labelForLength: "Recipe-only",
-            },
-          ]
-        : []),
-      {
-        key: "time",
-        node: <Badge variant="outline">≤ {maxCookTime} min</Badge>,
-        labelForLength: `${maxCookTime} min`,
-      },
-      {
-        key: "rating",
-        node: (
-          <Badge variant="outline">
-            <span className="inline-flex items-center gap-1">
-              <SpoonIcon className="h-3.5 w-3.5" /> {minRating}+
-            </span>
-          </Badge>
-        ),
-        labelForLength: `${minRating} spoons`,
-      },
-      {
-        key: "sort",
-        node: <Badge variant="outline">Sort: {sortBy}</Badge>,
-        labelForLength: `Sort: ${sortBy}`,
-      },
-      {
-        key: "reset",
-        node: (
-          <Button size="sm" variant="ghost" className="h-7 px-2" onClick={resetFilters}>
+          {/* Difficulty */}
+          <div className="space-y-2">
+            <h3 className="text-base font-semibold">Difficulty</h3>
+            <div className="flex flex-wrap gap-2">
+              {DIFFICULTY.map((d) => (
+                <Button
+                  key={d}
+                  size="sm"
+                  variant={f.selectedDifficulty === d ? "default" : "outline"}
+                  onClick={() => f.setSelectedDifficulty(f.selectedDifficulty === d ? "" : d)}
+                >
+                  {d}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {/* Prep Time */}
+          <div className="space-y-2">
+            <Label>Max Cook Time: {f.maxCookTime} min</Label>
+            <Slider
+              value={[f.maxCookTime]}
+              min={5}
+              max={240}
+              step={5}
+              onValueChange={(v) => f.setMaxCookTime(v[0] ?? 60)}
+            />
+          </div>
+
+          {/* Spoons (rating) */}
+          <div className="space-y-2">
+            <Label>Min Spoons: {f.minRating || 0}</Label>
+            <div className="flex items-center gap-1">
+              {SPOON_SCALE.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className="p-1"
+                  onClick={() => f.setMinRating(f.minRating === n ? 0 : n)}
+                  aria-label={`${n} spoons & up`}
+                >
+                  {/* Use your Knife+Spoon SVG in ExploreShared SpoonIcon if desired */}
+                  <span className={`text-xl ${f.minRating >= n ? "" : "opacity-30"}`}>🥄</span>
+                </button>
+              ))}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-1 h-7 px-2"
+                onClick={() => f.setMinRating(0)}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+
+          {/* Standards (prep styles like Halal/Kosher are in diets; this is extra) */}
+          <div className="space-y-3">
+            <h3 className="text-base font-semibold">Preparation Standards</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {STANDARDS.map((s) => (
+                <label key={s} className="flex items-center gap-2 rounded-md border p-2">
+                  <Checkbox
+                    checked={f.selectedPreparation.includes(s)}
+                    onCheckedChange={() =>
+                      f.setSelectedPreparation(
+                        f.selectedPreparation.includes(s)
+                          ? f.selectedPreparation.filter((x) => x !== s)
+                          : [...f.selectedPreparation, s]
+                      )
+                    }
+                  />
+                  <span className="text-sm">{s}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Ethnicity (grouped; the only ethnicity UI now) */}
+      <RegionEthnicitySection />
+
+      {/* Diets with Halal/Kosher */}
+      <DietsSection />
+
+      {/* Allergens */}
+      <AllergensSection />
+
+      <div className="sticky bottom-0 bg-background/60 backdrop-blur supports-[backdrop-filter]:bg-background/50 py-3 border-t">
+        <div className="max-w-5xl mx-auto px-4 md:px-0 flex gap-2">
+          <Button variant="secondary" onClick={reset} className="flex-1">
             Reset
           </Button>
-        ),
-        labelForLength: "Reset",
-      },
-    ],
-    [
-      selectedCuisines,
-      selectedMealTypes,
-      selectedDietary,
-      selectedEthnicities,
-      selectedPreparation,
-      excludedAllergens,
-      selectedDifficulty,
-      onlyRecipes,
-      maxCookTime,
-      minRating,
-      sortBy,
-      resetFilters,
-    ]
-  );
-
-  // Defensive rendering: ignore null/undefined and items without an id
-  const safePosts = React.useMemo(
-    () => (posts || []).filter((p: any) => p && p.id != null),
-    [posts]
-  );
-
-  return (
-    <div className="mx-auto max-w-6xl px-4 md:px-6">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold">Explore</h1>
-        <div className="flex gap-2">
-          <Link href="/explore/filters">
-            <Button variant="outline" className="gap-2">
-              <Filter className="h-4 w-4" />
-              Filters
-            </Button>
-          </Link>
-          <Button
-            variant={viewMode === "grid" ? "default" : "outline"}
-            onClick={() => setViewMode("grid")}
-            className="gap-2"
-          >
-            <LayoutGrid className="h-4 w-4" /> Grid
-          </Button>
-          <Button
-            variant={viewMode === "list" ? "default" : "outline"}
-            onClick={() => setViewMode("list")}
-            className="gap-2"
-          >
-            <List className="h-4 w-4" /> List
+          <Button onClick={apply} className="flex-1">
+            Apply
           </Button>
         </div>
       </div>
-
-      {/* Active filter summary — mobile rebalance to move the longest to row 2 */}
-      <MobileRowBalancer badges={badges} />
-
-      {/* Loading / Error / Content */}
-      {isLoading ? (
-        <GridSkeleton />
-      ) : isError ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
-          <p className="mb-3 text-sm text-destructive">
-            {(error as Error)?.message || "Failed to load posts."}
-          </p>
-          <Button onClick={() => refetch()} variant="outline" className="gap-2">
-            <RefreshCw className="h-4 w-4" /> Try again
-          </Button>
-        </div>
-      ) : safePosts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
-          <p className="text-sm text-muted-foreground">No posts match these filters.</p>
-          <Button className="mt-3" variant="secondary" onClick={resetFilters}>
-            Reset filters
-          </Button>
-        </div>
-      ) : viewMode === "grid" ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {safePosts.map((raw: any) => {
-            const p = toCardPost(raw);
-            return (
-              <GridCard
-                key={String(p.id)}
-                post={{
-                  ...p,
-                  image: p.image ?? PLACEHOLDER_IMG,
-                }}
-              />
-            );
-          })}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {safePosts.map((raw: any) => {
-            const p = toCardPost(raw);
-            return (
-              <ListRow
-                key={String(p.id)}
-                post={{
-                  ...p,
-                  image: p.image ?? PLACEHOLDER_IMG,
-                }}
-              />
-            );
-          })}
-        </div>
-      )}
-
-      {/* Load more */}
-      {safePosts.length > 0 && (
-        <div className="flex justify-center my-6">
-          {hasNextPage ? (
-            <Button onClick={() => fetchNextPage()} disabled={isFetchingNextPage} variant="outline">
-              {isFetchingNextPage ? "Loading…" : "Load more"}
-            </Button>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {isFetching ? "Loading…" : "You’re all caught up."}
-            </p>
-          )}
-        </div>
-      )}
     </div>
   );
 }
