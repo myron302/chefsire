@@ -6,9 +6,6 @@ import { LayoutGrid, List, Filter, RefreshCw } from "lucide-react";
 import { useRecipesFilters } from "./useRecipesFilters";
 import { RecipeTile, NonRecipeTile, EmptyState, SpoonIcon } from "./RecipesShared";
 
-/** ---------------------------------------
- * Demo data (replace with your API later)
- * -------------------------------------- */
 type DemoPost = {
   id: string;
   isRecipe?: boolean;
@@ -28,8 +25,9 @@ type DemoPost = {
     ingredients: string[];
     instructions: string[];
     ratingSpoons?: number; // 0..5
-    dietTags?: string[];   // e.g. Vegan, Halal, Kosher...
+    dietTags?: string[];   // Vegan, Halal, Kosher, etc.
     allergens?: string[];
+    ethnicities?: string[]; // NEW: ethnicity tags on the recipe
   };
 };
 
@@ -53,6 +51,7 @@ const DEMO: DemoPost[] = [
       ratingSpoons: 5,
       dietTags: ["Vegetarian", "Kosher"],
       allergens: ["Gluten", "Dairy"],
+      ethnicities: ["Italian"], // Europe
     },
     likes: 223,
     comments: 18,
@@ -87,6 +86,7 @@ const DEMO: DemoPost[] = [
       ratingSpoons: 5,
       dietTags: ["Vegetarian", "Halal"],
       allergens: ["Dairy"],
+      ethnicities: ["French", "European (General)"], // Europe
     },
     likes: 512,
     comments: 61,
@@ -110,15 +110,43 @@ const DEMO: DemoPost[] = [
       ratingSpoons: 4,
       dietTags: ["Vegetarian"],
       allergens: ["Gluten"],
+      ethnicities: ["Californian", "American (General)"], // The Americas (NA)
     },
     likes: 77,
     comments: 4,
   },
+  {
+    id: "r4",
+    isRecipe: true,
+    createdAt: "2025-09-11T11:30:00Z",
+    image:
+      "https://images.unsplash.com/photo-1552332386-f8dd00dc2f85?q=80&w=1200&auto=format&fit=crop",
+    user: { displayName: "Louis" },
+    recipe: {
+      title: "Shrimp Creole",
+      cookTime: 35,
+      servings: 4,
+      difficulty: "Medium",
+      cuisine: "Creole",
+      mealType: "Dinner",
+      ingredients: ["Shrimp","Tomatoes","Celery","Bell pepper","Onion","Spices","Rice"],
+      instructions: ["Sauté trinity","Add tomatoes & spices","Simmer","Add shrimp","Serve over rice"],
+      ratingSpoons: 5,
+      dietTags: [],
+      allergens: ["Shellfish"],
+      ethnicities: ["Creole","Cajun","Southern / Soul Food"], // The Americas (NA)
+    },
+    likes: 260,
+    comments: 22,
+  },
 ];
 
-/** ---------------------------------------
- * Helpers for filtering/sorting
- * -------------------------------------- */
+function intersects(a: string[] | undefined, b: string[]): boolean {
+  if (!b.length) return true;
+  if (!a || a.length === 0) return false;
+  return b.some((x) => a.includes(x));
+}
+
 function includesAll(haystack: string[] | undefined, needles: string[]): boolean {
   if (!needles.length) return true;
   if (!haystack || haystack.length === 0) return false;
@@ -129,15 +157,16 @@ export default function RecipesListPage() {
   const { state, reset } = useRecipesFilters();
   const [view, setView] = React.useState<"grid" | "list">("grid");
 
-  // Apply filters
   const filtered = React.useMemo(() => {
     const items = DEMO.filter((p) => {
       if (state.onlyRecipes && !p.isRecipe) return false;
 
-      // Only filter when recipe exists
       const r = p.recipe;
 
-      // cuisines
+      // Ethnicities (AT LEAST ONE must match)
+      if (!intersects(r?.ethnicities, state.ethnicities)) return false;
+
+      // cuisines (exact match)
       if (state.cuisines.length && (!r?.cuisine || !state.cuisines.includes(r.cuisine))) {
         return false;
       }
@@ -147,15 +176,11 @@ export default function RecipesListPage() {
         return false;
       }
 
-      // dietary (must include all selected)
-      if (state.dietary.length && !includesAll(r?.dietTags || [], state.dietary)) {
-        return false;
-      }
+      // dietary (must include ALL selected)
+      if (!includesAll(r?.dietTags || [], state.dietary)) return false;
 
       // difficulty
-      if (state.difficulty && r?.difficulty !== state.difficulty) {
-        return false;
-      }
+      if (state.difficulty && r?.difficulty !== state.difficulty) return false;
 
       // max cook time
       if (r?.cookTime != null && state.maxCookTime && r.cookTime > state.maxCookTime) {
@@ -163,9 +188,7 @@ export default function RecipesListPage() {
       }
 
       // min spoons
-      if ((r?.ratingSpoons ?? 0) < (state.minSpoons || 0)) {
-        return false;
-      }
+      if ((r?.ratingSpoons ?? 0) < (state.minSpoons || 0)) return false;
 
       return true;
     });
@@ -174,19 +197,20 @@ export default function RecipesListPage() {
     switch (state.sortBy) {
       case "rating":
         return [...items].sort(
-          (a, b) => (b.recipe?.ratingSpoons ?? 0) - (a.recipe?.ratingSpoons ?? 0),
+          (a, b) => (b.recipe?.ratingSpoons ?? 0) - (a.recipe?.ratingSpoons ?? 0)
         );
       case "likes":
         return [...items].sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0));
       default:
         return [...items].sort(
           (a, b) =>
-            new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime(),
+            new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
         );
     }
   }, [state]);
 
   const activeCount =
+    (state.ethnicities.length ? 1 : 0) +
     (state.cuisines.length ? 1 : 0) +
     (state.mealTypes.length ? 1 : 0) +
     (state.dietary.length ? 1 : 0) +
@@ -204,6 +228,9 @@ export default function RecipesListPage() {
 
         {/* Active filters summary */}
         <div className="ml-2 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+          {state.ethnicities.length > 0 && (
+            <Badge variant="outline">Ethnicities: {state.ethnicities.length}</Badge>
+          )}
           {state.cuisines.length > 0 && (
             <Badge variant="outline">Cuisines: {state.cuisines.length}</Badge>
           )}
@@ -272,7 +299,7 @@ export default function RecipesListPage() {
               <RecipeTile key={p.id} post={p} />
             ) : (
               <NonRecipeTile key={p.id} post={p} />
-            ),
+            )
           )}
         </div>
       ) : (
@@ -282,7 +309,7 @@ export default function RecipesListPage() {
               <RecipeTile key={p.id} post={p} />
             ) : (
               <NonRecipeTile key={p.id} post={p} />
-            ),
+            )
           )}
         </div>
       )}
