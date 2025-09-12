@@ -1,6 +1,7 @@
-// client/src/pages/recipes/useRecipesFilters.tsx
 import React, { createContext, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+
+// ✅ import lists from the shared catalog file
 import {
   CUISINES,
   MEAL_TYPES,
@@ -11,7 +12,7 @@ import {
   ETHNICITIES,
 } from "./filters.catalog";
 
-/** Re-export lists so other components can import from one place if they prefer */
+// 🔁 re-export them so components can just import from this file if they want
 export {
   CUISINES,
   MEAL_TYPES,
@@ -30,7 +31,7 @@ export interface RecipesFiltersState {
   difficulty: "" | "Easy" | "Medium" | "Hard";
   allergens: string[];
   maxCookTime: number;
-  minSpoons: number; // your rating metric (0–5 spoons)
+  minSpoons: number; // ⭐ rating in spoons
   onlyRecipes: boolean;
   sortBy: "newest" | "rating" | "likes";
 }
