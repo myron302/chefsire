@@ -1,100 +1,93 @@
 import * as React from "react";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Heart, MessageCircle } from "lucide-react";
 
-// Spoon icon (swap for your knife+spoon SVG later)
-export function Spoon({ dim = 18, faded = false }: { dim?: number; faded?: boolean }) {
+// Spoon + Knife SVG to keep your brand consistent
+export function SpoonIcon({ className }: { className?: string }) {
   return (
-    <span
-      style={{ fontSize: dim, lineHeight: 1 }}
-      className={faded ? "opacity-30" : ""}
-      aria-hidden
-    >
-      🥄
-    </span>
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden="true">
+      <path d="M7 2c2.5 0 4.5 2 4.5 4.5S9.5 11 7 11 2.5 9 2.5 6.5 4.5 2 7 2zm1 10v8a2 2 0 1 1-4 0v-8h4z" />
+      <path d="M15 3h2v18h-2z" />
+    </svg>
   );
 }
 
-export const SPOON_SCALE = [1, 2, 3, 4, 5] as const;
-
-// Flat lists (alphabetical)
-export const CUISINES = [
-  "African","Alaskan","American","Argentinian","Austrian","Baja","Basque","Belgian","Brazilian","British","Bulgarian",
-  "Californian","Caribbean","Catalan","Cajun","Central Asian","Chilean","Chinese (Cantonese)","Chinese (Hunan)","Chinese (Shandong)","Chinese (Sichuan)",
-  "Colombian","Creole","Cuban","Czech","Dutch","Eastern European","Egyptian","Ethiopian","Finnish","French","Fusion","German","Greek","Haitian",
-  "Hawaiian","Hungarian","Indonesian","Irish","Israeli","Italian","Jamaican","Japanese","Jordanian","Kazakh","Kenyan","Korean","Kurdish","Lebanese",
-  "Malaysian","Mediterranean","Mexican","Middle Eastern","Moroccan","Nepali","New Mexican","North African","Oaxacan","Pakistani","Palestinian","Peruvian","Polish",
-  "Portuguese","Puerto Rican","Romanian","Russian","Scottish","Senegalese","Sicilian","Singaporean","Somali","Spanish","Sri Lankan","Swiss","Taiwanese",
-  "Tex-Mex","Thai","Tunisian","Turkish","Uighur","Ukrainian","Uzbek","Vietnamese","Yemeni","Yucatecan",
-].sort();
-
-export const MEAL_TYPES = ["Breakfast","Brunch","Lunch","Dinner","Snack","Dessert"] as const;
-export const DIFFICULTY = ["Easy","Medium","Hard"] as const;
-
-export const DIETARY_WITH_RELIGIOUS = [
-  "Vegetarian","Vegan","Pescatarian","Keto","Paleo","Mediterranean","Whole30","Flexitarian",
-  "High-Protein","High-Fiber","Low-Carb","Low-Fat","Low-Calorie","Diabetic-Friendly","Heart-Healthy",
-  "Low-Sodium","Low-Sugar","Low-FODMAP",
-  "Gluten-Free","Lactose-Free","Dairy-Free","Egg-Free","Nut-Free","Soy-Free","Shellfish-Free",
-  "Halal","Kosher",
-].sort();
-
-export const ALLERGENS = [
-  "Dairy","Eggs","Fish","Gluten","Mustard","Peanuts","Sesame","Shellfish","Soy","Tree Nuts",
-].sort();
-
-export const STANDARDS = ["Fair Trade","Free-Range","Non-GMO","Organic"] as const;
-
-// Grouped Ethnicities (alphabetized within group)
-export const ETHNICITY_REGIONS: Record<string, { label: string; items: string[] }> = {
-  "Africa": {
-    label: "Africa",
-    items: [
-      "Algerian","Cameroonian","Egyptian","Eritrean","Ethiopian","Ghanaian","Ivorian","Kenyan",
-      "Moroccan","Nigerian","Senegalese","Somali","South African","Tanzanian","Tunisian","Ugandan",
-    ].sort(),
-  },
-  "Middle East & SW Asia": {
-    label: "Middle East & SW Asia",
-    items: [
-      "Armenian","Georgian","Gulf (Khaleeji)","Israeli","Jordanian","Kurdish","Lebanese","Palestinian",
-      "Persian (Iranian)","Syrian","Turkish","Yemeni",
-    ].sort(),
-  },
-  "South Asia": {
-    label: "South Asia",
-    items: [
-      "Bangladeshi","Bengali","Goan","Gujarati","Hyderabadi","Kashmiri","Maharashtrian",
-      "Nepali","North Indian (Punjabi)","Pakistani","Rajasthani","South Indian (Tamil)","Sri Lankan",
-    ].sort(),
-  },
-  "East & Southeast Asia": {
-    label: "East & Southeast Asia",
-    items: [
-      "Chinese (Cantonese)","Chinese (Hunan)","Chinese (Shandong)","Chinese (Sichuan)","Indonesian",
-      "Japanese","Korean","Malaysian","Mongolian","Philippine/Filipino","Singaporean","Taiwanese","Thai","Vietnamese",
-    ].sort(),
-  },
-  "Central Asia": {
-    label: "Central Asia",
-    items: ["Kazakh","Uighur","Uzbek"].sort(),
-  },
-  "Europe": {
-    label: "Europe",
-    items: [
-      "Austrian","Balkan","Basque","Belgian","British","Bulgarian","Catalan","Czech","Dutch","Eastern European","Finnish",
-      "French","German","Greek","Hungarian","Irish","Italian","Polish","Portuguese","Romanian","Russian","Scandinavian",
-      "Scottish","Sicilian","Spanish","Swiss","Ukrainian",
-    ].sort(),
-  },
-  "The Americas & Caribbean": {
-    label: "The Americas & Caribbean",
-    items: [
-      "Alaskan","American","Argentinian","Baja","Brazilian","Californian","Caribbean","Chilean","Colombian",
-      "Cuban","Dominican","Haitian","Hawaiian","Jamaican","Mexican","New Mexican","Oaxacan","Pacific Northwest",
-      "Peruvian","Puerto Rican","Southern / Soul Food","Tex-Mex","Venezuelan","Yucatecan",
-    ].sort(),
-  },
-  "Broad / Fusion": {
-    label: "Broad / Fusion",
-    items: ["Fusion","Mediterranean","Middle Eastern","North African","Pan-Asian"].sort(),
-  },
+type DemoPost = {
+  id: string | number;
+  isRecipe?: boolean;
+  image: string;
+  title?: string;
+  likes?: number;
+  comments?: number;
+  user?: { displayName?: string; avatar?: string };
+  recipe?: {
+    title: string;
+    cookTime?: number;
+    servings?: number;
+    difficulty?: "Easy" | "Medium" | "Hard";
+    cuisine?: string;
+    ingredients: string[];
+    instructions: string[];
+    ratingSpoons?: number;
+    dietTags?: string[];
+    allergens?: string[];
+  };
 };
+
+export function RecipeTile({ post }: { post: DemoPost }) {
+  const r = post.recipe!;
+  return (
+    <Card className="overflow-hidden">
+      <div className="aspect-square overflow-hidden">
+        <img src={post.image} alt={r.title} className="h-full w-full object-cover" loading="lazy" />
+      </div>
+      <div className="p-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold line-clamp-1">{r.title}</h3>
+          {r.cuisine && <Badge variant="outline" className="text-xs">{r.cuisine}</Badge>}
+        </div>
+        <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1">
+            <SpoonIcon className="h-4 w-4" />
+            {r.ratingSpoons ?? 0}
+          </span>
+          <span>{r.cookTime ?? 0} min</span>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+export function NonRecipeTile({ post }: { post: DemoPost }) {
+  return (
+    <Card className="relative overflow-hidden group">
+      <div className="aspect-square">
+        <img
+          src={post.image}
+          alt={post.title || "post"}
+          className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+          loading="lazy"
+          decoding="async"
+        />
+      </div>
+      <div className="pointer-events-none absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+      <div className="absolute bottom-2 left-2 flex gap-3 text-white drop-shadow">
+        <span className="inline-flex items-center gap-1 text-sm">
+          <Heart className="h-4 w-4 fill-current" /> {post.likes ?? 0}
+        </span>
+        <span className="inline-flex items-center gap-1 text-sm">
+          <MessageCircle className="h-4 w-4" /> {post.comments ?? 0}
+        </span>
+      </div>
+    </Card>
+  );
+}
+
+export function EmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
+      <p className="text-sm text-muted-foreground">No recipes match these filters.</p>
+    </div>
+  );
+}
