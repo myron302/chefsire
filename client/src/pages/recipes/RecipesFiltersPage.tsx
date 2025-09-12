@@ -8,14 +8,8 @@ import { Input } from "@/components/ui/input";
 import { useRecipesFilters } from "./useRecipesFilters";
 import { SpoonIcon } from "./RecipesShared";
 
-/* ----------------------------
-   Region-grouped Ethnicities
-   ---------------------------- */
 type RegionGroup = { region: string; items: string[] };
-
-function sortAlpha(a: string, b: string) {
-  return a.localeCompare(b, undefined, { sensitivity: "base" });
-}
+const sortAlpha = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base" });
 
 const ETHNICITY_REGIONS: RegionGroup[] = [
   {
@@ -156,9 +150,9 @@ const ETHNICITY_REGIONS: RegionGroup[] = [
       "American (General)",
       "New England",
       "Midwestern",
-      "Southern / Soul Food", // ✅ added
-      "Cajun",                // ✅ added
-      "Creole",               // ✅ added
+      "Southern / Soul Food",
+      "Cajun",
+      "Creole",
       "Tex-Mex",
       "New Mexican",
       "BBQ",
@@ -231,25 +225,57 @@ const ETHNICITY_REGIONS: RegionGroup[] = [
 ];
 
 const CUISINES = [
-  "Italian", "Healthy", "Desserts", "Quick", "Vegan", "Seafood", "Asian", "Mexican",
-  "Mediterranean", "BBQ", "Breakfast", "Burgers", "Salads",
+  "Italian",
+  "Healthy",
+  "Desserts",
+  "Quick",
+  "Vegan",
+  "Seafood",
+  "Asian",
+  "Mexican",
+  "Mediterranean",
+  "BBQ",
+  "Breakfast",
+  "Burgers",
+  "Salads",
 ].sort(sortAlpha);
 
 const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner", "Snack", "Dessert"] as const;
 
 const DIETARY = [
-  "Vegetarian","Vegan","Pescatarian","Keto","Paleo","Mediterranean","Whole30","Flexitarian",
-  "High-Protein","High-Fiber","Low-Carb","Low-Fat","Low-Calorie",
-  "Diabetic-Friendly","Heart-Healthy","Low-Sodium","Low-Sugar","Low-FODMAP",
-  "Gluten-Free","Lactose-Free","Dairy-Free","Egg-Free","Nut-Free","Soy-Free","Shellfish-Free",
-  "Halal","Kosher",
+  "Vegetarian",
+  "Vegan",
+  "Pescatarian",
+  "Keto",
+  "Paleo",
+  "Mediterranean",
+  "Whole30",
+  "Flexitarian",
+  "High-Protein",
+  "High-Fiber",
+  "Low-Carb",
+  "Low-Fat",
+  "Low-Calorie",
+  "Diabetic-Friendly",
+  "Heart-Healthy",
+  "Low-Sodium",
+  "Low-Sugar",
+  "Low-FODMAP",
+  "Gluten-Free",
+  "Lactose-Free",
+  "Dairy-Free",
+  "Egg-Free",
+  "Nut-Free",
+  "Soy-Free",
+  "Shellfish-Free",
+  "Halal",
+  "Kosher",
 ].sort(sortAlpha);
 
-const DIFFICULTY: Array<"Easy" | "Medium" | "Hard"> = ["Easy","Medium","Hard"];
+const DIFFICULTY: Array<"Easy" | "Medium" | "Hard"> = ["Easy", "Medium", "Hard"];
 
-export default function RecipesFiltersPanel() {
+export default function RecipesFiltersPage() {
   const { state, set, reset } = useRecipesFilters();
-
   const [ethSearch, setEthSearch] = React.useState("");
 
   const toggle = <T extends string>(arr: T[], value: T) =>
@@ -274,7 +300,7 @@ export default function RecipesFiltersPanel() {
         </div>
       </div>
 
-      {/* ---------------- Ethnicity / Cultural Origin ---------------- */}
+      {/* Ethnicity / Cultural Origin */}
       <section>
         <div className="mb-3 flex items-end justify-between gap-3">
           <div>
@@ -284,7 +310,9 @@ export default function RecipesFiltersPanel() {
             </p>
           </div>
           <div className="w-60">
-            <Label htmlFor="eth-search" className="sr-only">Search ethnicities</Label>
+            <Label htmlFor="eth-search" className="sr-only">
+              Search ethnicities
+            </Label>
             <Input
               id="eth-search"
               placeholder="Search ethnicities…"
@@ -296,23 +324,17 @@ export default function RecipesFiltersPanel() {
 
         <div className="space-y-5">
           {ETHNICITY_REGIONS.map(({ region, items }) => {
-            const visible = ethLower
-              ? items.filter((i) => i.toLowerCase().includes(ethLower))
-              : items;
-
+            const visible = ethLower ? items.filter((i) => i.toLowerCase().includes(ethLower)) : items;
             if (visible.length === 0) return null;
-
             return (
               <div key={region} className="space-y-2">
-                <h5 className="text-[0.95rem] font-semibold text-foreground">{region}</h5>
+                <h5 className="text-[1rem] font-semibold text-foreground">{region}</h5>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {visible.map((e) => (
                     <label key={e} className="flex items-center gap-2 rounded-md border p-2">
                       <Checkbox
                         checked={state.ethnicities.includes(e)}
-                        onCheckedChange={() =>
-                          set({ ethnicities: toggle(state.ethnicities, e) })
-                        }
+                        onCheckedChange={() => set({ ethnicities: toggle(state.ethnicities, e) })}
                       />
                       <span className="text-sm">{e}</span>
                     </label>
@@ -324,7 +346,7 @@ export default function RecipesFiltersPanel() {
         </div>
       </section>
 
-      {/* ---------------- Cuisines ---------------- */}
+      {/* Cuisines */}
       <section>
         <h4 className="mb-2 text-base font-semibold">Cuisines</h4>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -340,7 +362,7 @@ export default function RecipesFiltersPanel() {
         </div>
       </section>
 
-      {/* ---------------- Meal Types ---------------- */}
+      {/* Meal Types */}
       <section>
         <h4 className="mb-2 text-base font-semibold">Meal Type</h4>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -356,7 +378,7 @@ export default function RecipesFiltersPanel() {
         </div>
       </section>
 
-      {/* ---------------- Dietary ---------------- */}
+      {/* Dietary (includes Halal / Kosher) */}
       <section>
         <h4 className="mb-2 text-base font-semibold">Dietary</h4>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -372,11 +394,11 @@ export default function RecipesFiltersPanel() {
         </div>
       </section>
 
-      {/* ---------------- Difficulty ---------------- */}
+      {/* Difficulty */}
       <section>
         <h4 className="mb-2 text-base font-semibold">Difficulty</h4>
         <div className="flex flex-wrap gap-2">
-          {DIFFICULTY.map((d) => (
+          {(["Easy", "Medium", "Hard"] as const).map((d) => (
             <Button
               key={d}
               size="sm"
@@ -389,7 +411,7 @@ export default function RecipesFiltersPanel() {
         </div>
       </section>
 
-      {/* ---------------- Max Cook Time ---------------- */}
+      {/* Max Cook Time */}
       <section>
         <div className="flex items-center justify-between">
           <h4 className="mb-2 text-base font-semibold">Max Cook Time</h4>
@@ -404,7 +426,7 @@ export default function RecipesFiltersPanel() {
         />
       </section>
 
-      {/* ---------------- Min spoons ---------------- */}
+      {/* Min spoons */}
       <section>
         <div className="flex items-center justify-between">
           <h4 className="mb-2 text-base font-semibold">Min Rating (spoons)</h4>
@@ -430,7 +452,7 @@ export default function RecipesFiltersPanel() {
         </div>
       </section>
 
-      {/* ---------------- More ---------------- */}
+      {/* More */}
       <section className="space-y-2">
         <h4 className="text-base font-semibold">More</h4>
         <label className="flex items-center gap-2">
