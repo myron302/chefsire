@@ -14,7 +14,7 @@ type DemoPost = {
   likes?: number;
   comments?: number;
   user?: { displayName?: string; avatar?: string };
-  createdAt?: string; // ISO
+  createdAt?: string;
   recipe?: {
     title: string;
     cookTime?: number;
@@ -24,10 +24,10 @@ type DemoPost = {
     mealType?: "Breakfast" | "Lunch" | "Dinner" | "Snack" | "Dessert";
     ingredients: string[];
     instructions: string[];
-    ratingSpoons?: number; // 0..5
-    dietTags?: string[];   // Vegan, Halal, Kosher, etc.
-    allergens?: string[];
-    ethnicities?: string[]; // NEW: ethnicity tags on the recipe
+    ratingSpoons?: number;
+    dietTags?: string[];
+    allergens?: string[];   // ← used for exclusion
+    ethnicities?: string[]; // ← intersection with selected ethnicities
   };
 };
 
@@ -51,7 +51,7 @@ const DEMO: DemoPost[] = [
       ratingSpoons: 5,
       dietTags: ["Vegetarian", "Kosher"],
       allergens: ["Gluten", "Dairy"],
-      ethnicities: ["Italian"], // Europe
+      ethnicities: ["Italian"],
     },
     likes: 223,
     comments: 18,
@@ -86,7 +86,7 @@ const DEMO: DemoPost[] = [
       ratingSpoons: 5,
       dietTags: ["Vegetarian", "Halal"],
       allergens: ["Dairy"],
-      ethnicities: ["French", "European (General)"], // Europe
+      ethnicities: ["French", "European (General)"],
     },
     likes: 512,
     comments: 61,
@@ -110,7 +110,7 @@ const DEMO: DemoPost[] = [
       ratingSpoons: 4,
       dietTags: ["Vegetarian"],
       allergens: ["Gluten"],
-      ethnicities: ["Californian", "American (General)"], // The Americas (NA)
+      ethnicities: ["Californian", "American (General)"],
     },
     likes: 77,
     comments: 4,
@@ -134,7 +134,7 @@ const DEMO: DemoPost[] = [
       ratingSpoons: 5,
       dietTags: [],
       allergens: ["Shellfish"],
-      ethnicities: ["Creole","Cajun","Southern / Soul Food"], // The Americas (NA)
+      ethnicities: ["Creole","Cajun","Southern / Soul Food"],
     },
     likes: 260,
     comments: 22,
@@ -146,11 +146,15 @@ function intersects(a: string[] | undefined, b: string[]): boolean {
   if (!a || a.length === 0) return false;
   return b.some((x) => a.includes(x));
 }
-
 function includesAll(haystack: string[] | undefined, needles: string[]): boolean {
   if (!needles.length) return true;
   if (!haystack || haystack.length === 0) return false;
   return needles.every((n) => haystack.includes(n));
+}
+function excludesAny(haystack: string[] | undefined, disallow: string[]): boolean {
+  if (!disallow.length) return true;
+  if (!haystack || haystack.length === 0) return true;
+  return !disallow.some((bad) => haystack.includes(bad));
 }
 
 export default function RecipesListPage() {
@@ -160,57 +164,50 @@ export default function RecipesListPage() {
   const filtered = React.useMemo(() => {
     const items = DEMO.filter((p) => {
       if (state.onlyRecipes && !p.isRecipe) return false;
-
       const r = p.recipe;
 
-      // Ethnicities (AT LEAST ONE must match)
+      // Ethnicities: at least one must match
       if (!intersects(r?.ethnicities, state.ethnicities)) return false;
 
-      // cuisines (exact match)
-      if (state.cuisines.length && (!r?.cuisine || !state.cuisines.includes(r.cuisine))) {
-        return false;
-      }
+      // Cuisines exact
+      if (state.cuisines.length && (!r?.cuisine || !state.cuisines.includes(r.cuisine))) return false;
 
-      // meal types
-      if (state.mealTypes.length && (!r?.mealType || !state.mealTypes.includes(r.mealType))) {
-        return false;
-      }
+      // Meal type
+      if (state.mealTypes.length && (!r?.mealType || !state.mealTypes.includes(r.mealType))) return false;
 
-      // dietary (must include ALL selected)
+      // Dietary: include ALL selected
       if (!includesAll(r?.dietTags || [], state.dietary)) return false;
 
-      // difficulty
+      // Allergens: EXCLUDE any recipe that contains one of the selected allergens
+      if (!excludesAny(r?.allergens || [], state.allergens)) return false;
+
+      // Difficulty
       if (state.difficulty && r?.difficulty !== state.difficulty) return false;
 
-      // max cook time
-      if (r?.cookTime != null && state.maxCookTime && r.cookTime > state.maxCookTime) {
-        return false;
-      }
+      // Max cook
+      if (r?.cookTime != null && state.maxCookTime && r.cookTime > state.maxCookTime) return false;
 
-      // min spoons
+      // Min spoons
       if ((r?.ratingSpoons ?? 0) < (state.minSpoons || 0)) return false;
 
       return true;
     });
 
-    // sort
     switch (state.sortBy) {
       case "rating":
-        return [...items].sort(
-          (a, b) => (b.recipe?.ratingSpoons ?? 0) - (a.recipe?.ratingSpoons ?? 0)
-        );
+        return [...items].sort((a, b) => (b.recipe?.ratingSpoons ?? 0) - (a.recipe?.ratingSpoons ?? 0));
       case "likes":
         return [...items].sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0));
       default:
         return [...items].sort(
-          (a, b) =>
-            new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+          (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
         );
     }
   }, [state]);
 
   const activeCount =
     (state.ethnicities.length ? 1 : 0) +
+    (state.allergens.length ? 1 : 0) +
     (state.cuisines.length ? 1 : 0) +
     (state.mealTypes.length ? 1 : 0) +
     (state.dietary.length ? 1 : 0) +
@@ -222,24 +219,16 @@ export default function RecipesListPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 md:px-6 py-4 space-y-4">
-      {/* Header */}
       <div className="flex items-center gap-2">
         <h1 className="text-2xl font-bold">Recipes</h1>
 
         {/* Active filters summary */}
         <div className="ml-2 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-          {state.ethnicities.length > 0 && (
-            <Badge variant="outline">Ethnicities: {state.ethnicities.length}</Badge>
-          )}
-          {state.cuisines.length > 0 && (
-            <Badge variant="outline">Cuisines: {state.cuisines.length}</Badge>
-          )}
-          {state.mealTypes.length > 0 && (
-            <Badge variant="outline">Meals: {state.mealTypes.length}</Badge>
-          )}
-          {state.dietary.length > 0 && (
-            <Badge variant="outline">Dietary: {state.dietary.length}</Badge>
-          )}
+          {state.ethnicities.length > 0 && <Badge variant="outline">Ethnicities: {state.ethnicities.length}</Badge>}
+          {state.allergens.length > 0 && <Badge variant="outline">Allergens: {state.allergens.length} excluded</Badge>}
+          {state.cuisines.length > 0 && <Badge variant="outline">Cuisines: {state.cuisines.length}</Badge>}
+          {state.mealTypes.length > 0 && <Badge variant="outline">Meals: {state.mealTypes.length}</Badge>}
+          {state.dietary.length > 0 && <Badge variant="outline">Dietary: {state.dietary.length}</Badge>}
           {state.difficulty && <Badge variant="outline">{state.difficulty}</Badge>}
           {state.onlyRecipes && <Badge variant="outline">Recipe-only</Badge>}
           {state.minSpoons > 0 && (
@@ -247,12 +236,10 @@ export default function RecipesListPage() {
               <SpoonIcon className="h-3 w-3" /> {state.minSpoons}+
             </Badge>
           )}
-          {state.maxCookTime !== 60 && (
-            <Badge variant="outline">≤ {state.maxCookTime} min</Badge>
-          )}
+          {state.maxCookTime !== 60 && <Badge variant="outline">≤ {state.maxCookTime} min</Badge>}
         </div>
 
-        {/* Right side controls */}
+        {/* Right-side controls */}
         <div className="ml-auto flex gap-2">
           <Link href="/recipes/filters">
             <Button variant="outline" className="gap-2">
@@ -265,7 +252,6 @@ export default function RecipesListPage() {
               )}
             </Button>
           </Link>
-
           <Button
             variant={view === "grid" ? "default" : "outline"}
             onClick={() => setView("grid")}
@@ -282,7 +268,6 @@ export default function RecipesListPage() {
           >
             <List className="h-4 w-4" /> List
           </Button>
-
           <Button variant="ghost" size="icon" title="Reset filters" onClick={reset}>
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -294,23 +279,11 @@ export default function RecipesListPage() {
         <EmptyState />
       ) : view === "grid" ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {filtered.map((p) =>
-            p.isRecipe ? (
-              <RecipeTile key={p.id} post={p} />
-            ) : (
-              <NonRecipeTile key={p.id} post={p} />
-            )
-          )}
+          {filtered.map((p) => (p.isRecipe ? <RecipeTile key={p.id} post={p} /> : <NonRecipeTile key={p.id} post={p} />))}
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map((p) =>
-            p.isRecipe ? (
-              <RecipeTile key={p.id} post={p} />
-            ) : (
-              <NonRecipeTile key={p.id} post={p} />
-            )
-          )}
+          {filtered.map((p) => (p.isRecipe ? <RecipeTile key={p.id} post={p} /> : <NonRecipeTile key={p.id} post={p} />))}
         </div>
       )}
     </div>
