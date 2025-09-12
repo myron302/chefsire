@@ -4,6 +4,10 @@ export type Difficulty = "Easy" | "Medium" | "Hard";
 export type SortBy = "newest" | "rating" | "likes";
 
 export interface RecipesFiltersState {
+  // NEW: ethnicity tags, multi-select
+  ethnicities: string[];
+
+  // existing
   cuisines: string[];
   mealTypes: string[];
   dietary: string[];
@@ -16,13 +20,18 @@ export interface RecipesFiltersState {
 
 type RecipesFiltersContextValue = {
   state: RecipesFiltersState;
-  set: (patch: Partial<RecipesFiltersState> | ((prev: RecipesFiltersState) => RecipesFiltersState)) => void;
+  set: (
+    patch:
+      | Partial<RecipesFiltersState>
+      | ((prev: RecipesFiltersState) => RecipesFiltersState)
+  ) => void;
   reset: () => void;
 };
 
-const STORAGE_KEY = "recipes:filters:v1";
+const STORAGE_KEY = "recipes:filters:v2";
 
 const DEFAULT_STATE: RecipesFiltersState = {
+  ethnicities: [],
   cuisines: [],
   mealTypes: [],
   dietary: [],
