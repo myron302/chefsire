@@ -1,229 +1,276 @@
-import * as React from "react";
-import { useLocation } from "wouter";
-import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
-import { Checkbox } from "@/components/ui/checkbox";
-import { X } from "lucide-react";
-import { useExploreFilters, Difficulty, MealType } from "./useExploreFilters";
-import {
-  FilterSection,
-  SpoonSelect,
-  SearchableGroup,
-  CUISINES,
-  DIETARY,
-  ALLERGENS,
-  ETHNICITY_GROUPS,
-} from "./ExploreShared";
+// client/src/pages/explore/useExploreData.ts
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { useExploreFilters } from "./useExploreFilters";
 
-const MEAL_TYPES: MealType[] = ["Breakfast", "Lunch", "Dinner", "Snack", "Dessert"];
-const DIFFICULTY: Difficulty[] = ["Easy", "Medium", "Hard"];
+/**
+ * Toggle this to false when your backend endpoint is ready.
+ * While true, we serve filtered/sorted DEMO posts through react-query.
+ */
+const USE_DEMO_DATA = true;
 
-export default function ExploreFiltersPage() {
-  const [, setLocation] = useLocation();
+export type ExplorePost = {
+  id: string | number;
+  title?: string;
+  caption?: string;
+  image?: string | null;
+  imageUrl?: string | null; // backend variant
+  photoUrl?: string | null; // backend variant
+  cuisine?: string;
+  category?: string; // backend variant
+  isRecipe?: boolean;
+  author?: string;
+  user?: { displayName?: string; username?: string }; // backend variant
+  cookTime?: number;
+  rating?: number;
+  likes?: number;
+  difficulty?: "Easy" | "Medium" | "Hard" | string;
+  mealType?: "Breakfast" | "Lunch" | "Dinner" | "Snack" | "Dessert" | string;
+  dietary?: string[];
+  createdAt?: string;
+};
+
+/* ---------------- Demo data (images + fields match your earlier samples) ---------------- */
+const DEMO_POSTS: ExplorePost[] = [
+  {
+    id: "1",
+    title: "Margherita Pizza",
+    image: "https://images.unsplash.com/photo-1548365328-8b84986da7b3?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Italian",
+    isRecipe: true,
+    author: "Giulia",
+    cookTime: 25,
+    difficulty: "Easy",
+    rating: 4.7,
+    likes: 223,
+    mealType: "Dinner",
+    dietary: ["Vegetarian"],
+    createdAt: "2025-09-08T12:00:00Z",
+  },
+  {
+    id: "2",
+    title: "Rainbow Salad",
+    image: "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Healthy",
+    isRecipe: false,
+    author: "Ava",
+    cookTime: 10,
+    difficulty: "Easy",
+    rating: 4.2,
+    likes: 150,
+    mealType: "Lunch",
+    dietary: ["Vegan", "Gluten-Free"],
+    createdAt: "2025-09-07T10:00:00Z",
+  },
+  {
+    id: "3",
+    title: "Choco Truffles",
+    image: "https://images.unsplash.com/photo-1541781286675-09c7e9d404bc?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Desserts",
+    isRecipe: true,
+    author: "Noah",
+    cookTime: 45,
+    difficulty: "Medium",
+    rating: 4.9,
+    likes: 512,
+    mealType: "Dessert",
+    dietary: ["Vegetarian"],
+    createdAt: "2025-09-05T18:30:00Z",
+  },
+  {
+    id: "4",
+    title: "Spicy Ramen",
+    image: "https://images.unsplash.com/photo-1546549039-49cc4f5b3c89?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Asian",
+    isRecipe: true,
+    author: "Rin",
+    cookTime: 30,
+    difficulty: "Medium",
+    rating: 4.5,
+    likes: 340,
+    mealType: "Dinner",
+    dietary: [],
+    createdAt: "2025-09-03T21:15:00Z",
+  },
+  {
+    id: "5",
+    title: "BBQ Brisket",
+    image: "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "BBQ",
+    isRecipe: false,
+    author: "Mason",
+    cookTime: 240,
+    difficulty: "Hard",
+    rating: 4.1,
+    likes: 98,
+    mealType: "Dinner",
+    dietary: [],
+    createdAt: "2025-09-09T14:45:00Z",
+  },
+  {
+    id: "6",
+    title: "Avocado Toast",
+    image: "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?q=80&w=1200&auto=format&fit=crop",
+    cuisine: "Breakfast",
+    isRecipe: true,
+    author: "Ivy",
+    cookTime: 8,
+    difficulty: "Easy",
+    rating: 4.0,
+    likes: 77,
+    mealType: "Breakfast",
+    dietary: ["Vegetarian"],
+    createdAt: "2025-09-10T08:05:00Z",
+  },
+];
+
+/* ---------------- Helpers ---------------- */
+const LIMIT = 24;
+
+function isPostLike(x: any): x is ExplorePost {
+  return x && typeof x === "object" && ("id" in x);
+}
+
+// Apply the same client-side filtering logic you had earlier
+function applyClientFilters(all: ExplorePost[], f: ReturnType<typeof useExploreFilters> & Record<string, any>) {
   const {
-    onlyRecipes, setOnlyRecipes,
-    sortBy, setSortBy,
-    selectedCuisines, setSelectedCuisines,
-    selectedMealTypes, setSelectedMealTypes,
-    selectedDietary, setSelectedDietary,
-    selectedDifficulty, setSelectedDifficulty,
-    maxCookTime, setMaxCookTime,
-    minRating, setMinRating,
-    selectedEthnicities, setSelectedEthnicities,
-    excludedAllergens, setExcludedAllergens,
-    selectedPreparation, setSelectedPreparation,
-    dietQuery, setDietQuery,
-    resetFilters,
-  } = useExploreFilters();
+    onlyRecipes,
+    selectedCuisines,
+    selectedMealTypes,
+    selectedDietary,
+    selectedDifficulty,
+    maxCookTime,
+    minRating,
+  } = f;
 
-  const filteredDietOptions = React.useMemo(() => {
-    const s = dietQuery.trim().toLowerCase();
-    if (!s) return DIETARY;
-    return DIETARY.filter((d) => d.toLowerCase().includes(s));
-  }, [dietQuery]);
+  const filtered = all.filter((p) => {
+    // normalize fields for filtering
+    const cuisine = p.cuisine ?? p.category;
+    const meal = p.mealType;
+    const diets = Array.isArray(p.dietary) ? p.dietary : [];
 
-  const toggleFromArray = <T extends string>(arr: T[], setArr: (v: T[]) => void, value: T) => {
-    setArr(arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value]);
-  };
+    if (onlyRecipes && !p.isRecipe) return false;
+    if (selectedCuisines.length && (!cuisine || !selectedCuisines.includes(cuisine))) return false;
+    if (selectedMealTypes.length && (!meal || !selectedMealTypes.includes(meal as any))) return false;
+    if (selectedDietary.length && !selectedDietary.every((d: string) => diets.includes(d))) return false;
+    if (selectedDifficulty && p.difficulty !== selectedDifficulty) return false;
+    if (maxCookTime && typeof p.cookTime === "number" && p.cookTime > maxCookTime) return false;
+    if (minRating && typeof p.rating === "number" && p.rating < minRating) return false;
 
-  return (
-    <div className="mx-auto max-w-4xl px-4 md:px-6 py-4">
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Filters</h1>
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/explore")} aria-label="Close">
-          <X className="h-5 w-5" />
-        </Button>
-      </div>
+    return true;
+  });
 
-      {/* Body */}
-      <div className="space-y-6">
-        {/* Cuisines */}
-        <FilterSection title="Cuisines">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {CUISINES.map((c) => (
-              <label key={c} className="flex items-center gap-2 rounded-md border p-2">
-                <Checkbox
-                  checked={selectedCuisines.includes(c)}
-                  onCheckedChange={() => toggleFromArray(selectedCuisines, setSelectedCuisines, c)}
-                />
-                <span className="text-sm">{c}</span>
-              </label>
-            ))}
-          </div>
-        </FilterSection>
+  switch (f.sortBy) {
+    case "rating":
+      return [...filtered].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+    case "likes":
+      return [...filtered].sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0));
+    default:
+      return [...filtered].sort(
+        (a, b) =>
+          new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+      );
+  }
+}
 
-        {/* Ethnicity / Cultural Origin (grouped + searchable, bold region headers) */}
-        <FilterSection title="Ethnicity / Cultural Origin">
-          <div className="space-y-6">
-            {ETHNICITY_GROUPS.map((group) => (
-              <SearchableGroup
-                key={group.label}
-                label={group.label}
-                options={group.options}
-                selected={selectedEthnicities}
-                onToggle={(value) =>
-                  setSelectedEthnicities((arr) =>
-                    arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value]
-                  )
-                }
-                columns={2}
-              />
-            ))}
-          </div>
-        </FilterSection>
+/* ---------------- Hook ---------------- */
+type Page = { items: ExplorePost[]; nextCursor?: number | null; total?: number };
 
-        {/* Meal Type */}
-        <FilterSection title="Meal Type">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {MEAL_TYPES.map((m) => (
-              <label key={m} className="flex items-center gap-2 rounded-md border p-2">
-                <Checkbox
-                  checked={selectedMealTypes.includes(m)}
-                  onCheckedChange={() => toggleFromArray(selectedMealTypes, setSelectedMealTypes, m)}
-                />
-                <span className="text-sm">{m}</span>
-              </label>
-            ))}
-          </div>
-        </FilterSection>
+// Choose which source to use inside the queryFn
+async function fetchServerPage(params: URLSearchParams): Promise<Page> {
+  const res = await fetch(`/api/posts/explore?${params.toString()}`, { credentials: "include" });
+  if (!res.ok) {
+    const text = (await res.text()) || res.statusText;
+    throw new Error(`${res.status}: ${text}`);
+  }
+  const data = await res.json();
+  // Expecting shape { items, nextCursor, total }; be defensive:
+  const items = Array.isArray(data?.items) ? data.items.filter(isPostLike) : [];
+  return { items, nextCursor: data?.nextCursor ?? null, total: data?.total ?? items.length };
+}
 
-        {/* Dietary (searchable) */}
-        <FilterSection title="Dietary">
-          <input
-            value={dietQuery}
-            onChange={(e) => setDietQuery(e.target.value)}
-            placeholder="Search diets…"
-            className="mb-2 h-8 w-full rounded-md border bg-background px-2 text-sm"
-          />
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {filteredDietOptions.map((d) => (
-              <label key={d} className="flex items-center gap-2 rounded-md border p-2">
-                <Checkbox
-                  checked={selectedDietary.includes(d)}
-                  onCheckedChange={() => toggleFromArray(selectedDietary, setSelectedDietary, d)}
-                />
-                <span className="text-sm">{d}</span>
-              </label>
-            ))}
-          </div>
-        </FilterSection>
+export function useExploreData() {
+  const f = useExploreFilters();
 
-        {/* Exclude Allergens */}
-        <FilterSection title="Exclude Allergens">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {ALLERGENS.map((a) => (
-              <label key={a} className="flex items-center gap-2 rounded-md border p-2">
-                <Checkbox
-                  checked={excludedAllergens.includes(a)}
-                  onCheckedChange={() => toggleFromArray(excludedAllergens, setExcludedAllergens, a)}
-                />
-                <span className="text-sm">{a}</span>
-              </label>
-            ))}
-          </div>
-        </FilterSection>
+  const query = useInfiniteQuery<Page>({
+    queryKey: [
+      "explore-data",
+      {
+        // Put every filter knob here so the cache key updates properly
+        onlyRecipes: f.onlyRecipes,
+        sortBy: f.sortBy,
+        selectedCuisines: f.selectedCuisines,
+        selectedMealTypes: f.selectedMealTypes,
+        selectedDietary: f.selectedDietary,
+        selectedDifficulty: f.selectedDifficulty,
+        maxCookTime: f.maxCookTime,
+        minRating: f.minRating,
+        selectedEthnicities: f.selectedEthnicities,
+        excludedAllergens: f.excludedAllergens,
+        selectedPreparation: f.selectedPreparation,
+      },
+    ],
+    queryFn: async ({ pageParam }) => {
+      // DEMO MODE: build paginated results fully on the client
+      if (USE_DEMO_DATA) {
+        const filtered = applyClientFilters(DEMO_POSTS, f);
+        const page = typeof pageParam === "number" ? pageParam : 0;
+        const start = page * LIMIT;
+        const end = start + LIMIT;
+        const items = filtered.slice(start, end);
+        const nextCursor = end < filtered.length ? page + 1 : null;
+        return { items, nextCursor, total: filtered.length };
+      }
 
-        {/* Preparation / Religious Standards */}
-        <FilterSection title="Preparation / Religious Standards">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {["Halal", "Kosher", "Jain"].map((p) => (
-              <label key={p} className="flex items-center gap-2 rounded-md border p-2">
-                <Checkbox
-                  checked={selectedPreparation.includes(p)}
-                  onCheckedChange={() => toggleFromArray(selectedPreparation, setSelectedPreparation, p)}
-                />
-                <span className="text-sm">{p}</span>
-              </label>
-            ))}
-          </div>
-        </FilterSection>
+      // API MODE
+      const params = new URLSearchParams();
+      params.set("limit", String(LIMIT));
+      params.set("sort", f.sortBy);
+      if (pageParam != null) params.set("cursor", String(pageParam));
+      if (f.onlyRecipes) params.set("is_recipe", "1");
+      if (f.selectedDifficulty) params.set("difficulty", f.selectedDifficulty);
+      if (f.maxCookTime) params.set("max_cook", String(f.maxCookTime));
+      if (f.minRating) params.set("min_rating", String(f.minRating));
 
-        {/* Difficulty */}
-        <FilterSection title="Difficulty">
-          <div className="flex flex-wrap gap-2">
-            {(["Easy", "Medium", "Hard"] as const).map((d) => (
-              <Button
-                key={d}
-                size="sm"
-                variant={selectedDifficulty === d ? "default" : "outline"}
-                onClick={() => setSelectedDifficulty(selectedDifficulty === d ? "" : d)}
-              >
-                {d}
-              </Button>
-            ))}
-          </div>
-        </FilterSection>
+      (f.selectedCuisines as string[]).forEach((v) => params.append("cuisine", v));
+      (f.selectedMealTypes as string[]).forEach((v) => params.append("meal", v));
+      (f.selectedDietary as string[]).forEach((v) => params.append("diet", v));
+      (f.selectedEthnicities as string[]).forEach((v) => params.append("ethnicity", v));
+      (f.excludedAllergens as string[]).forEach((v) => params.append("exclude_allergen", v));
+      (f.selectedPreparation as string[]).forEach((v) => params.append("preparation", v));
 
-        {/* Max cook time */}
-        <FilterSection title={`Max Cook Time: ${maxCookTime} min`}>
-          <Slider
-            value={[maxCookTime]}
-            min={5}
-            max={240}
-            step={5}
-            onValueChange={(v) => setMaxCookTime(v[0] ?? 60)}
-          />
-        </FilterSection>
+      try {
+        const page = await fetchServerPage(params);
+        // If server returns nothing, transparently fall back to client demo so UI still shows content
+        if (!page.items.length) {
+          const filtered = applyClientFilters(DEMO_POSTS, f);
+          return { items: filtered.slice(0, LIMIT), nextCursor: null, total: filtered.length };
+        }
+        return page;
+      } catch (e) {
+        // On any error, fall back to demo results (non-crashy)
+        const filtered = applyClientFilters(DEMO_POSTS, f);
+        return { items: filtered.slice(0, LIMIT), nextCursor: null, total: filtered.length };
+      }
+    },
+    getNextPageParam: (last) => (last?.nextCursor ?? null) as any,
+    staleTime: 30_000,
+    keepPreviousData: true,
+  });
 
-        {/* Min spoons (rating) */}
-        <FilterSection title={`Min Spoons: ${minRating || 0}`}>
-          <SpoonSelect value={minRating} onChange={setMinRating} />
-        </FilterSection>
-
-        {/* More flags + sort */}
-        <FilterSection title="More">
-          <label className="flex items-center gap-2">
-            <Checkbox checked={onlyRecipes} onCheckedChange={(v) => setOnlyRecipes(Boolean(v))} />
-            <span className="text-sm">Show recipe posts only</span>
-          </label>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            {(["newest", "rating", "likes"] as const).map((s) => (
-              <Button
-                key={s}
-                size="sm"
-                variant={sortBy === s ? "default" : "outline"}
-                onClick={() => setSortBy(s)}
-              >
-                {s === "newest" ? "Newest" : s === "rating" ? "Top Spoons" : "Most Liked"}
-              </Button>
-            ))}
-          </div>
-        </FilterSection>
-      </div>
-
-      {/* Footer */}
-      <div className="sticky bottom-0 mt-6 border-t bg-background py-4">
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={resetFilters} className="flex-1">
-            Reset
-          </Button>
-          <Button className="flex-1" onClick={() => setLocation("/explore")}>
-            Apply
-          </Button>
-        </div>
-      </div>
-    </div>
+  // Flatten pages safely
+  const items = useMemo<ExplorePost[]>(
+    () =>
+      query.data?.pages?.flatMap((p) => (Array.isArray(p?.items) ? p.items : []))?.filter(isPostLike) ??
+      [],
+    [query.data]
   );
+
+  const total = query.data?.pages?.[0]?.total ?? items.length;
+
+  return {
+    ...query,
+    items,
+    total,
+  };
 }
