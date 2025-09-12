@@ -1,4 +1,6 @@
-import { Switch, Route } from "wouter";
+// client/src/App.tsx
+import * as React from "react";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -7,9 +9,14 @@ import Layout from "@/components/layout";
 
 // Pages
 import Feed from "@/pages/feed";
-// ⬇️ Replace the single Explore import with the two-page setup
-import ExploreListPage from "@/pages/explore/ExploreListPage";
-import ExploreFiltersPage from "@/pages/explore/ExploreFiltersPage";
+
+// ✅ Explore (discovery feed)
+import ExplorePage from "@/pages/explore/ExplorePage";
+
+// ✅ Recipes (filters + list)
+import RecipesListPage from "@/pages/recipes/RecipesListPage";
+import RecipesFiltersPage from "@/pages/recipes/RecipesFiltersPage";
+import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
 
 import Profile from "@/pages/profile";
 import CreatePost from "@/pages/create-post";
@@ -22,12 +29,19 @@ import PotentPotables from "@/pages/potent-potables";
 import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 
-// NEW: AI Substitution page import (ensure this file exists)
+// NEW: AI Substitution page
 import AISubstitutionPage from "@/pages/ai-substitution";
 
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole";
+
+/** Simple redirect helper for Wouter */
+function Redirect({ to }: { to: string }) {
+  const [, setLocation] = useLocation();
+  React.useEffect(() => setLocation(to), [to, setLocation]);
+  return null;
+}
 
 function Router() {
   return (
@@ -42,13 +56,29 @@ function Router() {
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
 
-        {/* Explore split into two pages */}
-        <Route path="/explore/filters" component={ExploreFiltersPage} />
-        <Route path="/explore" component={ExploreListPage} />
+        {/* ✅ Explore (discovery feed, no filters) */}
+        <Route path="/explore" component={ExplorePage} />
+
+        {/* ✅ Recipes (filterable) */}
+        <Route path="/recipes">
+          <RecipesFiltersProvider>
+            <RecipesListPage />
+          </RecipesFiltersProvider>
+        </Route>
+        <Route path="/recipes/filters">
+          <RecipesFiltersProvider>
+            <RecipesFiltersPage />
+          </RecipesFiltersProvider>
+        </Route>
+
+        {/* Backward-compat (old explore/filters -> recipes/filters) */}
+        <Route path="/explore/filters">
+          <Redirect to="/recipes/filters" />
+        </Route>
 
         <Route path="/create" component={CreatePost} />
 
-        {/* Feature routes (wrapped so errors show on-screen) */}
+        {/* Feature routes */}
         <Route path="/pantry">
           <ErrorBoundary>
             <Pantry />
@@ -79,7 +109,6 @@ function Router() {
         <Route path="/nutrition" component={NutritionMealPlanner} />
 
         {/* Placeholder routes */}
-        <Route path="/recipes" component={NotFound} />
         <Route path="/saved" component={NotFound} />
         <Route path="/following" component={NotFound} />
         <Route path="/settings" component={NotFound} />
