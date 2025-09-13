@@ -1,206 +1,156 @@
-// server/services/ai.ts
-import type { ClientOptions } from "openai";
+import OpenAI from "openai";
 
-// Lazy/optional import so builds don't break if OPENAI_API_KEY is missing
-let OpenAICtor: any = null;
-if (process.env.OPENAI_API_KEY) {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    OpenAICtor = (await import("openai")).default;
-  } catch {
-    OpenAICtor = null;
-  }
-}
-
-export type Nutrition = {
-  calories: number;
-  fat: number;     // grams
-  carbs: number;   // grams
-  protein: number; // grams
-};
+type Nutrition = { calories: number; fat: number; carbs: number; protein: number };
 
 export type AISubItem = {
   substituteIngredient: string;
   ratio: string;
   category?: string;
   notes?: string;
-  nutrition?: {
-    original: Nutrition;
-    substitute: Nutrition;
-  };
+  nutrition?: { original: Nutrition; substitute: Nutrition };
 };
 
-type Options = {
+export type AISubOptions = {
   cuisine?: string;
-  dietaryRestrictions?: string[]; // e.g. ["Halal","Kosher","Vegan"]
+  dietaryRestrictions?: string[];
 };
 
-/**
- * Server-side AI substitution helper used by
- * GET /api/ingredients/:ingredient/ai-substitutions
- */
-export async function aiSuggestSubstitutions(
-  ingredient: string,
-  opts: Options = {}
-): Promise<AISubItem[]> {
-  const q = ingredient.trim();
-  if (!q) return [];
+const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
-  // If no key or OpenAI client is unavailable, return canned ideas for a few staples
-  if (!process.env.OPENAI_API_KEY || !OpenAICtor) {
-    const samples: Record<string, AISubItem[]> = {
-      butter: [
-        {
-          substituteIngredient: "Olive oil",
-          ratio: "¾ cup olive oil = 1 cup butter",
-          category: "oils",
-          notes:
-            "Great for sautéing; in baking expect different flavor/texture. Reduce liquids slightly if batter seems too loose.",
-          nutrition: {
-            // ~1 cup butter vs ¾ cup olive oil (approx, illustrative only)
-            original: { calories: 1628, fat: 184, carbs: 1, protein: 2 },
-            substitute: { calories: 1433, fat: 162, carbs: 0, protein: 0 },
-          },
+// Simple, curated fallbacks so the feature still works without a key
+function mockSubs(ingredient: string): AISubItem[] {
+  const lower = ingredient.toLowerCase();
+  if (lower.includes("butter")) {
+    return [
+      {
+        substituteIngredient: "Margarine",
+        ratio: "1:1",
+        category: "dairy",
+        notes: "Closest texture; watch saltiness.",
+        nutrition: {
+          original: { calories: 102, fat: 12, carbs: 0, protein: 0 },
+          substitute: { calories: 100, fat: 11, carbs: 0, protein: 0 },
         },
-        {
-          substituteIngredient: "Coconut oil",
-          ratio: "1:1 by volume",
-          category: "oils",
-          notes:
-            "Solid at room temp similar to butter; adds coconut aroma; nice in cookies and some cakes.",
-          nutrition: {
-            original: { calories: 1628, fat: 184, carbs: 1, protein: 2 },
-            substitute: { calories: 1879, fat: 218, carbs: 0, protein: 0 },
-          },
+      },
+      {
+        substituteIngredient: "Olive oil",
+        ratio: "3:4 (oil:butter)",
+        category: "oils",
+        notes: "Good for sautéing; not ideal for laminated doughs.",
+        nutrition: {
+          original: { calories: 102, fat: 12, carbs: 0, protein: 0 },
+          substitute: { calories: 90, fat: 10, carbs: 0, protein: 0 },
         },
-        {
-          substituteIngredient: "Unsweetened applesauce (baking)",
-          ratio: "½ cup applesauce = 1 cup butter",
-          category: "baking",
-          notes:
-            "Cuts fat/calories; best in quick breads/muffins. Texture becomes softer; don’t overmix.",
-          nutrition: {
-            original: { calories: 1628, fat: 184, carbs: 1, protein: 2 },
-            substitute: { calories: 100, fat: 0, carbs: 27, protein: 0 },
-          },
+      },
+      {
+        substituteIngredient: "Applesauce (unsweetened)",
+        ratio: "1:1 in baking",
+        category: "sweeteners",
+        notes: "Reduces fat; expect moister crumb.",
+        nutrition: {
+          original: { calories: 102, fat: 12, carbs: 0, protein: 0 },
+          substitute: { calories: 25, fat: 0, carbs: 7, protein: 0 },
         },
-      ],
-      eggs: [
-        {
-          substituteIngredient: "Ground flax + water",
-          ratio: "1 Tbsp ground flax + 3 Tbsp water = 1 egg",
-          category: "baking",
-          notes:
-            "Let gel 5–10 min. Works in muffins/quick breads/cookies; not good for meringues.",
-          nutrition: {
-            original: { calories: 72, fat: 5, carbs: 0.4, protein: 6 },
-            substitute: { calories: 55, fat: 4.3, carbs: 3, protein: 1.9 },
-          },
-        },
-        {
-          substituteIngredient: "Unsweetened applesauce (baking)",
-          ratio: "¼ cup applesauce = 1 egg",
-          category: "baking",
-          notes: "Adds moisture; can make crumb denser. Add pinch baking powder if needed.",
-          nutrition: {
-            original: { calories: 72, fat: 5, carbs: 0.4, protein: 6 },
-            substitute: { calories: 50, fat: 0, carbs: 13, protein: 0 },
-          },
-        },
-      ],
-      milk: [
-        {
-          substituteIngredient: "Oat milk (unsweetened)",
-          ratio: "1:1",
-          category: "dairy-free",
-          notes: "Neutral flavor; good for most uses. Choose barista type for foam.",
-          nutrition: {
-            original: { calories: 150, fat: 8, carbs: 12, protein: 8 }, // 1 cup whole milk approx
-            substitute: { calories: 120, fat: 5, carbs: 16, protein: 3 },
-          },
-        },
-      ],
-    };
-
-    // crude cuisine/diet hinting: filter out options that conflict
-    let subs = samples[q.toLowerCase()] ?? [];
-    const dr = (opts.dietaryRestrictions || []).map((s) => s.toLowerCase());
-    if (dr.includes("vegan")) {
-      subs = subs.filter(
-        (s) =>
-          !/(ghee|butter|cheese|yogurt|milk|cream)/i.test(
-            (s.notes || "") + " " + s.substituteIngredient
-          )
-      );
-    }
-    if (dr.includes("halal")) {
-      subs = subs.filter(
-        (s) =>
-          !/(wine|rum|brandy|vodka|beer|tequila|pork|bacon|prosciutto|ham)/i.test(
-            (s.notes || "") + " " + s.substituteIngredient
-          )
-      );
-    }
-    if (dr.includes("kosher")) {
-      subs = subs.filter(
-        (s) =>
-          !/(pork|bacon|prosciutto|ham|shrimp|prawn|crab|lobster|clam|mussel|oyster|scallop)/i.test(
-            (s.notes || "") + " " + s.substituteIngredient
-          )
-      );
-    }
-    return subs;
+      },
+    ];
   }
-
-  // Real OpenAI call
-  const client = new OpenAICtor({
-    apiKey: process.env.OPENAI_API_KEY,
-  } as ClientOptions);
-
-  const restrictionLine = [
-    opts.cuisine ? `Cuisine focus: ${opts.cuisine}.` : "",
-    opts.dietaryRestrictions?.length
-      ? `Honor these dietary rules if possible: ${opts.dietaryRestrictions.join(", ")}.`
-      : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  const prompt = `
-You are a culinary assistant. Suggest 3–5 practical substitutions for the ingredient: "${q}".
-${restrictionLine}
-
-Return ONLY valid JSON in this exact shape:
-{
-  "substitutions": [
+  if (lower.includes("egg")) {
+    return [
+      {
+        substituteIngredient: "Flax egg (1 Tbsp ground flax + 3 Tbsp water)",
+        ratio: "1:1 per egg",
+        category: "baking",
+        notes: "Great binder for quick breads and cookies (vegan).",
+        nutrition: {
+          original: { calories: 72, fat: 5, carbs: 0, protein: 6 },
+          substitute: { calories: 37, fat: 3, carbs: 2, protein: 1 },
+        },
+      },
+      {
+        substituteIngredient: "Unsweetened yogurt",
+        ratio: "1/4 cup per egg (baking)",
+        notes: "Adds moisture; not a binder for airy cakes.",
+      },
+    ];
+  }
+  return [
     {
-      "substituteIngredient": "string",
-      "ratio": "string",
-      "category": "string",
-      "notes": "string",
-      "nutrition": {
-        "original": { "calories": number, "fat": number, "carbs": number, "protein": number },
-        "substitute": { "calories": number, "fat": number, "carbs": number, "protein": number }
-      }
-    }
-  ]
+      substituteIngredient: "Coconut oil",
+      ratio: "1:1",
+      category: "oils",
+      notes: "Solid at room temp; similar melt to butter in some bakes.",
+    },
+  ];
 }
 
-Notes must be concise, cooking-relevant, and honest about trade-offs. Use approximate nutrition for the typical amount implied by your ratio.
-`;
+export async function aiSuggestSubstitutions(
+  ingredient: string,
+  opts: AISubOptions = {}
+): Promise<AISubItem[]> {
+  // If there’s no key, return mock suggestions so the UI works in development/demo
+  if (!OPENAI_KEY) {
+    return mockSubs(ingredient);
+  }
 
-  const resp = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.4,
-  });
-
-  const text = resp.choices?.[0]?.message?.content?.trim() || "";
   try {
-    const parsed = JSON.parse(text);
-    const arr = Array.isArray(parsed?.substitutions) ? parsed.substitutions : [];
-    return arr as AISubItem[];
-  } catch {
-    return [];
+    const openai = new OpenAI({ apiKey: OPENAI_KEY });
+
+    const sys = `You are a culinary expert. Given an ingredient, suggest 2-5 practical substitutions with ratios, short notes, category, and rough nutrition deltas. Return JSON only.`;
+    const user = JSON.stringify({
+      ingredient,
+      cuisine: opts.cuisine ?? null,
+      dietaryRestrictions: opts.dietaryRestrictions ?? [],
+      format: {
+        subs: [
+          {
+            substituteIngredient: "string",
+            ratio: "string (like '1:1' or '3:4 oil:butter')",
+            category: "string?",
+            notes: "string?",
+            nutrition: {
+              original: { calories: 0, fat: 0, carbs: 0, protein: 0 },
+              substitute: { calories: 0, fat: 0, carbs: 0, protein: 0 },
+            },
+          },
+        ],
+      },
+    });
+
+    const resp = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: user },
+      ],
+    });
+
+    const text = resp.choices?.[0]?.message?.content?.trim() || "";
+    // Try to extract JSON
+    const jsonStart = text.indexOf("{");
+    const jsonEnd = text.lastIndexOf("}");
+    if (jsonStart === -1 || jsonEnd === -1) {
+      return mockSubs(ingredient);
+    }
+    const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+    const items: AISubItem[] =
+      parsed.subs ||
+      parsed.substitutions ||
+      parsed.items ||
+      mockSubs(ingredient);
+
+    // Light normalization
+    return items
+      .map((x) => ({
+        substituteIngredient: x.substituteIngredient || x.name || "Substitute",
+        ratio: x.ratio || "1:1",
+        category: x.category,
+        notes: x.notes,
+        nutrition: x.nutrition,
+      }))
+      .slice(0, 5);
+  } catch (e) {
+    console.error("OpenAI error:", e);
+    return mockSubs(ingredient);
   }
 }
