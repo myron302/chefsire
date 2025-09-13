@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { Search, Lightbulb, ShoppingCart, Loader2, ArrowRight } from "lucide-react";
 
-/** Types returned by the NEW server route */
 type Nutrition = {
   calories: number;
   fat: number;     // grams
@@ -20,33 +19,29 @@ type AISubItem = {
   };
 };
 
-type AIResponseNew = {
-  ingredient: string;
-  aiSubstitutions: AISubItem[];
-};
-
 export default function AISubstitutionPage() {
   const [query, setQuery] = useState("");
-  const [data, setData] = useState<AIResponseNew | null>(null);
+  const [subs, setSubs] = useState<AISubItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!query.trim()) return;
+    const q = query.trim();
+    if (!q) return;
     setLoading(true);
     setErr(null);
-    setData(null);
+    setSubs([]);
 
     try {
-      // NEW ENDPOINT that matches your server:
-      const url = `/api/ingredients/${encodeURIComponent(query.trim())}/ai-substitutions`;
+      // Call YOUR server route (matches server/routes.ts)
+      const url = `/api/ingredients/${encodeURIComponent(q)}/ai-substitutions`;
       const res = await fetch(url);
-      if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
-      const json: AIResponseNew = await res.json();
-      setData(json);
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      const json = await res.json();
+      setSubs(Array.isArray(json.aiSubstitutions) ? json.aiSubstitutions : []);
     } catch (error: any) {
-      setErr(error?.message || "Something went wrong fetching AI substitutions.");
+      setErr(error?.message || "Something went wrong.");
     } finally {
       setLoading(false);
     }
@@ -56,7 +51,7 @@ export default function AISubstitutionPage() {
     !!item.nutrition?.original && !!item.nutrition?.substitute;
 
   const delta = (orig: number, sub: number) => {
-    const diff = orig - sub; // positive means savings
+    const diff = orig - sub; // positive = savings
     const sign = diff > 0 ? "-" : diff < 0 ? "+" : "±";
     return { diff, label: `${sign}${Math.abs(diff)}` };
   };
@@ -81,7 +76,6 @@ export default function AISubstitutionPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">AI Ingredient Substitutions</h1>
           <p className="text-gray-600">
@@ -89,20 +83,19 @@ export default function AISubstitutionPage() {
           </p>
         </div>
 
-        {/* Search Card */}
         <form onSubmit={handleSearch} className="bg-white rounded-lg shadow-md p-6 mb-8">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Try: butter, sour cream, heavy cream, eggs…"
+              placeholder="Try: butter, eggs, milk, sour cream…"
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
           </div>
 
           <div className="mt-4 flex gap-2 flex-wrap">
-            {["butter", "sour cream", "heavy cream", "oil", "sugar"].map((ex) => (
+            {["butter", "eggs", "milk", "sour cream", "heavy cream"].map((ex) => (
               <button
                 type="button"
                 key={ex}
@@ -132,109 +125,94 @@ export default function AISubstitutionPage() {
           )}
         </form>
 
-        {/* Results */}
-        {data && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-gray-900">
-                Substitutions for “{data.ingredient}”
-              </h2>
-              <p className="text-sm text-gray-600">
-                {data.aiSubstitutions.length} suggestion{data.aiSubstitutions.length !== 1 ? "s" : ""} found
-              </p>
+        <div className="bg-white rounded-lg shadow-md p-6">
+          {subs.length === 0 && !loading ? (
+            <div className="text-center py-10">
+              <Lightbulb className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+              <p className="text-gray-700">No suggestions yet. Try searching above.</p>
             </div>
+          ) : (
+            <div className="space-y-5">
+              {subs.map((item, idx) => {
+                const original = item.nutrition?.original;
+                const substitute = item.nutrition?.substitute;
+                const calDelta = original && substitute ? delta(original.calories, substitute.calories) : null;
+                const fatDelta = original && substitute ? delta(original.fat, substitute.fat) : null;
+                const carbDelta = original && substitute ? delta(original.carbs, substitute.carbs) : null;
+                const proteinDelta = original && substitute ? delta(original.protein, substitute.protein) : null;
+                const toneFor = (d?: { diff: number; label: string }) =>
+                  !d ? "neutral" : d.diff > 0 ? "positive" : d.diff < 0 ? "negative" : "neutral";
 
-            {data.aiSubstitutions.length === 0 ? (
-              <div className="text-center py-10">
-                <Lightbulb className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-700">No AI suggestions yet. Try another ingredient.</p>
-              </div>
-            ) : (
-              <div className="space-y-5">
-                {data.aiSubstitutions.map((item, idx) => {
-                  const original = item.nutrition?.original;
-                  const substitute = item.nutrition?.substitute;
-
-                  const calDelta = original && substitute ? delta(original.calories, substitute.calories) : null;
-                  const fatDelta = original && substitute ? delta(original.fat, substitute.fat) : null;
-                  const carbDelta = original && substitute ? delta(original.carbs, substitute.carbs) : null;
-                  const proteinDelta = original && substitute ? delta(original.protein, substitute.protein) : null;
-
-                  const toneFor = (d?: { diff: number; label: string }) =>
-                    !d ? "neutral" : d.diff > 0 ? "positive" : d.diff < 0 ? "negative" : "neutral";
-
-                  return (
-                    <div key={idx} className="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
-                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                        <div className="flex-1">
-                          <h3 className="text-lg font-semibold text-gray-900">{item.substituteIngredient}</h3>
-                          <div className="mt-1 text-sm text-gray-700">
-                            <span className="font-medium">Ratio:</span> {item.ratio}
+                return (
+                  <div key={idx} className="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
+                    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-900">{item.substituteIngredient}</h3>
+                        <div className="mt-1 text-sm text-gray-700">
+                          <span className="font-medium">Ratio:</span> {item.ratio}
+                        </div>
+                        {item.category && (
+                          <div className="mt-2">
+                            <span className="inline-block px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">
+                              {item.category}
+                            </span>
                           </div>
-                          {item.category && (
-                            <div className="mt-2">
-                              <span className="inline-block px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">
-                                {item.category}
-                              </span>
-                            </div>
-                          )}
+                        )}
+                      </div>
+                      <div className="mt-2 md:mt-0">
+                        <button
+                          type="button"
+                          className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
+                          onClick={() => alert("Instacart integration coming soon!")}
+                        >
+                          <ShoppingCart className="w-4 h-4 mr-2" />
+                          Buy on Instacart
+                        </button>
+                      </div>
+                    </div>
+
+                    {hasNutrition(item) && original && substitute && (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 text-sm">
+                          <div className="bg-gray-50 p-3 rounded-lg">
+                            <p className="font-medium text-gray-700 mb-1">Original</p>
+                            <p>Calories: {original.calories}</p>
+                            <p>Fat: {original.fat}g</p>
+                            <p>Carbs: {original.carbs}g</p>
+                            <p>Protein: {original.protein}g</p>
+                          </div>
+                          <div className="bg-green-50 p-3 rounded-lg">
+                            <p className="font-medium text-gray-700 mb-1">Substitute</p>
+                            <p>Calories: {substitute.calories}</p>
+                            <p>Fat: {substitute.fat}g</p>
+                            <p>Carbs: {substitute.carbs}g</p>
+                            <p>Protein: {substitute.protein}g</p>
+                          </div>
                         </div>
 
-                        <div className="mt-2 md:mt-0">
-                          <button
-                            type="button"
-                            className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
-                            onClick={() => alert("Instacart integration coming soon!")}
-                          >
-                            <ShoppingCart className="w-4 h-4 mr-2" />
-                            Buy on Instacart
-                          </button>
+                        <div className="mt-3">
+                          {calDelta && statBadge("Cal Δ", `${calDelta.label}`, toneFor(calDelta))}
+                          {fatDelta && statBadge("Fat Δ(g)", `${fatDelta.label}`, toneFor(fatDelta))}
+                          {carbDelta && statBadge("Carb Δ(g)", `${carbDelta.label}`, toneFor(carbDelta))}
+                          {proteinDelta && statBadge("Protein Δ(g)", `${proteinDelta.label}`, toneFor(proteinDelta))}
+                        </div>
+                      </>
+                    )}
+
+                    {item.notes && (
+                      <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                        <div className="flex items-start">
+                          <Lightbulb className="w-4 h-4 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
+                          <p className="text-sm text-blue-800">{item.notes}</p>
                         </div>
                       </div>
-
-                      {hasNutrition(item) && original && substitute && (
-                        <>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 text-sm">
-                            <div className="bg-gray-50 p-3 rounded-lg">
-                              <p className="font-medium text-gray-700 mb-1">Original</p>
-                              <p>Calories: {original.calories}</p>
-                              <p>Fat: {original.fat}g</p>
-                              <p>Carbs: {original.carbs}g</p>
-                              <p>Protein: {original.protein}g</p>
-                            </div>
-                            <div className="bg-green-50 p-3 rounded-lg">
-                              <p className="font-medium text-gray-700 mb-1">Substitute</p>
-                              <p>Calories: {substitute.calories}</p>
-                              <p>Fat: {substitute.fat}g</p>
-                              <p>Carbs: {substitute.carbs}g</p>
-                              <p>Protein: {substitute.protein}g</p>
-                            </div>
-                          </div>
-
-                          <div className="mt-3">
-                            {calDelta && statBadge("Cal Δ", `${calDelta.label}`, toneFor(calDelta))}
-                            {fatDelta && statBadge("Fat Δ(g)", `${fatDelta.label}`, toneFor(fatDelta))}
-                            {carbDelta && statBadge("Carb Δ(g)", `${carbDelta.label}`, toneFor(carbDelta))}
-                            {proteinDelta && statBadge("Protein Δ(g)", `${proteinDelta.label}`, toneFor(proteinDelta))}
-                          </div>
-                        </>
-                      )}
-
-                      {item.notes && (
-                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                          <div className="flex items-start">
-                            <Lightbulb className="w-4 h-4 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
-                            <p className="text-sm text-blue-800">{item.notes}</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
