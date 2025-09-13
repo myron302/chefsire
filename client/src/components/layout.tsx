@@ -17,8 +17,8 @@ interface LayoutProps {
 }
 
 export default function Layout({ children }: LayoutProps) {
-  const [pathname] = useLocation(); // current path from Wouter
-  const [, setLocation] = useLocation(); // programmatic navigation
+  const [pathname] = useLocation();
+  const [, setLocation] = useLocation();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
 
@@ -34,11 +34,12 @@ export default function Layout({ children }: LayoutProps) {
     };
   }, []);
 
+  // Secondary links row under header
   const secondaryLinks = [
     { href: "/", label: "Home" },
-    { href: "/recipes", label: "Recipes" },         // added
+    { href: "/recipes", label: "Recipes" },
     { href: "/substitutions", label: "Substitutions" },
-    { href: "/ai-substitution", label: "AI Substitution", indent: true }, // nested visual
+    { href: "/ai-substitution", label: "AI Substitution", indent: true },
     { href: "/potent-potables", label: "Potent Potables" },
     { href: "/catering", label: "Catering" },
     { href: "/store", label: "Store" },
@@ -156,14 +157,15 @@ export default function Layout({ children }: LayoutProps) {
                         </div>
                       </div>
 
-                      {/* Links */}
+                      {/* Navigation — mirrors sidebar grouping */}
                       <div className="py-2">
-                        {/* Navigation */}
                         <div className="px-4 py-2">
                           <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
                             Navigation
                           </div>
+
                           <div className="space-y-1 ml-2">
+                            {/* Simple links */}
                             <Link
                               href="/feed"
                               onClick={() => setIsDropdownOpen(false)}
@@ -171,6 +173,7 @@ export default function Layout({ children }: LayoutProps) {
                             >
                               <Home className="w-4 h-4 mr-3" /> Feed
                             </Link>
+
                             <Link
                               href="/explore"
                               onClick={() => setIsDropdownOpen(false)}
@@ -178,13 +181,47 @@ export default function Layout({ children }: LayoutProps) {
                             >
                               <Compass className="w-4 h-4 mr-3" /> Explore
                             </Link>
+
+                            {/* Recipes (parent) */}
                             <Link
                               href="/recipes"
                               onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded font-semibold"
                             >
-                              <BookOpen className="w-4 h-4 mr-3" /> Browse Recipes
+                              <BookOpen className="w-4 h-4 mr-3" /> Recipes
                             </Link>
+                            {/* Recipes nested items */}
+                            <Link
+                              href="/recipes"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                            >
+                              <BookOpen className="w-3 h-3 mr-2" /> Browse Recipes
+                            </Link>
+                            <Link
+                              href="/pantry"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                            >
+                              <ChefHat className="w-3 h-3 mr-2" /> My Pantry
+                            </Link>
+                            <Link
+                              href="/substitutions"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                            >
+                              <Shuffle className="w-3 h-3 mr-2" /> Substitutions
+                            </Link>
+                            {/* AI Substitution nested under Substitutions */}
+                            <Link
+                              href="/ai-substitution"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                            >
+                              <Lightbulb className="w-3 h-3 mr-2" /> AI Substitution
+                            </Link>
+
+                            {/* Potent Potables */}
                             <Link
                               href="/potent-potables"
                               onClick={() => setIsDropdownOpen(false)}
@@ -193,27 +230,48 @@ export default function Layout({ children }: LayoutProps) {
                               <GlassWater className="w-4 h-4 mr-3" /> Potent Potables
                             </Link>
 
-                            <div className="space-y-1">
-                              <Link
-                                href="/catering"
-                                onClick={() => setIsDropdownOpen(false)}
-                                className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                              >
-                                <Utensils className="w-4 h-4 mr-3" /> Catering
-                              </Link>
-                              <Link
-                                href="/catering/wedding-planning"
-                                onClick={() => setIsDropdownOpen(false)}
-                                className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                              >
-                                <Heart className="w-3 h-3 mr-2" /> Wedding Planning
-                              </Link>
-                            </div>
+                            {/* Catering (parent) */}
+                            <Link
+                              href="/catering"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded font-semibold"
+                            >
+                              <Utensils className="w-4 h-4 mr-3" /> Catering
+                            </Link>
+                            {/* Catering nested item */}
+                            <Link
+                              href="/catering/wedding-planning"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                            >
+                              <Heart className="w-3 h-3 mr-2" /> Wedding Planning
+                            </Link>
+
+                            {/* Marketplace & Nutrition */}
+                            <Link
+                              href="/marketplace"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                            >
+                              <ShoppingCart className="w-4 h-4 mr-3" /> Marketplace
+                            </Link>
+
+                            <Link
+                              href="/nutrition"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                            >
+                              <Activity className="w-4 h-4 mr-3" /> Nutrition &amp; Meal Plans
+                              <span className="ml-auto px-2 py-0.5 bg-yellow-300 dark:bg-yellow-600 text-xs rounded">
+                                Premium
+                              </span>
+                            </Link>
                           </div>
                         </div>
 
                         <div className="border-t my-2" />
 
+                        {/* Profile / Settings / Logout */}
                         <Link
                           href="/profile"
                           onClick={() => setIsDropdownOpen(false)}
@@ -221,60 +279,6 @@ export default function Layout({ children }: LayoutProps) {
                         >
                           <User className="w-5 h-5 mr-3" /> My Profile
                         </Link>
-
-                        <div className="px-4 py-2">
-                          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
-                            Recipe Tools
-                          </div>
-                          <div className="space-y-1 ml-2">
-                            <Link
-                              href="/pantry"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                            >
-                              <ChefHat className="w-4 h-4 mr-3" /> My Pantry
-                            </Link>
-
-                            {/* Substitutions + nested AI Substitution */}
-                            <Link
-                              href="/substitutions"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                            >
-                              <Shuffle className="w-4 h-4 mr-3" /> Ingredient Substitutions
-                            </Link>
-                            <Link
-                              href="/ai-substitution"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <Lightbulb className="w-3 h-3 mr-2" /> AI Substitution
-                            </Link>
-                          </div>
-                        </div>
-
-                        <div className="border-t my-2" />
-
-                        <Link
-                          href="/marketplace"
-                          onClick={() => setIsDropdownOpen(false)}
-                          className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
-                        >
-                          <ShoppingCart className="w-5 h-5 mr-3" /> Marketplace
-                        </Link>
-
-                        <Link
-                          href="/nutrition"
-                          onClick={() => setIsDropdownOpen(false)}
-                          className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
-                        >
-                          <Activity className="w-5 h-5 mr-3" /> Nutrition &amp; Meal Plans
-                          <span className="ml-auto px-2 py-0.5 bg-yellow-300 dark:bg-yellow-600 text-xs rounded">
-                            Premium
-                          </span>
-                        </Link>
-
-                        <div className="border-t my-2" />
 
                         <Link
                           href="/settings"
@@ -305,7 +309,6 @@ export default function Layout({ children }: LayoutProps) {
           {/* Secondary Navigation */}
           <nav className="border-t border-border bg-background">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              {/* Key fixes: flex-nowrap, gap, li:flex-none, touch-pan-x */}
               <ul className="flex flex-nowrap gap-4 overflow-x-auto no-scrollbar py-2 px-1 touch-pan-x">
                 {secondaryLinks.map((item) => {
                   const isActive = pathname === item.href;
