@@ -1,450 +1,439 @@
 // client/src/pages/recipes/RecipesFiltersPage.tsx
 import * as React from "react";
-import { Link, useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { useRecipesFilters } from "./useRecipesFilters";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider"; // If you don't have this, swap for <input type="range" />
+import { ChevronLeft, Filter, X } from "lucide-react";
+
 import {
+  useRecipesFilters,
   CUISINES,
+  MEAL_TYPES,
   DIETARY,
   ALLERGENS,
-  ETHNICITY_REGIONS,
-  MEAL_TYPES,
   DIFFICULTY,
-} from "./useRecipesFilters";
+  ETHNICITY_REGIONS,
+  ETHNICITIES,
+} from "@/hooks/useRecipesFilters";
 
-/* ------------------------------------------------------------
-   Icons (Spoon only, used for rating)
-   ------------------------------------------------------------ */
-function SpoonIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="1em"
-      height="1em"
-      fill="currentColor"
-      aria-hidden="true"
-      {...props}
-    >
-      <path d="M13.5 2c1.933 0 3.5 1.567 3.5 3.5 0 1.252-.66 2.429-1.733 3.08L14 9.4V14a4 4 0 0 1-2 3.465V22h-2v-4.535A4 4 0 0 1 8 14V9.4L6.733 8.58A3.5 3.5 0 0 1 5 5.5C5 3.567 6.567 2 8.5 2c.98 0 1.866.4 2.5 1.045A3.486 3.486 0 0 1 13.5 2z" />
-    </svg>
-  );
-}
-
-/* ------------------------------------------------------------
-   Small helpers
-   ------------------------------------------------------------ */
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="space-y-2">
-      <h3 className="text-base font-semibold">{title}</h3>
-      {children}
-    </section>
-  );
-}
-
-function TogglePill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant={active ? "default" : "outline"}
-      onClick={onClick}
-      className="h-8"
-    >
-      {children}
-    </Button>
-  );
-}
-
-function useArrayToggle<T extends string>(arr: T[], set: (v: T[]) => void) {
-  return (value: T) => {
-    if (arr.includes(value)) set(arr.filter((x) => x !== value));
-    else set([...arr, value]);
-  };
-}
-
-/* ------------------------------------------------------------
-   Searchable checklist (plain HTML inputs, no extra imports)
-   ------------------------------------------------------------ */
-function SearchableChecklist({
+/** Small selectable chip */
+function Chip({
   label,
-  items,
   selected,
   onToggle,
-  placeholder = "Search…",
-  columns = 2,
-  maxHeight = "18rem",
+  className = "",
 }: {
   label: string;
-  items: string[];
-  selected: string[];
-  onToggle: (value: string) => void;
-  placeholder?: string;
-  columns?: 1 | 2 | 3;
-  maxHeight?: string;
+  selected: boolean;
+  onToggle: () => void;
+  className?: string;
 }) {
-  const [q, setQ] = React.useState("");
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={[
+        "text-sm px-3 py-1.5 rounded-full border",
+        selected
+          ? "bg-primary text-primary-foreground border-primary"
+          : "bg-muted text-foreground border-border hover:bg-muted/80",
+        className,
+      ].join(" ")}
+      aria-pressed={selected}
+    >
+      {label}
+    </button>
+  );
+}
 
-  const filtered = React.useMemo(() => {
-    const t = q.trim().toLowerCase();
-    if (!t) return items;
-    return items.filter((x) => x.toLowerCase().includes(t));
-  }, [items, q]);
-
-  const gridCols =
-    columns === 3 ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : columns === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1";
-
+/** Section shell */
+function Section({
+  title,
+  children,
+  right,
+}: {
+  title: string;
+  children: React.ReactNode;
+  right?: React.ReactNode;
+}) {
   return (
     <section className="space-y-2">
-      <div className="flex items-end justify-between gap-2">
-        <h4 className="text-sm font-semibold">{label}</h4>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={placeholder}
-          className="h-9 w-48 rounded-md border bg-background px-2 text-sm"
-        />
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          {title}
+        </h3>
+        {right}
       </div>
-
-      <div
-        className={`grid ${gridCols} gap-2 overflow-y-auto pr-1`}
-        style={{ maxHeight, WebkitOverflowScrolling: "touch" as any }}
-      >
-        {filtered.map((name) => {
-          const checked = selected.includes(name);
-          return (
-            <label
-              key={name}
-              className="flex items-center gap-2 rounded-md border p-2 text-sm"
-              title={name}
-            >
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => onToggle(name)}
-                className="h-4 w-4"
-              />
-              <span className="truncate">{name}</span>
-            </label>
-          );
-        })}
-        {filtered.length === 0 && (
-          <div className="col-span-full text-xs text-muted-foreground">No matches.</div>
-        )}
-      </div>
+      {children}
     </section>
   );
 }
 
-/* ------------------------------------------------------------
-   Ethnicity (grouped by region + search)
-   ------------------------------------------------------------ */
-function EthnicityRegionGroups() {
-  const { state, set } = useRecipesFilters();
-  const [q, setQ] = React.useState("");
-
-  const toggle = (value: string) =>
-    set((prev) => ({
-      ...prev,
-      ethnicities: prev.ethnicities.includes(value)
-        ? prev.ethnicities.filter((x) => x !== value)
-        : [...prev.ethnicities, value],
-    }));
-
-  const query = q.trim().toLowerCase();
-
-  return (
-    <section className="space-y-3">
-      <div className="flex items-end justify-between gap-2">
-        <h4 className="text-sm font-semibold">Ethnicities (by region)</h4>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search ethnicities…"
-          className="h-9 w-60 rounded-md border bg-background px-2 text-sm"
-        />
-      </div>
-
-      <div className="space-y-6">
-        {Object.entries(ETHNICITY_REGIONS).map(([region, list]) => {
-          const filtered = query ? list.filter((x) => x.toLowerCase().includes(query)) : list;
-          if (filtered.length === 0) return null;
-
-          return (
-            <div key={region} className="space-y-2">
-              {/* region heading: a bit bigger & bolder */}
-              <h5 className="text-sm font-bold uppercase tracking-wide text-foreground/90">
-                {region}
-              </h5>
-
-              <div
-                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"
-                style={{ WebkitOverflowScrolling: "touch" as any }}
-              >
-                {filtered.map((name) => {
-                  const checked = state.ethnicities.includes(name);
-                  return (
-                    <label
-                      key={name}
-                      className="flex items-center gap-2 rounded-md border p-2 text-sm"
-                      title={name}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggle(name)}
-                        className="h-4 w-4"
-                      />
-                      <span className="truncate">{name}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-/* ------------------------------------------------------------
-   Main Page
-   ------------------------------------------------------------ */
 export default function RecipesFiltersPage() {
-  const { state, set, reset } = useRecipesFilters();
   const [, setLocation] = useLocation();
+  const { state, set, reset } = useRecipesFilters();
 
-  // individual togglers
-  const toggleCuisine = useArrayToggle(state.cuisines, (v) =>
-    set((prev) => ({ ...prev, cuisines: v }))
-  );
-  const toggleMealType = useArrayToggle(state.mealTypes as string[], (v) =>
-    set((prev) => ({ ...prev, mealTypes: v }))
-  );
-  const toggleDiet = useArrayToggle(state.dietary as string[], (v) =>
-    set((prev) => ({ ...prev, dietary: v }))
-  );
-  const toggleAllergen = useArrayToggle(state.allergens as string[], (v) =>
-    set((prev) => ({ ...prev, allergens: v }))
-  );
+  // helpers for toggling list selections
+  const toggleIn = (key: keyof typeof state, val: string) =>
+    set((s) => {
+      const arr = new Set<string>(s[key] as string[]);
+      if (arr.has(val)) arr.delete(val);
+      else arr.add(val);
+      return { ...s, [key]: Array.from(arr) };
+    });
 
-  const setDifficulty = (d: "" | "Easy" | "Medium" | "Hard") =>
-    set((prev) => ({ ...prev, difficulty: prev.difficulty === d ? "" : d }));
+  const isSelected = (key: keyof typeof state, val: string) =>
+    (state[key] as string[]).includes(val);
 
-  const setSort = (s: "newest" | "rating" | "likes") =>
-    set((prev) => ({ ...prev, sortBy: s }));
-
-  const activeCount =
-    state.cuisines.length +
-    state.ethnicities.length +
-    state.dietary.length +
-    state.mealTypes.length +
-    (state.difficulty ? 1 : 0) +
-    state.allergens.length +
-    (state.maxCookTime !== 60 ? 1 : 0) +
-    (state.minSpoons ? 1 : 0) +
-    (state.onlyRecipes ? 1 : 0) +
-    (state.sortBy !== "newest" ? 1 : 0);
+  const applyAndBack = () => {
+    // (Optionally could persist to URL, keep it simple for now)
+    setLocation("/recipes");
+  };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 md:px-6 py-4 space-y-6">
+    <div className="max-w-7xl mx-auto px-4 py-5">
       {/* Header */}
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold">Recipe Filters</h1>
-          <p className="text-sm text-muted-foreground">
-            Choose cuisines, ethnicities, diets, allergens, and more.{" "}
-            <Badge variant="outline" className="ml-1">
-              {activeCount} active
-            </Badge>
-          </p>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={() => setLocation("/recipes")} className="px-2">
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
+            <Filter className="w-5 h-5 text-muted-foreground" />
+            Recipe Filters
+          </h1>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={reset}>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={reset}>
+            <X className="w-4 h-4 mr-1" />
             Reset
           </Button>
-          <Button onClick={() => setLocation("/recipes")}>View Results</Button>
+          <Button onClick={applyAndBack}>Apply</Button>
         </div>
       </div>
 
-      {/* Filters grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left column */}
-        <div className="space-y-6">
-          <Section title="Cuisines">
-            <SearchableChecklist
-              label="Select Cuisines"
-              items={CUISINES}
-              selected={state.cuisines}
-              onToggle={toggleCuisine}
-              placeholder="Search cuisines…"
-              columns={2}
-              maxHeight="20rem"
-            />
-          </Section>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5">
+        {/* Main filter clusters */}
+        <div className="space-y-5">
+          <Card className="p-4 space-y-5">
+            {/* Search (client-side quick search that mirrors list page box) */}
+            <Section title="Search">
+              <Input
+                placeholder="Search recipe titles or keywords…"
+                value={(state as any).search ?? ""}
+                onChange={(e) => set((s) => ({ ...s, search: e.target.value }))}
+              />
+            </Section>
 
-          <Section title="Ethnicity / Cultural Origin">
-            <EthnicityRegionGroups />
-          </Section>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Cuisines */}
+              <Section
+                title="Cuisines"
+                right={
+                  state.cuisines.length > 0 ? (
+                    <button
+                      className="text-xs underline text-muted-foreground"
+                      onClick={() => set((s) => ({ ...s, cuisines: [] }))}
+                    >
+                      Clear
+                    </button>
+                  ) : null
+                }
+              >
+                <div className="flex flex-wrap gap-2">
+                  {CUISINES.map((c) => (
+                    <Chip
+                      key={c}
+                      label={c}
+                      selected={isSelected("cuisines", c)}
+                      onToggle={() => toggleIn("cuisines", c)}
+                    />
+                  ))}
+                </div>
+              </Section>
 
-          <Section title="Meal Types">
-            <div className="flex flex-wrap gap-2">
-              {MEAL_TYPES.map((m) => (
-                <TogglePill
-                  key={m}
-                  active={state.mealTypes.includes(m)}
-                  onClick={() => toggleMealType(m)}
-                >
-                  {m}
-                </TogglePill>
-              ))}
+              {/* Meal Types */}
+              <Section
+                title="Meal Types"
+                right={
+                  state.mealTypes.length > 0 ? (
+                    <button
+                      className="text-xs underline text-muted-foreground"
+                      onClick={() => set((s) => ({ ...s, mealTypes: [] }))}
+                    >
+                      Clear
+                    </button>
+                  ) : null
+                }
+              >
+                <div className="flex flex-wrap gap-2">
+                  {MEAL_TYPES.map((m) => (
+                    <Chip
+                      key={m}
+                      label={m}
+                      selected={isSelected("mealTypes", m)}
+                      onToggle={() => toggleIn("mealTypes", m)}
+                    />
+                  ))}
+                </div>
+              </Section>
             </div>
-          </Section>
+
+            {/* Ethnicities grouped by region */}
+            <Section
+              title="Ethnicities (by Region)"
+              right={
+                state.ethnicities.length > 0 ? (
+                  <button
+                    className="text-xs underline text-muted-foreground"
+                    onClick={() => set((s) => ({ ...s, ethnicities: [] }))}
+                  >
+                    Clear
+                  </button>
+                ) : null
+              }
+            >
+              <div className="space-y-4">
+                {ETHNICITY_REGIONS.map((region) => (
+                  <div key={region} className="space-y-2">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase">
+                      {region}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {ETHNICITIES[region]?.map((eth) => (
+                        <Chip
+                          key={eth}
+                          label={eth}
+                          selected={isSelected("ethnicities", eth)}
+                          onToggle={() => toggleIn("ethnicities", eth)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+
+            {/* Dietary */}
+            <Section
+              title="Dietary"
+              right={
+                state.dietary.length > 0 ? (
+                  <button
+                    className="text-xs underline text-muted-foreground"
+                    onClick={() => set((s) => ({ ...s, dietary: [] }))}
+                  >
+                    Clear
+                  </button>
+                ) : null
+              }
+            >
+              <div className="flex flex-wrap gap-2">
+                {DIETARY.map((d) => (
+                  <Chip
+                    key={d}
+                    label={d}
+                    selected={isSelected("dietary", d)}
+                    onToggle={() => toggleIn("dietary", d)}
+                  />
+                ))}
+              </div>
+            </Section>
+
+            {/* Allergens */}
+            <Section
+              title="Exclude Allergens"
+              right={
+                state.allergens.length > 0 ? (
+                  <button
+                    className="text-xs underline text-muted-foreground"
+                    onClick={() => set((s) => ({ ...s, allergens: [] }))}
+                  >
+                    Clear
+                  </button>
+                ) : null
+              }
+            >
+              <div className="flex flex-wrap gap-2">
+                {ALLERGENS.map((a) => (
+                  <Chip
+                    key={a}
+                    label={a}
+                    selected={isSelected("allergens", a)}
+                    onToggle={() => toggleIn("allergens", a)}
+                  />
+                ))}
+              </div>
+            </Section>
+          </Card>
+
+          {/* Advanced */}
+          <Card className="p-4 space-y-5">
+            {/* Difficulty + Only recipes */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <Section title="Difficulty">
+                <div className="flex flex-wrap gap-2">
+                  {(["", ...DIFFICULTY] as const).map((d) => (
+                    <Chip
+                      key={d || "Any"}
+                      label={d || "Any"}
+                      selected={(state.difficulty || "") === d}
+                      onToggle={() =>
+                        set((s) => ({
+                          ...s,
+                          difficulty: (s.difficulty || "") === d ? "" : (d as typeof s.difficulty),
+                        }))
+                      }
+                    />
+                  ))}
+                </div>
+              </Section>
+
+              <Section title="Content Type">
+                <div className="flex flex-wrap gap-2">
+                  <Chip
+                    label="Only recipes (hide non-recipe posts)"
+                    selected={state.onlyRecipes}
+                    onToggle={() => set((s) => ({ ...s, onlyRecipes: !s.onlyRecipes }))}
+                    className="w-full text-left"
+                  />
+                </div>
+              </Section>
+            </div>
+
+            {/* Cook time */}
+            <Section title={`Max Cook Time: ${state.maxCookTime} min`}>
+              {/* If you don’t have a Slider component, replace with:
+                  <input type="range" min={5} max={240} step={5} value={state.maxCookTime}
+                    onChange={(e) => set((s) => ({ ...s, maxCookTime: Number(e.target.value) }))} />
+               */}
+              {Slider ? (
+                <Slider
+                  min={5}
+                  max={240}
+                  step={5}
+                  value={[state.maxCookTime]}
+                  onValueChange={([v]) => set((s) => ({ ...s, maxCookTime: v }))}
+                />
+              ) : (
+                <input
+                  type="range"
+                  min={5}
+                  max={240}
+                  step={5}
+                  value={state.maxCookTime}
+                  onChange={(e) =>
+                    set((s) => ({ ...s, maxCookTime: Number(e.target.value) }))
+                  }
+                  className="w-full"
+                />
+              )}
+            </Section>
+
+            {/* Spoons */}
+            <Section title={`Minimum Rating (Spoons): ${state.minSpoons}`}>
+              {Slider ? (
+                <Slider
+                  min={0}
+                  max={5}
+                  step={1}
+                  value={[state.minSpoons]}
+                  onValueChange={([v]) => set((s) => ({ ...s, minSpoons: v }))}
+                />
+              ) : (
+                <input
+                  type="range"
+                  min={0}
+                  max={5}
+                  step={1}
+                  value={state.minSpoons}
+                  onChange={(e) =>
+                    set((s) => ({ ...s, minSpoons: Number(e.target.value) }))
+                  }
+                  className="w-full"
+                />
+              )}
+            </Section>
+
+            {/* Sort */}
+            <Section title="Sort By">
+              <div className="flex flex-wrap gap-2">
+                {(["newest", "rating", "likes"] as const).map((opt) => (
+                  <Chip
+                    key={opt}
+                    label={opt === "newest" ? "Newest" : opt === "rating" ? "Rating" : "Likes"}
+                    selected={state.sortBy === opt}
+                    onToggle={() => set((s) => ({ ...s, sortBy: opt }))}
+                  />
+                ))}
+              </div>
+            </Section>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={reset}>
+                Reset
+              </Button>
+              <Button onClick={applyAndBack}>Apply</Button>
+            </div>
+          </Card>
         </div>
 
-        {/* Right column */}
-        <div className="space-y-6">
-          <Section title="Dietary">
-            <SearchableChecklist
-              label="Dietary"
-              items={DIETARY}
-              selected={state.dietary}
-              onToggle={toggleDiet}
-              placeholder="Search dietary…"
-              columns={2}
-              maxHeight="16rem"
-            />
-          </Section>
-
-          <Section title="Allergens">
-            <SearchableChecklist
-              label="Allergens"
-              items={ALLERGENS}
-              selected={state.allergens}
-              onToggle={toggleAllergen}
-              placeholder="Search allergens…"
-              columns={2}
-              maxHeight="16rem"
-            />
-          </Section>
-
-          <Section title="Difficulty">
-            <div className="flex flex-wrap gap-2">
-              {DIFFICULTY.map((d) => (
-                <TogglePill
-                  key={d}
-                  active={state.difficulty === d}
-                  onClick={() => setDifficulty(d)}
-                >
-                  {d}
-                </TogglePill>
-              ))}
+        {/* Sticky summary (desktop) */}
+        <div className="lg:sticky lg:top-20 space-y-4">
+          <Card className="p-4">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Current Filters
+            </h3>
+            <div className="space-y-2 text-sm">
+              <Row label="Search" value={(state as any).search || "—"} />
+              <Row label="Cuisines" value={state.cuisines.join(", ") || "—"} />
+              <Row label="Ethnicities" value={state.ethnicities.join(", ") || "—"} />
+              <Row label="Dietary" value={state.dietary.join(", ") || "—"} />
+              <Row label="Allergens" value={state.allergens.join(", ") || "—"} />
+              <Row label="Meal Types" value={state.mealTypes.join(", ") || "—"} />
+              <Row label="Difficulty" value={state.difficulty || "Any"} />
+              <Row label="Max Cook Time" value={`${state.maxCookTime} min`} />
+              <Row label="Min Spoons" value={String(state.minSpoons)} />
+              <Row label="Only Recipes" value={state.onlyRecipes ? "Yes" : "No"} />
+              <Row
+                label="Sort By"
+                value={state.sortBy === "newest" ? "Newest" : state.sortBy === "rating" ? "Rating" : "Likes"}
+              />
             </div>
-          </Section>
 
-          <Section title={`Max Cook Time: ${state.maxCookTime} min`}>
-            {/* Simple range input to avoid extra imports */}
-            <input
-              type="range"
-              min={5}
-              max={240}
-              step={5}
-              value={state.maxCookTime}
-              onChange={(e) =>
-                set((prev) => ({ ...prev, maxCookTime: Number(e.target.value) }))
-              }
-              className="w-full"
-            />
-            <div className="mt-1 text-xs text-muted-foreground">
-              Drag to limit results by total cook time.
-            </div>
-          </Section>
-
-          <Section title="Minimum Rating (Spoons)">
-            <div className="flex items-center gap-1">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  className="p-1"
-                  aria-label={`${n} spoons & up`}
-                  onClick={() =>
-                    set((prev) => ({
-                      ...prev,
-                      minSpoons: prev.minSpoons === n ? 0 : n,
-                    }))
-                  }
-                  title={`${n} spoons & up`}
-                >
-                  <SpoonIcon
-                    className={`h-6 w-6 ${
-                      state.minSpoons >= n ? "text-emerald-600" : "text-muted-foreground/40"
-                    }`}
-                  />
-                </button>
-              ))}
-              <Button
-                size="sm"
-                variant="ghost"
-                className="ml-1 h-7 px-2"
-                onClick={() => set((prev) => ({ ...prev, minSpoons: 0 }))}
-              >
-                Clear
+            <div className="mt-4 flex items-center gap-2">
+              <Button variant="outline" className="w-full" onClick={reset}>
+                Reset
+              </Button>
+              <Button className="w-full" onClick={applyAndBack}>
+                Apply
               </Button>
             </div>
-          </Section>
+          </Card>
 
-          <Section title="More">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={state.onlyRecipes}
-                onChange={(e) =>
-                  set((prev) => ({ ...prev, onlyRecipes: e.target.checked }))
-                }
-                className="h-4 w-4"
-              />
-              <span className="text-sm">Show recipe posts only</span>
-            </label>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(["newest", "rating", "likes"] as const).map((s) => (
-                <TogglePill
-                  key={s}
-                  active={state.sortBy === s}
-                  onClick={() => setSort(s)}
-                >
-                  {s === "newest" ? "Newest" : s === "rating" ? "Top Rated" : "Most Liked"}
-                </TogglePill>
-              ))}
-            </div>
-          </Section>
+          <Card className="p-4">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+              Tips
+            </h3>
+            <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-1">
+              <li>Pick a cuisine + meal type to tighten results.</li>
+              <li>Use allergens to exclude ingredients across all recipes.</li>
+              <li>Set “Only recipes” to hide non-recipe posts.</li>
+            </ul>
+          </Card>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Footer actions (mobile-friendly) */}
-      <div className="sticky bottom-0 bg-background/80 backdrop-blur border-t py-3">
-        <div className="mx-auto max-w-6xl px-4 md:px-6 flex items-center justify-between gap-2">
-          <Button variant="secondary" onClick={reset}>
-            Reset filters
-          </Button>
-          <div className="flex gap-2">
-            <Link href="/recipes">
-              <Button>Apply & View Results</Button>
-            </Link>
-          </div>
-        </div>
-      </div>
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right">{value}</span>
     </div>
   );
 }
