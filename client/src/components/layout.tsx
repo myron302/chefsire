@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Search, Bell, MessageCircle, User, ChevronDown,
   ChefHat, Shuffle, Activity, ShoppingCart, Settings, LogOut,
-  Home, Compass, BookOpen, GlassWater, Utensils, Heart
+  Home, Compass, BookOpen, GlassWater, Utensils, Heart, Lightbulb
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
@@ -36,8 +36,9 @@ export default function Layout({ children }: LayoutProps) {
 
   const secondaryLinks = [
     { href: "/", label: "Home" },
+    { href: "/recipes", label: "Recipes" },         // added
     { href: "/substitutions", label: "Substitutions" },
-    { href: "/ai-substitution", label: "AI Substitution" },
+    { href: "/ai-substitution", label: "AI Substitution", indent: true }, // nested visual
     { href: "/potent-potables", label: "Potent Potables" },
     { href: "/catering", label: "Catering" },
     { href: "/store", label: "Store" },
@@ -191,6 +192,7 @@ export default function Layout({ children }: LayoutProps) {
                             >
                               <GlassWater className="w-4 h-4 mr-3" /> Potent Potables
                             </Link>
+
                             <div className="space-y-1">
                               <Link
                                 href="/catering"
@@ -232,12 +234,21 @@ export default function Layout({ children }: LayoutProps) {
                             >
                               <ChefHat className="w-4 h-4 mr-3" /> My Pantry
                             </Link>
+
+                            {/* Substitutions + nested AI Substitution */}
                             <Link
                               href="/substitutions"
                               onClick={() => setIsDropdownOpen(false)}
                               className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                             >
                               <Shuffle className="w-4 h-4 mr-3" /> Ingredient Substitutions
+                            </Link>
+                            <Link
+                              href="/ai-substitution"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                            >
+                              <Lightbulb className="w-3 h-3 mr-2" /> AI Substitution
                             </Link>
                           </div>
                         </div>
@@ -307,6 +318,7 @@ export default function Layout({ children }: LayoutProps) {
                           isActive
                             ? "text-orange-600 underline decoration-2 underline-offset-4"
                             : "text-muted-foreground hover:text-orange-600",
+                          (item as any).indent ? "pl-6" : "",
                         ].join(" ")}
                         aria-current={isActive ? "page" : undefined}
                       >
@@ -327,7 +339,7 @@ export default function Layout({ children }: LayoutProps) {
         <main className="flex-1 lg:ml-64 pb-16 lg:pb-0">{children}</main>
       </div>
 
-      {/* Mobile search (optional): small UX sugar for phones */}
+      {/* Mobile search */}
       <div className="md:hidden px-4 py-2 border-t border-border">
         <form onSubmit={onSearchSubmit} className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
