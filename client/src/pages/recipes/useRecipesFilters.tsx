@@ -1,3 +1,4 @@
+// client/src/pages/recipes/useRecipesFilters.tsx
 import React, { createContext, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -12,7 +13,7 @@ import {
   ETHNICITIES,
 } from "./filters.catalog";
 
-// 🔁 re-export them so components can just import from this file if they want
+// 🔁 re-export them so components can import directly from here if they want
 export {
   CUISINES,
   MEAL_TYPES,
@@ -24,6 +25,9 @@ export {
 };
 
 export interface RecipesFiltersState {
+  // 🔎 NEW: free-text search used by the list page (and sent to /api/recipes/search as q)
+  search: string;
+
   cuisines: string[];
   ethnicities: string[];
   dietary: string[];
@@ -31,7 +35,7 @@ export interface RecipesFiltersState {
   difficulty: "" | "Easy" | "Medium" | "Hard";
   allergens: string[];
   maxCookTime: number;
-  minSpoons: number; // ⭐ rating in spoons
+  minSpoons: number; // rating in spoons
   onlyRecipes: boolean;
   sortBy: "newest" | "rating" | "likes";
 }
@@ -43,6 +47,7 @@ interface RecipesFiltersContext {
 }
 
 const defaultState: RecipesFiltersState = {
+  search: "",            // ← added
   cuisines: [],
   ethnicities: [],
   dietary: [],
@@ -59,9 +64,7 @@ const Ctx = createContext<RecipesFiltersContext | undefined>(undefined);
 
 export function RecipesFiltersProvider({ children }: { children: ReactNode }) {
   const [state, set] = useState<RecipesFiltersState>(defaultState);
-
   const reset = () => set(defaultState);
-
   const value = useMemo(() => ({ state, set, reset }), [state]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
