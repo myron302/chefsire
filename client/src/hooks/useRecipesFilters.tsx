@@ -1,8 +1,8 @@
-// client/src/pages/recipes/useRecipesFilters.tsx
+// client/src/hooks/useRecipesFilters.tsx
 import React, { createContext, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-// ✅ import lists from the shared catalog file
+// ✅ Corrected import path (catalog stays in pages/recipes)
 import {
   CUISINES,
   MEAL_TYPES,
@@ -11,9 +11,9 @@ import {
   ALLERGENS,
   ETHNICITY_REGIONS,
   ETHNICITIES,
-} from "./filters.catalog";
+} from "@/pages/recipes/filters.catalog";
 
-// 🔁 re-export them so components can import directly from here if they want
+// 🔁 Re-export so components can import all from this hook if desired
 export {
   CUISINES,
   MEAL_TYPES,
@@ -25,9 +25,6 @@ export {
 };
 
 export interface RecipesFiltersState {
-  // 🔎 NEW: free-text search used by the list page (and sent to /api/recipes/search as q)
-  search: string;
-
   cuisines: string[];
   ethnicities: string[];
   dietary: string[];
@@ -35,9 +32,11 @@ export interface RecipesFiltersState {
   difficulty: "" | "Easy" | "Medium" | "Hard";
   allergens: string[];
   maxCookTime: number;
-  minSpoons: number; // rating in spoons
+  minSpoons: number; // 0–5 spoons
   onlyRecipes: boolean;
   sortBy: "newest" | "rating" | "likes";
+  /** optional quick search term (client-side filter) */
+  search?: string;
 }
 
 interface RecipesFiltersContext {
@@ -47,7 +46,6 @@ interface RecipesFiltersContext {
 }
 
 const defaultState: RecipesFiltersState = {
-  search: "",            // ← added
   cuisines: [],
   ethnicities: [],
   dietary: [],
@@ -58,6 +56,7 @@ const defaultState: RecipesFiltersState = {
   minSpoons: 0,
   onlyRecipes: false,
   sortBy: "newest",
+  search: "",
 };
 
 const Ctx = createContext<RecipesFiltersContext | undefined>(undefined);
