@@ -10,13 +10,14 @@ import Layout from "@/components/layout";
 // Pages
 import Feed from "@/pages/feed";
 
-// ✅ Explore (discovery feed)
+// Explore (discovery feed — no filters)
 import ExplorePage from "@/pages/explore/ExplorePage";
 
-// ✅ Recipes (filters + list)
+// Recipes (filters + list)
 import RecipesListPage from "@/pages/recipes/RecipesListPage";
 import RecipesFiltersPage from "@/pages/recipes/RecipesFiltersPage";
-import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
+// ⬇️ UPDATED: provider now comes from hooks
+import { RecipesFiltersProvider } from "@/hooks/useRecipesFilters";
 
 import Profile from "@/pages/profile";
 import CreatePost from "@/pages/create-post";
@@ -56,22 +57,23 @@ function Router() {
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
 
-        {/* ✅ Explore (discovery feed, no filters) */}
+        {/* Explore (discovery, algorithmic later) */}
         <Route path="/explore" component={ExplorePage} />
 
-        {/* ✅ Recipes (filterable) */}
+        {/* Recipes (filterable) */}
         <Route path="/recipes">
           <RecipesFiltersProvider>
             <RecipesListPage />
           </RecipesFiltersProvider>
         </Route>
+
         <Route path="/recipes/filters">
           <RecipesFiltersProvider>
             <RecipesFiltersPage />
           </RecipesFiltersProvider>
         </Route>
 
-        {/* Backward-compat (old explore/filters -> recipes/filters) */}
+        {/* Backward-compat: old explore/filters -> recipes/filters */}
         <Route path="/explore/filters">
           <Redirect to="/recipes/filters" />
         </Route>
@@ -129,4 +131,4 @@ export default function App() {
       </TooltipProvider>
     </QueryClientProvider>
   );
-}
+}p
