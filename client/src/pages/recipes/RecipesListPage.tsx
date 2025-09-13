@@ -1,13 +1,14 @@
 // client/src/pages/recipes/RecipesListPage.tsx
 import * as React from "react";
 import { Link } from "wouter";
-import { useRecipesFilters } from "./useRecipesFilters";
-import { useRecipesData, type RecipeCardData } from "./useRecipesData";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Clock, Users } from "lucide-react";
+
+import { useRecipesFilters } from "@/hooks/useRecipesFilters";
+import { useRecipesQuery, type NormalizedRecipe } from "@/hooks/useRecipesQuery";
 
 /** Uniform “spoon” icon (SVG) */
 function SpoonIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -36,7 +37,7 @@ function SpoonRating({ value }: { value: number | null | undefined }) {
   );
 }
 
-function RecipeCard({ r }: { r: RecipeCardData }) {
+function RecipeCard({ r }: { r: NormalizedRecipe }) {
   return (
     <Card className="overflow-hidden bg-card border border-border hover:shadow-md transition-shadow">
       {r.image ? (
@@ -84,7 +85,16 @@ function RecipeCard({ r }: { r: RecipeCardData }) {
 
 export default function RecipesListPage() {
   const { state, set } = useRecipesFilters();
-  const { recipes, loading, err } = useRecipesData();
+
+  // useRecipesQuery replaces old useRecipesData
+  const { data, isLoading, isError } = useRecipesQuery({
+    page: 1, // could add pagination state later
+    pageSize: 24,
+    search: state.search,
+    source: "all",
+  });
+
+  const recipes = data?.results ?? [];
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
@@ -96,11 +106,11 @@ export default function RecipesListPage() {
         </Link>
       </div>
 
-      {/* Optional tiny search (client-side only; wires into state.search) */}
+      {/* Optional tiny search */}
       <div className="mb-4 flex items-center gap-2">
         <Input
           placeholder="Quick search (title/keywords)…"
-          value={state.search}
+          value={state.search ?? ""}
           onChange={(e) => set((s) => ({ ...s, search: e.target.value }))}
           className="max-w-md"
         />
@@ -109,16 +119,18 @@ export default function RecipesListPage() {
         </Link>
       </div>
 
-      {/* Loading / error states */}
-      {loading ? (
+      {/* Loading / error / empty states */}
+      {isLoading ? (
         <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin" />
           Loading recipes…
         </div>
-      ) : err ? (
-        <div className="text-destructive">Error: {err}</div>
+      ) : isError ? (
+        <div className="text-destructive">Error loading recipes.</div>
       ) : recipes.length === 0 ? (
-        <div className="text-muted-foreground">No recipes found. Try adjusting filters.</div>
+        <div className="text-muted-foreground">
+          No recipes found. Try adjusting filters.
+        </div>
       ) : (
         <div className="grid gap-4 grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           {recipes.map((r) => (
