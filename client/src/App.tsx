@@ -13,13 +13,8 @@ import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole"
 // ---- Lazy pages (code-splitting) ----
 const Feed = React.lazy(() => import("@/pages/feed"));
 const ExplorePage = React.lazy(() => import("@/pages/explore/ExplorePage"));
-
-// Recipes set
 const RecipesListPage = React.lazy(() => import("@/pages/recipes/RecipesListPage"));
 const RecipesFiltersPage = React.lazy(() => import("@/pages/recipes/RecipesFiltersPage"));
-import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
-
-// Other pages
 const Profile = React.lazy(() => import("@/pages/profile"));
 const CreatePost = React.lazy(() => import("@/pages/create-post"));
 const Pantry = React.lazy(() => import("@/components/Pantry"));
@@ -32,6 +27,9 @@ const PotentPotables = React.lazy(() => import("@/pages/potent-potables"));
 const WeddingPlanning = React.lazy(() => import("@/pages/wedding-planning"));
 const NotFound = React.lazy(() => import("@/pages/not-found"));
 
+// ✅ Recipes filters provider (moved to app-wide scope)
+import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
+
 // Small redirect helper for Wouter
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
@@ -39,7 +37,7 @@ function Redirect({ to }: { to: string }) {
   return null;
 }
 
-// A tiny wrapper so every lazy page gets Suspense + an error boundary
+// Suspense + ErrorBoundary shell for each lazy page
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
     <ErrorBoundary>
@@ -81,7 +79,7 @@ function Router() {
           </PageShell>
         </Route>
 
-        {/* Explore (discovery feed, no filters here) */}
+        {/* Explore (discovery feed) */}
         <Route path="/explore">
           <PageShell>
             <ExplorePage />
@@ -93,21 +91,17 @@ function Router() {
           <Redirect to="/recipes/filters" />
         </Route>
 
-        {/* Recipes (filters + list) */}
+        {/* Recipes */}
         <Route path="/recipes">
-          <RecipesFiltersProvider>
-            <PageShell>
-              <RecipesListPage />
-            </PageShell>
-          </RecipesFiltersProvider>
+          <PageShell>
+            <RecipesListPage />
+          </PageShell>
         </Route>
 
         <Route path="/recipes/filters">
-          <RecipesFiltersProvider>
-            <PageShell>
-              <RecipesFiltersPage />
-            </PageShell>
-          </RecipesFiltersProvider>
+          <PageShell>
+            <RecipesFiltersPage />
+          </PageShell>
         </Route>
 
         {/* Create */}
@@ -173,7 +167,7 @@ function Router() {
           </PageShell>
         </Route>
 
-        {/* Placeholders (if you still want them) */}
+        {/* Placeholders */}
         <Route path="/saved">
           <PageShell>
             <NotFound />
@@ -206,7 +200,10 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Router />
+        {/* ⬇️ Make the filters context available app-wide */}
+        <RecipesFiltersProvider>
+          <Router />
+        </RecipesFiltersProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
