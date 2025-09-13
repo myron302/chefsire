@@ -6,89 +6,67 @@ import {
   SubstitutionItem,
 } from "./substitutions.catalog";
 
-// Simple case-insensitive contains match
-function matches(haystack: string, needle: string) {
-  return haystack.toLowerCase().includes(needle.toLowerCase());
+const ciIncludes = (a: string, b: string) =>
+  a.toLowerCase().includes(b.toLowerCase());
+
+export function searchIngredientsLocal(q: string): string[] {
+  if (!q.trim()) return [];
+  return ALL_INGREDIENT_KEYS.filter((n) => ciIncludes(n, q)).slice(0, 15);
 }
 
-export function searchIngredients(query: string): string[] {
-  if (!query.trim()) return [];
-  return ALL_INGREDIENT_KEYS
-    .filter((name) => matches(name, query))
-    .slice(0, 15);
-}
-
-export function findCatalogEntry(ingredient: string): CatalogEntry | undefined {
-  const q = ingredient.trim().toLowerCase();
-  return SUBSTITUTIONS_CATALOG.find((entry) => {
-    const base = entry.originalIngredient.toLowerCase() === q;
-    const syn = (entry.synonyms || []).some((s) => s.toLowerCase() === q);
-    return base || syn;
+export function findEntryLocal(ingredient: string): CatalogEntry | undefined {
+  const k = ingredient.trim().toLowerCase();
+  return SUBSTITUTIONS_CATALOG.find((e) => {
+    if (e.originalIngredient.toLowerCase() === k) return true;
+    return (e.synonyms || []).some((s) => s.toLowerCase() === k);
   });
 }
 
-export function getSubstitutions(ingredient: string): SubstitutionItem[] {
-  const entry = findCatalogEntry(ingredient);
-  return entry?.substitutions || [];
+export function getSubsLocal(ingredient: string): SubstitutionItem[] {
+  return findEntryLocal(ingredient)?.substitutions || [];
 }
 
-/**
- * Fallback “AI-like” suggestions.
- * You can later replace this with a real LLM call; keep the same return shape.
- */
-export function generateAISubstitutions(ingredient: string): {
+/** Lightweight “AI-like” fallback (replace with real LLM later if you want) */
+export function aiSuggestLocal(ingredient: string): {
   query: string;
   substitutions: SubstitutionItem[];
 } {
-  const base = getSubstitutions(ingredient);
-  if (base.length > 0) {
-    // If we already have curated items, return those as “AI” too
-    return { query: ingredient, substitutions: base.slice(0, 3) };
-  }
+  const base = getSubsLocal(ingredient);
+  if (base.length) return { query: ingredient, substitutions: base.slice(0, 3) };
 
-  // Tiny rules-of-thumb for a few common items:
-  const lower = ingredient.toLowerCase();
-  if (lower.includes("cream")) {
+  const k = ingredient.toLowerCase();
+  if (k.includes("cream")) {
     return {
       query: ingredient,
       substitutions: [
-        {
-          substituteIngredient: "evaporated milk",
-          ratio: "1:1",
-          notes: "Works in soups/sauces; won’t whip.",
-        },
-        {
-          substituteIngredient: "whole milk + butter",
-          ratio: "3/4 cup milk + 1/4 cup butter = 1 cup cream",
-          notes: "Adds fat; not for whipping.",
-        },
+        { substituteIngredient: "evaporated milk", ratio: "1:1", notes: "Great in sauces; won’t whip." },
+        { substituteIngredient: "whole milk + butter", ratio: "3/4 cup + 1/4 cup = 1 cup cream", notes: "Not for whipping." },
       ],
     };
   }
-  if (lower.includes("butter")) {
+  if (k.includes("butter")) {
     return {
       query: ingredient,
       substitutions: [
-        { substituteIngredient: "olive oil", ratio: "1:0.75", notes: "Use less oil by volume." },
-        { substituteIngredient: "applesauce (unsweetened)", ratio: "1:1 (baking)", notes: "Healthier swap in bakes." },
+        { substituteIngredient: "olive oil", ratio: "1:0.75", notes: "Use ~25% less by volume." },
+        { substituteIngredient: "applesauce (unsweetened)", ratio: "1:1 (baking)", notes: "Healthier in cakes/muffins." },
       ],
     };
   }
-  if (lower.includes("egg")) {
+  if (k.includes("egg")) {
     return {
       query: ingredient,
       substitutions: [
-        { substituteIngredient: "ground flax + water", ratio: "1 Tbsp + 3 Tbsp = 1 egg", notes: "Let rest 5 minutes." },
-        { substituteIngredient: "silken tofu (blended)", ratio: "1/4 cup = 1 egg", notes: "Neutral binder in baking." },
+        { substituteIngredient: "ground flax + water", ratio: "1 Tbsp + 3 Tbsp = 1 egg", notes: "Rest 5 minutes." },
+        { substituteIngredient: "silken tofu (blended)", ratio: "1/4 cup = 1 egg", notes: "Neutral binder." },
       ],
     };
   }
 
-  // Default generic response
   return {
     query: ingredient,
     substitutions: [
-      { substituteIngredient: "chef’s choice: similar fat/liquid", ratio: "≈1:1", notes: "Pick closest texture & flavor." },
+      { substituteIngredient: "closest texture/fat/liquid", ratio: "≈1:1", notes: "Pick nearest match by function." },
     ],
   };
 }
