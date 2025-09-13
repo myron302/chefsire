@@ -12,6 +12,9 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 
+// NEW: local catalog/service fallbacks for substitutions & AI
+import { searchIngredientsLocal, getSubsLocal, aiSuggestLocal } from "./features/substitutions/substitutions.service";
+
 // Add this middleware function at the top
 const authenticateUser = (req: any, res: any, next: any) => {
   // For now, we'll create a mock user - replace this with real authentication later
@@ -589,6 +592,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pickupLocation: z.string().optional(),
         pickupInstructions: z.string().optional(),
         shippingCost: z.string().optional(),
+        isActive: z.boolean().optional(),
         isExternal: z.boolean().default(false),
         externalUrl: z.string().url().optional()
       });
@@ -1273,32 +1277,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/ingredients/:ingredient/substitutions", async (req, res) => {
-    try {
-      const ingredient = decodeURIComponent(req.params.ingredient);
-      const substitutions = await storage.getIngredientSubstitutions(ingredient);
-      
-      res.json({
-        ingredient,
-        substitutions,
-        total: substitutions.length,
-        categories: [...new Set(substitutions.map(sub => sub.category).filter(Boolean))]
-      });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to get ingredient substitutions" });
-    }
-  });
+  // ===== SUBSTITUTIONS: SEARCH / LIST / AI  (with local fallbacks) =====
 
+  // Search substitutions (ingredient names)
   app.get("/api/ingredients/substitutions/search", async (req, res) => {
     try {
-      const query = req.query.q as string;
-      
-      if (!query || query.length < 2) {
+      const query = (req.query.q as string) || "";
+      if (query.length < 2) {
         return res.status(400).json({ message: "Search query must be at least 2 characters long" });
       }
-      
-      const results = await storage.searchSubstitutions(query);
-      
+
+      // Try storage first
+      let results = await storage.searchSubstitutions(query);
+
+      // Fallback to local catalog if storage returns nothing
+      if (!results || results.length === 0) {
+        results = searchIngredientsLocal(query);
+      }
+
       res.json({
         query,
         results,
@@ -1309,6 +1305,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get substitutions for a specific ingredient
+  app.get("/api/ingredients/:ingredient/substitutions", async (req, res) => {
+    try {
+      const ingredient = decodeURIComponent(req.params.ingredient);
+
+      // Try storage first
+      let substitutions = await storage.getIngredientSubstitutions(ingredient);
+
+      // Fallback to local catalog if storage returns nothing
+      if (!substitutions || substitutions.length === 0) {
+        substitutions = getSubsLocal(ingredient).map((s) => ({
+          originalIngredient: ingredient,
+          substituteIngredient: s.substituteIngredient,
+          ratio: s.ratio,
+          notes: s.notes,
+          category: s.category,
+          nutrition: s.nutrition,
+        }));
+      }
+
+      res.json({
+        ingredient,
+        substitutions,
+        total: substitutions.length,
+        categories: [...new Set(substitutions.map((sub: any) => sub.category).filter(Boolean))]
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get ingredient substitutions" });
+    }
+  });
+
+  // AI substitution (local heuristic fallback for now)
+  app.get("/api/ingredients/ai-substitution", async (req, res) => {
+    try {
+      const q = String(req.query.q || "").trim();
+      if (!q) {
+        return res.status(400).json({ message: "Missing query (?q=…)" });
+      }
+
+      // If you later add storage-backed AI, try it first here.
+
+      // Local “AI-like” fallback so UI works immediately
+      const payload = aiSuggestLocal(q);
+      res.json(payload);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get AI substitution" });
+    }
+  });
+
+  // Write new substitution (kept as-is, persists to storage)
   app.post("/api/ingredients/substitutions", async (req, res) => {
     try {
       const substitutionSchema = z.object({
@@ -1340,7 +1386,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to add ingredient substitution" });
     }
   });
-   // ===== WEDDING PLANNING API ROUTES =====
+
+  // ===== WEDDING PLANNING API ROUTES =====
 
   // Get wedding vendors with filters
   app.get("/api/wedding/vendors", async (req, res) => {
@@ -1396,7 +1443,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       const quoteData = quoteSchema.parse(req.body);
-      const userId = req.user.id;
       
       res.status(201).json({
         success: true,
@@ -1415,7 +1461,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/wedding/saved-vendors/:vendorId", authenticateUser, async (req, res) => {
     try {
       const { vendorId } = req.params;
-      const userId = req.user.id;
       
       res.json({
         success: true,
@@ -1430,8 +1475,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get calendar events
   app.get("/api/wedding/calendar", authenticateUser, async (req, res) => {
     try {
-      const userId = req.user.id;
-      
       const events = [
         {
           id: '1',
@@ -1459,7 +1502,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       const eventData = eventSchema.parse(req.body);
-      const userId = req.user.id;
       
       res.status(201).json({
         success: true,
@@ -1476,13 +1518,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get registry
   app.get("/api/wedding/registry", authenticateUser, async (req, res) => {
     try {
-      const userId = req.user.id;
-      
       const registry = {
         id: '1',
-        userId,
         registries: [],
-        publicUrl: `chefsire.com/registry/${userId}`
+        publicUrl: `chefsire.com/registry/${req.user.id}`
       };
       
       res.json(registry);
@@ -1503,7 +1542,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       const data = registrySchema.parse(req.body);
-      const userId = req.user.id;
       
       res.json({
         success: true,
