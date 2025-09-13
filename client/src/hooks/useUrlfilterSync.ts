@@ -1,117 +1,132 @@
-import * as React from "react";
-import { useRecipesFilters } from "@/hooks/useRecipesFilters";
-import useDebouncedValue from "@/hooks/useDebouncedValue";
+import { useEffect, useMemo, useRef } from "react";
+import { useRecipesFilters } from "@/pages/recipes/useRecipesFilters";
 
-export type RecipeCardData = {
-  id: string;
-  title: string;
-  image?: string | null;
-  cookTime?: number | null;
-  servings?: number | null;
-  cuisine?: string | null;
-  mealType?: string | null;
-  ratingSpoons?: number | null; // 0–5
-  dietTags?: string[];
-};
+/**
+ * Sync the Recipes filters with the URL query string and vice-versa.
+ * - On first mount, it reads existing ?params and applies them to the filter state.
+ * - Whenever filters change, it updates the URL (using replaceState; no nav).
+ *
+ * Keys synced (comma-separated lists where appropriate):
+ *   cuisines, ethnicities, diets, mealTypes, allergens,
+ *   difficulty, maxCookTime, minSpoons, sortBy, onlyRecipes
+ */
+export default function useUrlFilterSync() {
+  const { state, set } = useRecipesFilters();
 
-type ApiRecipe = {
-  id: string | number;
-  title: string;
-  image?: string;
-  readyInMinutes?: number;
-  totalTime?: number;
-  servings?: number;
-  cuisine?: string;
-  mealType?: string;
-  rating?: number;
-  diets?: string[];
-  tags?: string[];
-};
+  // parse once on mount
+  const initialParams = useMemo(() => {
+    try {
+      return new URLSearchParams(window.location.search);
+    } catch {
+      return new URLSearchParams();
+    }
+  }, []);
 
-export function useRecipesData() {
-  const { state } = useRecipesFilters();
+  const didHydrateFromUrl = useRef(false);
 
-  // ✅ debounce only the free-text search
-  // (if you don’t have `search` in your filter state yet, add: search: "" in defaultState)
-  const debouncedSearch = useDebouncedValue(state.search ?? "", 350);
+  // ---- 1) Hydrate filters from URL on first mount
+  useEffect(() => {
+    if (didHydrateFromUrl.current) return;
 
-  const [recipes, setRecipes] = React.useState<RecipeCardData[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [err, setErr] = React.useState<string | null>(null);
+    const readList = (key: string): string[] => {
+      const v = initialParams.get(key);
+      if (!v) return [];
+      return v
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    };
 
-  React.useEffect(() => {
-    let cancelled = false;
+    const readBool = (key: string): boolean => {
+      const v = initialParams.get(key);
+      if (!v) return false;
+      return v === "1" || v.toLowerCase() === "true";
+    };
 
-    async function run() {
-      setLoading(true);
-      setErr(null);
+    const readNum = (key: string): number | null => {
+      const v = initialParams.get(key);
+      if (v == null) return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
 
-      // Build query params (only include non-empty filters)
-      const params = new URLSearchParams();
-      if (debouncedSearch) params.set("q", debouncedSearch);
+    const next: Partial<typeof state> = {};
 
-      if ((state.cuisines || []).length)
-        params.set("cuisines", state.cuisines.join(","));
-      if ((state.dietary || []).length)
-        params.set("diets", state.dietary.join(","));
-      if ((state.mealTypes || []).length)
-        params.set("mealTypes", state.mealTypes.join(","));
-      if (state.maxCookTime && Number.isFinite(state.maxCookTime))
-        params.set("maxReadyMinutes", String(state.maxCookTime));
+    const cuisines = readList("cuisines");
+    if (cuisines.length) next.cuisines = cuisines;
 
-      // pull from both local + external
-      params.set("source", "all");
-      params.set("pageSize", "24");
-      params.set("offset", "0");
+    const ethnicities = readList("ethnicities");
+    if (ethnicities.length) next.ethnicities = ethnicities;
 
-      try {
-        const res = await fetch(`/api/recipes/search?${params.toString()}`, {
-          credentials: "include",
-        });
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text || `HTTP ${res.status}`);
-        }
-        const json = await res.json();
+    const dietary = readList("diets");
+    if (dietary.length) next.dietary = dietary;
 
-        if (cancelled) return;
+    const mealTypes = readList("mealTypes");
+    if (mealTypes.length) next.mealTypes = mealTypes as any;
 
-        const list: RecipeCardData[] = (json.results || []).map((r: ApiRecipe) => ({
-          id: String(r.id),
-          title: r.title,
-          image: r.image ?? null,
-          cookTime:
-            typeof r.readyInMinutes === "number"
-              ? r.readyInMinutes
-              : (r.totalTime as number | undefined) ?? null,
-          servings: r.servings ?? null,
-          cuisine: r.cuisine ?? null,
-          mealType: r.mealType ?? null,
-          ratingSpoons:
-            typeof r.rating === "number" ? r.rating : null,
-          dietTags: (r.diets || r.tags || []).map((t) => String(t)),
-        }));
+    const allergens = readList("allergens");
+    if (allergens.length) next.allergens = allergens;
 
-        setRecipes(list);
-      } catch (e: any) {
-        if (!cancelled) setErr(e?.message || "Failed to load recipes");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+    const difficulty = initialParams.get("difficulty");
+    if (difficulty) next.difficulty = difficulty as any;
+
+    const maxCookTime = readNum("maxCookTime");
+    if (maxCookTime !== null) next.maxCookTime = maxCookTime;
+
+    const minSpoons = readNum("minSpoons");
+    if (minSpoons !== null) next.minSpoons = minSpoons;
+
+    const sortBy = initialParams.get("sortBy");
+    if (sortBy) next.sortBy = sortBy as any;
+
+    const onlyRecipes = readBool("onlyRecipes");
+    if (initialParams.has("onlyRecipes")) next.onlyRecipes = onlyRecipes;
+
+    if (Object.keys(next).length > 0) {
+      set(next as any);
     }
 
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    debouncedSearch,
-    state.cuisines,
-    state.dietary,
-    state.mealTypes,
-    state.maxCookTime,
-    // you can add more deps when you start sending them to the API
-  ]);
+    didHydrateFromUrl.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  return { recipes, loading, err };
+  // ---- 2) Push filter changes back into the URL
+  useEffect(() => {
+    if (!didHydrateFromUrl.current) return; // avoid overriding before first read
+
+    const sp = new URLSearchParams(window.location.search);
+
+    const writeList = (key: string, arr: string[]) => {
+      if (arr && arr.length) sp.set(key, arr.join(","));
+      else sp.delete(key);
+    };
+
+    writeList("cuisines", state.cuisines);
+    writeList("ethnicities", state.ethnicities);
+    writeList("diets", state.dietary);
+    writeList("mealTypes", state.mealTypes as string[]);
+    writeList("allergens", state.allergens);
+
+    if (state.difficulty) sp.set("difficulty", state.difficulty);
+    else sp.delete("difficulty");
+
+    if (Number.isFinite(state.maxCookTime)) sp.set("maxCookTime", String(state.maxCookTime));
+    else sp.delete("maxCookTime");
+
+    if (Number.isFinite(state.minSpoons) && state.minSpoons > 0)
+      sp.set("minSpoons", String(state.minSpoons));
+    else sp.delete("minSpoons");
+
+    if (state.sortBy) sp.set("sortBy", state.sortBy);
+    else sp.delete("sortBy");
+
+    if (state.onlyRecipes) sp.set("onlyRecipes", "1");
+    else sp.delete("onlyRecipes");
+
+    const newQuery = sp.toString();
+    const nextUrl = `${window.location.pathname}${newQuery ? `?${newQuery}` : ""}`;
+    if (nextUrl !== `${window.location.pathname}${window.location.search}`) {
+      window.history.replaceState({}, "", nextUrl);
+    }
+  }, [state]);
 }
