@@ -1,47 +1,59 @@
 // client/src/App.tsx
 import * as React from "react";
 import { Switch, Route, useLocation } from "wouter";
-import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "./lib/queryClient";
+
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Layout from "@/components/layout";
-
-// Pages
-import Feed from "@/pages/feed";
-
-// Explore (discovery feed — no filters)
-import ExplorePage from "@/pages/explore/ExplorePage";
-
-// Recipes (filters + list)
-import RecipesListPage from "@/pages/recipes/RecipesListPage";
-import RecipesFiltersPage from "@/pages/recipes/RecipesFiltersPage";
-// ⬇️ UPDATED: provider now comes from hooks
-import { RecipesFiltersProvider } from "@/hooks/useRecipesFilters";
-
-import Profile from "@/pages/profile";
-import CreatePost from "@/pages/create-post";
-import Pantry from "@/components/Pantry";
-import IngredientSubstitutions from "@/components/IngredientSubstitutions";
-import Marketplace from "@/components/Marketplace";
-import NutritionMealPlanner from "@/components/NutritionMealPlanner";
-import CateringMarketplace from "@/pages/catering";
-import PotentPotables from "@/pages/potent-potables";
-import WeddingPlanning from "@/pages/wedding-planning";
-import NotFound from "@/pages/not-found";
-
-// NEW: AI Substitution page
-import AISubstitutionPage from "@/pages/ai-substitution";
-
-// Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole";
 
-/** Simple redirect helper for Wouter */
+// ---- Lazy pages (code-splitting) ----
+const Feed = React.lazy(() => import("@/pages/feed"));
+const ExplorePage = React.lazy(() => import("@/pages/explore/ExplorePage"));
+
+// Recipes set
+const RecipesListPage = React.lazy(() => import("@/pages/recipes/RecipesListPage"));
+const RecipesFiltersPage = React.lazy(() => import("@/pages/recipes/RecipesFiltersPage"));
+import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
+
+// Other pages
+const Profile = React.lazy(() => import("@/pages/profile"));
+const CreatePost = React.lazy(() => import("@/pages/create-post"));
+const Pantry = React.lazy(() => import("@/components/Pantry"));
+const IngredientSubstitutions = React.lazy(() => import("@/components/IngredientSubstitutions"));
+const AISubstitutionPage = React.lazy(() => import("@/pages/ai-substitution"));
+const Marketplace = React.lazy(() => import("@/components/Marketplace"));
+const NutritionMealPlanner = React.lazy(() => import("@/components/NutritionMealPlanner"));
+const CateringMarketplace = React.lazy(() => import("@/pages/catering"));
+const PotentPotables = React.lazy(() => import("@/pages/potent-potables"));
+const WeddingPlanning = React.lazy(() => import("@/pages/wedding-planning"));
+const NotFound = React.lazy(() => import("@/pages/not-found"));
+
+// Small redirect helper for Wouter
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
   React.useEffect(() => setLocation(to), [to, setLocation]);
   return null;
+}
+
+// A tiny wrapper so every lazy page gets Suspense + an error boundary
+function PageShell({ children }: { children: React.ReactNode }) {
+  return (
+    <ErrorBoundary>
+      <React.Suspense
+        fallback={
+          <div className="flex items-center justify-center py-16 text-muted-foreground">
+            Loading…
+          </div>
+        }
+      >
+        {children}
+      </React.Suspense>
+    </ErrorBoundary>
+  );
 }
 
 function Router() {
@@ -51,26 +63,29 @@ function Router() {
 
       <Switch>
         {/* Most specific routes first */}
-        <Route path="/profile/:userId?" component={Profile} />
-
-        {/* Main navigation routes */}
-        <Route path="/" component={Feed} />
-        <Route path="/feed" component={Feed} />
-
-        {/* Explore (discovery, algorithmic later) */}
-        <Route path="/explore" component={ExplorePage} />
-
-        {/* Recipes (filterable) */}
-        <Route path="/recipes">
-          <RecipesFiltersProvider>
-            <RecipesListPage />
-          </RecipesFiltersProvider>
+        <Route path="/profile/:userId?">
+          <PageShell>
+            <Profile />
+          </PageShell>
         </Route>
 
-        <Route path="/recipes/filters">
-          <RecipesFiltersProvider>
-            <RecipesFiltersPage />
-          </RecipesFiltersProvider>
+        {/* Main navigation */}
+        <Route path="/">
+          <PageShell>
+            <Feed />
+          </PageShell>
+        </Route>
+        <Route path="/feed">
+          <PageShell>
+            <Feed />
+          </PageShell>
+        </Route>
+
+        {/* Explore (discovery feed, no filters here) */}
+        <Route path="/explore">
+          <PageShell>
+            <ExplorePage />
+          </PageShell>
         </Route>
 
         {/* Backward-compat: old explore/filters -> recipes/filters */}
@@ -78,45 +93,109 @@ function Router() {
           <Redirect to="/recipes/filters" />
         </Route>
 
-        <Route path="/create" component={CreatePost} />
+        {/* Recipes (filters + list) */}
+        <Route path="/recipes">
+          <RecipesFiltersProvider>
+            <PageShell>
+              <RecipesListPage />
+            </PageShell>
+          </RecipesFiltersProvider>
+        </Route>
 
-        {/* Feature routes */}
+        <Route path="/recipes/filters">
+          <RecipesFiltersProvider>
+            <PageShell>
+              <RecipesFiltersPage />
+            </PageShell>
+          </RecipesFiltersProvider>
+        </Route>
+
+        {/* Create */}
+        <Route path="/create">
+          <PageShell>
+            <CreatePost />
+          </PageShell>
+        </Route>
+
+        {/* Pantry / Subs / AI Subs */}
         <Route path="/pantry">
-          <ErrorBoundary>
+          <PageShell>
             <Pantry />
-          </ErrorBoundary>
+          </PageShell>
         </Route>
 
         <Route path="/substitutions">
-          <ErrorBoundary>
+          <PageShell>
             <IngredientSubstitutions />
-          </ErrorBoundary>
+          </PageShell>
         </Route>
 
-        {/* NEW: /ai-substitution route */}
         <Route path="/ai-substitution">
-          <ErrorBoundary>
+          <PageShell>
             <AISubstitutionPage />
-          </ErrorBoundary>
+          </PageShell>
         </Route>
 
-        {/* Store alias so header link "/store" works */}
-        <Route path="/store" component={Marketplace} />
+        {/* Marketplace & others */}
+        <Route path="/store">
+          <PageShell>
+            <Marketplace />
+          </PageShell>
+        </Route>
 
-        {/* Others */}
-        <Route path="/marketplace" component={Marketplace} />
-        <Route path="/catering" component={CateringMarketplace} />
-        <Route path="/catering/wedding-planning" component={WeddingPlanning} />
-        <Route path="/potent-potables" component={PotentPotables} />
-        <Route path="/nutrition" component={NutritionMealPlanner} />
+        <Route path="/marketplace">
+          <PageShell>
+            <Marketplace />
+          </PageShell>
+        </Route>
 
-        {/* Placeholder routes */}
-        <Route path="/saved" component={NotFound} />
-        <Route path="/following" component={NotFound} />
-        <Route path="/settings" component={NotFound} />
+        <Route path="/catering">
+          <PageShell>
+            <CateringMarketplace />
+          </PageShell>
+        </Route>
 
-        {/* Catch-all route - must be last */}
-        <Route component={NotFound} />
+        <Route path="/catering/wedding-planning">
+          <PageShell>
+            <WeddingPlanning />
+          </PageShell>
+        </Route>
+
+        <Route path="/potent-potables">
+          <PageShell>
+            <PotentPotables />
+          </PageShell>
+        </Route>
+
+        <Route path="/nutrition">
+          <PageShell>
+            <NutritionMealPlanner />
+          </PageShell>
+        </Route>
+
+        {/* Placeholders (if you still want them) */}
+        <Route path="/saved">
+          <PageShell>
+            <NotFound />
+          </PageShell>
+        </Route>
+        <Route path="/following">
+          <PageShell>
+            <NotFound />
+          </PageShell>
+        </Route>
+        <Route path="/settings">
+          <PageShell>
+            <NotFound />
+          </PageShell>
+        </Route>
+
+        {/* Catch-all */}
+        <Route>
+          <PageShell>
+            <NotFound />
+          </PageShell>
+        </Route>
       </Switch>
     </Layout>
   );
