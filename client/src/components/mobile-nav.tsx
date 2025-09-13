@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Compass, Plus, User, Activity, Shuffle, Lightbulb } from "lucide-react";
+import { Compass, Plus, User, Activity, Lightbulb, BookOpen } from "lucide-react";
 
 interface MobileNavProps {
   onCreatePost?: () => void;
@@ -16,8 +16,8 @@ export default function MobileNav({ onCreatePost }: MobileNavProps) {
 
   const nav: NavLink[] = [
     { name: "Explore", href: "/explore", icon: Compass },
-    { name: "Subs", href: "/substitutions", icon: Shuffle },
-    { name: "Create", action: handleCreate, icon: Plus }, // center FAB
+    { name: "Recipes", href: "/recipes", icon: BookOpen }, // added
+    { name: "Create", action: handleCreate, icon: Plus },   // center FAB
     { name: "AI Subs", href: "/ai-substitution", icon: Lightbulb },
     { name: "Nutrition", href: "/nutrition", icon: Activity },
     { name: "Profile", href: "/profile", icon: User },
@@ -28,7 +28,7 @@ export default function MobileNav({ onCreatePost }: MobileNavProps) {
       <div className="relative flex items-center justify-around py-2">
         {nav.map((item) => {
           if ("action" in item) {
-            // Center FAB — no continuous animation; only hover/press feedback
+            // Center FAB — hover/press feedback only
             return (
               <div
                 key={item.name}
@@ -42,7 +42,6 @@ export default function MobileNav({ onCreatePost }: MobileNavProps) {
                     "bg-gradient-to-br from-orange-500 to-red-500 ring-4 ring-orange-500/20",
                     "flex items-center justify-center",
                     "shadow-xl transition-transform duration-200 hover:scale-105 active:scale-95",
-                    // 🔕 removed: animate-pulse (this was causing the nonstop flashing)
                   ].join(" ")}
                   data-testid="mobile-nav-create"
                 >
@@ -52,8 +51,7 @@ export default function MobileNav({ onCreatePost }: MobileNavProps) {
             );
           }
 
-          const isActive =
-            location === item.href || location.startsWith(item.href + "/");
+          const isActive = location === item.href || location.startsWith(item.href + "/");
 
           return (
             <Link key={item.name} href={item.href}>
