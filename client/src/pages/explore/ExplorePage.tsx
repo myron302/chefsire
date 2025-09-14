@@ -41,7 +41,7 @@ const DEMO: Post[] = [
   {
     id: "1",
     title: "Margherita Pizza",
-    image: "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=800&h=800&fit=crop&crop=center&auto=format&q=75",
+    image: "https://images.unsplash.com/photo-1604068549290-dea0e4a305ca?w=800&h=800&fit=crop&auto=format",
     cuisine: "Italian",
     isRecipe: true,
     author: "Giulia",
@@ -74,7 +74,7 @@ const DEMO: Post[] = [
   {
     id: "2",
     title: "Rainbow Salad",
-    image: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800&h=800&fit=crop&crop=center&auto=format&q=75",
+    image: "https://images.unsplash.com/photo-1540420773420-3366772f4999?w=800&h=800&fit=crop&auto=format",
     isRecipe: true,
     author: "Ava",
     cookTime: 10,
@@ -113,7 +113,7 @@ const DEMO: Post[] = [
   {
     id: "4",
     title: "Choco Truffles",
-    image: "https://images.unsplash.com/photo-1548907040-4baa42d10919?w=800&h=800&fit=crop&crop=center&auto=format&q=75",
+    image: "https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=800&h=800&fit=crop&auto=format",
     isRecipe: true,
     author: "Noah",
     cookTime: 45,
@@ -152,7 +152,7 @@ const DEMO: Post[] = [
   {
     id: "6",
     title: "Avocado Toast",
-    image: "https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=800&h=800&fit=crop&crop=center&auto=format&q=75",
+    image: "https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800&h=800&fit=crop&auto=format",
     isRecipe: true,
     author: "Ivy",
     cookTime: 8,
