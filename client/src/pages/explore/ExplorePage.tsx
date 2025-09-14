@@ -256,11 +256,7 @@ export default function ExplorePage() {
         <div className="space-y-3">
           {feed.map((p) => (
             <div key={p.id}>
-              {p.isRecipe ? (
-                <RecipeCard post={p as any} />
-              ) : (
-                <ExploreTile post={p} />
-              )}
+              <ExploreTile post={p} />
             </div>
           ))}
         </div>
