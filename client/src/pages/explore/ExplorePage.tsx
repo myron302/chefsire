@@ -2,51 +2,8 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LayoutGrid, List, Heart, MessageCircle } from "lucide-react";
-
-// If your project has a data hook for explore feed, use it:
+import RecipeCard from "@/components/recipe-card";
 import { useExploreData } from "./useExploreData";
-
-// Placeholder if an image field is missing or fails to load
-const PLACEHOLDER_IMG =
-  "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?q=80&w=1200&auto=format&fit=crop";
-
-/** Try hard to find the first valid image URL on a post */
-function resolveImageUrl(post: any): string {
-  // Common flat fields
-  const flat =
-    post?.imageUrl ||
-    post?.image ||
-    post?.coverUrl ||
-    post?.photoUrl ||
-    post?.thumbnail?.url ||
-    post?.thumbUrl;
-
-  if (typeof flat === "string" && flat.trim()) return flat;
-
-  // Arrays/objects often used
-  const fromImagesArray =
-    post?.images?.[0]?.url || post?.images?.[0] || post?.media?.[0]?.url || post?.media?.url;
-
-  if (typeof fromImagesArray === "string" && fromImagesArray.trim()) return fromImagesArray;
-
-  // If there is a recipe object with its own media fields
-  const recipeFlat =
-    post?.recipe?.imageUrl ||
-    post?.recipe?.image ||
-    post?.recipe?.coverUrl ||
-    post?.recipe?.photoUrl ||
-    post?.recipe?.thumbnail?.url;
-
-  if (typeof recipeFlat === "string" && recipeFlat.trim()) return recipeFlat;
-
-  const recipeFromArray =
-    post?.recipe?.images?.[0]?.url || post?.recipe?.images?.[0] || post?.recipe?.media?.[0]?.url;
-
-  if (typeof recipeFromArray === "string" && recipeFromArray.trim()) return recipeFromArray;
-
-  // As a last resort
-  return PLACEHOLDER_IMG;
-}
 
 type Post = {
   id: string | number;
@@ -55,8 +12,90 @@ type Post = {
   caption?: string;
   likes?: number;
   comments?: number;
+  image?: string | null;
+  imageUrl?: string | null;
 };
 
+const PLACEHOLDER_IMG =
+  "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?q=80&w=1200&auto=format&fit=crop";
+
+/** Try hard to find the first valid image URL on a post */
+function resolveImageUrl(post: any): string {
+  const flat =
+    post?.imageUrl ||
+    post?.image ||
+    post?.coverUrl ||
+    post?.photoUrl ||
+    post?.thumbnail?.url ||
+    post?.thumbUrl;
+  if (typeof flat === "string" && flat.trim()) return flat;
+
+  const fromArrays =
+    post?.images?.[0]?.url ||
+    post?.images?.[0] ||
+    post?.media?.[0]?.url ||
+    post?.media?.url ||
+    post?.photos?.[0]?.url;
+  if (typeof fromArrays === "string" && fromArrays.trim()) return fromArrays;
+
+  const recipeFlat =
+    post?.recipe?.imageUrl ||
+    post?.recipe?.image ||
+    post?.recipe?.coverUrl ||
+    post?.recipe?.photoUrl ||
+    post?.recipe?.thumbnail?.url;
+  if (typeof recipeFlat === "string" && recipeFlat.trim()) return recipeFlat;
+
+  const recipeFromArrays =
+    post?.recipe?.images?.[0]?.url ||
+    post?.recipe?.images?.[0] ||
+    post?.recipe?.media?.[0]?.url;
+  if (typeof recipeFromArrays === "string" && recipeFromArrays.trim()) return recipeFromArrays;
+
+  return PLACEHOLDER_IMG;
+}
+
+const DEMO: Post[] = [
+  {
+    id: "1",
+    title: "Margherita Pizza",
+    image:
+      "https://images.unsplash.com/photo-1548365328-8b84986da7b3?q=80&w=1200&auto=format&fit=crop",
+    isRecipe: true,
+    likes: 223,
+    comments: 18
+  },
+  {
+    id: "2",
+    title: "Rainbow Salad",
+    image:
+      "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=1200&auto=format&fit=crop",
+    isRecipe: true,
+    likes: 150,
+    comments: 9
+  },
+  {
+    id: "3",
+    title: "Street Food Reel",
+    image:
+      "https://images.unsplash.com/photo-1604154692294-165459c8c9b5?q=80&w=1200&auto=format&fit=crop",
+    isRecipe: false,
+    likes: 412,
+    comments: 34
+  }
+];
+
+/** Normalize whatever the hook returns into an array of posts */
+function extractPosts(data: any): any[] {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.posts)) return data.posts;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.data)) return data.data;
+  return [];
+}
+
+// Simple image tile card for non-recipe posts
 function ExploreTile({ post }: { post: Post & Record<string, any> }) {
   const [src, setSrc] = React.useState<string>(() => resolveImageUrl(post));
   return (
@@ -71,7 +110,6 @@ function ExploreTile({ post }: { post: Post & Record<string, any> }) {
           onError={() => setSrc(PLACEHOLDER_IMG)}
         />
       </div>
-      {/* overlay stats */}
       <div className="pointer-events-none absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
       <div className="absolute bottom-2 left-2 flex gap-3 text-white drop-shadow">
         <span className="inline-flex items-center gap-1 text-sm">
@@ -88,15 +126,12 @@ function ExploreTile({ post }: { post: Post & Record<string, any> }) {
 export default function ExplorePage() {
   const [view, setView] = React.useState<"grid" | "list">("grid");
 
-  // ✅ Use your live explore data (falls back to empty array gracefully)
-  const { data, isLoading, isError, error } = useExploreData?.() ?? {
-    data: [],
-    isLoading: false,
-    isError: false,
-    error: null,
-  };
+  // Call your hook unconditionally (keeps rules of hooks happy)
+  const { data, isLoading, isError, error } = useExploreData();
 
-  const feed: Array<Post & Record<string, any>> = Array.isArray(data) ? (data as any) : [];
+  // Use real posts if present, otherwise fallback to DEMO so the page never looks empty
+  const posts = extractPosts(data);
+  const feed: Array<Post & Record<string, any>> = posts.length ? posts : DEMO;
 
   return (
     <div className="mx-auto max-w-6xl px-4 md:px-6 py-4 space-y-4">
@@ -129,7 +164,6 @@ export default function ExplorePage() {
           Loading explore…
         </div>
       )}
-
       {isError && (
         <div className="rounded-lg border py-8 text-center text-sm text-red-600">
           Failed to load explore feed{(error as any)?.message ? `: ${(error as any).message}` : ""}.
@@ -145,22 +179,18 @@ export default function ExplorePage() {
             </div>
           ) : view === "grid" ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {feed.map((p) => (
-                <ExploreTile key={p.id ?? resolveImageUrl(p)} post={p} />
-              ))}
+              {feed.map((p) =>
+                p.isRecipe ? (
+                  <RecipeCard key={p.id ?? resolveImageUrl(p)} post={p as any} />
+                ) : (
+                  <ExploreTile key={p.id ?? resolveImageUrl(p)} post={p} />
+                )
+              )}
             </div>
           ) : (
             <div className="space-y-3">
               {feed.map((p) => (
                 <div key={p.id ?? resolveImageUrl(p)}>
-                {/* list view uses same tile for now; you can swap to a horizontal layout later */}
-                  <ExploreTile post={p} />
+                  {p.isRecipe ? <RecipeCard post={p as any} /> : <ExploreTile post={p} />}
                 </div>
               ))}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
