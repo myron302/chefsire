@@ -2,218 +2,73 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LayoutGrid, List, Heart, MessageCircle } from "lucide-react";
-import RecipeCard from "@/components/recipe-card"; // reuses your upgraded RecipeCard
 
-type Post = {
-  id: string | number;
-  title?: string;
-  caption?: string;
-  image?: string | null;
-  imageUrl?: string | null;
-  cuisine?: string;
-  isRecipe?: boolean;
-  author?: string;
-  user?: { displayName?: string; avatar?: string };
-  cookTime?: number;
-  rating?: number; // 0..5
-  likes?: number;
-  comments?: number;
-  difficulty?: "Easy" | "Medium" | "Hard";
-  mealType?: string;
-  dietary?: string[];
-  createdAt?: string;
-  recipe?: {
-    title: string;
-    cookTime?: number;
-    servings?: number;
-    difficulty?: "Easy" | "Medium" | "Hard";
-    cuisine?: string;
-    ingredients: string[];
-    instructions: string[];
-    ratingSpoons?: number;
-    dietTags?: string[];
-    allergens?: string[];
-  };
-};
+// If your project has a data hook for explore feed, use it:
+import { useExploreData } from "./useExploreData";
 
+// Placeholder if an image field is missing or fails to load
 const PLACEHOLDER_IMG =
   "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?q=80&w=1200&auto=format&fit=crop";
 
-const DEMO: Post[] = [
-  {
-    id: "1",
-    title: "Margherita Pizza",
-    image:
-      "https://images.unsplash.com/photo-1548365328-8b84986da7b3?q=80&w=1200&auto=format&fit=crop",
-    cuisine: "Italian",
-    isRecipe: true,
-    author: "Giulia",
-    cookTime: 25,
-    difficulty: "Easy",
-    rating: 4.7,
-    likes: 223,
-    comments: 18,
-    mealType: "Dinner",
-    dietary: ["Vegetarian"],
-    createdAt: "2025-09-08T12:00:00Z",
-    user: { displayName: "Giulia" },
-    recipe: {
-      title: "Margherita Pizza",
-      cookTime: 25,
-      servings: 2,
-      difficulty: "Easy",
-      cuisine: "Italian",
-      ingredients: ["Pizza dough", "Tomato sauce", "Mozzarella", "Basil", "Olive oil", "Salt"],
-      instructions: [
-        "Preheat oven to 500°F / 260°C.",
-        "Stretch dough, add sauce and mozzarella.",
-        "Bake 7–10 min. Finish with basil and oil.",
-      ],
-      ratingSpoons: 4.7,
-      dietTags: ["Vegetarian"],
-      allergens: ["Gluten", "Dairy"],
-    },
-  },
-  {
-    id: "2",
-    title: "Rainbow Salad",
-    image:
-      "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=1200&auto=format&fit=crop",
-    isRecipe: true,
-    author: "Ava",
-    cookTime: 10,
-    difficulty: "Easy",
-    rating: 4.2,
-    likes: 150,
-    comments: 9,
-    mealType: "Lunch",
-    dietary: ["Vegan", "Gluten-Free"],
-    createdAt: "2025-09-07T10:00:00Z",
-    user: { displayName: "Ava" },
-    recipe: {
-      title: "Rainbow Salad",
-      cookTime: 10,
-      servings: 2,
-      difficulty: "Easy",
-      cuisine: "Healthy",
-      ingredients: [
-        "Lettuce",
-        "Cherry tomatoes",
-        "Cucumber",
-        "Bell pepper",
-        "Corn",
-        "Olive oil",
-        "Lemon",
-      ],
-      instructions: ["Chop veggies.", "Whisk oil and lemon.", "Toss and season."],
-      ratingSpoons: 4.2,
-      dietTags: ["Vegan", "Gluten-Free"],
-      allergens: [],
-    },
-  },
-  {
-    id: "3",
-    title: "Street Food Reel",
-    image:
-      "https://images.unsplash.com/photo-1604154692294-165459c8c9b5?q=80&w=1200&auto=format&fit=crop",
-    isRecipe: false,
-    author: "Diego",
-    likes: 412,
-    comments: 34,
-    createdAt: "2025-09-06T15:22:00Z",
-    user: { displayName: "Diego" },
-  },
-  {
-    id: "4",
-    title: "Choco Truffles",
-    image:
-      "https://images.unsplash.com/photo-1541781286675-09c7e9d404bc?q=80&w=1200&auto=format&fit=crop",
-    isRecipe: true,
-    author: "Noah",
-    cookTime: 45,
-    difficulty: "Medium",
-    rating: 4.9,
-    likes: 512,
-    comments: 61,
-    mealType: "Dessert",
-    dietary: ["Vegetarian"],
-    createdAt: "2025-09-05T18:30:00Z",
-    user: { displayName: "Noah" },
-    recipe: {
-      title: "Choco Truffles",
-      cookTime: 45,
-      servings: 6,
-      difficulty: "Medium",
-      cuisine: "Desserts",
-      ingredients: ["Dark chocolate", "Cream", "Butter", "Cocoa powder", "Salt"],
-      instructions: [
-        "Heat cream, pour over chocolate.",
-        "Stir, chill, scoop balls.",
-        "Roll in cocoa.",
-      ],
-      ratingSpoons: 4.9,
-      dietTags: ["Vegetarian"],
-      allergens: ["Dairy"],
-    },
-  },
-  {
-    id: "5",
-    title: "BBQ Brisket",
-    image:
-      "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop",
-    isRecipe: false,
-    author: "Mason",
-    likes: 98,
-    comments: 12,
-    createdAt: "2025-09-09T14:45:00Z",
-    user: { displayName: "Mason" },
-  },
-  {
-    id: "6",
-    title: "Avocado Toast",
-    image:
-      "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?q=80&w=1200&auto=format&fit=crop",
-    isRecipe: true,
-    author: "Ivy",
-    cookTime: 8,
-    difficulty: "Easy",
-    rating: 4.0,
-    likes: 77,
-    comments: 4,
-    mealType: "Breakfast",
-    dietary: ["Vegetarian"],
-    createdAt: "2025-09-10T08:05:00Z",
-    user: { displayName: "Ivy" },
-    recipe: {
-      title: "Avocado Toast",
-      cookTime: 8,
-      servings: 1,
-      difficulty: "Easy",
-      cuisine: "Breakfast",
-      ingredients: ["Bread", "Avocado", "Lemon", "Chili flakes", "Salt", "Olive oil"],
-      instructions: ["Toast bread", "Mash avocado with lemon", "Assemble and season"],
-      ratingSpoons: 4.0,
-      dietTags: ["Vegetarian"],
-      allergens: ["Gluten"],
-    },
-  },
-];
+/** Try hard to find the first valid image URL on a post */
+function resolveImageUrl(post: any): string {
+  // Common flat fields
+  const flat =
+    post?.imageUrl ||
+    post?.image ||
+    post?.coverUrl ||
+    post?.photoUrl ||
+    post?.thumbnail?.url ||
+    post?.thumbUrl;
 
-// Simple image tile card for non-recipe posts
-function ExploreTile({ post }: { post: Post }) {
-  const src = post.image || post.imageUrl || PLACEHOLDER_IMG;
+  if (typeof flat === "string" && flat.trim()) return flat;
+
+  // Arrays/objects often used
+  const fromImagesArray =
+    post?.images?.[0]?.url || post?.images?.[0] || post?.media?.[0]?.url || post?.media?.url;
+
+  if (typeof fromImagesArray === "string" && fromImagesArray.trim()) return fromImagesArray;
+
+  // If there is a recipe object with its own media fields
+  const recipeFlat =
+    post?.recipe?.imageUrl ||
+    post?.recipe?.image ||
+    post?.recipe?.coverUrl ||
+    post?.recipe?.photoUrl ||
+    post?.recipe?.thumbnail?.url;
+
+  if (typeof recipeFlat === "string" && recipeFlat.trim()) return recipeFlat;
+
+  const recipeFromArray =
+    post?.recipe?.images?.[0]?.url || post?.recipe?.images?.[0] || post?.recipe?.media?.[0]?.url;
+
+  if (typeof recipeFromArray === "string" && recipeFromArray.trim()) return recipeFromArray;
+
+  // As a last resort
+  return PLACEHOLDER_IMG;
+}
+
+type Post = {
+  id: string | number;
+  isRecipe?: boolean;
+  title?: string;
+  caption?: string;
+  likes?: number;
+  comments?: number;
+};
+
+function ExploreTile({ post }: { post: Post & Record<string, any> }) {
+  const [src, setSrc] = React.useState<string>(() => resolveImageUrl(post));
   return (
     <Card className="relative overflow-hidden group">
       <div className="aspect-square">
         <img
           src={src}
-          alt={post.title || "post"}
-          className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+          alt={post.title || post.caption || "post"}
+          className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300 block"
           loading="lazy"
           decoding="async"
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).src = PLACEHOLDER_IMG;
-          }}
+          onError={() => setSrc(PLACEHOLDER_IMG)}
         />
       </div>
       {/* overlay stats */}
@@ -233,8 +88,15 @@ function ExploreTile({ post }: { post: Post }) {
 export default function ExplorePage() {
   const [view, setView] = React.useState<"grid" | "list">("grid");
 
-  // TODO: later swap DEMO with your personalized algorithm feed via react-query.
-  const feed = React.useMemo(() => DEMO, []);
+  // ✅ Use your live explore data (falls back to empty array gracefully)
+  const { data, isLoading, isError, error } = useExploreData?.() ?? {
+    data: [],
+    isLoading: false,
+    isError: false,
+    error: null,
+  };
+
+  const feed: Array<Post & Record<string, any>> = Array.isArray(data) ? (data as any) : [];
 
   return (
     <div className="mx-auto max-w-6xl px-4 md:px-6 py-4 space-y-4">
@@ -261,33 +123,44 @@ export default function ExplorePage() {
         </div>
       </div>
 
-      {/* Results */}
-      {feed.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
-          <p className="text-sm text-muted-foreground">No posts… yet.</p>
-        </div>
-      ) : view === "grid" ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {feed.map((p) =>
-            p.isRecipe ? (
-              // If your RecipeCard expects a stricter type, keep the cast to any for now.
-              <RecipeCard key={p.id} post={p as any} />
-            ) : (
-              <ExploreTile key={p.id} post={p} />
-            )
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {feed.map((p) => (
-            <div key={p.id}>
-              {p.isRecipe ? <RecipeCard post={p as any} /> : <ExploreTile post={p} />}
-            </div>
-          ))}
+      {/* States */}
+      {isLoading && (
+        <div className="rounded-lg border py-8 text-center text-sm text-muted-foreground">
+          Loading explore…
         </div>
       )}
 
-      {/* Note: No filters here. We’ll plug in the algorithm later. */}
+      {isError && (
+        <div className="rounded-lg border py-8 text-center text-sm text-red-600">
+          Failed to load explore feed{(error as any)?.message ? `: ${(error as any).message}` : ""}.
+        </div>
+      )}
+
+      {/* Results */}
+      {!isLoading && !isError && (
+        <>
+          {feed.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
+              <p className="text-sm text-muted-foreground">No posts… yet.</p>
+            </div>
+          ) : view === "grid" ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {feed.map((p) => (
+                <ExploreTile key={p.id ?? resolveImageUrl(p)} post={p} />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {feed.map((p) => (
+                <div key={p.id ?? resolveImageUrl(p)}>
+                {/* list view uses same tile for now; you can swap to a horizontal layout later */}
+                  <ExploreTile post={p} />
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
