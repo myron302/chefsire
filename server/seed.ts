@@ -209,7 +209,7 @@ async function seedDatabase() {
         id: "post-4",
         userId: "user-4",
         caption: "Fresh handmade fettuccine with wild mushroom ragu. Nothing beats the texture of fresh pasta!",
-        imageUrl: "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=800&h=600&fit=crop&auto=format",
+        imageUrl: "https://images.unsplash.com/photo-1621996346565-e3dbc353d2e5?w=800&h=600&fit=crop&auto=format",
         tags: ["pasta", "mushrooms", "handmade"],
         likesCount: 178,
         commentsCount: 15,
