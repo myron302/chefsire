@@ -1,6 +1,5 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { LayoutGrid, List, Heart, MessageCircle } from "lucide-react";
 import RecipeCard from "@/components/recipe-card"; // reuses your upgraded RecipeCard
@@ -37,11 +36,15 @@ type Post = {
   };
 };
 
+const PLACEHOLDER_IMG =
+  "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?q=80&w=1200&auto=format&fit=crop";
+
 const DEMO: Post[] = [
   {
     id: "1",
     title: "Margherita Pizza",
-    image: "https://images.unsplash.com/photo-1548365328-8b84986da7b3?q=80&w=1200&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1548365328-8b84986da7b3?q=80&w=1200&auto=format&fit=crop",
     cuisine: "Italian",
     isRecipe: true,
     author: "Giulia",
@@ -60,7 +63,7 @@ const DEMO: Post[] = [
       servings: 2,
       difficulty: "Easy",
       cuisine: "Italian",
-      ingredients: ["Pizza dough","Tomato sauce","Mozzarella","Basil","Olive oil","Salt"],
+      ingredients: ["Pizza dough", "Tomato sauce", "Mozzarella", "Basil", "Olive oil", "Salt"],
       instructions: [
         "Preheat oven to 500°F / 260°C.",
         "Stretch dough, add sauce and mozzarella.",
@@ -68,13 +71,14 @@ const DEMO: Post[] = [
       ],
       ratingSpoons: 4.7,
       dietTags: ["Vegetarian"],
-      allergens: ["Gluten","Dairy"],
+      allergens: ["Gluten", "Dairy"],
     },
   },
   {
     id: "2",
     title: "Rainbow Salad",
-    image: "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=1200&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=1200&auto=format&fit=crop",
     isRecipe: true,
     author: "Ava",
     cookTime: 10,
@@ -83,7 +87,7 @@ const DEMO: Post[] = [
     likes: 150,
     comments: 9,
     mealType: "Lunch",
-    dietary: ["Vegan","Gluten-Free"],
+    dietary: ["Vegan", "Gluten-Free"],
     createdAt: "2025-09-07T10:00:00Z",
     user: { displayName: "Ava" },
     recipe: {
@@ -92,17 +96,26 @@ const DEMO: Post[] = [
       servings: 2,
       difficulty: "Easy",
       cuisine: "Healthy",
-      ingredients: ["Lettuce","Cherry tomatoes","Cucumber","Bell pepper","Corn","Olive oil","Lemon"],
-      instructions: ["Chop veggies.","Whisk oil and lemon.","Toss and season."],
+      ingredients: [
+        "Lettuce",
+        "Cherry tomatoes",
+        "Cucumber",
+        "Bell pepper",
+        "Corn",
+        "Olive oil",
+        "Lemon",
+      ],
+      instructions: ["Chop veggies.", "Whisk oil and lemon.", "Toss and season."],
       ratingSpoons: 4.2,
-      dietTags: ["Vegan","Gluten-Free"],
+      dietTags: ["Vegan", "Gluten-Free"],
       allergens: [],
     },
   },
   {
     id: "3",
     title: "Street Food Reel",
-    image: "https://images.unsplash.com/photo-1604154692294-165459c8c9b5?q=80&w=1200&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1604154692294-165459c8c9b5?q=80&w=1200&auto=format&fit=crop",
     isRecipe: false,
     author: "Diego",
     likes: 412,
@@ -113,7 +126,8 @@ const DEMO: Post[] = [
   {
     id: "4",
     title: "Choco Truffles",
-    image: "https://images.unsplash.com/photo-1541781286675-09c7e9d404bc?q=80&w=1200&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1541781286675-09c7e9d404bc?q=80&w=1200&auto=format&fit=crop",
     isRecipe: true,
     author: "Noah",
     cookTime: 45,
@@ -131,8 +145,12 @@ const DEMO: Post[] = [
       servings: 6,
       difficulty: "Medium",
       cuisine: "Desserts",
-      ingredients: ["Dark chocolate","Cream","Butter","Cocoa powder","Salt"],
-      instructions: ["Heat cream, pour over chocolate.","Stir, chill, scoop balls.","Roll in cocoa."],
+      ingredients: ["Dark chocolate", "Cream", "Butter", "Cocoa powder", "Salt"],
+      instructions: [
+        "Heat cream, pour over chocolate.",
+        "Stir, chill, scoop balls.",
+        "Roll in cocoa.",
+      ],
       ratingSpoons: 4.9,
       dietTags: ["Vegetarian"],
       allergens: ["Dairy"],
@@ -141,7 +159,8 @@ const DEMO: Post[] = [
   {
     id: "5",
     title: "BBQ Brisket",
-    image: "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop",
     isRecipe: false,
     author: "Mason",
     likes: 98,
@@ -152,7 +171,8 @@ const DEMO: Post[] = [
   {
     id: "6",
     title: "Avocado Toast",
-    image: "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?q=80&w=1200&auto=format&fit=crop",
+    image:
+      "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?q=80&w=1200&auto=format&fit=crop",
     isRecipe: true,
     author: "Ivy",
     cookTime: 8,
@@ -170,8 +190,8 @@ const DEMO: Post[] = [
       servings: 1,
       difficulty: "Easy",
       cuisine: "Breakfast",
-      ingredients: ["Bread","Avocado","Lemon","Chili flakes","Salt","Olive oil"],
-      instructions: ["Toast bread","Mash avocado with lemon","Assemble and season"],
+      ingredients: ["Bread", "Avocado", "Lemon", "Chili flakes", "Salt", "Olive oil"],
+      instructions: ["Toast bread", "Mash avocado with lemon", "Assemble and season"],
       ratingSpoons: 4.0,
       dietTags: ["Vegetarian"],
       allergens: ["Gluten"],
@@ -181,15 +201,19 @@ const DEMO: Post[] = [
 
 // Simple image tile card for non-recipe posts
 function ExploreTile({ post }: { post: Post }) {
+  const src = post.image || post.imageUrl || PLACEHOLDER_IMG;
   return (
     <Card className="relative overflow-hidden group">
       <div className="aspect-square">
         <img
-          src={post.image || post.imageUrl || ""}
+          src={src}
           alt={post.title || "post"}
           className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
           decoding="async"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).src = PLACEHOLDER_IMG;
+          }}
         />
       </div>
       {/* overlay stats */}
@@ -246,6 +270,7 @@ export default function ExplorePage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {feed.map((p) =>
             p.isRecipe ? (
+              // If your RecipeCard expects a stricter type, keep the cast to any for now.
               <RecipeCard key={p.id} post={p as any} />
             ) : (
               <ExploreTile key={p.id} post={p} />
@@ -256,11 +281,7 @@ export default function ExplorePage() {
         <div className="space-y-3">
           {feed.map((p) => (
             <div key={p.id}>
-              {p.isRecipe ? (
-                <RecipeCard post={p as any} />
-              ) : (
-                <ExploreTile post={p} />
-              )}
+              {p.isRecipe ? <RecipeCard post={p as any} /> : <ExploreTile post={p} />}
             </div>
           ))}
         </div>
