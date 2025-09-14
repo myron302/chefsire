@@ -1,22 +1,15 @@
 // server/services/ingredients-ai.ts
-import type { ClientOptions } from "openai";
+import OpenAI from "openai";
+import { z } from "zod";
 
-// NOTE: We only import 'openai' if an API key is present so build won't fail.
-let OpenAICtor: any = null;
-if (process.env.OPENAI_API_KEY) {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    OpenAICtor = (await import("openai")).default;
-  } catch (_err) {
-    OpenAICtor = null;
-  }
-}
-
+/** ─────────────────────────────────────────────────────────────────────────────
+ * Types
+ * ────────────────────────────────────────────────────────────────────────────*/
 export type Nutrition = {
-  calories: number;
-  fat: number;     // grams
-  carbs: number;   // grams
-  protein: number; // grams
+  calories: number; // total calories for the amount implied by `ratio`
+  fat: number;      // grams
+  carbs: number;    // grams
+  protein: number;  // grams
 };
 
 export type AISubItem = {
@@ -30,104 +23,169 @@ export type AISubItem = {
   };
 };
 
+/** Zod schema to validate/clean AI output */
+const NutritionSchema = z.object({
+  calories: z.number().finite(),
+  fat: z.number().finite(),
+  carbs: z.number().finite(),
+  protein: z.number().finite(),
+});
+
+const AISubItemSchema = z.object({
+  substituteIngredient: z.string().min(1),
+  ratio: z.string().min(1),
+  category: z.string().optional(),
+  notes: z.string().optional(),
+  nutrition: z
+    .object({
+      original: NutritionSchema,
+      substitute: NutritionSchema,
+    })
+    .optional(),
+});
+
+const AIResponseSchema = z.object({
+  query: z.string(),
+  substitutions: z.array(AISubItemSchema).min(1).max(6),
+});
+
+/** Small helper for deduping by ingredient name */
+function norm(s: string) {
+  return s.trim().toLowerCase();
+}
+
+/** ─────────────────────────────────────────────────────────────────────────────
+ * Static fallbacks when OPENAI_API_KEY is missing or AI fails
+ * ────────────────────────────────────────────────────────────────────────────*/
+const STATIC_FALLBACK: Record<string, AISubItem[]> = {
+  butter: [
+    {
+      substituteIngredient: "Olive oil",
+      ratio: "¾ cup oil = 1 cup butter",
+      category: "oils",
+      notes:
+        "Great for sautéing and some baking; flavor changes slightly. For cookies, chill dough.",
+      nutrition: {
+        original: { calories: 1628, fat: 184, carbs: 1, protein: 2 }, // ~1 cup butter
+        substitute: { calories: 1910, fat: 216, carbs: 0, protein: 0 }, // ~¾ cup oil
+      },
+    },
+    {
+      substituteIngredient: "Unsweetened applesauce",
+      ratio: "½ cup applesauce = 1 cup butter (cakes/muffins)",
+      category: "baking",
+      notes: "Reduces fat and calories; texture more moist/denser. Cut other liquids slightly.",
+      nutrition: {
+        original: { calories: 1628, fat: 184, carbs: 1, protein: 2 },
+        substitute: { calories: 100, fat: 0, carbs: 27, protein: 0 },
+      },
+    },
+    {
+      substituteIngredient: "Coconut oil",
+      ratio: "1:1 by volume",
+      category: "oils",
+      notes: "Adds coconut aroma; similar solidity at room temp helps structure.",
+      nutrition: {
+        original: { calories: 1628, fat: 184, carbs: 1, protein: 2 },
+        substitute: { calories: 1879, fat: 218, carbs: 0, protein: 0 },
+      },
+    },
+  ],
+  eggs: [
+    {
+      substituteIngredient: "Ground flax + water",
+      ratio: "1 Tbsp ground flax + 3 Tbsp water = 1 egg",
+      category: "vegan",
+      notes: "Let sit 5–10 min to gel; good binder for quick breads, cookies, pancakes.",
+      nutrition: {
+        original: { calories: 72, fat: 5, carbs: 0.4, protein: 6 },
+        substitute: { calories: 55, fat: 4.3, carbs: 3, protein: 1.9 },
+      },
+    },
+    {
+      substituteIngredient: "Unsweetened applesauce",
+      ratio: "¼ cup applesauce = 1 egg (in cakes/muffins)",
+      category: "baking",
+      notes: "Adds moisture; not suitable for airy foams/meringues.",
+      nutrition: {
+        original: { calories: 72, fat: 5, carbs: 0.4, protein: 6 },
+        substitute: { calories: 25, fat: 0, carbs: 7, protein: 0 },
+      },
+    },
+  ],
+};
+
+/** ─────────────────────────────────────────────────────────────────────────────
+ * Main entry used by your routes
+ * Keep the existing signature so you don't have to change your server routes.
+ * Returns: { query, substitutions }
+ * ────────────────────────────────────────────────────────────────────────────*/
 export async function suggestSubstitutionsAI(query: string) {
-  const trimmed = query.trim();
+  const trimmed = (query ?? "").trim();
   if (!trimmed) {
     return { query: "", substitutions: [] as AISubItem[] };
   }
 
-  // Fallback if no key or OpenAI not available
-  if (!process.env.OPENAI_API_KEY || !OpenAICtor) {
-    // Simple canned ideas + nutrition deltas
-    const samples: Record<string, AISubItem[]> = {
-      butter: [
-        {
-          substituteIngredient: "Olive oil",
-          ratio: "¾ cup olive oil = 1 cup butter",
-          category: "oils",
-          notes: "Good for sautéing and some baking; expect different flavor and texture.",
-          nutrition: {
-            original: { calories: 1628, fat: 184, carbs: 1, protein: 2 },     // 1 cup butter (approx)
-            substitute: { calories: 1910, fat: 216, carbs: 0, protein: 0 },   // 1 cup olive oil (approx)
-          },
-        },
-        {
-          substituteIngredient: "Coconut oil",
-          ratio: "1:1 by volume",
-          category: "oils",
-          notes: "Adds coconut aroma; solid at room temp similar to butter texture.",
-          nutrition: {
-            original: { calories: 1628, fat: 184, carbs: 1, protein: 2 },
-            substitute: { calories: 1879, fat: 218, carbs: 0, protein: 0 },
-          },
-        },
-        {
-          substituteIngredient: "Applesauce (unsweetened)",
-          ratio: "½ cup applesauce = 1 cup butter (in cakes/muffins)",
-          category: "baking",
-          notes: "Cuts fat & calories; use in moist cakes/muffins; texture changes.",
-          nutrition: {
-            original: { calories: 1628, fat: 184, carbs: 1, protein: 2 },
-            substitute: { calories: 100, fat: 0, carbs: 27, protein: 0 }, // ~½ cup applesauce
-          },
-        },
-      ],
-      eggs: [
-        {
-          substituteIngredient: "Ground flax + water",
-          ratio: "1 Tbsp ground flax + 3 Tbsp water = 1 egg",
-          category: "baking",
-          notes: "Let gel 5–10 min; best for quick breads/muffins/cookies.",
-          nutrition: {
-            original: { calories: 72, fat: 5, carbs: 0.4, protein: 6 },
-            substitute: { calories: 55, fat: 4.3, carbs: 3, protein: 1.9 },
-          },
-        },
-      ],
-    };
-    return { query: trimmed, substitutions: samples[trimmed.toLowerCase()] ?? [] };
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    const fallback = STATIC_FALLBACK[norm(trimmed)] ?? [];
+    return { query: trimmed, substitutions: fallback };
   }
 
-  // With OpenAI
-  const client = new OpenAICtor({
-    apiKey: process.env.OPENAI_API_KEY,
-  } as ClientOptions);
+  const client = new OpenAI({ apiKey });
 
-  const prompt = `
-You are a culinary assistant. The user needs an ingredient substitution for: "${trimmed}".
+  // You can tune these as needed:
+  const MODEL = "gpt-4o-mini";
+  const TEMPERATURE = 0.3;
 
-Return a short JSON array called "substitutions". Each item must have:
-- substituteIngredient (string),
-- ratio (string),
-- category (string, e.g. "baking", "dairy", "oils"),
-- notes (string, practical cooking tips),
-- nutrition (object with original and substitute objects of { calories, fat, carbs, protein } numeric grams, calories total per typical amount used in substitution ratio).
-
-Keep it brief (3–5 best options).
-Return only valid JSON with keys: { "query": string, "substitutions": AISubItem[] }.
+  const system = `
+You are a concise culinary expert. Given an ingredient, return smart substitutions with exact swap ratios and one or two practical cooking notes.
+Dietary tags (vegan, gluten-free, kosher, halal) should influence choices when obvious.
+Return JSON only, no prose. Keep items high quality and relevant to the ingredient. Prefer 3–5 items.
+Include rough nutrition comparison per the amount implied by the ratio (calories total, grams of fat/carbs/protein).
 `;
 
-  const resp = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.4,
-  });
-
-  const text = resp.choices?.[0]?.message?.content?.trim() || "";
-  // Try parsing JSON, fallback to empty
+  // We force a JSON object, then validate with Zod.
   try {
-    const parsed = JSON.parse(text);
-    // basic safety
-    if (parsed && Array.isArray(parsed.substitutions)) {
-      return {
-        query: parsed.query || trimmed,
-        substitutions: parsed.substitutions as AISubItem[],
-      };
-    }
-  } catch (_err) {
-    // ignore
-  }
+    const completion = await client.chat.completions.create({
+      model: MODEL,
+      temperature: TEMPERATURE,
+      response_format: { type: "json_object" }, // force a parsable JSON object
+      messages: [
+        { role: "system", content: system },
+        {
+          role: "user",
+          content: JSON.stringify({
+            ingredient: trimmed,
+            // Future: pass cuisine/dietary here if your route collects them
+          }),
+        },
+      ],
+    });
 
-  // Final fallback
-  return { query: trimmed, substitutions: [] as AISubItem[] };
+    const content = completion.choices?.[0]?.message?.content ?? "";
+    // Parse JSON and validate/clean it
+    const parsed = AIResponseSchema.safeParse(JSON.parse(content));
+
+    if (!parsed.success) {
+      // If AI returns unexpected shape, fall back gracefully
+      const fallback = STATIC_FALLBACK[norm(trimmed)] ?? [];
+      return { query: trimmed, substitutions: fallback };
+    }
+
+    // Dedup by substituteIngredient (case-insensitive), keep stable order
+    const seen = new Set<string>();
+    const deduped = parsed.data.substitutions.filter((s) => {
+      const k = norm(s.substituteIngredient);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+
+    return { query: parsed.data.query || trimmed, substitutions: deduped.slice(0, 6) };
+  } catch (err) {
+    // Any AI/network error -> serve static suggestions if we have them
+    const fallback = STATIC_FALLBACK[norm(trimmed)] ?? [];
+    return { query: trimmed, substitutions: fallback };
+  }
 }
