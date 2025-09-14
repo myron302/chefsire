@@ -182,8 +182,8 @@ const DEMO: Post[] = [
 // Simple image tile card for non-recipe posts
 function ExploreTile({ post }: { post: Post }) {
   return (
-    <Card className="relative overflow-hidden group">
-      <div className="aspect-square">
+    <Card className="relative overflow-hidden group border-0 shadow-md">
+      <div className="aspect-square overflow-hidden">
         <img
           src={post.image || post.imageUrl || ""}
           alt={post.title || "post"}
@@ -194,14 +194,22 @@ function ExploreTile({ post }: { post: Post }) {
       </div>
       {/* overlay stats */}
       <div className="pointer-events-none absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-      <div className="absolute bottom-2 left-2 flex gap-3 text-white drop-shadow">
-        <span className="inline-flex items-center gap-1 text-sm">
+      <div className="absolute bottom-2 left-2 flex gap-3 text-white drop-shadow-lg">
+        <span className="inline-flex items-center gap-1 text-sm font-medium">
           <Heart className="h-4 w-4 fill-current" /> {post.likes ?? 0}
         </span>
-        <span className="inline-flex items-center gap-1 text-sm">
+        <span className="inline-flex items-center gap-1 text-sm font-medium">
           <MessageCircle className="h-4 w-4" /> {post.comments ?? 0}
         </span>
       </div>
+      {/* Title overlay */}
+      {post.title && (
+        <div className="absolute top-2 left-2 right-2">
+          <div className="bg-black/50 backdrop-blur-sm rounded px-2 py-1">
+            <p className="text-white text-sm font-medium truncate">{post.title}</p>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
