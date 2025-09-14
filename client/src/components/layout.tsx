@@ -1,4 +1,5 @@
 import { useEffect, useState, FormEvent } from "react";
+import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,12 +14,12 @@ import MobileNav from "@/components/mobile-nav";
 import chefLogo from "../asset/logo.jpg";
 
 interface LayoutProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export default function Layout({ children }: LayoutProps) {
-  const [pathname] = useLocation();
-  const [, setLocation] = useLocation();
+  // ✅ one subscription instead of two
+  const [pathname, setLocation] = useLocation();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
 
@@ -321,7 +322,7 @@ export default function Layout({ children }: LayoutProps) {
                           isActive
                             ? "text-orange-600 underline decoration-2 underline-offset-4"
                             : "text-muted-foreground hover:text-orange-600",
-                          (item as any).indent ? "pl-6" : "",
+                          (item as any).indent ? "pl-6" : ""
                         ].join(" ")}
                         aria-current={isActive ? "page" : undefined}
                       >
