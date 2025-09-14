@@ -1,5 +1,5 @@
 // client/src/hooks/useRecipesFilters.tsx
 
-// Re-export everything from the single source of truth
-// so there is only ONE context/provider in the app.
-export * from "@/pages/recipes/useRecipesFilters";
+// Re-export everything from the recipes filters file
+// using a relative path to avoid alias resolution issues.
+export * from "../pages/recipes/useRecipesFilters";
