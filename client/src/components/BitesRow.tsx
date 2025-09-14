@@ -33,12 +33,12 @@ interface UserBites {
   isViewed: boolean;
 }
 
-// Mock data
+// Mock data with working image URLs
 const mockUserBites: UserBites[] = [
   {
     userId: '1',
     username: 'chefmaria',
-    avatar: '/api/placeholder/60/60',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=chefmaria&backgroundColor=b6e3f4,c0aede,d1d4f9',
     hasNewBites: true,
     isViewed: false,
     bites: [
@@ -46,8 +46,8 @@ const mockUserBites: UserBites[] = [
         id: '1',
         userId: '1',
         username: 'chefmaria',
-        avatar: '/api/placeholder/40/40',
-        content: { type: 'image', url: '/api/placeholder/400/600' },
+        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=chefmaria&backgroundColor=b6e3f4,c0aede,d1d4f9',
+        content: { type: 'image', url: 'https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=400&h=600&fit=crop' },
         caption: '🍝 Fresh pasta making process!',
         timestamp: new Date('2024-01-15T10:30:00Z'),
         duration: 5,
@@ -60,8 +60,8 @@ const mockUserBites: UserBites[] = [
         id: '2',
         userId: '1',
         username: 'chefmaria',
-        avatar: '/api/placeholder/40/40',
-        content: { type: 'image', url: '/api/placeholder/400/600' },
+        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=chefmaria&backgroundColor=b6e3f4,c0aede,d1d4f9',
+        content: { type: 'image', url: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=400&h=600&fit=crop' },
         caption: 'The final result! Nothing beats fresh pasta 😋',
         timestamp: new Date('2024-01-15T10:35:00Z'),
         duration: 5,
@@ -75,7 +75,7 @@ const mockUserBites: UserBites[] = [
   {
     userId: '2',
     username: 'bakerben',
-    avatar: '/api/placeholder/60/60',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=bakerben&backgroundColor=ffb3ba,bae1ff,ffffba',
     hasNewBites: false,
     isViewed: true,
     bites: [
@@ -83,8 +83,8 @@ const mockUserBites: UserBites[] = [
         id: '3',
         userId: '2',
         username: 'bakerben',
-        avatar: '/api/placeholder/40/40',
-        content: { type: 'image', url: '/api/placeholder/400/600' },
+        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=bakerben&backgroundColor=ffb3ba,bae1ff,ffffba',
+        content: { type: 'image', url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&h=600&fit=crop' },
         caption: '🥖 Early morning bread prep',
         timestamp: new Date('2024-01-15T06:00:00Z'),
         duration: 4,
@@ -98,7 +98,7 @@ const mockUserBites: UserBites[] = [
   {
     userId: '3',
     username: 'veggievibes',
-    avatar: '/api/placeholder/60/60',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=veggievibes&backgroundColor=c7cedb,ffd1dc,e6e6fa',
     hasNewBites: true,
     isViewed: false,
     bites: [
@@ -106,8 +106,8 @@ const mockUserBites: UserBites[] = [
         id: '4',
         userId: '3',
         username: 'veggievibes',
-        avatar: '/api/placeholder/40/40',
-        content: { type: 'image', url: '/api/placeholder/400/600' },
+        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=veggievibes&backgroundColor=c7cedb,ffd1dc,e6e6fa',
+        content: { type: 'image', url: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&h=600&fit=crop' },
         caption: 'Rainbow veggie prep! 🌈',
         timestamp: new Date('2024-01-14T15:20:00Z'),
         duration: 6,
@@ -121,7 +121,7 @@ const mockUserBites: UserBites[] = [
   {
     userId: '4',
     username: 'dessertqueen',
-    avatar: '/api/placeholder/60/60',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=dessertqueen&backgroundColor=f7cac9,f7786b,c4e17f',
     hasNewBites: true,
     isViewed: false,
     bites: [
@@ -129,8 +129,8 @@ const mockUserBites: UserBites[] = [
         id: '5',
         userId: '4',
         username: 'dessertqueen',
-        avatar: '/api/placeholder/40/40',
-        content: { type: 'image', url: '/api/placeholder/400/600' },
+        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=dessertqueen&backgroundColor=f7cac9,f7786b,c4e17f',
+        content: { type: 'image', url: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=600&fit=crop' },
         caption: 'Chocolate soufflé perfection ✨',
         timestamp: new Date('2024-01-15T14:20:00Z'),
         duration: 4,
@@ -300,8 +300,14 @@ export function BitesRow({ className = "" }: BitesRowProps) {
                       : 'bg-gradient-to-tr from-orange-400 via-red-500 to-pink-600'
                 }`}>
                   <Avatar className="w-16 h-16 border-2 border-white dark:border-gray-900">
-                    <AvatarImage src={userBite.avatar} alt={userBite.username} />
-                    <AvatarFallback>{userBite.username[0].toUpperCase()}</AvatarFallback>
+                    <AvatarImage 
+                      src={userBite.avatar} 
+                      alt={userBite.username}
+                      className="object-cover"
+                    />
+                    <AvatarFallback className="bg-gray-100 text-gray-600 font-medium">
+                      {userBite.username[0].toUpperCase()}
+                    </AvatarFallback>
                   </Avatar>
                   {userBite.hasNewBites && (
                     <div className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
@@ -340,7 +346,9 @@ export function BitesRow({ className = "" }: BitesRowProps) {
             <div className="flex items-center space-x-3">
               <Avatar className="w-10 h-10 border-2 border-white">
                 <AvatarImage src={currentBite.avatar} />
-                <AvatarFallback>{currentBite.username[0].toUpperCase()}</AvatarFallback>
+                <AvatarFallback className="bg-gray-100 text-gray-600">
+                  {currentBite.username[0].toUpperCase()}
+                </AvatarFallback>
               </Avatar>
               <div>
                 <p className="text-white font-medium">{currentBite.username}</p>
