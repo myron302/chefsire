@@ -1,77 +1,74 @@
-// client/src/pages/recipes/useRecipesFilters.tsx
 import React, { createContext, useContext, useMemo, useState } from "react";
-import type { ReactNode } from "react";
 
-// ✅ import lists from the shared catalog file
-import {
-  CUISINES,
-  MEAL_TYPES,
-  DIETARY,
-  DIFFICULTY,
-  ALLERGENS,
-  ETHNICITY_REGIONS,
-  ETHNICITIES,
-} from "./filters.catalog";
-
-// 🔁 re-export them so components can import directly from here if they want
-export {
-  CUISINES,
-  MEAL_TYPES,
-  DIETARY,
-  DIFFICULTY,
-  ALLERGENS,
-  ETHNICITY_REGIONS,
-  ETHNICITIES,
-};
-
-export interface RecipesFiltersState {
-  // 🔎 NEW: free-text search used by the list page (and sent to /api/recipes/search as q)
-  search: string;
-
+/** === TYPES === */
+export type RecipesFiltersState = {
   cuisines: string[];
   ethnicities: string[];
-  dietary: string[];
-  mealTypes: string[];
-  difficulty: "" | "Easy" | "Medium" | "Hard";
-  allergens: string[];
-  maxCookTime: number;
-  minSpoons: number; // rating in spoons
+  dietary: string[];        // Vegan, Vegetarian, Halal, Kosher, Gluten-Free, etc.
+  allergens: string[];      // Dairy, Eggs, Tree Nuts, Sesame, etc.
+  mealTypes: string[];      // Breakfast, Lunch, Dinner, Snack, Dessert...
+  difficulty: "" | "easy" | "medium" | "hard";
+  maxCookTime?: number | null;
+  minSpoons?: number | null; // rating 0-5
   onlyRecipes: boolean;
-  sortBy: "newest" | "rating" | "likes";
-}
+  sortBy: "relevance" | "rating" | "time" | "newest" | "popularity";
+};
 
-interface RecipesFiltersContext {
+export type RecipesFiltersContextType = {
   state: RecipesFiltersState;
-  set: React.Dispatch<React.SetStateAction<RecipesFiltersState>>;
+  setState: React.Dispatch<React.SetStateAction<RecipesFiltersState>>;
   reset: () => void;
-}
+};
 
 const defaultState: RecipesFiltersState = {
-  search: "",            // ← added
   cuisines: [],
   ethnicities: [],
   dietary: [],
+  allergens: [],
   mealTypes: [],
   difficulty: "",
-  allergens: [],
-  maxCookTime: 60,
-  minSpoons: 0,
-  onlyRecipes: false,
-  sortBy: "newest",
+  maxCookTime: null,
+  minSpoons: null,
+  onlyRecipes: true,
+  sortBy: "relevance",
 };
 
-const Ctx = createContext<RecipesFiltersContext | undefined>(undefined);
+/** === CONTEXT === */
+const Ctx = createContext<RecipesFiltersContextType | undefined>(undefined);
 
-export function RecipesFiltersProvider({ children }: { children: ReactNode }) {
-  const [state, set] = useState<RecipesFiltersState>(defaultState);
-  const reset = () => set(defaultState);
-  const value = useMemo(() => ({ state, set, reset }), [state]);
-
+export function RecipesFiltersProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<RecipesFiltersState>(defaultState);
+  const value = useMemo(
+    () => ({
+      state,
+      setState,
+      reset: () => setState(defaultState),
+    }),
+    [state]
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
-export function useRecipesFilters() {
+/**
+ * Safe hook: instead of crashing, it logs a warning and returns a local,
+ * temporary context so the page keeps rendering while you fix route wiring.
+ * This avoids "white screen" in production.
+ */
+export function useRecipesFilters(): RecipesFiltersContextType {
   const ctx = useContext(Ctx);
-  if (!ctx) throw new Error("useRecipesFilters must be used within RecipesFiltersProvider");
+  if (!ctx) {
+    // Soft guard – keeps UI alive if a component renders outside the provider.
+    console.warn("useRecipesFilters used outside of RecipesFiltersProvider. Rendering with temp state.");
+    const [state, setState] = useState<RecipesFiltersState>(defaultState);
+    const temp = useMemo(
+      () => ({
+        state,
+        setState,
+        reset: () => setState(defaultState),
+      }),
+      [state]
+    );
+    return temp;
+  }
   return ctx;
 }
