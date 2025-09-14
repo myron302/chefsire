@@ -23,6 +23,11 @@ export type AISubItem = {
   };
 };
 
+export type AISuggestOpts = {
+  cuisine?: string;
+  dietaryRestrictions?: string[];
+};
+
 /** Zod schema to validate/clean AI output */
 const NutritionSchema = z.object({
   calories: z.number().finite(),
@@ -50,12 +55,11 @@ const AIResponseSchema = z.object({
 });
 
 /** Small helper for deduping by ingredient name */
-function norm(s: string) {
-  return s.trim().toLowerCase();
-}
+const norm = (s: string) => s.trim().toLowerCase();
 
 /** ─────────────────────────────────────────────────────────────────────────────
  * Static fallbacks when OPENAI_API_KEY is missing or AI fails
+ * (ensures the UI still returns something for common ingredients)
  * ────────────────────────────────────────────────────────────────────────────*/
 const STATIC_FALLBACK: Record<string, AISubItem[]> = {
   butter: [
@@ -66,8 +70,9 @@ const STATIC_FALLBACK: Record<string, AISubItem[]> = {
       notes:
         "Great for sautéing and some baking; flavor changes slightly. For cookies, chill dough.",
       nutrition: {
-        original: { calories: 1628, fat: 184, carbs: 1, protein: 2 }, // ~1 cup butter
-        substitute: { calories: 1910, fat: 216, carbs: 0, protein: 0 }, // ~¾ cup oil
+        // ~1 cup butter vs ¾ cup oil
+        original: { calories: 1628, fat: 184, carbs: 1, protein: 2 },
+        substitute: { calories: 1910, fat: 216, carbs: 0, protein: 0 },
       },
     },
     {
@@ -77,7 +82,7 @@ const STATIC_FALLBACK: Record<string, AISubItem[]> = {
       notes: "Reduces fat and calories; texture more moist/denser. Cut other liquids slightly.",
       nutrition: {
         original: { calories: 1628, fat: 184, carbs: 1, protein: 2 },
-        substitute: { calories: 100, fat: 0, carbs: 27, protein: 0 },
+        substitute: { calories: 100, fat: 0, carbs: 27, protein: 0 }, // ~½ cup
       },
     },
     {
@@ -104,7 +109,7 @@ const STATIC_FALLBACK: Record<string, AISubItem[]> = {
     },
     {
       substituteIngredient: "Unsweetened applesauce",
-      ratio: "¼ cup applesauce = 1 egg (in cakes/muffins)",
+      ratio: "¼ cup applesauce = 1 egg (cakes/muffins)",
       category: "baking",
       notes: "Adds moisture; not suitable for airy foams/meringues.",
       nutrition: {
@@ -113,14 +118,60 @@ const STATIC_FALLBACK: Record<string, AISubItem[]> = {
       },
     },
   ],
+  milk: [
+    {
+      substituteIngredient: "Unsweetened almond milk",
+      ratio: "1:1 in most recipes",
+      category: "plant-based dairy",
+      notes: "Neutral, slightly nutty. Low protein; can be thin—add 1–2 tsp oil for richer results.",
+      nutrition: {
+        // ~1 cup whole milk vs 1 cup unsweetened almond milk
+        original: { calories: 149, fat: 8, carbs: 12, protein: 8 },
+        substitute: { calories: 40, fat: 3, carbs: 1, protein: 1 },
+      },
+    },
+    {
+      substituteIngredient: "Soy milk (unsweetened)",
+      ratio: "1:1 in most recipes",
+      category: "plant-based dairy",
+      notes: "Closest protein content to dairy; good for custards and baking.",
+      nutrition: {
+        original: { calories: 149, fat: 8, carbs: 12, protein: 8 },
+        substitute: { calories: 100, fat: 4, carbs: 5, protein: 7 },
+      },
+    },
+    {
+      substituteIngredient: "Oat milk (barista or full-fat)",
+      ratio: "1:1 in most recipes",
+      category: "plant-based dairy",
+      notes: "Creamy; great in coffee and baking. Slightly sweeter; watch added sugar.",
+      nutrition: {
+        original: { calories: 149, fat: 8, carbs: 12, protein: 8 },
+        substitute: { calories: 120, fat: 5, carbs: 16, protein: 3 },
+      },
+    },
+    {
+      substituteIngredient: "Half water + half heavy cream",
+      ratio: "½ cup water + ½ cup cream = 1 cup milk",
+      category: "dairy",
+      notes: "Good emergency swap if only cream on hand; richer than milk.",
+      nutrition: {
+        original: { calories: 149, fat: 8, carbs: 12, protein: 8 },
+        substitute: { calories: 205, fat: 22, carbs: 3, protein: 3 }, // approx
+      },
+    },
+  ],
 };
 
 /** ─────────────────────────────────────────────────────────────────────────────
- * Main entry used by your routes
- * Keep the existing signature so you don't have to change your server routes.
+ * Main entry used by your routes (backwards compatible)
+ * You can now pass optional { cuisine, dietaryRestrictions }.
  * Returns: { query, substitutions }
  * ────────────────────────────────────────────────────────────────────────────*/
-export async function suggestSubstitutionsAI(query: string) {
+export async function suggestSubstitutionsAI(
+  query: string,
+  opts: AISuggestOpts = {}
+) {
   const trimmed = (query ?? "").trim();
   if (!trimmed) {
     return { query: "", substitutions: [] as AISubItem[] };
@@ -129,7 +180,7 @@ export async function suggestSubstitutionsAI(query: string) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     const fallback = STATIC_FALLBACK[norm(trimmed)] ?? [];
-    return { query: trimmed, substitutions: fallback };
+    return { query: trimmed, substitutions: maybeFilterByDiet(fallback, opts) };
   }
 
   const client = new OpenAI({ apiKey });
@@ -140,12 +191,12 @@ export async function suggestSubstitutionsAI(query: string) {
 
   const system = `
 You are a concise culinary expert. Given an ingredient, return smart substitutions with exact swap ratios and one or two practical cooking notes.
-Dietary tags (vegan, gluten-free, kosher, halal) should influence choices when obvious.
-Return JSON only, no prose. Keep items high quality and relevant to the ingredient. Prefer 3–5 items.
-Include rough nutrition comparison per the amount implied by the ratio (calories total, grams of fat/carbs/protein).
+If dietaryRestrictions are provided (e.g., vegan, vegetarian, kosher, halal, gluten-free, dairy-free, nut-free), prioritize options that comply.
+If cuisine is provided, bias toward regionally appropriate substitutes.
+Return JSON only, no prose. Prefer 3–5 items (max 6).
+Include rough nutrition comparison per the amount implied by the ratio (calories total, grams fat/carbs/protein).
 `;
 
-  // We force a JSON object, then validate with Zod.
   try {
     const completion = await client.chat.completions.create({
       model: MODEL,
@@ -157,20 +208,19 @@ Include rough nutrition comparison per the amount implied by the ratio (calories
           role: "user",
           content: JSON.stringify({
             ingredient: trimmed,
-            // Future: pass cuisine/dietary here if your route collects them
+            cuisine: opts.cuisine || null,
+            dietaryRestrictions: opts.dietaryRestrictions || [],
           }),
         },
       ],
     });
 
     const content = completion.choices?.[0]?.message?.content ?? "";
-    // Parse JSON and validate/clean it
     const parsed = AIResponseSchema.safeParse(JSON.parse(content));
 
     if (!parsed.success) {
-      // If AI returns unexpected shape, fall back gracefully
       const fallback = STATIC_FALLBACK[norm(trimmed)] ?? [];
-      return { query: trimmed, substitutions: fallback };
+      return { query: trimmed, substitutions: maybeFilterByDiet(fallback, opts) };
     }
 
     // Dedup by substituteIngredient (case-insensitive), keep stable order
@@ -182,10 +232,47 @@ Include rough nutrition comparison per the amount implied by the ratio (calories
       return true;
     });
 
-    return { query: parsed.data.query || trimmed, substitutions: deduped.slice(0, 6) };
-  } catch (err) {
-    // Any AI/network error -> serve static suggestions if we have them
+    // Optional post-filter if user adds strict dietary rules
+    const filtered = maybeFilterByDiet(deduped, opts);
+
+    return {
+      query: parsed.data.query || trimmed,
+      substitutions: filtered.slice(0, 6),
+    };
+  } catch (_err) {
     const fallback = STATIC_FALLBACK[norm(trimmed)] ?? [];
-    return { query: trimmed, substitutions: fallback };
+    return { query: trimmed, substitutions: maybeFilterByDiet(fallback, opts) };
   }
+}
+
+/** Basic dietary post-filter to avoid obviously non-compliant items */
+function maybeFilterByDiet(items: AISubItem[], opts: AISuggestOpts): AISubItem[] {
+  const rules = (opts.dietaryRestrictions || []).map(norm);
+  if (!rules.length) return items;
+
+  const isVeganLike = rules.some((r) => ["vegan", "plant-based"].includes(r));
+  const isDairyFree = rules.includes("dairy-free");
+  const isGlutenFree = rules.includes("gluten-free");
+  const isNutFree = rules.includes("nut-free");
+
+  return items.filter((it) => {
+    const name = norm(it.substituteIngredient);
+
+    if (isVeganLike) {
+      // crude blocklist for animal products
+      if (/(butter|ghee|milk|cream|cheese|yogurt|egg|gelatin|honey)/i.test(name)) return false;
+    }
+    if (isDairyFree) {
+      if (/(butter|ghee|milk|cream|cheese|yogurt)/i.test(name)) return false;
+    }
+    if (isGlutenFree) {
+      if (/(wheat|barley|rye|malt)/i.test(name)) return false;
+    }
+    if (isNutFree) {
+      if (/(almond|cashew|peanut|pecan|walnut|hazelnut|pistachio|macadamia)/i.test(name)) {
+        return false;
+      }
+    }
+    return true;
+  });
 }
