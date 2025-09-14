@@ -2,10 +2,10 @@ import React, { useState } from "react";
 import { Search, Lightbulb, ShoppingCart, Loader2, ArrowRight } from "lucide-react";
 
 type Nutrition = {
-  calories: number;
-  fat: number;     // grams
-  carbs: number;   // grams
-  protein: number; // grams
+  calories: number; // total calories for the compared amount
+  fat: number;      // grams
+  carbs: number;    // grams
+  protein: number;  // grams
 };
 
 type AISubItem = {
@@ -19,33 +19,52 @@ type AISubItem = {
   };
 };
 
+type ApiResponse =
+  | { aiSubstitutions?: AISubItem[]; substitutions?: AISubItem[] }
+  | Record<string, unknown>;
+
 export default function AISubstitutionPage() {
   const [query, setQuery] = useState("");
   const [subs, setSubs] = useState<AISubItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const handleSearch = async (e?: React.FormEvent) => {
+  async function handleSearch(e?: React.FormEvent) {
     if (e) e.preventDefault();
     const q = query.trim();
     if (!q) return;
+
     setLoading(true);
     setErr(null);
     setSubs([]);
 
     try {
-      // Call YOUR server route (matches server/routes.ts)
+      // ✅ Uses your existing server route (no server changes required)
       const url = `/api/ingredients/${encodeURIComponent(q)}/ai-substitutions`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-      const json = await res.json();
-      setSubs(Array.isArray(json.aiSubstitutions) ? json.aiSubstitutions : []);
+      const res = await fetch(url, { headers: { Accept: "application/json" } });
+
+      if (res.status === 404) {
+        throw new Error(
+          "Endpoint not found (404). Make sure your server mounts the AI substitutions route."
+        );
+      }
+      if (!res.ok) throw new Error(`Request failed: HTTP ${res.status}`);
+
+      const json = (await res.json()) as ApiResponse;
+
+      // Accept either { aiSubstitutions } or { substitutions }
+      const list =
+        (Array.isArray((json as any).aiSubstitutions) && (json as any).aiSubstitutions) ||
+        (Array.isArray((json as any).substitutions) && (json as any).substitutions) ||
+        [];
+
+      setSubs(list as AISubItem[]);
     } catch (error: any) {
       setErr(error?.message || "Something went wrong.");
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const hasNutrition = (item: AISubItem) =>
     !!item.nutrition?.original && !!item.nutrition?.substitute;
@@ -67,7 +86,9 @@ export default function AISubstitutionPage() {
       negative: "bg-red-100 text-red-800",
     };
     return (
-      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${tones[tone]} mr-2 mb-2`}>
+      <span
+        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${tones[tone]} mr-2 mb-2`}
+      >
         {label}: {value}
       </span>
     );
@@ -91,6 +112,7 @@ export default function AISubstitutionPage() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Try: butter, eggs, milk, sour cream…"
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              aria-label="Ingredient to substitute"
             />
           </div>
 
@@ -113,7 +135,11 @@ export default function AISubstitutionPage() {
               disabled={loading || !query.trim()}
               className="inline-flex items-center px-5 py-2.5 rounded-lg bg-orange-600 text-white font-medium hover:bg-orange-700 disabled:opacity-50"
             >
-              {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRight className="w-4 h-4 mr-2" />}
+              {loading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <ArrowRight className="w-4 h-4 mr-2" />
+              )}
               Find Substitutes
             </button>
           </div>
@@ -136,18 +162,29 @@ export default function AISubstitutionPage() {
               {subs.map((item, idx) => {
                 const original = item.nutrition?.original;
                 const substitute = item.nutrition?.substitute;
-                const calDelta = original && substitute ? delta(original.calories, substitute.calories) : null;
-                const fatDelta = original && substitute ? delta(original.fat, substitute.fat) : null;
-                const carbDelta = original && substitute ? delta(original.carbs, substitute.carbs) : null;
-                const proteinDelta = original && substitute ? delta(original.protein, substitute.protein) : null;
+
+                const calDelta =
+                  original && substitute ? delta(original.calories, substitute.calories) : null;
+                const fatDelta =
+                  original && substitute ? delta(original.fat, substitute.fat) : null;
+                const carbDelta =
+                  original && substitute ? delta(original.carbs, substitute.carbs) : null;
+                const proteinDelta =
+                  original && substitute ? delta(original.protein, substitute.protein) : null;
+
                 const toneFor = (d?: { diff: number; label: string }) =>
                   !d ? "neutral" : d.diff > 0 ? "positive" : d.diff < 0 ? "negative" : "neutral";
 
                 return (
-                  <div key={idx} className="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
+                  <div
+                    key={`${item.substituteIngredient}-${idx}`}
+                    className="border border-gray-2 00 rounded-lg p-4 hover:shadow-sm transition-shadow"
+                  >
                     <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                       <div className="flex-1">
-                        <h3 className="text-lg font-semibold text-gray-900">{item.substituteIngredient}</h3>
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {item.substituteIngredient}
+                        </h3>
                         <div className="mt-1 text-sm text-gray-700">
                           <span className="font-medium">Ratio:</span> {item.ratio}
                         </div>
@@ -159,6 +196,7 @@ export default function AISubstitutionPage() {
                           </div>
                         )}
                       </div>
+
                       <div className="mt-2 md:mt-0">
                         <button
                           type="button"
@@ -171,7 +209,7 @@ export default function AISubstitutionPage() {
                       </div>
                     </div>
 
-                    {hasNutrition(item) && original && substitute && (
+                    {original && substitute && (
                       <>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 text-sm">
                           <div className="bg-gray-50 p-3 rounded-lg">
@@ -193,8 +231,10 @@ export default function AISubstitutionPage() {
                         <div className="mt-3">
                           {calDelta && statBadge("Cal Δ", `${calDelta.label}`, toneFor(calDelta))}
                           {fatDelta && statBadge("Fat Δ(g)", `${fatDelta.label}`, toneFor(fatDelta))}
-                          {carbDelta && statBadge("Carb Δ(g)", `${carbDelta.label}`, toneFor(carbDelta))}
-                          {proteinDelta && statBadge("Protein Δ(g)", `${proteinDelta.label}`, toneFor(proteinDelta))}
+                          {carbDelta &&
+                            statBadge("Carb Δ(g)", `${carbDelta.label}`, toneFor(carbDelta))}
+                          {proteinDelta &&
+                            statBadge("Protein Δ(g)", `${proteinDelta.label}`, toneFor(proteinDelta))}
                         </div>
                       </>
                     )}
