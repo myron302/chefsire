@@ -181,36 +181,55 @@ const DEMO: Post[] = [
 
 // Simple image tile card for non-recipe posts
 function ExploreTile({ post }: { post: Post }) {
+  const imageUrl = post.image || post.imageUrl || "";
+  
   return (
-    <Card className="relative overflow-hidden group border-0 shadow-md">
-      <div className="aspect-square overflow-hidden">
-        <img
-          src={post.image || post.imageUrl || ""}
-          alt={post.title || "post"}
-          className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-          loading="lazy"
-          decoding="async"
-        />
-      </div>
-      {/* overlay stats */}
-      <div className="pointer-events-none absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-      <div className="absolute bottom-2 left-2 flex gap-3 text-white drop-shadow-lg">
-        <span className="inline-flex items-center gap-1 text-sm font-medium">
-          <Heart className="h-4 w-4 fill-current" /> {post.likes ?? 0}
-        </span>
-        <span className="inline-flex items-center gap-1 text-sm font-medium">
-          <MessageCircle className="h-4 w-4" /> {post.comments ?? 0}
-        </span>
-      </div>
-      {/* Title overlay */}
-      {post.title && (
-        <div className="absolute top-2 left-2 right-2">
-          <div className="bg-black/50 backdrop-blur-sm rounded px-2 py-1">
-            <p className="text-white text-sm font-medium truncate">{post.title}</p>
+    <div className="relative w-full bg-white border rounded-lg shadow-sm overflow-hidden group">
+      {/* Image container with fixed dimensions */}
+      <div 
+        className="w-full h-48 bg-gray-200 relative overflow-hidden"
+        style={{ aspectRatio: '1/1' }}
+      >
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={post.title || "post"}
+            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            onError={(e) => {
+              console.log('Image failed to load:', imageUrl);
+              e.currentTarget.style.display = 'none';
+            }}
+            onLoad={() => console.log('Image loaded:', imageUrl)}
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+            No Image
           </div>
+        )}
+        
+        {/* Dark overlay on hover */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+        
+        {/* Stats overlay */}
+        <div className="absolute bottom-2 left-2 flex gap-3 text-white">
+          <span className="inline-flex items-center gap-1 text-sm bg-black/50 px-2 py-1 rounded">
+            <Heart className="h-4 w-4 fill-current" /> {post.likes ?? 0}
+          </span>
+          <span className="inline-flex items-center gap-1 text-sm bg-black/50 px-2 py-1 rounded">
+            <MessageCircle className="h-4 w-4" /> {post.comments ?? 0}
+          </span>
         </div>
-      )}
-    </Card>
+        
+        {/* Title overlay */}
+        {post.title && (
+          <div className="absolute top-2 left-2 right-2">
+            <div className="bg-black/70 backdrop-blur-sm rounded px-2 py-1">
+              <p className="text-white text-sm font-medium truncate">{post.title}</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
