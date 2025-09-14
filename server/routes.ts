@@ -21,6 +21,7 @@ import {
   mergeDedupRecipes,
   type NormalizedRecipe,
 } from "./services/recipes-providers";
+import { fetchRecipes } from "./features/recipes/recipes.service";
 
 // Simple mock auth (replace later)
 const authenticateUser = (req: any, _res: any, next: any) => {
@@ -187,6 +188,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .json({ message: "Invalid recipe data", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to create recipe" });
+    }
+  });
+
+  app.post("/api/recipes/fetch-recipes", authenticateUser, async (_req, res) => {
+    try {
+      const result = await fetchRecipes();
+      res.status(201).json({
+        message: "Recipes fetched and inserted successfully",
+        success: result.success,
+        count: result.count,
+      });
+    } catch (error) {
+      console.error("Error fetching recipes:", error);
+      res.status(500).json({ message: "Failed to fetch recipes" });
     }
   });
 
@@ -1061,6 +1076,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // -------------------------
   // User Pantry (by user id)
   // -------------------------
+  app.get("/api/users/:id/pantry", async (req, res) => {
+    try {
+      const pantryItems = await storage.getPantryItems(req.params.id);
+      res.json({ pantryItems, total: pantryItems.length });
+    } catch {
+      res.status(500).json({ message: "Failed to fetch pantry items" });
+    }
+  });
+
   app.post("/api/users/:id/pantry", async (req, res) => {
     try {
       const itemSchema = z.object({
@@ -1079,15 +1103,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError)
         return res.status(400).json({ message: "Invalid item data", errors: error.errors });
       res.status(500).json({ message: "Failed to add pantry item" });
-    }
-  });
-
-  app.get("/api/users/:id/pantry", async (req, res) => {
-    try {
-      const pantryItems = await storage.getPantryItems(req.params.id);
-      res.json({ pantryItems, total: pantryItems.length });
-    } catch {
-      res.status(500).json({ message: "Failed to fetch pantry items" });
     }
   });
 
