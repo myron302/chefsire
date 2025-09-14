@@ -116,7 +116,7 @@ avatar: “https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=
 ];
 
 export default function Feed() {
-const currentUserId = “user-1”; // In a real app, this would come from authentication
+const currentUserId = “user-1”;
 
 const { data: posts, isLoading: postsLoading } = useQuery<PostWithUser[]>({
 queryKey: [”/api/posts/feed”, currentUserId],
@@ -130,7 +130,6 @@ const { data: trendingRecipes, isLoading: recipesLoading } = useQuery<(Recipe & 
 queryKey: [”/api/recipes/trending”],
 });
 
-// Use demo data when API data is not available
 const displaySuggestedUsers = suggestedUsers || demoSuggestedUsers;
 const displayTrendingRecipes = trendingRecipes || demoTrendingRecipes;
 
@@ -159,13 +158,10 @@ return (
 
 return (
 <div className="flex max-w-7xl mx-auto">
-{/* Main Feed */}
 <div className="flex-1 max-w-4xl px-4 py-6">
-{/* Bites Section */}
 <BitesRow />
 
 ```
-    {/* Feed Posts */}
     <div className="space-y-8">
       {posts?.map((post) => 
         post.isRecipe ? (
@@ -184,7 +180,6 @@ return (
       )}
     </div>
 
-    {/* Load More */}
     <div className="flex justify-center mt-8">
       <Button 
         variant="outline" 
@@ -196,9 +191,7 @@ return (
     </div>
   </div>
 
-  {/* Right Sidebar */}
   <aside className="hidden xl:block w-80 p-6 bg-card border-l border-border">
-    {/* Suggested Chefs */}
     <section className="mb-8">
       <h3 className="font-semibold mb-4">Suggested Chefs</h3>
       {usersLoading ? (
@@ -245,7 +238,6 @@ return (
       )}
     </section>
 
-    {/* Trending Recipes */}
     <section className="mb-8">
       <h3 className="font-semibold mb-4">Trending Recipes</h3>
       {recipesLoading ? (
@@ -288,7 +280,6 @@ return (
       )}
     </section>
 
-    {/* Popular Categories */}
     <section>
       <h3 className="font-semibold mb-4">Popular Categories</h3>
       <div className="flex flex-wrap gap-2">
