@@ -63,7 +63,7 @@ const DEMO: Post[] = [
       "https://images.unsplash.com/photo-1548365328-8b84986da7b3?q=80&w=1200&auto=format&fit=crop",
     isRecipe: true,
     likes: 223,
-    comments: 18
+    comments: 18,
   },
   {
     id: "2",
@@ -72,7 +72,7 @@ const DEMO: Post[] = [
       "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=1200&auto=format&fit=crop",
     isRecipe: true,
     likes: 150,
-    comments: 9
+    comments: 9,
   },
   {
     id: "3",
@@ -81,8 +81,8 @@ const DEMO: Post[] = [
       "https://images.unsplash.com/photo-1604154692294-165459c8c9b5?q=80&w=1200&auto=format&fit=crop",
     isRecipe: false,
     likes: 412,
-    comments: 34
-  }
+    comments: 34,
+  },
 ];
 
 /** Normalize whatever the hook returns into an array of posts */
@@ -126,10 +126,10 @@ function ExploreTile({ post }: { post: Post & Record<string, any> }) {
 export default function ExplorePage() {
   const [view, setView] = React.useState<"grid" | "list">("grid");
 
-  // Call your hook unconditionally (keeps rules of hooks happy)
+  // Call your hook unconditionally (rules of hooks)
   const { data, isLoading, isError, error } = useExploreData();
 
-  // Use real posts if present, otherwise fallback to DEMO so the page never looks empty
+  // Use live posts if available, otherwise DEMO so the page never looks empty
   const posts = extractPosts(data);
   const feed: Array<Post & Record<string, any>> = posts.length ? posts : DEMO;
 
@@ -158,7 +158,7 @@ export default function ExplorePage() {
         </div>
       </div>
 
-      {/* States */}
+      {/* Loading / Error */}
       {isLoading && (
         <div className="rounded-lg border py-8 text-center text-sm text-muted-foreground">
           Loading explore…
@@ -194,3 +194,10 @@ export default function ExplorePage() {
                   {p.isRecipe ? <RecipeCard post={p as any} /> : <ExploreTile post={p} />}
                 </div>
               ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
