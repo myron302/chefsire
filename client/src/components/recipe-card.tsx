@@ -51,6 +51,7 @@ const PLACEHOLDER_IMG =
 function getImg(post: PostWithUser | undefined) {
   return (
     (post?.imageUrl && String(post.imageUrl).trim()) ||
+    (post?.recipe as any)?.imageUrl ||
     (post as any)?.photoUrl ||
     PLACEHOLDER_IMG
   );
@@ -73,6 +74,16 @@ function Spoon({ dim = 18, faded = false }: { dim?: number; faded?: boolean }) {
   );
 }
 
+// Safe helper to ensure we get an array
+function safeArray(value: any): any[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    // Split string into array if it's a string
+    return value.split(/\r?\n/).filter(item => item.trim());
+  }
+  return [];
+}
+
 export default function RecipeCard({
   post,
   currentUserId = "user-1",
@@ -90,7 +101,7 @@ export default function RecipeCard({
   const [isSaved, setIsSaved] = useState(Boolean(post?.isSaved));
   const [showFullRecipe, setShowFullRecipe] = useState(false);
 
-  // in case backend doesn’t always send spoons, compute a fallback
+  // in case backend doesn't always send spoons, compute a fallback
   const spoonRating = useMemo(() => {
     const r =
       (post as any)?.recipe?.ratingSpoons ??
@@ -130,10 +141,11 @@ export default function RecipeCard({
   const img = getImg(post);
   const createdAt = post?.createdAt ? new Date(post.createdAt) : null;
 
-  const ing = Array.isArray(post.recipe.ingredients) ? post.recipe.ingredients : [];
-  const steps = Array.isArray(post.recipe.instructions) ? post.recipe.instructions : [];
-  const dietTags = (post.recipe as any).dietTags || (post as any).dietary || [];
-  const allergens = (post.recipe as any).allergens || (post as any).allergens || [];
+  // Use safe array helpers to prevent crashes
+  const ing = safeArray(post.recipe.ingredients);
+  const steps = safeArray(post.recipe.instructions);
+  const dietTags = safeArray((post.recipe as any).dietTags || (post as any).dietary);
+  const allergens = safeArray((post.recipe as any).allergens || (post as any).allergens);
   const cuisine = post.recipe.cuisine || (post as any).cuisine || (post as any).category || "—";
 
   return (
@@ -233,18 +245,16 @@ export default function RecipeCard({
         {/* Badges: cuisine / diets / allergens */}
         <div className="flex flex-wrap gap-2 mb-3">
           <Badge variant="outline">{cuisine}</Badge>
-          {Array.isArray(dietTags) &&
-            dietTags.slice(0, 4).map((d: string) => (
-              <Badge key={d} variant="secondary">
-                {d}
-              </Badge>
-            ))}
-          {Array.isArray(allergens) &&
-            allergens.slice(0, 3).map((a: string) => (
-              <Badge key={a} variant="destructive" className="bg-destructive/10 text-destructive border-destructive/30">
-                {a}
-              </Badge>
-            ))}
+          {dietTags.slice(0, 4).map((d: string, index: number) => (
+            <Badge key={`diet-${index}`} variant="secondary">
+              {d}
+            </Badge>
+          ))}
+          {allergens.slice(0, 3).map((a: string, index: number) => (
+            <Badge key={`allergen-${index}`} variant="destructive" className="bg-destructive/10 text-destructive border-destructive/30">
+              {a}
+            </Badge>
+          ))}
         </div>
 
         {/* Ingredients */}
