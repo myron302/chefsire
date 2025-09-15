@@ -712,4 +712,34 @@ export class DrizzleStorage implements IStorage {
 
   async getDailyNutritionSummary(userId: string, date: Date): Promise<any> {
     const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0,
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Example: assuming you have a "meals" or "nutritionLogs" table with
+    // columns: userId, calories, protein, carbs, fat, createdAt
+    const result = await db
+      .select({
+        totalCalories: sql<number>`SUM(${nutritionLogs.calories})`,
+        totalProtein: sql<number>`SUM(${nutritionLogs.protein})`,
+        totalCarbs: sql<number>`SUM(${nutritionLogs.carbs})`,
+        totalFat: sql<number>`SUM(${nutritionLogs.fat})`,
+      })
+      .from(nutritionLogs)
+      .where(
+        and(
+          eq(nutritionLogs.userId, userId),
+          gte(nutritionLogs.createdAt, startOfDay),
+          lte(nutritionLogs.createdAt, endOfDay)
+        )
+      );
+
+    return result[0] ?? {
+      totalCalories: 0,
+      totalProtein: 0,
+      totalCarbs: 0,
+      totalFat: 0,
+    };
+  }
+}
