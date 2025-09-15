@@ -1,6 +1,6 @@
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import { Pool } from '@neondatabase/serverless';
-import { eq, desc, and, or, sql, asc, inArray, ilike } from 'drizzle-orm';
+import { drizzle } from "drizzle-orm/neon-serverless";
+import { Pool } from "@neondatabase/serverless";
+import { eq, desc, and, or, sql, asc, inArray, ilike } from "drizzle-orm";
 import {
   users,
   posts,
@@ -40,7 +40,7 @@ import {
   type Product,
   type InsertProduct,
   type ProductWithSeller
-} from '@shared/schema';
+} from "@shared/schema";
 
 // Create database connection
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -360,10 +360,10 @@ export class DrizzleStorage implements IStorage {
         carbs: recipe.carbs,
         fat: recipe.fat,
         fiber: recipe.fiber,
-        source: 'local'
+        source: "local"
       }));
     } catch (error) {
-      console.error('Local recipe search error:', error);
+      console.error("Local recipe search error:", error);
       return [];
     }
   }
@@ -636,8 +636,8 @@ export class DrizzleStorage implements IStorage {
     if (query) {
       conditions.push(
         or(
-          sql`${products.name} ILIKE ${'%' + query + '%'}`,
-          sql`${products.description} ILIKE ${'%' + query + '%'}`
+          sql`${products.name} ILIKE ${"%" + query + "%"}`,
+          sql`${products.description} ILIKE ${"%" + query + "%"}`
         )!
       );
     }
@@ -712,355 +712,4 @@ export class DrizzleStorage implements IStorage {
 
   async getDailyNutritionSummary(userId: string, date: Date): Promise<any> {
     const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const result = await db.select({
-      totalCalories: sql`SUM(${nutritionLogs.calories} * ${nutritionLogs.servings})`.as('totalCalories'),
-      totalProtein: sql`SUM(${nutritionLogs.protein} * ${nutritionLogs.servings})`.as('totalProtein'),
-      totalCarbs: sql`SUM(${nutritionLogs.carbs} * ${nutritionLogs.servings})`.as('totalCarbs'),
-      totalFat: sql`SUM(${nutritionLogs.fat} * ${nutritionLogs.servings})`.as('totalFat'),
-      totalFiber: sql`SUM(${nutritionLogs.fiber} * ${nutritionLogs.servings})`.as('totalFiber')
-    })
-    .from(nutritionLogs)
-    .where(and(
-      eq(nutritionLogs.userId, userId),
-      sql`${nutritionLogs.date} >= ${startOfDay}`,
-      sql`${nutritionLogs.date} <= ${endOfDay}`
-    ));
-
-    return result[0];
-  }
-
-  async getNutritionLogs(userId: string, startDate: Date, endDate: Date): Promise<any[]> {
-    return db.select()
-      .from(nutritionLogs)
-      .where(and(
-        eq(nutritionLogs.userId, userId),
-        sql`${nutritionLogs.date} >= ${startDate}`,
-        sql`${nutritionLogs.date} <= ${endDate}`
-      ))
-      .orderBy(asc(nutritionLogs.date));
-  }
-
-  async createMealPlan(userId: string, plan: { name: string; startDate: Date; endDate: Date; isTemplate: boolean }): Promise<any> {
-    const result = await db.insert(mealPlans).values({
-      userId,
-      ...plan
-    }).returning();
-
-    return result[0];
-  }
-
-  async getMealPlan(id: string): Promise<any> {
-    const result = await db.select().from(mealPlans).where(eq(mealPlans.id, id)).limit(1);
-    return result[0];
-  }
-
-  async getUserMealPlans(userId: string): Promise<any[]> {
-    return db.select()
-      .from(mealPlans)
-      .where(eq(mealPlans.userId, userId))
-      .orderBy(desc(mealPlans.createdAt));
-  }
-
-  async addMealPlanEntry(planId: string, entry: { recipeId?: string; date: Date; mealType: string; servings: number; customName?: string; customCalories?: number }): Promise<any> {
-    const result = await db.insert(mealPlanEntries).values({
-      mealPlanId: planId,
-      ...entry
-    }).returning();
-
-    return result[0];
-  }
-
-  async addPantryItem(userId: string, item: { name: string; category?: string; quantity?: number; unit?: string; expirationDate?: Date; notes?: string }): Promise<any> {
-    const result = await db.insert(pantryItems).values({
-      userId,
-      ...item
-    }).returning();
-
-    return result[0];
-  }
-
-  async getPantryItems(userId: string): Promise<any[]> {
-    return db.select()
-      .from(pantryItems)
-      .where(eq(pantryItems.userId, userId))
-      .orderBy(asc(pantryItems.name));
-  }
-
-  async updatePantryItem(itemId: string, updates: { quantity?: number; expirationDate?: Date; notes?: string }): Promise<any> {
-    const result = await db.update(pantryItems)
-      .set(updates)
-      .where(eq(pantryItems.id, itemId))
-      .returning();
-
-    return result[0];
-  }
-
-  async deletePantryItem(itemId: string): Promise<boolean> {
-    const result = await db.delete(pantryItems).where(eq(pantryItems.id, itemId)).returning();
-    return result.length > 0;
-  }
-
-  async getExpiringItems(userId: string, daysAhead: number): Promise<any[]> {
-    const futureDate = new Date();
-    futureDate.setDate(futureDate.getDate() + daysAhead);
-
-    return db.select()
-      .from(pantryItems)
-      .where(and(
-        eq(pantryItems.userId, userId),
-        sql`${pantryItems.expirationDate} <= ${futureDate}`
-      ))
-      .orderBy(asc(pantryItems.expirationDate));
-  }
-
-  async addIngredientSubstitution(originalIngredient: string, substituteIngredient: string, ratio: string, notes?: string, category?: string): Promise<any> {
-    const result = await db.insert(ingredientSubstitutions).values({
-      originalIngredient: originalIngredient.toLowerCase(),
-      substituteIngredient: substituteIngredient.toLowerCase(),
-      ratio,
-      notes,
-      category
-    }).returning();
-
-    return result[0];
-  }
-
-  async getIngredientSubstitutions(ingredient: string): Promise<any[]> {
-    const normalizedIngredient = ingredient.toLowerCase();
-
-    return db.select()
-      .from(ingredientSubstitutions)
-      .where(eq(ingredientSubstitutions.originalIngredient, normalizedIngredient))
-      .orderBy(asc(ingredientSubstitutions.originalIngredient));
-  }
-
-  async getAllSubstitutions(): Promise<any[]> {
-    return db.select()
-      .from(ingredientSubstitutions)
-      .orderBy(asc(ingredientSubstitutions.originalIngredient), asc(ingredientSubstitutions.category));
-  }
-
-  async searchSubstitutions(query: string): Promise<any[]> {
-    const normalizedQuery = query.toLowerCase();
-
-    return db.select()
-      .from(ingredientSubstitutions)
-      .where(
-        or(
-          sql`${ingredientSubstitutions.originalIngredient} ILIKE ${'%' + normalizedQuery + '%'}`,
-          sql`${ingredientSubstitutions.substituteIngredient} ILIKE ${'%' + normalizedQuery + '%'}`
-        )!
-      )
-      .orderBy(asc(ingredientSubstitutions.originalIngredient));
-  }
-
-  async getRecipesFromPantryItems(userId: string, options: {
-    requireAllIngredients?: boolean;
-    maxMissingIngredients?: number;
-    includeExpiringSoon?: boolean;
-    limit?: number;
-  } = {}): Promise<any[]> {
-    const {
-      requireAllIngredients = false,
-      maxMissingIngredients = 3,
-      includeExpiringSoon = true,
-      limit = 20
-    } = options;
-
-    const pantryItems = await this.getPantryItems(userId);
-
-    if (pantryItems.length === 0) {
-      return [];
-    }
-
-    const allRecipes = await db.select({
-      recipe: recipes,
-      post: posts,
-      user: users
-    })
-    .from(recipes)
-    .innerJoin(posts, eq(recipes.postId, posts.id))
-    .innerJoin(users, eq(posts.userId, users.id))
-    .limit(100);
-
-    const pantryIngredients = new Set(
-      pantryItems.map(item => item.name.toLowerCase().trim())
-    );
-
-    const scoredRecipes = allRecipes.map(row => {
-      const recipe = row.recipe;
-      const recipeIngredients = recipe.ingredients || [];
-      
-      let matches = 0;
-      let missingIngredients: string[] = [];
-      
-      recipeIngredients.forEach(ingredient => {
-        const normalizedIngredient = ingredient.toLowerCase().trim();
-        
-        const hasIngredient = Array.from(pantryIngredients).some(pantryItem => 
-          pantryItem.includes(normalizedIngredient) || normalizedIngredient.includes(pantryItem)
-        );
-        
-        if (hasIngredient) {
-          matches++;
-        } else {
-          missingIngredients.push(ingredient);
-        }
-      });
-      
-      const totalIngredients = recipeIngredients.length;
-      const matchPercentage = totalIngredients > 0 ? (matches / totalIngredients) * 100 : 0;
-      const missing = missingIngredients.length;
-      
-      return {
-        ...row.recipe,
-        post: { ...row.post, user: row.user },
-        matchScore: matchPercentage,
-        ingredientMatches: matches,
-        totalIngredients,
-        missingIngredients,
-        missingCount: missing,
-        canMake: missing === 0
-      };
-    });
-
-    let filteredRecipes = scoredRecipes;
-
-    if (requireAllIngredients) {
-      filteredRecipes = scoredRecipes.filter(recipe => recipe.canMake);
-    } else {
-      filteredRecipes = scoredRecipes.filter(recipe => 
-        recipe.missingCount <= maxMissingIngredients
-      );
-    }
-
-    filteredRecipes.sort((a, b) => {
-      if (a.matchScore !== b.matchScore) {
-        return b.matchScore - a.matchScore;
-      }
-      return a.missingCount - b.missingCount;
-    });
-
-    return filteredRecipes.slice(0, limit);
-  }
-
-  async getSuggestedIngredientsForRecipe(recipeId: string, userId: string): Promise<{
-    recipe: any;
-    missingIngredients: string[];
-    suggestedSubstitutions: any[];
-    availableInMarketplace: any[];
-  }> {
-    const recipe = await this.getRecipe(recipeId);
-    if (!recipe) {
-      throw new Error("Recipe not found");
-    }
-
-    const pantryItems = await this.getPantryItems(userId);
-    const pantryIngredients = new Set(
-      pantryItems.map(item => item.name.toLowerCase().trim())
-    );
-
-    const missingIngredients: string[] = [];
-    const recipeIngredients = recipe.ingredients || [];
-
-    recipeIngredients.forEach(ingredient => {
-      const normalizedIngredient = ingredient.toLowerCase().trim();
-      
-      const hasIngredient = Array.from(pantryIngredients).some(pantryItem => 
-        pantryItem.includes(normalizedIngredient) || normalizedIngredient.includes(pantryItem)
-      );
-      
-      if (!hasIngredient) {
-        missingIngredients.push(ingredient);
-      }
-    });
-
-    const suggestedSubstitutions: any[] = [];
-    for (const ingredient of missingIngredients) {
-      const substitutions = await this.getIngredientSubstitutions(ingredient);
-      if (substitutions.length > 0) {
-        suggestedSubstitutions.push({
-          originalIngredient: ingredient,
-          substitutions: substitutions
-        });
-      }
-    }
-
-    const availableInMarketplace: any[] = [];
-    for (const ingredient of missingIngredients) {
-      const marketplaceItems = await this.searchProducts(ingredient, "ingredients", undefined, 0, 5);
-      if (marketplaceItems.length > 0) {
-        availableInMarketplace.push({
-          ingredient,
-          products: marketplaceItems
-        });
-      }
-    }
-
-    return {
-      recipe,
-      missingIngredients,
-      suggestedSubstitutions,
-      availableInMarketplace
-    };
-  }
-
-  async searchLocalRecipes(searchParams: {
-    q?: string;
-    cuisines?: string[];
-    diets?: string[];
-    mealTypes?: string[];
-    pageSize?: number;
-    offset?: number;
-  }): Promise<any[]> {
-    try {
-      let query = db.select().from(recipes);
-      
-      const conditions = [];
-      
-      if (searchParams.q) {
-        const searchTerm = `%${searchParams.q}%`;
-        conditions.push(
-          or(
-            ilike(recipes.title, searchTerm),
-            sql`${recipes.ingredients}::text ILIKE ${searchTerm}`,
-            sql`${recipes.instructions}::text ILIKE ${searchTerm}`
-          )!
-        );
-      }
-      
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions));
-      }
-      
-      const results = await query
-        .limit(searchParams.pageSize || 24)
-        .offset(searchParams.offset || 0);
-      
-      return results.map(recipe => ({
-        id: recipe.id,
-        title: recipe.title,
-        ingredients: recipe.ingredients,
-        instructions: recipe.instructions,
-        cookTime: recipe.cookTime,
-        servings: recipe.servings,
-        difficulty: recipe.difficulty,
-        calories: recipe.calories,
-        protein: recipe.protein,
-        carbs: recipe.carbs,
-        fat: recipe.fat,
-        fiber: recipe.fiber,
-        source: 'local'
-      }));
-    } catch (error) {
-      console.error('Local recipe search error:', error);
-      return [];
-    }
-  }
-}
-
-export const storage = new DrizzleStorage();
+    startOfDay.setHours(0, 0,
