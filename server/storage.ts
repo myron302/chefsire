@@ -742,7 +742,6 @@ export class DrizzleStorage implements IStorage {
       totalFat: 0,
     };
   }
-}
   // ---------- Nutrition ----------
   async enableNutritionPremium(userId: string, trialDays: number): Promise<User | undefined> {
     const trialEndDate = new Date();
