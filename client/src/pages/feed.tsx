@@ -2,10 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import PostCard from "@/components/post-card";
-import RecipeCard from "@/components/recipe-card";
 import { BitesRow } from "@/components/BitesRow";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Heart, Clock } from "lucide-react";
 import type { PostWithUser, User, Recipe } from "@shared/schema";
 
 const demoTrendingRecipes = [
@@ -114,6 +114,50 @@ const demoSuggestedUsers = [
   }
 ];
 
+function SimpleRecipeCard({ post, currentUserId }: { post: PostWithUser; currentUserId: string }) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="relative">
+        {post.imageUrl ? (
+          <img
+            src={post.imageUrl}
+            alt={post.title || "Recipe"}
+            className="w-full h-64 object-cover"
+          />
+        ) : (
+          <div className="w-full h-64 bg-gray-200 flex items-center justify-center">
+            <Heart className="w-8 h-8 text-gray-400" />
+          </div>
+        )}
+      </div>
+      <CardContent className="p-6">
+        <div className="flex items-center space-x-3 mb-4">
+          <Avatar className="w-10 h-10">
+            <AvatarImage src={post.user?.avatar || ""} alt={post.user?.displayName} />
+            <AvatarFallback>{post.user?.displayName?.[0] || "U"}</AvatarFallback>
+          </Avatar>
+          <div>
+            <p className="font-medium">{post.user?.displayName}</p>
+            <p className="text-sm text-gray-500">Recipe</p>
+          </div>
+        </div>
+        <h3 className="text-xl font-semibold mb-2">{post.title || "Recipe"}</h3>
+        <p className="text-gray-600 mb-4">{post.content}</p>
+        <div className="flex items-center justify-between text-sm text-gray-500">
+          <span className="flex items-center space-x-1">
+            <Heart className="w-4 h-4" />
+            <span>{post.likesCount} likes</span>
+          </span>
+          <span className="flex items-center space-x-1">
+            <Clock className="w-4 h-4" />
+            <span>Recipe</span>
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Feed() {
   const currentUserId = "user-1";
 
@@ -164,7 +208,7 @@ export default function Feed() {
         <div className="space-y-8">
           {posts?.map((post) => 
             post.isRecipe ? (
-              <RecipeCard 
+              <SimpleRecipeCard 
                 key={post.id} 
                 post={post} 
                 currentUserId={currentUserId} 
