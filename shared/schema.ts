@@ -53,6 +53,7 @@ export const recipes = pgTable("recipes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   postId: varchar("post_id").references(() => posts.id), // Made nullable for seeding
   title: text("title").notNull(),
+  imageUrl: text("image_url"),
   ingredients: jsonb("ingredients").$type<string[]>().notNull(),
   instructions: jsonb("instructions").$type<string[]>().notNull(),
   cookTime: integer("cook_time"), // in minutes
