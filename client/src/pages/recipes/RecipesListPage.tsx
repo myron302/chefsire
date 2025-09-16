@@ -36,10 +36,21 @@ function SpoonRating({ value }: { value: number | null | undefined }) {
 }
 
 function RecipeCard({ r }: { r: RecipeCardData }) {
+  // Guard against malformed recipe data
+  if (!r) {
+    return (
+      <Card className="overflow-hidden bg-card border border-border">
+        <div className="w-full h-48 bg-muted flex items-center justify-center text-muted-foreground">
+          Invalid recipe data
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="overflow-hidden bg-card border border-border hover:shadow-md transition-shadow">
       {r.image ? (
-        <img src={r.image} alt={r.title} className="w-full h-48 object-cover" />
+        <img src={r.image} alt={r.title || "Recipe"} className="w-full h-48 object-cover" />
       ) : (
         <div className="w-full h-48 bg-muted flex items-center justify-center text-muted-foreground">
           No image
@@ -48,7 +59,7 @@ function RecipeCard({ r }: { r: RecipeCardData }) {
 
       <CardContent className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold leading-snug line-clamp-2">{r.title}</h3>
+          <h3 className="font-semibold leading-snug line-clamp-2">{r.title || "Untitled Recipe"}</h3>
           <SpoonRating value={r.ratingSpoons ?? null} />
         </div>
 
@@ -70,8 +81,8 @@ function RecipeCard({ r }: { r: RecipeCardData }) {
         <div className="flex flex-wrap gap-1">
           {r.cuisine ? <Badge variant="secondary">{r.cuisine}</Badge> : null}
           {r.mealType ? <Badge variant="outline">{r.mealType}</Badge> : null}
-          {(r.dietTags || []).slice(0, 3).map((t) => (
-            <Badge key={t} variant="outline" className="capitalize">
+          {(r.dietTags || []).slice(0, 3).map((t, index) => (
+            <Badge key={`${t}-${index}`} variant="outline" className="capitalize">
               {t}
             </Badge>
           ))}
@@ -119,12 +130,14 @@ export default function RecipesListPage() {
         </div>
       ) : err ? (
         <div className="text-destructive">Error: {err}</div>
+      ) : !Array.isArray(recipes) ? (
+        <div className="text-destructive">Error: Invalid recipe data format</div>
       ) : recipes.length === 0 ? (
         <div className="text-muted-foreground">No recipes found. Try adjusting filters.</div>
       ) : (
         <div className="grid gap-4 grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {recipes.map((r) => (
-            <RecipeCard key={r.id} r={r} />
+          {(recipes || []).map((r) => (
+            <RecipeCard key={r?.id || Math.random().toString(36).slice(2)} r={r} />
           ))}
         </div>
       )}

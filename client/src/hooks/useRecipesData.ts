@@ -65,30 +65,94 @@ export function useRecipesData() {
         }
 
         const json: ApiSearchResponse = await res.json();
+        
+        // Debug log raw API response for troubleshooting
+        console.log("Raw API response:", json);
 
-        // Normalize results to our card shape
-        const normalized = (json.results || []).map((r) => normalizeApiRecipe(r));
+        // Ensure json.results is an array
+        if (!json || !Array.isArray(json.results)) {
+          console.warn("API response does not contain a valid results array:", json);
+          if (!cancelled) setRecipes([]);
+          return;
+        }
+
+        // Normalize results to our card shape with error handling
+        const normalized = (json.results || []).map((r) => {
+          try {
+            return normalizeApiRecipe(r);
+          } catch (err) {
+            console.error("Error normalizing recipe:", r, err);
+            // Return a basic fallback recipe to avoid breaking the entire list
+            return {
+              id: String(r?.id || Math.random().toString(36).slice(2)),
+              isRecipe: true,
+              createdAt: new Date().toISOString(),
+              image: null,
+              user: { displayName: "Unknown" },
+              likes: 0,
+              comments: 0,
+              recipe: {
+                title: r?.title || "Untitled Recipe",
+                cookTime: null,
+                servings: null,
+                difficulty: "",
+                cuisine: null,
+                mealType: null,
+                ingredients: [],
+                instructions: [],
+                ratingSpoons: null,
+                dietTags: [],
+                allergens: [],
+                ethnicities: [],
+              },
+            };
+          }
+        });
 
         // Client-side enforcement for allergens/Halal/Kosher/etc.
         const afterRules = normalized.filter((r) => passesLocalRules(r, state));
 
-        // Map to RecipeCardData for the UI grid
-        let cards: RecipeCardData[] = afterRules.map((r) => ({
-          id: r.id,
-          title: r.recipe?.title ?? r.title ?? "Untitled",
-          image: r.image || r.recipe?.image || (r as any).imageUrl || r.recipe?.imageUrl || null,
-          cookTime: r.recipe?.cookTime ?? null,
-          servings: r.recipe?.servings ?? null,
-          cuisine: r.recipe?.cuisine ?? null,
-          mealType: r.recipe?.mealType ?? null,
-          dietTags: r.recipe?.dietTags ?? [],
-          ratingSpoons: r.recipe?.ratingSpoons ?? null,
-          likes: r.likes ?? 0,
-          createdAt: r.createdAt ?? null,
-        }));
+        // Map to RecipeCardData for the UI grid with error handling
+        let cards: RecipeCardData[] = afterRules.map((r) => {
+          try {
+            return {
+              id: r.id,
+              title: r.recipe?.title ?? r.title ?? "Untitled",
+              image: r.image || r.recipe?.image || (r as any).imageUrl || r.recipe?.imageUrl || null,
+              cookTime: r.recipe?.cookTime ?? null,
+              servings: r.recipe?.servings ?? null,
+              cuisine: r.recipe?.cuisine ?? null,
+              mealType: r.recipe?.mealType ?? null,
+              dietTags: r.recipe?.dietTags ?? [],
+              ratingSpoons: r.recipe?.ratingSpoons ?? null,
+              likes: r.likes ?? 0,
+              createdAt: r.createdAt ?? null,
+            };
+          } catch (err) {
+            console.error("Error creating recipe card:", r, err);
+            // Return a safe fallback card
+            return {
+              id: r?.id || Math.random().toString(36).slice(2),
+              title: "Error loading recipe",
+              image: null,
+              cookTime: null,
+              servings: null,
+              cuisine: null,
+              mealType: null,
+              dietTags: [],
+              ratingSpoons: null,
+              likes: 0,
+              createdAt: null,
+            };
+          }
+        });
 
-        // Debug log to print the normalized cards array for easy troubleshooting
-        console.log("Normalized recipe cards:", cards);
+        // Debug log to print the full array of normalized recipe cards for troubleshooting
+        console.log("=== RECIPE CARDS DEBUG INFO ===");
+        console.log("Total normalized recipe cards:", cards.length);
+        console.log("Full normalized recipe cards array (copy/paste for troubleshooting):");
+        console.table(cards); // Better formatting for arrays
+        console.log("JSON stringify for copy/paste:", JSON.stringify(cards, null, 2));
 
         // Quick client-side search (title/keywords) if user typed in the mini search
         const quick = (state as any).search?.trim().toLowerCase();
@@ -127,9 +191,18 @@ export function useRecipesData() {
           );
         }
 
+        // Final safety check to ensure cards is always an array
+        if (!Array.isArray(cards)) {
+          console.error("Cards is not an array after processing:", cards);
+          cards = [];
+        }
+
         if (!cancelled) setRecipes(cards);
       } catch (e: any) {
-        if (!cancelled) setErr(e?.message || "Failed to load recipes.");
+        if (!cancelled) {
+          setErr(e?.message || "Failed to load recipes.");
+          setRecipes([]); // Ensure recipes is always an array even on error
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }

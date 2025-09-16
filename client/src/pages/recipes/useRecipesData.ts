@@ -113,9 +113,19 @@ export function useRecipesData() {
           ratingSpoons: r.rating ?? null,
         }));
 
+        // Debug log to print the full array of normalized recipe cards for troubleshooting
+        console.log("=== RECIPE CARDS DEBUG INFO (Pages Version) ===");
+        console.log("Total recipe cards:", mapped.length);
+        console.log("Full recipe cards array (copy/paste for troubleshooting):");
+        console.table(mapped);
+        console.log("JSON stringify for copy/paste:", JSON.stringify(mapped, null, 2));
+
         setRecipes(mapped);
       } catch (e: any) {
-        if (!cancelled) setErr(e?.message || "Failed to load recipes");
+        if (!cancelled) {
+          setErr(e?.message || "Failed to load recipes");
+          setRecipes([]); // Ensure recipes is always an array even on error
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
