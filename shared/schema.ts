@@ -243,20 +243,6 @@ export const nutritionLogs = pgTable("nutrition_logs", {
   userDateIdx: index("nutrition_user_date_idx").on(table.userId, table.date),
 }));
 
-// INGREDIENT SUBSTITUTIONS
-export const ingredientSubstitutions = pgTable("ingredient_substitutions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  originalIngredient: text("original_ingredient").notNull(),
-  substituteIngredient: text("substitute_ingredient").notNull(),
-  ratio: text("ratio").notNull(), // "1:1", "2:1", etc
-  notes: text("notes"),
-  category: text("category"), // dairy, gluten-free, vegan, etc
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => ({
-  originalIdx: index("substitutions_original_idx").on(table.originalIngredient),
-  categoryIdx: index("substitutions_category_idx").on(table.category),
-}));
-
 // ===== INSERT SCHEMAS =====
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -339,11 +325,6 @@ export const insertNutritionLogSchema = createInsertSchema(nutritionLogs).omit({
   createdAt: true,
 });
 
-export const insertIngredientSubstitutionSchema = createInsertSchema(ingredientSubstitutions).omit({
-  id: true,
-  createdAt: true,
-});
-
 // ===== TYPES =====
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -375,8 +356,6 @@ export type PantryItem = typeof pantryItems.$inferSelect;
 export type InsertPantryItem = z.infer<typeof insertPantryItemSchema>;
 export type NutritionLog = typeof nutritionLogs.$inferSelect;
 export type InsertNutritionLog = z.infer<typeof insertNutritionLogSchema>;
-export type IngredientSubstitution = typeof ingredientSubstitutions.$inferSelect;
-export type InsertIngredientSubstitution = z.infer<typeof insertIngredientSubstitutionSchema>;
 
 // Extended types for API responses
 export type PostWithUser = Post & { user: User; recipe?: Recipe; isLiked?: boolean; isSaved?: boolean };
