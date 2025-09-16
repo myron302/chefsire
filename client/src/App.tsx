@@ -70,6 +70,13 @@ function Router() {
         {/* Explore (no recipes filters context needed) */}
         <Route path="/explore" component={ExplorePage} />
 
+        {/* ✅ /recipes-test route - placed before general recipes routes */}
+        <Route path="/recipes-test">
+          <RecipesFiltersProvider>
+            <RecipesListPage />
+          </RecipesFiltersProvider>
+        </Route>
+
         {/* ✅ All recipes routes live under one provider */}
         <Route path="/recipes/:rest*" component={RecipesSection} />
         <Route path="/recipes" component={RecipesSection} />
