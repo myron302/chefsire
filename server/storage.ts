@@ -39,7 +39,9 @@ import {
   type ChefWithCatering,
   type Product,
   type InsertProduct,
-  type ProductWithSeller
+  type ProductWithSeller,
+  type IngredientSubstitution,
+  type InsertIngredientSubstitution
 } from "@shared/schema";
 
 // Create database connection
@@ -1110,6 +1112,12 @@ export class DrizzleStorage implements IStorage {
       suggestedSubstitutions,
       availableInMarketplace,
     };
+  }
+
+  // ===== INGREDIENT SUBSTITUTIONS =====
+  async insertIngredientSubstitution(substitution: InsertIngredientSubstitution) {
+    const result = await db.insert(ingredientSubstitutions).values(substitution).returning();
+    return result[0];
   }
 } // ← closes class DrizzleStorage
 

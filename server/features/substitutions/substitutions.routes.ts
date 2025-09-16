@@ -9,6 +9,8 @@ import {
   suggestSubstitutionsAI, // upgraded OpenAI-backed suggester
   type AISubItem,
 } from "../../services/ingredients-ai";
+import { insertIngredientSubstitutionSchema } from "../../../shared/schema";
+import { db } from "../../storage";
 
 const router = Router();
 
@@ -154,6 +156,32 @@ router.post("/api/ingredients/ai-substitutions", async (req, res) => {
   } catch (err: any) {
     const body: Err = { ok: false, error: err?.message || "Unknown error" };
     return res.status(500).json(body);
+  }
+});
+
+/**
+ * POST /api/substitutions
+ * Body: { originalIngredient: string, substituteIngredient: string, ratio: string, notes?: string, category?: string }
+ * Creates a user-contributed substitution
+ */
+router.post("/api/substitutions", async (req, res) => {
+  try {
+    const parsed = insertIngredientSubstitutionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: "Invalid substitution data", 
+        details: parsed.error.errors 
+      });
+    }
+
+    const result = await db.insertIngredientSubstitution(parsed.data);
+    return res.json({ ok: true, substitution: result });
+  } catch (err: any) {
+    return res.status(500).json({ 
+      ok: false, 
+      error: err?.message || "Failed to create substitution" 
+    });
   }
 });
 

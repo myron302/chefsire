@@ -18,7 +18,7 @@ import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
 import Profile from "@/pages/profile";
 import CreatePost from "@/pages/create-post";
 import Pantry from "@/components/Pantry";
-import IngredientSubstitutions from "@/components/IngredientSubstitutions";
+import UnifiedSubstitutions from "@/pages/unified-substitutions";
 import Marketplace from "@/components/Marketplace";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import CateringMarketplace from "@/pages/catering";
@@ -26,7 +26,7 @@ import PotentPotables from "@/pages/potent-potables";
 import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 
-// NEW: AI Substitution page
+// NEW: Unified Substitutions page
 import AISubstitutionPage from "@/pages/ai-substitution";
 
 // Utilities
@@ -90,15 +90,13 @@ function Router() {
 
         <Route path="/substitutions">
           <ErrorBoundary>
-            <IngredientSubstitutions />
+            <UnifiedSubstitutions />
           </ErrorBoundary>
         </Route>
 
-        {/* NEW: /ai-substitution route */}
+        {/* Redirect old AI substitution route to unified page */}
         <Route path="/ai-substitution">
-          <ErrorBoundary>
-            <AISubstitutionPage />
-          </ErrorBoundary>
+          <Redirect to="/substitutions" />
         </Route>
 
         {/* Store alias so header link "/store" works */}
