@@ -22,10 +22,61 @@ export type SpoonacularSubstitution = {
 
 const SPOON_KEY = process.env.SPOONACULAR_API_KEY || "";
 
+// Fallback data for demonstration when API key is not available
+const FALLBACK_SUBSTITUTIONS: Record<string, SpoonacularSubstitution[]> = {
+  "butter": [
+    {
+      substituteIngredient: "Olive Oil",
+      ratio: "3/4 cup olive oil for 1 cup butter",
+      category: "oils",
+      notes: "Best for sautéing and baking, adds a mild fruity flavor.",
+      nutrition: {
+        original: { calories: 102, fat: 12, carbs: 0, protein: 0 },
+        substitute: { calories: 119, fat: 14, carbs: 0, protein: 0 }
+      }
+    },
+    {
+      substituteIngredient: "Coconut Oil",
+      ratio: "1 cup coconut oil for 1 cup butter",
+      category: "oils",
+      notes: "Solid at room temperature, adds a light coconut flavor."
+    }
+  ],
+  "eggs": [
+    {
+      substituteIngredient: "Applesauce",
+      ratio: "1/4 cup applesauce for 1 egg",
+      category: "binding",
+      notes: "Works well in baking, adds moisture but may make results denser."
+    },
+    {
+      substituteIngredient: "Flax Egg",
+      ratio: "1 tbsp ground flax + 3 tbsp water for 1 egg",
+      category: "binding",
+      notes: "Mix and let sit for 5 minutes. Great vegan alternative."
+    }
+  ],
+  "milk": [
+    {
+      substituteIngredient: "Almond Milk",
+      ratio: "1 cup almond milk for 1 cup milk",
+      category: "dairy-free",
+      notes: "Lower in calories and protein. Choose unsweetened for cooking."
+    },
+    {
+      substituteIngredient: "Oat Milk",
+      ratio: "1 cup oat milk for 1 cup milk",
+      category: "dairy-free",
+      notes: "Creamy texture, works well in coffee and baking."
+    }
+  ]
+};
+
 export async function fetchSpoonacularSubstitutions(ingredient: string): Promise<SpoonacularSubstitution[]> {
   if (!SPOON_KEY) {
-    console.warn("No Spoonacular API key found");
-    return [];
+    console.warn("No Spoonacular API key found, using fallback data");
+    const normalizedIngredient = ingredient.toLowerCase().trim();
+    return FALLBACK_SUBSTITUTIONS[normalizedIngredient] || [];
   }
 
   try {
@@ -36,7 +87,9 @@ export async function fetchSpoonacularSubstitutions(ingredient: string): Promise
     
     if (!response.ok) {
       console.error(`Spoonacular API error: ${response.status} ${response.statusText}`);
-      return [];
+      // Fall back to demo data on API error
+      const normalizedIngredient = ingredient.toLowerCase().trim();
+      return FALLBACK_SUBSTITUTIONS[normalizedIngredient] || [];
     }
 
     const data = await response.json();
@@ -58,14 +111,24 @@ export async function fetchSpoonacularSubstitutions(ingredient: string): Promise
 
   } catch (error) {
     console.error("Error fetching Spoonacular substitutions:", error);
-    return [];
+    // Fall back to demo data on error
+    const normalizedIngredient = ingredient.toLowerCase().trim();
+    return FALLBACK_SUBSTITUTIONS[normalizedIngredient] || [];
   }
 }
 
 export async function searchSpoonacularIngredients(query: string): Promise<string[]> {
   if (!SPOON_KEY) {
-    console.warn("No Spoonacular API key found");
-    return [];
+    console.warn("No Spoonacular API key found, using fallback data");
+    // Return common ingredients that match the query
+    const commonIngredients = [
+      "butter", "eggs", "milk", "flour", "sugar", "salt", "pepper", "onion",
+      "garlic", "olive oil", "coconut oil", "vanilla", "baking powder", "baking soda"
+    ];
+    const normalizedQuery = query.toLowerCase();
+    return commonIngredients.filter(ingredient => 
+      ingredient.includes(normalizedQuery)
+    ).slice(0, 10);
   }
 
   try {

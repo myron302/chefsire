@@ -1215,7 +1215,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Secondary: Check local database
-      const dbRows = await storage.getIngredientSubstitutions(ingredient);
+      let dbRows = [];
+      try {
+        dbRows = await storage.getIngredientSubstitutions(ingredient);
+      } catch (e) {
+        console.warn("Database substitution lookup failed:", e);
+      }
+      
       if (dbRows && dbRows.length > 0) {
         const rows = dbRows.map((s: any) => ({ ...s, source: "db" as const }));
         return res.json({
@@ -1286,7 +1292,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Secondary: Search local database
-      const dbResults = await storage.searchSubstitutions(query);
+      let dbResults = [];
+      try {
+        dbResults = await storage.searchSubstitutions(query);
+      } catch (e) {
+        console.warn("Database substitution search failed:", e);
+      }
       
       // Combine and deduplicate results
       const allResults = [
