@@ -1,8 +1,9 @@
 import * as React from "react";
-import { Search, Lightbulb, Loader2, ArrowRight } from "lucide-react";
+import { Search, Lightbulb, Loader2, ArrowRight, Sparkles } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import SubstitutionCard from "./SubstitutionCard";
 
 type Nutrition = {
   calories?: number;
@@ -22,6 +23,17 @@ type SubstitutionItem = {
   };
 };
 
+type AISubItem = {
+  substituteIngredient: string;
+  ratio: string;
+  category?: string;
+  notes?: string;
+  nutrition?: {
+    original: Nutrition;
+    substitute: Nutrition;
+  };
+};
+
 export default function IngredientSubstitutions() {
   const [query, setQuery] = React.useState("");
   const [loading, setLoading] = React.useState(false);
@@ -29,6 +41,13 @@ export default function IngredientSubstitutions() {
   const [results, setResults] = React.useState<SubstitutionItem[]>([]);
   const [suggestions, setSuggestions] = React.useState<string[]>([]);
   const [fetchingSugg, setFetchingSugg] = React.useState(false);
+  
+  // AI-related state
+  const [aiResults, setAiResults] = React.useState<AISubItem[]>([]);
+  const [aiLoading, setAiLoading] = React.useState(false);
+  const [aiError, setAiError] = React.useState<string | null>(null);
+  const [showAiButton, setShowAiButton] = React.useState(false);
+  const [hasSearched, setHasSearched] = React.useState(false);
 
   // Quick examples (click to fill)
   const examples = [
@@ -97,6 +116,10 @@ export default function IngredientSubstitutions() {
     setLoading(true);
     setError(null);
     setResults([]);
+    setAiResults([]);
+    setAiError(null);
+    setShowAiButton(false);
+    setHasSearched(true);
 
     try {
       // Encode the path segment too — fixes "%" etc.
@@ -104,11 +127,46 @@ export default function IngredientSubstitutions() {
       const data = await fetchJSON<{ substitutions: SubstitutionItem[] }>(
         `/api/ingredients/${pathIng}/substitutions`
       );
-      setResults(Array.isArray(data.substitutions) ? data.substitutions : []);
+      const catalogResults = Array.isArray(data.substitutions) ? data.substitutions : [];
+      setResults(catalogResults);
+      
+      // Show AI button if no results or at the end of results
+      setShowAiButton(true);
     } catch (err: any) {
       setError(err?.message || "Something went wrong.");
+      // Still show AI button if catalog fails
+      setShowAiButton(true);
     } finally {
       setLoading(false);
+    }
+  }
+
+  // --- AI search function ---
+  async function handleAiSearch() {
+    const q = query.trim();
+    if (!q) return;
+
+    setAiLoading(true);
+    setAiError(null);
+
+    try {
+      const pathIng = encodeURIComponent(q);
+      const res = await fetch(`/api/ingredients/${pathIng}/ai-substitutions`, {
+        headers: { Accept: "application/json" }
+      });
+
+      if (!res.ok) {
+        throw new Error(`AI search failed: HTTP ${res.status}`);
+      }
+
+      const json = await res.json();
+      // Handle different response formats
+      const aiSubs = json.aiSubstitutions || json.substitutions || [];
+      setAiResults(Array.isArray(aiSubs) ? aiSubs : []);
+    } catch (err: any) {
+      setAiError(err?.message || "AI search failed.");
+    } finally {
+      setAiLoading(false);
     }
   }
 
@@ -205,46 +263,92 @@ export default function IngredientSubstitutions() {
 
         {/* Results */}
         <Card>
-          {results.length === 0 && !loading ? (
+          {!hasSearched ? (
             <CardContent className="py-10 text-center">
               <Lightbulb className="w-10 h-10 text-gray-400 mx-auto mb-3" />
               <p className="text-gray-700">No suggestions yet. Try searching above.</p>
             </CardContent>
           ) : (
             <CardContent className="space-y-4">
-              {results.map((item, idx) => (
-                <div
-                  key={`${item.substituteIngredient}-${idx}`}
-                  className="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow"
-                >
-                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {item.substituteIngredient}
-                      </h3>
-                      <div className="mt-1 text-sm text-gray-700">
-                        <span className="font-medium">Ratio:</span> {item.ratio}
-                      </div>
-                      {item.category && (
-                        <div className="mt-2">
-                          <span className="inline-block px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">
-                            {item.category}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {item.notes && (
-                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                      <div className="flex items-start">
-                        <Lightbulb className="w-4 h-4 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
-                        <p className="text-sm text-blue-800">{item.notes}</p>
-                      </div>
-                    </div>
-                  )}
+              {/* Catalog Results */}
+              {results.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    From our catalog ({results.length} suggestion{results.length !== 1 ? "s" : ""})
+                  </h3>
+                  {results.map((item, idx) => (
+                    <SubstitutionCard
+                      key={`catalog-${item.substituteIngredient}-${idx}`}
+                      substituteIngredient={item.substituteIngredient}
+                      ratio={item.ratio}
+                      category={item.category}
+                      notes={item.notes}
+                      nutrition={item.nutrition}
+                    />
+                  ))}
                 </div>
-              ))}
+              )}
+
+              {/* AI Button */}
+              {showAiButton && aiResults.length === 0 && (
+                <div className="text-center py-6">
+                  <p className="text-gray-600 mb-4">
+                    {results.length === 0 
+                      ? "No results found in our catalog." 
+                      : "Need more ideas?"
+                    }
+                  </p>
+                  <Button
+                    onClick={handleAiSearch}
+                    disabled={aiLoading}
+                    className="inline-flex items-center px-6 py-3 bg-purple-600 hover:bg-purple-700"
+                  >
+                    {aiLoading ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4 mr-2" />
+                    )}
+                    Try our AI-powered search
+                  </Button>
+                </div>
+              )}
+
+              {/* AI Error */}
+              {aiError && (
+                <div className="p-3 rounded-md bg-red-50 text-red-700 text-sm border border-red-200">
+                  AI Search Error: {aiError}
+                </div>
+              )}
+
+              {/* AI Results */}
+              {aiResults.length > 0 && (
+                <div className="space-y-4">
+                  <div className="border-t pt-4">
+                    <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                      <Sparkles className="w-5 h-5 mr-2 text-purple-600" />
+                      AI-powered suggestions ({aiResults.length} suggestion{aiResults.length !== 1 ? "s" : ""})
+                    </h3>
+                  </div>
+                  {aiResults.map((item, idx) => (
+                    <SubstitutionCard
+                      key={`ai-${item.substituteIngredient}-${idx}`}
+                      substituteIngredient={item.substituteIngredient}
+                      ratio={item.ratio}
+                      category={item.category}
+                      notes={item.notes}
+                      nutrition={item.nutrition}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* No results at all */}
+              {results.length === 0 && aiResults.length === 0 && !showAiButton && hasSearched && !loading && !aiLoading && (
+                <div className="text-center py-10">
+                  <Lightbulb className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-700">No substitutions found. Try searching for a different ingredient.</p>
+                </div>
+              )}
             </CardContent>
           )}
         </Card>
