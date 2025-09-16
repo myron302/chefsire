@@ -353,7 +353,7 @@ const Pantry = () => {
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center space-x-4 text-sm text-gray-600">
                           <span>🍽️ {recipe.servings} servings</span>
-                          <span>⏱️ {recipe.cookTime}min</span>
+                          <span>⏱️ {recipe.cookTime ? `${recipe.cookTime}min` : "N/A"}</span>
                         </div>
                         <div className="text-right">
                           <div className="text-sm font-medium text-green-600">

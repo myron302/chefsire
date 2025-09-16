@@ -52,7 +52,7 @@ export function RecipeTile({ post }: { post: DemoPost }) {
             <SpoonIcon className="h-4 w-4" />
             {r.ratingSpoons ?? 0}
           </span>
-          <span>{r.cookTime ?? 0} min</span>
+          <span>{r.cookTime ? `${r.cookTime} min` : "N/A"}</span>
         </div>
       </div>
     </Card>

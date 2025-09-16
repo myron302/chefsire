@@ -283,7 +283,7 @@ export default function Feed() {
                   <p className="text-xs text-muted-foreground">by {recipe.post.user.displayName}</p>
                   <div className="flex items-center space-x-2 mt-1">
                     <span className="text-xs text-destructive">♥ {recipe.post.likesCount}</span>
-                    <span className="text-xs text-muted-foreground">• {recipe.cookTime} min</span>
+                    <span className="text-xs text-muted-foreground">• {recipe.cookTime ? `${recipe.cookTime} min` : "N/A"}</span>
                   </div>
                 </div>
               </div>
