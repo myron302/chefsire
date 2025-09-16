@@ -37,22 +37,42 @@ type DemoPost = {
 
 export function RecipeTile({ post }: { post: DemoPost }) {
   const r = post.recipe!;
+  const imageUrl = post.image || "/placeholder-recipe.jpg"; // fallback image
+  const cookTime = r.cookTime ?? 0;
+  const ratingSpoons = r.ratingSpoons ?? 0;
+  
   return (
     <Card className="overflow-hidden">
       <div className="aspect-square overflow-hidden">
-        <img src={post.image} alt={r.title} className="h-full w-full object-cover" loading="lazy" />
+        {imageUrl ? (
+          <img 
+            src={imageUrl} 
+            alt={r.title || "Recipe"} 
+            className="h-full w-full object-cover" 
+            loading="lazy"
+            onError={(e) => {
+              // Fallback if image fails to load
+              const target = e.target as HTMLImageElement;
+              target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' fill='%23f3f4f6'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%236b7280'%3ENo Image%3C/text%3E%3C/svg%3E";
+            }}
+          />
+        ) : (
+          <div className="h-full w-full bg-muted flex items-center justify-center text-muted-foreground">
+            No Image
+          </div>
+        )}
       </div>
       <div className="p-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold line-clamp-1">{r.title}</h3>
+          <h3 className="text-sm font-semibold line-clamp-1">{r.title || "Untitled Recipe"}</h3>
           {r.cuisine && <Badge variant="outline" className="text-xs">{r.cuisine}</Badge>}
         </div>
         <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
             <SpoonIcon className="h-4 w-4" />
-            {r.ratingSpoons ?? 0}
+            {ratingSpoons}
           </span>
-          <span>{r.cookTime ?? 0} min</span>
+          <span>{cookTime} min</span>
         </div>
       </div>
     </Card>

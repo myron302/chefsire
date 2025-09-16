@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { safeStringArray } from "@/lib/utils";
 
 export function TagInput({
   label,
@@ -45,7 +46,7 @@ export function TagInput({
       </div>
       {value.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-2">
-          {value.map((t) => (
+          {safeStringArray(value).map((t) => (
             <Badge key={t} variant="secondary" className="flex items-center gap-1">
               {t}
               <button

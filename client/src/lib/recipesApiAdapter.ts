@@ -1,5 +1,6 @@
 // client/src/lib/recipesApiAdapter.ts
 import type { RecipesFiltersState } from "@/pages/recipes/useRecipesFilters";
+import { safeStringArray } from "@/lib/utils";
 
 // Ethnicity → API cuisine/tag mapping (start small; grow over time)
 const ETHNICITY_TO_API: Record<string, string[]> = {
@@ -121,7 +122,7 @@ export function normalizeApiRecipe(api: any): NormalizedRecipePost {
       ingredients: api.ingredients || [],
       instructions: api.instructions || [],
       ratingSpoons: api.rating ?? null,
-      dietTags: (api.diets || api.tags || []).map((x: string) => String(x).trim()),
+      dietTags: safeStringArray(api.diets || api.tags || []),
       allergens: api.allergens || [],
       ethnicities: api.cuisines || [],
     },

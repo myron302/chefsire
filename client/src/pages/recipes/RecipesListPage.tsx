@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import useUrlFilterSync from "@/hooks/useUrlFilterSync";
 import { useRecipesFilters } from "@/hooks/useRecipesFilters";
 import { useRecipesData, type RecipeCardData } from "@/hooks/useRecipesData";
+import { safeStringArray } from "@/lib/utils";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -36,33 +37,51 @@ function SpoonRating({ value }: { value: number | null | undefined }) {
 }
 
 function RecipeCard({ r }: { r: RecipeCardData }) {
+  const imageUrl = r.image || null;
+  const cookTime = r.cookTime ?? 0;
+  const servings = r.servings ?? 0;
+  const ratingSpoons = r.ratingSpoons ?? 0;
+  
   return (
     <Card className="overflow-hidden bg-card border border-border hover:shadow-md transition-shadow">
-      {r.image ? (
-        <img src={r.image} alt={r.title} className="w-full h-48 object-cover" />
+      {imageUrl ? (
+        <img 
+          src={imageUrl} 
+          alt={r.title || "Recipe"} 
+          className="w-full h-48 object-cover"
+          onError={(e) => {
+            // Fallback if image fails to load
+            const target = e.target as HTMLImageElement;
+            target.style.display = 'none';
+            const parent = target.parentElement;
+            if (parent) {
+              parent.innerHTML = '<div class="w-full h-48 bg-muted flex items-center justify-center text-muted-foreground">No Image</div>';
+            }
+          }}
+        />
       ) : (
         <div className="w-full h-48 bg-muted flex items-center justify-center text-muted-foreground">
-          No image
+          No Image
         </div>
       )}
 
       <CardContent className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold leading-snug line-clamp-2">{r.title}</h3>
-          <SpoonRating value={r.ratingSpoons ?? null} />
+          <h3 className="font-semibold leading-snug line-clamp-2">{r.title || "Untitled Recipe"}</h3>
+          <SpoonRating value={ratingSpoons} />
         </div>
 
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          {r.cookTime ? (
+          {cookTime > 0 ? (
             <span className="inline-flex items-center gap-1">
               <Clock className="w-4 h-4" />
-              {r.cookTime} min
+              {cookTime} min
             </span>
           ) : null}
-          {r.servings ? (
+          {servings > 0 ? (
             <span className="inline-flex items-center gap-1">
               <Users className="w-4 h-4" />
-              {r.servings} servings
+              {servings} servings
             </span>
           ) : null}
         </div>
@@ -70,7 +89,7 @@ function RecipeCard({ r }: { r: RecipeCardData }) {
         <div className="flex flex-wrap gap-1">
           {r.cuisine ? <Badge variant="secondary">{r.cuisine}</Badge> : null}
           {r.mealType ? <Badge variant="outline">{r.mealType}</Badge> : null}
-          {(r.dietTags || []).slice(0, 3).map((t) => (
+          {safeStringArray(r.dietTags).slice(0, 3).map((t) => (
             <Badge key={t} variant="outline" className="capitalize">
               {t}
             </Badge>
@@ -123,9 +142,21 @@ export default function RecipesListPage() {
         <div className="text-muted-foreground">No recipes found. Try adjusting filters.</div>
       ) : (
         <div className="grid gap-4 grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {recipes.map((r) => (
-            <RecipeCard key={r.id} r={r} />
-          ))}
+          {recipes.map((r) => {
+            try {
+              return <RecipeCard key={r.id} r={r} />;
+            } catch (error) {
+              console.error("Error rendering recipe card:", error, r);
+              return (
+                <Card key={r.id} className="overflow-hidden bg-card border border-border p-4">
+                  <div className="text-center text-muted-foreground">
+                    <p>Error loading recipe</p>
+                    <p className="text-xs">{r.title || "Unknown recipe"}</p>
+                  </div>
+                </Card>
+              );
+            }
+          })}
         </div>
       )}
     </div>
