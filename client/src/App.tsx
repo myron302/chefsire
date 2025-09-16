@@ -26,8 +26,7 @@ import PotentPotables from "@/pages/potent-potables";
 import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 
-// NEW: AI Substitution page
-import AISubstitutionPage from "@/pages/ai-substitution";
+
 
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -94,12 +93,7 @@ function Router() {
           </ErrorBoundary>
         </Route>
 
-        {/* NEW: /ai-substitution route */}
-        <Route path="/ai-substitution">
-          <ErrorBoundary>
-            <AISubstitutionPage />
-          </ErrorBoundary>
-        </Route>
+
 
         {/* Store alias so header link "/store" works */}
         <Route path="/store" component={Marketplace} />

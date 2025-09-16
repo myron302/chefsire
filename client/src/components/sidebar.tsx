@@ -52,10 +52,6 @@ const NAV: NavItem[] = [
         name: "Substitutions",
         href: "/substitutions",
         icon: Shuffle,
-        hasSubmenu: true,
-        submenu: [
-          { name: "AI Substitution", href: "/ai-substitution", icon: Lightbulb },
-        ],
       },
     ],
   },
