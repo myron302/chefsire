@@ -22,6 +22,9 @@ import {
 } from "./services/recipes-providers";
 import { fetchRecipes } from "./features/recipes.service";
 
+// Feature routes
+import substitutionsRouter from "./features/substitutions/substitutions.routes";
+
 // Simple mock auth (replace later)
 const authenticateUser = (req: any, _res: any, next: any) => {
   req.user = { id: "user-123" };
@@ -29,6 +32,9 @@ const authenticateUser = (req: any, _res: any, next: any) => {
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Mount feature routes
+  app.use(substitutionsRouter);
+
   // ———————––
   // Users
   // ———————––
@@ -1272,51 +1278,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/ingredients/ai-substitution", async (req, res) => {
-    try {
-      const q = (req.query.q as string || "").trim();
-      if (!q) return res.status(400).json({ message: "Missing q" });
 
-      const subs = await aiSuggestSubstitutions(q, {
-        cuisine: (req.query.cuisine as string) || undefined,
-        dietaryRestrictions: req.query.dietaryRestrictions
-          ? String(req.query.dietaryRestrictions).split(",")
-          : undefined,
-      });
-
-      const rows = (subs || []).map((s) => ({
-        originalIngredient: q,
-        substituteIngredient: s.substituteIngredient,
-        ratio: s.ratio || "1:1",
-        notes: s.notes || "",
-        category: s.category || "",
-        nutrition: s.nutrition || undefined,
-        source: "ai" as const,
-      }));
-
-      res.json({ query: q, substitutions: rows, total: rows.length });
-    } catch (error) {
-      console.error("AI substitution error:", error);
-      res.status(500).json({ message: "AI substitution failed" });
-    }
-  });
-
-  app.get("/api/ingredients/:ingredient/ai-substitutions", async (req, res) => {
-    try {
-      const ingredient = decodeURIComponent(req.params.ingredient);
-      const { cuisine, dietaryRestrictions } = req.query;
-      const subs = await aiSuggestSubstitutions(ingredient, {
-        cuisine: cuisine as string | undefined,
-        dietaryRestrictions: dietaryRestrictions
-          ? String(dietaryRestrictions).split(",")
-          : undefined,
-      });
-      res.json({ ingredient, aiSubstitutions: subs });
-    } catch (error) {
-      console.error("AI substitution error:", error);
-      res.status(500).json({ message: "AI substitution failed" });
-    }
-  });
 
   // ———————––
   // Wedding Planning
