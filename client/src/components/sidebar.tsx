@@ -48,15 +48,7 @@ const NAV: NavItem[] = [
     submenu: [
       { name: "Browse Recipes", href: "/recipes", icon: BookOpen },
       { name: "My Pantry", href: "/pantry", icon: ChefHat },
-      {
-        name: "Substitutions",
-        href: "/substitutions",
-        icon: Shuffle,
-        hasSubmenu: true,
-        submenu: [
-          { name: "AI Substitution", href: "/ai-substitution", icon: Lightbulb },
-        ],
-      },
+      { name: "Substitutions", href: "/substitutions", icon: Shuffle },
     ],
   },
   { name: "Potent Potables", href: "/potent-potables", icon: GlassWater },

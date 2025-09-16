@@ -40,7 +40,6 @@ export default function Layout({ children }: LayoutProps) {
     { href: "/", label: "Home" },
     { href: "/recipes", label: "Recipes" },
     { href: "/substitutions", label: "Substitutions" },
-    { href: "/ai-substitution", label: "AI Substitution", indent: true },
     { href: "/potent-potables", label: "Potent Potables" },
     { href: "/catering", label: "Catering" },
     { href: "/store", label: "Store" },
@@ -212,14 +211,6 @@ export default function Layout({ children }: LayoutProps) {
                               className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                             >
                               <Shuffle className="w-3 h-3 mr-2" /> Substitutions
-                            </Link>
-                            {/* AI Substitution nested under Substitutions */}
-                            <Link
-                              href="/ai-substitution"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <Lightbulb className="w-3 h-3 mr-2" /> AI Substitution
                             </Link>
 
                             {/* Potent Potables */}
