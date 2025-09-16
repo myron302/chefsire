@@ -25,6 +25,7 @@ import CateringMarketplace from "@/pages/catering";
 import PotentPotables from "@/pages/potent-potables";
 import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
+import RecipesTestPage from "@/pages/recipes-test";
 
 // NEW: AI Substitution page
 import AISubstitutionPage from "@/pages/ai-substitution";
@@ -73,6 +74,9 @@ function Router() {
         {/* ✅ All recipes routes live under one provider */}
         <Route path="/recipes/:rest*" component={RecipesSection} />
         <Route path="/recipes" component={RecipesSection} />
+
+        {/* Recipes test page */}
+        <Route path="/recipes-test" component={RecipesTestPage} />
 
         {/* Backward-compat (old explore/filters -> recipes/filters) */}
         <Route path="/explore/filters">
