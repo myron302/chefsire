@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Compass, Plus, User, Activity, Lightbulb, BookOpen } from "lucide-react";
+import { Compass, Plus, User, BookOpen, ChefHat } from "lucide-react";
 
 interface MobileNavProps {
   onCreatePost?: () => void;
@@ -18,8 +18,7 @@ export default function MobileNav({ onCreatePost }: MobileNavProps) {
     { name: "Explore", href: "/explore", icon: Compass },
     { name: "Recipes", href: "/recipes", icon: BookOpen }, // added
     { name: "Create", action: handleCreate, icon: Plus },   // center FAB
-    { name: "AI Subs", href: "/ai-substitution", icon: Lightbulb },
-    { name: "Nutrition", href: "/nutrition", icon: Activity },
+    { name: "Pantry", href: "/pantry", icon: ChefHat },
     { name: "Profile", href: "/profile", icon: User },
   ];
 

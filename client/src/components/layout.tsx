@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Search, Bell, MessageCircle, User, ChevronDown,
-  ChefHat, Shuffle, Activity, ShoppingCart, Settings, LogOut,
-  Home, Compass, BookOpen, GlassWater, Utensils, Heart, Lightbulb
+  ChefHat, Activity, ShoppingCart, Settings, LogOut,
+  Home, Compass, BookOpen, GlassWater, Utensils, Heart
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
@@ -39,8 +39,6 @@ export default function Layout({ children }: LayoutProps) {
   const secondaryLinks = [
     { href: "/", label: "Home" },
     { href: "/recipes", label: "Recipes" },
-    { href: "/substitutions", label: "Substitutions" },
-    { href: "/ai-substitution", label: "AI Substitution", indent: true },
     { href: "/potent-potables", label: "Potent Potables" },
     { href: "/catering", label: "Catering" },
     { href: "/store", label: "Store" },
@@ -205,21 +203,6 @@ export default function Layout({ children }: LayoutProps) {
                               className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                             >
                               <ChefHat className="w-3 h-3 mr-2" /> My Pantry
-                            </Link>
-                            <Link
-                              href="/substitutions"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <Shuffle className="w-3 h-3 mr-2" /> Substitutions
-                            </Link>
-                            {/* AI Substitution nested under Substitutions */}
-                            <Link
-                              href="/ai-substitution"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <Lightbulb className="w-3 h-3 mr-2" /> AI Substitution
                             </Link>
 
                             {/* Potent Potables */}
