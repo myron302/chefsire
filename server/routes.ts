@@ -22,6 +22,9 @@ import {
 } from "./services/recipes-providers";
 import { fetchRecipes } from "./features/recipes.service";
 
+// Routes
+import recipesRouter from "./routes/recipes";
+
 // Simple mock auth (replace later)
 const authenticateUser = (req: any, _res: any, next: any) => {
   req.user = { id: "user-123" };
@@ -186,20 +189,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/recipes/fetch-recipes", authenticateUser, async (_req, res) => {
-    try {
-      const result = await fetchRecipes();
-      res.status(201).json({
-        message: "Recipes fetched and inserted successfully",
-        success: result.success,
-        count: result.count,
-      });
-    } catch (error) {
-      console.error("Error fetching recipes:", error);
-      res.status(500).json({ message: "Failed to fetch recipes" });
-    }
-  });
-
   // ———————––
   // External recipe aggregation (Spoonacular + Edamam)
   // ———————––
@@ -265,6 +254,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to search recipes" });
     }
   });
+
+  // Use the recipes router for additional recipe endpoints
+  app.use("/api/recipes", recipesRouter);
 
   // ———————––
   // Stories

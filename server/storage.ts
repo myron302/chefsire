@@ -71,6 +71,7 @@ export interface IStorage {
   createRecipe(recipe: InsertRecipe): Promise<Recipe>;
   updateRecipe(id: string, updates: Partial<Recipe>): Promise<Recipe | undefined>;
   getTrendingRecipes(limit?: number): Promise<(Recipe & { post: PostWithUser })[]>;
+  getRecipes(limit?: number, offset?: number): Promise<Recipe[]>;
   searchLocalRecipes(searchParams: { q?: string; cuisines?: string[]; diets?: string[]; mealTypes?: string[]; pageSize?: number; offset?: number; }): Promise<any[]>;
 
   // Stories, Likes, Comments, Follows
@@ -309,6 +310,16 @@ export class DrizzleStorage implements IStorage {
       ...row.recipe,
       post: { ...row.post, user: row.user }
     }));
+  }
+
+  async getRecipes(limit = 50, offset = 0): Promise<Recipe[]> {
+    const result = await db.select()
+      .from(recipes)
+      .orderBy(desc(recipes.id))
+      .limit(limit)
+      .offset(offset);
+    
+    return result;
   }
 
   async searchLocalRecipes(searchParams: {
