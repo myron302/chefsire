@@ -51,7 +51,7 @@ const AISubItemSchema = z.object({
 
 const AIResponseSchema = z.object({
   query: z.string(),
-  substitutions: z.array(AISubItemSchema).min(1).max(6),
+  substitutions: z.array(AISubItemSchema).min(1).max(12),
 });
 
 /** Small helper for deduping by ingredient name */
@@ -186,14 +186,14 @@ export async function suggestSubstitutionsAI(
   const client = new OpenAI({ apiKey });
 
   // You can tune these as needed:
-  const MODEL = "gpt-4o-mini";
+  const MODEL = "gpt-4o";
   const TEMPERATURE = 0.3;
 
   const system = `
 You are a concise culinary expert. Given an ingredient, return smart substitutions with exact swap ratios and one or two practical cooking notes.
 If dietaryRestrictions are provided (e.g., vegan, vegetarian, kosher, halal, gluten-free, dairy-free, nut-free), prioritize options that comply.
 If cuisine is provided, bias toward regionally appropriate substitutes.
-Return JSON only, no prose. Prefer 3–5 items (max 6).
+Return JSON only, no prose. Prefer 8–10 items (max 12).
 Include rough nutrition comparison per the amount implied by the ratio (calories total, grams fat/carbs/protein).
 `;
 
@@ -237,7 +237,7 @@ Include rough nutrition comparison per the amount implied by the ratio (calories
 
     return {
       query: parsed.data.query || trimmed,
-      substitutions: filtered.slice(0, 6),
+      substitutions: filtered.slice(0, 12),
     };
   } catch (_err) {
     const fallback = STATIC_FALLBACK[norm(trimmed)] ?? [];
