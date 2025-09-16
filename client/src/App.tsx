@@ -29,6 +29,9 @@ import NotFound from "@/pages/not-found";
 // NEW: AI Substitution page
 import AISubstitutionPage from "@/pages/ai-substitution";
 
+// TEST: Recipe components test page
+import RecipesTestPage from "@/pages/recipes-test";
+
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole";
@@ -98,6 +101,13 @@ function Router() {
         <Route path="/ai-substitution">
           <ErrorBoundary>
             <AISubstitutionPage />
+          </ErrorBoundary>
+        </Route>
+
+        {/* TEST: Recipe components test page */}
+        <Route path="/recipes-test">
+          <ErrorBoundary>
+            <RecipesTestPage />
           </ErrorBoundary>
         </Route>
 

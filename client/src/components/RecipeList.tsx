@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
 import RecipeCard, { Recipe } from "./RecipeCard";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, AlertCircle } from "lucide-react";
@@ -30,7 +29,13 @@ export default function RecipeList({ limit = 50, onRecipeClick }: RecipeListProp
     isFetching
   } = useQuery<RecipeListResponse>({
     queryKey: ["/api/recipes", { limit, offset }],
-    queryFn: () => apiRequest("GET", `/api/recipes?limit=${limit}&offset=${offset}`),
+    queryFn: async () => {
+      const response = await fetch(`/api/recipes?limit=${limit}&offset=${offset}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch recipes: ${response.statusText}`);
+      }
+      return response.json();
+    },
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 2,
   });
