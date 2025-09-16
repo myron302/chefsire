@@ -13,6 +13,7 @@ import ExplorePage from "@/pages/explore/ExplorePage";
 
 import RecipesListPage from "@/pages/recipes/RecipesListPage";
 import RecipesFiltersPage from "@/pages/recipes/RecipesFiltersPage";
+import RecipesTestPage from "@/pages/recipes/RecipesTestPage";
 import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
 
 import Profile from "@/pages/profile";
@@ -47,6 +48,7 @@ function RecipesSection() {
       <Switch>
         {/* Put the more specific path FIRST so it matches before /recipes */}
         <Route path="/recipes/filters" component={RecipesFiltersPage} />
+        <Route path="/recipes-test" component={RecipesTestPage} />
         <Route path="/recipes" component={RecipesListPage} />
         {/* If you add more recipe subroutes later, keep them here under the provider */}
       </Switch>
@@ -71,6 +73,7 @@ function Router() {
         <Route path="/explore" component={ExplorePage} />
 
         {/* ✅ All recipes routes live under one provider */}
+        <Route path="/recipes-test" component={RecipesTestPage} />
         <Route path="/recipes/:rest*" component={RecipesSection} />
         <Route path="/recipes" component={RecipesSection} />
 
