@@ -87,9 +87,6 @@ export function useRecipesData() {
           createdAt: r.createdAt ?? null,
         }));
 
-        // Debug log to print the normalized cards array for easy troubleshooting
-        console.log("Normalized recipe cards:", cards);
-
         // Quick client-side search (title/keywords) if user typed in the mini search
         const quick = (state as any).search?.trim().toLowerCase();
         if (quick) {
