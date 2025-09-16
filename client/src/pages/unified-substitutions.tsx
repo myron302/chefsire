@@ -59,7 +59,7 @@ export default function UnifiedSubstitutions() {
 
   // Filter and goal state
   const [nutritionalGoal, setNutritionalGoal] = React.useState<NutritionalGoal>("all");
-  const [selectedCuisine, setSelectedCuisine] = React.useState<string>("");
+  const [selectedCuisine, setSelectedCuisine] = React.useState<string>("any");
   const [dietaryRestrictions, setDietaryRestrictions] = React.useState<string[]>([]);
 
   // User contribution form state
@@ -181,7 +181,7 @@ export default function UnifiedSubstitutions() {
     try {
       const pathIng = encodeURIComponent(q);
       const params = new URLSearchParams();
-      if (selectedCuisine) params.append("cuisine", selectedCuisine);
+      if (selectedCuisine && selectedCuisine !== "any") params.append("cuisine", selectedCuisine);
       if (dietaryRestrictions.length > 0) {
         dietaryRestrictions.forEach(restriction => params.append("dietary", restriction));
       }
@@ -361,7 +361,7 @@ export default function UnifiedSubstitutions() {
                       <SelectValue placeholder="Any cuisine" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any cuisine</SelectItem>
+                      <SelectItem value="any">Any cuisine</SelectItem>
                       {cuisines.map(cuisine => (
                         <SelectItem key={cuisine} value={cuisine.toLowerCase()}>{cuisine}</SelectItem>
                       ))}
@@ -621,9 +621,9 @@ export default function UnifiedSubstitutions() {
                         </Badge>
                       )}
                     </div>
-                    {(selectedCuisine || dietaryRestrictions.length > 0) && (
+                    {(selectedCuisine && selectedCuisine !== "any" || dietaryRestrictions.length > 0) && (
                       <div className="flex gap-2 mt-2">
-                        {selectedCuisine && (
+                        {selectedCuisine && selectedCuisine !== "any" && (
                           <Badge variant="secondary">{selectedCuisine} cuisine</Badge>
                         )}
                         {dietaryRestrictions.map(restriction => (
