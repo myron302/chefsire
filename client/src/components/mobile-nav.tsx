@@ -16,9 +16,9 @@ export default function MobileNav({ onCreatePost }: MobileNavProps) {
 
   const nav: NavLink[] = [
     { name: "Explore", href: "/explore", icon: Compass },
-    { name: "Recipes", href: "/recipes", icon: BookOpen }, // added
-    { name: "Create", action: handleCreate, icon: Plus },   // center FAB
-    { name: "AI Subs", href: "/ai-substitution", icon: Lightbulb },
+    { name: "Recipes", href: "/recipes", icon: BookOpen },
+    { name: "Create", action: handleCreate, icon: Plus },
+    { name: "Substitutions", href: "/substitutions", icon: Lightbulb },
     { name: "Nutrition", href: "/nutrition", icon: Activity },
     { name: "Profile", href: "/profile", icon: User },
   ];

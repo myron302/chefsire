@@ -21,6 +21,7 @@ import {
   type NormalizedRecipe,
 } from "./services/recipes-providers";
 import { fetchRecipes } from "./features/recipes.service";
+import { fetchSpoonacularSubstitutions, searchSpoonacularIngredients } from "./services/spoonacular-ingredients";
 
 // Simple mock auth (replace later)
 const authenticateUser = (req: any, _res: any, next: any) => {
@@ -1184,44 +1185,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const ingredient = decodeURIComponent(req.params.ingredient);
 
-      const dbRows = await storage.getIngredientSubstitutions(ingredient);
-
-      if (!dbRows || dbRows.length === 0) {
-        try {
-          const subs = await aiSuggestSubstitutions(ingredient, {
-            cuisine: (req.query.cuisine as string) || undefined,
-            dietaryRestrictions: req.query.dietaryRestrictions
-              ? String(req.query.dietaryRestrictions).split(",")
-              : undefined,
-          });
-
-          const aiRows = (subs || []).map((s) => ({
-            originalIngredient: ingredient,
-            substituteIngredient: s.substituteIngredient,
-            ratio: s.ratio || "1:1",
-            notes: s.notes || "",
-            category: s.category || "",
-            nutrition: s.nutrition || undefined,
-            source: "ai" as const,
-          }));
-
-          return res.json({
-            ingredient,
-            substitutions: aiRows,
-            total: aiRows.length,
-            categories: [...new Set(aiRows.map((x) => x.category).filter(Boolean))],
-          });
-        } catch (e) {
-          console.error("AI fallback failed:", e);
-        }
+      // Primary: Try Spoonacular API first
+      let spoonacularSubs = [];
+      try {
+        spoonacularSubs = await fetchSpoonacularSubstitutions(ingredient);
+      } catch (e) {
+        console.warn("Spoonacular substitutions failed:", e);
       }
 
-      const rows = (dbRows || []).map((s: any) => ({ ...s, source: "db" as const }));
+      // If Spoonacular has results, prioritize them
+      if (spoonacularSubs && spoonacularSubs.length > 0) {
+        const spoonRows = spoonacularSubs.map((s) => ({
+          originalIngredient: ingredient,
+          substituteIngredient: s.substituteIngredient,
+          ratio: s.ratio || "1:1",
+          notes: s.notes || "",
+          category: s.category || "",
+          nutrition: s.nutrition || undefined,
+          source: "spoonacular" as const,
+        }));
+
+        return res.json({
+          ingredient,
+          substitutions: spoonRows,
+          total: spoonRows.length,
+          categories: [...new Set(spoonRows.map((x) => x.category).filter(Boolean))],
+          source: "spoonacular"
+        });
+      }
+
+      // Secondary: Check local database
+      const dbRows = await storage.getIngredientSubstitutions(ingredient);
+      if (dbRows && dbRows.length > 0) {
+        const rows = dbRows.map((s: any) => ({ ...s, source: "db" as const }));
+        return res.json({
+          ingredient,
+          substitutions: rows,
+          total: rows.length,
+          categories: [...new Set(rows.map((x) => x.category).filter(Boolean))],
+          source: "database"
+        });
+      }
+
+      // Tertiary: Fallback to AI if neither Spoonacular nor DB has results
+      try {
+        const subs = await aiSuggestSubstitutions(ingredient, {
+          cuisine: (req.query.cuisine as string) || undefined,
+          dietaryRestrictions: req.query.dietaryRestrictions
+            ? String(req.query.dietaryRestrictions).split(",")
+            : undefined,
+        });
+
+        const aiRows = (subs || []).map((s) => ({
+          originalIngredient: ingredient,
+          substituteIngredient: s.substituteIngredient,
+          ratio: s.ratio || "1:1",
+          notes: s.notes || "",
+          category: s.category || "",
+          nutrition: s.nutrition || undefined,
+          source: "ai" as const,
+        }));
+
+        return res.json({
+          ingredient,
+          substitutions: aiRows,
+          total: aiRows.length,
+          categories: [...new Set(aiRows.map((x) => x.category).filter(Boolean))],
+          source: "ai"
+        });
+      } catch (e) {
+        console.error("AI fallback failed:", e);
+      }
+
+      // No results found from any source
       res.json({
         ingredient,
-        substitutions: rows,
-        total: rows.length,
-        categories: [...new Set(rows.map((x) => x.category).filter(Boolean))],
+        substitutions: [],
+        total: 0,
+        categories: [],
+        source: "none"
       });
     } catch (err) {
       console.error(err);
@@ -1235,8 +1277,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!query || query.length < 2)
         return res.status(400).json({ message: "Search query must be at least 2 characters long" });
 
-      const results = await storage.searchSubstitutions(query);
-      res.json({ query, results, total: results.length });
+      // Primary: Try Spoonacular ingredient search
+      let spoonacularIngredients = [];
+      try {
+        spoonacularIngredients = await searchSpoonacularIngredients(query);
+      } catch (e) {
+        console.warn("Spoonacular ingredient search failed:", e);
+      }
+
+      // Secondary: Search local database
+      const dbResults = await storage.searchSubstitutions(query);
+      
+      // Combine and deduplicate results
+      const allResults = [
+        ...spoonacularIngredients.map(name => ({ name, source: "spoonacular" })),
+        ...dbResults.map((result: any) => ({ name: result.name || result, source: "database" }))
+      ];
+
+      // Remove duplicates by name (case insensitive)
+      const uniqueResults = allResults.filter((item, index, arr) => 
+        arr.findIndex(other => other.name.toLowerCase() === item.name.toLowerCase()) === index
+      );
+
+      res.json({ 
+        query, 
+        results: uniqueResults.slice(0, 20), // Limit to 20 results
+        total: uniqueResults.length 
+      });
     } catch {
       res.status(500).json({ message: "Failed to search substitutions" });
     }

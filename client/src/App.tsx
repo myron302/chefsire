@@ -25,9 +25,7 @@ import CateringMarketplace from "@/pages/catering";
 import PotentPotables from "@/pages/potent-potables";
 import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
-
-// NEW: AI Substitution page
-import AISubstitutionPage from "@/pages/ai-substitution";
+import SubstitutionsPage from "@/pages/substitutions";
 
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -90,14 +88,7 @@ function Router() {
 
         <Route path="/substitutions">
           <ErrorBoundary>
-            <IngredientSubstitutions />
-          </ErrorBoundary>
-        </Route>
-
-        {/* NEW: /ai-substitution route */}
-        <Route path="/ai-substitution">
-          <ErrorBoundary>
-            <AISubstitutionPage />
+            <SubstitutionsPage />
           </ErrorBoundary>
         </Route>
 

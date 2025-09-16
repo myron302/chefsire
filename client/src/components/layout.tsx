@@ -40,7 +40,6 @@ export default function Layout({ children }: LayoutProps) {
     { href: "/", label: "Home" },
     { href: "/recipes", label: "Recipes" },
     { href: "/substitutions", label: "Substitutions" },
-    { href: "/ai-substitution", label: "AI Substitution", indent: true },
     { href: "/potent-potables", label: "Potent Potables" },
     { href: "/catering", label: "Catering" },
     { href: "/store", label: "Store" },
