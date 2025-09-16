@@ -76,7 +76,7 @@ export function useRecipesData() {
         let cards: RecipeCardData[] = afterRules.map((r) => ({
           id: r.id,
           title: r.recipe?.title ?? r.title ?? "Untitled",
-          image: r.image || r.recipe?.image || null,
+          image: r.image || r.recipe?.image || (r as any).imageUrl || r.recipe?.imageUrl || null,
           cookTime: r.recipe?.cookTime ?? null,
           servings: r.recipe?.servings ?? null,
           cuisine: r.recipe?.cuisine ?? null,
@@ -86,6 +86,9 @@ export function useRecipesData() {
           likes: r.likes ?? 0,
           createdAt: r.createdAt ?? null,
         }));
+
+        // Debug log to print the normalized cards array for easy troubleshooting
+        console.log("Normalized recipe cards:", cards);
 
         // Quick client-side search (title/keywords) if user typed in the mini search
         const quick = (state as any).search?.trim().toLowerCase();
