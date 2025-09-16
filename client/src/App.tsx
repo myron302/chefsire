@@ -74,6 +74,9 @@ function Router() {
         <Route path="/recipes/:rest*" component={RecipesSection} />
         <Route path="/recipes" component={RecipesSection} />
 
+        {/* Recipe test/demo page */}
+        <Route path="/recipes-test" component={RecipesListPage} />
+
         {/* Backward-compat (old explore/filters -> recipes/filters) */}
         <Route path="/explore/filters">
           <Redirect to="/recipes/filters" />
