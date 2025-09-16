@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Clock, Users } from "lucide-react";
+import { Loader2, Clock, Users, ChefHat } from "lucide-react";
 
 /** Uniform “spoon” icon (SVG) */
 function SpoonIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -36,13 +36,17 @@ function SpoonRating({ value }: { value: number | null | undefined }) {
 }
 
 function RecipeCard({ r }: { r: RecipeCardData }) {
+  // Check if data might be incomplete
+  const hasIncompleteData = !r.image || !r.cookTime;
+  
   return (
     <Card className="overflow-hidden bg-card border border-border hover:shadow-md transition-shadow">
       {r.image ? (
         <img src={r.image} alt={r.title} className="w-full h-48 object-cover" />
       ) : (
-        <div className="w-full h-48 bg-muted flex items-center justify-center text-muted-foreground">
-          No image
+        <div className="w-full h-48 bg-muted flex flex-col items-center justify-center text-muted-foreground">
+          <ChefHat className="w-12 h-12 mb-2" />
+          <span className="text-sm">No image available</span>
         </div>
       )}
 
@@ -53,12 +57,10 @@ function RecipeCard({ r }: { r: RecipeCardData }) {
         </div>
 
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          {r.cookTime ? (
-            <span className="inline-flex items-center gap-1">
-              <Clock className="w-4 h-4" />
-              {r.cookTime} min
-            </span>
-          ) : null}
+          <span className="inline-flex items-center gap-1">
+            <Clock className="w-4 h-4" />
+            {r.cookTime ? `${r.cookTime} min` : "N/A"}
+          </span>
           {r.servings ? (
             <span className="inline-flex items-center gap-1">
               <Users className="w-4 h-4" />
@@ -75,6 +77,11 @@ function RecipeCard({ r }: { r: RecipeCardData }) {
               {t}
             </Badge>
           ))}
+          {hasIncompleteData && (
+            <Badge variant="outline" className="text-xs bg-orange-50 text-orange-600 border-orange-200">
+              Incomplete data
+            </Badge>
+          )}
         </div>
       </CardContent>
     </Card>
