@@ -18,16 +18,12 @@ import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
 import Profile from "@/pages/profile";
 import CreatePost from "@/pages/create-post";
 import Pantry from "@/components/Pantry";
-import IngredientSubstitutions from "@/components/IngredientSubstitutions";
 import Marketplace from "@/components/Marketplace";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import CateringMarketplace from "@/pages/catering";
 import PotentPotables from "@/pages/potent-potables";
 import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
-
-// NEW: AI Substitution page
-import AISubstitutionPage from "@/pages/ai-substitution";
 
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -85,19 +81,6 @@ function Router() {
         <Route path="/pantry">
           <ErrorBoundary>
             <Pantry />
-          </ErrorBoundary>
-        </Route>
-
-        <Route path="/substitutions">
-          <ErrorBoundary>
-            <IngredientSubstitutions />
-          </ErrorBoundary>
-        </Route>
-
-        {/* NEW: /ai-substitution route */}
-        <Route path="/ai-substitution">
-          <ErrorBoundary>
-            <AISubstitutionPage />
           </ErrorBoundary>
         </Route>
 

@@ -7,14 +7,12 @@ import {
   User,
   Plus,
   ChefHat,
-  Shuffle,
   ShoppingCart,
   Activity,
   ChevronRight,
   Utensils,
   GlassWater,
   Heart,
-  Lightbulb,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -48,15 +46,6 @@ const NAV: NavItem[] = [
     submenu: [
       { name: "Browse Recipes", href: "/recipes", icon: BookOpen },
       { name: "My Pantry", href: "/pantry", icon: ChefHat },
-      {
-        name: "Substitutions",
-        href: "/substitutions",
-        icon: Shuffle,
-        hasSubmenu: true,
-        submenu: [
-          { name: "AI Substitution", href: "/ai-substitution", icon: Lightbulb },
-        ],
-      },
     ],
   },
   { name: "Potent Potables", href: "/potent-potables", icon: GlassWater },
