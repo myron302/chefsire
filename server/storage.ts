@@ -16,7 +16,6 @@ import {
   mealPlanEntries,
   pantryItems,
   nutritionLogs,
-  ingredientSubstitutions,
   type User,
   type InsertUser,
   type Post,
@@ -128,15 +127,9 @@ export interface IStorage {
   deletePantryItem(itemId: string): Promise<boolean>;
   getExpiringItems(userId: string, daysAhead: number): Promise<any[]>;
 
-  // Ingredient Substitutions
-  addIngredientSubstitution(originalIngredient: string, substituteIngredient: string, ratio: string, notes?: string, category?: string): Promise<any>;
-  getIngredientSubstitutions(ingredient: string): Promise<any[]>;
-  getAllSubstitutions(): Promise<any[]>;
-  searchSubstitutions(query: string): Promise<any[]>;
-
   // Pantry-Based Recipe Suggestions
   getRecipesFromPantryItems(userId: string, options: { requireAllIngredients?: boolean; maxMissingIngredients?: number; includeExpiringSoon?: boolean; limit?: number }): Promise<any[]>;
-  getSuggestedIngredientsForRecipe(recipeId: string, userId: string): Promise<{ recipe: any; missingIngredients: string[]; suggestedSubstitutions: any[]; availableInMarketplace: any[] }>;
+  getSuggestedIngredientsForRecipe(recipeId: string, userId: string): Promise<{ recipe: any; missingIngredients: string[]; availableInMarketplace: any[] }>;
 }
 
 export class DrizzleStorage implements IStorage {
@@ -936,59 +929,6 @@ export class DrizzleStorage implements IStorage {
       .where(and(eq(pantryItems.userId, userId), sql`${pantryItems.expirationDate} <= ${futureDate}`))
       .orderBy(asc(pantryItems.expirationDate));
   }
-  // ---------- Ingredient Substitutions ----------
-  async addIngredientSubstitution(
-    originalIngredient: string,
-    substituteIngredient: string,
-    ratio: string,
-    notes?: string,
-    category?: string
-  ): Promise<any> {
-    const result = await db
-      .insert(ingredientSubstitutions)
-      .values({
-        originalIngredient: originalIngredient.toLowerCase(),
-        substituteIngredient: substituteIngredient.toLowerCase(),
-        ratio,
-        notes,
-        category,
-      })
-      .returning();
-
-    return result[0];
-  }
-
-  async getIngredientSubstitutions(ingredient: string): Promise<any[]> {
-    const normalized = ingredient.toLowerCase();
-
-    return db
-      .select()
-      .from(ingredientSubstitutions)
-      .where(eq(ingredientSubstitutions.originalIngredient, normalized))
-      .orderBy(asc(ingredientSubstitutions.originalIngredient));
-  }
-
-  async getAllSubstitutions(): Promise<any[]> {
-    return db
-      .select()
-      .from(ingredientSubstitutions)
-      .orderBy(asc(ingredientSubstitutions.originalIngredient), asc(ingredientSubstitutions.category));
-  }
-
-  async searchSubstitutions(query: string): Promise<any[]> {
-    const normalized = query.toLowerCase();
-
-    return db
-      .select()
-      .from(ingredientSubstitutions)
-      .where(
-        or(
-          sql`${ingredientSubstitutions.originalIngredient} ILIKE ${"%" + normalized + "%"}`,
-          sql`${ingredientSubstitutions.substituteIngredient} ILIKE ${"%" + normalized + "%"}`
-        )!
-      )
-      .orderBy(asc(ingredientSubstitutions.originalIngredient));
-  }
   // ---------- Pantry-based recipe suggestions ----------
   async getRecipesFromPantryItems(
     userId: string,
@@ -1070,7 +1010,6 @@ export class DrizzleStorage implements IStorage {
   ): Promise<{
     recipe: any;
     missingIngredients: string[];
-    suggestedSubstitutions: any[];
     availableInMarketplace: any[];
   }> {
     const recipe = await this.getRecipe(recipeId);
@@ -1088,14 +1027,6 @@ export class DrizzleStorage implements IStorage {
       if (!has) missing.push(ing);
     });
 
-    const suggestedSubstitutions: any[] = [];
-    for (const ing of missing) {
-      const subs = await this.getIngredientSubstitutions(ing);
-      if (subs.length > 0) {
-        suggestedSubstitutions.push({ originalIngredient: ing, substitutions: subs });
-      }
-    }
-
     const availableInMarketplace: any[] = [];
     for (const ing of missing) {
       const items = await this.searchProducts(ing, "ingredients", undefined, 0, 5);
@@ -1107,7 +1038,6 @@ export class DrizzleStorage implements IStorage {
     return {
       recipe,
       missingIngredients: missing,
-      suggestedSubstitutions,
       availableInMarketplace,
     };
   }
