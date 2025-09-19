@@ -1167,7 +1167,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         summary: {
           totalIngredients: analysis.recipe.ingredients?.length || 0,
           missingCount: analysis.missingIngredients.length,
-          canMakeWithSubstitutions: analysis.suggestedSubstitutions.length > 0,
           availableInMarketplace: analysis.availableInMarketplace.length > 0,
         },
       });
