@@ -1,10 +1,12 @@
 import { defineConfig } from "drizzle-kit";
 
+const databaseUrl = process.env.DATABASE_URL || "your-database-1-connection-string-here";
+
 export default defineConfig({
   out: "./migrations",
-  schema: "./shared/schema.ts",
+  schema: "./shared/schema.ts", 
   dialect: "postgresql",
   dbCredentials: {
-    url: postgresql://neondb_owner:npg_Lwd7A9beEhcz@ep-aged-forest-aduhidk1-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require,
+    url: databaseUrl,
   },
 });
