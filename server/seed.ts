@@ -1,11 +1,26 @@
 // server/seed.ts
 import "dotenv/config";
-
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool } from "@neondatabase/serverless";
-import { users, posts, recipes, stories, likes, follows } from "../shared/schema.js";
+import {
+  users,
+  posts,
+  recipes,
+  stories,
+  likes,
+  follows,
+} from "../shared/schema.js";
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+function reqEnv(name: string): string {
+  const v = process.env[name];
+  if (!v || !v.trim()) {
+    throw new Error(`${name} is missing. In production, set it in Plesk → Custom environment variables.`);
+  }
+  return v;
+}
+
+const DATABASE_URL = reqEnv("DATABASE_URL");
+const pool = new Pool({ connectionString: DATABASE_URL });
 const db = drizzle(pool);
 
 async function seedDatabase() {
@@ -438,11 +453,14 @@ async function seedDatabase() {
     console.log("- 10 likes");
     console.log("- 12 follow relationships");
   } catch (error) {
-    console.error("Error seeding database:", error);
+    console.error("Error seeding database:", (error as Error).message);
     throw error;
   } finally {
     await pool.end();
   }
 }
 
-seedDatabase().catch(console.error);
+seedDatabase().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
