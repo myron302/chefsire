@@ -1,4 +1,9 @@
 // server/scripts/export-table.ts
+// Usage (Plesk → Node.js → Run Script):
+// dotenv -e server/.env -- tsx server/scripts/export-table.ts playing_with_neon
+//
+// Exports the given Postgres table to CSV at server/tmp/<table>-<timestamp>.csv
+
 import { Client } from "pg";
 import fs from "fs/promises";
 import path from "path";
