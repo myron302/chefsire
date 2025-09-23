@@ -16,7 +16,9 @@
 
     "db:ping": "dotenv -e server/.env -- tsx server/scripts/db-ping.ts",
     "db:push": "dotenv -e server/.env -- drizzle-kit push",
+    "db:push:accept": "dotenv -e server/.env -- drizzle-kit push --yes",
     "db:seed": "dotenv -e server/.env -- tsx server/seed.ts",
+    "db:export:neon": "dotenv -e server/.env -- tsx server/scripts/export-table.ts playing_with_neon",
 
     "postinstall": "npx update-browserslist-db@latest || true",
 
