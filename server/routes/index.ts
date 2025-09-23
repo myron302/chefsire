@@ -11,6 +11,8 @@ import likes from "./likes";
 import comments from "./comments";
 import nutrition from "./nutrition";
 import mealPlans from "./meal-plans";
+import follows from "./follows";
+import bites from "./bites"; // renamed from stories
 
 const router = Router();
 
@@ -25,5 +27,12 @@ router.use("/likes", likes);
 router.use("/comments", comments);
 router.use("/nutrition", nutrition);
 router.use("/meal-plans", mealPlans);
+router.use("/follows", follows);
+
+// Preferred path
+router.use("/bites", bites);
+
+// Back-compat alias so any existing client calls to /api/stories/* keep working
+router.use("/stories", bites);
 
 export default router;
