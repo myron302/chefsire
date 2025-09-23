@@ -121,7 +121,7 @@ function SimpleRecipeCard({ post, currentUserId }: { post: PostWithUser; current
         {post.imageUrl ? (
           <img
             src={post.imageUrl}
-            alt={post.title || "Recipe"}
+            alt={post.caption || "Recipe"}
             className="w-full h-64 object-cover"
           />
         ) : (
@@ -141,15 +141,15 @@ function SimpleRecipeCard({ post, currentUserId }: { post: PostWithUser; current
             <p className="text-sm text-gray-500">Recipe</p>
           </div>
         </div>
-        <h3 className="text-xl font-semibold mb-2">{post.title || "Recipe"}</h3>
-        <p className="text-gray-600 mb-4">{post.content}</p>
+        <h3 className="text-xl font-semibold mb-2">{post.caption || "Recipe"}</h3>
+        <p className="text-gray-600 mb-4">{post.caption}</p>
         <div className="flex items-center justify-between text-sm text-gray-500">
           <span className="flex items-center space-x-1">
             <Heart className="w-4 h-4" />
             <span>{post.likesCount} likes</span>
           </span>
           <span className="flex items-center space-x-1">
-            <Clock className="w-4 h-4" />
+            <Clock className="w-4 w-4" />
             <span>Recipe</span>
           </span>
         </div>
