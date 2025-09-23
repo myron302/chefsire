@@ -1,8 +1,11 @@
 // client/src/App.tsx
 import * as React from "react";
 import { Switch, Route, useLocation } from "wouter";
-import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
+
+// ✅ point at the actual file name: query-client.ts
+import { queryClient } from "@/lib/query-client";
+
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Layout from "@/components/layout";
