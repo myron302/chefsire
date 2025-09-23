@@ -1,7 +1,7 @@
 // server/routes/recipes.ts
 import { Router } from "express";
 import { storage } from "../storage";
-import { searchRecipes } from "../services/recipes.service";
+import { searchRecipes } from "../services/recipes-service"; // ← matches your filename
 
 const r = Router();
 
@@ -20,6 +20,37 @@ r.get("/post/:postId", async (req, res, next) => {
     const recipe = await storage.getRecipeByPostId(req.params.postId);
     if (!recipe) return res.status(404).json({ message: "Recipe not found" });
     res.json(recipe);
+  } catch (e) { next(e); }
+});
+
+// GET /api/recipes/search
+// q, cuisines, diets, mealTypes, maxReadyMinutes, pageSize, offset, source
+r.get("/search", async (req, res, next) => {
+  try {
+    const params = {
+      q: typeof req.query.q === "string" ? req.query.q : undefined,
+      cuisines:
+        typeof req.query.cuisines === "string"
+          ? req.query.cuisines.split(",").map((s) => s.trim()).filter(Boolean)
+          : [],
+      diets:
+        typeof req.query.diets === "string"
+          ? req.query.diets.split(",").map((s) => s.trim()).filter(Boolean)
+          : [],
+      mealTypes:
+        typeof req.query.mealTypes === "string"
+          ? req.query.mealTypes.split(",").map((s) => s.trim()).filter(Boolean)
+          : [],
+      maxReadyMinutes: req.query.maxReadyMinutes ? Number(req.query.maxReadyMinutes) : undefined,
+      pageSize: req.query.pageSize ? Number(req.query.pageSize) : 24,
+      offset: req.query.offset ? Number(req.query.offset) : 0,
+      source: (["all", "external", "local"] as const).includes(String(req.query.source))
+        ? (req.query.source as any)
+        : "all",
+    };
+
+    const result = await searchRecipes(params);
+    res.json(result);
   } catch (e) { next(e); }
 });
 
@@ -46,26 +77,6 @@ r.put("/:id", async (req, res, next) => {
     const updated = await storage.updateRecipe(req.params.id, req.body);
     if (!updated) return res.status(404).json({ message: "Recipe not found" });
     res.json(updated);
-  } catch (e) { next(e); }
-});
-
-// GET /api/recipes/search
-// q, cuisines, diets, mealTypes, maxReadyMinutes, pageSize, offset, source
-r.get("/search", async (req, res, next) => {
-  try {
-    const params = {
-      q: typeof req.query.q === "string" ? req.query.q : undefined,
-      cuisines: typeof req.query.cuisines === "string" ? req.query.cuisines.split(",").map(s=>s.trim()).filter(Boolean) : [],
-      diets: typeof req.query.diets === "string" ? req.query.diets.split(",").map(s=>s.trim()).filter(Boolean) : [],
-      mealTypes: typeof req.query.mealTypes === "string" ? req.query.mealTypes.split(",").map(s=>s.trim()).filter(Boolean) : [],
-      maxReadyMinutes: req.query.maxReadyMinutes ? Number(req.query.maxReadyMinutes) : undefined,
-      pageSize: req.query.pageSize ? Number(req.query.pageSize) : 24,
-      offset: req.query.offset ? Number(req.query.offset) : 0,
-      source: (["all","external","local"] as const).includes(String(req.query.source)) ? (req.query.source as any) : "all",
-    };
-
-    const result = await searchRecipes(params);
-    res.json(result);
   } catch (e) { next(e); }
 });
 
