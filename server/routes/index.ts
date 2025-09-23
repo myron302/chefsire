@@ -1,38 +1,23 @@
 // server/routes/index.ts
 import { Router } from "express";
-
-import recipes from "./recipes";
-import substitutions from "./substitutions";
-import pantry from "./pantry";
-import marketplace from "./marketplace";
+import health from "./health";
 import users from "./users";
 import posts from "./posts";
-import likes from "./likes";
+import recipes from "./recipes";
+import bites from "./bites";       // “stories” in DB, “bites” in app
 import comments from "./comments";
-import nutrition from "./nutrition";
-import mealPlans from "./meal-plans";
+import likes from "./likes";
 import follows from "./follows";
-import bites from "./bites"; // renamed from stories
 
-const router = Router();
+const api = Router();
 
-// Grouped API under /api/*
-router.use("/recipes", recipes);
-router.use("/substitutions", substitutions);
-router.use("/pantry", pantry);
-router.use("/marketplace", marketplace);
-router.use("/users", users);
-router.use("/posts", posts);
-router.use("/likes", likes);
-router.use("/comments", comments);
-router.use("/nutrition", nutrition);
-router.use("/meal-plans", mealPlans);
-router.use("/follows", follows);
+api.use("/health", health);
+api.use("/users", users);
+api.use("/posts", posts);
+api.use("/recipes", recipes);
+api.use("/bites", bites);
+api.use("/comments", comments);
+api.use("/likes", likes);
+api.use("/follows", follows);
 
-// Preferred path
-router.use("/bites", bites);
-
-// Back-compat alias so any existing client calls to /api/stories/* keep working
-router.use("/stories", bites);
-
-export default router;
+export default api;
