@@ -1,98 +1,52 @@
 // server/routes/nutrition.ts
 import { Router } from "express";
-import { z } from "zod";
 import { storage } from "../storage";
 
 const r = Router();
 
 /**
- * Canonical routes under /api/nutrition/*
- * Plus back-compat routes that mimic the old /api/users/:id/nutrition/* paths.
- *
- * Storage methods expected:
- *  - enableNutritionPremium(userId: string, trialDays: number)
- *  - updateNutritionGoals(userId: string, goals: { dailyCalorieGoal?: number; macroGoals?: { protein:number; carbs:number; fat:number }; dietaryRestrictions?: string[] })
- *  - logNutrition(userId: string, data: {...})
- *  - getDailyNutritionSummary(userId: string, date: Date)
- *  - getNutritionLogs(userId: string, start: Date, end: Date)
- *  - getUser(userId: string)
+ * POST /api/nutrition/users/:id/trial
+ * Body: { days?: number }  (default 30)
  */
-
-// ---------- Canonical routes ----------
-
-/** POST /api/nutrition/users/:id/trial  */
-r.post("/users/:id/trial", async (req, res) => {
+r.post("/users/:id/trial", async (req, res, next) => {
   try {
-    const updatedUser = await storage.enableNutritionPremium(req.params.id, 30);
-    if (!updatedUser) return res.status(404).json({ message: "User not found" });
-    res.json({
-      message: "Nutrition premium trial activated",
-      user: updatedUser,
-      trialEndsAt: (updatedUser as any).nutritionTrialEndsAt,
-    });
-  } catch {
-    res.status(500).json({ message: "Failed to start nutrition trial" });
-  }
+    const days = Number(req.body?.days ?? 30);
+    const user = await storage.enableNutritionPremium(req.params.id, days);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json({ message: "Nutrition premium trial activated", user, trialEndsAt: (user as any).nutritionTrialEnd });
+  } catch (e) { next(e); }
 });
 
-/** PUT /api/nutrition/users/:id/goals */
-r.put("/users/:id/goals", async (req, res) => {
+/**
+ * PUT /api/nutrition/users/:id/goals
+ * Body: { dailyCalorieGoal?, macroGoals?, dietaryRestrictions? }
+ */
+r.put("/users/:id/goals", async (req, res, next) => {
   try {
-    const goalsSchema = z.object({
-      dailyCalorieGoal: z.number().min(800).max(5000).optional(),
-      macroGoals: z
-        .object({
-          protein: z.number().min(0).max(100),
-          carbs: z.number().min(0).max(100),
-          fat: z.number().min(0).max(100),
-        })
-        .optional(),
-      dietaryRestrictions: z.array(z.string()).optional(),
-    });
-    const goals = goalsSchema.parse(req.body);
-
-    const updatedUser = await storage.updateNutritionGoals(req.params.id, goals);
-    if (!updatedUser) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Nutrition goals updated", user: updatedUser });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ message: "Invalid goals data", errors: error.errors });
-    }
-    res.status(500).json({ message: "Failed to update nutrition goals" });
-  }
+    const updated = await storage.updateNutritionGoals(req.params.id, req.body || {});
+    if (!updated) return res.status(404).json({ message: "User not found" });
+    res.json({ message: "Nutrition goals updated", user: updated });
+  } catch (e) { next(e); }
 });
 
-/** POST /api/nutrition/log */
-r.post("/log", async (req, res) => {
+/**
+ * POST /api/nutrition/log
+ * Body: { userId, date, mealType, recipeId?, customFoodName?, servings, calories, protein?, carbs?, fat?, fiber?, imageUrl? }
+ */
+r.post("/log", async (req, res, next) => {
   try {
-    const logSchema = z.object({
-      userId: z.string(),
-      date: z.string().transform((str) => new Date(str)),
-      mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]),
-      recipeId: z.string().optional(),
-      customFoodName: z.string().optional(),
-      servings: z.number().min(0.1).max(20).default(1),
-      calories: z.number().min(0),
-      protein: z.number().min(0).optional(),
-      carbs: z.number().min(0).optional(),
-      fat: z.number().min(0).optional(),
-      fiber: z.number().min(0).optional(),
-      imageUrl: z.string().url().optional(),
-    });
-    const logData = logSchema.parse(req.body);
-
-    const nutritionLog = await storage.logNutrition(logData.userId, logData);
-    res.status(201).json({ message: "Nutrition logged successfully", log: nutritionLog });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ message: "Invalid nutrition data", errors: error.errors });
-    }
-    res.status(500).json({ message: "Failed to log nutrition" });
-  }
+    const { userId, ...log } = req.body || {};
+    if (!userId) return res.status(400).json({ message: "userId is required" });
+    const entry = await storage.logNutrition(String(userId), log);
+    res.status(201).json({ message: "Nutrition logged successfully", log: entry });
+  } catch (e) { next(e); }
 });
 
-/** GET /api/nutrition/users/:id/daily/:date */
-r.get("/users/:id/daily/:date", async (req, res) => {
+/**
+ * GET /api/nutrition/users/:id/daily/:date
+ * :date format YYYY-MM-DD
+ */
+r.get("/users/:id/daily/:date", async (req, res, next) => {
   try {
     const date = new Date(req.params.date);
     if (isNaN(date.getTime())) return res.status(400).json({ message: "Invalid date format" });
@@ -100,37 +54,30 @@ r.get("/users/:id/daily/:date", async (req, res) => {
     const summary = await storage.getDailyNutritionSummary(req.params.id, date);
     const user = await storage.getUser(req.params.id);
 
-    const response = {
+    res.json({
       date: req.params.date,
       summary,
       goals: user
-        ? {
-            dailyCalorieGoal: (user as any).dailyCalorieGoal,
-            macroGoals: (user as any).macroGoals,
-          }
+        ? { dailyCalorieGoal: (user as any).dailyCalorieGoal, macroGoals: (user as any).macroGoals }
         : null,
-      progress: (user as any)?.dailyCalorieGoal
-        ? {
-            calorieProgress: Math.round((summary.totalCalories / (user as any).dailyCalorieGoal) * 100),
-          }
-        : null,
-    };
-
-    res.json(response);
-  } catch {
-    res.status(500).json({ message: "Failed to fetch daily nutrition" });
-  }
+      progress:
+        user && (user as any).dailyCalorieGoal
+          ? { calorieProgress: Math.round((Number(summary.totalCalories || 0) / Number((user as any).dailyCalorieGoal)) * 100) }
+          : null,
+    });
+  } catch (e) { next(e); }
 });
 
-/** GET /api/nutrition/users/:id/logs?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD */
-r.get("/users/:id/logs", async (req, res) => {
+/**
+ * GET /api/nutrition/users/:id/logs?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+ */
+r.get("/users/:id/logs", async (req, res, next) => {
   try {
-    const startDate = new Date(req.query.startDate as string);
-    const endDate = new Date(req.query.endDate as string);
+    const startDate = new Date(String(req.query.startDate || ""));
+    const endDate   = new Date(String(req.query.endDate || ""));
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       return res.status(400).json({ message: "Invalid date format" });
     }
-
     const logs = await storage.getNutritionLogs(req.params.id, startDate, endDate);
     res.json({
       logs,
@@ -140,15 +87,7 @@ r.get("/users/:id/logs", async (req, res) => {
       },
       total: logs.length,
     });
-  } catch {
-    res.status(500).json({ message: "Failed to fetch nutrition logs" });
-  }
+  } catch (e) { next(e); }
 });
-
-// ---------- Back-compat aliases (old paths) ----------
-r.post("/users/:id/trial", async (req, res, next) => next()); // handled above
-r.put("/users/:id/goals", async (req, res, next) => next()); // same handler path
-r.get("/users/:id/daily/:date", async (req, res, next) => next());
-r.get("/users/:id/logs", async (req, res, next) => next());
 
 export default r;
