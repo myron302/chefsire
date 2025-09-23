@@ -1,71 +1,191 @@
 // tools/fix-filenames.js
+// Convert component & page filenames to kebab-case and fix "@/..." imports to match.
+// Safe on Plesk/Linux: skips missing files, avoids duplicates, shows a summary.
+
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
+import url from "url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
-const SRC_DIR = path.join(ROOT, "client", "src");
+const SRC = path.join(ROOT, "client", "src");
 
-const TARGET_DIRS = [
-  path.join(SRC_DIR, "components"),
-  path.join(SRC_DIR, "components", "ui"),
-  path.join(SRC_DIR, "pages"),
-  path.join(SRC_DIR, "lib"),
-  path.join(SRC_DIR, "hooks")
-];
+// --- helpers --------------------------------------------------------------
 
-const exts = [".tsx", ".ts", ".jsx", ".js"];
+/** true if a filename base has capitals/underscores/spaces */
+function needsKebab(base) {
+  return /[A-Z_\s]/.test(base);
+}
 
-function pascalToKebab(name) {
-  return name
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .replace(/_/g, "-")
+/** PascalCase|camelCase|snake_case|spaces -> kebab-case */
+function toKebab(base) {
+  return base
+    .replace(/\.tsx?$/i, "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2") // “FooBar” -> “Foo-Bar”
+    .replace(/[_\s]+/g, "-")
+    .replace(/-+/g, "-")
     .toLowerCase();
 }
 
+/** recursively yield absolute file paths under dir */
 function* walk(dir) {
-  if (!fs.existsSync(dir)) return;
-  for (const name of fs.readdirSync(dir)) {
-    const abs = path.join(dir, name);
-    const stat = fs.statSync(abs);
-    if (stat.isDirectory()) {
-      yield* walk(abs);
-    } else if (/\.(tsx|ts|jsx|js)$/.test(name)) {
-      yield abs;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const e of entries) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      yield* walk(p);
+    } else {
+      yield p;
     }
   }
 }
 
-const moves = [];
-
-for (const base of TARGET_DIRS) {
-  for (const abs of walk(base)) {
-    const dir = path.dirname(abs);
-    const baseName = path.basename(abs).replace(/\.(tsx|ts|jsx|js)$/, "");
-    const ext = path.extname(abs);
-    if (!/[A-Z]/.test(baseName)) continue;
-
-    const kebab = pascalToKebab(baseName); // PostCard -> post-card
-    const target = path.join(dir, `${kebab}${ext}`);
-
-    if (fs.existsSync(target)) continue; // already have a kebab file here
-    moves.push([abs, target]);
+/** read file safely; returns null on error */
+function readFileSafe(p) {
+  try {
+    return fs.readFileSync(p, "utf8");
+  } catch {
+    return null;
   }
 }
 
-if (moves.length === 0) {
-  console.log("No filenames need renaming.");
+/** write file ensuring parent exists */
+function writeFileSafe(p, data) {
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, data);
+}
+
+// --- 1) discover planned renames -----------------------------------------
+
+const exts = new Set([".ts", ".tsx"]);
+const candidates = []; // { fromAbs, toAbs, fromRel, toRel }
+
+for (const abs of walk(SRC)) {
+  const ext = path.extname(abs);
+  if (!exts.has(ext)) continue;
+
+  const base = path.basename(abs, ext);
+  if (!needsKebab(base)) continue;
+
+  const kebab = toKebab(base);
+  if (kebab === base.toLowerCase()) continue; // nothing to normalize beyond case
+
+  const dir = path.dirname(abs);
+  const toAbs = path.join(dir, `${kebab}${ext}`);
+
+  // Skip if from == to (case-insensitive FS protection)
+  if (abs.toLowerCase() === toAbs.toLowerCase()) continue;
+
+  const fromRel = path.relative(path.join(SRC), abs).replace(/\\/g, "/");
+  const toRel = path.relative(path.join(SRC), toAbs).replace(/\\/g, "/");
+
+  candidates.push({ fromAbs: abs, toAbs, fromRel, toRel });
+}
+
+// dedupe by fromAbs (in case previous scripts listed the same twice)
+const seen = new Set();
+const renames = candidates.filter((x) => {
+  if (seen.has(x.fromAbs)) return false;
+  seen.add(x.fromAbs);
+  return true;
+});
+
+// Skip missing sources, warn conflicts for existing targets
+const finalRenames = [];
+const warnings = [];
+
+for (const r of renames) {
+  if (!fs.existsSync(r.fromAbs)) {
+    warnings.push(`skip (missing): ${r.fromRel}`);
+    continue;
+  }
+  if (fs.existsSync(r.toAbs)) {
+    if (r.fromAbs === r.toAbs) {
+      continue; // same file
+    }
+    warnings.push(
+      `conflict (target exists): ${r.toRel} — not overwriting. Please resolve manually.`
+    );
+    continue;
+  }
+  finalRenames.push(r);
+}
+
+// --- show plan ------------------------------------------------------------
+
+if (finalRenames.length === 0) {
+  console.log("No filename changes needed.");
+} else {
+  console.log("Planned renames:");
+  for (const r of finalRenames) {
+    console.log(
+      `  ${r.fromRel} → ${r.toRel}`
+    );
+  }
+}
+
+if (warnings.length) {
+  console.log("\nWarnings:");
+  for (const w of warnings) console.log("  " + w);
+}
+
+// --- 2) perform renames ---------------------------------------------------
+
+for (const r of finalRenames) {
+  // extra safety re-check
+  if (!fs.existsSync(r.fromAbs)) continue;
+  fs.renameSync(r.fromAbs, r.toAbs);
+}
+
+// --- 3) fix "@/..." imports that reference the old names ------------------
+
+// Build a map of alias paths without extension
+// from "components/FooBar" -> "components/foo-bar"
+const importMap = new Map();
+for (const r of finalRenames) {
+  const fromNoExt = r.fromRel.replace(/\.(tsx|ts)$/i, "");
+  const toNoExt = r.toRel.replace(/\.(tsx|ts)$/i, "");
+  importMap.set(fromNoExt, toNoExt);
+}
+
+// If nothing changed, exit
+if (importMap.size === 0) {
+  console.log("\nDone (no imports to update).");
   process.exit(0);
 }
 
-console.log("Planned renames:");
-moves.forEach(([from, to]) =>
-  console.log("  ", path.relative(ROOT, from), "→", path.relative(ROOT, to))
-);
+// Update alias imports in all TS/TSX under client/src
+let filesTouched = 0;
+let replacements = 0;
 
-// Perform renames
-for (const [from, to] of moves) {
-  fs.renameSync(from, to);
+for (const abs of walk(SRC)) {
+  const ext = path.extname(abs);
+  if (!exts.has(ext)) continue;
+
+  let text = readFileSafe(abs);
+  if (text == null) continue;
+
+  let updated = text;
+  for (const [fromNoExt, toNoExt] of importMap) {
+    // Replace only alias imports "@/..."
+    // e.g. from "@/components/FooBar" -> "@/components/foo-bar"
+    const fromA = `@/${fromNoExt}`;
+    const toA = `@/${toNoExt}`;
+
+    // Replace in import/export/require lines and other string literals
+    // Keep it simple: global string replace is fine because paths are exact.
+    const before = updated;
+    updated = updated.split(fromA).join(toA);
+    if (updated !== before) replacements++;
+  }
+
+  if (updated !== text) {
+    writeFileSafe(abs, updated);
+    filesTouched++;
+  }
 }
-console.log("✅ Renamed", moves.length, "file(s).");
+
+console.log(
+  `\nRenamed ${finalRenames.length} file(s). Updated imports in ${filesTouched} file(s) with ${replacements} replacement batch(es).`
+);
+console.log("Done.");
