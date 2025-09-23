@@ -1,12 +1,13 @@
+// drizzle.config.ts (root)
 import { defineConfig } from "drizzle-kit";
 
-const databaseUrl = process.env.DATABASE_URL || "your-database-1-connection-string-here";
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is not set");
+}
 
 export default defineConfig({
   out: "./migrations",
-  schema: "./shared/schema.ts", 
+  schema: "./shared/schema.ts",
   dialect: "postgresql",
-  dbCredentials: {
-    url: databaseUrl,
-  },
+  dbCredentials: { url: process.env.DATABASE_URL! },
 });
