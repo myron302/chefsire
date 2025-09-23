@@ -1,224 +1,155 @@
 // server/routes/marketplace.ts
 import { Router } from "express";
-import { z } from "zod";
 import { storage } from "../storage";
 
 const r = Router();
 
-// Create product
-r.post("/products", async (req, res) => {
+/**
+ * POST /api/marketplace/products
+ * Body: { sellerId, name, description?, price, category, images?, inventory?, ... }
+ */
+r.post("/products", async (req, res, next) => {
   try {
-    const schema = z.object({
-      sellerId: z.string(),
-      name: z.string().min(1),
-      description: z.string().optional(),
-      price: z.string().regex(/^\d+(\.\d{1,2})?$/),
-      category: z.enum(["spices", "ingredients", "cookware", "cookbooks", "sauces", "other"]),
-      images: z.array(z.string().url()).default([]),
-      inventory: z.number().min(0).default(0),
-      shippingEnabled: z.boolean().default(true),
-      localPickupEnabled: z.boolean().default(false),
-      pickupLocation: z.string().optional(),
-      pickupInstructions: z.string().optional(),
-      shippingCost: z.string().optional(),
-      isActive: z.boolean().optional(),
-      isExternal: z.boolean().default(false),
-      externalUrl: z.string().url().optional(),
-    });
-    const productData = schema.parse(req.body);
-
-    const product = await storage.createProduct(productData);
-    res.status(201).json({ message: "Product created successfully", product });
-  } catch (e) {
-    if (e instanceof z.ZodError) {
-      return res.status(400).json({ message: "Invalid product data", errors: e.errors });
-    }
-    console.error("[marketplace] create product error:", e);
-    res.status(500).json({ message: "Failed to create product" });
-  }
+    const created = await storage.createProduct(req.body);
+    res.status(201).json({ message: "Product created successfully", product: created });
+  } catch (e) { next(e); }
 });
 
-// Get product by id (and bump views)
-r.get("/products/:id", async (req, res) => {
+/**
+ * GET /api/marketplace/products/:id
+ */
+r.get("/products/:id", async (req, res, next) => {
   try {
     const product = await storage.getProductWithSeller(req.params.id);
     if (!product) return res.status(404).json({ message: "Product not found" });
 
-    await storage.updateProduct(req.params.id, {
-      viewsCount: (product.viewsCount || 0) + 1,
-    });
+    // naive view increment (best-effort)
+    const currentViews = (product as any).viewsCount ?? 0;
+    await storage.updateProduct(req.params.id, { viewsCount: Number(currentViews) + 1 });
 
     res.json(product);
-  } catch (e) {
-    console.error("[marketplace] get product error:", e);
-    res.status(500).json({ message: "Failed to fetch product" });
-  }
+  } catch (e) { next(e); }
 });
 
-// Search products
-r.get("/products", async (req, res) => {
+/**
+ * GET /api/marketplace/products?query=&category=&location=&offset=&limit=
+ */
+r.get("/products", async (req, res, next) => {
   try {
-    const schema = z.object({
-      query: z.string().optional(),
-      category: z.enum(["spices", "ingredients", "cookware", "cookbooks", "sauces", "other"]).optional(),
-      location: z.string().optional(),
-      localPickupOnly: z.coerce.boolean().default(false),
-      offset: z.coerce.number().min(0).default(0),
-      limit: z.coerce.number().min(1).max(50).default(20),
-    });
-    const filters = schema.parse(req.query);
+    const query    = typeof req.query.query === "string" ? req.query.query : undefined;
+    const category = typeof req.query.category === "string" ? req.query.category : undefined;
+    const location = typeof req.query.location === "string" ? req.query.location : undefined;
+    const offset   = Number(req.query.offset ?? 0);
+    const limit    = Number(req.query.limit ?? 20);
 
-    const products = await storage.searchProducts(
-      filters.query,
-      filters.category,
-      filters.location,
-      filters.offset,
-      filters.limit
-    );
-
-    res.json({ products, filters, total: products.length });
-  } catch (e) {
-    if (e instanceof z.ZodError) {
-      return res.status(400).json({ message: "Invalid search parameters", errors: e.errors });
-    }
-    console.error("[marketplace] search error:", e);
-    res.status(500).json({ message: "Failed to search products" });
-  }
+    const products = await storage.searchProducts(query, category, location, offset, limit);
+    res.json({ products, filters: { query, category, location }, total: products.length, offset, limit });
+  } catch (e) { next(e); }
 });
 
-// Seller's products
-r.get("/sellers/:sellerId/products", async (req, res) => {
+/**
+ * GET /api/marketplace/sellers/:sellerId/products?offset=&limit=
+ */
+r.get("/sellers/:sellerId/products", async (req, res, next) => {
   try {
-    const offset = parseInt((req.query.offset as string) || "0", 10);
-    const limit = parseInt((req.query.limit as string) || "20", 10);
-    const products = await storage.getUserProducts(req.params.sellerId, offset, limit);
-    res.json({ products, total: products.length, sellerId: req.params.sellerId });
-  } catch (e) {
-    console.error("[marketplace] seller products error:", e);
-    res.status(500).json({ message: "Failed to fetch seller products" });
-  }
+    const offset = Number(req.query.offset ?? 0);
+    const limit  = Number(req.query.limit ?? 20);
+    const items  = await storage.getUserProducts(req.params.sellerId, offset, limit);
+    res.json({ products: items, total: items.length, sellerId: req.params.sellerId, offset, limit });
+  } catch (e) { next(e); }
 });
 
-// Update product
-r.put("/products/:id", async (req, res) => {
+/**
+ * PUT /api/marketplace/products/:id
+ */
+r.put("/products/:id", async (req, res, next) => {
   try {
-    const schema = z.object({
-      name: z.string().min(1).optional(),
-      description: z.string().optional(),
-      price: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
-      inventory: z.number().min(0).optional(),
-      shippingEnabled: z.boolean().optional(),
-      localPickupEnabled: z.boolean().optional(),
-      pickupLocation: z.string().optional(),
-      pickupInstructions: z.string().optional(),
-      shippingCost: z.string().optional(),
-      isActive: z.boolean().optional(),
-    });
-    const updates = schema.parse(req.body);
-
-    const product = await storage.updateProduct(req.params.id, updates);
-    if (!product) return res.status(404).json({ message: "Product not found" });
-    res.json({ message: "Product updated successfully", product });
-  } catch (e) {
-    if (e instanceof z.ZodError) {
-      return res.status(400).json({ message: "Invalid update data", errors: e.errors });
-    }
-    console.error("[marketplace] update product error:", e);
-    res.status(500).json({ message: "Failed to update product" });
-  }
+    const updated = await storage.updateProduct(req.params.id, req.body);
+    if (!updated) return res.status(404).json({ message: "Product not found" });
+    res.json({ message: "Product updated successfully", product: updated });
+  } catch (e) { next(e); }
 });
 
-// Deactivate / delete product
-r.delete("/products/:id", async (req, res) => {
+/**
+ * DELETE /api/marketplace/products/:id
+ * Soft-delete (isActive=false)
+ */
+r.delete("/products/:id", async (req, res, next) => {
   try {
-    const success = await storage.deleteProduct(req.params.id);
-    if (!success) return res.status(404).json({ message: "Product not found" });
+    const ok = await storage.deleteProduct(req.params.id);
+    if (!ok) return res.status(404).json({ message: "Product not found" });
     res.json({ message: "Product deactivated successfully" });
-  } catch (e) {
-    console.error("[marketplace] delete product error:", e);
-    res.status(500).json({ message: "Failed to delete product" });
-  }
+  } catch (e) { next(e); }
 });
 
-// Categories overview (counts)
-r.get("/categories", async (_req, res) => {
+/**
+ * GET /api/marketplace/categories
+ * Tallies counts by category (spices, ingredients, cookware, cookbooks, sauces, other)
+ */
+r.get("/categories", async (_req, res, next) => {
   try {
-    const allProducts = await storage.searchProducts(undefined, undefined, undefined, 0, 1000);
+    const all = await storage.searchProducts(undefined, undefined, undefined, 0, 1000);
     const categories = {
-      spices: allProducts.filter((p) => p.category === "spices").length,
-      ingredients: allProducts.filter((p) => p.category === "ingredients").length,
-      cookware: allProducts.filter((p) => p.category === "cookware").length,
-      cookbooks: allProducts.filter((p) => p.category === "cookbooks").length,
-      sauces: allProducts.filter((p) => p.category === "sauces").length,
-      other: allProducts.filter((p) => p.category === "other").length,
+      spices:      all.filter(p => p.category === "spices").length,
+      ingredients: all.filter(p => p.category === "ingredients").length,
+      cookware:    all.filter(p => p.category === "cookware").length,
+      cookbooks:   all.filter(p => p.category === "cookbooks").length,
+      sauces:      all.filter(p => p.category === "sauces").length,
+      other:       all.filter(p => p.category === "other").length,
     };
-    res.json({ categories, totalProducts: allProducts.length });
-  } catch (e) {
-    console.error("[marketplace] categories error:", e);
-    res.status(500).json({ message: "Failed to fetch categories" });
-  }
+    res.json({ categories, totalProducts: all.length });
+  } catch (e) { next(e); }
 });
 
-// Storefront by username
-r.get("/storefront/:username", async (req, res) => {
+/**
+ * GET /api/marketplace/storefront/:username
+ * Seller storefront by username
+ */
+r.get("/storefront/:username", async (req, res, next) => {
   try {
     const user = await storage.getUserByUsername(req.params.username);
     if (!user) return res.status(404).json({ message: "Storefront not found" });
-
     const products = await storage.getUserProducts(user.id, 0, 50);
     res.json({
       storefront: {
         seller: {
           id: user.id,
           username: user.username,
-          displayName: user.displayName,
-          bio: user.bio,
-          avatar: user.avatar,
-          specialty: user.specialty,
-          isChef: user.isChef,
-          followersCount: user.followersCount,
+          displayName: (user as any).displayName,
+          bio: (user as any).bio,
+          avatar: (user as any).avatar,
+          specialty: (user as any).specialty,
+          isChef: (user as any).isChef,
+          followersCount: (user as any).followersCount,
         },
         products,
-        subscriptionTier: user.subscriptionTier,
+        subscriptionTier: (user as any).subscriptionTier,
       },
     });
-  } catch (e) {
-    console.error("[marketplace] storefront error:", e);
-    res.status(500).json({ message: "Failed to fetch storefront" });
-  }
+  } catch (e) { next(e); }
 });
 
-// Seller analytics (simple example)
-r.get("/sellers/:sellerId/analytics", async (req, res) => {
+/**
+ * GET /api/marketplace/sellers/:sellerId/analytics
+ * Simple derived analytics for a seller
+ */
+r.get("/sellers/:sellerId/analytics", async (req, res, next) => {
   try {
     const user = await storage.getUser(req.params.sellerId);
     if (!user) return res.status(404).json({ message: "Seller not found" });
+    const items = await storage.getUserProducts(req.params.sellerId, 0, 100);
 
-    const products = await storage.getUserProducts(req.params.sellerId, 0, 100);
     const analytics = {
-      totalProducts: products.length,
-      activeProducts: products.filter((p) => p.isActive).length,
-      totalViews: products.reduce((sum, p) => sum + (p.viewsCount || 0), 0),
-      totalSales: products.reduce((sum, p) => sum + (p.salesCount || 0), 0),
-      monthlyRevenue: parseFloat(user.monthlyRevenue || "0"),
-      subscriptionTier: user.subscriptionTier,
-      currentCommissionRate:
-        user.subscriptionTier === "free"
-          ? 10
-          : user.subscriptionTier === "starter"
-          ? 8
-          : user.subscriptionTier === "professional"
-          ? 5
-          : user.subscriptionTier === "enterprise"
-          ? 3
-          : 1,
+      totalProducts: items.length,
+      activeProducts: items.filter(p => (p as any).isActive !== false).length,
+      totalViews: items.reduce((sum, p: any) => sum + (p.viewsCount || 0), 0),
+      totalSales: items.reduce((sum, p: any) => sum + (p.salesCount || 0), 0),
+      monthlyRevenue: Number((user as any).monthlyRevenue || 0),
+      subscriptionTier: (user as any).subscriptionTier,
     };
 
     res.json(analytics);
-  } catch (e) {
-    console.error("[marketplace] analytics error:", e);
-    res.status(500).json({ message: "Failed to fetch analytics" });
-  }
+  } catch (e) { next(e); }
 });
 
 export default r;
