@@ -1,147 +1,72 @@
 // server/routes/recipes.ts
 import { Router } from "express";
-import { z } from "zod";
-
 import { storage } from "../storage";
-import {
-  insertRecipeSchema,
-} from "../../shared/schema";
-
-import {
-  fetchSpoonacularRecipes,
-  fetchEdamamRecipes,
-  mergeDedupRecipes,
-  type NormalizedRecipe,
-} from "../services/recipes-providers";
-
-import { fetchRecipes as fetchTheMealDbRecipes } from "../services/recipes-service";
+import { searchRecipes } from "../services/recipes.service";
 
 const r = Router();
 
-// Import TheMealDB data into local DB
-r.post("/fetch-recipes", async (_req, res) => {
+// GET /api/recipes/trending?limit=5
+r.get("/trending", async (req, res, next) => {
   try {
-    const result = await fetchTheMealDbRecipes();
-    res.status(201).json({
-      message: "Recipes fetched and processed",
-      success: result.success,
-      inserted: result.count,
-      processed: result.processed,
-    });
-  } catch (e) {
-    console.error("[routes/recipes] fetch-recipes error:", e);
-    res.status(500).json({ message: "Failed to fetch recipes" });
-  }
-});
-
-// Unified search across external + local
-r.get("/search", async (req, res) => {
-  try {
-    const querySchema = z.object({
-      q: z.string().optional(),
-      cuisines: z.string().optional(),
-      diets: z.string().optional(),
-      mealTypes: z.string().optional(),
-      maxReadyMinutes: z.coerce.number().optional(),
-      pageSize: z.coerce.number().min(1).max(50).default(24),
-      offset: z.coerce.number().min(0).default(0),
-      source: z.enum(["all", "external", "local"]).default("all"),
-    });
-
-    const parsed = querySchema.parse(req.query);
-
-    const cuisines = parsed.cuisines?.split(",").map((s) => s.trim()).filter(Boolean) || [];
-    const diets = parsed.diets?.split(",").map((s) => s.trim()).filter(Boolean) || [];
-    const mealTypes = parsed.mealTypes?.split(",").map((s) => s.trim()).filter(Boolean) || [];
-
-    const searchReq = {
-      q: parsed.q,
-      cuisines,
-      diets,
-      mealTypes,
-      maxReadyMinutes: parsed.maxReadyMinutes,
-      pageSize: parsed.pageSize,
-      offset: parsed.offset,
-    };
-
-    let external: NormalizedRecipe[] = [];
-    if (parsed.source === "all" || parsed.source === "external") {
-      const [spoon, edam] = await Promise.all([
-        fetchSpoonacularRecipes(searchReq).catch(() => []),
-        fetchEdamamRecipes(searchReq).catch(() => []),
-      ]);
-      external = mergeDedupRecipes(spoon, edam);
-    }
-
-    let local: NormalizedRecipe[] = [];
-    if (parsed.source === "all" || parsed.source === "local") {
-      const maybeSearch = (storage as any).searchLocalRecipes;
-      if (typeof maybeSearch === "function") {
-        const loc = await maybeSearch(searchReq);
-        local = Array.isArray(loc) ? loc : [];
-      }
-    }
-
-    const results =
-      parsed.source === "external"
-        ? external
-        : parsed.source === "local"
-        ? local
-        : mergeDedupRecipes(local, external);
-
-    res.json({
-      results,
-      total: results.length,
-      source: parsed.source,
-      pageSize: parsed.pageSize,
-      offset: parsed.offset,
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ message: "Invalid search params", errors: error.errors });
-    }
-    console.error("[routes/recipes] search error:", error);
-    res.status(500).json({ message: "Failed to search recipes" });
-  }
-});
-
-// Trending local recipes
-r.get("/trending", async (req, res) => {
-  try {
-    const limit = parseInt((req.query.limit as string) || "5", 10);
+    const limit = Number(req.query.limit ?? 5);
     const items = await storage.getTrendingRecipes(limit);
     res.json(items);
-  } catch (e) {
-    console.error("[routes/recipes] trending error:", e);
-    res.status(500).json({ message: "Failed to fetch trending recipes" });
-  }
+  } catch (e) { next(e); }
 });
 
-// Recipe by post ID
-r.get("/post/:postId", async (req, res) => {
+// GET /api/recipes/post/:postId
+r.get("/post/:postId", async (req, res, next) => {
   try {
     const recipe = await storage.getRecipeByPostId(req.params.postId);
     if (!recipe) return res.status(404).json({ message: "Recipe not found" });
     res.json(recipe);
-  } catch (e) {
-    console.error("[routes/recipes] by-post error:", e);
-    res.status(500).json({ message: "Failed to fetch recipe" });
-  }
+  } catch (e) { next(e); }
 });
 
-// Create a recipe (local)
-r.post("/", async (req, res) => {
+// GET /api/recipes/:id
+r.get("/:id", async (req, res, next) => {
   try {
-    const recipeData = insertRecipeSchema.parse(req.body);
-    const recipe = await storage.createRecipe(recipeData);
-    res.status(201).json(recipe);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ message: "Invalid recipe data", errors: error.errors });
-    }
-    console.error("[routes/recipes] create error:", error);
-    res.status(500).json({ message: "Failed to create recipe" });
-  }
+    const recipe = await storage.getRecipe(req.params.id);
+    if (!recipe) return res.status(404).json({ message: "Recipe not found" });
+    res.json(recipe);
+  } catch (e) { next(e); }
+});
+
+// POST /api/recipes
+r.post("/", async (req, res, next) => {
+  try {
+    const created = await storage.createRecipe(req.body);
+    res.status(201).json(created);
+  } catch (e) { next(e); }
+});
+
+// PUT /api/recipes/:id
+r.put("/:id", async (req, res, next) => {
+  try {
+    const updated = await storage.updateRecipe(req.params.id, req.body);
+    if (!updated) return res.status(404).json({ message: "Recipe not found" });
+    res.json(updated);
+  } catch (e) { next(e); }
+});
+
+// GET /api/recipes/search
+// q, cuisines, diets, mealTypes, maxReadyMinutes, pageSize, offset, source
+r.get("/search", async (req, res, next) => {
+  try {
+    const params = {
+      q: typeof req.query.q === "string" ? req.query.q : undefined,
+      cuisines: typeof req.query.cuisines === "string" ? req.query.cuisines.split(",").map(s=>s.trim()).filter(Boolean) : [],
+      diets: typeof req.query.diets === "string" ? req.query.diets.split(",").map(s=>s.trim()).filter(Boolean) : [],
+      mealTypes: typeof req.query.mealTypes === "string" ? req.query.mealTypes.split(",").map(s=>s.trim()).filter(Boolean) : [],
+      maxReadyMinutes: req.query.maxReadyMinutes ? Number(req.query.maxReadyMinutes) : undefined,
+      pageSize: req.query.pageSize ? Number(req.query.pageSize) : 24,
+      offset: req.query.offset ? Number(req.query.offset) : 0,
+      source: (["all","external","local"] as const).includes(String(req.query.source)) ? (req.query.source as any) : "all",
+    };
+
+    const result = await searchRecipes(params);
+    res.json(result);
+  } catch (e) { next(e); }
 });
 
 export default r;
