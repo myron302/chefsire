@@ -16,14 +16,13 @@ import mealPlans from "./meal-plans";
 
 const api = Router();
 
-/** Simple DB connectivity probe: GET /api/health/db */
+/** DB connectivity probe: GET /api/health/db */
 api.get("/health/db", async (_req, res) => {
   const url = process.env.DATABASE_URL;
   if (!url) {
     return res.status(500).json({ ok: false, error: "DATABASE_URL not set" });
   }
   try {
-    // Use Neon serverless Pool (already in your deps)
     const { Pool } = await import("@neondatabase/serverless");
     const pool = new Pool({ connectionString: url });
     const r = await pool.query("SELECT 1 AS ok");
