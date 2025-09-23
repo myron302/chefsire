@@ -1,85 +1,69 @@
 // server/routes/posts.ts
 import { Router } from "express";
-import { z } from "zod";
 import { storage } from "../storage";
-import {
-  insertPostSchema,
-} from "../../shared/schema";
 
 const r = Router();
 
-/** -------------------------
- * Feed / Explore / By User
- * -------------------------- */
-r.get("/feed/:userId", async (req, res) => {
+// GET /api/posts/feed/:userId?offset&limit
+r.get("/feed/:userId", async (req, res, next) => {
   try {
-    const offset = parseInt((req.query.offset as string) || "0", 10);
-    const limit = parseInt((req.query.limit as string) || "10", 10);
-    const posts = await storage.getFeedPosts(req.params.userId, offset, limit);
-    res.json(posts);
-  } catch {
-    res.status(500).json({ message: "Failed to fetch feed" });
-  }
+    const offset = Number(req.query.offset ?? 0);
+    const limit  = Number(req.query.limit ?? 10);
+    const items  = await storage.getFeedPosts(req.params.userId, offset, limit);
+    res.json(items);
+  } catch (e) { next(e); }
 });
 
-r.get("/explore", async (_req, res) => {
+// GET /api/posts/explore
+r.get("/explore", async (_req, res, next) => {
   try {
-    const offset = 0;
-    const limit = 10;
-    const posts = await storage.getExplorePosts(offset, limit);
-    res.json(posts);
-  } catch {
-    res.status(500).json({ message: "Failed to fetch explore posts" });
-  }
+    const items = await storage.getExplorePosts(0, 10);
+    res.json(items);
+  } catch (e) { next(e); }
 });
 
-r.get("/user/:userId", async (req, res) => {
+// GET /api/posts/user/:userId?offset&limit
+r.get("/user/:userId", async (req, res, next) => {
   try {
-    const offset = parseInt((req.query.offset as string) || "0", 10);
-    const limit = parseInt((req.query.limit as string) || "10", 10);
-    const posts = await storage.getUserPosts(req.params.userId, offset, limit);
-    res.json(posts);
-  } catch {
-    res.status(500).json({ message: "Failed to fetch user posts" });
-  }
+    const offset = Number(req.query.offset ?? 0);
+    const limit  = Number(req.query.limit ?? 10);
+    const items  = await storage.getUserPosts(req.params.userId, offset, limit);
+    res.json(items);
+  } catch (e) { next(e); }
 });
 
-/** -------------------------
- * Single Post CRUD
- * -------------------------- */
-r.get("/:id", async (req, res) => {
+// GET /api/posts/:id
+r.get("/:id", async (req, res, next) => {
   try {
     const post = await storage.getPostWithUser(req.params.id);
     if (!post) return res.status(404).json({ message: "Post not found" });
     res.json(post);
-  } catch {
-    res.status(500).json({ message: "Failed to fetch post" });
-  }
+  } catch (e) { next(e); }
 });
 
-r.post("/", async (req, res) => {
+// POST /api/posts
+r.post("/", async (req, res, next) => {
   try {
-    const postData = insertPostSchema.parse(req.body);
-    const post = await storage.createPost(postData);
-    res.status(201).json(post);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res
-        .status(400)
-        .json({ message: "Invalid post data", errors: error.errors });
-    }
-    res.status(500).json({ message: "Failed to create post" });
-  }
+    const created = await storage.createPost(req.body);
+    res.status(201).json(created);
+  } catch (e) { next(e); }
 });
 
-r.delete("/:id", async (req, res) => {
+// DELETE /api/posts/:id
+r.delete("/:id", async (req, res, next) => {
   try {
-    const success = await storage.deletePost(req.params.id);
-    if (!success) return res.status(404).json({ message: "Post not found" });
+    const ok = await storage.deletePost(req.params.id);
+    if (!ok) return res.status(404).json({ message: "Post not found" });
     res.json({ message: "Post deleted successfully" });
-  } catch {
-    res.status(500).json({ message: "Failed to delete post" });
-  }
+  } catch (e) { next(e); }
+});
+
+// Convenience: GET /api/posts/:postId/comments (maps to storage.getPostComments)
+r.get("/:postId/comments", async (req, res, next) => {
+  try {
+    const comments = await storage.getPostComments(req.params.postId);
+    res.json(comments);
+  } catch (e) { next(e); }
 });
 
 export default r;
