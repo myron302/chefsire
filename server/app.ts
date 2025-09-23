@@ -13,18 +13,26 @@ app.use(express.json());
 
 /**
  * Serve the built frontend.
- * Tries ../dist first (repo root build), then ../client/dist (client-only build).
+ * We’ll look in several common places, including Vite’s "dist/public" style.
  */
-const candidateDirs = [
+const candidates = [
+  // repo root builds
   path.join(__dirname, "../dist"),
+  path.join(__dirname, "../dist/public"),
+  // client subfolder builds
   path.join(__dirname, "../client/dist"),
+  path.join(__dirname, "../client/dist/public"),
 ];
 
 let staticDir: string | null = null;
-for (const p of candidateDirs) {
-  if (fs.existsSync(p) && fs.existsSync(path.join(p, "index.html"))) {
-    staticDir = p;
-    break;
+for (const p of candidates) {
+  try {
+    if (fs.existsSync(p) && fs.existsSync(path.join(p, "index.html"))) {
+      staticDir = p;
+      break;
+    }
+  } catch {
+    /* ignore */
   }
 }
 
@@ -33,10 +41,18 @@ if (staticDir) {
   console.log(`🗂️  Serving static frontend from: ${staticDir}`);
 } else {
   console.warn(
-    "⚠️  No built frontend found (looked for ../dist or ../client/dist). " +
+    "⚠️  No built frontend found (looked for ../dist[/public] and ../client/dist[/public]). " +
       "API will run, but the SPA won't be served until you build the client."
   );
 }
+
+/**
+ * Health endpoint here as a guaranteed fast path.
+ * This ensures GET /api/health always responds, even if the router is mis-mounted.
+ */
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
 
 /** Mount all API routes under /api */
 app.use("/api", apiRouter);
