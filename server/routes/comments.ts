@@ -1,41 +1,32 @@
 // server/routes/comments.ts
 import { Router } from "express";
-import { z } from "zod";
 import { storage } from "../storage";
-import { insertCommentSchema } from "../../shared/schema";
 
 const r = Router();
 
-/**
- * GET /api/comments/posts/:postId
- * List comments for a post
- */
-r.get("/posts/:postId", async (req, res) => {
+// GET /api/comments/post/:postId
+r.get("/post/:postId", async (req, res, next) => {
   try {
-    const comments = await storage.getPostComments(req.params.postId);
-    res.json(comments);
-  } catch {
-    res.status(500).json({ message: "Failed to fetch comments" });
-  }
+    const items = await storage.getPostComments(req.params.postId);
+    res.json(items);
+  } catch (e) { next(e); }
 });
 
-/**
- * POST /api/comments
- * Body validated via shared schema
- */
-r.post("/", async (req, res) => {
+// POST /api/comments
+r.post("/", async (req, res, next) => {
   try {
-    const commentData = insertCommentSchema.parse(req.body);
-    const comment = await storage.createComment(commentData);
-    res.status(201).json(comment);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res
-        .status(400)
-        .json({ message: "Invalid comment data", errors: error.errors });
-    }
-    res.status(500).json({ message: "Failed to create comment" });
-  }
+    const created = await storage.createComment(req.body);
+    res.status(201).json(created);
+  } catch (e) { next(e); }
+});
+
+// DELETE /api/comments/:id
+r.delete("/:id", async (req, res, next) => {
+  try {
+    const ok = await storage.deleteComment(req.params.id);
+    if (!ok) return res.status(404).json({ message: "Comment not found" });
+    res.json({ message: "Comment deleted" });
+  } catch (e) { next(e); }
 });
 
 export default r;
