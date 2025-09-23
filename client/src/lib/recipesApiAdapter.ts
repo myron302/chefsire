@@ -112,7 +112,7 @@ export function normalizeApiRecipe(api: any): NormalizedRecipePost {
     likes: api.popularity || 0,
     comments: api.commentsCount || 0,
     recipe: {
-      title: api.title || "Untitled",
+      title: api.caption || api.title || "Untitled",
       cookTime: api.readyInMinutes ?? api.totalTime ?? null,
       servings: api.servings ?? null,
       difficulty: api.difficulty ?? "",
