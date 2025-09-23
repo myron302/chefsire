@@ -10,7 +10,11 @@
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx server/seed.ts",
-    "postinstall": "npx update-browserslist-db@latest || true"
+    "postinstall": "npx update-browserslist-db@latest || true",
+
+    "check:imports": "node tools/check-imports.js",
+    "gen:shims": "node tools/generate-import-shims.js",
+    "fix:filenames": "node tools/fix-filenames.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
