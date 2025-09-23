@@ -2,6 +2,7 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import apiRouter from "./routes";              // <-- add this
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,18 +10,16 @@ const __dirname = path.dirname(__filename);
 export const app = express();
 app.use(express.json());
 
-// Serve ONLY the built frontend at ../dist
 const staticDir = path.join(__dirname, "../dist");
 app.use(express.static(staticDir));
 
-// Health
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", message: "Server is running" });
 });
 
-// (Mount your API routers here, e.g. app.use("/api", apiRouter);)
+// ✅ Mount your API
+app.use("/api", apiRouter);                     // <-- add this
 
-// SPA fallback for real page navigations (not assets or API)
 app.get("*", (req, res, next) => {
   const wantsHtml = (req.headers.accept || "").includes("text/html");
   const isApi = req.path.startsWith("/api/");
