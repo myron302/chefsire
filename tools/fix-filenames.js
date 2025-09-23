@@ -1,59 +1,71 @@
+// tools/fix-filenames.js
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 
-// Helper to convert to PascalCase
-function toPascalCase(filename) {
-  return filename
-    .replace(/\.[jt]sx?$/, "")
-    .split(/[-_]/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join("") + path.extname(filename);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(__dirname, "..");
+const SRC_DIR = path.join(ROOT, "client", "src");
+
+const TARGET_DIRS = [
+  path.join(SRC_DIR, "components"),
+  path.join(SRC_DIR, "components", "ui"),
+  path.join(SRC_DIR, "pages"),
+  path.join(SRC_DIR, "lib"),
+  path.join(SRC_DIR, "hooks")
+];
+
+const exts = [".tsx", ".ts", ".jsx", ".js"];
+
+function pascalToKebab(name) {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/_/g, "-")
+    .toLowerCase();
 }
 
-// Helper to convert to lowercase
-function toLowerCase(filename) {
-  return filename.toLowerCase();
-}
-
-// Directories with special rules
-const pascalDirs = ["components", "pages"];
-const lowerDirs = ["components/ui", "lib", "hooks", "utils"];
-
-// Recursively walk a directory
-function walk(dir) {
-  fs.readdirSync(dir, { withFileTypes: true }).forEach(entry => {
-    const fullPath = path.join(dir, entry.name);
-
-    if (entry.isDirectory()) {
-      walk(fullPath);
-    } else {
-      const relPath = fullPath.replace(process.cwd() + "/", "");
-      const ext = path.extname(entry.name);
-
-      if (![".ts", ".tsx", ".js", ".jsx"].includes(ext)) return;
-
-      let parentDir = path.dirname(relPath);
-
-      if (lowerDirs.some(d => parentDir.includes(d))) {
-        const lower = toLowerCase(entry.name);
-        if (entry.name !== lower) {
-          const newPath = path.join(dir, lower);
-          console.log(`Renaming → ${relPath} → ${newPath}`);
-          fs.renameSync(fullPath, newPath);
-        }
-      } else if (pascalDirs.some(d => parentDir.includes(d))) {
-        const pascal = toPascalCase(entry.name);
-        if (entry.name !== pascal) {
-          const newPath = path.join(dir, pascal);
-          console.log(`Renaming → ${relPath} → ${newPath}`);
-          fs.renameSync(fullPath, newPath);
-        }
-      }
+function* walk(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const name of fs.readdirSync(dir)) {
+    const abs = path.join(dir, name);
+    const stat = fs.statSync(abs);
+    if (stat.isDirectory()) {
+      yield* walk(abs);
+    } else if (/\.(tsx|ts|jsx|js)$/.test(name)) {
+      yield abs;
     }
-  });
+  }
 }
 
-// Run on client/src
-walk(path.join(process.cwd(), "client/src"));
+const moves = [];
 
-console.log("✅ Filename normalization complete!");
+for (const base of TARGET_DIRS) {
+  for (const abs of walk(base)) {
+    const dir = path.dirname(abs);
+    const baseName = path.basename(abs).replace(/\.(tsx|ts|jsx|js)$/, "");
+    const ext = path.extname(abs);
+    if (!/[A-Z]/.test(baseName)) continue;
+
+    const kebab = pascalToKebab(baseName); // PostCard -> post-card
+    const target = path.join(dir, `${kebab}${ext}`);
+
+    if (fs.existsSync(target)) continue; // already have a kebab file here
+    moves.push([abs, target]);
+  }
+}
+
+if (moves.length === 0) {
+  console.log("No filenames need renaming.");
+  process.exit(0);
+}
+
+console.log("Planned renames:");
+moves.forEach(([from, to]) =>
+  console.log("  ", path.relative(ROOT, from), "→", path.relative(ROOT, to))
+);
+
+// Perform renames
+for (const [from, to] of moves) {
+  fs.renameSync(from, to);
+}
+console.log("✅ Renamed", moves.length, "file(s).");
