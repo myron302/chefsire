@@ -1,83 +1,59 @@
 // server/routes/recipes.ts
 import { Router } from "express";
-import { storage } from "../storage";
-import { searchRecipes } from "../services/recipes-service"; // ← matches your filename
+import { storage } from "../models/storage";
 
 const r = Router();
 
-// GET /api/recipes/trending?limit=5
-r.get("/trending", async (req, res, next) => {
+/**
+ * GET /api/recipes/search
+ * Query params:
+ *   q?: string
+ *   cuisines?: comma list
+ *   diets?: comma list
+ *   mealTypes?: comma list
+ *   pageSize?: number (default 24)
+ *   offset?: number (default 0)
+ */
+r.get("/search", async (req, res) => {
   try {
-    const limit = Number(req.query.limit ?? 5);
-    const items = await storage.getTrendingRecipes(limit);
-    res.json(items);
-  } catch (e) { next(e); }
-});
+    const q = typeof req.query.q === "string" ? req.query.q : undefined;
 
-// GET /api/recipes/post/:postId
-r.get("/post/:postId", async (req, res, next) => {
-  try {
-    const recipe = await storage.getRecipeByPostId(req.params.postId);
-    if (!recipe) return res.status(404).json({ message: "Recipe not found" });
-    res.json(recipe);
-  } catch (e) { next(e); }
-});
+    const toList = (v: unknown) =>
+      typeof v === "string"
+        ? v.split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
 
-// GET /api/recipes/search
-// q, cuisines, diets, mealTypes, maxReadyMinutes, pageSize, offset, source
-r.get("/search", async (req, res, next) => {
-  try {
-    const params = {
-      q: typeof req.query.q === "string" ? req.query.q : undefined,
-      cuisines:
-        typeof req.query.cuisines === "string"
-          ? req.query.cuisines.split(",").map((s) => s.trim()).filter(Boolean)
-          : [],
-      diets:
-        typeof req.query.diets === "string"
-          ? req.query.diets.split(",").map((s) => s.trim()).filter(Boolean)
-          : [],
-      mealTypes:
-        typeof req.query.mealTypes === "string"
-          ? req.query.mealTypes.split(",").map((s) => s.trim()).filter(Boolean)
-          : [],
-      maxReadyMinutes: req.query.maxReadyMinutes ? Number(req.query.maxReadyMinutes) : undefined,
-      pageSize: req.query.pageSize ? Number(req.query.pageSize) : 24,
-      offset: req.query.offset ? Number(req.query.offset) : 0,
-      source: (["all", "external", "local"] as const).includes(String(req.query.source))
-        ? (req.query.source as any)
-        : "all",
-    };
+    const cuisines = toList(req.query.cuisines);
+    const diets = toList(req.query.diets);
+    const mealTypes = toList(req.query.mealTypes);
 
-    const result = await searchRecipes(params);
-    res.json(result);
-  } catch (e) { next(e); }
-});
+    const pageSize =
+      typeof req.query.pageSize === "string" ? Number(req.query.pageSize) : 24;
+    const offset =
+      typeof req.query.offset === "string" ? Number(req.query.offset) : 0;
 
-// GET /api/recipes/:id
-r.get("/:id", async (req, res, next) => {
-  try {
-    const recipe = await storage.getRecipe(req.params.id);
-    if (!recipe) return res.status(404).json({ message: "Recipe not found" });
-    res.json(recipe);
-  } catch (e) { next(e); }
-});
+    // Local DB search (your storage already implements this; it currently
+    // primarily respects `q`, but we pass all params for future expansion).
+    const local = await storage.searchLocalRecipes({
+      q,
+      cuisines,
+      diets,
+      mealTypes,
+      pageSize,
+      offset,
+    });
 
-// POST /api/recipes
-r.post("/", async (req, res, next) => {
-  try {
-    const created = await storage.createRecipe(req.body);
-    res.status(201).json(created);
-  } catch (e) { next(e); }
-});
-
-// PUT /api/recipes/:id
-r.put("/:id", async (req, res, next) => {
-  try {
-    const updated = await storage.updateRecipe(req.params.id, req.body);
-    if (!updated) return res.status(404).json({ message: "Recipe not found" });
-    res.json(updated);
-  } catch (e) { next(e); }
+    return res.json({
+      items: local,
+      total: local.length,
+      source: "local",
+    });
+  } catch (err: any) {
+    console.error("recipes.search error:", err);
+    return res
+      .status(500)
+      .json({ message: err?.message || "Search failed", code: "RECIPES_SEARCH_FAILED" });
+  }
 });
 
 export default r;
