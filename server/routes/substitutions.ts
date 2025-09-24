@@ -1,142 +1,142 @@
 // server/routes/substitutions.ts
 import { Router } from "express";
-import { z } from "zod";
+
+type Alt = { name: string; note?: string; confidence?: number; tags?: string[] };
 
 const r = Router();
 
-/**
- * Super-light, local substitutions engine.
- * - Works without any API keys.
- * - Applies simple filtering for diet/allergy flags.
- * - You can later swap this logic for your AI helper in services/ingredients-ai.ts.
- */
-
-type Suggestion = { substitute: string; note?: string };
-
-// Base catalog of common swaps
-const CATALOG: Record<string, Suggestion[]> = {
-  butter: [
-    { substitute: "olive oil", note: "Good for sautéing and baking (reduce by ~20%)." },
-    { substitute: "coconut oil", note: "Adds mild coconut flavor; solid at room temp." },
-    { substitute: "vegan butter", note: "Closest one-to-one for butter in baking." },
-    { substitute: "ghee", note: "Clarified butter; not vegan, lower lactose." },
-    { substitute: "applesauce", note: "Baking only; reduces fat, adds moisture." },
-  ],
-  milk: [
-    { substitute: "oat milk", note: "Neutral flavor; good for coffee and sauces." },
-    { substitute: "soy milk", note: "Higher protein; good general-purpose." },
-    { substitute: "almond milk", note: "Light texture; avoid if nut allergy." },
-    { substitute: "coconut milk (carton)", note: "Slight coconut flavor; thin body." },
-  ],
-  cream: [
-    { substitute: "coconut cream", note: "Rich & dairy-free; coconut flavor." },
-    { substitute: "cashew cream", note: "Soaked cashews blended; silky dairy-free." },
-    { substitute: "evaporated milk", note: "Lower fat than cream; not dairy-free." },
-    { substitute: "Greek yogurt + milk", note: "Tangy; cooking only, not whipping." },
-  ],
-  egg: [
-    { substitute: "flax egg", note: "1 tbsp ground flax + 3 tbsp water; binding in baking." },
-    { substitute: "chia egg", note: "1 tbsp chia + 3 tbsp water; similar to flax." },
-    { substitute: "aquafaba (3 tbsp)", note: "Whips like egg white; meringues, binding." },
-    { substitute: "applesauce (1/4 cup)", note: "Moisture in cakes/muffins; mild apple note." },
-  ],
-  honey: [
-    { substitute: "maple syrup", note: "1:1; distinct maple flavor." },
-    { substitute: "agave nectar", note: "1:1; neutral flavor." },
-    { substitute: "simple syrup", note: "Less viscous; adjust liquids." },
-  ],
-  "wheat flour": [
-    { substitute: "gluten-free all-purpose blend", note: "1:1 in many recipes; check binder." },
-    { substitute: "almond flour", note: "Lower carb; needs extra binder/egg." },
-    { substitute: "oat flour", note: "Homemade from oats; good for quick breads." },
-  ],
-  yogurt: [
-    { substitute: "coconut yogurt", note: "Dairy-free; coconut flavor." },
-    { substitute: "silken tofu (blended)", note: "Neutral protein boost; add lemon for tang." },
-    { substitute: "sour cream", note: "Not dairy-free; similar tang and fat." },
-  ],
-  cheese: [
-    { substitute: "nutritional yeast", note: "Cheesy umami; dairy-free." },
-    { substitute: "vegan cheese (shreds)", note: "Melts vary by brand." },
-    { substitute: "tofu ricotta", note: "Blended tofu + lemon + herbs for ricotta-style." },
-  ],
-};
-
-const DIET_BLOCKLIST: Record<string, RegExp[]> = {
-  // remove these suggestions if diet includes key
-  vegan: [/\b(ghee|yogurt|sour cream|cheese|evaporated milk)\b/i],
-  vegetarian: [], // (nothing extra beyond meat; catalog has no meats)
-  paleo: [/\b(agave|simple syrup|oat|soy|almond flour|evaporated milk)\b/i],
-  keto: [/\b(simple syrup|maple syrup|agave|oat|oat milk)\b/i],
-  gluten_free: [/\b(wheat|flour(?!.*gluten-free))\b/i],
-};
-
-const ALLERGY_BLOCKLIST: Record<string, RegExp[]> = {
-  dairy: [/\b(milk|yogurt|cheese|cream|ghee|evaporated milk|sour cream)\b/i],
-  nuts: [/\b(almond|cashew)\b/i],
-  soy: [/\b(soy)\b/i],
-  coconut: [/\b(coconut)\b/i],
-  egg: [/\b(egg)\b/i],
-};
-
-function filterByDietAndAllergies(
-  suggestions: Suggestion[],
-  diet: string[],
-  allergies: string[],
-): Suggestion[] {
-  const dietRules = diet.flatMap((d) => DIET_BLOCKLIST[d.toLowerCase()] ?? []);
-  const allergyRules = allergies.flatMap((a) => ALLERGY_BLOCKLIST[a.toLowerCase()] ?? []);
-  const rules = [...dietRules, ...allergyRules];
-
-  if (rules.length === 0) return suggestions;
-
-  return suggestions.filter((s) => !rules.some((rx) => rx.test(s.substitute)));
+/** tiny helper: parse "a,b,c" OR repeatable query into string[] */
+function parseList(input: unknown): string[] {
+  if (Array.isArray(input)) {
+    return input.flatMap((x) => String(x).split(",")).map((s) => s.trim()).filter(Boolean);
+  }
+  if (typeof input === "string") {
+    return input.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
 }
 
-r.get("/substitutions/health", (_req, res) => {
-  res.json({ ok: true, engine: "local", catalogSize: Object.keys(CATALOG).length });
+/** static, local library (no OpenAI) */
+function suggestForOne(ingredientRaw: string, diet?: string, avoid: string[] = []): Alt[] {
+  const ing = ingredientRaw.toLowerCase();
+  const lib: Record<string, Alt[]> = {
+    milk: [
+      { name: "oat milk", note: "neutral flavor", confidence: 0.9, tags: ["vegan"] },
+      { name: "almond milk", note: "light, nutty", confidence: 0.85, tags: ["vegan","nut"] },
+      { name: "soy milk", note: "higher protein", confidence: 0.85, tags: ["vegan","legume"] },
+      { name: "lactose-free milk", note: "still dairy", confidence: 0.7, tags: ["dairy"] },
+    ],
+    butter: [
+      { name: "olive oil", note: "⅞ volume of butter", confidence: 0.85, tags: ["vegan"] },
+      { name: "vegan butter", note: "1:1 swap", confidence: 0.9, tags: ["vegan"] },
+      { name: "ghee", note: "clarified butter", confidence: 0.6, tags: ["dairy"] },
+    ],
+    cheese: [
+      { name: "nutritional yeast", note: "cheesy umami", confidence: 0.75, tags: ["vegan"] },
+      { name: "vegan mozzarella", note: "melting dishes", confidence: 0.7, tags: ["vegan"] },
+      { name: "lactose-free cheese", note: "still dairy", confidence: 0.5, tags: ["dairy"] },
+    ],
+    egg: [
+      { name: "flax egg", note: "1 tbsp ground flax + 3 tbsp water", confidence: 0.8, tags: ["vegan","seed"] },
+      { name: "chia egg", note: "1 tbsp chia + 3 tbsp water", confidence: 0.75, tags: ["vegan","seed"] },
+      { name: "unsweetened applesauce", note: "¼ cup per egg (baking)", confidence: 0.7, tags: ["vegan","fruit"] },
+      { name: "silken tofu", note: "¼ cup per egg (custards/cakes)", confidence: 0.7, tags: ["vegan","soy"] },
+    ],
+    "all-purpose flour": [
+      { name: "gluten-free flour blend", note: "1:1 if labeled", confidence: 0.8, tags: ["gluten-free"] },
+      { name: "oat flour", note: "muffins/cookies", confidence: 0.6, tags: ["gluten-free"] },
+    ],
+    honey: [
+      { name: "maple syrup", note: "slightly thinner", confidence: 0.85, tags: ["vegan"] },
+      { name: "agave syrup", note: "neutral, sweeter", confidence: 0.75, tags: ["vegan"] },
+    ],
+    yogurt: [
+      { name: "coconut yogurt", note: "1:1, richer", confidence: 0.8, tags: ["vegan"] },
+      { name: "soy yogurt", note: "1:1, neutral", confidence: 0.75, tags: ["vegan","soy"] },
+    ],
+    cream: [
+      { name: "coconut cream", note: "soups/curries", confidence: 0.8, tags: ["vegan"] },
+      { name: "cashew cream", note: "blend soaked cashews", confidence: 0.75, tags: ["vegan","nut"] },
+      { name: "oat cream", note: "savory sauces", confidence: 0.7, tags: ["vegan"] },
+    ],
+    "sour cream": [
+      { name: "plant-based sour cream", note: "store-bought", confidence: 0.8, tags: ["vegan"] },
+      { name: "coconut yogurt + lemon", note: "DIY tang", confidence: 0.7, tags: ["vegan"] },
+    ],
+  };
+
+  // choose base list by fuzzy key
+  const key =
+    Object.keys(lib).find((k) => ing.includes(k)) ||
+    (ing.includes("flour") ? "all-purpose flour" : "");
+
+  let alts: Alt[] = key ? lib[key] : [];
+
+  // diet filtering
+  if (diet?.toLowerCase() === "vegan") {
+    alts = alts.filter((a) => !(a.tags || []).includes("dairy") && !(a.name.toLowerCase().includes("honey")));
+  }
+
+  // avoid filtering: if "nut" in avoid, drop almond/cashew etc.
+  const avoidL = avoid.map((s) => s.toLowerCase());
+  if (avoidL.length) {
+    alts = alts.filter((a) => {
+      const name = a.name.toLowerCase();
+      const tags = (a.tags || []).map((t) => t.toLowerCase());
+      return !avoidL.some((bad) => name.includes(bad) || tags.includes(bad));
+    });
+  }
+
+  // if we have no specific match, return generic fallbacks
+  if (!alts.length) {
+    if (diet?.toLowerCase() === "vegan") {
+      alts = [
+        { name: "olive oil", confidence: 0.5, tags: ["vegan"] },
+        { name: "oat-based alternative", confidence: 0.45, tags: ["vegan"] },
+      ];
+    } else {
+      alts = [{ name: "closest plant-based alternative", confidence: 0.3, tags: ["hint"] }];
+    }
+  }
+  return alts;
+}
+
+function buildResponse(ingredients: string[], diet?: string, avoid?: string[]) {
+  return {
+    items: ingredients.map((ing) => ({
+      original: ing,
+      alternatives: suggestForOne(ing, diet, avoid),
+    })),
+    info: {
+      diet: diet || null,
+      avoid: avoid || [],
+      engine: "local-rule-based",
+    },
+  };
+}
+
+/** GET — browser-friendly: /api/substitutions/suggest?ingredients=milk,butter&diet=vegan&avoid=dairy,nut */
+r.get("/substitutions/suggest", (req, res) => {
+  const ingredients = parseList(req.query.ingredients || req.query.q);
+  const avoid = parseList(req.query.avoid);
+  const diet = typeof req.query.diet === "string" ? req.query.diet : undefined;
+
+  if (!ingredients.length) {
+    return res.status(400).json({ message: "Provide ?ingredients=a,b,c (or ?q=...)" });
+  }
+  res.json(buildResponse(ingredients, diet, avoid));
 });
 
-r.post("/substitutions/suggest", async (req, res) => {
-  try {
-    const schema = z.object({
-      items: z.array(z.string().min(1)).min(1),
-      diet: z.array(z.string()).optional().default([]),
-      allergies: z.array(z.string()).optional().default([]),
-    });
+/** POST — JSON body: { ingredients: [], diet?: "vegan", avoid?: [] } */
+r.post("/substitutions/suggest", (req, res) => {
+  const ingredients = Array.isArray(req.body?.ingredients) ? (req.body.ingredients as string[]) : [];
+  const diet = typeof req.body?.diet === "string" ? (req.body.diet as string) : undefined;
+  const avoid = Array.isArray(req.body?.avoid) ? (req.body.avoid as string[]) : [];
 
-    const { items, diet, allergies } = schema.parse(req.body);
-
-    const results = items.map((raw) => {
-      const key = raw.toLowerCase().trim();
-      const base =
-        CATALOG[key] ??
-        // try loose matches (e.g., “whole milk” -> “milk”)
-        (Object.keys(CATALOG).find((k) => key.includes(k)) ? CATALOG[Object.keys(CATALOG).find((k) => key.includes(k)) as string] : []);
-
-      const filtered = filterByDietAndAllergies(base, diet, allergies);
-
-      return {
-        original: raw,
-        suggestions: filtered,
-        found: filtered.length > 0,
-      };
-    });
-
-    res.json({
-      substitutions: results,
-      info: {
-        diet,
-        allergies,
-        note:
-          "This is a local heuristic engine. For richer, context-aware swaps you can plug in your AI helper later.",
-      },
-    });
-  } catch (e: any) {
-    if (e?.issues) return res.status(400).json({ message: "Invalid request", errors: e.issues });
-    console.error("substitutions/suggest error", e);
-    res.status(500).json({ message: "Failed to generate substitutions" });
+  if (!ingredients.length) {
+    return res.status(400).json({ message: "Body must include { ingredients: string[] }" });
   }
+  res.json(buildResponse(ingredients, diet, avoid));
 });
 
 export default r;
