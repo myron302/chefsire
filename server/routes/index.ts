@@ -1,20 +1,21 @@
 // server/routes/index.ts
 import { Router } from "express";
 
-// Keep the routers you already have:
+// Feature routers
 import recipesRouter from "./recipes";
-import bitesRouter from "./bites";           // “stories” → “bites”
+import bitesRouter from "./bites";            // “stories” → “bites”
 import usersRouter from "./users";
 import postsRouter from "./posts";
 import pantryRouter from "./pantry";
 import marketplaceRouter from "./marketplace";
-
-// NEW: substitutions (AI swapper – local engine for now)
 import substitutionsRouter from "./substitutions";
+
+// Debug/seed (browser-only helpers; remove after verification)
+import debugRouter from "./debug";
 
 const r = Router();
 
-// Mount them all under /api (app.ts does app.use("/api", r))
+// Mounted under /api by app.ts
 r.use(recipesRouter);
 r.use(bitesRouter);
 r.use(usersRouter);
@@ -22,5 +23,8 @@ r.use(postsRouter);
 r.use(pantryRouter);
 r.use(marketplaceRouter);
 r.use(substitutionsRouter);
+
+// Debug last so it doesn't shadow anything
+r.use(debugRouter);
 
 export default r;
