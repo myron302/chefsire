@@ -13,6 +13,7 @@ import {
   Utensils,
   GlassWater,
   Heart,
+  ArrowLeftRight, // ← NEW icon for Substitutions
 } from "lucide-react";
 
 interface SidebarProps {
@@ -46,6 +47,8 @@ const NAV: NavItem[] = [
     submenu: [
       { name: "Browse Recipes", href: "/recipes", icon: BookOpen },
       { name: "My Pantry", href: "/pantry", icon: ChefHat },
+      // NEW: Substitutions link under Recipes
+      { name: "Substitutions", href: "/substitutions", icon: ArrowLeftRight },
     ],
   },
   { name: "Potent Potables", href: "/potent-potables", icon: GlassWater },
