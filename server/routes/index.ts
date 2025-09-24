@@ -1,49 +1,28 @@
 // server/routes/index.ts
 import { Router } from "express";
 
-import users from "./users";
-import posts from "./posts";
-import recipes from "./recipes";
-import bites from "./bites";
-import comments from "./comments";
-import likes from "./likes";
-import follows from "./follows";
-import marketplace from "./marketplace";
-import catering from "./catering";
-import pantry from "./pantry";
-import nutrition from "./nutrition";
-import mealPlans from "./meal-plans";
+import recipesRouter from "./recipes";
+import bitesRouter from "./bites";
+import pantryRouter from "./pantry";
+import marketplaceRouter from "./marketplace";
+import substitutionsRouter from "./substitutions";
 
-const api = Router();
+const r = Router();
 
-/** DB connectivity probe: GET /api/health/db */
-api.get("/health/db", async (_req, res) => {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    return res.status(500).json({ ok: false, error: "DATABASE_URL not set" });
-  }
-  try {
-    const { Pool } = await import("@neondatabase/serverless");
-    const pool = new Pool({ connectionString: url });
-    const r = await pool.query("SELECT 1 AS ok");
-    await pool.end().catch(() => {});
-    return res.json({ ok: true, rows: r.rows });
-  } catch (e: any) {
-    return res.status(500).json({ ok: false, error: e.message });
-  }
-});
+// Grouped mounts
+r.use("/recipes", recipesRouter);
+r.use("/bites", bitesRouter);
 
-api.use("/users", users);
-api.use("/posts", posts);
-api.use("/recipes", recipes);
-api.use("/bites", bites);
-api.use("/comments", comments);
-api.use("/likes", likes);
-api.use("/follows", follows);
-api.use("/marketplace", marketplace);
-api.use("/catering", catering);
-api.use("/pantry", pantry);
-api.use("/nutrition", nutrition);
-api.use("/meal-plans", mealPlans);
+// Pantry & nutrition-related endpoints live at root with /users/:id prefix
+r.use("/", pantryRouter);
 
-export default api;
+// Marketplace endpoints live under /marketplace
+r.use("/", marketplaceRouter);
+
+// AI substitutions (swapper)
+r.use("/", substitutionsRouter);
+
+// Simple ping within the /api scope (health without DB)
+r.get("/healthz", (_req, res) => res.json({ ok: true }));
+
+export default r;
