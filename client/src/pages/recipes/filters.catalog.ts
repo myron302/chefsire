@@ -1,83 +1,249 @@
-import { useMemo, useState } from "react";
-import {
-  CUISINES,
-  MEAL_TYPES,
-  DIETARY,
-  ETHNICITY_REGIONS,
-} from "./filters.catalog";
+// client/src/pages/recipes/filters.catalog.ts
 
-export type RecipesFiltersState = {
-  q: string;
-  selectedCuisines: string[];      // from CUISINES (flat)
-  selectedEthnicities: string[];   // "Region — Name" labels
-  selectedDiets: string[];         // from DIETARY (flat)
-  selectedMealTypes: string[];     // from MEAL_TYPES (flat)
+/** Core simple pickers (alphabetized where it helps) */
+export const CUISINES = [
+  "Alaskan",
+  "American",
+  "Argentinian",
+  "Asian",
+  "BBQ",
+  "Bangladeshi",
+  "Brazilian",
+  "Breakfast",
+  "Burgers",
+  "Californian",
+  "Caribbean",
+  "Chilean",
+  "Chinese",
+  "Colombian",
+  "Desserts",
+  "Dominican",
+  "Filipino",
+  "French",
+  "Greek",
+  "Healthy",
+  "Hawaiian",
+  "Indian",
+  "Italian",
+  "Jamaican",
+  "Japanese",
+  "Korean",
+  "Mediterranean",
+  "Mexican",
+  "Pacific Northwest",
+  "Pakistani",
+  "Peruvian",
+  "Portuguese",
+  "Puerto Rican",
+  "Salads",
+  "Seafood",
+  "Sicilian",
+  "Spanish",
+  "Sri Lankan",
+  "Tex-Mex",
+  "Thai",
+  "Venezuelan",
+  "Vietnamese",
+].sort();
+
+export const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner", "Snack", "Dessert"] as const;
+
+export const DIETARY = [
+  // Popular
+  "Vegetarian",
+  "Vegan",
+  "Pescatarian",
+  "Keto",
+  "Paleo",
+  "Mediterranean",
+  "Whole30",
+  "Flexitarian",
+  "High-Protein",
+  "High-Fiber",
+  "Low-Carb",
+  "Low-Fat",
+  "Low-Calorie",
+  // Health-focused
+  "Diabetic-Friendly",
+  "Heart-Healthy",
+  "Low-Sodium",
+  "Low-Sugar",
+  "Low-FODMAP",
+  // Allergens / restrictions
+  "Gluten-Free",
+  "Lactose-Free",
+  "Dairy-Free",
+  "Egg-Free",
+  "Nut-Free",
+  "Soy-Free",
+  "Shellfish-Free",
+  // Religious
+  "Halal",
+  "Kosher",
+];
+
+export const DIFFICULTY = ["Easy", "Medium", "Hard"] as const;
+
+/** 🧪 Allergen filter list (restored) */
+export const ALLERGENS = [
+  "Gluten",
+  "Dairy",
+  "Eggs",
+  "Peanuts",
+  "Tree Nuts",
+  "Soy",
+  "Fish",
+  "Shellfish",
+  "Sesame",
+  "Mustard",
+  // Optional additions:
+  // "Celery",
+  // "Lupin",
+  // "Molluscs",
+  // "Sulphites",
+];
+
+/** Ethnicities by region (grouped + alphabetized) */
+export const ETHNICITY_REGIONS: Record<string, string[]> = {
+  Africa: [
+    "Cameroonian",
+    "Central African",
+    "East African",
+    "Egyptian",
+    "Eritrean",
+    "Ethiopian",
+    "Ghanaian",
+    "Ivorian",
+    "Kenyan",
+    "Moroccan",
+    "Nigerian",
+    "North African",
+    "Senegalese",
+    "Somali",
+    "South African",
+    "Southern African",
+    "Tanzanian",
+    "Tunisian",
+    "Ugandan",
+    "West African",
+  ].sort(),
+  "Middle East & SW Asia": [
+    "Armenian",
+    "Georgian",
+    "Gulf (Khaleeji)",
+    "Iranian (Persian)",
+    "Israeli",
+    "Jordanian",
+    "Kurdish",
+    "Lebanese",
+    "Levantine",
+    "Palestinian",
+    "Syrian",
+    "Turkish",
+    "Yemeni",
+  ].sort(),
+  "South Asia": [
+    "Bangladeshi",
+    "Goan",
+    "Gujarati",
+    "Hyderabadi",
+    "Kashmiri",
+    "Maharashtrian",
+    "Nepali",
+    "North Indian (Punjabi)",
+    "Pakistani",
+    "Rajasthani",
+    "South Indian (Tamil)",
+    "Sri Lankan",
+  ].sort(),
+  "East & Southeast Asia": [
+    "Burmese/Myanmar",
+    "Cambodian (Khmer)",
+    "Chinese (Cantonese)",
+    "Chinese (Hunan)",
+    "Chinese (Shandong)",
+    "Chinese (Sichuan)",
+    "Filipino",
+    "Indonesian",
+    "Japanese",
+    "Korean",
+    "Lao",
+    "Malaysian",
+    "Mongolian",
+    "Singaporean",
+    "Taiwanese",
+    "Thai",
+    "Vietnamese",
+  ].sort(),
+  "Central Asia": ["Kazakh", "Uighur", "Uzbek"].sort(),
+  Europe: [
+    "Austrian",
+    "Balkan",
+    "Basque",
+    "Belgian",
+    "British",
+    "Bulgarian",
+    "Catalan",
+    "Czech",
+    "Dutch",
+    "Finnish",
+    "French",
+    "German",
+    "Greek",
+    "Hungarian",
+    "Irish",
+    "Italian",
+    "Polish",
+    "Portuguese",
+    "Romanian",
+    "Russian",
+    "Scandinavian",
+    "Scottish",
+    "Sicilian",
+    "Slovak",
+    "Spanish",
+    "Swiss",
+    "Ukrainian",
+  ].sort(),
+  Americas: [
+    "Alaskan",
+    "American",
+    "Argentinian",
+    "Baja",
+    "Brazilian",
+    "Cajun",
+    "Californian",
+    "Caribbean",
+    "Chilean",
+    "Colombian",
+    "Creole",
+    "Cuban",
+    "Dominican",
+    "Hawaiian",
+    "Jamaican",
+    "Mexican",
+    "New Mexican",
+    "Oaxacan",
+    "Pacific Islander",
+    "Pacific Northwest",
+    "Peruvian",
+    "Puerto Rican",
+    "Southern / Soul Food",
+    "Tex-Mex",
+    "Venezuelan",
+    "Yucatecan",
+  ].sort(),
+  "Indigenous & Jewish": [
+    "Indigenous / First Nations / Native American",
+    "Ashkenazi Jewish",
+    "Sephardi Jewish",
+    "Mizrahi Jewish",
+  ].sort(),
+  "Other / Fusion": ["Fusion/Contemporary", "Mediterranean", "Pan-Asian"].sort(),
 };
 
-function makeEthnicityLabels() {
-  const labels: string[] = [];
-  Object.entries(ETHNICITY_REGIONS || {}).forEach(([region, arr]) => {
-    (arr || []).forEach((name) => labels.push(`${region} — ${name}`));
-  });
-  return labels;
-}
-
-export function useRecipesFilters() {
-  const [q, setQ] = useState("");
-  const [selectedCuisines, setSelectedCuisines] = useState<string[]>([]);
-  const [selectedEthnicities, setSelectedEthnicities] = useState<string[]>([]);
-  const [selectedDiets, setSelectedDiets] = useState<string[]>([]);
-  const [selectedMealTypes, setSelectedMealTypes] = useState<string[]>([]);
-
-  const ethnicityLabels = useMemo(() => makeEthnicityLabels(), []);
-
-  const toggle = (list: string[], value: string, setter: (v: string[]) => void) => {
-    setter(list.includes(value) ? list.filter((x) => x !== value) : [...list, value]);
-  };
-
-  const getQueryParams = () => {
-    const params = new URLSearchParams();
-    if (q.trim()) params.set("q", q.trim());
-    if (selectedCuisines.length) params.set("cuisines", selectedCuisines.join(","));
-    if (selectedEthnicities.length) params.set("ethnicities", selectedEthnicities.join(","));
-    if (selectedDiets.length) params.set("diets", selectedDiets.join(","));
-    if (selectedMealTypes.length) params.set("mealTypes", selectedMealTypes.join(","));
-    params.set("pageSize", "24");
-    params.set("offset", "0");
-    return params;
-  };
-
-  const reset = () => {
-    setQ("");
-    setSelectedCuisines([]);
-    setSelectedEthnicities([]);
-    setSelectedDiets([]);
-    setSelectedMealTypes([]);
-  };
-
-  return {
-    // state
-    q,
-    setQ,
-    selectedCuisines,
-    selectedEthnicities,
-    selectedDiets,
-    selectedMealTypes,
-    // toggles
-    toggleCuisine: (label: string) => toggle(selectedCuisines, label, setSelectedCuisines),
-    toggleEthnicity: (label: string) => toggle(selectedEthnicities, label, setSelectedEthnicities),
-    toggleDiet: (label: string) => toggle(selectedDiets, label, setSelectedDiets),
-    toggleMealType: (label: string) => toggle(selectedMealTypes, label, setSelectedMealTypes),
-    // catalogs
-    catalogs: {
-      CUISINES,
-      MEAL_TYPES,
-      DIETARY,
-      ETHNICITY_REGIONS,
-      ETHNICITY_LABELS: ethnicityLabels,
-    },
-    // helpers
-    getQueryParams,
-    reset,
-  };
-}
+/** Flattened ethnicity list for components that need a single array */
+export const ETHNICITIES = Object.values(ETHNICITY_REGIONS)
+  .flat()
+  .filter((v, i, a) => a.indexOf(v) === i)
+  .sort();
