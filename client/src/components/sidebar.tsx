@@ -13,7 +13,7 @@ import {
   Utensils,
   GlassWater,
   Heart,
-  ArrowLeftRight, // ← NEW icon for Substitutions
+  Wand2,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -47,8 +47,7 @@ const NAV: NavItem[] = [
     submenu: [
       { name: "Browse Recipes", href: "/recipes", icon: BookOpen },
       { name: "My Pantry", href: "/pantry", icon: ChefHat },
-      // NEW: Substitutions link under Recipes
-      { name: "Substitutions", href: "/substitutions", icon: ArrowLeftRight },
+      { name: "Ingredient Substitutions", href: "/substitutions", icon: Wand2 },
     ],
   },
   { name: "Potent Potables", href: "/potent-potables", icon: GlassWater },
@@ -71,11 +70,9 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
   const [location] = useLocation();
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
-  // Utility to know if path is active
   const isActive = (href: string) =>
     location === href || location.startsWith(href + "/");
 
-  // Compute which parent sections should be auto-open based on current route
   const autoOpen = useMemo(() => {
     const map: Record<string, boolean> = {};
     const walk = (items: NavItem[], parentTrail: string[] = []) => {
@@ -110,6 +107,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
       return { ...prev, [k]: !(prev[k] ?? autoOpen[k] ?? false) };
     });
 
+  // Row component for both parents and leaves
   const Row = ({ item, trail = [] as string[] }) => {
     const currentTrail = [...trail, item.name];
 
