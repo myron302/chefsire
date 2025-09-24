@@ -1,9 +1,7 @@
-// client/src/pages/recipes/RecipesListPage.tsx
 import * as React from "react";
 import { Link } from "wouter";
-import useUrlFilterSync from "@/hooks/useUrlFilterSync";
-import { useRecipesFilters } from "@/hooks/useRecipesFilters";
-import { useRecipesData, type RecipeCardData } from "@/hooks/useRecipesData";
+import { useRecipesFilters } from "./useRecipesFilters";
+import { useRecipesData, type RecipeCardData } from "./useRecipesData";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -82,10 +80,7 @@ function RecipeCard({ r }: { r: RecipeCardData }) {
 }
 
 export default function RecipesListPage() {
-  // keep filters ↔ URL in sync
-  useUrlFilterSync();
-
-  const { state, set } = useRecipesFilters();
+  const { state, setQ } = useRecipesFilters();
   const { recipes, loading, err } = useRecipesData();
 
   return (
@@ -98,12 +93,12 @@ export default function RecipesListPage() {
         </Link>
       </div>
 
-      {/* Quick search (client-side only; wires into state.search) */}
+      {/* Quick search (binds to filters state.q) */}
       <div className="mb-4 flex items-center gap-2">
         <Input
           placeholder="Quick search (title/keywords)…"
-          value={state.search}
-          onChange={(e) => set((s) => ({ ...s, search: e.target.value }))}
+          value={state.q}
+          onChange={(e) => setQ(e.target.value)}
           className="max-w-md"
         />
         <Link href="/recipes/filters">
