@@ -22,7 +22,6 @@ export default function Layout({ children }: LayoutProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
 
-  // Load Google Font once
   useEffect(() => {
     const link = document.createElement("link");
     link.href =
@@ -34,7 +33,6 @@ export default function Layout({ children }: LayoutProps) {
     };
   }, []);
 
-  // Secondary links row under header
   const secondaryLinks = [
     { href: "/", label: "Home" },
     { href: "/recipes", label: "Recipes" },
@@ -203,6 +201,13 @@ export default function Layout({ children }: LayoutProps) {
                             >
                               <ChefHat className="w-3 h-3 mr-2" /> My Pantry
                             </Link>
+                            <Link
+                              href="/substitutions"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                            >
+                              <Wand2 className="w-3 h-3 mr-2" /> Ingredient Substitutions
+                            </Link>
 
                             {/* Potent Potables */}
                             <Link
@@ -230,7 +235,7 @@ export default function Layout({ children }: LayoutProps) {
                               <Heart className="w-3 h-3 mr-2" /> Wedding Planning
                             </Link>
 
-                            {/* Marketplace */}
+                            {/* Marketplace & Nutrition */}
                             <Link
                               href="/marketplace"
                               onClick={() => setIsDropdownOpen(false)}
@@ -239,16 +244,6 @@ export default function Layout({ children }: LayoutProps) {
                               <ShoppingCart className="w-4 h-4 mr-3" /> Marketplace
                             </Link>
 
-                            {/* NEW: Ingredient Substitutions */}
-                            <Link
-                              href="/substitutions"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                            >
-                              <Wand2 className="w-4 h-4 mr-3" /> Ingredient Substitutions
-                            </Link>
-
-                            {/* Nutrition (premium) */}
                             <Link
                               href="/nutrition"
                               onClick={() => setIsDropdownOpen(false)}
@@ -298,6 +293,7 @@ export default function Layout({ children }: LayoutProps) {
               </div>
             </div>
           </div>
+
           {/* Secondary Navigation */}
           <nav className="border-t border-border bg-background">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
