@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Search, Bell, MessageCircle, User, ChevronDown,
   ChefHat, Activity, ShoppingCart, Settings, LogOut,
-  Home, Compass, BookOpen, GlassWater, Utensils, Heart
+  Home, Compass, BookOpen, GlassWater, Utensils, Heart, Wand2
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
@@ -18,7 +18,6 @@ interface LayoutProps {
 }
 
 export default function Layout({ children }: LayoutProps) {
-  // ✅ one subscription instead of two
   const [pathname, setLocation] = useLocation();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
@@ -231,7 +230,7 @@ export default function Layout({ children }: LayoutProps) {
                               <Heart className="w-3 h-3 mr-2" /> Wedding Planning
                             </Link>
 
-                            {/* Marketplace & Nutrition */}
+                            {/* Marketplace */}
                             <Link
                               href="/marketplace"
                               onClick={() => setIsDropdownOpen(false)}
@@ -240,6 +239,16 @@ export default function Layout({ children }: LayoutProps) {
                               <ShoppingCart className="w-4 h-4 mr-3" /> Marketplace
                             </Link>
 
+                            {/* NEW: Ingredient Substitutions */}
+                            <Link
+                              href="/substitutions"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                            >
+                              <Wand2 className="w-4 h-4 mr-3" /> Ingredient Substitutions
+                            </Link>
+
+                            {/* Nutrition (premium) */}
                             <Link
                               href="/nutrition"
                               onClick={() => setIsDropdownOpen(false)}
@@ -289,7 +298,6 @@ export default function Layout({ children }: LayoutProps) {
               </div>
             </div>
           </div>
-
           {/* Secondary Navigation */}
           <nav className="border-t border-border bg-background">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
