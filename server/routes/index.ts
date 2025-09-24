@@ -1,28 +1,26 @@
 // server/routes/index.ts
 import { Router } from "express";
 
+// Keep the routers you already have:
 import recipesRouter from "./recipes";
-import bitesRouter from "./bites";
+import bitesRouter from "./bites";           // “stories” → “bites”
+import usersRouter from "./users";
+import postsRouter from "./posts";
 import pantryRouter from "./pantry";
 import marketplaceRouter from "./marketplace";
+
+// NEW: substitutions (AI swapper – local engine for now)
 import substitutionsRouter from "./substitutions";
 
 const r = Router();
 
-// Grouped mounts
-r.use("/recipes", recipesRouter);
-r.use("/bites", bitesRouter);
-
-// Pantry & nutrition-related endpoints live at root with /users/:id prefix
-r.use("/", pantryRouter);
-
-// Marketplace endpoints live under /marketplace
-r.use("/", marketplaceRouter);
-
-// AI substitutions (swapper)
-r.use("/", substitutionsRouter);
-
-// Simple ping within the /api scope (health without DB)
-r.get("/healthz", (_req, res) => res.json({ ok: true }));
+// Mount them all under /api (app.ts does app.use("/api", r))
+r.use(recipesRouter);
+r.use(bitesRouter);
+r.use(usersRouter);
+r.use(postsRouter);
+r.use(pantryRouter);
+r.use(marketplaceRouter);
+r.use(substitutionsRouter);
 
 export default r;
