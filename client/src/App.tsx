@@ -28,6 +28,9 @@ import PotentPotables from "@/pages/potent-potables";
 import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 
+// NEW: substitutions page
+import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
+
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole";
@@ -96,6 +99,9 @@ function Router() {
         <Route path="/catering/wedding-planning" component={WeddingPlanning} />
         <Route path="/potent-potables" component={PotentPotables} />
         <Route path="/nutrition" component={NutritionMealPlanner} />
+
+        {/* NEW: Substitutions UI */}
+        <Route path="/substitutions" component={SubstitutionsPage} />
 
         {/* Placeholder routes */}
         <Route path="/saved" component={NotFound} />
