@@ -4,47 +4,77 @@ import { searchRecipes } from "../services/recipes-service";
 
 const r = Router();
 
+/** Helper: parse "a,b,c" OR repeated ?key=a&key=b into string[] */
+function parseList(input: unknown): string[] {
+  if (Array.isArray(input)) {
+    return input
+      .flatMap((x) => String(x).split(","))
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  if (typeof input === "string") {
+    return input
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
 /**
  * GET /api/recipes/search
- * Query params:
- *  - q?: string
- *  - cuisines[]?: string
- *  - diets[]?: string
- *  - mealTypes[]?: string
- *  - pageSize?: number
- *  - offset?: number
+ * Accepts:
+ *   q?: string
+ *   cuisines?: string[] | "a,b,c"
+ *   diets?: string[] | "a,b,c"
+ *   mealTypes?: string[] | "a,b,c"
+ *   pageSize?: number
+ *   offset?: number
  */
 r.get("/recipes/search", async (req, res) => {
   try {
-    // normalize arrays from query (?cuisines=a&cuisines=b OR ?cuisines=a,b)
-    const toList = (v: unknown): string[] => {
-      if (Array.isArray(v)) return v.flatMap(x => String(x).split(",")).map(s => s.trim()).filter(Boolean);
-      if (typeof v === "string") return v.split(",").map(s => s.trim()).filter(Boolean);
-      return [];
-    };
-
     const q = typeof req.query.q === "string" ? req.query.q : undefined;
-    const cuisines = toList(req.query.cuisines);
-    const diets = toList(req.query.diets);
-    const mealTypes = toList(req.query.mealTypes);
+    const cuisines = parseList(req.query.cuisines);
+    const diets = parseList(req.query.diets);
+    const mealTypes = parseList(req.query.mealTypes);
 
-    const pageSize = req.query.pageSize ? Number(req.query.pageSize) : 24;
-    const offset = req.query.offset ? Number(req.query.offset) : 0;
+    const pageSize =
+      typeof req.query.pageSize === "string" ? Number(req.query.pageSize) :
+      typeof req.query.pageSize === "number" ? req.query.pageSize :
+      24;
+
+    const offset =
+      typeof req.query.offset === "string" ? Number(req.query.offset) :
+      typeof req.query.offset === "number" ? req.query.offset :
+      0;
 
     const items = await searchRecipes({
       q,
-      cuisines,
-      diets,
-      mealTypes,
+      cuisines: cuisines.length ? cuisines : undefined,
+      diets: diets.length ? diets : undefined,
+      mealTypes: mealTypes.length ? mealTypes : undefined,
       pageSize,
       offset,
     });
 
-    res.json({ items, total: items.length, params: { q, cuisines, diets, mealTypes, pageSize, offset } });
+    res.json({
+      ok: true,
+      total: items.length,
+      items,
+      params: { q, cuisines, diets, mealTypes, pageSize, offset },
+    });
   } catch (err: any) {
-    console.error("recipes.search error:", err);
-    res.status(500).json({ error: "Search failed", details: err?.message || String(err) });
+    console.error("recipes search error:", err);
+    res
+      .status(500)
+      .json({ ok: false, error: err?.message || "Search failed" });
   }
+});
+
+/** Back-compat alias: /api/search (kept just in case something still calls it) */
+r.get("/search", (req, res, next) => {
+  // Forward to the canonical handler
+  (r as any).handle({ ...req, url: "/recipes/search" }, res, next);
 });
 
 export default r;
