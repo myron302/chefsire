@@ -1,40 +1,37 @@
 // server/routes/recipes.ts
 import { Router } from "express";
-import { storage } from "../models/storage";
+import { searchRecipes } from "../services/recipes-service";
 
 const r = Router();
 
 /**
  * GET /api/recipes/search
  * Query params:
- *   q?: string
- *   cuisines?: comma list
- *   diets?: comma list
- *   mealTypes?: comma list
- *   pageSize?: number (default 24)
- *   offset?: number (default 0)
+ *  - q?: string
+ *  - cuisines[]?: string
+ *  - diets[]?: string
+ *  - mealTypes[]?: string
+ *  - pageSize?: number
+ *  - offset?: number
  */
-r.get("/search", async (req, res) => {
+r.get("/recipes/search", async (req, res) => {
   try {
+    // normalize arrays from query (?cuisines=a&cuisines=b OR ?cuisines=a,b)
+    const toList = (v: unknown): string[] => {
+      if (Array.isArray(v)) return v.flatMap(x => String(x).split(",")).map(s => s.trim()).filter(Boolean);
+      if (typeof v === "string") return v.split(",").map(s => s.trim()).filter(Boolean);
+      return [];
+    };
+
     const q = typeof req.query.q === "string" ? req.query.q : undefined;
-
-    const toList = (v: unknown) =>
-      typeof v === "string"
-        ? v.split(",").map((s) => s.trim()).filter(Boolean)
-        : [];
-
     const cuisines = toList(req.query.cuisines);
     const diets = toList(req.query.diets);
     const mealTypes = toList(req.query.mealTypes);
 
-    const pageSize =
-      typeof req.query.pageSize === "string" ? Number(req.query.pageSize) : 24;
-    const offset =
-      typeof req.query.offset === "string" ? Number(req.query.offset) : 0;
+    const pageSize = req.query.pageSize ? Number(req.query.pageSize) : 24;
+    const offset = req.query.offset ? Number(req.query.offset) : 0;
 
-    // Local DB search (your storage already implements this; it currently
-    // primarily respects `q`, but we pass all params for future expansion).
-    const local = await storage.searchLocalRecipes({
+    const items = await searchRecipes({
       q,
       cuisines,
       diets,
@@ -43,16 +40,10 @@ r.get("/search", async (req, res) => {
       offset,
     });
 
-    return res.json({
-      items: local,
-      total: local.length,
-      source: "local",
-    });
+    res.json({ items, total: items.length, params: { q, cuisines, diets, mealTypes, pageSize, offset } });
   } catch (err: any) {
     console.error("recipes.search error:", err);
-    return res
-      .status(500)
-      .json({ message: err?.message || "Search failed", code: "RECIPES_SEARCH_FAILED" });
+    res.status(500).json({ error: "Search failed", details: err?.message || String(err) });
   }
 });
 
