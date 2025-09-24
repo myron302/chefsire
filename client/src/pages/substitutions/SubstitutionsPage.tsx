@@ -1,156 +1,145 @@
-// client/src/pages/substitutions/SubstitutionsPage.tsx
-import * as React from "react";
+// client/src/pages/Substitutions.tsx
+import { useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 type Alt = { name: string; note?: string; confidence?: number; tags?: string[] };
-type Item = { original: string; alternatives: Alt[] };
-type ApiResponse =
-  | { items: Item[]; info: { diet: string | null; avoid: string[]; engine: string } }
-  | { message: string };
+type SuggestItem = { original: string; alternatives: Alt[] };
+type SuggestResponse = { items: SuggestItem[]; info: { diet: string | null; avoid: string[]; engine: string } };
 
 export default function SubstitutionsPage() {
-  const [ingredientsInput, setIngredientsInput] = React.useState("milk,butter,egg");
-  const [diet, setDiet] = React.useState<"" | "vegan">("vegan");
-  const [avoidInput, setAvoidInput] = React.useState("dairy,nut");
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [data, setData] = React.useState<ApiResponse | null>(null);
+  const [ingredients, setIngredients] = useState("milk,butter,egg");
+  const [diet, setDiet] = useState<"none" | "vegan">("none");
+  const [avoid, setAvoid] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<SuggestResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const fetchSuggest = async () => {
     setLoading(true);
     setError(null);
-    setData(null);
-
-    const ingredients = ingredientsInput.trim();
-    const avoid = avoidInput.trim();
-
-    const params = new URLSearchParams();
-    if (ingredients) params.set("ingredients", ingredients);
-    if (diet) params.set("diet", diet);
-    if (avoid) params.set("avoid", avoid);
+    setResult(null);
 
     try {
+      const params = new URLSearchParams();
+      params.set("ingredients", ingredients);
+      if (diet !== "none") params.set("diet", diet);
+      if (avoid.trim()) params.set("avoid", avoid.trim());
+
       const res = await fetch(`/api/substitutions/suggest?${params.toString()}`);
-      const json: ApiResponse = await res.json();
       if (!res.ok) {
-        const msg = (json as any)?.message || `Request failed (${res.status})`;
-        throw new Error(msg);
+        const txt = await res.text();
+        throw new Error(txt || `Request failed (${res.status})`);
       }
-      setData(json);
-    } catch (err: any) {
-      setError(err?.message || "Something went wrong");
+      const json: SuggestResponse = await res.json();
+      setResult(json);
+    } catch (e: any) {
+      setError(e?.message || "Request failed");
     } finally {
       setLoading(false);
     }
   };
 
-  const items = (data as any)?.items as Item[] | undefined;
-
   return (
-    <div style={{ maxWidth: 920, margin: "0 auto", padding: "24px 16px" }}>
-      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 16 }}>Ingredient Substitutions</h1>
-      <p style={{ color: "#666", marginBottom: 24 }}>
-        Type ingredients separated by commas (e.g. <code>milk,butter,egg</code>), choose a diet, optionally list things to avoid,
-        then click <strong>Suggest</strong>. This calls <code>/api/substitutions/suggest</code>.
-      </p>
+    <div className="max-w-3xl mx-auto p-4 md:p-8">
+      <h1 className="text-2xl md:text-3xl font-bold">Ingredient Substitutions</h1>
 
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, marginBottom: 24 }}>
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontWeight: 600 }}>Ingredients (comma-separated)</span>
-          <input
-            value={ingredientsInput}
-            onChange={(e) => setIngredientsInput(e.target.value)}
-            placeholder="milk,butter,egg"
-            style={{
-              padding: "10px 12px", border: "1px solid #ddd", borderRadius: 8, fontSize: 14,
-            }}
-          />
-        </label>
-
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
-          <label style={{ display: "grid", gap: 6 }}>
-            <span style={{ fontWeight: 600 }}>Diet</span>
-            <select
-              value={diet}
-              onChange={(e) => setDiet(e.target.value as any)}
-              style={{ padding: "10px 12px", border: "1px solid #ddd", borderRadius: 8, fontSize: 14 }}
-            >
-              <option value="">None</option>
-              <option value="vegan">Vegan</option>
-            </select>
-          </label>
-
-          <label style={{ display: "grid", gap: 6 }}>
-            <span style={{ fontWeight: 600 }}>Avoid (comma-separated)</span>
-            <input
-              value={avoidInput}
-              onChange={(e) => setAvoidInput(e.target.value)}
-              placeholder="dairy,nut"
-              style={{
-                padding: "10px 12px", border: "1px solid #ddd", borderRadius: 8, fontSize: 14,
-              }}
+      <div className="mt-6 space-y-4 border rounded-lg p-4 bg-card border-border">
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-medium">Ingredients (comma-separated)</label>
+            <Textarea
+              value={ingredients}
+              onChange={(e) => setIngredients(e.target.value)}
+              placeholder="e.g. milk,butter,egg"
+              rows={3}
+              className="mt-1"
             />
-          </label>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">Diet</label>
+            <div className="mt-1">
+              <Select value={diet} onValueChange={(v: "none" | "vegan") => setDiet(v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select diet" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="vegan">Vegan</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="mt-4">
+              <label className="text-sm font-medium">Avoid (comma-separated)</label>
+              <Input
+                value={avoid}
+                onChange={(e) => setAvoid(e.target.value)}
+                placeholder="e.g. nut,dairy"
+                className="mt-1"
+              />
+            </div>
+          </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            marginTop: 8,
-            padding: "10px 14px",
-            borderRadius: 8,
-            border: "1px solid #0a7",
-            background: loading ? "#e9fff7" : "#0a7",
-            color: loading ? "#0a7" : "white",
-            fontWeight: 600,
-            cursor: loading ? "default" : "pointer",
-            width: "fit-content",
-          }}
-        >
-          {loading ? "Suggesting…" : "Suggest"}
-        </button>
-      </form>
+        <div className="flex gap-2">
+          <Button onClick={fetchSuggest} disabled={loading}>
+            {loading ? "Suggesting..." : "Suggest"}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setIngredients("");
+              setAvoid("");
+              setDiet("none");
+              setResult(null);
+              setError(null);
+            }}
+          >
+            Clear
+          </Button>
+        </div>
+      </div>
 
       {error && (
-        <div style={{ background: "#fff1f0", border: "1px solid #ffa39e", padding: 12, borderRadius: 8, color: "#a8071a" }}>
+        <div className="mt-4 p-3 text-sm rounded-md bg-red-50 text-red-700 border border-red-200">
           {error}
         </div>
       )}
 
-      {items && (
-        <div style={{ display: "grid", gap: 16 }}>
-          {items.map((it) => (
-            <div key={it.original} style={{ border: "1px solid #eee", borderRadius: 10, padding: 16 }}>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>{it.original}</div>
+      {result && (
+        <div className="mt-6 space-y-4">
+          {result.items.map((it) => (
+            <div key={it.original} className="border rounded-lg p-4 bg-card border-border">
+              <div className="font-semibold mb-2">{it.original}</div>
               {it.alternatives.length === 0 ? (
-                <div style={{ color: "#666" }}>No suggestions.</div>
+                <div className="text-sm text-muted-foreground">No suggestions.</div>
               ) : (
-                <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6 }}>
-                  {it.alternatives.map((alt, idx) => (
-                    <li key={idx}>
-                      <span style={{ fontWeight: 600 }}>{alt.name}</span>
-                      {typeof alt.confidence === "number" && (
-                        <span style={{ color: "#999" }}> · {(alt.confidence * 100).toFixed(0)}%</span>
-                      )}
-                      {alt.note && <div style={{ color: "#555" }}>{alt.note}</div>}
-                      {alt.tags && alt.tags.length > 0 && (
-                        <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-                          {alt.tags.map((t) => (
-                            <span
-                              key={t}
-                              style={{
-                                fontSize: 12,
-                                background: "#f4f4f5",
-                                border: "1px solid #e4e4e7",
-                                padding: "2px 6px",
-                                borderRadius: 999,
-                                color: "#444",
-                              }}
-                            >
-                              {t}
-                            </span>
-                          ))}
+                <ul className="space-y-2">
+                  {it.alternatives.map((a, idx) => (
+                    <li key={idx} className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-medium">{a.name}</div>
+                        {a.note && <div className="text-sm text-muted-foreground">{a.note}</div>}
+                        {a.tags?.length ? (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {a.tags.map((t) => (
+                              <span
+                                key={t}
+                                className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground"
+                              >
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                      {typeof a.confidence === "number" && (
+                        <div className="text-xs text-muted-foreground self-center">
+                          {(a.confidence * 100).toFixed(0)}%
                         </div>
                       )}
                     </li>
