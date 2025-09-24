@@ -1,22 +1,20 @@
-// client/src/pages/recipes/RecipesFiltersPage.tsx
 import * as React from "react";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider"; // If you don't have this, swap for <input type="range" />
+import { Slider } from "@/components/ui/slider";
 import { ChevronLeft, Filter, X } from "lucide-react";
 
+import { useRecipesFilters } from "./useRecipesFilters";
 import {
-  useRecipesFilters,
   CUISINES,
   MEAL_TYPES,
   DIETARY,
   ALLERGENS,
   DIFFICULTY,
   ETHNICITY_REGIONS,
-  ETHNICITIES,
-} from "@/hooks/useRecipesFilters";
+} from "./filters.catalog";
 
 /** Small selectable chip */
 function Chip({
@@ -73,11 +71,11 @@ function Section({
 
 export default function RecipesFiltersPage() {
   const [, setLocation] = useLocation();
-  const { state, set, reset } = useRecipesFilters();
+  const { state, setState, reset, setQ } = useRecipesFilters();
 
   // helpers for toggling list selections
   const toggleIn = (key: keyof typeof state, val: string) =>
-    set((s) => {
+    setState((s) => {
       const arr = new Set<string>(s[key] as string[]);
       if (arr.has(val)) arr.delete(val);
       else arr.add(val);
@@ -88,9 +86,13 @@ export default function RecipesFiltersPage() {
     (state[key] as string[]).includes(val);
 
   const applyAndBack = () => {
-    // (Optionally could persist to URL, keep it simple for now)
     setLocation("/recipes");
   };
+
+  const maxCookTimeLabel =
+    state.maxCookTime != null ? `${state.maxCookTime} min` : "Any";
+  const minSpoonsLabel =
+    state.minSpoons != null ? String(state.minSpoons) : "Any";
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-5">
@@ -122,8 +124,8 @@ export default function RecipesFiltersPage() {
             <Section title="Search">
               <Input
                 placeholder="Search recipe titles or keywords…"
-                value={(state as any).search ?? ""}
-                onChange={(e) => set((s) => ({ ...s, search: e.target.value }))}
+                value={state.q}
+                onChange={(e) => setQ(e.target.value)}
               />
             </Section>
 
@@ -135,7 +137,7 @@ export default function RecipesFiltersPage() {
                   state.cuisines.length > 0 ? (
                     <button
                       className="text-xs underline text-muted-foreground"
-                      onClick={() => set((s) => ({ ...s, cuisines: [] }))}
+                      onClick={() => setState((s) => ({ ...s, cuisines: [] }))}
                     >
                       Clear
                     </button>
@@ -161,7 +163,7 @@ export default function RecipesFiltersPage() {
                   state.mealTypes.length > 0 ? (
                     <button
                       className="text-xs underline text-muted-foreground"
-                      onClick={() => set((s) => ({ ...s, mealTypes: [] }))}
+                      onClick={() => setState((s) => ({ ...s, mealTypes: [] }))}
                     >
                       Clear
                     </button>
@@ -188,7 +190,7 @@ export default function RecipesFiltersPage() {
                 state.ethnicities.length > 0 ? (
                   <button
                     className="text-xs underline text-muted-foreground"
-                    onClick={() => set((s) => ({ ...s, ethnicities: [] }))}
+                    onClick={() => setState((s) => ({ ...s, ethnicities: [] }))}
                   >
                     Clear
                   </button>
@@ -196,15 +198,15 @@ export default function RecipesFiltersPage() {
               }
             >
               <div className="space-y-4">
-                {ETHNICITY_REGIONS.map((region) => (
+                {Object.entries(ETHNICITY_REGIONS).map(([region, list]) => (
                   <div key={region} className="space-y-2">
                     <div className="text-xs font-semibold text-muted-foreground uppercase">
                       {region}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {ETHNICITIES[region]?.map((eth) => (
+                      {list.map((eth) => (
                         <Chip
-                          key={eth}
+                          key={`${region}:${eth}`}
                           label={eth}
                           selected={isSelected("ethnicities", eth)}
                           onToggle={() => toggleIn("ethnicities", eth)}
@@ -223,7 +225,7 @@ export default function RecipesFiltersPage() {
                 state.dietary.length > 0 ? (
                   <button
                     className="text-xs underline text-muted-foreground"
-                    onClick={() => set((s) => ({ ...s, dietary: [] }))}
+                    onClick={() => setState((s) => ({ ...s, dietary: [] }))}
                   >
                     Clear
                   </button>
@@ -249,7 +251,7 @@ export default function RecipesFiltersPage() {
                 state.allergens.length > 0 ? (
                   <button
                     className="text-xs underline text-muted-foreground"
-                    onClick={() => set((s) => ({ ...s, allergens: [] }))}
+                    onClick={() => setState((s) => ({ ...s, allergens: [] }))}
                   >
                     Clear
                   </button>
@@ -275,15 +277,21 @@ export default function RecipesFiltersPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <Section title="Difficulty">
                 <div className="flex flex-wrap gap-2">
-                  {(["", ...DIFFICULTY] as const).map((d) => (
+                  {/* “Any” plus Easy/Medium/Hard */}
+                  <Chip
+                    label="Any"
+                    selected={!state.difficulty}
+                    onToggle={() => setState((s) => ({ ...s, difficulty: "" }))}
+                  />
+                  {DIFFICULTY.map((d) => (
                     <Chip
-                      key={d || "Any"}
-                      label={d || "Any"}
-                      selected={(state.difficulty || "") === d}
+                      key={d}
+                      label={d}
+                      selected={state.difficulty === d.toLowerCase()}
                       onToggle={() =>
-                        set((s) => ({
+                        setState((s) => ({
                           ...s,
-                          difficulty: (s.difficulty || "") === d ? "" : (d as typeof s.difficulty),
+                          difficulty: s.difficulty === d.toLowerCase() ? "" : (d.toLowerCase() as typeof s.difficulty),
                         }))
                       }
                     />
@@ -296,7 +304,7 @@ export default function RecipesFiltersPage() {
                   <Chip
                     label="Only recipes (hide non-recipe posts)"
                     selected={state.onlyRecipes}
-                    onToggle={() => set((s) => ({ ...s, onlyRecipes: !s.onlyRecipes }))}
+                    onToggle={() => setState((s) => ({ ...s, onlyRecipes: !s.onlyRecipes }))}
                     className="w-full text-left"
                   />
                 </div>
@@ -304,68 +312,60 @@ export default function RecipesFiltersPage() {
             </div>
 
             {/* Cook time */}
-            <Section title={`Max Cook Time: ${state.maxCookTime} min`}>
-              {/* If you don’t have a Slider component, replace with:
-                  <input type="range" min={5} max={240} step={5} value={state.maxCookTime}
-                    onChange={(e) => set((s) => ({ ...s, maxCookTime: Number(e.target.value) }))} />
-               */}
-              {Slider ? (
-                <Slider
-                  min={5}
-                  max={240}
-                  step={5}
-                  value={[state.maxCookTime]}
-                  onValueChange={([v]) => set((s) => ({ ...s, maxCookTime: v }))}
-                />
-              ) : (
-                <input
-                  type="range"
-                  min={5}
-                  max={240}
-                  step={5}
-                  value={state.maxCookTime}
-                  onChange={(e) =>
-                    set((s) => ({ ...s, maxCookTime: Number(e.target.value) }))
-                  }
-                  className="w-full"
-                />
-              )}
+            <Section title={`Max Cook Time: ${maxCookTimeLabel}`}>
+              <Slider
+                min={5}
+                max={240}
+                step={5}
+                value={[state.maxCookTime ?? 60]}
+                onValueChange={([v]) => setState((s) => ({ ...s, maxCookTime: v }))}
+              />
+              <div className="mt-2">
+                <button
+                  className="text-xs underline text-muted-foreground"
+                  onClick={() => setState((s) => ({ ...s, maxCookTime: null }))}
+                >
+                  Clear max time
+                </button>
+              </div>
             </Section>
 
             {/* Spoons */}
-            <Section title={`Minimum Rating (Spoons): ${state.minSpoons}`}>
-              {Slider ? (
-                <Slider
-                  min={0}
-                  max={5}
-                  step={1}
-                  value={[state.minSpoons]}
-                  onValueChange={([v]) => set((s) => ({ ...s, minSpoons: v }))}
-                />
-              ) : (
-                <input
-                  type="range"
-                  min={0}
-                  max={5}
-                  step={1}
-                  value={state.minSpoons}
-                  onChange={(e) =>
-                    set((s) => ({ ...s, minSpoons: Number(e.target.value) }))
-                  }
-                  className="w-full"
-                />
-              )}
+            <Section title={`Minimum Rating (Spoons): ${minSpoonsLabel}`}>
+              <Slider
+                min={0}
+                max={5}
+                step={1}
+                value={[state.minSpoons ?? 0]}
+                onValueChange={([v]) => setState((s) => ({ ...s, minSpoons: v }))}
+              />
+              <div className="mt-2">
+                <button
+                  className="text-xs underline text-muted-foreground"
+                  onClick={() => setState((s) => ({ ...s, minSpoons: null }))}
+                >
+                  Clear rating
+                </button>
+              </div>
             </Section>
 
             {/* Sort */}
             <Section title="Sort By">
               <div className="flex flex-wrap gap-2">
-                {(["newest", "rating", "likes"] as const).map((opt) => (
+                {(["relevance", "newest", "rating", "popularity"] as const).map((opt) => (
                   <Chip
                     key={opt}
-                    label={opt === "newest" ? "Newest" : opt === "rating" ? "Rating" : "Likes"}
+                    label={
+                      opt === "relevance"
+                        ? "Relevance"
+                        : opt === "newest"
+                        ? "Newest"
+                        : opt === "rating"
+                        ? "Rating"
+                        : "Popularity"
+                    }
                     selected={state.sortBy === opt}
-                    onToggle={() => set((s) => ({ ...s, sortBy: opt }))}
+                    onToggle={() => setState((s) => ({ ...s, sortBy: opt }))}
                   />
                 ))}
               </div>
@@ -387,20 +387,17 @@ export default function RecipesFiltersPage() {
               Current Filters
             </h3>
             <div className="space-y-2 text-sm">
-              <Row label="Search" value={(state as any).search || "—"} />
+              <Row label="Search" value={state.q || "—"} />
               <Row label="Cuisines" value={state.cuisines.join(", ") || "—"} />
               <Row label="Ethnicities" value={state.ethnicities.join(", ") || "—"} />
               <Row label="Dietary" value={state.dietary.join(", ") || "—"} />
               <Row label="Allergens" value={state.allergens.join(", ") || "—"} />
               <Row label="Meal Types" value={state.mealTypes.join(", ") || "—"} />
               <Row label="Difficulty" value={state.difficulty || "Any"} />
-              <Row label="Max Cook Time" value={`${state.maxCookTime} min`} />
-              <Row label="Min Spoons" value={String(state.minSpoons)} />
+              <Row label="Max Cook Time" value={maxCookTimeLabel} />
+              <Row label="Min Spoons" value={minSpoonsLabel} />
               <Row label="Only Recipes" value={state.onlyRecipes ? "Yes" : "No"} />
-              <Row
-                label="Sort By"
-                value={state.sortBy === "newest" ? "Newest" : state.sortBy === "rating" ? "Rating" : "Likes"}
-              />
+              <Row label="Sort By" value={state.sortBy} />
             </div>
 
             <div className="mt-4 flex items-center gap-2">
