@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Clock, Users, ExternalLink } from "lucide-react";
 
-/** Very permissive shape — we’ll normalize on the client */
+/** Very permissive shape — we'll normalize on the client */
 type RecipeItem = {
   id: string;
   title: string;
@@ -68,15 +68,16 @@ function SpoonRating({ value }: { value: number | null | undefined }) {
   );
 }
 
-/** Try hard to extract a readable instruction string */
+/** Try hard to extract a readable instruction string - FIXED VERSION */
 function extractInstructions(r: RecipeItem): string | null {
-  // 1) direct string/string[]
-  const direct =
-    r.instructions ??
-    r.instruction ??
-    r.strInstructions ??
-    null;
+  // 1) Check for strInstructions first (TheMealDB format)
+  if (r.strInstructions && typeof r.strInstructions === 'string') {
+    const cleaned = r.strInstructions.replace(/\s+/g, " ").trim();
+    if (cleaned) return cleaned;
+  }
 
+  // 2) direct string/string[]
+  const direct = r.instructions ?? r.instruction ?? null;
   if (direct) {
     const s = Array.isArray(direct)
       ? direct.filter(Boolean).join(" ")
@@ -85,7 +86,7 @@ function extractInstructions(r: RecipeItem): string | null {
     if (cleaned) return cleaned;
   }
 
-  // 2) steps as array of strings
+  // 3) steps as array of strings
   if (Array.isArray(r.steps) && r.steps.length) {
     const got = r.steps
       .map((s: any) => (typeof s === "string" ? s : s?.step ?? ""))
@@ -95,7 +96,7 @@ function extractInstructions(r: RecipeItem): string | null {
     if (cleaned) return cleaned;
   }
 
-  // 3) spoonacular-like analyzedInstructions
+  // 4) spoonacular-like analyzedInstructions
   if (Array.isArray(r.analyzedInstructions) && r.analyzedInstructions.length) {
     const parts: string[] = [];
     for (const blk of r.analyzedInstructions) {
@@ -148,51 +149,117 @@ function getSourceUrl(r: RecipeItem): string | null {
   return null;
 }
 
-function RecipeCard({ r }: { r: RecipeItem }) {
+// ADD: Modal component for full recipe view
+function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem; isOpen: boolean; onClose: () => void }) {
+  const fullInstructions = extractInstructions(r);
+  const img = getImage(r);
+  const sourceHref = getSourceUrl(r);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-6">
+          <div className="flex justify-between items-start mb-4">
+            <h2 className="text-2xl font-bold">{r.title}</h2>
+            <Button variant="ghost" onClick={onClose} className="text-gray-500 hover:text-gray-700">
+              ✕
+            </Button>
+          </div>
+          
+          {img && (
+            <img src={img} alt={r.title} className="w-full h-64 object-cover rounded-lg mb-4" />
+          )}
+
+          <div className="flex items-center gap-4 mb-4">
+            <SpoonRating value={r.ratingSpoons ?? null} />
+            {r.cookTime && (
+              <span className="inline-flex items-center gap-1 text-sm text-gray-600">
+                <Clock className="w-4 h-4" />
+                {r.cookTime} min
+              </span>
+            )}
+            {r.servings && (
+              <span className="inline-flex items-center gap-1 text-sm text-gray-600">
+                <Users className="w-4 h-4" />
+                {r.servings} servings
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2 mb-4">
+            {r.cuisine && <Badge variant="secondary">{r.cuisine}</Badge>}
+            {r.mealType && <Badge variant="outline">{r.mealType}</Badge>}
+            {(r.dietTags || []).map((t) => (
+              <Badge key={t} variant="outline" className="capitalize">
+                {t}
+              </Badge>
+            ))}
+          </div>
+
+          {fullInstructions && (
+            <div className="mb-4">
+              <h3 className="font-semibold mb-2">Instructions:</h3>
+              <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{fullInstructions}</p>
+            </div>
+          )}
+
+          {sourceHref && (
+            <a
+              href={sourceHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-blue-600 hover:underline"
+            >
+              View Original Source <ExternalLink className="w-4 h-4" />
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecipeCard({ r, onCardClick }: { r: RecipeItem; onCardClick: (recipe: RecipeItem) => void }) {
   const img = getImage(r);
   const preview = getInstructionPreview(r);
-  const sourceHref = getSourceUrl(r);
 
   const ImageEl = (
     img ? (
-      <img src={img} alt={r.title} className="w-full h-48 object-cover" loading="lazy" />
+      <img 
+        src={img} 
+        alt={r.title} 
+        className="w-full h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity" 
+        loading="lazy"
+        onClick={() => onCardClick(r)}
+      />
     ) : (
-      <div className="w-full h-48 bg-muted flex items-center justify-center text-muted-foreground">
+      <div 
+        className="w-full h-48 bg-muted flex items-center justify-center text-muted-foreground cursor-pointer hover:bg-gray-100 transition-colors"
+        onClick={() => onCardClick(r)}
+      >
         No image
       </div>
     )
   );
 
   const TitleEl = (
-    <h3 className="font-semibold leading-snug line-clamp-2">
+    <h3 
+      className="font-semibold leading-snug line-clamp-2 cursor-pointer hover:underline"
+      onClick={() => onCardClick(r)}
+    >
       {r.title}
     </h3>
   );
 
   return (
     <Card className="overflow-hidden bg-card border border-border hover:shadow-md transition-shadow">
-      {sourceHref ? (
-        <a href={sourceHref} target="_blank" rel="noopener noreferrer" aria-label={`Open source for ${r.title}`}>
-          {ImageEl}
-        </a>
-      ) : (
-        ImageEl
-      )}
+      {ImageEl}
 
       <CardContent className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
-          {sourceHref ? (
-            <a
-              href={sourceHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:underline"
-            >
-              {TitleEl}
-            </a>
-          ) : (
-            TitleEl
-          )}
+          {TitleEl}
           <SpoonRating value={r.ratingSpoons ?? null} />
         </div>
 
@@ -225,18 +292,16 @@ function RecipeCard({ r }: { r: RecipeItem }) {
           <p className="text-sm text-muted-foreground mt-2 line-clamp-4">{preview}</p>
         )}
 
-        {sourceHref && (
-          <div className="pt-1">
-            <a
-              href={sourceHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-            >
-              View source <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          </div>
-        )}
+        <div className="pt-1">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => onCardClick(r)}
+            className="w-full"
+          >
+            View Full Recipe
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -247,6 +312,7 @@ export default function RecipesListPage() {
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
   const [items, setItems] = React.useState<RecipeItem[]>([]);
+  const [selectedRecipe, setSelectedRecipe] = React.useState<RecipeItem | null>(null);
 
   async function runSearch(term?: string) {
     setLoading(true);
@@ -316,10 +382,20 @@ export default function RecipesListPage() {
       ) : (
         <div className="grid gap-4 grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           {items.map((r) => (
-            <RecipeCard key={r.id} r={r} />
+            <RecipeCard 
+              key={r.id} 
+              r={r} 
+              onCardClick={setSelectedRecipe}
+            />
           ))}
         </div>
       )}
+
+      <RecipeModal 
+        r={selectedRecipe!} 
+        isOpen={!!selectedRecipe} 
+        onClose={() => setSelectedRecipe(null)} 
+      />
     </div>
   );
 }
