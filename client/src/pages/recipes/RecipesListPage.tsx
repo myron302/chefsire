@@ -391,20 +391,22 @@ export default function RecipesListPage() {
         </div>
       </div>
 
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center gap-2">
         <Input
           placeholder="Search recipes…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && runSearch(q)}
-          className="max-w-md"
+          className="flex-1 max-w-md"
           aria-label="Search recipes"
         />
-        <Button onClick={() => runSearch(q)}>Search</Button>
-        <Button variant="ghost" onClick={() => runSearch()}>Random</Button>
-        <Link href="/recipes/filters">
-          <Button variant="ghost">Advanced filters</Button>
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button onClick={() => runSearch(q)}>Search</Button>
+          <Button variant="ghost" onClick={() => runSearch()}>Random</Button>
+          <Link href="/recipes/filters">
+            <Button variant="ghost" className="whitespace-nowrap">Advanced filters</Button>
+          </Link>
+        </div>
       </div>
 
       {loading ? (
