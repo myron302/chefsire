@@ -46,13 +46,22 @@ type SearchResponse =
   | { ok: true; total: number; source?: string; items: RecipeItem[] }
   | { ok: false; error: string };
 
-/** Spoons (0–5) */
+/** Modern Spoons (0–5) */
 function SpoonIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" {...props}>
       <path
-        d="M10.5 2c2.485 0 4.5 2.015 4.5 4.5 0 1.61-.828 3.028-2.082 3.86l-.418.275V14a4.5 4.5 0 0 1-1.5 3.366V22h-3v-4.634A4.5 4.5 0 0 1 6 14V10.635l-.418-.275A4.5 4.5 0 0 1 3.5 6.5C3.5 4.015 5.515 2 8 2h2.5Z"
+        d="M12 2C8.134 2 5 5.134 5 9c0 2.38 1.19 4.49 3 5.74V22h4v-7.26C13.81 13.49 15 11.38 15 9c0-3.866-3.134-7-7-7z"
         fill="currentColor"
+        fillRule="evenodd"
+      />
+      <ellipse
+        cx="12"
+        cy="9"
+        rx="4"
+        ry="3"
+        fill="currentColor"
+        opacity="0.8"
       />
     </svg>
   );
@@ -198,10 +207,21 @@ function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boo
             ))}
           </div>
 
-          {fullInstructions && (
+          {/* Debug: Show what fields are available */}
+          <div className="mb-4 p-2 bg-gray-100 text-xs">
+            <strong>Debug - Available fields:</strong>
+            <pre>{JSON.stringify(Object.keys(r), null, 2)}</pre>
+          </div>
+
+          {fullInstructions ? (
             <div className="mb-4">
               <h3 className="font-semibold mb-2">Instructions:</h3>
               <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{fullInstructions}</p>
+            </div>
+          ) : (
+            <div className="mb-4 p-2 bg-yellow-100 border border-yellow-300">
+              <strong>No instructions found. Available data:</strong>
+              <pre className="text-xs mt-2">{JSON.stringify(r, null, 2)}</pre>
             </div>
           )}
 
