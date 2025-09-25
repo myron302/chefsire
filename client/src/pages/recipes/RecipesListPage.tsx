@@ -20,6 +20,8 @@ type RecipeItem = {
   cookTime?: number | null;
   servings?: number | null;
   source?: string;
+  /** NEW: instructions can be string or string[] depending on the source */
+  instructions?: string | string[] | null;
 };
 
 type SearchResponse =
@@ -56,8 +58,25 @@ function SpoonRating({ value }: { value: number | null | undefined }) {
   );
 }
 
+/** Normalize instructions (string or string[]) to a single preview string */
+function getInstructionPreview(instr?: string | string[] | null, maxLen = 220): string | null {
+  if (!instr) return null;
+  let text =
+    Array.isArray(instr)
+      ? instr.filter(Boolean).join(" ").replace(/\s+/g, " ").trim()
+      : String(instr).replace(/\s+/g, " ").trim();
+
+  if (!text) return null;
+  // Some APIs prepend step numbers; keep it simple for preview
+  text = text.replace(/^(\d+\.\s*)+/g, "");
+  if (text.length > maxLen) text = text.slice(0, maxLen - 1).trimEnd() + "…";
+  return text;
+}
+
 function RecipeCard({ r }: { r: RecipeItem }) {
   const img = r.image || r.imageUrl || null;
+  const preview = getInstructionPreview(r.instructions);
+
   return (
     <Card className="overflow-hidden bg-card border border-border hover:shadow-md transition-shadow">
       {img ? (
@@ -98,6 +117,11 @@ function RecipeCard({ r }: { r: RecipeItem }) {
             </Badge>
           ))}
         </div>
+
+        {/* NEW: instructions preview */}
+        {preview && (
+          <p className="text-sm text-muted-foreground mt-2 line-clamp-4">{preview}</p>
+        )}
       </CardContent>
     </Card>
   );
