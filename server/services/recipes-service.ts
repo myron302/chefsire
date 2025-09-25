@@ -1,28 +1,18 @@
 // server/services/recipes-service.ts
-// Minimal, self-contained search service that:
-// 1) Returns a couple of local demo recipes (always).
-// 2) Pulls from TheMealDB (no API key required) when possible.
-// 3) Optionally pulls from Spoonacular if SPOONACULAR_API_KEY is set.
-// 4) Merges, de-dupes, applies light filtering & pagination.
+// Node 18+ has global fetch (you’re on Node 22) — no extra deps needed.
 
-type RecipeItem = {
+export type RecipeCardData = {
   id: string;
   title: string;
-  imageUrl?: string | null;
-  ingredients?: string[];
-  instructions?: string[] | string;
-  cookTime?: number | null;
-  servings?: number | null;
-  difficulty?: string | null;
-  calories?: number | null;
-  protein?: string | number | null;
-  carbs?: string | number | null;
-  fat?: string | number | null;
-  fiber?: string | number | null;
-  cuisine?: string | null;
-  mealType?: string | null;
-  dietTags?: string[];
-  source?: "local" | "mealdb" | "spoonacular" | string;
+  image?: string | null;
+  imageUrl?: string | null;          // for older client code
+  cuisine?: string | null;           // e.g. MealDB "area"
+  mealType?: string | null;          // e.g. MealDB "category"
+  dietTags?: string[];               // not provided by MealDB; we leave empty
+  ratingSpoons?: number | null;      // simple 0–5 rating for UI
+  cookTime?: number | null;          // dummy values so cards look nice
+  servings?: number | null;          // dummy values so cards look nice
+  source?: string;                   // "mealdb"
 };
 
 export type SearchParams = {
@@ -35,263 +25,207 @@ export type SearchParams = {
 };
 
 export type SearchResult = {
+  results: RecipeCardData[];
   total: number;
-  results: RecipeItem[];
+  source: string;
 };
 
-// --- Local always-on fallback (so the page never comes up empty) ---
-const localFeatured: RecipeItem[] = [
-  {
-    id: "local-1",
-    title: "Honey Glazed Salmon with Roasted Vegetables",
-    imageUrl:
-      "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=800&h=600&fit=crop&auto=format",
-    ingredients: [
-      "4 salmon fillets",
-      "2 tbsp honey",
-      "1 tbsp soy sauce",
-      "2 cloves garlic, minced",
-      "Mixed vegetables (broccoli, carrots, bell peppers)",
-      "Olive oil",
-      "Salt and pepper to taste",
-    ],
-    instructions: [
-      "Preheat oven to 400°F (200°C).",
-      "Mix honey, soy sauce, and garlic for glaze.",
-      "Season salmon with salt and pepper, brush with glaze.",
-      "Roast vegetables 15 min, add salmon, bake 12–15 min.",
-    ],
-    cookTime: 30,
-    servings: 4,
-    difficulty: "Easy",
-    cuisine: "Seafood",
-    dietTags: ["High-Protein"],
-    source: "local",
-  },
-  {
-    id: "local-2",
-    title: "Fresh Fettuccine with Wild Mushroom Ragu",
-    imageUrl:
-      "https://images.unsplash.com/photo-1621996346565-e3dbc353d2e5?w=800&h=600&fit=crop&auto=format",
-    ingredients: [
-      "2 cups all-purpose flour",
-      "3 large eggs",
-      "1 lb mixed wild mushrooms",
-      "2 tbsp olive oil",
-      "2 cloves garlic, minced",
-      "Fresh thyme",
-      "1/2 cup white wine",
-      "Parmesan cheese",
-      "Salt and pepper",
-    ],
-    instructions: [
-      "Make pasta dough; rest 30 min; roll and cut.",
-      "Sauté mushrooms with garlic and thyme.",
-      "Deglaze with white wine; simmer.",
-      "Cook pasta; toss with ragu; serve with Parmesan.",
-    ],
-    cookTime: 45,
-    servings: 4,
-    difficulty: "Medium",
-    cuisine: "Italian",
-    dietTags: [],
-    source: "local",
-  },
-];
+// --- helpers ---------------------------------------------------------------
 
-// -------------------- TheMealDB (no key required) --------------------
-type MealDBMeal = {
-  idMeal: string;
-  strMeal: string;
-  strMealThumb: string | null;
-  strInstructions: string | null;
-  strArea: string | null;       // cuisine/area (e.g., "Mexican")
-  strCategory: string | null;   // meal type/category (e.g., "Dessert")
-  [k: `strIngredient${number}`]: string | null;
-  [k: `strMeasure${number}`]: string | null;
-};
-
-function mapMealDBMeal(meal: MealDBMeal): RecipeItem {
-  const ingredients: string[] = [];
-  for (let i = 1; i <= 20; i++) {
-    const ing = (meal as any)[`strIngredient${i}`] as string | null;
-    const meas = (meal as any)[`strMeasure${i}`] as string | null;
-    if (ing && ing.trim()) {
-      ingredients.push(meas && meas.trim() ? `${meas.trim()} ${ing.trim()}` : ing.trim());
-    }
+async function fetchJson<T>(url: string, timeoutMs = 8000): Promise<T> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as T;
+  } finally {
+    clearTimeout(t);
   }
+}
 
-  // Split instructions into steps if possible
-  const instructions =
-    meal.strInstructions?.includes("\n")
-      ? meal.strInstructions
-          ?.split(/\r?\n/)
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : meal.strInstructions || "";
+function toCardFromMeal(meal: any): RecipeCardData {
+  // MealDB search returns { idMeal, strMeal, strMealThumb, strArea, strCategory, ... }
+  const cookTime = 15 * (1 + (Number(meal.idMeal) % 6)); // 15,30,...,90
+  const rating = (Number(meal.idMeal) % 5) + 1;          // 1..5
+  const servings = 2 + (Number(meal.idMeal) % 5);        // 2..6
+
+  const image = meal.strMealThumb || null;
 
   return {
-    id: `mealdb-${meal.idMeal}`,
-    title: meal.strMeal,
-    imageUrl: meal.strMealThumb,
-    ingredients,
-    instructions,
-    cookTime: null,
-    servings: null,
-    difficulty: null,
+    id: String(meal.idMeal),
+    title: meal.strMeal || "Untitled",
+    image,
+    imageUrl: image, // keep both keys for any client variant
     cuisine: meal.strArea || null,
     mealType: meal.strCategory || null,
+    dietTags: [],
+    ratingSpoons: rating,
+    cookTime,
+    servings,
     source: "mealdb",
   };
 }
 
-async function fetchMealDB(q?: string): Promise<RecipeItem[]> {
-  try {
-    // If no q, MealDB still allows an empty search to return many popular meals.
-    const url = new URL("https://www.themealdb.com/api/json/v1/1/search.php");
-    url.searchParams.set("s", q || "");
-    const res = await fetch(url.toString());
-    if (!res.ok) return [];
-    const json = await res.json();
-    const meals: MealDBMeal[] = json?.meals || [];
-    return meals.map(mapMealDBMeal);
-  } catch {
-    return [];
-  }
-}
-
-// ---------------------- Spoonacular (optional) -----------------------
-type SpoonacularResult = {
-  id: number;
-  title: string;
-  image?: string;
-  readyInMinutes?: number;
-  servings?: number;
-  cuisines?: string[];
-  dishTypes?: string[];
-  nutrition?: any;
-};
-
-function mapSpoon(r: SpoonacularResult): RecipeItem {
-  return {
-    id: `spoon-${r.id}`,
-    title: r.title,
-    imageUrl: r.image || null,
-    cookTime: r.readyInMinutes ?? null,
-    servings: r.servings ?? null,
-    cuisine: (r.cuisines && r.cuisines[0]) || null,
-    mealType: (r.dishTypes && r.dishTypes[0]) || null,
-    instructions: [], // need a second call for full instructions; keeping simple
-    ingredients: [],
-    source: "spoonacular",
-  };
-}
-
-async function fetchSpoonacular(q?: string, pageSize = 24, offset = 0): Promise<RecipeItem[]> {
-  const key = process.env.SPOONACULAR_API_KEY;
-  if (!key) return [];
-  try {
-    const url = new URL("https://api.spoonacular.com/recipes/complexSearch");
-    if (q) url.searchParams.set("query", q);
-    url.searchParams.set("number", String(pageSize));
-    url.searchParams.set("offset", String(offset));
-    url.searchParams.set("addRecipeInformation", "true"); // richer fields
-    url.searchParams.set("instructionsRequired", "false");
-
-    const res = await fetch(`${url.toString()}&apiKey=${encodeURIComponent(key)}`);
-    if (!res.ok) return [];
-    const json = await res.json();
-    const results: SpoonacularResult[] = json?.results || [];
-    return results.map(mapSpoon);
-  } catch {
-    return [];
-  }
-}
-
-// ------------------- Utilities: filter + de-dupe + page --------------
-function textIncludes(hay: string, needle: string) {
-  return hay.toLowerCase().includes(needle.toLowerCase());
-}
-
-function applyFilters(
-  items: RecipeItem[],
-  p: SearchParams
-): RecipeItem[] {
-  let out = items.slice();
-
-  if (p.q && p.q.trim()) {
-    const q = p.q.trim().toLowerCase();
-    out = out.filter(
-      (r) =>
-        textIncludes(r.title, q) ||
-        (r.cuisine && textIncludes(r.cuisine, q)) ||
-        (Array.isArray(r.ingredients) &&
-          r.ingredients.some((ing) => textIncludes(String(ing), q)))
-    );
-  }
-
-  if (p.cuisines && p.cuisines.length) {
-    const set = new Set(p.cuisines.map((s) => s.toLowerCase()));
-    out = out.filter((r) => (r.cuisine ? set.has(r.cuisine.toLowerCase()) : false));
-  }
-
-  if (p.mealTypes && p.mealTypes.length) {
-    const set = new Set(p.mealTypes.map((s) => s.toLowerCase()));
-    out = out.filter((r) => (r.mealType ? set.has(r.mealType.toLowerCase()) : true));
-  }
-
-  // diets are highly provider-specific; keep as a no-op unless tags exist
-  if (p.diets && p.diets.length) {
-    const set = new Set(p.diets.map((s) => s.toLowerCase()));
-    out = out.filter((r) =>
-      (r.dietTags || []).some((t) => set.has(t.toLowerCase()))
-    );
-  }
-
-  return out;
-}
-
-function dedupe(items: RecipeItem[]): RecipeItem[] {
+function dedupeById(list: RecipeCardData[]): RecipeCardData[] {
   const seen = new Set<string>();
-  const out: RecipeItem[] = [];
-  for (const r of items) {
-    const key = (r.title || r.id).toLowerCase().trim();
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push(r);
-    }
+  const out: RecipeCardData[] = [];
+  for (const r of list) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push(r);
   }
   return out;
 }
 
-function paginate(items: RecipeItem[], pageSize = 24, offset = 0): RecipeItem[] {
-  const start = Math.max(0, offset);
-  const end = start + Math.max(1, pageSize);
-  return items.slice(start, end);
+// --- providers (TheMealDB) ------------------------------------------------
+
+type MealDbSearchResp = { meals: any[] | null };
+
+// Search by free text (name)
+async function mealDbSearchByName(q: string): Promise<RecipeCardData[]> {
+  const url = `https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(q)}`;
+  const json = await fetchJson<MealDbSearchResp>(url);
+  const meals = json.meals ?? [];
+  return meals.map(toCardFromMeal);
 }
 
-// ----------------------------- MAIN ---------------------------------
+// Filter by Area (we map your “cuisines” to MealDB “area” best effort)
+async function mealDbFilterByArea(area: string): Promise<RecipeCardData[]> {
+  const url = `https://www.themealdb.com/api/json/v1/1/filter.php?a=${encodeURIComponent(area)}`;
+  const json = await fetchJson<MealDbSearchResp>(url);
+  const meals = json.meals ?? [];
+  // filter.php returns only id/name/thumb (no area/category) — we’ll fill partials
+  return meals.map((m: any) =>
+    toCardFromMeal({
+      ...m,
+      strArea: area,
+      strCategory: null,
+    })
+  );
+}
+
+// Filter by Category (use for “mealTypes” when it matches MealDB categories)
+async function mealDbFilterByCategory(cat: string): Promise<RecipeCardData[]> {
+  const url = `https://www.themealdb.com/api/json/v1/1/filter.php?c=${encodeURIComponent(cat)}`;
+  const json = await fetchJson<MealDbSearchResp>(url);
+  const meals = json.meals ?? [];
+  return meals.map((m: any) =>
+    toCardFromMeal({
+      ...m,
+      strArea: null,
+      strCategory: cat,
+    })
+  );
+}
+
+// Default showcase (when no q/filters given): pull a few popular categories
+async function mealDbDefaultShowcase(): Promise<RecipeCardData[]> {
+  const picks = ["Seafood", "Beef", "Chicken", "Dessert"];
+  const lists = await Promise.allSettled(picks.map(mealDbFilterByCategory));
+  const flat = lists
+    .flatMap((p) => (p.status === "fulfilled" ? p.value : []))
+    .slice(0, 48);
+  return dedupeById(flat);
+}
+
+// --- public search ---------------------------------------------------------
+
 export async function searchRecipes(params: SearchParams): Promise<SearchResult> {
-  const pageSize = params.pageSize ?? 24;
-  const offset = params.offset ?? 0;
+  const {
+    q,
+    cuisines = [],
+    mealTypes = [],
+    // diets not supported by MealDB; we ignore but keep in params
+    pageSize = 24,
+    offset = 0,
+  } = params;
 
-  // Always include local fallback so UI never shows empty on first load.
-  let combined: RecipeItem[] = [...localFeatured];
+  let pool: RecipeCardData[] = [];
 
-  // TheMealDB (free)
-  const mealDbItems = await fetchMealDB(params.q);
-  combined.push(...mealDbItems);
+  try {
+    // Priority 1: text search
+    if (q && q.trim()) {
+      pool = await mealDbSearchByName(q.trim());
+    }
 
-  // Spoonacular (if API key configured)
-  const spoonItems = await fetchSpoonacular(params.q, pageSize, offset);
-  combined.push(...spoonItems);
+    // Priority 2: filters
+    if (!pool.length) {
+      const areaLists = await Promise.allSettled(
+        cuisines.slice(0, 3).map(mealDbFilterByArea)
+      );
+      const catLists = await Promise.allSettled(
+        mealTypes.slice(0, 3).map(mealDbFilterByCategory)
+      );
+      pool = [
+        ...areaLists.flatMap((p) => (p.status === "fulfilled" ? p.value : [])),
+        ...catLists.flatMap((p) => (p.status === "fulfilled" ? p.value : [])),
+      ];
+    }
 
-  // De-dupe & filter
-  combined = dedupe(combined);
-  combined = applyFilters(combined, params);
+    // Priority 3: default showcase
+    if (!pool.length) {
+      pool = await mealDbDefaultShowcase();
+    }
+  } catch (_e) {
+    // If MealDB is down or blocked, fall back to static items so the UI never looks empty.
+    pool = STATIC_FALLBACK_RECIPES;
+  }
 
-  const total = combined.length;
-  const page = paginate(combined, pageSize, offset);
+  // Deduplicate and paginate
+  const unique = dedupeById(pool);
+  const total = unique.length;
+  const paged = unique.slice(offset, offset + pageSize);
 
-  return { total, results: page };
+  // If absolutely nothing, ensure at least a few examples (last-resort fallback)
+  const results = paged.length ? paged : STATIC_FALLBACK_RECIPES.slice(0, pageSize);
+
+  return { results, total: results.length, source: "mealdb" };
 }
+
+// --- static fallback (used if APIs fail or return nothing) -----------------
+
+const STATIC_FALLBACK_RECIPES: RecipeCardData[] = [
+  {
+    id: "sf-1",
+    title: "Honey Glazed Salmon with Roasted Vegetables",
+    image:
+      "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=800&h=600&fit=crop&auto=format",
+    imageUrl:
+      "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=800&h=600&fit=crop&auto=format",
+    cuisine: "American",
+    mealType: "Dinner",
+    ratingSpoons: 4,
+    cookTime: 30,
+    servings: 4,
+    source: "static",
+  },
+  {
+    id: "sf-2",
+    title: "Fresh Fettuccine with Wild Mushroom Ragu",
+    image:
+      "https://images.unsplash.com/photo-1621996346565-e3dbc353d2e5?w=800&h=600&fit=crop&auto=format",
+    imageUrl:
+      "https://images.unsplash.com/photo-1621996346565-e3dbc353d2e5?w=800&h=600&fit=crop&auto=format",
+    cuisine: "Italian",
+    mealType: "Dinner",
+    ratingSpoons: 5,
+    cookTime: 45,
+    servings: 4,
+    source: "static",
+  },
+  {
+    id: "sf-3",
+    title: "Thai Green Curry",
+    image:
+      "https://images.unsplash.com/photo-1544025162-d76694265947?w=800&h=600&fit=crop&auto=format",
+    imageUrl:
+      "https://images.unsplash.com/photo-1544025162-d76694265947?w=800&h=600&fit=crop&auto=format",
+    cuisine: "Thai",
+    mealType: "Dinner",
+    ratingSpoons: 4,
+    cookTime: 35,
+    servings: 4,
+    source: "static",
+  },
+];
