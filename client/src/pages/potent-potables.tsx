@@ -1,238 +1,177 @@
-import * as React from "react";
+// client/src/pages/potentpotables.tsx
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 
-type Drink = {
-  id: string;
-  sourceId: string;
-  source: "cocktaildb";
-  title: string;
-  imageUrl?: string | null;
-  instructions?: string | null;
-  category?: string | null;
-  alcoholic?: string | null;
-  glass?: string | null;
-  ingredients?: string[];
-};
+interface Drink {
+  id: number;
+  name: string;
+  type: string;
+  ingredients: string;
+  image: string;
+}
 
-type Meta = {
-  categories: string[];
-  alcoholic: string[];
-  glasses: string[];
-  ingredients: string[];
-};
+export default function PotentPotables() {
+  const [drinks, setDrinks] = useState<Drink[]>([
+    {
+      id: 1,
+      name: "Mojito",
+      type: "cocktail",
+      ingredients: "Rum, Mint, Lime, Sugar, Soda",
+      image: "https://picsum.photos/300/200?random=1",
+    },
+    {
+      id: 2,
+      name: "Virgin Piña Colada",
+      type: "mocktail",
+      ingredients: "Pineapple, Coconut Cream, Ice",
+      image: "https://picsum.photos/300/200?random=2",
+    },
+  ]);
 
-export default function PotentPotablesPage() {
-  const [q, setQ] = React.useState("");
-  const [meta, setMeta] = React.useState<Meta | null>(null);
-  const [category, setCategory] = React.useState<string>("");
-  const [alcoholic, setAlcoholic] = React.useState<string>("");
-  const [ingredient, setIngredient] = React.useState<string>("");
-  const [items, setItems] = React.useState<Drink[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [err, setErr] = React.useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [newDrink, setNewDrink] = useState({
+    name: "",
+    type: "",
+    ingredients: "",
+    image: "",
+  });
 
-  React.useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch("/api/drinks/meta");
-        const j = await r.json();
-        if (j?.ok) {
-          setMeta({
-            categories: j.categories,
-            alcoholic: j.alcoholic,
-            glasses: j.glasses,
-            ingredients: j.ingredients,
-          });
-        }
-      } catch {
-        // ignore meta errors
-      }
-    })();
-  }, []);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const drink = { id: drinks.length + 1, ...newDrink };
+    setDrinks([...drinks, drink]);
+    setShowForm(false);
+    setNewDrink({ name: "", type: "", ingredients: "", image: "" });
+  };
 
-  async function runSearch() {
-    setLoading(true);
-    setErr(null);
-    try {
-      const params = new URLSearchParams();
-      if (q.trim()) params.set("q", q.trim());
-      if (ingredient) params.set("ingredient", ingredient);
-      // CocktailDB filter endpoints cannot be combined; category/alcoholic only when NOT using q or ingredient:
-      if (!q && ingredient === "" && category) params.set("category", category);
-      if (!q && ingredient === "" && alcoholic) params.set("alcoholic", alcoholic);
-
-      const r = await fetch(`/api/drinks/search?${params.toString()}`);
-      if (!r.ok) throw new Error(await r.text());
-      const j = await r.json();
-      const arr = Array.isArray(j?.items) ? j.items : [];
-      setItems(arr);
-    } catch (e: any) {
-      setErr(e?.message || "Search failed");
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  React.useEffect(() => {
-    runSearch(); // initial load
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // Placeholder for future API call
   }, []);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold">Potent Potables</h1>
-        <div className="flex gap-2">
-          <div className="w-64">
-            <Input
-              placeholder="Search cocktails by name…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && runSearch()}
-              aria-label="Search cocktails"
+    <div className="max-w-7xl mx-auto p-4">
+      <h1 className="text-3xl font-bold text-red-700 mb-4">Potent Potables</h1>
+      <div className="grid gap-4">
+        {drinks.map((drink) => (
+          <div key={drink.id} className="bg-white p-4 rounded shadow border">
+            <img
+              src={drink.image}
+              alt={drink.name}
+              className="w-full h-48 object-cover rounded-t"
+              onError={(e) =>
+                (e.currentTarget.src = "https://picsum.photos/300/200?grayscale")
+              }
             />
+            <h3 className="text-lg font-semibold mt-2">{drink.name}</h3>
+            <p className="text-sm text-gray-600">{drink.type}</p>
+            <p className="text-sm">{drink.ingredients}</p>
+            <div className="flex space-x-2 mt-2">
+              <Button
+                variant="default"
+                size="sm"
+                className="bg-green-500 hover:bg-green-600"
+              >
+                Like
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                className="bg-blue-500 hover:bg-blue-600"
+              >
+                Comment
+              </Button>
+            </div>
           </div>
-          <Button onClick={runSearch} disabled={loading}>
-            {loading ? "Searching…" : "Search"}
-          </Button>
-        </div>
+        ))}
       </div>
+      <Button
+        onClick={() => setShowForm(true)}
+        className="mt-4 bg-blue-700 text-white hover:bg-opacity-90"
+      >
+        Add New Drink
+      </Button>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center">
-        {/* Ingredient */}
-        <div className="w-56">
-          <select
-            className="w-full border rounded px-3 py-2 bg-background"
-            value={ingredient}
-            onChange={(e) => setIngredient(e.target.value)}
-            aria-label="Filter by ingredient"
-          >
-            <option value="">Filter by ingredient</option>
-            {(meta?.ingredients || []).slice(0, 400).map((i) => (
-              <option key={i} value={i}>{i}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Category (disabled if searching by name/ingredient) */}
-        <div className="w-56">
-          <select
-            className="w-full border rounded px-3 py-2 bg-background"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            disabled={!!q || !!ingredient}
-            aria-label="Filter by category"
-          >
-            <option value="">Category (no search active)</option>
-            {(meta?.categories || []).map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Alcoholic (disabled if searching by name/ingredient) */}
-        <div className="w-56">
-          <select
-            className="w-full border rounded px-3 py-2 bg-background"
-            value={alcoholic}
-            onChange={(e) => setAlcoholic(e.target.value)}
-            disabled={!!q || !!ingredient}
-            aria-label="Filter by alcoholic type"
-          >
-            <option value="">Alcoholic (no search active)</option>
-            {(meta?.alcoholic || []).map((a) => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </select>
-        </div>
-
-        <Button
-          variant="outline"
-          onClick={() => { setQ(""); setCategory(""); setAlcoholic(""); setIngredient(""); runSearch(); }}
-        >
-          Clear
-        </Button>
-      </div>
-
-      {/* Error */}
-      {err && (
-        <div className="p-3 text-sm rounded-md bg-red-50 text-red-700 border border-red-200">
-          {err}
+      {showForm && (
+        <div className="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded shadow-lg w-1/3">
+            <h2 className="text-2xl font-bold text-blue-700 mb-4">Add a Drink</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-blue-700">
+                  Drink Name
+                </label>
+                <Input
+                  type="text"
+                  value={newDrink.name}
+                  onChange={(e) =>
+                    setNewDrink({ ...newDrink, name: e.target.value })
+                  }
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-blue-700">
+                  Type
+                </label>
+                <select
+                  value={newDrink.type}
+                  onChange={(e) =>
+                    setNewDrink({ ...newDrink, type: e.target.value })
+                  }
+                  className="w-full p-2 border rounded"
+                  required
+                >
+                  <option value="cocktail">Cocktail</option>
+                  <option value="mocktail">Mocktail</option>
+                  <option value="smoothie">Smoothie</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-blue-700">
+                  Ingredients
+                </label>
+                <Input
+                  type="text"
+                  value={newDrink.ingredients}
+                  onChange={(e) =>
+                    setNewDrink({ ...newDrink, ingredients: e.target.value })
+                  }
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-blue-700">
+                  Image URL
+                </label>
+                <Input
+                  type="url"
+                  value={newDrink.image}
+                  onChange={(e) =>
+                    setNewDrink({ ...newDrink, image: e.target.value })
+                  }
+                  required
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowForm(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-blue-700 text-white hover:bg-opacity-90"
+                >
+                  Submit
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
-
-      {/* Results */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {loading &&
-          [...Array(6)].map((_, i) => <div key={i} className="h-64 rounded-lg bg-muted animate-pulse" />)}
-
-        {!loading && items.length === 0 && !err && (
-          <div className="col-span-full text-muted-foreground">
-            No drinks found. Try a different search or filter.
-          </div>
-        )}
-
-        {!loading &&
-          items.map((d) => (
-            <Card key={d.id} className="overflow-hidden">
-              {d.imageUrl ? (
-                <a
-                  href={`https://www.thecocktaildb.com/lookup.php?i=${encodeURIComponent(d.sourceId)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <img src={d.imageUrl} alt={d.title} className="w-full h-48 object-cover" loading="lazy" />
-                </a>
-              ) : (
-                <div className="w-full h-48 bg-muted" />
-              )}
-              <CardContent className="p-4 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-semibold leading-snug line-clamp-2">{d.title}</h3>
-                  <span className="text-xs text-muted-foreground">
-                    {d.alcoholic || ""}
-                  </span>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {[d.category, d.glass].filter(Boolean).join(" • ")}
-                </div>
-
-                {Array.isArray(d.ingredients) && d.ingredients.length > 0 && (
-                  <div className="text-sm">
-                    <div className="font-semibold mb-1">Ingredients</div>
-                    <ul className="list-disc pl-5 space-y-0.5">
-                      {d.ingredients.slice(0, 6).map((ing, i) => (
-                        <li key={`${d.id}-ing-${i}`}>{ing}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {d.instructions && (
-                  <div className="text-sm">
-                    <div className="font-semibold mb-1">Instructions</div>
-                    <p className="text-muted-foreground line-clamp-6">{d.instructions}</p>
-                  </div>
-                )}
-
-                <div className="pt-1">
-                  <a
-                    href={`https://www.thecocktaildb.com/lookup.php?i=${encodeURIComponent(d.sourceId)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-sm text-primary underline"
-                  >
-                    View on TheCocktailDB
-                  </a>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-      </div>
     </div>
   );
 }
