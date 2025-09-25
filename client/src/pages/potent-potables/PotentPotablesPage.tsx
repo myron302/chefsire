@@ -2,7 +2,6 @@ import * as React from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 
 type Drink = {
   id: string;
@@ -39,9 +38,16 @@ export default function PotentPotablesPage() {
       try {
         const r = await fetch("/api/drinks/meta");
         const j = await r.json();
-        if (j?.ok) setMeta({ categories: j.categories, alcoholic: j.alcoholic, glasses: j.glasses, ingredients: j.ingredients });
+        if (j?.ok) {
+          setMeta({
+            categories: j.categories,
+            alcoholic: j.alcoholic,
+            glasses: j.glasses,
+            ingredients: j.ingredients,
+          });
+        }
       } catch {
-        // ignore
+        // ignore meta errors
       }
     })();
   }, []);
@@ -53,7 +59,8 @@ export default function PotentPotablesPage() {
       const params = new URLSearchParams();
       if (q.trim()) params.set("q", q.trim());
       if (ingredient) params.set("ingredient", ingredient);
-      if (!q && ingredient === "" && category) params.set("category", category); // category only if no q/ingredient (CocktailDB limitation)
+      // CocktailDB filter endpoints cannot be combined; category/alcoholic only when NOT using q or ingredient:
+      if (!q && ingredient === "" && category) params.set("category", category);
       if (!q && ingredient === "" && alcoholic) params.set("alcoholic", alcoholic);
 
       const r = await fetch(`/api/drinks/search?${params.toString()}`);
@@ -70,7 +77,7 @@ export default function PotentPotablesPage() {
   }
 
   React.useEffect(() => {
-    runSearch(); // initial (empty results until user searches or chooses a filter)
+    runSearch(); // initial load
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -96,40 +103,57 @@ export default function PotentPotablesPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
+        {/* Ingredient */}
         <div className="w-56">
-          <Select value={ingredient} onValueChange={setIngredient}>
-            <SelectTrigger><SelectValue placeholder="Filter by ingredient" /></SelectTrigger>
-            <SelectContent className="max-h-72 overflow-auto">
-              {(meta?.ingredients || []).slice(0, 400).map((i) => (
-                <SelectItem key={i} value={i}>{i}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <select
+            className="w-full border rounded px-3 py-2 bg-background"
+            value={ingredient}
+            onChange={(e) => setIngredient(e.target.value)}
+            aria-label="Filter by ingredient"
+          >
+            <option value="">Filter by ingredient</option>
+            {(meta?.ingredients || []).slice(0, 400).map((i) => (
+              <option key={i} value={i}>{i}</option>
+            ))}
+          </select>
         </div>
 
+        {/* Category (disabled if searching by name/ingredient) */}
         <div className="w-56">
-          <Select value={category} onValueChange={setCategory} disabled={!!q || !!ingredient}>
-            <SelectTrigger><SelectValue placeholder="Category (no search active)" /></SelectTrigger>
-            <SelectContent>
-              {(meta?.categories || []).map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <select
+            className="w-full border rounded px-3 py-2 bg-background"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            disabled={!!q || !!ingredient}
+            aria-label="Filter by category"
+          >
+            <option value="">Category (no search active)</option>
+            {(meta?.categories || []).map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
         </div>
 
+        {/* Alcoholic (disabled if searching by name/ingredient) */}
         <div className="w-56">
-          <Select value={alcoholic} onValueChange={setAlcoholic} disabled={!!q || !!ingredient}>
-            <SelectTrigger><SelectValue placeholder="Alcoholic (no search active)" /></SelectTrigger>
-            <SelectContent>
-              {(meta?.alcoholic || []).map((a) => (
-                <SelectItem key={a} value={a}>{a}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <select
+            className="w-full border rounded px-3 py-2 bg-background"
+            value={alcoholic}
+            onChange={(e) => setAlcoholic(e.target.value)}
+            disabled={!!q || !!ingredient}
+            aria-label="Filter by alcoholic type"
+          >
+            <option value="">Alcoholic (no search active)</option>
+            {(meta?.alcoholic || []).map((a) => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
         </div>
 
-        <Button variant="outline" onClick={() => { setQ(""); setCategory(""); setAlcoholic(""); setIngredient(""); runSearch(); }}>
+        <Button
+          variant="outline"
+          onClick={() => { setQ(""); setCategory(""); setAlcoholic(""); setIngredient(""); runSearch(); }}
+        >
           Clear
         </Button>
       </div>
@@ -191,7 +215,7 @@ export default function PotentPotablesPage() {
                 {d.instructions && (
                   <div className="text-sm">
                     <div className="font-semibold mb-1">Instructions</div>
-                    <p className="text-muted-foreground line-clamp-5">{d.instructions}</p>
+                    <p className="text-muted-foreground line-clamp-6">{d.instructions}</p>
                   </div>
                 )}
 
