@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Clock, Users, ExternalLink } from "lucide-react";
+import { Loader2, Clock, Users, ExternalLink, LayoutGrid, List } from "lucide-react";
 
 /** Very permissive shape — we'll normalize on the client */
 type RecipeItem = {
@@ -333,6 +333,7 @@ export default function RecipesListPage() {
   const [err, setErr] = React.useState<string | null>(null);
   const [items, setItems] = React.useState<RecipeItem[]>([]);
   const [selectedRecipe, setSelectedRecipe] = React.useState<RecipeItem | null>(null);
+  const [view, setView] = React.useState<"grid" | "list">("grid");
 
   async function runSearch(term?: string) {
     setLoading(true);
@@ -367,9 +368,27 @@ export default function RecipesListPage() {
     <div className="max-w-7xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between gap-3 mb-4">
         <h1 className="text-2xl font-bold">Recipes</h1>
-        <Link href="/recipes/filters">
-          <Button variant="outline">Filters</Button>
-        </Link>
+        <div className="flex gap-2">
+          <Button
+            variant={view === "grid" ? "default" : "outline"}
+            onClick={() => setView("grid")}
+            className="gap-2"
+          >
+            <LayoutGrid className="h-4 w-4" />
+            Grid
+          </Button>
+          <Button
+            variant={view === "list" ? "default" : "outline"}
+            onClick={() => setView("list")}
+            className="gap-2"
+          >
+            <List className="h-4 w-4" />
+            List
+          </Button>
+          <Link href="/recipes/filters">
+            <Button variant="outline">Filters</Button>
+          </Link>
+        </div>
       </div>
 
       <div className="mb-4 flex items-center gap-2">
@@ -399,7 +418,7 @@ export default function RecipesListPage() {
         <div className="text-muted-foreground">
           No recipes found. Try a different search or click Random.
         </div>
-      ) : (
+      ) : view === "grid" ? (
         <div className="grid gap-4 grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           {items.map((r) => (
             <RecipeCard 
@@ -407,6 +426,17 @@ export default function RecipesListPage() {
               r={r} 
               onCardClick={setSelectedRecipe}
             />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {items.map((r) => (
+            <div key={r.id} className="w-full">
+              <RecipeCard 
+                r={r} 
+                onCardClick={setSelectedRecipe}
+              />
+            </div>
           ))}
         </div>
       )}
