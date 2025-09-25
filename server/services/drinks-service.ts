@@ -1,65 +1,136 @@
-// server/routes/drinks.ts
-import { Router } from "express";
-import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
+// server/services/drinks-service.ts
+// Cocktails via TheCocktailDB (free JSON API). No key needed for the /v1/1 endpoints.
 
-const r = Router();
+export type DrinkItem = {
+  id: string;            // "cocktaildb:<idDrink>"
+  sourceId: string;      // <idDrink>
+  source: "cocktaildb";
+  title: string;
+  imageUrl?: string | null;
+  instructions?: string | null;
+  category?: string | null;
+  alcoholic?: string | null; // "Alcoholic" | "Non_Alcoholic" | "Optional alcohol"
+  glass?: string | null;
+  ingredients?: string[];    // e.g. "1 oz Gin", "Tonic Water", ...
+};
 
-function str(v: unknown): string | undefined {
-  return typeof v === "string" ? v : undefined;
+export type DrinksSearchParams = {
+  q?: string;
+  ingredient?: string;
+  category?: string;
+  alcoholic?: string;
+  pageSize?: number;  // default 12
+  offset?: number;    // default 0
+};
+
+const API = "https://www.thecocktaildb.com/api/json/v1/1";
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
 }
 
-/** GET /api/drinks/search */
-r.get("/drinks/search", async (req, res) => {
-  try {
-    const pageSize = Number.isFinite(Number(req.query.pageSize)) ? Number(req.query.pageSize) : undefined;
-    const offset = Number.isFinite(Number(req.query.offset)) ? Number(req.query.offset) : undefined;
-
-    const result = await searchDrinks({
-      q: str(req.query.q),
-      ingredient: str(req.query.ingredient),
-      category: str(req.query.category),
-      alcoholic: str(req.query.alcoholic),
-      pageSize,
-      offset,
-    });
-
-    res.json({ ok: true, total: result.total, items: result.results, params: result.params });
-  } catch (err: any) {
-    console.error("drinks search error:", err);
-    res.status(500).json({ ok: false, error: err?.message || "Search failed" });
+function parseDrink(d: any): DrinkItem {
+  const ingredients: string[] = [];
+  for (let i = 1; i <= 15; i++) {
+    const ing = d[`strIngredient${i}`];
+    const meas = d[`strMeasure${i}`];
+    if (ing && String(ing).trim() !== "") {
+      const line = [meas, ing].filter(Boolean).join(" ").trim();
+      ingredients.push(line);
+    }
   }
-});
+  return {
+    id: `cocktaildb:${d.idDrink}`,
+    sourceId: String(d.idDrink),
+    source: "cocktaildb",
+    title: String(d.strDrink || "").trim(),
+    imageUrl: d.strDrinkThumb || null,
+    instructions: d.strInstructions || null,
+    category: d.strCategory || null,
+    alcoholic: d.strAlcoholic || null,
+    glass: d.strGlass || null,
+    ingredients,
+  };
+}
 
-/** GET /api/drinks/random */
-r.get("/drinks/random", async (_req, res) => {
-  try {
-    const d = await randomDrink();
-    if (!d) return res.status(404).json({ ok: false, error: "Not found" });
-    res.json({ ok: true, item: d });
-  } catch (err: any) {
-    res.status(500).json({ ok: false, error: err?.message || "Failed" });
+export async function lookupDrink(sourceId: string): Promise<DrinkItem | null> {
+  const r = await fetch(`${API}/lookup.php?i=${encodeURIComponent(sourceId)}`);
+  const j = await r.json();
+  const m = Array.isArray(j?.drinks) ? j.drinks[0] : null;
+  return m ? parseDrink(m) : null;
+}
+
+export async function randomDrink(): Promise<DrinkItem | null> {
+  const r = await fetch(`${API}/random.php`);
+  const j = await r.json();
+  const m = Array.isArray(j?.drinks) ? j.drinks[0] : null;
+  return m ? parseDrink(m) : null;
+}
+
+export async function listMeta() {
+  const [cats, glasses, alcoholics, ingredients] = await Promise.all([
+    fetch(`${API}/list.php?c=list`).then(r => r.json()).then(j => (j?.drinks || []).map((x: any) => x.strCategory).filter(Boolean)),
+    fetch(`${API}/list.php?g=list`).then(r => r.json()).then(j => (j?.drinks || []).map((x: any) => x.strGlass).filter(Boolean)),
+    fetch(`${API}/list.php?a=list`).then(r => r.json()).then(j => (j?.drinks || []).map((x: any) => x.strAlcoholic).filter(Boolean)),
+    fetch(`${API}/list.php?i=list`).then(r => r.json()).then(j => (j?.drinks || []).map((x: any) => x.strIngredient1).filter(Boolean)),
+  ]);
+
+  const alcoholicOrdered = Array.from(new Set(alcoholics)).sort((a, b) => {
+    const rank = (s: string) =>
+      s === "Alcoholic" ? 0 :
+      s === "Non_Alcoholic" ? 1 :
+      2;
+    return rank(a) - rank(b) || a.localeCompare(b);
+  });
+
+  return {
+    categories: Array.from(new Set(cats)).sort(),
+    glasses: Array.from(new Set(glasses)).sort(),
+    alcoholic: alcoholicOrdered,
+    ingredients: Array.from(new Set(ingredients)).sort(),
+  };
+}
+
+export async function searchDrinks(
+  params: DrinksSearchParams
+): Promise<{ results: DrinkItem[]; total: number; params: DrinksSearchParams }> {
+  const pageSize = clamp(params.pageSize ?? 12, 1, 30);
+  const offset = Math.max(0, params.offset ?? 0);
+
+  let list: any[] = [];
+  let mode: "search" | "filter" | "none" = "none";
+  let url = "";
+
+  if (params.q && params.q.trim()) {
+    mode = "search";
+    url = `${API}/search.php?s=${encodeURIComponent(params.q.trim())}`;
+  } else if (params.ingredient && params.ingredient.trim()) {
+    mode = "filter";
+    url = `${API}/filter.php?i=${encodeURIComponent(params.ingredient.trim())}`;
+  } else if (params.category && params.category.trim()) {
+    mode = "filter";
+    url = `${API}/filter.php?c=${encodeURIComponent(params.category.trim())}`;
+  } else if (params.alcoholic && params.alcoholic.trim()) {
+    mode = "filter";
+    url = `${API}/filter.php?a=${encodeURIComponent(params.alcoholic.trim())}`;
+  } else {
+    return { results: [], total: 0, params };
   }
-});
 
-/** GET /api/drinks/lookup/:id */
-r.get("/drinks/lookup/:id", async (req, res) => {
-  try {
-    const d = await lookupDrink(String(req.params.id));
-    if (!d) return res.status(404).json({ ok: false, error: "Not found" });
-    res.json({ ok: true, item: d });
-  } catch (err: any) {
-    res.status(500).json({ ok: false, error: err?.message || "Failed" });
+  const r = await fetch(url);
+  const j = await r.json();
+  list = Array.isArray(j?.drinks) ? j.drinks : [];
+
+  if (mode === "search") {
+    const sliced = list.slice(offset, offset + pageSize).map(parseDrink);
+    return { results: sliced, total: list.length, params };
   }
-});
 
-/** GET /api/drinks/meta */
-r.get("/drinks/meta", async (_req, res) => {
-  try {
-    const meta = await listMeta();
-    res.json({ ok: true, ...meta });
-  } catch (err: any) {
-    res.status(500).json({ ok: false, error: err?.message || "Failed" });
-  }
-});
-
-export default r;
+  // filter.php results are partial; fetch full details for each id
+  const slice = list.slice(offset, offset + pageSize);
+  const details = await Promise.all(
+    slice.map((x: any) => lookupDrink(String(x.idDrink)).catch(() => null))
+  );
+  const results = details.filter(Boolean) as DrinkItem[];
+  return { results, total: list.length, params };
+}
