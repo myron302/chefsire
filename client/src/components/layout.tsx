@@ -45,11 +45,18 @@ export default function Layout({ children }: LayoutProps) {
     console.log("Create post clicked");
   };
 
+  // FIXED: Route to recipes instead of explore
   const onSearchSubmit = (e: FormEvent) => {
     e.preventDefault();
     const q = searchText.trim();
     setIsDropdownOpen(false);
-    setLocation(q ? `/explore?q=${encodeURIComponent(q)}` : "/explore");
+    
+    if (q) {
+      setLocation(`/recipes?q=${encodeURIComponent(q)}`);
+    } else {
+      // If no search term, go to recipes page for random recipes
+      setLocation("/recipes");
+    }
   };
 
   return (
