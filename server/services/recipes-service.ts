@@ -13,6 +13,8 @@ export type RecipeCardData = {
   cookTime?: number | null;
   servings?: number | null;
   source?: string;
+  // ADD THIS LINE - include instructions!
+  strInstructions?: string | null;
 };
 
 export type RecipeSearchOptions = {
@@ -53,6 +55,8 @@ function mapMealDB(m: MealDBMeal): RecipeCardData {
     cookTime: null,
     servings: null,
     source: "mealdb",
+    // ADD THIS LINE - pass through the instructions!
+    strInstructions: m.strInstructions || null,
   };
 }
 
@@ -97,6 +101,7 @@ const STATIC_FALLBACK: RecipeCardData[] = [
     cookTime: 30,
     servings: 4,
     source: "static",
+    strInstructions: "1. Preheat oven to 400°F. 2. Season salmon with salt and pepper. 3. Brush with honey glaze. 4. Roast vegetables and salmon for 20-25 minutes until cooked through.",
   },
   {
     id: "static_pasta",
@@ -112,6 +117,7 @@ const STATIC_FALLBACK: RecipeCardData[] = [
     cookTime: 45,
     servings: 4,
     source: "static",
+    strInstructions: "1. Cook fettuccine according to package directions. 2. Sauté mixed wild mushrooms with garlic and herbs. 3. Add cream and simmer. 4. Toss pasta with mushroom ragu and serve with parmesan.",
   },
 ];
 
