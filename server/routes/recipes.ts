@@ -1,4 +1,3 @@
-// server/routes/recipes.ts
 import { Router } from "express";
 import { searchRecipes } from "../services/recipes-service";
 
@@ -28,6 +27,7 @@ function parseList(input: unknown): string[] {
  *   cuisines?: string[] | "a,b,c"
  *   diets?: string[] | "a,b,c"
  *   mealTypes?: string[] | "a,b,c"
+ *   compliance?: string[] | "a,b,c"
  *   pageSize?: number
  *   offset?: number
  */
@@ -37,6 +37,7 @@ r.get("/recipes/search", async (req, res) => {
     const cuisines = parseList(req.query.cuisines);
     const diets = parseList(req.query.diets);
     const mealTypes = parseList(req.query.mealTypes);
+    const compliance = parseList(req.query.compliance);
 
     const pageSize =
       typeof req.query.pageSize === "string" ? Number(req.query.pageSize) :
@@ -48,7 +49,7 @@ r.get("/recipes/search", async (req, res) => {
       typeof req.query.offset === "number" ? req.query.offset :
       0;
 
-    const items = await searchRecipes({
+    const searchResult = await searchRecipes({
       q,
       cuisines: cuisines.length ? cuisines : undefined,
       diets: diets.length ? diets : undefined,
@@ -59,9 +60,9 @@ r.get("/recipes/search", async (req, res) => {
 
     res.json({
       ok: true,
-      total: items.length,
-      items,
-      params: { q, cuisines, diets, mealTypes, pageSize, offset },
+      total: searchResult.total,
+      items: searchResult.results,
+      params: { q, cuisines, diets, mealTypes, compliance, pageSize, offset },
     });
   } catch (err: any) {
     console.error("recipes search error:", err);
@@ -74,7 +75,8 @@ r.get("/recipes/search", async (req, res) => {
 /** Back-compat alias: /api/search (kept just in case something still calls it) */
 r.get("/search", (req, res, next) => {
   // Forward to the canonical handler
-  (r as any).handle({ ...req, url: "/recipes/search" }, res, next);
+  req.url = "/recipes/search";
+  r.handle(req, res, next);
 });
 
 export default r;
