@@ -1,3 +1,4 @@
+// client/src/components/sidebar.tsx
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
@@ -50,7 +51,23 @@ const NAV: NavItem[] = [
       { name: "Ingredient Substitutions", href: "/substitutions", icon: Wand2 },
     ],
   },
-  { name: "Potent Potables", href: "/potent-potables", icon: GlassWater },
+
+  // NEW: Drinks parent with submenu (Potent Potables appears here too)
+  {
+    name: "Drinks",
+    href: "/drinks",
+    icon: GlassWater,
+    hasSubmenu: true,
+    submenu: [
+      { name: "Browse Drinks", href: "/drinks", icon: GlassWater },
+      { name: "Cocktails", href: "/drinks/cocktails", icon: GlassWater },
+      { name: "Mocktails", href: "/drinks/mocktails", icon: GlassWater },
+      { name: "Smoothies", href: "/drinks/smoothies", icon: GlassWater },
+      { name: "Protein Shakes", href: "/drinks/protein-shakes", icon: GlassWater },
+      { name: "Potent Potables", href: "/potent-potables", icon: GlassWater },
+    ],
+  },
+
   {
     name: "Catering",
     href: "/catering",
@@ -107,7 +124,6 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
       return { ...prev, [k]: !(prev[k] ?? autoOpen[k] ?? false) };
     });
 
-  // Row component for both parents and leaves
   const Row = ({ item, trail = [] as string[] }) => {
     const currentTrail = [...trail, item.name];
 
