@@ -149,13 +149,13 @@ function getSourceUrl(r: RecipeItem): string | null {
   return null;
 }
 
-// ADD: Modal component for full recipe view
-function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem; isOpen: boolean; onClose: () => void }) {
+// Modal component for full recipe view
+function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boolean; onClose: () => void }) {
+  if (!isOpen || !r) return null;
+
   const fullInstructions = extractInstructions(r);
   const img = getImage(r);
   const sourceHref = getSourceUrl(r);
-
-  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -392,7 +392,7 @@ export default function RecipesListPage() {
       )}
 
       <RecipeModal 
-        r={selectedRecipe!} 
+        r={selectedRecipe} 
         isOpen={!!selectedRecipe} 
         onClose={() => setSelectedRecipe(null)} 
       />
