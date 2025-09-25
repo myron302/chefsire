@@ -1,15 +1,40 @@
+// client/src/pages/recipes/RecipesListPage.tsx
 import * as React from "react";
 import { Link } from "wouter";
-import { useRecipesFilters } from "./useRecipesFilters";
-import { useRecipesData, type RecipeCardData } from "./useRecipesData";
-
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Clock, Users } from "lucide-react";
 
-/** Uniform “spoon” icon (SVG) */
+/** Shape returned by our /api/recipes/search route */
+type RecipeItem = {
+  id: string;
+  title: string;
+  image?: string | null;
+  imageUrl?: string | null; // some mappers use imageUrl
+  cuisine?: string | null;
+  mealType?: string | null;
+  dietTags?: string[];
+  ratingSpoons?: number | null;
+  cookTime?: number | null;
+  servings?: number | null;
+  source?: string;
+};
+
+type SearchResponse =
+  | {
+      ok: true;
+      total: number;
+      source?: string;
+      items: RecipeItem[];
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+/** Small spoon icon row (0–5 whole spoons) */
 function SpoonIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" {...props}>
@@ -20,8 +45,6 @@ function SpoonIcon(props: React.SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
-
-/** Display 0–5 spoons (whole spoons only for now) */
 function SpoonRating({ value }: { value: number | null | undefined }) {
   const v = Math.max(0, Math.min(5, Math.round(value ?? 0)));
   return (
@@ -33,11 +56,12 @@ function SpoonRating({ value }: { value: number | null | undefined }) {
   );
 }
 
-function RecipeCard({ r }: { r: RecipeCardData }) {
+function RecipeCard({ r }: { r: RecipeItem }) {
+  const img = r.image || r.imageUrl || null;
   return (
     <Card className="overflow-hidden bg-card border border-border hover:shadow-md transition-shadow">
-      {r.image ? (
-        <img src={r.image} alt={r.title} className="w-full h-48 object-cover" />
+      {img ? (
+        <img src={img} alt={r.title} className="w-full h-48 object-cover" />
       ) : (
         <div className="w-full h-48 bg-muted flex items-center justify-center text-muted-foreground">
           No image
@@ -80,8 +104,44 @@ function RecipeCard({ r }: { r: RecipeCardData }) {
 }
 
 export default function RecipesListPage() {
-  const { state, setQ } = useRecipesFilters();
-  const { recipes, loading, err } = useRecipesData();
+  const [q, setQ] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+  const [items, setItems] = React.useState<RecipeItem[]>([]);
+
+  async function runSearch(term?: string) {
+    setLoading(true);
+    setErr(null);
+    try {
+      const params = new URLSearchParams();
+      // if no term, the server returns random results; if you want a default, use "chicken"
+      if (term && term.trim()) params.set("q", term.trim());
+
+      const res = await fetch(`/api/recipes/search?${params.toString()}`);
+      const json = (await res.json()) as SearchResponse;
+
+      if (!res.ok || !("ok" in json) || json.ok === false) {
+        const msg =
+          (json as any)?.error ||
+          (await res.text()) ||
+          `Request failed (${res.status})`;
+        throw new Error(msg);
+      }
+
+      setItems(json.items || []);
+    } catch (e: any) {
+      setErr(e?.message || "Something went wrong");
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Load initial (random) recipes on first mount
+  React.useEffect(() => {
+    runSearch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
@@ -93,20 +153,24 @@ export default function RecipesListPage() {
         </Link>
       </div>
 
-      {/* Quick search (binds to filters state.q) */}
+      {/* Search row with a REAL submit button */}
       <div className="mb-4 flex items-center gap-2">
         <Input
-          placeholder="Quick search (title/keywords)…"
-          value={state.q}
+          placeholder="Search recipes…"
+          value={q}
           onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && runSearch(q)}
           className="max-w-md"
+          aria-label="Search recipes"
         />
+        <Button onClick={() => runSearch(q)}>Search</Button>
+        <Button variant="ghost" onClick={() => runSearch()}>Random</Button>
         <Link href="/recipes/filters">
           <Button variant="ghost">Advanced filters</Button>
         </Link>
       </div>
 
-      {/* Loading / error states */}
+      {/* Loading / error / empty states */}
       {loading ? (
         <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin" />
@@ -114,11 +178,11 @@ export default function RecipesListPage() {
         </div>
       ) : err ? (
         <div className="text-destructive">Error: {err}</div>
-      ) : recipes.length === 0 ? (
-        <div className="text-muted-foreground">No recipes found. Try adjusting filters.</div>
+      ) : items.length === 0 ? (
+        <div className="text-muted-foreground">No recipes found. Try a different search or click Random.</div>
       ) : (
         <div className="grid gap-4 grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {recipes.map((r) => (
+          {items.map((r) => (
             <RecipeCard key={r.id} r={r} />
           ))}
         </div>
