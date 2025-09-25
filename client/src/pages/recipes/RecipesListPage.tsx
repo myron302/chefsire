@@ -207,21 +207,10 @@ function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boo
             ))}
           </div>
 
-          {/* Debug: Show what fields are available */}
-          <div className="mb-4 p-2 bg-gray-100 text-xs">
-            <strong>Debug - Available fields:</strong>
-            <pre>{JSON.stringify(Object.keys(r), null, 2)}</pre>
-          </div>
-
-          {fullInstructions ? (
+          {fullInstructions && (
             <div className="mb-4">
               <h3 className="font-semibold mb-2">Instructions:</h3>
               <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{fullInstructions}</p>
-            </div>
-          ) : (
-            <div className="mb-4 p-2 bg-yellow-100 border border-yellow-300">
-              <strong>No instructions found. Available data:</strong>
-              <pre className="text-xs mt-2">{JSON.stringify(r, null, 2)}</pre>
             </div>
           )}
 
