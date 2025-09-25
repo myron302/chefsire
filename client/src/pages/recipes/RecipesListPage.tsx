@@ -334,13 +334,33 @@ export default function RecipesListPage() {
   const [items, setItems] = React.useState<RecipeItem[]>([]);
   const [selectedRecipe, setSelectedRecipe] = React.useState<RecipeItem | null>(null);
   const [view, setView] = React.useState<"grid" | "list">("grid");
+  const [hasMore, setHasMore] = React.useState(true);
+  const [offset, setOffset] = React.useState(0);
 
-  async function runSearch(term?: string) {
+  // Check URL params for search query
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlQuery = params.get('q');
+    if (urlQuery) {
+      setQ(urlQuery);
+      runSearch(urlQuery);
+    } else {
+      runSearch(); // Load random recipes
+    }
+  }, []);
+
+  async function runSearch(term?: string, isLoadMore = false) {
+    if (loading) return; // Prevent duplicate requests
+    
     setLoading(true);
     setErr(null);
+    
     try {
+      const currentOffset = isLoadMore ? offset : 0;
       const params = new URLSearchParams();
       if (term && term.trim()) params.set("q", term.trim());
+      params.set("pageSize", "24");
+      params.set("offset", String(currentOffset));
 
       const res = await fetch(`/api/recipes/search?${params.toString()}`);
       const json = (await res.json()) as SearchResponse;
@@ -350,19 +370,49 @@ export default function RecipesListPage() {
         throw new Error(msg);
       }
 
-      setItems(json.items || []);
+      const newItems = json.items || [];
+      
+      if (isLoadMore) {
+        setItems(prev => [...prev, ...newItems]);
+        setOffset(currentOffset + newItems.length);
+      } else {
+        setItems(newItems);
+        setOffset(newItems.length);
+      }
+      
+      setHasMore((json as any).hasMore !== false && newItems.length === 24);
     } catch (e: any) {
       setErr(e?.message || "Something went wrong");
-      setItems([]);
+      if (!isLoadMore) setItems([]);
     } finally {
       setLoading(false);
     }
   }
 
+  // Infinite scroll
   React.useEffect(() => {
-    runSearch(); // initial load (server can return randoms or defaults)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const handleScroll = () => {
+      if (loading || !hasMore) return;
+      
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      // Trigger when 200px from bottom
+      if (scrollTop + windowHeight >= documentHeight - 200) {
+        runSearch(q || undefined, true);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [loading, hasMore, q, offset]);
+
+  const handleSearch = (searchTerm: string) => {
+    setOffset(0);
+    setHasMore(true);
+    runSearch(searchTerm);
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
@@ -396,7 +446,7 @@ export default function RecipesListPage() {
           placeholder="Search recipes…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && runSearch(q)}
+          onKeyDown={(e) => e.key === "Enter" && handleSearch(q)}
           className="flex-1 max-w-md"
           aria-label="Search recipes"
         />
@@ -440,6 +490,21 @@ export default function RecipesListPage() {
               />
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Infinite scroll loading indicator */}
+      {loading && items.length > 0 && (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="w-6 h-6 animate-spin" />
+          <span className="ml-2 text-muted-foreground">Loading more recipes...</span>
+        </div>
+      )}
+
+      {/* No more results indicator */}
+      {!hasMore && items.length > 0 && (
+        <div className="text-center py-8 text-muted-foreground">
+          No more recipes to load
         </div>
       )}
 
