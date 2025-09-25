@@ -1,9 +1,9 @@
 // server/routes/index.ts
 import { Router } from "express";
 
-// Mountable sub-routers
+// Mounted feature routers
 import recipesRouter from "./recipes";
-import bitesRouter from "./bites";           // stories → bites
+import bitesRouter from "./bites";              // stories → bites
 import usersRouter from "./users";
 import postsRouter from "./posts";
 import pantryRouter from "./pantry";
@@ -12,7 +12,22 @@ import substitutionsRouter from "./substitutions";
 
 const r = Router();
 
-// All sub-routers define their own paths (e.g. "/recipes/search"), so we just use them directly.
+/**
+ * NOTE:
+ * app.ts already does: app.use("/api", r)
+ * Each router below should register its own subpaths, e.g.:
+ *   recipesRouter -> r.get("/recipes/search", ...)
+ * so the final paths look like:
+ *   /api/recipes/search
+ *   /api/bites/...
+ *   /api/users/...
+ *   /api/posts/...
+ *   /api/pantry/...
+ *   /api/marketplace/...
+ *   /api/substitutions/suggest
+ */
+
+// Attach routers
 r.use(recipesRouter);
 r.use(bitesRouter);
 r.use(usersRouter);
