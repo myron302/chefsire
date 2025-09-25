@@ -1,9 +1,9 @@
 // server/routes/index.ts
 import { Router } from "express";
 
-// Mounted feature routers
+// Feature routers
 import recipesRouter from "./recipes";
-import bitesRouter from "./bites";              // stories → bites
+import bitesRouter from "./bites";           // “stories” → “bites”
 import usersRouter from "./users";
 import postsRouter from "./posts";
 import pantryRouter from "./pantry";
@@ -14,20 +14,15 @@ const r = Router();
 
 /**
  * NOTE:
- * app.ts already does: app.use("/api", r)
- * Each router below should register its own subpaths, e.g.:
- *   recipesRouter -> r.get("/recipes/search", ...)
- * so the final paths look like:
- *   /api/recipes/search
- *   /api/bites/...
- *   /api/users/...
- *   /api/posts/...
- *   /api/pantry/...
- *   /api/marketplace/...
- *   /api/substitutions/suggest
+ * app.ts does `app.use("/api", r)` so every path you register here becomes:
+ *   /api/<whatever-the-router-handles>
+ *
+ * Each child router should define its own absolute paths, e.g.
+ *   r.get("/recipes/search", ...)
+ * so the final URL is /api/recipes/search
  */
 
-// Attach routers
+// Mount routers (no per-router prefix here; each router defines full paths)
 r.use(recipesRouter);
 r.use(bitesRouter);
 r.use(usersRouter);
