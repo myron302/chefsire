@@ -1,278 +1,333 @@
-// server/services/ingredients-ai.ts
-import OpenAI from "openai";
-import { z } from "zod";
+// server/services/recipes-service.ts
+// ESM module. Works with Node 18+ (global fetch) and your esbuild setup.
+// Route imports it like: import { searchRecipes } from "../services/recipes-service";
 
-/** ─────────────────────────────────────────────────────────────────────────────
- * Types
- * ────────────────────────────────────────────────────────────────────────────*/
-export type Nutrition = {
-  calories: number; // total calories for the amount implied by `ratio`
-  fat: number;      // grams
-  carbs: number;    // grams
-  protein: number;  // grams
+type SearchOptions = {
+  q?: string;
+  mealTypes?: string[];   // e.g. ["Breakfast","Dinner"]
+  diets?: string[];       // e.g. ["Vegan","Vegetarian"]
+  compliance?: string[];  // e.g. ["Halal","Kosher"]
+  cuisines?: string[];    // e.g. ["Italian","Mexican"]
+  limit?: number;
+  offset?: number;
 };
 
-export type AISubItem = {
-  substituteIngredient: string;
-  ratio: string;
-  category?: string;
-  notes?: string;
-  nutrition?: {
-    original: Nutrition;
-    substitute: Nutrition;
-  };
+export type RecipeItem = {
+  id: string;
+  title: string;
+  imageUrl?: string | null;
+  ingredients?: string[];
+  instructions?: string[] | string;
+  cookTime?: number | null;
+  servings?: number | null;
+  difficulty?: string | null;
+  calories?: number | null;
+  protein?: string | number | null;
+  carbs?: string | number | null;
+  fat?: string | number | null;
+  fiber?: string | number | null;
+  source?: "local" | "mealdb" | "spoonacular" | string;
+  cuisine?: string | null;
+  mealType?: string | null;
+  dietTags?: string[] | null;
 };
 
-export type AISuggestOpts = {
-  cuisine?: string;
-  dietaryRestrictions?: string[];
+export type SearchResult = {
+  items: RecipeItem[];
+  total: number;
+  source: string; // "multi" | "mealdb" | "spoonacular" | "local"
 };
 
-/** Zod schema to validate/clean AI output */
-const NutritionSchema = z.object({
-  calories: z.number().finite(),
-  fat: z.number().finite(),
-  carbs: z.number().finite(),
-  protein: z.number().finite(),
-});
+// ---------- helpers ----------
 
-const AISubItemSchema = z.object({
-  substituteIngredient: z.string().min(1),
-  ratio: z.string().min(1),
-  category: z.string().optional(),
-  notes: z.string().optional(),
-  nutrition: z
-    .object({
-      original: NutritionSchema,
-      substitute: NutritionSchema,
-    })
-    .optional(),
-});
+const asArray = <T,>(v: T | T[] | undefined | null): T[] =>
+  Array.isArray(v) ? v : v == null ? [] : [v];
 
-const AIResponseSchema = z.object({
-  query: z.string(),
-  substitutions: z.array(AISubItemSchema).min(1).max(6),
-});
+function normalizeText(s?: string | null) {
+  return (s ?? "").trim();
+}
 
-/** Small helper for deduping by ingredient name */
-const norm = (s: string) => s.trim().toLowerCase();
+function splitLines(instructions?: string | null): string[] {
+  const txt = normalizeText(instructions);
+  if (!txt) return [];
+  // TheMealDB often uses line breaks. Split on \r?\n and filter empties.
+  return txt.split(/\r?\n+/).map((l) => l.trim()).filter(Boolean);
+}
 
-/** ─────────────────────────────────────────────────────────────────────────────
- * Static fallbacks when OPENAI_API_KEY is missing or AI fails
- * (ensures the UI still returns something for common ingredients)
- * ────────────────────────────────────────────────────────────────────────────*/
-const STATIC_FALLBACK: Record<string, AISubItem[]> = {
-  butter: [
-    {
-      substituteIngredient: "Olive oil",
-      ratio: "¾ cup oil = 1 cup butter",
-      category: "oils",
-      notes:
-        "Great for sautéing and some baking; flavor changes slightly. For cookies, chill dough.",
-      nutrition: {
-        // ~1 cup butter vs ¾ cup oil
-        original: { calories: 1628, fat: 184, carbs: 1, protein: 2 },
-        substitute: { calories: 1910, fat: 216, carbs: 0, protein: 0 },
-      },
-    },
-    {
-      substituteIngredient: "Unsweetened applesauce",
-      ratio: "½ cup applesauce = 1 cup butter (cakes/muffins)",
-      category: "baking",
-      notes: "Reduces fat and calories; texture more moist/denser. Cut other liquids slightly.",
-      nutrition: {
-        original: { calories: 1628, fat: 184, carbs: 1, protein: 2 },
-        substitute: { calories: 100, fat: 0, carbs: 27, protein: 0 }, // ~½ cup
-      },
-    },
-    {
-      substituteIngredient: "Coconut oil",
-      ratio: "1:1 by volume",
-      category: "oils",
-      notes: "Adds coconut aroma; similar solidity at room temp helps structure.",
-      nutrition: {
-        original: { calories: 1628, fat: 184, carbs: 1, protein: 2 },
-        substitute: { calories: 1879, fat: 218, carbs: 0, protein: 0 },
-      },
-    },
-  ],
-  eggs: [
-    {
-      substituteIngredient: "Ground flax + water",
-      ratio: "1 Tbsp ground flax + 3 Tbsp water = 1 egg",
-      category: "vegan",
-      notes: "Let sit 5–10 min to gel; good binder for quick breads, cookies, pancakes.",
-      nutrition: {
-        original: { calories: 72, fat: 5, carbs: 0.4, protein: 6 },
-        substitute: { calories: 55, fat: 4.3, carbs: 3, protein: 1.9 },
-      },
-    },
-    {
-      substituteIngredient: "Unsweetened applesauce",
-      ratio: "¼ cup applesauce = 1 egg (cakes/muffins)",
-      category: "baking",
-      notes: "Adds moisture; not suitable for airy foams/meringues.",
-      nutrition: {
-        original: { calories: 72, fat: 5, carbs: 0.4, protein: 6 },
-        substitute: { calories: 25, fat: 0, carbs: 7, protein: 0 },
-      },
-    },
-  ],
-  milk: [
-    {
-      substituteIngredient: "Unsweetened almond milk",
-      ratio: "1:1 in most recipes",
-      category: "plant-based dairy",
-      notes: "Neutral, slightly nutty. Low protein; can be thin—add 1–2 tsp oil for richer results.",
-      nutrition: {
-        // ~1 cup whole milk vs 1 cup unsweetened almond milk
-        original: { calories: 149, fat: 8, carbs: 12, protein: 8 },
-        substitute: { calories: 40, fat: 3, carbs: 1, protein: 1 },
-      },
-    },
-    {
-      substituteIngredient: "Soy milk (unsweetened)",
-      ratio: "1:1 in most recipes",
-      category: "plant-based dairy",
-      notes: "Closest protein content to dairy; good for custards and baking.",
-      nutrition: {
-        original: { calories: 149, fat: 8, carbs: 12, protein: 8 },
-        substitute: { calories: 100, fat: 4, carbs: 5, protein: 7 },
-      },
-    },
-    {
-      substituteIngredient: "Oat milk (barista or full-fat)",
-      ratio: "1:1 in most recipes",
-      category: "plant-based dairy",
-      notes: "Creamy; great in coffee and baking. Slightly sweeter; watch added sugar.",
-      nutrition: {
-        original: { calories: 149, fat: 8, carbs: 12, protein: 8 },
-        substitute: { calories: 120, fat: 5, carbs: 16, protein: 3 },
-      },
-    },
-    {
-      substituteIngredient: "Half water + half heavy cream",
-      ratio: "½ cup water + ½ cup cream = 1 cup milk",
-      category: "dairy",
-      notes: "Good emergency swap if only cream on hand; richer than milk.",
-      nutrition: {
-        original: { calories: 149, fat: 8, carbs: 12, protein: 8 },
-        substitute: { calories: 205, fat: 22, carbs: 3, protein: 3 }, // approx
-      },
-    },
-  ],
-};
+// ---------- Local sample fallback (so the page never empties) ----------
 
-/** ─────────────────────────────────────────────────────────────────────────────
- * Main entry used by your routes (backwards compatible)
- * You can now pass optional { cuisine, dietaryRestrictions }.
- * Returns: { query, substitutions }
- * ────────────────────────────────────────────────────────────────────────────*/
-export async function suggestSubstitutionsAI(
-  query: string,
-  opts: AISuggestOpts = {}
-) {
-  const trimmed = (query ?? "").trim();
-  if (!trimmed) {
-    return { query: "", substitutions: [] as AISubItem[] };
-  }
+const LOCAL_SEED: RecipeItem[] = [
+  {
+    id: "seed-1",
+    title: "Honey Glazed Salmon with Roasted Vegetables",
+    imageUrl: "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=800&h=600&fit=crop&auto=format",
+    ingredients: [
+      "4 salmon fillets",
+      "2 tbsp honey",
+      "1 tbsp soy sauce",
+      "2 cloves garlic, minced",
+      "Mixed vegetables (broccoli, carrots, bell peppers)",
+      "Olive oil",
+      "Salt and pepper to taste",
+    ],
+    instructions: [
+      "Preheat oven to 400°F (200°C).",
+      "Mix honey, soy sauce, and garlic for glaze.",
+      "Season salmon; brush with glaze.",
+      "Roast vegetables with olive oil for 15 minutes.",
+      "Add salmon to pan and bake 12–15 minutes.",
+    ],
+    cookTime: 30,
+    servings: 4,
+    difficulty: "Easy",
+    calories: 350,
+    protein: "28g",
+    carbs: "15g",
+    fat: "18g",
+    fiber: "3g",
+    cuisine: "Seafood",
+    dietTags: ["High-Protein"],
+    source: "local",
+  },
+  {
+    id: "seed-2",
+    title: "Fresh Fettuccine with Wild Mushroom Ragu",
+    imageUrl: "https://images.unsplash.com/photo-1621996346565-e3dbc353d2e5?w=800&h=600&fit=crop&auto=format",
+    ingredients: [
+      "2 cups all-purpose flour",
+      "3 large eggs",
+      "1 lb mixed wild mushrooms",
+      "1/2 cup white wine",
+      "2 tbsp olive oil",
+      "2 cloves garlic, minced",
+      "Fresh thyme",
+      "Parmesan cheese",
+      "Salt and pepper to taste",
+    ],
+    instructions: [
+      "Make pasta dough; rest 30 minutes.",
+      "Roll and cut into fettuccine.",
+      "Sauté mushrooms with garlic and thyme.",
+      "Add wine and simmer.",
+      "Cook pasta; toss with ragu; serve with Parmesan.",
+    ],
+    cookTime: 45,
+    servings: 4,
+    difficulty: "Medium",
+    calories: 420,
+    protein: "18g",
+    carbs: "52g",
+    fat: "14g",
+    fiber: "4g",
+    cuisine: "Italian",
+    dietTags: ["Vegetarian"],
+    source: "local",
+  },
+];
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    const fallback = STATIC_FALLBACK[norm(trimmed)] ?? [];
-    return { query: trimmed, substitutions: maybeFilterByDiet(fallback, opts) };
-  }
+// ---------- TheMealDB provider ----------
 
-  const client = new OpenAI({ apiKey });
-
-  // You can tune these as needed:
-  const MODEL = "gpt-4o-mini";
-  const TEMPERATURE = 0.3;
-
-  const system = `
-You are a concise culinary expert. Given an ingredient, return smart substitutions with exact swap ratios and one or two practical cooking notes.
-If dietaryRestrictions are provided (e.g., vegan, vegetarian, kosher, halal, gluten-free, dairy-free, nut-free), prioritize options that comply.
-If cuisine is provided, bias toward regionally appropriate substitutes.
-Return JSON only, no prose. Prefer 3–5 items (max 6).
-Include rough nutrition comparison per the amount implied by the ratio (calories total, grams fat/carbs/protein).
-`;
-
+async function mealDbSearch(q?: string): Promise<RecipeItem[]> {
   try {
-    const completion = await client.chat.completions.create({
-      model: MODEL,
-      temperature: TEMPERATURE,
-      response_format: { type: "json_object" }, // force a parsable JSON object
-      messages: [
-        { role: "system", content: system },
-        {
-          role: "user",
-          content: JSON.stringify({
-            ingredient: trimmed,
-            cuisine: opts.cuisine || null,
-            dietaryRestrictions: opts.dietaryRestrictions || [],
-          }),
-        },
-      ],
+    const base = "https://www.themealdb.com/api/json/v1/1";
+    // If no q provided, use a first-letter search (more reliable than empty search)
+    const url = q && q.trim()
+      ? `${base}/search.php?s=${encodeURIComponent(q.trim())}`
+      : `${base}/search.php?f=c`; // give some results by default
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`TheMealDB HTTP ${res.status}`);
+    const data = await res.json();
+
+    const meals: any[] = asArray(data?.meals);
+    return meals.map((m) => {
+      // Collect ingredients/measures (TheMealDB stores as strIngredient1..20)
+      const ings: string[] = [];
+      for (let i = 1; i <= 20; i++) {
+        const ing = normalizeText(m[`strIngredient${i}`]);
+        const measure = normalizeText(m[`strMeasure${i}`]);
+        if (ing) ings.push(measure ? `${measure} ${ing}` : ing);
+      }
+
+      return {
+        id: `mealdb-${m.idMeal}`,
+        title: normalizeText(m.strMeal) || "Untitled",
+        imageUrl: normalizeText(m.strMealThumb) || null,
+        ingredients: ings,
+        instructions: splitLines(m.strInstructions),
+        cookTime: null,
+        servings: null,
+        difficulty: null,
+        calories: null,
+        protein: null,
+        carbs: null,
+        fat: null,
+        fiber: null,
+        cuisine: normalizeText(m.strArea) || null,
+        mealType: normalizeText(m.strCategory) || null,
+        dietTags: null,
+        source: "mealdb",
+      } satisfies RecipeItem;
     });
-
-    const content = completion.choices?.[0]?.message?.content ?? "";
-    const parsed = AIResponseSchema.safeParse(JSON.parse(content));
-
-    if (!parsed.success) {
-      const fallback = STATIC_FALLBACK[norm(trimmed)] ?? [];
-      return { query: trimmed, substitutions: maybeFilterByDiet(fallback, opts) };
-    }
-
-    // Dedup by substituteIngredient (case-insensitive), keep stable order
-    const seen = new Set<string>();
-    const deduped = parsed.data.substitutions.filter((s) => {
-      const k = norm(s.substituteIngredient);
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
-
-    // Optional post-filter if user adds strict dietary rules
-    const filtered = maybeFilterByDiet(deduped, opts);
-
-    return {
-      query: parsed.data.query || trimmed,
-      substitutions: filtered.slice(0, 6),
-    };
-  } catch (_err) {
-    const fallback = STATIC_FALLBACK[norm(trimmed)] ?? [];
-    return { query: trimmed, substitutions: maybeFilterByDiet(fallback, opts) };
+  } catch {
+    return [];
   }
 }
 
-/** Basic dietary post-filter to avoid obviously non-compliant items */
-function maybeFilterByDiet(items: AISubItem[], opts: AISuggestOpts): AISubItem[] {
-  const rules = (opts.dietaryRestrictions || []).map(norm);
-  if (!rules.length) return items;
+// ---------- Spoonacular provider (optional) ----------
 
-  const isVeganLike = rules.some((r) => ["vegan", "plant-based"].includes(r));
-  const isDairyFree = rules.includes("dairy-free");
-  const isGlutenFree = rules.includes("gluten-free");
-  const isNutFree = rules.includes("nut-free");
+async function spoonacularSearch(q?: string): Promise<RecipeItem[]> {
+  const key = process.env.SPOONACULAR_API_KEY;
+  if (!key) return []; // silently skip if no key set
 
-  return items.filter((it) => {
-    const name = norm(it.substituteIngredient);
+  try {
+    // We use complexSearch to get images + info in one call
+    const params = new URLSearchParams({
+      query: q?.trim() || "dinner",
+      number: "15",
+      addRecipeInformation: "true",
+      instructionsRequired: "true",
+    });
 
-    if (isVeganLike) {
-      // crude blocklist for animal products
-      if (/(butter|ghee|milk|cream|cheese|yogurt|egg|gelatin|honey)/i.test(name)) return false;
-    }
-    if (isDairyFree) {
-      if (/(butter|ghee|milk|cream|cheese|yogurt)/i.test(name)) return false;
-    }
-    if (isGlutenFree) {
-      if (/(wheat|barley|rye|malt)/i.test(name)) return false;
-    }
-    if (isNutFree) {
-      if (/(almond|cashew|peanut|pecan|walnut|hazelnut|pistachio|macadamia)/i.test(name)) {
-        return false;
-      }
-    }
-    return true;
-  });
+    const url = `https://api.spoonacular.com/recipes/complexSearch?${params.toString()}&apiKey=${encodeURIComponent(
+      key
+    )}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Spoonacular HTTP ${res.status}`);
+    const data = await res.json();
+    const results: any[] = asArray(data?.results);
+
+    return results.map((r) => {
+      const ings: string[] = asArray(r?.extendedIngredients).map((it: any) =>
+        normalizeText(it?.original || it?.name)
+      ).filter(Boolean);
+
+      // Spoonacular gives summary/instructions as HTML sometimes; strip tags lightly
+      const instructions =
+        typeof r?.instructions === "string"
+          ? r.instructions.replace(/<[^>]+>/g, "\n").split(/\r?\n+/).map((l: string) => l.trim()).filter(Boolean)
+          : [];
+
+      return {
+        id: `spoon-${r.id}`,
+        title: normalizeText(r.title) || "Untitled",
+        imageUrl: normalizeText(r.image) || null,
+        ingredients: ings,
+        instructions,
+        cookTime: Number.isFinite(r.readyInMinutes) ? r.readyInMinutes : null,
+        servings: Number.isFinite(r.servings) ? r.servings : null,
+        difficulty: null,
+        calories: null,
+        protein: null,
+        carbs: null,
+        fat: null,
+        fiber: null,
+        cuisine: asArray(r?.cuisines).join(", ") || null,
+        mealType: asArray(r?.dishTypes).join(", ") || null,
+        dietTags: asArray(r?.diets),
+        source: "spoonacular",
+      } satisfies RecipeItem;
+    });
+  } catch {
+    return [];
+  }
+}
+
+// ---------- Filtering (light, best-effort) ----------
+
+function applyFilters(items: RecipeItem[], opts: SearchOptions): RecipeItem[] {
+  const q = normalizeText(opts.q)?.toLowerCase();
+
+  let out = items;
+
+  if (q) {
+    out = out.filter((it) => {
+      const hay = [
+        it.title,
+        ...(it.ingredients || []),
+        ...(Array.isArray(it.instructions) ? it.instructions : [it.instructions ?? ""]),
+        it.cuisine ?? "",
+        it.mealType ?? "",
+        ...(it.dietTags || []),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
+  if (opts.cuisines?.length) {
+    const want = new Set(opts.cuisines.map((s) => s.toLowerCase()));
+    out = out.filter((it) => {
+      const c = (it.cuisine || "").toLowerCase();
+      return c && Array.from(want).some((w) => c.includes(w));
+    });
+  }
+
+  if (opts.diets?.length) {
+    const want = new Set(opts.diets.map((s) => s.toLowerCase()));
+    out = out.filter((it) => {
+      const tags = (it.dietTags || []).map((t) => t.toLowerCase());
+      // “diet” match is loose; if no tags, don’t exclude
+      return tags.length === 0 || [...want].some((w) => tags.includes(w));
+    });
+  }
+
+  // "compliance" (Halal/Kosher) — if we had tags we’d filter; keep best-effort no-op for now
+  // if you tag items later (dietTags includes "Halal"), this will work automatically.
+
+  if (opts.mealTypes?.length) {
+    const want = new Set(opts.mealTypes.map((s) => s.toLowerCase()));
+    out = out.filter((it) => {
+      const mt = (it.mealType || "").toLowerCase();
+      return mt && [...want].some((w) => mt.includes(w));
+    });
+  }
+
+  return out;
+}
+
+function dedupeByTitle(items: RecipeItem[]): RecipeItem[] {
+  const seen = new Set<string>();
+  const out: RecipeItem[] = [];
+  for (const it of items) {
+    const key = (it.title || "").toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(it);
+  }
+  return out;
+}
+
+// ---------- Main service ----------
+
+export async function searchRecipes(options: SearchOptions = {}): Promise<SearchResult> {
+  const limit = Math.max(1, Math.min(50, options.limit ?? 24));
+  const offset = Math.max(0, options.offset ?? 0);
+
+  // Run providers in parallel; always include local seed last (as fallback)
+  const [mealdb, spoon] = await Promise.all([mealDbSearch(options.q), spoonacularSearch(options.q)]);
+  let combined = [...mealdb, ...spoon];
+
+  // If both providers returned nothing, seed with local examples so UI isn’t empty
+  if (combined.length === 0) {
+    combined = [...LOCAL_SEED];
+  }
+
+  // Apply filters & dedupe
+  combined = applyFilters(combined, options);
+  combined = dedupeByTitle(combined);
+
+  const total = combined.length;
+  const paged = combined.slice(offset, offset + limit);
+
+  return {
+    items: paged,
+    total,
+    source: combined.some((x) => x.source === "spoonacular")
+      ? "multi"
+      : combined.some((x) => x.source === "mealdb")
+      ? "mealdb"
+      : "local",
+  };
 }
