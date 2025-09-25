@@ -13,7 +13,6 @@ export type RecipeCardData = {
   cookTime?: number | null;
   servings?: number | null;
   source?: string;
-  // ADD THIS LINE - include instructions!
   strInstructions?: string | null;
 };
 
@@ -37,7 +36,6 @@ type MealDBMeal = {
 };
 
 function mapMealDB(m: MealDBMeal): RecipeCardData {
-  // ThemealDB rarely includes rating/time/servings; we leave them undefined
   const tags = (m.strTags || "")
     .split(",")
     .map((s) => s.trim())
@@ -48,14 +46,13 @@ function mapMealDB(m: MealDBMeal): RecipeCardData {
     title: m.strMeal,
     image: m.strMealThumb || null,
     imageUrl: m.strMealThumb || null,
-    cuisine: m.strArea || null,      // e.g., "Italian"
-    mealType: m.strCategory || null, // e.g., "Seafood"
+    cuisine: m.strArea || null,
+    mealType: m.strCategory || null,
     dietTags: tags.length ? tags : undefined,
     ratingSpoons: null,
     cookTime: null,
     servings: null,
     source: "mealdb",
-    // ADD THIS LINE - pass through the instructions!
     strInstructions: m.strInstructions || null,
   };
 }
@@ -69,21 +66,69 @@ async function mealdbSearchByName(q: string): Promise<RecipeCardData[]> {
   return meals.map(mapMealDB);
 }
 
-async function mealdbRandom(count = 8): Promise<RecipeCardData[]> {
-  // Fetch several random meals in parallel
-  const urls = Array.from({ length: count }, () => "https://www.themealdb.com/api/json/v1/1/random.php");
-  const results = await Promise.allSettled(
-    urls.map(async (u) => {
-      const res = await fetch(u);
-      if (!res.ok) throw new Error(`MealDB error ${res.status}`);
+// FIXED: Generate more random recipes for infinite scroll
+async function mealdbRandom(count = 24): Promise<RecipeCardData[]> {
+  // Instead of fetching individual random meals, get from different categories
+  const categories = [
+    'Seafood', 'Chicken', 'Beef', 'Pork', 'Lamb', 'Vegetarian', 'Pasta', 'Side',
+    'Starter', 'Dessert', 'Breakfast', 'Goat', 'Miscellaneous', 'Vegan'
+  ];
+  
+  const results: RecipeCardData[] = [];
+  const seenIds = new Set<string>();
+  
+  // Try to get recipes from different categories
+  for (const category of categories.slice(0, Math.ceil(count / 4))) {
+    try {
+      const url = `https://www.themealdb.com/api/json/v1/1/filter.php?c=${category}`;
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      
       const json = (await res.json()) as { meals: MealDBMeal[] | null };
-      const m = (json.meals || [])[0];
-      return m ? mapMealDB(m) : null;
-    })
-  );
-  return results
-    .map((r) => (r.status === "fulfilled" ? r.value : null))
-    .filter((x): x is RecipeCardData => !!x);
+      const meals = (json.meals || []).slice(0, 4); // Take 4 from each category
+      
+      for (const meal of meals) {
+        if (!seenIds.has(meal.idMeal) && results.length < count) {
+          // Need to fetch full meal details to get instructions
+          try {
+            const detailUrl = `https://www.themealdb.com/api/json/v1/1/lookup.php?i=${meal.idMeal}`;
+            const detailRes = await fetch(detailUrl);
+            if (detailRes.ok) {
+              const detailJson = (await detailRes.json()) as { meals: MealDBMeal[] | null };
+              const fullMeal = (detailJson.meals || [])[0];
+              if (fullMeal) {
+                results.push(mapMealDB(fullMeal));
+                seenIds.add(meal.idMeal);
+              }
+            }
+          } catch (e) {
+            // Skip individual meal if fetch fails
+          }
+        }
+      }
+    } catch (e) {
+      // Skip category if it fails
+    }
+  }
+  
+  // If we still need more recipes, fill with truly random ones
+  while (results.length < count) {
+    try {
+      const res = await fetch("https://www.themealdb.com/api/json/v1/1/random.php");
+      if (!res.ok) break;
+      
+      const json = (await res.json()) as { meals: MealDBMeal[] | null };
+      const meal = (json.meals || [])[0];
+      if (meal && !seenIds.has(meal.idMeal)) {
+        results.push(mapMealDB(meal));
+        seenIds.add(meal.idMeal);
+      }
+    } catch (e) {
+      break;
+    }
+  }
+  
+  return results.slice(0, count);
 }
 
 const STATIC_FALLBACK: RecipeCardData[] = [
@@ -129,14 +174,15 @@ export async function searchRecipes(opts: RecipeSearchOptions) {
     let items: RecipeCardData[] = [];
 
     if (opts.q && opts.q.trim()) {
-      // Exact proxy of your working example (search by name)
+      // Search by name
       items = await mealdbSearchByName(opts.q.trim());
     } else {
-      // No query → show random real meals
-      items = await mealdbRandom(8);
+      // FIXED: Get more random recipes for infinite scroll
+      const totalNeeded = offset + pageSize;
+      items = await mealdbRandom(Math.min(totalNeeded + 10, 50)); // Get extra to account for pagination
     }
 
-    // (Optional) Client-side-style filtering—very light:
+    // Apply filters
     if (opts.cuisines?.length) {
       const set = new Set(opts.cuisines.map((s) => s.toLowerCase()));
       items = items.filter((r) => (r.cuisine ? set.has(r.cuisine.toLowerCase()) : true));
@@ -156,21 +202,25 @@ export async function searchRecipes(opts: RecipeSearchOptions) {
     const sliced = items.slice(offset, offset + pageSize);
 
     // If still empty, return static so the UI always shows something
-    const finalItems = sliced.length ? sliced : STATIC_FALLBACK;
+    const finalItems = sliced.length ? sliced : STATIC_FALLBACK.slice(offset, offset + pageSize);
+    const hasMore = (offset + pageSize) < (sliced.length ? total : STATIC_FALLBACK.length);
 
     return {
       ok: true as const,
       total: finalItems.length,
+      hasMore,
       source: finalItems === STATIC_FALLBACK ? "static" : "mealdb",
       results: finalItems,
     };
   } catch (err) {
     // On any failure, provide static fallback instead of empty
+    const sliced = STATIC_FALLBACK.slice(offset, offset + pageSize);
     return {
       ok: true as const,
-      total: STATIC_FALLBACK.length,
+      total: sliced.length,
+      hasMore: (offset + pageSize) < STATIC_FALLBACK.length,
       source: "static",
-      results: STATIC_FALLBACK,
+      results: sliced,
     };
   }
 }
