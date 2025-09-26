@@ -49,7 +49,7 @@ export default function Layout({ children }: LayoutProps) {
     e.preventDefault();
     const q = searchText.trim();
     setIsDropdownOpen(false);
-    
+
     if (q) {
       setLocation(`/recipes?q=${encodeURIComponent(q)}`);
     } else {
@@ -213,49 +213,66 @@ export default function Layout({ children }: LayoutProps) {
                             >
                               <GlassWater className="w-4 h-4 mr-3" /> Drinks
                             </Link>
-                            {/* Drinks nested items */}
-                            <Link
-                              href="/drinks"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <GlassWater className="w-3 h-3 mr-2" /> Browse Drinks
-                            </Link>
-                            <Link
-                              href="/drinks/cocktails"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <GlassWater className="w-3 h-3 mr-2" /> Cocktails
-                            </Link>
-                            <Link
-                              href="/drinks/mocktails"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <GlassWater className="w-3 h-3 mr-2" /> Mocktails
-                            </Link>
-                            <Link
-                              href="/drinks/smoothies"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <GlassWater className="w-3 h-3 mr-2" /> Smoothies
-                            </Link>
-                            <Link
-                              href="/drinks/protein-shakes"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <GlassWater className="w-3 h-3 mr-2" /> Protein Shakes
-                            </Link>
-                            <Link
-                              href="/potent-potables"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <GlassWater className="w-3 h-3 mr-2" /> Potent Potables
-                            </Link>
+
+                            {/* Drinks nested: grouped submenus with dropdown arrows */}
+                            <div className="pl-2 pr-1 py-1">
+                              {/* Smoothies */}
+                              <details className="group">
+                                <summary className="flex items-center cursor-pointer select-none pl-6 py-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">
+                                  <ChevronDown className="mr-2 h-3 w-3 transition-transform group-open:rotate-180" />
+                                  Smoothies
+                                </summary>
+                                <nav className="mt-1 ml-8 mb-2 flex flex-col gap-1 text-sm">
+                                  <Link href="/drinks/smoothies/fruit" onClick={() => setIsDropdownOpen(false)} className="hover:underline">Fruit Smoothies</Link>
+                                  <Link href="/drinks/smoothies/green" onClick={() => setIsDropdownOpen(false)} className="hover:underline">Green Smoothies</Link>
+                                  <Link href="/drinks/smoothies/high-fiber" onClick={() => setIsDropdownOpen(false)} className="hover:underline">High-fiber</Link>
+                                </nav>
+                              </details>
+
+                              {/* Protein Shakes */}
+                              <details className="group">
+                                <summary className="flex items-center cursor-pointer select-none pl-6 py-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">
+                                  <ChevronDown className="mr-2 h-3 w-3 transition-transform group-open:rotate-180" />
+                                  Protein Shakes
+                                </summary>
+                                <nav className="mt-1 ml-8 mb-2 flex flex-col gap-1 text-sm">
+                                  <Link href="/drinks/protein-shakes/whey" onClick={() => setIsDropdownOpen(false)} className="hover:underline">Whey</Link>
+                                  <Link href="/drinks/protein-shakes/plant" onClick={() => setIsDropdownOpen(false)} className="hover:underline">Plant-based</Link>
+                                  <Link href="/drinks/protein-shakes/low-carb" onClick={() => setIsDropdownOpen(false)} className="hover:underline">Low-carb / Keto</Link>
+                                </nav>
+                              </details>
+
+                              {/* Detoxes & Cleanses */}
+                              <details className="group">
+                                <summary className="flex items-center cursor-pointer select-none pl-6 py-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">
+                                  <ChevronDown className="mr-2 h-3 w-3 transition-transform group-open:rotate-180" />
+                                  Detoxes &amp; Cleanses
+                                </summary>
+                                <nav className="mt-1 ml-8 mb-2 flex flex-col gap-1 text-sm">
+                                  <Link href="/drinks/detoxes/juice" onClick={() => setIsDropdownOpen(false)} className="hover:underline">Juice Blends</Link>
+                                  <Link href="/drinks/detoxes/herbal" onClick={() => setIsDropdownOpen(false)} className="hover:underline">Herbal Infusions</Link>
+                                  <Link href="/drinks/detoxes/programs" onClick={() => setIsDropdownOpen(false)} className="hover:underline">One-day / Multi-day</Link>
+                                </nav>
+                              </details>
+
+                              {/* Potent Potables (21+) */}
+                              <details className="group">
+                                <summary className="flex items-center cursor-pointer select-none pl-6 py-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm">
+                                  <ChevronDown className="mr-2 h-3 w-3 transition-transform group-open:rotate-180" />
+                                  Potent Potables <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">21+</span>
+                                </summary>
+                                <nav className="mt-1 ml-8 mb-2 flex flex-col gap-1 text-sm">
+                                  <Link href="/drinks/potent-potables/cocktails" onClick={() => setIsDropdownOpen(false)} className="hover:underline">Cocktails</Link>
+                                  <Link href="/drinks/potent-potables/mocktails" onClick={() => setIsDropdownOpen(false)} className="hover:underline">Mocktails</Link>
+                                  <Link href="/drinks/potent-potables/beer" onClick={() => setIsDropdownOpen(false)} className="hover:underline">Beer</Link>
+                                  <Link href="/drinks/potent-potables/wine" onClick={() => setIsDropdownOpen(false)} className="hover:underline">Wine</Link>
+                                  <Link href="/drinks/potent-potables/spirits" onClick={() => setIsDropdownOpen(false)} className="hover:underline">Spirits</Link>
+                                  <Link href="/drinks/potent-potables/liqueurs" onClick={() => setIsDropdownOpen(false)} className="hover:underline">Liqueurs</Link>
+                                </nav>
+                              </details>
+                            </div>
+                            {/* end Drinks nested */}
+                            </div>
 
                             {/* Catering (parent) */}
                             <Link
