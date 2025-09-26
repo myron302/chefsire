@@ -37,6 +37,14 @@ type NavItem =
       submenu: NavItem[];
     });
 
+/**
+ * Updated NAV:
+ * - Drinks is now grouped into four dropdown submenus:
+ *   Smoothies, Protein Shakes, Detoxes & Cleanses, Potent Potables (21+)
+ * - Links align with App.tsx router:
+ *   /drinks/smoothies[/...], /drinks/protein-shakes[/...], /drinks/detoxes[/...],
+ *   /drinks/potent-potables[/...]
+ */
 const NAV: NavItem[] = [
   { name: "Feed", href: "/feed", icon: Home },
   { name: "Explore", href: "/explore", icon: Compass },
@@ -52,7 +60,7 @@ const NAV: NavItem[] = [
     ],
   },
 
-  // NEW: Drinks parent with submenu (Potent Potables appears here too)
+  // ✅ Drinks (grouped)
   {
     name: "Drinks",
     href: "/drinks",
@@ -60,11 +68,61 @@ const NAV: NavItem[] = [
     hasSubmenu: true,
     submenu: [
       { name: "Browse Drinks", href: "/drinks", icon: GlassWater },
-      { name: "Cocktails", href: "/drinks/cocktails", icon: GlassWater },
-      { name: "Mocktails", href: "/drinks/mocktails", icon: GlassWater },
-      { name: "Smoothies", href: "/drinks/smoothies", icon: GlassWater },
-      { name: "Protein Shakes", href: "/drinks/protein-shakes", icon: GlassWater },
-      { name: "Potent Potables", href: "/potent-potables", icon: GlassWater },
+
+      // Smoothies
+      {
+        name: "Smoothies",
+        href: "/drinks/smoothies",
+        icon: GlassWater,
+        hasSubmenu: true,
+        submenu: [
+          { name: "Fruit Smoothies", href: "/drinks/smoothies/fruit", icon: GlassWater },
+          { name: "Green Smoothies", href: "/drinks/smoothies/green", icon: GlassWater },
+          { name: "High-fiber", href: "/drinks/smoothies/high-fiber", icon: GlassWater },
+        ],
+      },
+
+      // Protein Shakes
+      {
+        name: "Protein Shakes",
+        href: "/drinks/protein-shakes",
+        icon: GlassWater,
+        hasSubmenu: true,
+        submenu: [
+          { name: "Whey", href: "/drinks/protein-shakes/whey", icon: GlassWater },
+          { name: "Plant-based", href: "/drinks/protein-shakes/plant", icon: GlassWater },
+          { name: "Low-carb / Keto", href: "/drinks/protein-shakes/low-carb", icon: GlassWater },
+        ],
+      },
+
+      // Detoxes & Cleanses
+      {
+        name: "Detoxes & Cleanses",
+        href: "/drinks/detoxes",
+        icon: GlassWater,
+        hasSubmenu: true,
+        submenu: [
+          { name: "Juice Blends", href: "/drinks/detoxes/juice", icon: GlassWater },
+          { name: "Herbal Infusions", href: "/drinks/detoxes/herbal", icon: GlassWater },
+          { name: "One-day / Multi-day", href: "/drinks/detoxes/programs", icon: GlassWater },
+        ],
+      },
+
+      // Potent Potables (21+)
+      {
+        name: "Potent Potables (21+)",
+        href: "/drinks/potent-potables",
+        icon: GlassWater,
+        hasSubmenu: true,
+        submenu: [
+          { name: "Cocktails", href: "/drinks/potent-potables/cocktails", icon: GlassWater },
+          { name: "Mocktails", href: "/drinks/potent-potables/mocktails", icon: GlassWater },
+          { name: "Beer", href: "/drinks/potent-potables/beer", icon: GlassWater },
+          { name: "Wine", href: "/drinks/potent-potables/wine", icon: GlassWater },
+          { name: "Spirits", href: "/drinks/potent-potables/spirits", icon: GlassWater },
+          { name: "Liqueurs", href: "/drinks/potent-potables/liqueurs", icon: GlassWater },
+        ],
+      },
     ],
   },
 
