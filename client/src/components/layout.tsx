@@ -36,7 +36,7 @@ export default function Layout({ children }: LayoutProps) {
   const secondaryLinks = [
     { href: "/", label: "Home" },
     { href: "/recipes", label: "Recipes" },
-    { href: "/potent-potables", label: "Potent Potables" },
+    { href: "/drinks", label: "Drinks" },
     { href: "/catering", label: "Catering" },
     { href: "/store", label: "Store" },
   ];
@@ -174,6 +174,7 @@ export default function Layout({ children }: LayoutProps) {
                               <Compass className="w-4 h-4 mr-3" /> Explore
                             </Link>
 
+                            {/* Recipes (parent) */}
                             <Link
                               href="/recipes"
                               onClick={() => setIsDropdownOpen(false)}
@@ -181,6 +182,7 @@ export default function Layout({ children }: LayoutProps) {
                             >
                               <BookOpen className="w-4 h-4 mr-3" /> Recipes
                             </Link>
+                            {/* Recipes nested items */}
                             <Link
                               href="/recipes"
                               onClick={() => setIsDropdownOpen(false)}
@@ -203,14 +205,59 @@ export default function Layout({ children }: LayoutProps) {
                               <Wand2 className="w-3 h-3 mr-2" /> Ingredient Substitutions
                             </Link>
 
+                            {/* Drinks (parent) */}
+                            <Link
+                              href="/drinks"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded font-semibold"
+                            >
+                              <GlassWater className="w-4 h-4 mr-3" /> Drinks
+                            </Link>
+                            {/* Drinks nested items */}
+                            <Link
+                              href="/drinks"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                            >
+                              <GlassWater className="w-3 h-3 mr-2" /> Browse Drinks
+                            </Link>
+                            <Link
+                              href="/drinks/cocktails"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                            >
+                              <GlassWater className="w-3 h-3 mr-2" /> Cocktails
+                            </Link>
+                            <Link
+                              href="/drinks/mocktails"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                            >
+                              <GlassWater className="w-3 h-3 mr-2" /> Mocktails
+                            </Link>
+                            <Link
+                              href="/drinks/smoothies"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                            >
+                              <GlassWater className="w-3 h-3 mr-2" /> Smoothies
+                            </Link>
+                            <Link
+                              href="/drinks/protein-shakes"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                            >
+                              <GlassWater className="w-3 h-3 mr-2" /> Protein Shakes
+                            </Link>
                             <Link
                               href="/potent-potables"
                               onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                             >
-                              <GlassWater className="w-4 h-4 mr-3" /> Potent Potables
+                              <GlassWater className="w-3 h-3 mr-2" /> Potent Potables
                             </Link>
 
+                            {/* Catering (parent) */}
                             <Link
                               href="/catering"
                               onClick={() => setIsDropdownOpen(false)}
@@ -218,6 +265,7 @@ export default function Layout({ children }: LayoutProps) {
                             >
                               <Utensils className="w-4 h-4 mr-3" /> Catering
                             </Link>
+                            {/* Catering nested item */}
                             <Link
                               href="/catering/wedding-planning"
                               onClick={() => setIsDropdownOpen(false)}
@@ -226,6 +274,7 @@ export default function Layout({ children }: LayoutProps) {
                               <Heart className="w-3 h-3 mr-2" /> Wedding Planning
                             </Link>
 
+                            {/* Marketplace & Nutrition */}
                             <Link
                               href="/marketplace"
                               onClick={() => setIsDropdownOpen(false)}
@@ -317,7 +366,7 @@ export default function Layout({ children }: LayoutProps) {
         <main className="flex-1 lg:ml-64 pb-16 lg:pb-0">{children}</main>
       </div>
 
-      <div className="md:hidden px-4 py-3 bg-background border-t border-border sticky bottom-0">
+      <div className="md:hidden px-4 py-2 bg-background border-t border-border">
         <form onSubmit={onSearchSubmit} className="flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
@@ -330,7 +379,7 @@ export default function Layout({ children }: LayoutProps) {
               aria-label="Search site (mobile)"
             />
           </div>
-          <Button type="submit" size="sm" className="shrink-0 rounded-full px-4">
+          <Button type="submit" size="sm" className="shrink-0 rounded-full px-3">
             Go
           </Button>
         </form>
