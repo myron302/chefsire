@@ -130,11 +130,14 @@ export default function Layout({ children }: LayoutProps) {
 
                 {isDropdownOpen && (
                   <>
+                    {/* overlay to close on click outside */}
                     <div
                       className="fixed inset-0 z-10"
                       onClick={() => setIsDropdownOpen(false)}
                     />
+                    {/* menu panel */}
                     <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-20 overflow-hidden">
+                      {/* header strip */}
                       <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-b px-4 py-3">
                         <div className="flex items-center space-x-3">
                           <div className="w-7 h-7 rounded-full overflow-hidden bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-md">
@@ -151,6 +154,7 @@ export default function Layout({ children }: LayoutProps) {
                         </div>
                       </div>
 
+                      {/* body */}
                       <div className="py-2">
                         <div className="px-4 py-2">
                           <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
@@ -271,45 +275,7 @@ export default function Layout({ children }: LayoutProps) {
                                 </nav>
                               </details>
                             </div>
-                            {/* end Drinks nested */}
-                            </div>
-
-                            {/* Catering (parent) */}
-                            <Link
-                              href="/catering"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded font-semibold"
-                            >
-                              <Utensils className="w-4 h-4 mr-3" /> Catering
-                            </Link>
-                            {/* Catering nested item */}
-                            <Link
-                              href="/catering/wedding-planning"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <Heart className="w-3 h-3 mr-2" /> Wedding Planning
-                            </Link>
-
-                            {/* Marketplace & Nutrition */}
-                            <Link
-                              href="/marketplace"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                            >
-                              <ShoppingCart className="w-4 h-4 mr-3" /> Marketplace
-                            </Link>
-
-                            <Link
-                              href="/nutrition"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                            >
-                              <Activity className="w-4 h-4 mr-3" /> Nutrition & Meal Plans
-                              <span className="ml-auto px-2 py-0.5 bg-yellow-300 dark:bg-yellow-600 text-xs rounded">
-                                Premium
-                              </span>
-                            </Link>
+                                                       {/* end Drinks nested */}
                           </div>
                         </div>
 
@@ -343,6 +309,7 @@ export default function Layout({ children }: LayoutProps) {
                         </button>
                       </div>
                     </div>
+                    {/* end menu panel */}
                   </>
                 )}
               </div>
@@ -405,4 +372,4 @@ export default function Layout({ children }: LayoutProps) {
       <MobileNav onCreatePost={handleCreatePost} />
     </div>
   );
-}
+} 
