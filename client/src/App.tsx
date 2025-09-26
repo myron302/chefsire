@@ -3,32 +3,29 @@ import * as React from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 
-// ✅ point at the actual file name: query-client.ts
+// ✅ keep using your existing client
 import { queryClient } from "@/lib/query-client";
 
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Layout from "@/components/layout";
+import RequireAgeGate from "@/components/RequireAgeGate";
 
-// Pages
+// Pages (existing)
 import Feed from "@/pages/feed";
 import ExplorePage from "@/pages/explore/ExplorePage";
-
 import RecipesListPage from "@/pages/recipes/RecipesListPage";
 import RecipesFiltersPage from "@/pages/recipes/RecipesFiltersPage";
 import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
-
 import Profile from "@/pages/profile";
 import CreatePost from "@/pages/create-post";
 import Pantry from "@/components/Pantry";
 import Marketplace from "@/components/Marketplace";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import CateringMarketplace from "@/pages/catering";
-import PotentPotables from "@/pages/potent-potables";
+import PotentPotables from "@/pages/potent-potables"; // we’ll reuse this for the /drinks/potent-potables subtree
 import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
-
-// NEW: substitutions page
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 
 // Utilities
@@ -50,9 +47,74 @@ function RecipesSection() {
         {/* Put the more specific path FIRST so it matches before /recipes */}
         <Route path="/recipes/filters" component={RecipesFiltersPage} />
         <Route path="/recipes" component={RecipesListPage} />
-        {/* If you add more recipe subroutes later, keep them here under the provider */}
+        {/* Add future /recipes/... pages here to inherit the provider */}
       </Switch>
     </RecipesFiltersProvider>
+  );
+}
+
+/** --- DRINKS SECTION PAGES (temporary placeholders) ---
+ * These are lightweight placeholders so your routes work immediately.
+ * You can replace each with real pages later without touching the router.
+ */
+const PageShell: React.FC<{ title: string; note?: string }> = ({ title, note }) => (
+  <div className="max-w-4xl mx-auto p-6">
+    <h1 className="text-2xl font-semibold mb-2">{title}</h1>
+    {note && <p className="text-muted-foreground">{note}</p>}
+  </div>
+);
+
+const DrinksLanding = () => (
+  <PageShell
+    title="Drinks"
+    note="Choose a category: Smoothies, Protein Shakes, Detoxes & Cleanses, or Potent Potables (21+)."
+  />
+);
+
+const SmoothiesPage = ({ params }: { params?: Record<string, string> }) => (
+  <PageShell title={`Smoothies ${params?.type ? `• ${params.type.replace("-", " ")}` : ""}`} />
+);
+
+const ProteinShakesPage = ({ params }: { params?: Record<string, string> }) => (
+  <PageShell title={`Protein Shakes ${params?.type ? `• ${params.type.replace("-", " ")}` : ""}`} />
+);
+
+const DetoxesPage = ({ params }: { params?: Record<string, string> }) => (
+  <PageShell title={`Detoxes & Cleanses ${params?.type ? `• ${params.type.replace("-", " ")}` : ""}`} />
+);
+
+/** Potent Potables wrapper (21+ gate) */
+function PotentPotablesSection() {
+  // Any path under /drinks/potent-potables/* is age-gated
+  return (
+    <RequireAgeGate>
+      <PotentPotables />
+    </RequireAgeGate>
+  );
+}
+
+/** Group all /drinks routes here */
+function DrinksSection() {
+  return (
+    <Switch>
+      {/* landing */}
+      <Route path="/drinks" component={DrinksLanding} />
+
+      {/* Smoothies */}
+      <Route path="/drinks/smoothies/:type" component={SmoothiesPage} />
+      <Route path="/drinks/smoothies" component={SmoothiesPage} />
+
+      {/* Protein Shakes */}
+      <Route path="/drinks/protein-shakes/:type" component={ProteinShakesPage} />
+      <Route path="/drinks/protein-shakes" component={ProteinShakesPage} />
+
+      {/* Detoxes & Cleanses */}
+      <Route path="/drinks/detoxes/:type" component={DetoxesPage} />
+      <Route path="/drinks/detoxes" component={DetoxesPage} />
+
+      {/* Potent Potables (21+) — entire subtree gated */}
+      <Route path="/drinks/potent-potables/:rest*" component={PotentPotablesSection} />
+    </Switch>
   );
 }
 
@@ -97,11 +159,18 @@ function Router() {
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/catering" component={CateringMarketplace} />
         <Route path="/catering/wedding-planning" component={WeddingPlanning} />
-        <Route path="/potent-potables" component={PotentPotables} />
+
+        {/* Old standalone route kept for compatibility */}
+        <Route path="/potent-potables" component={PotentPotablesSection} />
+
         <Route path="/nutrition" component={NutritionMealPlanner} />
 
         {/* NEW: Substitutions UI */}
         <Route path="/substitutions" component={SubstitutionsPage} />
+
+        {/* --- NEW: Drinks tree --- */}
+        <Route path="/drinks/:rest*" component={DrinksSection} />
+        <Route path="/drinks" component={DrinksSection} />
 
         {/* Placeholder routes */}
         <Route path="/saved" component={NotFound} />
