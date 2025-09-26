@@ -23,10 +23,15 @@ import Pantry from "@/components/Pantry";
 import Marketplace from "@/components/Marketplace";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import CateringMarketplace from "@/pages/catering";
-import PotentPotables from "@/pages/potent-potables"; // we’ll reuse this for the /drinks/potent-potables subtree
+import PotentPotables from "@/pages/potent-potables"; // /drinks/potent-potables subtree
 import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
+
+// NEW: hook up real Drinks section pages
+import SmoothiesPage from "@/pages/drinks/smoothies";
+import ProteinShakesPage from "@/pages/drinks/protein-shakes";
+import DetoxesPage from "@/pages/drinks/detoxes";
 
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -53,10 +58,7 @@ function RecipesSection() {
   );
 }
 
-/** --- DRINKS SECTION PAGES (temporary placeholders) ---
- * These are lightweight placeholders so your routes work immediately.
- * You can replace each with real pages later without touching the router.
- */
+/** Lightweight shell + Drinks landing (kept inline) */
 const PageShell: React.FC<{ title: string; note?: string }> = ({ title, note }) => (
   <div className="max-w-4xl mx-auto p-6">
     <h1 className="text-2xl font-semibold mb-2">{title}</h1>
@@ -69,18 +71,6 @@ const DrinksLanding = () => (
     title="Drinks"
     note="Choose a category: Smoothies, Protein Shakes, Detoxes & Cleanses, or Potent Potables (21+)."
   />
-);
-
-const SmoothiesPage = ({ params }: { params?: Record<string, string> }) => (
-  <PageShell title={`Smoothies ${params?.type ? `• ${params.type.replace("-", " ")}` : ""}`} />
-);
-
-const ProteinShakesPage = ({ params }: { params?: Record<string, string> }) => (
-  <PageShell title={`Protein Shakes ${params?.type ? `• ${params.type.replace("-", " ")}` : ""}`} />
-);
-
-const DetoxesPage = ({ params }: { params?: Record<string, string> }) => (
-  <PageShell title={`Detoxes & Cleanses ${params?.type ? `• ${params.type.replace("-", " ")}` : ""}`} />
 );
 
 /** Potent Potables wrapper (21+ gate) */
