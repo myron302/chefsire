@@ -11,6 +11,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Layout from "@/components/layout";
 import RequireAgeGate from "@/components/RequireAgeGate";
 
+// ✅ NEW: Import DrinksProvider
+import { DrinksProvider } from "@/contexts/DrinksContext";
+
 // Pages (existing)
 import Feed from "@/pages/feed";
 import ExplorePage from "@/pages/explore/ExplorePage";
@@ -33,6 +36,9 @@ import ProteinShakesPage from "@/pages/drinks/protein-shakes";
 import DetoxesPage from "@/pages/drinks/detoxes";
 import PotentPotablesPage from "@/pages/drinks/potent-potables/index"; // ✅ FIXED: Added /index
 import DrinksHubPage from "@/pages/drinks"; // Your interactive hub page
+
+// ✅ NEW: Import WheyProteinShakesPage
+import WheyProteinShakesPage from "@/pages/drinks/protein-shakes/whey";
 
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -69,29 +75,32 @@ function PotentPotablesSection() {
   );
 }
 
-/** Group all /drinks routes here */
+/** ✅ NEW: Group all /drinks routes here WITH DrinksProvider */
 function DrinksSection() {
   return (
-    <Switch>
-      {/* ✅ Updated: Now using your interactive hub */}
-      <Route path="/drinks" component={DrinksHubPage} />
+    <DrinksProvider>
+      <Switch>
+        {/* ✅ Updated: Now using your interactive hub */}
+        <Route path="/drinks" component={DrinksHubPage} />
 
-      {/* Smoothies */}
-      <Route path="/drinks/smoothies/:type" component={SmoothiesPage} />
-      <Route path="/drinks/smoothies" component={SmoothiesPage} />
+        {/* Smoothies */}
+        <Route path="/drinks/smoothies/:type" component={SmoothiesPage} />
+        <Route path="/drinks/smoothies" component={SmoothiesPage} />
 
-      {/* Protein Shakes */}
-      <Route path="/drinks/protein-shakes/:type" component={ProteinShakesPage} />
-      <Route path="/drinks/protein-shakes" component={ProteinShakesPage} />
+        {/* Protein Shakes */}
+        <Route path="/drinks/protein-shakes/whey" component={WheyProteinShakesPage} />
+        <Route path="/drinks/protein-shakes/:type" component={ProteinShakesPage} />
+        <Route path="/drinks/protein-shakes" component={ProteinShakesPage} />
 
-      {/* Detoxes & Cleanses */}
-      <Route path="/drinks/detoxes/:type" component={DetoxesPage} />
-      <Route path="/drinks/detoxes" component={DetoxesPage} />
+        {/* Detoxes & Cleanses */}
+        <Route path="/drinks/detoxes/:type" component={DetoxesPage} />
+        <Route path="/drinks/detoxes" component={DetoxesPage} />
 
-      {/* ✅ NEW: Potent Potables (21+) — now properly in drinks directory */}
-      <Route path="/drinks/potent-potables/:rest*" component={PotentPotablesSection} />
-      <Route path="/drinks/potent-potables" component={PotentPotablesSection} />
-    </Switch>
+        {/* ✅ NEW: Potent Potables (21+) — now properly in drinks directory */}
+        <Route path="/drinks/potent-potables/:rest*" component={PotentPotablesSection} />
+        <Route path="/drinks/potent-potables" component={PotentPotablesSection} />
+      </Switch>
+    </DrinksProvider>
   );
 }
 
@@ -147,7 +156,7 @@ function Router() {
         {/* NEW: Substitutions UI */}
         <Route path="/substitutions" component={SubstitutionsPage} />
 
-        {/* ✅ NEW: Drinks tree with your interactive hub */}
+        {/* ✅ NEW: Drinks tree with your interactive hub - NOW WITH CONTEXT */}
         <Route path="/drinks/:rest*" component={DrinksSection} />
         <Route path="/drinks" component={DrinksSection} />
 
