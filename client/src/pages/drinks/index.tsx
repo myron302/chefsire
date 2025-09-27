@@ -67,7 +67,7 @@ const drinkCategories = [
     textColor: 'text-purple-600',
     bgColor: 'bg-purple-50',
     borderColor: 'border-purple-200',
-    route: '/potent-potables',
+    route: '/drinks/potent-potables',
     recipeCount: 1247,
     features: ['Cocktail Builder', 'Gaming Elements', 'Social Features'],
     trending: true,
