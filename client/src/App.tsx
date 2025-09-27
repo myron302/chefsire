@@ -23,7 +23,6 @@ import Pantry from "@/components/Pantry";
 import Marketplace from "@/components/Marketplace";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import CateringMarketplace from "@/pages/catering";
-import PotentPotables from "@/pages/potent-potables"; // /drinks/potent-potables subtree
 import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
@@ -32,7 +31,8 @@ import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 import SmoothiesPage from "@/pages/drinks/smoothies";
 import ProteinShakesPage from "@/pages/drinks/protein-shakes";
 import DetoxesPage from "@/pages/drinks/detoxes";
-import DrinksHubPage from "@/pages/drinks"; // ✅ ADDED: Your interactive hub page
+import PotentPotablesPage from "@/pages/drinks/potent-potables"; // ✅ NEW: Updated import
+import DrinksHubPage from "@/pages/drinks"; // Your interactive hub page
 
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -64,7 +64,7 @@ function PotentPotablesSection() {
   // Any path under /drinks/potent-potables/* is age-gated
   return (
     <RequireAgeGate>
-      <PotentPotables />
+      <PotentPotablesPage />
     </RequireAgeGate>
   );
 }
@@ -73,7 +73,7 @@ function PotentPotablesSection() {
 function DrinksSection() {
   return (
     <Switch>
-      {/* ✅ UPDATED: Now using your interactive hub instead of basic landing */}
+      {/* ✅ Updated: Now using your interactive hub */}
       <Route path="/drinks" component={DrinksHubPage} />
 
       {/* Smoothies */}
@@ -88,8 +88,9 @@ function DrinksSection() {
       <Route path="/drinks/detoxes/:type" component={DetoxesPage} />
       <Route path="/drinks/detoxes" component={DetoxesPage} />
 
-      {/* Potent Potables (21+) — entire subtree gated */}
+      {/* ✅ NEW: Potent Potables (21+) — now properly in drinks directory */}
       <Route path="/drinks/potent-potables/:rest*" component={PotentPotablesSection} />
+      <Route path="/drinks/potent-potables" component={PotentPotablesSection} />
     </Switch>
   );
 }
@@ -136,8 +137,10 @@ function Router() {
         <Route path="/catering" component={CateringMarketplace} />
         <Route path="/catering/wedding-planning" component={WeddingPlanning} />
 
-        {/* Old standalone route kept for compatibility */}
-        <Route path="/potent-potables" component={PotentPotablesSection} />
+        {/* ✅ BACKWARD COMPATIBILITY: Redirect old potent-potables route to new location */}
+        <Route path="/potent-potables">
+          <Redirect to="/drinks/potent-potables" />
+        </Route>
 
         <Route path="/nutrition" component={NutritionMealPlanner} />
 
