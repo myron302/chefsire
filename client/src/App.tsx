@@ -31,7 +31,7 @@ import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 import SmoothiesPage from "@/pages/drinks/smoothies";
 import ProteinShakesPage from "@/pages/drinks/protein-shakes";
 import DetoxesPage from "@/pages/drinks/detoxes";
-import PotentPotablesPage from "@/pages/drinks/potent-potables"; // ✅ NEW: Updated import
+import PotentPotablesPage from "@/pages/drinks/potent-potables/index"; // ✅ FIXED: Added /index
 import DrinksHubPage from "@/pages/drinks"; // Your interactive hub page
 
 // Utilities
