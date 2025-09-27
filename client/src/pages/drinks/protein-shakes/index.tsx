@@ -9,780 +9,375 @@ import {
   CheckCircle, Target, Flame, Droplets, Leaf, Apple,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Dumbbell, Activity, BarChart3, Shuffle, Camera, Share2,
-  Muscle, Scale, Gauge, Mountain, Waves, Shield
+  FlaskConical, Weight, Gauge, Triangle, Waves, Shield
 } from 'lucide-react';
 
 type Params = { params?: Record<string, string> };
 
-// Protein sources database
-const proteinSources = {
-  whey: [
-    { name: "Whey Isolate", protein: 25, calories: 110, carbs: 1, fat: 0.5, icon: "🥛", absorption: "fast", cost: "$$" },
-    { name: "Whey Concentrate", protein: 20, calories: 130, carbs: 3, fat: 2, icon: "🥛", absorption: "fast", cost: "$" },
-    { name: "Hydrolyzed Whey", protein: 24, calories: 100, carbs: 0, fat: 0, icon: "🥛", absorption: "ultra-fast", cost: "$$$" }
-  ],
-  plant: [
-    { name: "Pea Protein", protein: 22, calories: 120, carbs: 2, fat: 1.5, icon: "🌱", absorption: "medium", cost: "$" },
-    { name: "Hemp Protein", protein: 15, calories: 120, carbs: 8, fat: 3, icon: "🌿", absorption: "slow", cost: "$$" },
-    { name: "Rice Protein", protein: 24, calories: 110, carbs: 1, fat: 1, icon: "🌾", absorption: "medium", cost: "$" },
-    { name: "Soy Protein", protein: 23, calories: 95, carbs: 1, fat: 0.5, icon: "🫘", absorption: "medium", cost: "$" }
-  ],
-  casein: [
-    { name: "Micellar Casein", protein: 24, calories: 110, carbs: 1, fat: 0.5, icon: "🧀", absorption: "slow", cost: "$$" },
-    { name: "Calcium Caseinate", protein: 23, calories: 105, carbs: 2, fat: 1, icon: "🧀", absorption: "slow", cost: "$" }
-  ]
-};
-
-const additives = [
-  { name: "Creatine", amount: "5g", benefit: "Strength & Power", calories: 0, icon: "⚡", category: "performance" },
-  { name: "L-Glutamine", amount: "5g", benefit: "Recovery", calories: 0, icon: "🔄", category: "recovery" },
-  { name: "BCAA", amount: "10g", benefit: "Muscle Protection", calories: 40, icon: "🛡️", category: "muscle" },
-  { name: "Beta-Alanine", amount: "3g", benefit: "Endurance", calories: 0, icon: "🏃", category: "endurance" },
-  { name: "L-Carnitine", amount: "2g", benefit: "Fat Burning", calories: 0, icon: "🔥", category: "fat-loss" },
-  { name: "Caffeine", amount: "200mg", benefit: "Energy Boost", calories: 0, icon: "☕", category: "energy" }
+const fitnessGoals = [
+  { id: 'muscle', name: 'Muscle Building', icon: Dumbbell, color: 'bg-red-500', protein: 35, carbs: 40, description: 'Maximum muscle growth and recovery' },
+  { id: 'lean', name: 'Lean Muscle', icon: Target, color: 'bg-blue-500', protein: 30, carbs: 20, description: 'Build muscle while staying lean' },
+  { id: 'strength', name: 'Strength', icon: Trophy, color: 'bg-purple-500', protein: 32, carbs: 35, description: 'Power and performance focused' },
+  { id: 'endurance', name: 'Endurance', icon: Activity, color: 'bg-green-500', protein: 25, carbs: 45, description: 'Sustained energy and recovery' },
+  { id: 'weight-loss', name: 'Weight Loss', icon: TrendingUp, color: 'bg-orange-500', protein: 28, carbs: 15, description: 'Fat loss with muscle preservation' },
+  { id: 'recovery', name: 'Recovery', icon: Heart, color: 'bg-pink-500', protein: 30, carbs: 25, description: 'Optimal recovery and repair' }
 ];
 
-// Fitness goals with macro targets
-const fitnessGoals = [
-  { 
-    id: 'bulk', 
-    name: 'Muscle Building', 
-    icon: '💪', 
-    color: 'bg-red-500', 
-    description: 'High protein, higher calories for muscle growth',
-    targetProtein: [30, 50],
-    targetCalories: [400, 600],
-    recommendedTiming: ['Post-Workout', 'Before Bed'],
-    tips: 'Add healthy fats and complex carbs for muscle building'
+const proteinTypes = [
+  { id: 'whey', name: 'Whey Protein', absorption: 'Fast', timing: 'Post-workout', biovalue: 95, description: 'Complete amino profile, fast absorption' },
+  { id: 'casein', name: 'Casein', absorption: 'Slow', timing: 'Before bed', biovalue: 85, description: 'Sustained release, anti-catabolic' },
+  { id: 'plant', name: 'Plant Protein', absorption: 'Medium', timing: 'Anytime', biovalue: 75, description: 'Vegan-friendly, digestive friendly' },
+  { id: 'egg', name: 'Egg Protein', absorption: 'Medium', timing: 'Morning', biovalue: 90, description: 'Complete amino acids, lactose-free' },
+  { id: 'beef', name: 'Beef Protein', absorption: 'Fast', timing: 'Post-workout', biovalue: 88, description: 'Rich in creatine and amino acids' }
+];
+
+const supplements = [
+  { id: 'creatine', name: 'Creatine', amount: '5g', benefit: 'Strength & Power', timing: 'Post-workout' },
+  { id: 'bcaa', name: 'BCAA', amount: '10g', benefit: 'Muscle Recovery', timing: 'Intra-workout' },
+  { id: 'glutamine', name: 'L-Glutamine', amount: '5g', benefit: 'Recovery & Immunity', timing: 'Post-workout' },
+  { id: 'beta-alanine', name: 'Beta-Alanine', amount: '3g', benefit: 'Endurance', timing: 'Pre-workout' },
+  { id: 'hmb', name: 'HMB', amount: '3g', benefit: 'Anti-Catabolic', timing: 'Post-workout' }
+];
+
+const workoutPhases = [
+  {
+    name: 'Pre-Workout',
+    timing: '30-60 min before',
+    icon: Timer,
+    color: 'bg-orange-500',
+    focus: 'Energy & Focus',
+    recommendations: ['Light protein', 'Fast carbs', 'Caffeine', 'Beta-Alanine']
   },
-  { 
-    id: 'cut', 
-    name: 'Fat Loss', 
-    icon: '🔥', 
-    color: 'bg-orange-500', 
-    description: 'High protein, lower calories to preserve muscle',
-    targetProtein: [25, 40],
-    targetCalories: [150, 300],
-    recommendedTiming: ['Morning', 'Pre-Workout'],
-    tips: 'Focus on lean proteins and minimal additives'
+  {
+    name: 'Post-Workout',
+    timing: '0-30 min after',
+    icon: Zap,
+    color: 'bg-green-500',
+    focus: 'Recovery & Growth',
+    recommendations: ['Fast protein', 'Simple carbs', 'Creatine', 'Glutamine']
   },
-  { 
-    id: 'maintain', 
-    name: 'Maintenance', 
-    icon: '⚖️', 
-    color: 'bg-blue-500', 
-    description: 'Balanced nutrition for maintaining current physique',
-    targetProtein: [20, 35],
-    targetCalories: [200, 400],
-    recommendedTiming: ['Post-Workout', 'Afternoon'],
-    tips: 'Consistent daily protein intake is key'
+  {
+    name: 'Before Bed',
+    timing: '1-2 hours before bed',
+    icon: Calendar,
+    color: 'bg-purple-500',
+    focus: 'Overnight Recovery',
+    recommendations: ['Casein protein', 'Avoid caffeine', 'Magnesium', 'ZMA']
   },
-  { 
-    id: 'strength', 
-    name: 'Strength Training', 
-    icon: '🏋️', 
-    color: 'bg-purple-500', 
-    description: 'Power-focused nutrition for strength gains',
-    targetProtein: [25, 45],
-    targetCalories: [300, 500],
-    recommendedTiming: ['Pre-Workout', 'Post-Workout'],
-    tips: 'Add creatine and fast-absorbing proteins'
-  },
-  { 
-    id: 'endurance', 
-    name: 'Endurance Sports', 
-    icon: '🏃', 
-    color: 'bg-green-500', 
-    description: 'Sustained energy for long training sessions',
-    targetProtein: [20, 30],
-    targetCalories: [250, 450],
-    recommendedTiming: ['Pre-Workout', 'During Long Sessions'],
-    tips: 'Include electrolytes and sustained-release proteins'
-  },
-  { 
-    id: 'recovery', 
-    name: 'Recovery Focus', 
-    icon: '😌', 
-    color: 'bg-teal-500', 
-    description: 'Enhanced recovery and muscle repair',
-    targetProtein: [25, 40],
-    targetCalories: [200, 350],
-    recommendedTiming: ['Post-Workout', 'Before Bed'],
-    tips: 'Slow-absorbing proteins and recovery supplements'
+  {
+    name: 'Intra-Workout',
+    timing: 'During training',
+    icon: Activity,
+    color: 'bg-blue-500',
+    focus: 'Performance & Hydration',
+    recommendations: ['BCAA', 'Electrolytes', 'Simple carbs', 'Caffeine']
   }
 ];
 
-// Popular protein shake recipes
 const popularRecipes = [
   {
-    id: 1,
-    name: "Beast Mode Builder",
-    goal: "bulk",
-    protein: 42,
-    calories: 580,
-    ingredients: ["Whey Concentrate", "Banana", "Peanut Butter", "Oats", "Milk"],
-    supplements: ["Creatine", "L-Glutamine"],
-    timing: "Post-Workout",
-    difficulty: "Easy",
-    rating: 4.9,
-    likes: 2340,
-    image: "https://images.unsplash.com/photo-1544829099-b9a0c5303bff?w=400&h=300&fit=crop"
-  },
-  {
-    id: 2,
-    name: "Lean Machine",
-    goal: "cut",
+    name: 'Beast Mode Builder',
     protein: 35,
-    calories: 180,
-    ingredients: ["Whey Isolate", "Berries", "Spinach", "Almond Milk"],
-    supplements: ["L-Carnitine", "Caffeine"],
-    timing: "Morning",
-    difficulty: "Easy",
-    rating: 4.7,
-    likes: 1890,
-    image: "https://images.unsplash.com/photo-1553909489-cd47e0ef937f?w=400&h=300&fit=crop"
+    carbs: 42,
+    calories: 380,
+    ingredients: ['Whey Protein', 'Banana', 'Oats', 'Peanut Butter', 'Milk'],
+    rating: 4.8,
+    reviews: 234,
+    goal: 'muscle'
   },
   {
-    id: 3,
-    name: "Power Plant Stack",
-    goal: "strength",
-    protein: 38,
-    calories: 420,
-    ingredients: ["Pea Protein", "Hemp Protein", "Banana", "Coconut Milk", "Dates"],
-    supplements: ["Creatine", "Beta-Alanine"],
-    timing: "Pre-Workout",
-    difficulty: "Medium",
-    rating: 4.8,
-    likes: 1567,
-    image: "https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop"
+    name: 'Lean Machine',
+    protein: 30,
+    carbs: 18,
+    calories: 220,
+    ingredients: ['Plant Protein', 'Berries', 'Spinach', 'Almond Milk', 'Chia Seeds'],
+    rating: 4.6,
+    reviews: 189,
+    goal: 'lean'
+  },
+  {
+    name: 'Power Surge',
+    protein: 32,
+    carbs: 38,
+    calories: 340,
+    ingredients: ['Whey Protein', 'Sweet Potato', 'Cinnamon', 'Greek Yogurt'],
+    rating: 4.7,
+    reviews: 156,
+    goal: 'strength'
   }
 ];
 
-// Workout tracking integration
-const workoutPhases = [
-  { name: "Pre-Workout", timing: "30-60 min before", focus: "Energy & Pump", icon: "⚡" },
-  { name: "Intra-Workout", timing: "During training", focus: "Sustained Performance", icon: "🏋️" },
-  { name: "Post-Workout", timing: "0-30 min after", focus: "Recovery & Growth", icon: "🔄" },
-  { name: "Before Bed", timing: "1-2 hours before sleep", focus: "Overnight Recovery", icon: "😴" }
-];
-
-const userStats = {
-  level: 12,
-  xp: 1890,
-  streak: 8,
-  shakesMade: 34,
-  favoriteGoal: 'bulk',
-  workoutsTracked: 45,
-  muscleGained: 3.2
-};
-
 export default function ProteinShakesPage({ params }: Params) {
-  const type = params?.type?.replaceAll("-", " ");
-  const [activeTab, setActiveTab] = useState('create');
   const [selectedGoal, setSelectedGoal] = useState(fitnessGoals[0]);
-  const [selectedPhase, setSelectedPhase] = useState(workoutPhases[2]); // Post-workout default
-  const [customShake, setCustomShake] = useState({
-    protein: null,
-    additives: [],
-    totalProtein: 0,
-    totalCalories: 0,
-    cost: 0
-  });
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [workoutData, setWorkoutData] = useState({
-    bodyWeight: 180,
-    targetWeight: 185,
-    dailyProteinGoal: 140,
-    currentIntake: 85
-  });
+  const [selectedProtein, setSelectedProtein] = useState(proteinTypes[0]);
+  const [selectedSupplements, setSelectedSupplements] = useState([]);
+  const [selectedPhase, setSelectedPhase] = useState(workoutPhases[1]);
+  const [proteinAmount, setProteinAmount] = useState([30]);
+  const [showNutrition, setShowNutrition] = useState(false);
+  const [dailyProteinGoal] = useState(150);
+  const [consumedProtein, setConsumedProtein] = useState(85);
 
-  const addProtein = (protein, category) => {
-    setCustomShake(prev => ({
-      ...prev,
-      protein: { ...protein, category },
-      totalProtein: protein.protein,
-      totalCalories: protein.calories,
-      cost: protein.cost === '$' ? 1 : protein.cost === '$$' ? 2 : 3
-    }));
+  const type = params?.type?.replaceAll("-", " ");
+
+  const calculateNutrition = () => {
+    const protein = proteinAmount[0];
+    const carbs = selectedGoal.carbs;
+    const calories = (protein * 4) + (carbs * 4) + 50; // rough calculation
+    return { protein, carbs, calories };
   };
 
-  const toggleAdditive = (additive) => {
-    setCustomShake(prev => {
-      const exists = prev.additives.find(a => a.name === additive.name);
-      if (exists) {
-        return {
-          ...prev,
-          additives: prev.additives.filter(a => a.name !== additive.name),
-          totalCalories: prev.totalCalories - additive.calories
-        };
-      } else {
-        return {
-          ...prev,
-          additives: [...prev.additives, additive],
-          totalCalories: prev.totalCalories + additive.calories
-        };
-      }
-    });
-  };
-
-  const createShake = () => {
-    if (customShake.protein) {
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
-    }
-  };
-
-  const getGoalColor = (goal) => {
-    return fitnessGoals.find(g => g.id === goal)?.color || 'bg-gray-500';
-  };
-
-  const isInTargetRange = (value, range) => {
-    return value >= range[0] && value <= range[1];
-  };
+  const nutrition = calculateNutrition();
+  const proteinProgress = (consumedProtein / dailyProteinGoal) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50">
-      
-      {/* Success Animation */}
-      {showSuccess && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
-          <div className="bg-gradient-to-r from-red-500 to-orange-500 text-white p-8 rounded-3xl shadow-2xl animate-bounce">
-            <div className="text-center">
-              <Muscle className="w-20 h-20 mx-auto mb-4" />
-              <h2 className="text-3xl font-bold mb-2">Shake Created! 💪</h2>
-              <p className="text-xl">+200 XP earned!</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-8">
-        
-        {/* Header with User Stats */}
-        <div className="text-center relative">
-          <div className="absolute top-0 right-0 bg-white rounded-2xl p-4 shadow-lg border">
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div className="text-center">
-                <div className="flex items-center justify-center gap-1 mb-1">
-                  <Trophy className="w-4 h-4 text-yellow-500" />
-                  <span className="font-bold">Level {userStats.level}</span>
-                </div>
-                <div className="text-xs text-gray-600">{userStats.xp} XP</div>
-              </div>
-              <div className="text-center">
-                <div className="flex items-center justify-center gap-1 mb-1">
-                  <Flame className="w-4 h-4 text-orange-500" />
-                  <span className="font-bold">{userStats.streak}</span>
-                </div>
-                <div className="text-xs text-gray-600">day streak</div>
-              </div>
-              <div className="text-center">
-                <div className="flex items-center justify-center gap-1 mb-1">
-                  <Muscle className="w-4 h-4 text-red-500" />
-                  <span className="font-bold">+{userStats.muscleGained}lbs</span>
-                </div>
-                <div className="text-xs text-gray-600">muscle</div>
-              </div>
-            </div>
-          </div>
-
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">
-            Protein Shake Lab 🥤💪
+    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl md:text-4xl font-bold flex items-center gap-3">
+            <FlaskConical className="h-10 w-10 text-blue-500" />
+            Protein Shakes
+            {type && <span className="text-muted-foreground">• {type}</span>}
           </h1>
-          <p className="text-xl text-gray-600 mb-6">
-            Science-backed protein combinations for your fitness goals
+          <p className="text-lg text-muted-foreground mt-2">
+            Science-backed protein solutions for your fitness goals
           </p>
-          
-          {type && (
-            <Badge className="mb-4 text-lg px-4 py-2 bg-red-100 text-red-800">
-              {type}
+        </div>
+        <div className="text-right">
+          <div className="text-2xl font-bold text-blue-600">{consumedProtein}g</div>
+          <div className="text-sm text-muted-foreground">of {dailyProteinGoal}g daily</div>
+          <Progress value={proteinProgress} className="w-24 h-2 mt-1" />
+        </div>
+      </div>
+
+      {/* Daily Protein Tracking */}
+      <Card className="bg-gradient-to-r from-blue-50 to-purple-50">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-semibold">Daily Protein Progress</h3>
+            <Badge className="bg-blue-500">
+              <Target className="h-4 w-4 mr-1" />
+              {Math.round(proteinProgress)}% Complete
             </Badge>
-          )}
-        </div>
-
-        {/* Daily Protein Progress Banner */}
-        <Card className="bg-gradient-to-r from-red-500 to-orange-600 text-white border-0 shadow-xl">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                  <Target className="w-6 h-6" />
-                  Daily Protein Goal
-                </h3>
-                <p className="text-red-100 mb-3">
-                  {workoutData.currentIntake}g / {workoutData.dailyProteinGoal}g consumed today
-                </p>
-                <div className="flex items-center gap-4 text-sm">
-                  <div className="flex items-center gap-1">
-                    <Scale className="w-4 h-4" />
-                    <span>Current: {workoutData.bodyWeight}lbs</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Mountain className="w-4 h-4" />
-                    <span>Goal: {workoutData.targetWeight}lbs</span>
-                  </div>
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold mb-2">
-                  {Math.round((workoutData.currentIntake / workoutData.dailyProteinGoal) * 100)}%
-                </div>
-                <Progress 
-                  value={(workoutData.currentIntake / workoutData.dailyProteinGoal) * 100} 
-                  className="w-32 mb-3" 
-                />
-                <div className="text-sm">
-                  {workoutData.dailyProteinGoal - workoutData.currentIntake}g remaining
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Navigation Tabs */}
-        <div className="flex justify-center mb-8">
-          <div className="bg-white p-1 rounded-2xl shadow-lg flex gap-1">
-            {[
-              { id: 'create', label: '🧪 Custom Builder', icon: Plus },
-              { id: 'recipes', label: '📋 Popular Recipes', icon: Star },
-              { id: 'goals', label: '🎯 Fitness Goals', icon: Target },
-              { id: 'timing', label: '⏰ Workout Timing', icon: Timer }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-6 py-3 rounded-xl font-medium transition-all ${
-                  activeTab === tab.id 
-                    ? 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-lg' 
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
           </div>
-        </div>
-
-        {/* Custom Builder Tab */}
-        {activeTab === 'create' && (
-          <div className="grid lg:grid-cols-3 gap-8">
-            
-            {/* Protein Selection */}
-            <div className="lg:col-span-2 space-y-6">
-              
-              {/* Goal & Phase Selection */}
-              <div className="grid md:grid-cols-2 gap-4">
-                <Card>
-                  <CardContent className="p-6">
-                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                      <Target className="w-5 h-5 text-red-500" />
-                      Your Goal
-                    </h3>
-                    <div className="grid grid-cols-2 gap-3">
-                      {fitnessGoals.slice(0, 4).map((goal) => (
-                        <button
-                          key={goal.id}
-                          onClick={() => setSelectedGoal(goal)}
-                          className={`p-3 rounded-lg transition-all text-left ${
-                            selectedGoal.id === goal.id 
-                              ? `${goal.color} text-white shadow-lg scale-105` 
-                              : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
-                          }`}
-                        >
-                          <div className="text-2xl mb-1">{goal.icon}</div>
-                          <div className="font-bold text-sm">{goal.name}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="p-6">
-                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                      <Timer className="w-5 h-5 text-orange-500" />
-                      Workout Timing
-                    </h3>
-                    <div className="space-y-2">
-                      {workoutPhases.map((phase) => (
-                        <button
-                          key={phase.name}
-                          onClick={() => setSelectedPhase(phase)}
-                          className={`w-full p-3 rounded-lg transition-all text-left ${
-                            selectedPhase.name === phase.name 
-                              ? 'bg-orange-500 text-white shadow-lg' 
-                              : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-lg">{phase.icon}</span>
-                            <span className="font-bold text-sm">{phase.name}</span>
-                          </div>
-                          <div className="text-xs opacity-80">{phase.timing}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Protein Source Selection */}
-              {Object.entries(proteinSources).map(([category, proteins]) => (
-                <Card key={category}>
-                  <CardContent className="p-6">
-                    <h3 className="text-lg font-bold mb-4 capitalize flex items-center gap-2">
-                      <ChefHat className="w-5 h-5 text-red-500" />
-                      {category} Proteins
-                    </h3>
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {proteins.map((protein) => (
-                        <button
-                          key={protein.name}
-                          onClick={() => addProtein(protein, category)}
-                          className={`p-4 rounded-lg transition-all text-left border-2 ${
-                            customShake.protein?.name === protein.name 
-                              ? 'border-red-500 bg-red-50' 
-                              : 'border-gray-200 bg-gray-50 hover:bg-red-50 hover:border-red-300'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-2xl">{protein.icon}</span>
-                            <span className="font-bold text-sm">{protein.name}</span>
-                          </div>
-                          <div className="grid grid-cols-2 gap-1 text-xs mb-2">
-                            <div>Protein: <span className="font-bold">{protein.protein}g</span></div>
-                            <div>Calories: <span className="font-bold">{protein.calories}</span></div>
-                            <div>Carbs: <span className="font-bold">{protein.carbs}g</span></div>
-                            <div>Fat: <span className="font-bold">{protein.fat}g</span></div>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <Badge className="text-xs">{protein.absorption}</Badge>
-                            <span className="text-xs font-bold">{protein.cost}</span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-
-              {/* Supplements & Additives */}
-              <Card>
-                <CardContent className="p-6">
-                  <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                    <Zap className="w-5 h-5 text-yellow-500" />
-                    Supplements & Additives
-                  </h3>
-                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {additives.map((additive) => {
-                      const isSelected = customShake.additives.some(a => a.name === additive.name);
-                      return (
-                        <button
-                          key={additive.name}
-                          onClick={() => toggleAdditive(additive)}
-                          className={`p-3 rounded-lg transition-all text-left border-2 ${
-                            isSelected 
-                              ? 'border-yellow-500 bg-yellow-50' 
-                              : 'border-gray-200 bg-gray-50 hover:bg-yellow-50 hover:border-yellow-300'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-lg">{additive.icon}</span>
-                            <span className="font-bold text-sm">{additive.name}</span>
-                          </div>
-                          <div className="text-xs text-gray-600 mb-1">{additive.amount}</div>
-                          <Badge className="text-xs">{additive.benefit}</Badge>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Shake Builder Panel */}
-            <div className="space-y-6">
-              <Card className="sticky top-4">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-bold">Your Shake</h3>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setCustomShake({ protein: null, additives: [], totalProtein: 0, totalCalories: 0, cost: 0 })}
-                      className="flex items-center gap-1"
-                    >
-                      <Shuffle className="w-4 h-4" />
-                      Reset
-                    </Button>
-                  </div>
-                  
-                  {/* Current Selection */}
-                  <div className="space-y-3 mb-4">
-                    {customShake.protein ? (
-                      <div className="bg-red-50 p-3 rounded-lg">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span>{customShake.protein.icon}</span>
-                          <span className="font-bold text-sm">{customShake.protein.name}</span>
-                        </div>
-                        <div className="text-xs text-gray-600">
-                          {customShake.protein.protein}g protein • {customShake.protein.calories} cal
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-gray-500 text-center py-4">
-                        Select a protein source to start
-                      </p>
-                    )}
-
-                    {customShake.additives.map((additive) => (
-                      <div key={additive.name} className="bg-yellow-50 p-2 rounded flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span>{additive.icon}</span>
-                          <span className="text-sm font-medium">{additive.name}</span>
-                        </div>
-                        <button
-                          onClick={() => toggleAdditive(additive)}
-                          className="text-red-500 hover:text-red-700 text-sm"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Nutrition Analysis */}
-                  {customShake.protein && (
-                    <div className="bg-gradient-to-r from-red-100 to-orange-100 p-4 rounded-lg mb-4">
-                      <h4 className="font-bold mb-3 text-red-800">Nutrition Analysis</h4>
-                      
-                      {/* Goal Targets */}
-                      <div className="space-y-2 mb-3">
-                        <div className="flex justify-between text-sm">
-                          <span>Protein Target:</span>
-                          <span className={`font-bold ${
-                            isInTargetRange(customShake.totalProtein, selectedGoal.targetProtein) 
-                              ? 'text-green-600' : 'text-orange-600'
-                          }`}>
-                            {customShake.totalProtein}g / {selectedGoal.targetProtein[0]}-{selectedGoal.targetProtein[1]}g
-                          </span>
-                        </div>
-                        <Progress 
-                          value={Math.min((customShake.totalProtein / selectedGoal.targetProtein[1]) * 100, 100)} 
-                          className="h-2"
-                        />
-                        
-                        <div className="flex justify-between text-sm">
-                          <span>Calories:</span>
-                          <span className={`font-bold ${
-                            isInTargetRange(customShake.totalCalories, selectedGoal.targetCalories) 
-                              ? 'text-green-600' : 'text-orange-600'
-                          }`}>
-                            {customShake.totalCalories} / {selectedGoal.targetCalories[0]}-{selectedGoal.targetCalories[1]}
-                          </span>
-                        </div>
-                        <Progress 
-                          value={Math.min((customShake.totalCalories / selectedGoal.targetCalories[1]) * 100, 100)} 
-                          className="h-2"
-                        />
-                      </div>
-
-                      {/* Goal Match Score */}
-                      <div className="text-center p-2 bg-white rounded">
-                        <div className="text-2xl font-bold text-red-600">
-                          {Math.round(
-                            ((isInTargetRange(customShake.totalProtein, selectedGoal.targetProtein) ? 50 : 0) +
-                             (isInTargetRange(customShake.totalCalories, selectedGoal.targetCalories) ? 50 : 0))
-                          )}%
-                        </div>
-                        <div className="text-xs text-gray-600">Goal Match Score</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Action Buttons */}
-                  <div className="space-y-2">
-                    <Button 
-                      onClick={createShake}
-                      disabled={!customShake.protein}
-                      className="w-full bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600"
-                    >
-                      Create Shake (+200 XP)
-                    </Button>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="flex-1">
-                        <Camera className="w-4 h-4 mr-1" />
-                        Photo
-                      </Button>
-                      <Button variant="outline" size="sm" className="flex-1">
-                        <Share2 className="w-4 h-4 mr-1" />
-                        Share
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+          <Progress value={proteinProgress} className="h-4 mb-2" />
+          <div className="flex justify-between text-sm text-muted-foreground">
+            <span>{consumedProtein}g consumed</span>
+            <span>{dailyProteinGoal - consumedProtein}g remaining</span>
           </div>
-        )}
+        </CardContent>
+      </Card>
 
-        {/* Popular Recipes Tab */}
-        {activeTab === 'recipes' && (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {popularRecipes.map((recipe) => (
-              <Card key={recipe.id} className="overflow-hidden hover:shadow-xl transition-all hover:scale-105">
-                <div className="relative">
-                  <img 
-                    src={recipe.image} 
-                    alt={recipe.name}
-                    className="w-full h-48 object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                  <div className="absolute bottom-2 left-2">
-                    <Badge className={`${getGoalColor(recipe.goal)} text-white`}>
-                      {fitnessGoals.find(g => g.id === recipe.goal)?.name}
-                    </Badge>
-                  </div>
-                  <div className="absolute top-2 right-2 bg-black bg-opacity-50 backdrop-blur-lg rounded-full px-2 py-1 flex items-center gap-1">
-                    <Heart className="w-4 h-4 text-red-400" />
-                    <span className="text-white text-sm">{recipe.likes}</span>
-                  </div>
-                </div>
-
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xl font-bold">{recipe.name}</h3>
-                    <div className="flex items-center gap-1">
-                      <Star className="w-4 h-4 text-yellow-500 fill-current" />
-                      <span className="text-sm font-bold">{recipe.rating}</span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 mb-4 text-sm">
-                    <div className="text-center">
-                      <div className="font-bold text-red-600">{recipe.protein}g</div>
-                      <div className="text-xs text-gray-600">protein</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="font-bold text-orange-600">{recipe.calories}</div>
-                      <div className="text-xs text-gray-600">calories</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="font-bold text-green-600">{recipe.timing}</div>
-                      <div className="text-xs text-gray-600">timing</div>
-                    </div>
-                  </div>
-
-                  <div className="mb-4">
-                    <h4 className="font-semibold mb-2 text-sm">Ingredients:</h4>
-                    <div className="flex flex-wrap gap-1">
-                      {recipe.ingredients.map((ingredient, index) => (
-                        <span key={index} className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
-                          {ingredient}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {recipe.supplements.length > 0 && (
-                    <div className="mb-4">
-                      <h4 className="font-semibold mb-2 text-sm">Supplements:</h4>
-                      <div className="flex flex-wrap gap-1">
-                        {recipe.supplements.map((supplement, index) => (
-                          <span key={index} className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
-                            {supplement}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <Button className="w-full bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600">
-                    Make This (+150 XP)
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {/* Fitness Goals Tab */}
-        {activeTab === 'goals' && (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {fitnessGoals.map((goal) => (
-              <Card key={goal.id} className={`${goal.color} text-white overflow-hidden hover:scale-105 transition-all`}>
-                <CardContent className="p-6">
-                  <div className="text-center mb-4">
-                    <div className="text-6xl mb-4">{goal.icon}</div>
-                    <h3 className="text-2xl font-bold mb-3">{goal.name}</h3>
-                    <p className="mb-4 opacity-90">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column - Builder */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Fitness Goals */}
+          <Card>
+            <CardContent className="p-6">
+              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Target className="h-6 w-6" />
+                Choose Your Goal
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {fitnessGoals.map(goal => (
+                  <div
+                    key={goal.id}
+                    onClick={() => setSelectedGoal(goal)}
+                    className={`p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
+                      selectedGoal.id === goal.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                    }`}
+                  >
+                    <goal.icon className={`h-8 w-8 mx-auto mb-2 ${
+                      selectedGoal.id === goal.id ? 'text-blue-500' : 'text-gray-500'
+                    }`} />
+                    <h4 className="font-semibold text-center text-sm">{goal.name}</h4>
+                    <p className="text-xs text-center text-muted-foreground mt-1">
                       {goal.description}
                     </p>
                   </div>
-                  
-                  <div className="space-y-2 text-sm mb-4">
-                    <div className="flex justify-between">
-                      <span>Protein Target:</span>
-                      <span className="font-bold">{goal.targetProtein[0]}-{goal.targetProtein[1]}g</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Calories:</span>
-                      <span className="font-bold">{goal.targetCalories[0]}-{goal.targetCalories[1]}</span>
-                    </div>
-                    <div className="text-xs opacity-75 mt-2">
-                      <strong>Best timing:</strong> {goal.recommendedTiming.join(', ')}
-                    </div>
-                    <div className="text-xs opacity-75">
-                      <strong>Tip:</strong> {goal.tips}
-                    </div>
-                  </div>
-                  
-                  <Button variant="secondary" className="w-full bg-white text-gray-800 hover:bg-gray-100">
-                    View Recipes
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
-        {/* Workout Timing Tab */}
-        {activeTab === 'timing' && (
-          <div className="grid md:grid-cols-2 gap-6">
-            {workoutPhases.map((phase) => (
-              <Card key={phase.name} className="overflow-hidden hover:shadow-xl transition-all">
-                <CardContent className="p-6">
-                  <div className="text-center mb-4">
-                    <div className="text-4xl mb-3">{phase.icon}</div>
-                    <h3 className="text-xl font-bold mb-2">{phase.name}</h3>
-                    <Badge className="mb-3">{phase.timing}</Badge>
-                    <p className="text-gray-600 mb-4">{phase.focus}</p>
+          {/* Protein Selection */}
+          <Card>
+            <CardContent className="p-6">
+              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <FlaskConical className="h-6 w-6" />
+                Protein Type
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {proteinTypes.map(protein => (
+                  <div
+                    key={protein.id}
+                    onClick={() => setSelectedProtein(protein)}
+                    className={`p-4 rounded-lg border cursor-pointer transition-all ${
+                      selectedProtein.id === protein.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="font-semibold">{protein.name}</h4>
+                      <Badge variant="outline">{protein.biovalue} BV</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-2">{protein.description}</p>
+                    <div className="flex gap-2">
+                      <Badge className="text-xs">{protein.absorption}</Badge>
+                      <Badge variant="outline" className="text-xs">{protein.timing}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Protein Amount */}
+          <Card>
+            <CardContent className="p-6">
+              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Weight className="h-6 w-6" />
+                Protein Amount
+              </h3>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span>Protein: {proteinAmount[0]}g</span>
+                  <Badge>Recommended: {selectedGoal.protein}g</Badge>
+                </div>
+                <Slider
+                  value={proteinAmount}
+                  onValueChange={setProteinAmount}
+                  max={50}
+                  min={15}
+                  step={5}
+                  className="w-full"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right Column - Nutrition & Actions */}
+        <div className="space-y-6">
+          {/* Live Nutrition */}
+          <Card>
+            <CardContent className="p-6">
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Nutrition Facts
+              </h3>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span>Protein:</span>
+                  <span className="font-bold">{nutrition.protein}g</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Carbs:</span>
+                  <span className="font-bold">{nutrition.carbs}g</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Calories:</span>
+                  <span className="font-bold">{nutrition.calories}</span>
+                </div>
+                <div className="pt-3 border-t">
+                  <div className="text-sm text-muted-foreground">
+                    Goal: {selectedGoal.name}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Protein: {selectedProtein.name}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Build Actions */}
+          <Card>
+            <CardContent className="p-6 space-y-3">
+              <Button className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600">
+                <Plus className="h-4 w-4 mr-2" />
+                Build This Shake
+              </Button>
+              <Button variant="outline" className="w-full">
+                <Heart className="h-4 w-4 mr-2" />
+                Save Recipe
+              </Button>
+              <Button variant="outline" className="w-full">
+                <Share2 className="h-4 w-4 mr-2" />
+                Share Recipe
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Quick Add Supplements */}
+          <Card>
+            <CardContent className="p-6">
+              <h3 className="text-lg font-semibold mb-4">Add Supplements</h3>
+              <div className="space-y-2">
+                {supplements.slice(0, 3).map(supplement => (
+                  <div key={supplement.id} className="flex items-center justify-between p-2 rounded border">
+                    <div>
+                      <div className="font-medium text-sm">{supplement.name}</div>
+                      <div className="text-xs text-muted-foreground">{supplement.benefit}</div>
+                    </div>
+                    <Button size="sm" variant="outline">
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Workout Timing Phases */}
+      <Card>
+        <CardContent className="p-6">
+          <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+            <Clock className="h-6 w-6" />
+            Workout Timing Optimization
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {workoutPhases.map(phase => (
+              <Card key={phase.name} className="cursor-pointer hover:shadow-md transition-shadow">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className={`p-2 rounded-full ${phase.color}`}>
+                      <phase.icon className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold">{phase.name}</h4>
+                      <p className="text-xs text-muted-foreground">{phase.timing}</p>
+                    </div>
                   </div>
                   
-                  <div className="space-y-3">
-                    <h4 className="font-semibold">Recommended for this phase:</h4>
-                    {phase.name === 'Pre-Workout' && (
+                  <div className="mb-3">
+                    <div className="text-sm font-medium text-blue-600">{phase.focus}</div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {phase.name === 'Post-Workout' && (
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span>Fast-absorbing protein:</span>
-                          <span className="font-bold">15-25g</span>
+                          <span>Fast protein:</span>
+                          <span className="font-bold">25-35g</span>
                         </div>
                         <div className="flex justify-between">
-                          <span>Caffeine:</span>
-                          <span className="font-bold">100-200mg</span>
+                          <span>Simple carbs:</span>
+                          <span className="font-bold">30-50g</span>
                         </div>
                         <div className="flex justify-between">
                           <span>Creatine:</span>
-                          <span className="font-bold">3-5g</span>
+                          <span className="font-bold">5g</span>
                         </div>
                       </div>
                     )}
                     
-                    {phase.name === 'Post-Workout' && (
+                    {phase.name === 'Pre-Workout' && (
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span>Protein:</span>
-                          <span className="font-bold">25-40g</span>
+                          <span>Light protein:</span>
+                          <span className="font-bold">15-20g</span>
                         </div>
                         <div className="flex justify-between">
                           <span>Carbs (optional):</span>
@@ -829,9 +424,54 @@ export default function ProteinShakesPage({ params }: Params) {
               </Card>
             ))}
           </div>
-        )}
+        </div>
+      </Card>
 
-      </div>
+      {/* Popular Recipes */}
+      <Card>
+        <CardContent className="p-6">
+          <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+            <Star className="h-6 w-6" />
+            Popular Recipes
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {popularRecipes.map((recipe, index) => (
+              <Card key={index} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-4">
+                  <h4 className="font-semibold mb-2">{recipe.name}</h4>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center gap-1">
+                      <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                      <span className="text-sm">{recipe.rating}</span>
+                    </div>
+                    <span className="text-sm text-muted-foreground">({recipe.reviews} reviews)</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center mb-3">
+                    <div>
+                      <div className="font-bold text-blue-600">{recipe.protein}g</div>
+                      <div className="text-xs text-muted-foreground">Protein</div>
+                    </div>
+                    <div>
+                      <div className="font-bold text-green-600">{recipe.carbs}g</div>
+                      <div className="text-xs text-muted-foreground">Carbs</div>
+                    </div>
+                    <div>
+                      <div className="font-bold text-orange-600">{recipe.calories}</div>
+                      <div className="text-xs text-muted-foreground">Calories</div>
+                    </div>
+                  </div>
+                  <div className="text-sm text-muted-foreground mb-3">
+                    {recipe.ingredients.join(', ')}
+                  </div>
+                  <Button variant="outline" className="w-full">
+                    Try This Recipe
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
