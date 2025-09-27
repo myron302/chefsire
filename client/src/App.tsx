@@ -32,6 +32,7 @@ import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 import SmoothiesPage from "@/pages/drinks/smoothies";
 import ProteinShakesPage from "@/pages/drinks/protein-shakes";
 import DetoxesPage from "@/pages/drinks/detoxes";
+import DrinksHubPage from "@/pages/drinks"; // ✅ ADDED: Your interactive hub page
 
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -58,21 +59,6 @@ function RecipesSection() {
   );
 }
 
-/** Lightweight shell + Drinks landing (kept inline) */
-const PageShell: React.FC<{ title: string; note?: string }> = ({ title, note }) => (
-  <div className="max-w-4xl mx-auto p-6">
-    <h1 className="text-2xl font-semibold mb-2">{title}</h1>
-    {note && <p className="text-muted-foreground">{note}</p>}
-  </div>
-);
-
-const DrinksLanding = () => (
-  <PageShell
-    title="Drinks"
-    note="Choose a category: Smoothies, Protein Shakes, Detoxes & Cleanses, or Potent Potables (21+)."
-  />
-);
-
 /** Potent Potables wrapper (21+ gate) */
 function PotentPotablesSection() {
   // Any path under /drinks/potent-potables/* is age-gated
@@ -87,8 +73,8 @@ function PotentPotablesSection() {
 function DrinksSection() {
   return (
     <Switch>
-      {/* landing */}
-      <Route path="/drinks" component={DrinksLanding} />
+      {/* ✅ UPDATED: Now using your interactive hub instead of basic landing */}
+      <Route path="/drinks" component={DrinksHubPage} />
 
       {/* Smoothies */}
       <Route path="/drinks/smoothies/:type" component={SmoothiesPage} />
@@ -158,7 +144,7 @@ function Router() {
         {/* NEW: Substitutions UI */}
         <Route path="/substitutions" component={SubstitutionsPage} />
 
-        {/* --- NEW: Drinks tree --- */}
+        {/* ✅ NEW: Drinks tree with your interactive hub */}
         <Route path="/drinks/:rest*" component={DrinksSection} />
         <Route path="/drinks" component={DrinksSection} />
 
