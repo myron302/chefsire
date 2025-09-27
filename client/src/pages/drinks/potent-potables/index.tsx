@@ -535,3 +535,4 @@ export default function PotentPotablesPage() {
       </div>
     </div>
   );
+}
