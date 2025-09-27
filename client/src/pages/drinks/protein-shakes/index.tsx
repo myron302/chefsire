@@ -424,7 +424,7 @@ export default function ProteinShakesPage({ params }: Params) {
               </Card>
             ))}
           </div>
-        </div>
+        </CardContent>
       </Card>
 
       {/* Popular Recipes */}
