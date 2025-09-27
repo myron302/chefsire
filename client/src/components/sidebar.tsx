@@ -15,6 +15,10 @@ import {
   GlassWater,
   Heart,
   Wand2,
+  Apple,
+  FlaskConical,
+  Leaf,
+  Wine,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -38,12 +42,7 @@ type NavItem =
     });
 
 /**
- * Updated NAV:
- * - Drinks is now grouped into four dropdown submenus:
- *   Smoothies, Protein Shakes, Detoxes & Cleanses, Potent Potables (21+)
- * - Links align with App.tsx router:
- *   /drinks/smoothies[/...], /drinks/protein-shakes[/...], /drinks/detoxes[/...],
- *   /drinks/potent-potables[/...]
+ * ✅ SIMPLIFIED NAV - matches your actual pages
  */
 const NAV: NavItem[] = [
   { name: "Feed", href: "/feed", icon: Home },
@@ -60,69 +59,18 @@ const NAV: NavItem[] = [
     ],
   },
 
-  // ✅ Drinks (grouped)
+  // ✅ DRINKS - simplified to match your actual pages
   {
     name: "Drinks",
     href: "/drinks",
     icon: GlassWater,
     hasSubmenu: true,
     submenu: [
-      { name: "Browse Drinks", href: "/drinks", icon: GlassWater },
-
-      // Smoothies
-      {
-        name: "Smoothies",
-        href: "/drinks/smoothies",
-        icon: GlassWater,
-        hasSubmenu: true,
-        submenu: [
-          { name: "Fruit Smoothies", href: "/drinks/smoothies/fruit", icon: GlassWater },
-          { name: "Green Smoothies", href: "/drinks/smoothies/green", icon: GlassWater },
-          { name: "High-fiber", href: "/drinks/smoothies/high-fiber", icon: GlassWater },
-        ],
-      },
-
-      // Protein Shakes
-      {
-        name: "Protein Shakes",
-        href: "/drinks/protein-shakes",
-        icon: GlassWater,
-        hasSubmenu: true,
-        submenu: [
-          { name: "Whey", href: "/drinks/protein-shakes/whey", icon: GlassWater },
-          { name: "Plant-based", href: "/drinks/protein-shakes/plant", icon: GlassWater },
-          { name: "Low-carb / Keto", href: "/drinks/protein-shakes/low-carb", icon: GlassWater },
-        ],
-      },
-
-      // Detoxes & Cleanses
-      {
-        name: "Detoxes & Cleanses",
-        href: "/drinks/detoxes",
-        icon: GlassWater,
-        hasSubmenu: true,
-        submenu: [
-          { name: "Juice Blends", href: "/drinks/detoxes/juice", icon: GlassWater },
-          { name: "Herbal Infusions", href: "/drinks/detoxes/herbal", icon: GlassWater },
-          { name: "One-day / Multi-day", href: "/drinks/detoxes/programs", icon: GlassWater },
-        ],
-      },
-
-      // Potent Potables (21+)
-      {
-        name: "Potent Potables (21+)",
-        href: "/drinks/potent-potables",
-        icon: GlassWater,
-        hasSubmenu: true,
-        submenu: [
-          { name: "Cocktails", href: "/drinks/potent-potables/cocktails", icon: GlassWater },
-          { name: "Mocktails", href: "/drinks/potent-potables/mocktails", icon: GlassWater },
-          { name: "Beer", href: "/drinks/potent-potables/beer", icon: GlassWater },
-          { name: "Wine", href: "/drinks/potent-potables/wine", icon: GlassWater },
-          { name: "Spirits", href: "/drinks/potent-potables/spirits", icon: GlassWater },
-          { name: "Liqueurs", href: "/drinks/potent-potables/liqueurs", icon: GlassWater },
-        ],
-      },
+      { name: "Drinks Hub", href: "/drinks", icon: GlassWater },
+      { name: "Smoothies & Bowls", href: "/drinks/smoothies", icon: Apple },
+      { name: "Protein Shakes", href: "/drinks/protein-shakes", icon: FlaskConical },
+      { name: "Detoxes & Cleanses", href: "/drinks/detoxes", icon: Leaf },
+      { name: "Potent Potables (21+)", href: "/potent-potables", icon: Wine },
     ],
   },
 
@@ -155,11 +103,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
         if ("hasSubmenu" in item && item.hasSubmenu) {
           const anyActive =
             isActive(item.href) ||
-            item.submenu.some(
-              (s) =>
-                isActive(s.href) ||
-                ("hasSubmenu" in s && s.hasSubmenu && s.submenu.some((t) => isActive(t.href)))
-            );
+            item.submenu.some((s) => isActive(s.href));
           if (anyActive) {
             map[[...parentTrail, item.name].join(" / ")] = true;
           }
@@ -218,72 +162,21 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
           {isOpen(currentTrail) && (
             <div className="ml-6 space-y-1">
               {item.submenu.map((sub) => (
-                <div key={sub.name}>
-                  {"hasSubmenu" in sub && sub.hasSubmenu ? (
-                    <div className="select-none">
-                      <div className="flex items-center mb-1 rounded px-2 py-1">
-                        <Link href={sub.href}>
-                          <div
-                            className={[
-                              "flex items-center flex-1 hover:bg-muted rounded px-2 py-1 cursor-pointer",
-                              isActive(sub.href) ? "bg-muted" : "",
-                            ].join(" ")}
-                            aria-current={isActive(sub.href) ? "page" : undefined}
-                          >
-                            <sub.icon className="w-4 h-4 mr-2" />
-                            <span className="text-sm font-semibold">{sub.name}</span>
-                          </div>
-                        </Link>
-                        <button
-                          aria-label={`Toggle ${sub.name} submenu`}
-                          aria-expanded={isOpen([...currentTrail, sub.name])}
-                          onClick={() => toggle([...currentTrail, sub.name])}
-                          className={[
-                            "ml-2 p-1 rounded hover:bg-muted transition-colors",
-                            isOpen([...currentTrail, sub.name]) ? "rotate-90" : "",
-                          ].join(" ")}
-                        >
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      {isOpen([...currentTrail, sub.name]) && (
-                        <div className="ml-6 space-y-1">
-                          {sub.submenu.map((leaf) => {
-                            const subActive = isActive(leaf.href);
-                            return (
-                              <Link key={leaf.name} href={leaf.href}>
-                                <div
-                                  className={[
-                                    "flex items-center py-1 hover:bg-muted rounded px-2 cursor-pointer",
-                                    subActive ? "bg-muted" : "",
-                                  ].join(" ")}
-                                  aria-current={subActive ? "page" : undefined}
-                                >
-                                  <leaf.icon className="w-4 h-4 mr-2" />
-                                  <span className="text-sm">{leaf.name}</span>
-                                </div>
-                              </Link>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <Link href={sub.href}>
-                      <div
-                        className={[
-                          "flex items-center py-1 hover:bg-muted rounded px-2 cursor-pointer",
-                          isActive(sub.href) ? "bg-muted" : "",
-                        ].join(" ")}
-                        aria-current={isActive(sub.href) ? "page" : undefined}
-                      >
-                        <sub.icon className="w-4 h-4 mr-2" />
-                        <span className="text-sm">{sub.name}</span>
-                      </div>
-                    </Link>
-                  )}
-                </div>
+                <Link key={sub.name} href={sub.href}>
+                  <div
+                    className={[
+                      "flex items-center py-1 hover:bg-muted rounded px-2 cursor-pointer",
+                      isActive(sub.href) ? "bg-muted" : "",
+                    ].join(" ")}
+                    aria-current={isActive(sub.href) ? "page" : undefined}
+                  >
+                    <sub.icon className="w-4 h-4 mr-2" />
+                    <span className="text-sm">{sub.name}</span>
+                    {"isPremium" in sub && sub.isPremium && (
+                      <span className="ml-2 px-2 py-0.5 bg-yellow-300 text-xs rounded">Premium</span>
+                    )}
+                  </div>
+                </Link>
               ))}
             </div>
           )}
@@ -291,7 +184,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
       );
     }
 
-    // leaf
+    // leaf item
     return (
       <Link href={item.href}>
         <div
