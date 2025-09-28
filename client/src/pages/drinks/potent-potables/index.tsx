@@ -12,8 +12,13 @@ import {
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Search, Filter, Shuffle, Camera, Share2, BookOpen,
   Wine, Coffee, GlassWater, MessageCircle, ThumbsUp, 
-  Eye, Play, Pause, RotateCcw, Crown, Gem, RefreshCw
+  Eye, Play, Pause, RotateCcw, Crown, Gem, RefreshCw,
+  ArrowRight
 } from 'lucide-react';
+
+// ✅ Import the universal search and context
+import UniversalSearch from '@/components/UniversalSearch';
+import { useDrinks } from '@/contexts/DrinksContext';
 
 // Types from TheCocktailDB
 type Cocktail = {
@@ -86,22 +91,33 @@ const categories = [
   { name: "Beer & Wine", icon: Wine, count: 389, color: "text-red-500" }
 ];
 
-const achievements = [
-  { id: "mixmaster", name: "Mix Master", description: "Try 10 different drinks", progress: 7, total: 10, icon: Trophy, unlocked: false },
-  { id: "explorer", name: "Cocktail Explorer", description: "Search 25 recipes", progress: 12, total: 25, icon: Search, unlocked: false },
-  { id: "socialite", name: "Social Mixer", description: "Share 20 drinks", progress: 15, total: 20, icon: Share2, unlocked: false },
-  { id: "collector", name: "Recipe Collector", description: "Save 50 recipes", progress: 50, total: 50, icon: BookOpen, unlocked: true }
+// ✅ Potent Potables subcategories for navigation
+const potentPotablesSubcategories = [
+  { id: 'cocktails', name: 'Classic Cocktails', icon: Wine, count: 15, route: '/drinks/potent-potables/cocktails' },
+  { id: 'mocktails', name: 'Mocktails', icon: GlassWater, count: 8, route: '/drinks/potent-potables/mocktails' },
+  { id: 'shots', name: 'Shots & Shooters', icon: Zap, count: 6, route: '/drinks/potent-potables/shots' },
+  { id: 'punches', name: 'Punches & Bowls', icon: Droplets, count: 4, route: '/drinks/potent-potables/punches' }
 ];
 
 export default function PotentPotablesPage() {
+  // ✅ Use the drinks context
+  const { 
+    userProgress, 
+    addPoints, 
+    incrementDrinksMade, 
+    addToFavorites, 
+    isFavorite,
+    addToRecentlyViewed,
+    favorites,
+    getRecommendations
+  } = useDrinks();
+
   const [selectedDrink, setSelectedDrink] = useState<Cocktail | null>(null);
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchType, setSearchType] = useState<'name' | 'ingredient'>('name');
   const [showAchievements, setShowAchievements] = useState(false);
   const [mixingAnimation, setMixingAnimation] = useState(false);
-  const [userPoints, setUserPoints] = useState(2847);
-  const [userLevel, setUserLevel] = useState(12);
   const [likedDrinks, setLikedDrinks] = useState(new Set<string>());
   const [viewMode, setViewMode] = useState<'featured' | 'search' | 'random'>('featured');
   const [dailyChallenge, setDailyChallenge] = useState({
@@ -111,6 +127,9 @@ export default function PotentPotablesPage() {
     total: 1,
     reward: 50
   });
+
+  // ✅ Get recommendations from context
+  const recommendations = getRecommendations('potent-potables');
 
   // Queries
   const featuredDrinks = useQuery({
@@ -153,31 +172,78 @@ export default function PotentPotablesPage() {
     randomDrink.refetch();
   };
 
-  const handleLikeDrink = (drinkId: string) => {
+  // ✅ Enhanced handleLikeDrink with context integration
+  const handleLikeDrink = (drinkId: string, drink?: Cocktail) => {
     setLikedDrinks(prev => {
       const newLiked = new Set(prev);
       if (newLiked.has(drinkId)) {
         newLiked.delete(drinkId);
       } else {
         newLiked.add(drinkId);
-        setUserPoints(points => points + 5);
+        addPoints(5);
+        
+        // Add to context favorites if drink data available
+        if (drink) {
+          const drinkData = {
+            id: drink.idDrink,
+            name: drink.strDrink,
+            category: 'potent-potables' as const,
+            description: drink.strInstructions || `${drink.strAlcoholic} ${drink.strCategory}`,
+            ingredients: getIngredients(drink).map(ing => ing.name),
+            nutrition: {
+              calories: drink.strAlcoholic === 'Alcoholic' ? 150 : 50,
+              protein: 0,
+              carbs: 15,
+              fat: 0
+            },
+            difficulty: 'Medium' as const,
+            prepTime: 5,
+            rating: 4.5,
+            fitnessGoal: 'Social',
+            bestTime: 'Evening'
+          };
+          addToFavorites(drinkData);
+        }
       }
       return newLiked;
     });
   };
 
+  // ✅ Enhanced handleStartMixing with context integration
   const handleStartMixing = (drink: Cocktail) => {
     setMixingAnimation(true);
     setSelectedDrink(drink);
+    
+    const drinkData = {
+      id: drink.idDrink,
+      name: drink.strDrink,
+      category: 'potent-potables' as const,
+      description: drink.strInstructions || `${drink.strAlcoholic} ${drink.strCategory}`,
+      ingredients: getIngredients(drink).map(ing => ing.name),
+      nutrition: {
+        calories: drink.strAlcoholic === 'Alcoholic' ? 150 : 50,
+        protein: 0,
+        carbs: 15,
+        fat: 0
+      },
+      difficulty: 'Medium' as const,
+      prepTime: 5,
+      rating: 4.5,
+      fitnessGoal: 'Social',
+      bestTime: 'Evening'
+    };
+
     setTimeout(() => {
       setMixingAnimation(false);
-      setUserPoints(prev => prev + 25);
-      // Update achievements
-      const currentProgress = achievements.find(a => a.id === 'mixmaster')?.progress || 0;
-      if (currentProgress < 10) {
-        // Update progress logic would go here
-      }
+      addToRecentlyViewed(drinkData);
+      incrementDrinksMade();
+      addPoints(25);
     }, 3000);
+  };
+
+  // ✅ Handle cross-page drink selection
+  const handleDrinkSelection = (drink) => {
+    console.log('Selected drink from universal search:', drink);
   };
 
   const toggleFilter = (filterId: string) => {
@@ -219,13 +285,15 @@ export default function PotentPotablesPage() {
                 </h1>
                 <p className="text-xl opacity-90">Your ultimate mixology destination powered by TheCocktailDB</p>
               </div>
+              {/* ✅ Enhanced header with context data */}
               <div className="text-right">
-                <div className="text-2xl font-bold">{userPoints.toLocaleString()} pts</div>
-                <div className="text-sm opacity-80">Level {userLevel} Mixologist</div>
+                <div className="text-2xl font-bold">{userProgress.totalPoints.toLocaleString()} pts</div>
+                <div className="text-sm opacity-80">Level {userProgress.level} Mixologist</div>
+                <div className="text-xs opacity-70">{userProgress.totalDrinksMade} drinks made</div>
               </div>
             </div>
 
-            {/* Daily Challenge */}
+            {/* ✅ Enhanced Daily Challenge with Context Integration */}
             <Card className="bg-white/10 backdrop-blur-sm border-white/20">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -241,6 +309,7 @@ export default function PotentPotablesPage() {
                   <div className="text-right">
                     <div className="text-lg font-bold">+{dailyChallenge.reward} pts</div>
                     <Progress value={(dailyChallenge.progress / dailyChallenge.total) * 100} className="w-20 h-2" />
+                    <div className="text-xs opacity-70 mt-1">Streak: {userProgress.currentStreak} days</div>
                   </div>
                 </div>
               </CardContent>
@@ -249,6 +318,68 @@ export default function PotentPotablesPage() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 py-6">
+          {/* ✅ Universal Search Component */}
+          <div className="mb-6">
+            <UniversalSearch 
+              onSelectDrink={handleDrinkSelection}
+              placeholder="Search all drinks or find cocktail inspiration..."
+              className="w-full mb-4"
+            />
+          </div>
+
+          {/* ✅ Potent Potables Subcategories Navigation */}
+          <Card className="mb-6 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+            <CardContent className="p-6">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <Wine className="w-5 h-5 text-purple-500" />
+                Explore Cocktail Categories
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {potentPotablesSubcategories.map((subcategory) => {
+                  const Icon = subcategory.icon;
+                  return (
+                    <Button
+                      key={subcategory.id}
+                      variant="outline"
+                      className="h-auto p-4 flex flex-col items-center gap-2 hover:bg-purple-50 hover:border-purple-300"
+                      onClick={() => window.location.href = subcategory.route}
+                    >
+                      <Icon className="h-6 w-6 text-purple-600" />
+                      <div className="text-center">
+                        <div className="font-medium text-sm">{subcategory.name}</div>
+                        <div className="text-xs text-gray-500">{subcategory.count} recipes</div>
+                      </div>
+                      <ArrowRight className="h-3 w-3 text-gray-400" />
+                    </Button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ✅ Favorites Quick Access */}
+          {favorites.filter(f => f.category === 'potent-potables').length > 0 && (
+            <Card className="mb-6 bg-gradient-to-r from-purple-100 to-blue-100 border-purple-200">
+              <CardContent className="p-6">
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                  <Heart className="w-5 h-5 text-purple-500" />
+                  Your Favorite Cocktails ({favorites.filter(f => f.category === 'potent-potables').length})
+                </h3>
+                <div className="flex gap-3 overflow-x-auto pb-2">
+                  {favorites.filter(f => f.category === 'potent-potables').slice(0, 5).map((drink) => (
+                    <div key={drink.id} className="flex-shrink-0 bg-white rounded-lg p-3 shadow-sm min-w-[200px]">
+                      <div className="font-medium text-sm mb-1">{drink.name}</div>
+                      <div className="text-xs text-gray-600 mb-2">{drink.difficulty} cocktail</div>
+                      <Button size="sm" variant="outline" className="w-full text-xs">
+                        Mix Again
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Search and Controls */}
           <div className="mb-6 space-y-4">
             <div className="flex flex-col md:flex-row gap-4">
@@ -338,7 +469,7 @@ export default function PotentPotablesPage() {
             </div>
           </div>
 
-          {/* Achievements Panel */}
+          {/* ✅ Enhanced Achievements Panel with Context Data */}
           {showAchievements && (
             <Card className="mb-6 border-2 border-yellow-200">
               <CardHeader>
@@ -349,18 +480,18 @@ export default function PotentPotablesPage() {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {achievements.map(achievement => (
-                    <div key={achievement.id} className={`p-4 rounded-lg border ${achievement.unlocked ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                  {userProgress.achievements.map((achievement, index) => (
+                    <div key={achievement} className="p-4 rounded-lg border bg-green-50 border-green-200">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <achievement.icon className={`h-5 w-5 ${achievement.unlocked ? 'text-green-500' : 'text-gray-400'}`} />
-                          <span className="font-semibold">{achievement.name}</span>
+                          <Trophy className="h-5 w-5 text-green-500" />
+                          <span className="font-semibold">{achievement}</span>
                         </div>
-                        {achievement.unlocked && <CheckCircle className="h-5 w-5 text-green-500" />}
+                        <CheckCircle className="h-5 w-5 text-green-500" />
                       </div>
-                      <p className="text-sm text-gray-600 mb-2">{achievement.description}</p>
-                      <Progress value={(achievement.progress / achievement.total) * 100} className="h-2" />
-                      <div className="text-xs text-gray-500 mt-1">{achievement.progress}/{achievement.total}</div>
+                      <p className="text-sm text-gray-600 mb-2">Achievement unlocked!</p>
+                      <Progress value={100} className="h-2" />
+                      <div className="text-xs text-gray-500 mt-1">Completed</div>
                     </div>
                   ))}
                 </div>
@@ -398,8 +529,10 @@ export default function PotentPotablesPage() {
                   key={drink.idDrink} 
                   drink={drink}
                   isLiked={likedDrinks.has(drink.idDrink)}
-                  onLike={() => handleLikeDrink(drink.idDrink)}
+                  onLike={() => handleLikeDrink(drink.idDrink, drink)}
                   onMix={() => handleStartMixing(drink)}
+                  isFavorite={isFavorite}
+                  addToFavorites={addToFavorites}
                 />
               ))}
             </div>
@@ -422,7 +555,7 @@ export default function PotentPotablesPage() {
             </Card>
           )}
 
-          {/* Mixing Animation Modal */}
+          {/* ✅ Enhanced Mixing Animation Modal */}
           {mixingAnimation && selectedDrink && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
               <Card className="w-80 p-6 text-center">
@@ -432,7 +565,8 @@ export default function PotentPotablesPage() {
                 <h3 className="text-xl font-bold mb-2">Mixing {selectedDrink.strDrink}...</h3>
                 <p className="text-gray-600 mb-4">Following the recipe step by step</p>
                 <Progress value={66} className="mb-4" />
-                <p className="text-sm text-green-600">+25 points earned!</p>
+                <p className="text-sm text-green-600">+25 XP earned!</p>
+                <p className="text-xs text-blue-600 mt-1">Drink added to your history</p>
               </Card>
             </div>
           )}
@@ -452,14 +586,14 @@ export default function PotentPotablesPage() {
             </div>
           )}
 
-          {/* Stats Footer */}
+          {/* ✅ Enhanced Stats Footer with Context Data */}
           <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
             <div className="p-4">
               <div className="text-2xl font-bold text-purple-600">{filteredDisplayDrinks.length}</div>
               <div className="text-sm text-gray-500">Drinks Found</div>
             </div>
             <div className="p-4">
-              <div className="text-2xl font-bold text-blue-600">{userPoints.toLocaleString()}</div>
+              <div className="text-2xl font-bold text-blue-600">{userProgress.totalPoints.toLocaleString()}</div>
               <div className="text-sm text-gray-500">Total Points</div>
             </div>
             <div className="p-4">
@@ -467,27 +601,54 @@ export default function PotentPotablesPage() {
               <div className="text-sm text-gray-500">Drinks Liked</div>
             </div>
             <div className="p-4">
-              <div className="text-2xl font-bold text-orange-600">{userLevel}</div>
+              <div className="text-2xl font-bold text-orange-600">{userProgress.level}</div>
               <div className="text-sm text-gray-500">Current Level</div>
             </div>
           </div>
+
+          {/* ✅ Cross-Page Integration Footer */}
+          <Card className="mt-8 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold mb-2">Explore More Drinks</h3>
+                  <p className="text-gray-600 mb-4">Discover smoothies, protein shakes, and detoxes</p>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm">Smoothies</Button>
+                    <Button variant="outline" size="sm">Protein Shakes</Button>
+                    <Button variant="outline" size="sm">Detox Drinks</Button>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-600 mb-1">{userProgress.totalDrinksMade}</div>
+                  <div className="text-sm text-gray-600 mb-2">Total Drinks Made</div>
+                  <Progress value={userProgress.dailyGoalProgress} className="w-24" />
+                  <div className="text-xs text-gray-500 mt-1">Daily Goal</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </RequireAgeGate>
   );
 }
 
-// Enhanced Cocktail Card Component
+// ✅ Enhanced Cocktail Card Component with Context Integration
 function CocktailCard({ 
   drink, 
   isLiked, 
   onLike, 
-  onMix 
+  onMix,
+  isFavorite,
+  addToFavorites
 }: { 
   drink: Cocktail; 
   isLiked: boolean; 
   onLike: () => void; 
-  onMix: () => void; 
+  onMix: () => void;
+  isFavorite: (id: string) => boolean;
+  addToFavorites: (drink: any) => void;
 }) {
   const ingredients = React.useMemo(() => getIngredients(drink), [drink]);
 
