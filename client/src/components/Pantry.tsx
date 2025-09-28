@@ -1,22 +1,50 @@
+// client/src/components/Pantry.tsx
 import React, { useState, useEffect } from 'react';
-import { Plus, X, Clock, Search, ChefHat } from 'lucide-react';
+import { Plus, X, Clock, Search, ChefHat, Camera } from 'lucide-react';
+import BarcodeScanner from '@/components/BarcodeScanner';
+import { fetchOpenFoodFactsByBarcode } from '@/lib/openFoodFacts';
+
+type PantryItem = {
+  id: string;
+  name: string;
+  category: string;
+  quantity: number;
+  unit: string;
+  expirationDate?: string | null;
+};
+
+type RecipeSuggestion = {
+  id: string;
+  title: string;
+  description?: string;
+  servings?: number;
+  cookTime?: number;
+  matchScore?: number;
+  ingredientMatches?: number;
+  totalIngredients?: number;
+  missingCount?: number;
+  missingIngredients: string[];
+  canMake?: boolean;
+  post?: { imageUrl?: string };
+};
 
 const Pantry = () => {
-  const [pantryItems, setPantryItems] = useState([]);
-  const [recipeSuggestions, setRecipeSuggestions] = useState([]);
+  const [pantryItems, setPantryItems] = useState<PantryItem[]>([]);
+  const [recipeSuggestions, setRecipeSuggestions] = useState<RecipeSuggestion[]>([]);
   const [newItem, setNewItem] = useState({
     name: '',
     category: 'produce',
-    quantity: 1,
+    quantity: 1 as number,
     unit: 'piece',
     expirationDate: ''
   });
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [activeTab, setActiveTab] = useState('pantry');
+  const [showScanner, setShowScanner] = useState(false);
+  const [activeTab, setActiveTab] = useState<'pantry' | 'suggestions'>('pantry');
 
   const categories = [
-    'produce', 'dairy', 'meat', 'seafood', 'grains', 'spices', 
+    'produce', 'dairy', 'meat', 'seafood', 'grains', 'spices',
     'pantry', 'frozen', 'canned', 'beverages', 'other'
   ];
 
@@ -27,13 +55,13 @@ const Pantry = () => {
     fetchRecipeSuggestions();
   }, []);
 
+  const authHeaders = () => ({
+    'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+  });
+
   const fetchPantryItems = async () => {
     try {
-      const response = await fetch('/api/pantry', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
+      const response = await fetch('/api/pantry', { headers: authHeaders() });
       if (response.ok) {
         const items = await response.json();
         setPantryItems(items);
@@ -47,11 +75,7 @@ const Pantry = () => {
 
   const fetchRecipeSuggestions = async () => {
     try {
-      const response = await fetch('/api/pantry/recipe-suggestions', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
+      const response = await fetch('/api/pantry/recipe-suggestions', { headers: authHeaders() });
       if (response.ok) {
         const suggestions = await response.json();
         setRecipeSuggestions(suggestions);
@@ -61,45 +85,55 @@ const Pantry = () => {
     }
   };
 
+  // Reusable creator (used by form AND scanner)
+  const createPantryItem = async (payload: {
+    name: string;
+    category: string;
+    quantity: number;
+    unit: string;
+    expirationDate?: string | null;
+    brand?: string;
+    upc?: string;
+  }) => {
+    const response = await fetch('/api/pantry', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders()
+      },
+      body: JSON.stringify({
+        ...payload,
+        expirationDate: payload.expirationDate ? new Date(payload.expirationDate) : null
+      })
+    });
+
+    if (!response.ok) throw new Error('Failed to add pantry item');
+    return response.json();
+  };
+
   const addPantryItem = async () => {
     try {
-      const response = await fetch('/api/pantry', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          ...newItem,
-          expirationDate: newItem.expirationDate ? new Date(newItem.expirationDate) : null
-        })
+      const item = await createPantryItem(newItem);
+      setPantryItems((prev) => [...prev, item]);
+      setNewItem({
+        name: '',
+        category: 'produce',
+        quantity: 1,
+        unit: 'piece',
+        expirationDate: ''
       });
-
-      if (response.ok) {
-        const item = await response.json();
-        setPantryItems([...pantryItems, item]);
-        setNewItem({
-          name: '',
-          category: 'produce',
-          quantity: 1,
-          unit: 'piece',
-          expirationDate: ''
-        });
-        setShowAddForm(false);
-        fetchRecipeSuggestions();
-      }
+      setShowAddForm(false);
+      fetchRecipeSuggestions();
     } catch (error) {
       console.error('Error adding pantry item:', error);
     }
   };
 
-  const deletePantryItem = async (itemId) => {
+  const deletePantryItem = async (itemId: string) => {
     try {
       const response = await fetch(`/api/pantry/${itemId}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+        headers: authHeaders()
       });
 
       if (response.ok) {
@@ -111,28 +145,75 @@ const Pantry = () => {
     }
   };
 
-  const getDaysUntilExpiration = (expirationDate) => {
+  const getDaysUntilExpiration = (expirationDate?: string | null) => {
     if (!expirationDate) return null;
     const today = new Date();
     const expiry = new Date(expirationDate);
-    const diffTime = expiry - today;
+    const diffTime = +expiry - +today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
   };
 
-  const getExpirationColor = (days) => {
+  const getExpirationColor = (days: number | null) => {
+    if (days === null) return 'text-gray-600 bg-gray-50';
     if (days <= 0) return 'text-red-600 bg-red-50';
     if (days <= 3) return 'text-orange-600 bg-orange-50';
     if (days <= 7) return 'text-yellow-600 bg-yellow-50';
     return 'text-gray-600 bg-gray-50';
   };
 
-  const groupedItems = pantryItems.reduce((acc, item) => {
+  // Group by category
+  const groupedItems = pantryItems.reduce<Record<string, PantryItem[]>>((acc, item) => {
     const category = item.category || 'other';
     if (!acc[category]) acc[category] = [];
     acc[category].push(item);
     return acc;
   }, {});
+
+  // Handle barcode detection → lookup → create item (or prefill form)
+  const handleBarcodeDetected = async (code: string) => {
+    setShowScanner(false);
+
+    try {
+      const candidate = await fetchOpenFoodFactsByBarcode(code);
+      if (!candidate) {
+        // Not found → open add form prefilled with UPC
+        setShowAddForm(true);
+        setNewItem((prev) => ({
+          ...prev,
+          name: `UPC ${code}`,
+          category: 'pantry',
+        }));
+        return;
+      }
+
+      // Option A: create immediately
+      const created = await createPantryItem({
+        name: candidate.name,
+        category: candidate.category,
+        quantity: candidate.quantity,
+        unit: candidate.unit,
+        brand: (candidate as any).brand,
+        upc: (candidate as any).upc,
+      });
+      setPantryItems((prev) => [...prev, created]);
+      fetchRecipeSuggestions();
+
+      // Option B: prefill form instead of creating immediately
+      // setShowAddForm(true);
+      // setNewItem({
+      //   name: candidate.name,
+      //   category: candidate.category,
+      //   quantity: candidate.quantity,
+      //   unit: candidate.unit,
+      //   expirationDate: ''
+      // });
+    } catch (e) {
+      console.error(e);
+      // Fallback: open form to let user add manually
+      setShowAddForm(true);
+    }
+  };
 
   if (loading) {
     return (
@@ -147,6 +228,14 @@ const Pantry = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Scanner overlay */}
+      {showScanner && (
+        <BarcodeScanner
+          onDetected={handleBarcodeDetected}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">My Pantry</h1>
@@ -180,13 +269,21 @@ const Pantry = () => {
 
         {activeTab === 'pantry' && (
           <>
-            <div className="mb-6">
+            <div className="mb-6 flex flex-wrap gap-3">
               <button
                 onClick={() => setShowAddForm(!showAddForm)}
                 className="bg-orange-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors flex items-center"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Ingredient
+              </button>
+
+              <button
+                onClick={() => setShowScanner(true)}
+                className="bg-white text-gray-800 px-6 py-2 rounded-lg font-medium border border-gray-300 hover:bg-gray-50 transition-colors flex items-center"
+              >
+                <Camera className="w-4 h-4 mr-2" />
+                Scan Barcode
               </button>
             </div>
 
@@ -204,7 +301,7 @@ const Pantry = () => {
                       placeholder="e.g., Tomatoes"
                     />
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                     <select
@@ -226,7 +323,7 @@ const Pantry = () => {
                         min="0"
                         step="0.1"
                         value={newItem.quantity}
-                        onChange={(e) => setNewItem({ ...newItem, quantity: parseFloat(e.target.value) })}
+                        onChange={(e) => setNewItem({ ...newItem, quantity: parseFloat(e.target.value || '0') })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
                       />
                     </div>
@@ -349,7 +446,7 @@ const Pantry = () => {
                     <div className="p-6">
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">{recipe.title}</h3>
                       <p className="text-sm text-gray-600 mb-3">{recipe.description}</p>
-                      
+
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center space-x-4 text-sm text-gray-600">
                           <span>🍽️ {recipe.servings} servings</span>
@@ -365,7 +462,7 @@ const Pantry = () => {
                         </div>
                       </div>
 
-                      {recipe.missingCount > 0 && (
+                      {recipe.missingCount && recipe.missingCount > 0 && (
                         <div className="mb-4">
                           <p className="text-sm text-gray-600 mb-1">Missing ingredients:</p>
                           <div className="flex flex-wrap gap-1">
