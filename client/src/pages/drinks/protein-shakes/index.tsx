@@ -9,8 +9,13 @@ import {
   CheckCircle, Target, Flame, Droplets, Leaf, Apple,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Dumbbell, Activity, BarChart3, Shuffle, Camera, Share2,
-  FlaskConical, Weight, Gauge, Triangle, Waves, Shield
+  FlaskConical, Weight, Gauge, Triangle, Waves, Shield,
+  Search, ArrowRight
 } from 'lucide-react';
+
+// ✅ Import the universal search and context
+import UniversalSearch from '@/components/UniversalSearch';
+import { useDrinks } from '@/contexts/DrinksContext';
 
 type Params = { params?: Record<string, string> };
 
@@ -76,6 +81,7 @@ const workoutPhases = [
 
 const popularRecipes = [
   {
+    id: 'protein-recipe-1',
     name: 'Beast Mode Builder',
     protein: 35,
     carbs: 42,
@@ -86,6 +92,7 @@ const popularRecipes = [
     goal: 'muscle'
   },
   {
+    id: 'protein-recipe-2',
     name: 'Lean Machine',
     protein: 30,
     carbs: 18,
@@ -96,6 +103,7 @@ const popularRecipes = [
     goal: 'lean'
   },
   {
+    id: 'protein-recipe-3',
     name: 'Power Surge',
     protein: 32,
     carbs: 38,
@@ -107,7 +115,27 @@ const popularRecipes = [
   }
 ];
 
+// ✅ Protein subcategories for navigation
+const proteinSubcategories = [
+  { id: 'whey', name: 'Whey Protein', icon: Zap, count: 6, route: '/drinks/protein-shakes/whey' },
+  { id: 'plant', name: 'Plant Protein', icon: Leaf, count: 4, route: '/drinks/protein-shakes/plant' },
+  { id: 'casein', name: 'Casein', icon: Calendar, count: 3, route: '/drinks/protein-shakes/casein' },
+  { id: 'egg', name: 'Egg Protein', icon: Target, count: 2, route: '/drinks/protein-shakes/egg' }
+];
+
 export default function ProteinShakesPage({ params }: Params) {
+  // ✅ Use the drinks context
+  const { 
+    userProgress, 
+    addPoints, 
+    incrementDrinksMade, 
+    addToFavorites, 
+    isFavorite,
+    addToRecentlyViewed,
+    favorites,
+    getRecommendations
+  } = useDrinks();
+
   const [selectedGoal, setSelectedGoal] = useState(fitnessGoals[0]);
   const [selectedProtein, setSelectedProtein] = useState(proteinTypes[0]);
   const [selectedSupplements, setSelectedSupplements] = useState([]);
@@ -119,6 +147,9 @@ export default function ProteinShakesPage({ params }: Params) {
 
   const type = params?.type?.replaceAll("-", " ");
 
+  // ✅ Get recommendations from context
+  const recommendations = getRecommendations('protein-shakes');
+
   const calculateNutrition = () => {
     const protein = proteinAmount[0];
     const carbs = selectedGoal.carbs;
@@ -128,6 +159,70 @@ export default function ProteinShakesPage({ params }: Params) {
 
   const nutrition = calculateNutrition();
   const proteinProgress = (consumedProtein / dailyProteinGoal) * 100;
+
+  // ✅ Enhanced buildShake with context integration
+  const buildShake = () => {
+    const shakeData = {
+      id: `custom-protein-${Date.now()}`,
+      name: `Custom ${selectedGoal.name} Protein Shake`,
+      category: 'protein-shakes' as const,
+      description: `${selectedProtein.name} shake optimized for ${selectedGoal.name.toLowerCase()}`,
+      ingredients: [selectedProtein.name, 'Water/Milk', ...selectedSupplements.map(s => s.name)],
+      nutrition: {
+        calories: nutrition.calories,
+        protein: nutrition.protein,
+        carbs: nutrition.carbs,
+        fat: 3 // estimated
+      },
+      difficulty: 'Easy' as const,
+      prepTime: 3,
+      rating: 5,
+      fitnessGoal: selectedGoal.name,
+      bestTime: selectedProtein.timing
+    };
+
+    addToRecentlyViewed(shakeData);
+    incrementDrinksMade();
+    addPoints(125);
+    setConsumedProtein(prev => prev + nutrition.protein);
+    
+    // Show success feedback
+    console.log(`Built ${shakeData.name}! +125 XP`);
+  };
+
+  // ✅ Enhanced makeRecipe with context integration
+  const makeRecipe = (recipe) => {
+    const shakeData = {
+      id: recipe.id,
+      name: recipe.name,
+      category: 'protein-shakes' as const,
+      description: `Popular ${recipe.goal} protein shake`,
+      ingredients: recipe.ingredients,
+      nutrition: {
+        calories: recipe.calories,
+        protein: recipe.protein,
+        carbs: recipe.carbs,
+        fat: 5 // estimated
+      },
+      difficulty: 'Easy' as const,
+      prepTime: 3,
+      rating: recipe.rating,
+      fitnessGoal: recipe.goal,
+      bestTime: 'Post-workout'
+    };
+
+    addToRecentlyViewed(shakeData);
+    incrementDrinksMade();
+    addPoints(100);
+    setConsumedProtein(prev => prev + recipe.protein);
+    
+    console.log(`Made ${recipe.name}! +100 XP`);
+  };
+
+  // ✅ Handle cross-page drink selection
+  const handleDrinkSelection = (drink) => {
+    console.log('Selected drink from universal search:', drink);
+  };
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
@@ -150,20 +245,90 @@ export default function ProteinShakesPage({ params }: Params) {
         </div>
       </div>
 
-      {/* Daily Protein Tracking */}
+      {/* ✅ Universal Search Component */}
+      <div className="max-w-2xl mx-auto mb-8">
+        <UniversalSearch 
+          onSelectDrink={handleDrinkSelection}
+          placeholder="Search all drinks or find protein shake inspiration..."
+          className="w-full"
+        />
+      </div>
+
+      {/* ✅ Protein Subcategories Navigation */}
+      <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+        <CardContent className="p-6">
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+            <FlaskConical className="w-5 h-5 text-blue-500" />
+            Explore Protein Types
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {proteinSubcategories.map((subcategory) => {
+              const Icon = subcategory.icon;
+              return (
+                <Button
+                  key={subcategory.id}
+                  variant="outline"
+                  className="h-auto p-4 flex flex-col items-center gap-2 hover:bg-blue-50 hover:border-blue-300"
+                  onClick={() => window.location.href = subcategory.route}
+                >
+                  <Icon className="h-6 w-6 text-blue-600" />
+                  <div className="text-center">
+                    <div className="font-medium text-sm">{subcategory.name}</div>
+                    <div className="text-xs text-gray-500">{subcategory.count} recipes</div>
+                  </div>
+                  <ArrowRight className="h-3 w-3 text-gray-400" />
+                </Button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ✅ Favorites Quick Access */}
+      {favorites.filter(f => f.category === 'protein-shakes').length > 0 && (
+        <Card className="bg-gradient-to-r from-red-100 to-orange-100 border-red-200">
+          <CardContent className="p-6">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+              <Heart className="w-5 h-5 text-red-500" />
+              Your Favorite Protein Shakes ({favorites.filter(f => f.category === 'protein-shakes').length})
+            </h3>
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {favorites.filter(f => f.category === 'protein-shakes').slice(0, 5).map((drink) => (
+                <div key={drink.id} className="flex-shrink-0 bg-white rounded-lg p-3 shadow-sm min-w-[200px]">
+                  <div className="font-medium text-sm mb-1">{drink.name}</div>
+                  <div className="text-xs text-gray-600 mb-2">{drink.nutrition?.protein}g protein</div>
+                  <Button size="sm" variant="outline" className="w-full text-xs">
+                    Make Again
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ✅ Enhanced Daily Protein Tracking with User Progress */}
       <Card className="bg-gradient-to-r from-blue-50 to-purple-50">
         <CardContent className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-semibold">Daily Protein Progress</h3>
-            <Badge className="bg-blue-500">
-              <Target className="h-4 w-4 mr-1" />
-              {Math.round(proteinProgress)}% Complete
-            </Badge>
+            <div className="flex items-center gap-4">
+              <Badge className="bg-blue-500">
+                <Target className="h-4 w-4 mr-1" />
+                {Math.round(proteinProgress)}% Complete
+              </Badge>
+              <Badge variant="outline" className="text-blue-600">
+                Level {userProgress.level}
+              </Badge>
+            </div>
           </div>
           <Progress value={proteinProgress} className="h-4 mb-2" />
           <div className="flex justify-between text-sm text-muted-foreground">
             <span>{consumedProtein}g consumed</span>
             <span>{dailyProteinGoal - consumedProtein}g remaining</span>
+          </div>
+          <div className="mt-3 text-xs text-gray-600">
+            Total drinks made: {userProgress.totalDrinksMade} • XP: {userProgress.totalPoints}
           </div>
         </CardContent>
       </Card>
@@ -290,16 +455,38 @@ export default function ProteinShakesPage({ params }: Params) {
             </CardContent>
           </Card>
 
-          {/* Build Actions */}
+          {/* ✅ Enhanced Build Actions with Context Integration */}
           <Card>
             <CardContent className="p-6 space-y-3">
-              <Button className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600">
+              <Button 
+                className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
+                onClick={buildShake}
+              >
                 <Plus className="h-4 w-4 mr-2" />
-                Build This Shake
+                Build This Shake (+125 XP)
               </Button>
-              <Button variant="outline" className="w-full">
+              <Button 
+                variant="outline" 
+                className="w-full"
+                onClick={() => {
+                  const shakeData = {
+                    id: `custom-protein-${Date.now()}`,
+                    name: `Custom ${selectedGoal.name} Protein Shake`,
+                    category: 'protein-shakes' as const,
+                    description: `${selectedProtein.name} shake optimized for ${selectedGoal.name.toLowerCase()}`,
+                    ingredients: [selectedProtein.name, 'Water/Milk'],
+                    nutrition: nutrition,
+                    difficulty: 'Easy' as const,
+                    prepTime: 3,
+                    rating: 5,
+                    fitnessGoal: selectedGoal.name,
+                    bestTime: selectedProtein.timing
+                  };
+                  addToFavorites(shakeData);
+                }}
+              >
                 <Heart className="h-4 w-4 mr-2" />
-                Save Recipe
+                Save Recipe (+10 XP)
               </Button>
               <Button variant="outline" className="w-full">
                 <Share2 className="h-4 w-4 mr-2" />
@@ -417,7 +604,13 @@ export default function ProteinShakesPage({ params }: Params) {
                     )}
                   </div>
                   
-                  <Button className="w-full mt-4 bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600">
+                  <Button 
+                    className="w-full mt-4 bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600"
+                    onClick={() => {
+                      // Quick build for this phase
+                      buildShake();
+                    }}
+                  >
                     Build {phase.name} Shake
                   </Button>
                 </CardContent>
@@ -427,7 +620,7 @@ export default function ProteinShakesPage({ params }: Params) {
         </CardContent>
       </Card>
 
-      {/* Popular Recipes */}
+      {/* ✅ Enhanced Popular Recipes with Context Integration */}
       <Card>
         <CardContent className="p-6">
           <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
@@ -438,7 +631,37 @@ export default function ProteinShakesPage({ params }: Params) {
             {popularRecipes.map((recipe, index) => (
               <Card key={index} className="hover:shadow-md transition-shadow">
                 <CardContent className="p-4">
-                  <h4 className="font-semibold mb-2">{recipe.name}</h4>
+                  <div className="flex items-start justify-between mb-2">
+                    <h4 className="font-semibold">{recipe.name}</h4>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const shakeData = {
+                          id: recipe.id,
+                          name: recipe.name,
+                          category: 'protein-shakes' as const,
+                          description: `Popular ${recipe.goal} protein shake`,
+                          ingredients: recipe.ingredients,
+                          nutrition: {
+                            calories: recipe.calories,
+                            protein: recipe.protein,
+                            carbs: recipe.carbs,
+                            fat: 5
+                          },
+                          difficulty: 'Easy' as const,
+                          prepTime: 3,
+                          rating: recipe.rating,
+                          fitnessGoal: recipe.goal,
+                          bestTime: 'Post-workout'
+                        };
+                        addToFavorites(shakeData);
+                      }}
+                      className="text-gray-400 hover:text-red-500"
+                    >
+                      <Heart className={`h-4 w-4 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                    </Button>
+                  </div>
                   <div className="flex items-center gap-2 mb-3">
                     <div className="flex items-center gap-1">
                       <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
@@ -463,12 +686,39 @@ export default function ProteinShakesPage({ params }: Params) {
                   <div className="text-sm text-muted-foreground mb-3">
                     {recipe.ingredients.join(', ')}
                   </div>
-                  <Button variant="outline" className="w-full">
-                    Try This Recipe
+                  <Button 
+                    variant="outline" 
+                    className="w-full"
+                    onClick={() => makeRecipe(recipe)}
+                  >
+                    Try This Recipe (+100 XP)
                   </Button>
                 </CardContent>
               </Card>
             ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ✅ Cross-Page Integration Footer */}
+      <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-bold mb-2">Explore More Drinks</h3>
+              <p className="text-gray-600 mb-4">Discover smoothies, detoxes, and cocktails</p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm">Smoothies</Button>
+                <Button variant="outline" size="sm">Detox Drinks</Button>
+                <Button variant="outline" size="sm">Cocktails</Button>
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-600 mb-1">{userProgress.totalDrinksMade}</div>
+              <div className="text-sm text-gray-600 mb-2">Total Drinks Made</div>
+              <Progress value={userProgress.dailyGoalProgress} className="w-24" />
+              <div className="text-xs text-gray-500 mt-1">Daily Goal</div>
+            </div>
           </div>
         </CardContent>
       </Card>
