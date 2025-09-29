@@ -27,7 +27,8 @@ import {
   Check,
   RefreshCw,
   Lightbulb,
-  Flame
+  Flame,
+  Plus
 } from "lucide-react";
 import { 
   ingredientSubstitutions, 
@@ -260,22 +261,32 @@ export default function SubstitutionsPage() {
     });
   };
 
-  // Search ingredient database with gamification
-  useEffect(() => {
+  // Fixed search function - only triggers on button click or Enter
+  const handleDatabaseSearch = () => {
     if (searchQuery.trim().length > 1) {
-      const results = searchIngredientSubstitutions(searchQuery);
+      const results = searchIngredientSubstitutions(searchQuery.trim());
       setSearchResults(results);
       
-      // Track search
-      if (!recentSearches.includes(searchQuery)) {
-        setRecentSearches(prev => [searchQuery, ...prev.slice(0, 4)]);
+      // Add to recent searches only on intentional search (not duplicates)
+      const trimmedQuery = searchQuery.trim();
+      if (!recentSearches.includes(trimmedQuery)) {
+        setRecentSearches(prev => [trimmedQuery, ...prev.slice(0, 4)]);
         setUserStats(prev => ({ ...prev, searchCount: prev.searchCount + 1 }));
         addXP(10);
       }
     } else {
       setSearchResults([]);
     }
-  }, [searchQuery]);
+    setShowSuggestions(false);
+  };
+
+  // Handle Enter key press
+  const handleSearchKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleDatabaseSearch();
+    }
+  };
 
   // Check achievements when stats change
   useEffect(() => {
@@ -526,7 +537,13 @@ export default function SubstitutionsPage() {
                       key={index} 
                       variant="outline" 
                       className="cursor-pointer hover:bg-muted"
-                      onClick={() => setSearchQuery(search)}
+                      onClick={() => {
+                        setSearchQuery(search);
+                        // Automatically search when clicking a recent search
+                        const results = searchIngredientSubstitutions(search);
+                        setSearchResults(results);
+                        setShowSuggestions(false);
+                      }}
                     >
                       {search}
                     </Badge>
@@ -548,90 +565,102 @@ export default function SubstitutionsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="relative">
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setShowSuggestions(true);
-                  }}
-                  onFocus={() => setShowSuggestions(true)}
-                  placeholder="Search for ingredients (e.g., butter, milk, eggs)..."
-                  className="w-full"
-                />
-                
-                {/* Autocomplete Suggestions */}
-                {showSuggestions && autocompleteSuggestions.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                    {autocompleteSuggestions.map((suggestion, index) => (
-                      <button
-                        key={index}
-                        className="w-full px-4 py-2 text-left hover:bg-muted capitalize flex items-center justify-between"
-                        onClick={() => handleIngredientSelect(suggestion)}
-                      >
-                        <span>{suggestion}</span>
-                        <Sparkles className="w-3 h-3 text-primary" />
-                      </button>
+              <div className="space-y-4">
+                {/* Search Input with Button */}
+                <div className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <Input
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        setShowSuggestions(true);
+                      }}
+                      onFocus={() => setShowSuggestions(true)}
+                      onKeyDown={handleSearchKeyPress}
+                      placeholder="Search for ingredients (e.g., butter, milk, eggs)..."
+                      className="w-full"
+                    />
+                    
+                    {/* Autocomplete Suggestions */}
+                    {showSuggestions && autocompleteSuggestions.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                        {autocompleteSuggestions.map((suggestion, index) => (
+                          <button
+                            key={index}
+                            className="w-full px-4 py-2 text-left hover:bg-muted capitalize flex items-center justify-between"
+                            onClick={() => handleIngredientSelect(suggestion)}
+                          >
+                            <span>{suggestion}</span>
+                            <Sparkles className="w-3 h-3 text-primary" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <Button onClick={handleDatabaseSearch} className="flex items-center gap-2">
+                    <Search className="w-4 h-4" />
+                    Search
+                  </Button>
+                </div>
+
+                {/* Search Results */}
+                {searchResults.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      Search Results:
+                      <Badge>{searchResults.length} found</Badge>
+                    </h3>
+                    {searchResults.slice(0, 5).map((item, index) => (
+                      <div key={index} className="border rounded-lg p-4 bg-muted/50 hover:bg-muted/70 transition-colors">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-semibold">{item.ingredient}</h4>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => toggleFavorite(item.ingredient)}
+                              className={favorites.includes(item.ingredient) ? "text-pink-500" : ""}
+                              title="Add to favorites"
+                            >
+                              <Heart className={`w-3 h-3 ${favorites.includes(item.ingredient) ? "fill-current" : ""}`} />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => addToIngredientList(item.ingredient)}
+                              title="Add to AI search list"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setSelectedIngredient(item)}
+                            >
+                              View Details
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-2">
+                          Amount: {item.amount}
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {item.substitutes.slice(0, 3).map((sub, subIndex) => (
+                            <Badge key={subIndex} variant="secondary" className="text-xs">
+                              {sub.substitute.split(',')[0]} ({sub.amount})
+                            </Badge>
+                          ))}
+                          {item.substitutes.length > 3 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{item.substitutes.length - 3} more
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
               </div>
-
-              {/* Search Results */}
-              {searchResults.length > 0 && (
-                <div className="mt-4 space-y-3">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    Search Results:
-                    <Badge>{searchResults.length} found</Badge>
-                  </h3>
-                  {searchResults.slice(0, 5).map((item, index) => (
-                    <div key={index} className="border rounded-lg p-4 bg-muted/50 hover:bg-muted/70 transition-colors">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold">{item.ingredient}</h4>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => toggleFavorite(item.ingredient)}
-                            className={favorites.includes(item.ingredient) ? "text-pink-500" : ""}
-                          >
-                            <Heart className={`w-3 h-3 ${favorites.includes(item.ingredient) ? "fill-current" : ""}`} />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => addToIngredientList(item.ingredient)}
-                          >
-                            Add to List
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setSelectedIngredient(item)}
-                          >
-                            View Details
-                          </Button>
-                        </div>
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-2">
-                        Amount: {item.amount}
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        {item.substitutes.slice(0, 3).map((sub, subIndex) => (
-                          <Badge key={subIndex} variant="secondary" className="text-xs">
-                            {sub.substitute.split(',')[0]} ({sub.amount})
-                          </Badge>
-                        ))}
-                        {item.substitutes.length > 3 && (
-                          <Badge variant="outline" className="text-xs">
-                            +{item.substitutes.length - 3} more
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </CardContent>
           </Card>
 
@@ -650,8 +679,10 @@ export default function SubstitutionsPage() {
                       variant="outline"
                       onClick={() => toggleFavorite(selectedIngredient.ingredient)}
                       className={favorites.includes(selectedIngredient.ingredient) ? "text-pink-500" : ""}
+                      title="Add to favorites"
                     >
                       <Heart className={`w-4 h-4 ${favorites.includes(selectedIngredient.ingredient) ? "fill-current" : ""}`} />
+                      {favorites.includes(selectedIngredient.ingredient) ? " Remove from Favorites" : " Add to Favorites"}
                     </Button>
                     <Button
                       size="sm"
@@ -687,6 +718,7 @@ export default function SubstitutionsPage() {
                             size="sm"
                             variant="ghost"
                             onClick={() => copyToClipboard(`${selectedIngredient.ingredient} → ${sub.substitute} (${sub.amount})`, `copy-${index}`)}
+                            title="Copy substitution"
                           >
                             {showCopied === `copy-${index}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                           </Button>
@@ -694,8 +726,9 @@ export default function SubstitutionsPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => addToIngredientList(selectedIngredient.ingredient)}
+                            title="Add to AI search list"
                           >
-                            Add to List
+                            <Plus className="w-3 h-3" />
                           </Button>
                         </div>
                       </div>
@@ -706,7 +739,7 @@ export default function SubstitutionsPage() {
             </Card>
           )}
 
-          {/* API Suggestion Form */}
+          {/* AI Suggestion Form */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -847,6 +880,7 @@ export default function SubstitutionsPage() {
                 <div className="text-center py-8 text-muted-foreground">
                   <Heart className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p>No favorites yet! Start exploring ingredients to save your favorites.</p>
+                  <p className="text-sm mt-2">Click the ❤️ heart icon next to any ingredient to add it to favorites.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -863,6 +897,7 @@ export default function SubstitutionsPage() {
                             variant="ghost"
                             onClick={() => toggleFavorite(fav)}
                             className="text-pink-500"
+                            title="Remove from favorites"
                           >
                             <Heart className="w-4 h-4 fill-current" />
                           </Button>
@@ -964,6 +999,7 @@ export default function SubstitutionsPage() {
                         variant="outline"
                         onClick={() => toggleFavorite(item.ingredient)}
                         className={favorites.includes(item.ingredient) ? "text-pink-500" : ""}
+                        title="Add to favorites"
                       >
                         <Heart className={`w-3 h-3 ${favorites.includes(item.ingredient) ? "fill-current" : ""}`} />
                       </Button>
