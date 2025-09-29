@@ -153,10 +153,33 @@ export default function DrinksPage() {
             </p>
           </div>
 
-          {/* NEW: Quick Spirit Links */}
-          <div className="mb-8">
-            <div className="text-center mb-4">
-              <h3 className="text-lg font-semibold opacity-90">Browse Spirits</h3>
+          {/* NEW: Quick Navigation Bar */}
+          <div className="mt-8 bg-white/10 backdrop-blur rounded-lg p-4">
+            <div className="text-center mb-3">
+              <h3 className="text-sm font-semibold opacity-90">Quick Navigation</h3>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {drinkCategories.map(category => {
+                const Icon = category.icon;
+                return (
+                  <Link key={category.id} href={category.route}>
+                    <Button 
+                      variant="outline" 
+                      className="w-full bg-white/10 border-white/30 text-white hover:bg-white/20 hover:border-white/50 transition-all"
+                    >
+                      <Icon className="h-4 w-4 mr-2" />
+                      {category.name}
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Quick Spirit Links */}
+          <div className="mt-6">
+            <div className="text-center mb-3">
+              <h3 className="text-sm font-semibold opacity-90">Browse Spirits (21+)</h3>
             </div>
             <div className="flex flex-wrap justify-center gap-2">
               {spiritLinks.map(spirit => {
@@ -165,9 +188,10 @@ export default function DrinksPage() {
                   <Link key={spirit.route} href={spirit.route}>
                     <Button 
                       variant="outline" 
+                      size="sm"
                       className="bg-white/10 border-white/30 text-white hover:bg-white/20 hover:border-white/50 transition-all"
                     >
-                      <Icon className="h-4 w-4 mr-2" />
+                      <Icon className="h-3 h-3 mr-1" />
                       {spirit.name}
                     </Button>
                   </Link>
@@ -217,11 +241,16 @@ export default function DrinksPage() {
                 >
                   <div className="relative h-48 overflow-hidden">
                     <div className={`absolute inset-0 bg-gradient-to-br ${category.color} opacity-20`} />
-                    <img 
-                      src={category.image} 
-                      alt={category.name}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                    />
+                    {category.image && (
+                      <img 
+                        src={category.image} 
+                        alt={category.name}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    )}
                     <div className="absolute top-3 left-3 flex gap-2">
                       {category.trending && (
                         <Badge className="bg-red-500 text-white text-xs">
