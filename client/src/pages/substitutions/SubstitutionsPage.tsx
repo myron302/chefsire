@@ -27,7 +27,7 @@ import {
   Check,
   RefreshCw,
   Lightbulb,
-  Fire
+  Flame
 } from "lucide-react";
 import { 
   ingredientSubstitutions, 
@@ -169,7 +169,7 @@ export default function SubstitutionsPage() {
       id: "streak_master",
       title: "Streak Master",
       description: "Visit 7 days in a row",
-      icon: <Fire className="w-4 h-4" />,
+      icon: <Flame className="w-4 h-4" />,
       requirement: 7,
       unlocked: userStats.streak >= 7
     }
@@ -445,7 +445,7 @@ export default function SubstitutionsPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
-                <Fire className="w-4 h-4 text-red-500" />
+                <Flame className="w-4 h-4 text-red-500" />
                 <span className="text-sm font-medium">Streak</span>
               </div>
               <div className="text-2xl font-bold">{userStats.streak}</div>
