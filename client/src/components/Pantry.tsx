@@ -185,12 +185,11 @@ export default function Pantry() {
       }
       const data = await res.json();
       // data: { name, category, quantity, unit, brand?, upc? }
-      // Add directly to pantry (fast path) or pre-fill the form:
       await addPantryItem({
-        name: data.name || 'Unknown product',
-        category: data.category || 'pantry',
-        quantity: data.quantity || 1,
-        unit: data.unit || 'piece',
+        name: data?.name || 'Unknown product',
+        category: data?.category || 'pantry',
+        quantity: data?.quantity || 1,
+        unit: data?.unit || 'piece',
         expirationDate: '' // unknown from barcode
       });
     } catch (e) {
@@ -232,7 +231,7 @@ export default function Pantry() {
     setActiveTab('shopping');
   };
 
-  // Bulk export calls
+  // Bulk export calls (FIXED instacart response shape)
   const exportList = async (type: 'text' | 'csv' | 'instacart') => {
     try {
       const endpoint =
@@ -254,9 +253,9 @@ export default function Pantry() {
       }
 
       if (type === 'instacart') {
-        const links: string[] = await res.json();
-        // Open each link in a new tab (or show them to the user)
-        links.forEach((url) => window.open(url, '_blank'));
+        // Server returns: [{ name, url }]
+        const links = (await res.json()) as { name: string; url: string }[];
+        links.forEach((l) => window.open(l.url, '_blank'));
         return;
       }
 
