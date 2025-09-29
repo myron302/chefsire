@@ -792,7 +792,7 @@ export default function TequilaCocktailsPage() {
                       )}
                       {cocktail.featured && (
                         <Badge className="bg-yellow-500">
-                          <Star className="w-3 h-3 mr-1" />
+                          <GlassWater className="fill-cyan-500 text-cyan-500" />
                           Featured
                         </Badge>
                       )}
