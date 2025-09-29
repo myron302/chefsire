@@ -1,24 +1,30 @@
 // client/src/components/Pantry.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, X, Clock, Search, ChefHat, Barcode } from "lucide-react";
+import {
+  Plus,
+  X,
+  Clock,
+  Search,
+  ChefHat,
+  Barcode,
+  Check,
+  Minus,
+  Plus as PlusIcon,
+  Trash2,
+  ShoppingCart,
+  Settings,
+} from "lucide-react";
 import BarcodeScanner from "@/components/BarcodeScanner";
 import { fetchOpenFoodFactsByBarcode, type PantryCandidate } from "@/lib/openFoodFacts";
 
-// ---------- helpers: formatting & small utils ----------
+// ---------- helpers ----------
 function formatQty(qty: number | null | undefined, unit: string | null | undefined) {
   if (qty == null || !isFinite(qty)) return null;
   const u = (unit || "").toLowerCase();
-
-  if (u === "ml") {
-    if (qty >= 1000) return `${(qty / 1000).toFixed(qty % 1000 === 0 ? 0 : 1)} L`;
-    return `${qty} ml`;
-  }
-  if (u === "g") {
-    if (qty >= 1000) return `${(qty / 1000).toFixed(qty % 1000 === 0 ? 0 : 1)} kg`;
-    return `${qty} g`;
-  }
+  if (u === "ml") return qty >= 1000 ? `${(qty / 1000).toFixed(qty % 1000 === 0 ? 0 : 1)} L` : `${qty} ml`;
+  if (u === "g") return qty >= 1000 ? `${(qty / 1000).toFixed(qty % 1000 === 0 ? 0 : 1)} kg` : `${qty} g`;
   if (u === "l" || u === "kg") return `${qty} ${u}`;
-  if (u === "piece" || u === "pcs" || u === "count") {
+  if (["piece", "pcs", "count"].includes(u)) {
     const n = Math.round(qty);
     return `${n} ${n === 1 ? "piece" : "pieces"}`;
   }
@@ -49,6 +55,18 @@ type RecipeSuggestion = {
   post?: { imageUrl?: string };
 };
 
+type ShoppingItem = {
+  id: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  category?: string;
+  checked?: boolean;
+  // optional metadata
+  brand?: string;
+  upc?: string;
+};
+
 const CATEGORIES = [
   "produce",
   "dairy",
@@ -73,30 +91,39 @@ const defaultNewItem = {
   expirationDate: "",
 };
 
+type ActiveTab = "pantry" | "suggestions" | "shopping";
+
 export default function Pantry() {
   const [pantryItems, setPantryItems] = useState<APIPantryItem[]>([]);
   const [recipeSuggestions, setRecipeSuggestions] = useState<RecipeSuggestion[]>([]);
   const [newItem, setNewItem] = useState({ ...defaultNewItem });
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [activeTab, setActiveTab] = useState<"pantry" | "suggestions">("pantry");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("pantry");
 
   // Scanner UI
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  // Scanner mode: prefill or autosave
+  const [scannerMode, setScannerMode] = useState<"prefill" | "autosave">("prefill");
 
   // Prefill meta (optional fields we pass through)
   const [prefillMeta, setPrefillMeta] = useState<{ brand?: string; upc?: string } | null>(null);
-
-  // Focus name on prefill
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+
+  // --- Shopping list state ---
+  const [shopping, setShopping] = useState<ShoppingItem[]>([]);
+  const [shoppingLoading, setShoppingLoading] = useState(false);
+  const [shoppingError, setShoppingError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPantryItems();
     fetchRecipeSuggestions();
+    loadShopping();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ---------- Pantry + Suggestions ----------
   async function fetchPantryItems() {
     try {
       const res = await fetch("/api/pantry", {
@@ -134,7 +161,6 @@ export default function Pantry() {
         quantity: Number.isFinite(newItem.quantity) ? Number(newItem.quantity) : 1,
         unit: newItem.unit || "piece",
         expirationDate: newItem.expirationDate ? new Date(newItem.expirationDate) : null,
-        // pass along prefill meta if present (backend may ignore gracefully)
         ...(prefillMeta ?? {}),
       };
       const res = await fetch("/api/pantry", {
@@ -181,7 +207,6 @@ export default function Pantry() {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
   }
-
   function getExpirationPill(days: number | null) {
     if (days == null) return null;
     if (days <= 0) return { text: "Expired", cls: "text-red-600 bg-red-50" };
@@ -201,7 +226,100 @@ export default function Pantry() {
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [pantryItems]);
 
-  // ---------- scan handling (PREFILL instead of autosave) ----------
+  // ---------- Shopping List (API w/ localStorage fallback) ----------
+  const LS_KEY = "shoppingList_v1";
+
+  async function loadShopping() {
+    setShoppingLoading(true);
+    setShoppingError(null);
+    try {
+      const res = await fetch("/api/shopping-list", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (res.ok) {
+        const list = (await res.json()) as ShoppingItem[];
+        setShopping(list);
+        localStorage.setItem(LS_KEY, JSON.stringify(list));
+        return;
+      }
+      // If 404 or not ok, fallback
+      const raw = localStorage.getItem(LS_KEY);
+      setShopping(raw ? JSON.parse(raw) : []);
+    } catch (e) {
+      const raw = localStorage.getItem(LS_KEY);
+      setShopping(raw ? JSON.parse(raw) : []);
+    } finally {
+      setShoppingLoading(false);
+    }
+  }
+
+  function persistLocal(list: ShoppingItem[]) {
+    setShopping(list);
+    localStorage.setItem(LS_KEY, JSON.stringify(list));
+  }
+
+  async function upsertShopping(list: ShoppingItem[]) {
+    // Try API; if it fails, persist locally
+    try {
+      const res = await fetch("/api/shopping-list", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify(list),
+      });
+      if (res.ok) {
+        const saved = (await res.json()) as ShoppingItem[];
+        setShopping(saved);
+        localStorage.setItem(LS_KEY, JSON.stringify(saved));
+        return;
+      }
+      persistLocal(list);
+    } catch {
+      persistLocal(list);
+    }
+  }
+
+  function addToShopping(item: Omit<ShoppingItem, "id">) {
+    const newItem: ShoppingItem = { ...item, id: crypto.randomUUID() };
+    const next = [...shopping, newItem];
+    upsertShopping(next);
+  }
+
+  function toggleShoppingChecked(id: string) {
+    const next = shopping.map((i) => (i.id === id ? { ...i, checked: !i.checked } : i));
+    upsertShopping(next);
+  }
+
+  function removeShopping(id: string) {
+    const next = shopping.filter((i) => i.id !== id);
+    upsertShopping(next);
+  }
+
+  function updateShoppingQty(id: string, delta: number) {
+    const next = shopping.map((i) =>
+      i.id === id ? { ...i, quantity: Math.max(0, (i.quantity ?? 0) + delta) } : i
+    );
+    upsertShopping(next);
+  }
+
+  // Add missing ingredient from suggestion
+  function addMissingToShopping(name: string) {
+    addToShopping({ name, quantity: 1, unit: "piece" });
+  }
+
+  // Add pantry row to shopping list (for restock)
+  function restockPantryItem(item: APIPantryItem) {
+    addToShopping({
+      name: item.name,
+      quantity: Math.max(1, Math.round(item.quantity ?? 1)),
+      unit: item.unit || "piece",
+      category: item.category,
+    });
+  }
+
+  // ---------- Scan handling ----------
   async function handleBarcodeDetected(code: string) {
     setScanError(null);
     try {
@@ -210,25 +328,66 @@ export default function Pantry() {
         setScanError("Couldn’t recognize that barcode. Try again or add manually.");
         return;
       }
-      // Prefill the form with editable values
-      setNewItem({
-        name: candidate.name || "",
-        category: candidate.category || "pantry",
-        quantity: candidate.quantity ?? 1,
-        unit: candidate.unit || "piece",
-        expirationDate: "",
-      });
-      setPrefillMeta({ brand: candidate.brand, upc: candidate.upc });
-      setShowAddForm(true);
-      setScanning(false);
-      // focus name for quick edits
-      setTimeout(() => nameInputRef.current?.focus(), 0);
+
+      if (scannerMode === "prefill") {
+        // Prefill form for manual confirmation
+        setNewItem({
+          name: candidate.name || "",
+          category: candidate.category || "pantry",
+          quantity: candidate.quantity ?? 1,
+          unit: candidate.unit || "piece",
+          expirationDate: "",
+        });
+        setPrefillMeta({ brand: candidate.brand, upc: candidate.upc });
+        setShowAddForm(true);
+        setScanning(false);
+        setTimeout(() => nameInputRef.current?.focus(), 0);
+      } else {
+        // Autosave directly to pantry
+        const payload = {
+          name: candidate.name || "Unknown product",
+          category: candidate.category || "pantry",
+          quantity: candidate.quantity ?? 1,
+          unit: candidate.unit || "piece",
+          expirationDate: null,
+          brand: candidate.brand,
+          upc: candidate.upc,
+        };
+        const res = await fetch("/api/pantry", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const item = (await res.json()) as APIPantryItem;
+          setPantryItems((prev) => [item, ...prev]);
+          fetchRecipeSuggestions();
+          setScanning(false);
+        } else {
+          // fallback to prefill if autosave fails
+          setNewItem({
+            name: payload.name,
+            category: payload.category,
+            quantity: payload.quantity,
+            unit: payload.unit,
+            expirationDate: "",
+          });
+          setPrefillMeta({ brand: candidate.brand, upc: candidate.upc });
+          setShowAddForm(true);
+          setScanning(false);
+          setTimeout(() => nameInputRef.current?.focus(), 0);
+        }
+      }
     } catch (e) {
       console.error(e);
       setScanError("We hit a snag reading that code. Try again.");
     }
   }
 
+  // ---------- UI ----------
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -244,12 +403,34 @@ export default function Pantry() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* header */}
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-8 flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">My Pantry</h1>
-            <p className="text-gray-600">Manage your ingredients and discover recipes you can make</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-1">My Pantry</h1>
+            <p className="text-gray-600">Manage your ingredients, plan groceries, and discover recipes</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {/* Scanner mode switch */}
+            <div className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm">
+              <Settings className="w-4 h-4 text-gray-500" />
+              <span className="text-gray-700">Scanner mode</span>
+              <div className="flex items-center gap-1 ml-2">
+                <button
+                  onClick={() => setScannerMode("prefill")}
+                  className={`px-2 py-1 rounded ${scannerMode === "prefill" ? "bg-gray-900 text-white" : "bg-gray-100"}`}
+                  aria-pressed={scannerMode === "prefill"}
+                >
+                  Prefill form
+                </button>
+                <button
+                  onClick={() => setScannerMode("autosave")}
+                  className={`px-2 py-1 rounded ${scannerMode === "autosave" ? "bg-gray-900 text-white" : "bg-gray-100"}`}
+                  aria-pressed={scannerMode === "autosave"}
+                >
+                  Autosave
+                </button>
+              </div>
+            </div>
+
             <button
               onClick={() => {
                 setScanning(true);
@@ -261,6 +442,7 @@ export default function Pantry() {
               <Barcode className="w-4 h-4" />
               Scan barcode
             </button>
+
             <button
               onClick={() => {
                 setPrefillMeta(null);
@@ -294,6 +476,15 @@ export default function Pantry() {
           >
             <ChefHat className="w-4 h-4 inline mr-2" />
             Recipe Suggestions ({recipeSuggestions.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("shopping")}
+            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeTab === "shopping" ? "bg-orange-500 text-white" : "text-gray-700 hover:bg-gray-100"
+            }`}
+          >
+            <ShoppingCart className="w-4 h-4 inline mr-2" />
+            Shopping List ({shopping.filter((i) => !i.checked).length})
           </button>
         </div>
 
@@ -425,10 +616,26 @@ export default function Pantry() {
               <div className="space-y-6">
                 {grouped.map(([category, items]) => (
                   <div key={category} className="bg-white rounded-lg shadow-sm overflow-hidden">
-                    <div className="px-6 py-4 bg-gray-50 border-b">
+                    <div className="px-6 py-4 bg-gray-50 border-b flex items-center justify-between">
                       <h3 className="text-lg font-medium text-gray-900 capitalize">
                         {category} ({items.length})
                       </h3>
+                      <button
+                        className="text-sm text-gray-600 hover:text-gray-900 underline"
+                        onClick={() =>
+                          items.forEach((i) =>
+                            addToShopping({
+                              name: i.name,
+                              quantity: Math.max(1, Math.round(i.quantity ?? 1)),
+                              unit: i.unit || "piece",
+                              category: i.category,
+                            })
+                          )
+                        }
+                        title="Add all to shopping list"
+                      >
+                        Add all to shopping
+                      </button>
                     </div>
                     <div className="p-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -451,7 +658,7 @@ export default function Pantry() {
                                   <X className="w-4 h-4" />
                                 </button>
                               </div>
-                              <p className="text-sm text-gray-600 mb-2">{qtyStr ? qtyStr : "—"}</p>
+                              <p className="text-sm text-gray-600 mb-3">{qtyStr ? qtyStr : "—"}</p>
                               {pill && (
                                 <div
                                   className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${pill.cls}`}
@@ -460,6 +667,29 @@ export default function Pantry() {
                                   {pill.text}
                                 </div>
                               )}
+
+                              <div className="mt-4 flex gap-2">
+                                <button
+                                  onClick={() => restockPantryItem(item)}
+                                  className="px-3 py-1.5 text-sm rounded bg-gray-900 text-white hover:bg-black"
+                                  title="Add to shopping list"
+                                >
+                                  Restock
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    addToShopping({
+                                      name: item.name,
+                                      quantity: 1,
+                                      unit: item.unit || "piece",
+                                      category: item.category,
+                                    })
+                                  }
+                                  className="px-3 py-1.5 text-sm rounded border hover:bg-gray-50"
+                                >
+                                  Add 1 to shopping
+                                </button>
+                              </div>
                             </div>
                           );
                         })}
@@ -526,17 +756,20 @@ export default function Pantry() {
                         <div className="mb-4">
                           <p className="text-sm text-gray-600 mb-1">Missing ingredients:</p>
                           <div className="flex flex-wrap gap-1">
-                            {recipe.missingIngredients.slice(0, 3).map((ingredient, i) => (
-                              <span
+                            {recipe.missingIngredients.slice(0, 6).map((ingredient, i) => (
+                              <button
                                 key={i}
-                                className="inline-block px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full"
+                                onClick={() => addMissingToShopping(ingredient)}
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-800 text-xs rounded-full"
+                                title="Add to shopping"
                               >
+                                <Plus className="w-3 h-3" />
                                 {ingredient}
-                              </span>
+                              </button>
                             ))}
-                            {recipe.missingIngredients.length > 3 && (
+                            {recipe.missingIngredients.length > 6 && (
                               <span className="inline-block px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
-                                +{recipe.missingIngredients.length - 3} more
+                                +{recipe.missingIngredients.length - 6} more
                               </span>
                             )}
                           </div>
@@ -560,6 +793,90 @@ export default function Pantry() {
             )}
           </div>
         )}
+
+        {/* SHOPPING LIST */}
+        {activeTab === "shopping" && (
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div className="px-6 py-4 bg-gray-50 border-b flex items-center justify-between">
+              <h3 className="text-lg font-medium text-gray-900">Shopping List</h3>
+              <div className="text-sm text-gray-600">
+                {shopping.filter((i) => !i.checked).length} to buy • {shopping.length} total
+              </div>
+            </div>
+
+            <div className="p-4">
+              {/* quick add row */}
+              <QuickAdd onAdd={(name) => addToShopping({ name, quantity: 1, unit: "piece" })} />
+
+              {shoppingLoading ? (
+                <div className="text-center py-8 text-gray-500">Loading list…</div>
+              ) : shopping.length === 0 ? (
+                <div className="text-center py-12 text-gray-600">
+                  Your list is empty. Add items from pantry/suggestions or use Quick Add.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {shopping.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`border rounded-lg p-3 flex items-center justify-between ${
+                        item.checked ? "bg-gray-50 opacity-70" : "bg-white"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => toggleShoppingChecked(item.id)}
+                          className={`w-5 h-5 rounded border flex items-center justify-center ${
+                            item.checked ? "bg-green-500 border-green-500 text-white" : "border-gray-300"
+                          }`}
+                          aria-label={item.checked ? "Uncheck" : "Check"}
+                          title="Toggle purchased"
+                        >
+                          {item.checked && <Check className="w-3 h-3" />}
+                        </button>
+                        <div>
+                          <div className="font-medium">
+                            {item.name}
+                            {item.brand && <span className="ml-2 text-xs text-gray-500">({item.brand})</span>}
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            {formatQty(item.quantity, item.unit) || "—"}
+                            {item.category && ` • ${item.category}`}
+                            {item.upc && ` • UPC: ${item.upc}`}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => updateShoppingQty(item.id, -1)}
+                          className="p-1 rounded border hover:bg-gray-50"
+                          title="Decrease"
+                        >
+                          <Minus className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => updateShoppingQty(item.id, +1)}
+                          className="p-1 rounded border hover:bg-gray-50"
+                          title="Increase"
+                        >
+                          <PlusIcon className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => removeShopping(item.id)}
+                          className="p-1 rounded border text-red-600 hover:bg-red-50"
+                          title="Remove"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Scanner modal */}
@@ -580,5 +897,35 @@ export default function Pantry() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Quick Add inline component */
+function QuickAdd({ onAdd }: { onAdd: (name: string) => void }) {
+  const [val, setVal] = useState("");
+  return (
+    <form
+      className="mb-4 flex items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!val.trim()) return;
+        onAdd(val.trim());
+        setVal("");
+      }}
+    >
+      <input
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        placeholder="Quick add item (e.g., milk)"
+        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+      />
+      <button
+        type="submit"
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-gray-900 text-white hover:bg-black"
+      >
+        <Plus className="w-4 h-4" />
+        Add
+      </button>
+    </form>
   );
 }
