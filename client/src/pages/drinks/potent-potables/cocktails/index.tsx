@@ -346,7 +346,7 @@ export default function ClassicCocktailsPage() {
               
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Star className="h-4 w-4 text-yellow-500" />
+                  <GlassWater className="fill-cyan-500 text-cyan-500" />
                   <span>Level {userProgress.level}</span>
                   <div className="w-px h-4 bg-gray-300" />
                   <span>{userProgress.totalPoints} XP</span>
