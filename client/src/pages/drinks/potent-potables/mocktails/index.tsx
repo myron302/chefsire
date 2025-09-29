@@ -719,7 +719,7 @@ export default function MocktailsPage() {
                 )}
                 {mocktail.featured && (
                   <Badge className="bg-pink-500 mb-2 ml-2">
-                    <Star className="w-3 h-3 mr-1" />
+                    <GlassWater className="fill-cyan-500 text-cyan-500" />
                     Featured
                   </Badge>
                 )}
