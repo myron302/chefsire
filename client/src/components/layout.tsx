@@ -8,7 +8,7 @@ import {
   Search, Bell, MessageCircle, User, ChevronDown,
   ChefHat, Activity, ShoppingCart, Settings, LogOut,
   Home, Compass, BookOpen, GlassWater, Utensils, Heart, Wand2,
-  Apple, FlaskConical, Leaf, Wine
+  Apple, FlaskConical, Leaf, Wine, Sparkles
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
@@ -131,14 +131,11 @@ export default function Layout({ children }: LayoutProps) {
 
                 {isDropdownOpen && (
                   <>
-                    {/* overlay to close on click outside */}
                     <div
                       className="fixed inset-0 z-10"
                       onClick={() => setIsDropdownOpen(false)}
                     />
-                    {/* menu panel */}
                     <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-20 overflow-hidden">
-                      {/* header strip */}
                       <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-b px-4 py-3">
                         <div className="flex items-center space-x-3">
                           <div className="w-7 h-7 rounded-full overflow-hidden bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-md">
@@ -155,7 +152,6 @@ export default function Layout({ children }: LayoutProps) {
                         </div>
                       </div>
 
-                      {/* body */}
                       <div className="py-2">
                         <div className="px-4 py-2">
                           <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
@@ -187,7 +183,6 @@ export default function Layout({ children }: LayoutProps) {
                             >
                               <BookOpen className="w-4 h-4 mr-3" /> Recipes
                             </Link>
-                            {/* Recipes nested items */}
                             <Link
                               href="/recipes"
                               onClick={() => setIsDropdownOpen(false)}
@@ -210,7 +205,7 @@ export default function Layout({ children }: LayoutProps) {
                               <Wand2 className="w-3 h-3 mr-2" /> Ingredient Substitutions
                             </Link>
 
-                            {/* Drinks (parent) - SIMPLIFIED */}
+                            {/* Drinks (parent) */}
                             <Link
                               href="/drinks"
                               onClick={() => setIsDropdownOpen(false)}
@@ -219,7 +214,6 @@ export default function Layout({ children }: LayoutProps) {
                               <GlassWater className="w-4 h-4 mr-3" /> Drinks
                             </Link>
 
-                            {/* Drinks nested items - SIMPLIFIED */}
                             <Link
                               href="/drinks"
                               onClick={() => setIsDropdownOpen(false)}
@@ -248,12 +242,65 @@ export default function Layout({ children }: LayoutProps) {
                             >
                               <Leaf className="w-3 h-3 mr-2" /> Detoxes & Cleanses
                             </Link>
+
+                            {/* Potent Potables with nested spirit links */}
                             <Link
-                              href="/potent-potables"
+                              href="/drinks/potent-potables"
                               onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-semibold"
                             >
                               <Wine className="w-3 h-3 mr-2" /> Potent Potables <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">21+</span>
+                            </Link>
+
+                            {/* Spirit links - nested under Potent Potables */}
+                            <Link
+                              href="/drinks/potent-potables/vodka"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Vodka Cocktails
+                            </Link>
+                            <Link
+                              href="/drinks/potent-potables/whiskey-bourbon"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Whiskey & Bourbon
+                            </Link>
+                            <Link
+                              href="/drinks/potent-potables/tequila-mezcal"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Tequila & Mezcal
+                            </Link>
+                            <Link
+                              href="/drinks/potent-potables/rum"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Rum Cocktails
+                            </Link>
+                            <Link
+                              href="/drinks/potent-potables/cognac-brandy"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Cognac & Brandy
+                            </Link>
+                            <Link
+                              href="/drinks/potent-potables/scotch-irish-whiskey"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Scotch & Irish Whiskey
+                            </Link>
+                            <Link
+                              href="/drinks/virgin-cocktails"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Virgin Cocktails
                             </Link>
 
                             {/* Catering */}
@@ -315,7 +362,6 @@ export default function Layout({ children }: LayoutProps) {
                         </button>
                       </div>
                     </div>
-                    {/* end menu panel */}
                   </>
                 )}
               </div>
