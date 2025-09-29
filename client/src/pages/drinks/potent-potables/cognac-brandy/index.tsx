@@ -765,7 +765,7 @@ export default function CognacBrandyPage() {
                       )}
                       {cocktail.featured && (
                         <Badge className="bg-amber-500">
-                          <Star className="w-3 h-3 mr-1" />
+                          <GlassWater className="fill-cyan-500 text-cyan-500" />
                           Featured
                         </Badge>
                       )}
