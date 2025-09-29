@@ -12,7 +12,6 @@ type PantryCandidate = {
 
 const router = Router();
 
-// in-memory cache (barcode -> result) for 24h
 const cache = new Map<string, { data: PantryCandidate | null; expiry: number }>();
 const TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -74,7 +73,7 @@ router.get("/:barcode", async (req, res) => {
     cache.set(barcode, { data: candidate, expiry: now + TTL_MS });
     res.json(candidate);
   } catch (e) {
-    cache.set(barcode, { data: null, expiry: now + 5 * 60 * 1000 }); // short negative cache
+    cache.set(barcode, { data: null, expiry: now + 5 * 60 * 1000 });
     res.json(null);
   }
 });
