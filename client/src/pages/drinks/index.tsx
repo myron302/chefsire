@@ -9,7 +9,8 @@ import {
   CheckCircle, Target, Flame, Droplets, Leaf, Apple,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Coffee, GlassWater, FlaskConical, Beaker, ArrowRight,
-  PlayCircle, BookOpen, Share2, Eye, ThumbsUp, MessageCircle
+  PlayCircle, BookOpen, Share2, Eye, ThumbsUp, MessageCircle,
+  Wine, Martini
 } from 'lucide-react';
 
 const drinkCategories = [
@@ -77,6 +78,17 @@ const drinkCategories = [
   }
 ];
 
+// NEW: Quick Links to Spirit Pages
+const spiritLinks = [
+  { name: 'Vodka', route: '/drinks/potent-potables/vodka', icon: Droplets },
+  { name: 'Whiskey & Bourbon', route: '/drinks/potent-potables/whiskey-bourbon', icon: Wine },
+  { name: 'Tequila & Mezcal', route: '/drinks/potent-potables/tequila-mezcal', icon: Flame },
+  { name: 'Rum', route: '/drinks/potent-potables/rum', icon: GlassWater },
+  { name: 'Cognac & Brandy', route: '/drinks/potent-potables/cognac-brandy', icon: Wine },
+  { name: 'Scotch & Irish', route: '/drinks/potent-potables/scotch-irish-whiskey', icon: Wine },
+  { name: 'Virgin Cocktails', route: '/drinks/virgin-cocktails', icon: Sparkles }
+];
+
 const featuredRecipes = [
   {
     name: 'Green Goddess Bowl',
@@ -139,6 +151,29 @@ export default function DrinksPage() {
             <p className="text-xl opacity-90 max-w-2xl mx-auto">
               Your ultimate destination for smoothies, protein shakes, detoxes, and cocktails
             </p>
+          </div>
+
+          {/* NEW: Quick Spirit Links */}
+          <div className="mb-8">
+            <div className="text-center mb-4">
+              <h3 className="text-lg font-semibold opacity-90">Browse Spirits</h3>
+            </div>
+            <div className="flex flex-wrap justify-center gap-2">
+              {spiritLinks.map(spirit => {
+                const Icon = spirit.icon;
+                return (
+                  <Link key={spirit.route} href={spirit.route}>
+                    <Button 
+                      variant="outline" 
+                      className="bg-white/10 border-white/30 text-white hover:bg-white/20 hover:border-white/50 transition-all"
+                    >
+                      <Icon className="h-4 w-4 mr-2" />
+                      {spirit.name}
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
 
           {/* Quick Stats */}
