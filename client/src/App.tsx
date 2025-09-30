@@ -1,225 +1,226 @@
-// client/src/App.tsx
-import * as React from "react";
-import { Switch, Route, useLocation } from "wouter";
-import { QueryClientProvider } from "@tanstack/react-query";
+import React, { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { 
+  Coffee, Clock, Star, Heart, Flame, Leaf, Apple,
+  Search, Share2, ArrowLeft, Zap, Sun, Trophy
+} from 'lucide-react';
+import { useDrinks } from '@/contexts/DrinksContext';
 
-import { queryClient } from "@/lib/query-client";
+const breakfastSmoothies = [
+  {
+    id: 'breakfast-1',
+    name: 'Power Morning Fuel',
+    description: 'Complete nutrition to kickstart your day',
+    nutrition: { calories: 420, protein: 22, carbs: 58, fat: 12, fiber: 14 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.8,
+    reviews: 1892,
+    trending: true,
+    bestTime: 'Early Morning',
+    energyDuration: '4-5 hours'
+  },
+  {
+    id: 'breakfast-2',
+    name: 'Coffee Kick Mocha',
+    description: 'Espresso-infused energy boost',
+    nutrition: { calories: 320, protein: 18, carbs: 42, fat: 8, fiber: 6 },
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.7,
+    reviews: 1456,
+    trending: true,
+    bestTime: 'Morning',
+    energyDuration: '3-4 hours'
+  },
+  {
+    id: 'breakfast-3',
+    name: 'Tropical Sunrise',
+    description: 'Vitamin C-packed morning refresher',
+    nutrition: { calories: 280, protein: 12, carbs: 52, fat: 4, fiber: 8 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.6,
+    reviews: 1234,
+    trending: false,
+    bestTime: 'Morning',
+    energyDuration: '3 hours'
+  }
+];
 
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import Layout from "@/components/layout";
-import RequireAgeGate from "@/components/RequireAgeGate";
+export default function BreakfastSmoothiesPage() {
+  const { 
+    addToFavorites, 
+    isFavorite,
+    addToRecentlyViewed,
+    userProgress,
+    incrementDrinksMade,
+    addPoints
+  } = useDrinks();
 
-import { DrinksProvider } from "@/contexts/DrinksContext";
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('browse');
 
-// Pages (existing)
-import Feed from "@/pages/feed";
-import ExplorePage from "@/pages/explore/ExplorePage";
-import RecipesListPage from "@/pages/recipes/RecipesListPage";
-import RecipesFiltersPage from "@/pages/recipes/RecipesFiltersPage";
-import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
-import Profile from "@/pages/profile";
-import CreatePost from "@/pages/create-post";
-import Pantry from "@/components/Pantry";
-import Marketplace from "@/components/Marketplace";
-import NutritionMealPlanner from "@/components/NutritionMealPlanner";
-import CateringMarketplace from "@/pages/catering";
-import WeddingPlanning from "@/pages/wedding-planning";
-import NotFound from "@/pages/not-found";
-import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
-
-// ========== DRINKS HUB PAGES ==========
-import DrinksHubPage from "@/pages/drinks";
-import SmoothiesHub from "@/pages/drinks/smoothies";
-import ProteinShakesHub from "@/pages/drinks/protein-shakes";
-import DetoxesHub from "@/pages/drinks/detoxes";
-import PotentPotablesHub from "@/pages/drinks/potent-potables";
-
-// ========== SMOOTHIES SUBCATEGORY PAGES ==========
-import BreakfastSmoothies from "@/pages/drinks/smoothies/breakfast";
-import DessertSmoothies from "@/pages/drinks/smoothies/dessert";
-import GreenSmoothies from "@/pages/drinks/smoothies/green";
-import ProteinSmoothies from "@/pages/drinks/smoothies/protein";
-import WorkoutSmoothies from "@/pages/drinks/smoothies/workout";
-
-// ========== PROTEIN SHAKES SUBCATEGORY PAGES ==========
-import CaseinProtein from "@/pages/drinks/protein-shakes/casein";
-import CollagenProtein from "@/pages/drinks/protein-shakes/collagen";
-import PlantBasedProtein from "@/pages/drinks/protein-shakes/plant-based";
-import WheyProtein from "@/pages/drinks/protein-shakes/whey";
-
-// ========== DETOXES SUBCATEGORY PAGES ==========
-import DetoxJuices from "@/pages/drinks/detoxes/juice";
-import DetoxTeas from "@/pages/drinks/detoxes/tea";
-import DetoxWaters from "@/pages/drinks/detoxes/water";
-
-// ========== POTENT POTABLES SUBCATEGORY PAGES ==========
-import CocktailsPage from "@/pages/drinks/potent-potables/cocktails";
-import CognacBrandyPage from "@/pages/drinks/potent-potables/cognac-brandy";
-import MartinisPage from "@/pages/drinks/potent-potables/martinis";
-import MocktailsPage from "@/pages/drinks/potent-potables/mocktails";
-import RumPage from "@/pages/drinks/potent-potables/rum";
-import ScotchIrishWhiskeyPage from "@/pages/drinks/potent-potables/scotch-irish-whiskey";
-import SeasonalPage from "@/pages/drinks/potent-potables/seasonal";
-import TequilaMezcalPage from "@/pages/drinks/potent-potables/tequila-mezcal";
-import VirginCocktailsPage from "@/pages/drinks/potent-potables/virgin-cocktails";
-import VodkaPage from "@/pages/drinks/potent-potables/vodka";
-import WhiskeyBourbonPage from "@/pages/drinks/potent-potables/whiskey-bourbon";
-
-// Utilities
-import ErrorBoundary from "@/components/ErrorBoundary";
-import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole";
-
-function Redirect({ to }: { to: string }) {
-  const [, setLocation] = useLocation();
-  React.useEffect(() => setLocation(to), [to, setLocation]);
-  return null;
-}
-
-function RecipesSection() {
-  return (
-    <RecipesFiltersProvider>
-      <Switch>
-        <Route path="/recipes/filters" component={RecipesFiltersPage} />
-        <Route path="/recipes" component={RecipesListPage} />
-      </Switch>
-    </RecipesFiltersProvider>
+  const filteredSmoothies = breakfastSmoothies.filter(smoothie =>
+    smoothie.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
-}
 
-function PotentPotablesSection() {
+  const handleMakeSmoothie = (smoothie: any) => {
+    addToRecentlyViewed({
+      id: smoothie.id,
+      name: smoothie.name,
+      category: 'smoothies',
+      description: smoothie.description,
+      ingredients: [],
+      nutrition: smoothie.nutrition,
+      difficulty: smoothie.difficulty,
+      prepTime: smoothie.prepTime,
+      rating: smoothie.rating,
+      fitnessGoal: 'Breakfast',
+      bestTime: smoothie.bestTime
+    });
+    incrementDrinksMade();
+    addPoints(25);
+  };
+
   return (
-    <RequireAgeGate>
-      <Switch>
-        {/* Specific routes first */}
-        <Route path="/drinks/potent-potables/cocktails" component={CocktailsPage} />
-        <Route path="/drinks/potent-potables/cognac-brandy" component={CognacBrandyPage} />
-        <Route path="/drinks/potent-potables/martinis" component={MartinisPage} />
-        <Route path="/drinks/potent-potables/mocktails" component={MocktailsPage} />
-        <Route path="/drinks/potent-potables/rum" component={RumPage} />
-        <Route path="/drinks/potent-potables/scotch-irish-whiskey" component={ScotchIrishWhiskeyPage} />
-        <Route path="/drinks/potent-potables/seasonal" component={SeasonalPage} />
-        <Route path="/drinks/potent-potables/tequila-mezcal" component={TequilaMezcalPage} />
-        <Route path="/drinks/potent-potables/virgin-cocktails" component={VirginCocktailsPage} />
-        <Route path="/drinks/potent-potables/vodka" component={VodkaPage} />
-        <Route path="/drinks/potent-potables/whiskey-bourbon" component={WhiskeyBourbonPage} />
-        {/* Hub last */}
-        <Route path="/drinks/potent-potables" component={PotentPotablesHub} />
-      </Switch>
-    </RequireAgeGate>
-  );
-}
+    <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-orange-50 to-pink-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="sm" onClick={() => window.history.back()}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back
+              </Button>
+              <div className="h-6 w-px bg-gray-300" />
+              <div className="flex items-center gap-2">
+                <Coffee className="h-6 w-6 text-orange-600" />
+                <h1 className="text-2xl font-bold text-gray-900">Breakfast Smoothies</h1>
+                <Badge className="bg-orange-100 text-orange-800">Morning Fuel</Badge>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Star className="h-4 w-4 text-yellow-500" />
+                <span>Level {userProgress.level}</span>
+                <div className="w-px h-4 bg-gray-300" />
+                <span>{userProgress.totalPoints} XP</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-function DrinksSection() {
-  return (
-    <DrinksProvider>
-      <Switch>
-        {/* ========== SMOOTHIES ROUTES ========== */}
-        <Route path="/drinks/smoothies/breakfast" component={BreakfastSmoothies} />
-        <Route path="/drinks/smoothies/dessert" component={DessertSmoothies} />
-        <Route path="/drinks/smoothies/green" component={GreenSmoothies} />
-        <Route path="/drinks/smoothies/protein" component={ProteinSmoothies} />
-        <Route path="/drinks/smoothies/workout" component={WorkoutSmoothies} />
-        <Route path="/drinks/smoothies" component={SmoothiesHub} />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Search */}
+        <div className="mb-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Input
+              placeholder="Search breakfast smoothies..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </div>
 
-        {/* ========== PROTEIN SHAKES ROUTES ========== */}
-        <Route path="/drinks/protein-shakes/casein" component={CaseinProtein} />
-        <Route path="/drinks/protein-shakes/collagen" component={CollagenProtein} />
-        <Route path="/drinks/protein-shakes/plant-based" component={PlantBasedProtein} />
-        <Route path="/drinks/protein-shakes/whey" component={WheyProtein} />
-        <Route path="/drinks/protein-shakes" component={ProteinShakesHub} />
+        {/* Smoothies Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredSmoothies.map(smoothie => (
+            <Card key={smoothie.id} className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <CardTitle className="text-lg mb-1">{smoothie.name}</CardTitle>
+                    <p className="text-sm text-gray-600">{smoothie.description}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => addToFavorites({
+                      id: smoothie.id,
+                      name: smoothie.name,
+                      category: 'smoothies',
+                      description: smoothie.description,
+                      ingredients: [],
+                      nutrition: smoothie.nutrition,
+                      difficulty: smoothie.difficulty,
+                      prepTime: smoothie.prepTime,
+                      rating: smoothie.rating,
+                      fitnessGoal: 'Breakfast',
+                      bestTime: smoothie.bestTime
+                    })}
+                  >
+                    <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
+                  </Button>
+                </div>
+                
+                <div className="flex items-center gap-2 mt-2">
+                  {smoothie.trending && (
+                    <Badge className="bg-red-100 text-red-800">
+                      <Flame className="h-3 w-3 mr-1" />
+                      Trending
+                    </Badge>
+                  )}
+                  <Badge variant="outline">{smoothie.bestTime}</Badge>
+                </div>
+              </CardHeader>
+              
+              <CardContent>
+                <div className="grid grid-cols-4 gap-2 mb-4 text-center text-sm">
+                  <div>
+                    <div className="text-xl font-bold text-orange-600">{smoothie.nutrition.calories}</div>
+                    <div className="text-gray-500">Cal</div>
+                  </div>
+                  <div>
+                    <div className="text-xl font-bold text-blue-600">{smoothie.nutrition.protein}g</div>
+                    <div className="text-gray-500">Protein</div>
+                  </div>
+                  <div>
+                    <div className="text-xl font-bold text-green-600">{smoothie.nutrition.fiber}g</div>
+                    <div className="text-gray-500">Fiber</div>
+                  </div>
+                  <div>
+                    <div className="text-xl font-bold text-purple-600">{smoothie.prepTime}m</div>
+                    <div className="text-gray-500">Time</div>
+                  </div>
+                </div>
 
-        {/* ========== DETOXES ROUTES ========== */}
-        <Route path="/drinks/detoxes/juice" component={DetoxJuices} />
-        <Route path="/drinks/detoxes/tea" component={DetoxTeas} />
-        <Route path="/drinks/detoxes/water" component={DetoxWaters} />
-        <Route path="/drinks/detoxes" component={DetoxesHub} />
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-1">
+                    <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                    <span className="font-medium">{smoothie.rating}</span>
+                    <span className="text-gray-500 text-sm">({smoothie.reviews})</span>
+                  </div>
+                  <Badge variant="outline" className="text-xs">
+                    {smoothie.energyDuration}
+                  </Badge>
+                </div>
 
-        {/* ========== POTENT POTABLES ROUTES (AGE-GATED) ========== */}
-        <Route path="/drinks/potent-potables/:rest*" component={PotentPotablesSection} />
-
-        {/* ========== MAIN DRINKS HUB ========== */}
-        <Route path="/drinks" component={DrinksHubPage} />
-      </Switch>
-    </DrinksProvider>
-  );
-}
-
-function Router() {
-  return (
-    <Layout>
-      {shouldShowDebugConsole() && <DebugConsole />}
-
-      <Switch>
-        {/* Most specific routes first */}
-        <Route path="/profile/:userId?" component={Profile} />
-
-        {/* Main navigation routes */}
-        <Route path="/" component={Feed} />
-        <Route path="/feed" component={Feed} />
-
-        {/* Explore */}
-        <Route path="/explore" component={ExplorePage} />
-
-        {/* Recipes routes */}
-        <Route path="/recipes/:rest*" component={RecipesSection} />
-        <Route path="/recipes" component={RecipesSection} />
-
-        {/* Backward-compat */}
-        <Route path="/explore/filters">
-          <Redirect to="/recipes/filters" />
-        </Route>
-
-        <Route path="/create" component={CreatePost} />
-
-        {/* Feature routes */}
-        <Route path="/pantry">
-          <ErrorBoundary>
-            <Pantry />
-          </ErrorBoundary>
-        </Route>
-
-        {/* Store alias */}
-        <Route path="/store" component={Marketplace} />
-
-        {/* Others */}
-        <Route path="/marketplace" component={Marketplace} />
-        <Route path="/catering" component={CateringMarketplace} />
-        <Route path="/catering/wedding-planning" component={WeddingPlanning} />
-
-        {/* Backward compatibility */}
-        <Route path="/potent-potables">
-          <Redirect to="/drinks/potent-potables" />
-        </Route>
-
-        <Route path="/nutrition" component={NutritionMealPlanner} />
-
-        {/* Substitutions */}
-        <Route path="/substitutions" component={SubstitutionsPage} />
-
-        {/* DRINKS TREE - ALL ROUTES */}
-        <Route path="/drinks/:rest*" component={DrinksSection} />
-        <Route path="/drinks" component={DrinksSection} />
-
-        {/* Placeholder routes */}
-        <Route path="/saved" component={NotFound} />
-        <Route path="/following" component={NotFound} />
-        <Route path="/settings" component={NotFound} />
-
-        {/* Catch-all route - must be last */}
-        <Route component={NotFound} />
-      </Switch>
-    </Layout>
-  );
-}
-
-export default function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
-    </QueryClientProvider>
+                <div className="flex gap-2">
+                  <Button 
+                    className="flex-1 bg-orange-600 hover:bg-orange-700"
+                    onClick={() => handleMakeSmoothie(smoothie)}
+                  >
+                    <Sun className="h-4 w-4 mr-2" />
+                    Make Smoothie
+                  </Button>
+                  <Button variant="outline" size="sm">
+                    <Share2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
