@@ -3,7 +3,6 @@ import * as React from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 
-// ✅ keep using your existing client
 import { queryClient } from "@/lib/query-client";
 
 import { Toaster } from "@/components/ui/toaster";
@@ -11,7 +10,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Layout from "@/components/layout";
 import RequireAgeGate from "@/components/RequireAgeGate";
 
-// ✅ NEW: Import DrinksProvider
 import { DrinksProvider } from "@/contexts/DrinksContext";
 
 // Pages (existing)
@@ -30,75 +28,118 @@ import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 
-// NEW: hook up real Drinks section pages
-import SmoothiesPage from "@/pages/drinks/smoothies";
-import ProteinShakesPage from "@/pages/drinks/protein-shakes";
-import DetoxesPage from "@/pages/drinks/detoxes";
-import PotentPotablesPage from "@/pages/drinks/potent-potables/index"; // ✅ FIXED: Added /index
-import DrinksHubPage from "@/pages/drinks"; // Your interactive hub page
+// ========== DRINKS HUB PAGES ==========
+import DrinksHubPage from "@/pages/drinks";
+import SmoothiesHub from "@/pages/drinks/smoothies";
+import ProteinShakesHub from "@/pages/drinks/protein-shakes";
+import DetoxesHub from "@/pages/drinks/detoxes";
+import PotentPotablesHub from "@/pages/drinks/potent-potables";
 
-// ✅ NEW: Import WheyProteinShakesPage
-import WheyProteinShakesPage from "@/pages/drinks/protein-shakes/whey";
+// ========== SMOOTHIES SUBCATEGORY PAGES ==========
+import BreakfastSmoothies from "@/pages/drinks/smoothies/breakfast";
+import DessertSmoothies from "@/pages/drinks/smoothies/dessert";
+import GreenSmoothies from "@/pages/drinks/smoothies/green";
+import ProteinSmoothies from "@/pages/drinks/smoothies/protein";
+import WorkoutSmoothies from "@/pages/drinks/smoothies/workout";
+
+// ========== PROTEIN SHAKES SUBCATEGORY PAGES ==========
+import CaseinProtein from "@/pages/drinks/protein-shakes/casein";
+import CollagenProtein from "@/pages/drinks/protein-shakes/collagen";
+import PlantBasedProtein from "@/pages/drinks/protein-shakes/plant-based";
+import WheyProtein from "@/pages/drinks/protein-shakes/whey";
+
+// ========== DETOXES SUBCATEGORY PAGES ==========
+import DetoxJuices from "@/pages/drinks/detoxes/juice";
+import DetoxTeas from "@/pages/drinks/detoxes/tea";
+import DetoxWaters from "@/pages/drinks/detoxes/water";
+
+// ========== POTENT POTABLES SUBCATEGORY PAGES ==========
+import CocktailsPage from "@/pages/drinks/potent-potables/cocktails";
+import CognacBrandyPage from "@/pages/drinks/potent-potables/cognac-brandy";
+import MartinisPage from "@/pages/drinks/potent-potables/martinis";
+import MocktailsPage from "@/pages/drinks/potent-potables/mocktails";
+import RumPage from "@/pages/drinks/potent-potables/rum";
+import ScotchIrishWhiskeyPage from "@/pages/drinks/potent-potables/scotch-irish-whiskey";
+import SeasonalPage from "@/pages/drinks/potent-potables/seasonal";
+import TequilaMezcalPage from "@/pages/drinks/potent-potables/tequila-mezcal";
+import VirginCocktailsPage from "@/pages/drinks/potent-potables/virgin-cocktails";
+import VodkaPage from "@/pages/drinks/potent-potables/vodka";
+import WhiskeyBourbonPage from "@/pages/drinks/potent-potables/whiskey-bourbon";
 
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole";
 
-/** Simple redirect helper for Wouter */
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
   React.useEffect(() => setLocation(to), [to, setLocation]);
   return null;
 }
 
-/** Wrap ALL /recipes* routes under ONE provider */
 function RecipesSection() {
   return (
     <RecipesFiltersProvider>
       <Switch>
-        {/* Put the more specific path FIRST so it matches before /recipes */}
         <Route path="/recipes/filters" component={RecipesFiltersPage} />
         <Route path="/recipes" component={RecipesListPage} />
-        {/* Add future /recipes/... pages here to inherit the provider */}
       </Switch>
     </RecipesFiltersProvider>
   );
 }
 
-/** Potent Potables wrapper (21+ gate) */
 function PotentPotablesSection() {
-  // Any path under /drinks/potent-potables/* is age-gated
   return (
     <RequireAgeGate>
-      <PotentPotablesPage />
+      <Switch>
+        {/* Specific routes first */}
+        <Route path="/drinks/potent-potables/cocktails" component={CocktailsPage} />
+        <Route path="/drinks/potent-potables/cognac-brandy" component={CognacBrandyPage} />
+        <Route path="/drinks/potent-potables/martinis" component={MartinisPage} />
+        <Route path="/drinks/potent-potables/mocktails" component={MocktailsPage} />
+        <Route path="/drinks/potent-potables/rum" component={RumPage} />
+        <Route path="/drinks/potent-potables/scotch-irish-whiskey" component={ScotchIrishWhiskeyPage} />
+        <Route path="/drinks/potent-potables/seasonal" component={SeasonalPage} />
+        <Route path="/drinks/potent-potables/tequila-mezcal" component={TequilaMezcalPage} />
+        <Route path="/drinks/potent-potables/virgin-cocktails" component={VirginCocktailsPage} />
+        <Route path="/drinks/potent-potables/vodka" component={VodkaPage} />
+        <Route path="/drinks/potent-potables/whiskey-bourbon" component={WhiskeyBourbonPage} />
+        {/* Hub last */}
+        <Route path="/drinks/potent-potables" component={PotentPotablesHub} />
+      </Switch>
     </RequireAgeGate>
   );
 }
 
-/** ✅ NEW: Group all /drinks routes here WITH DrinksProvider */
 function DrinksSection() {
   return (
     <DrinksProvider>
       <Switch>
-        {/* ✅ Updated: Now using your interactive hub */}
-        <Route path="/drinks" component={DrinksHubPage} />
+        {/* ========== SMOOTHIES ROUTES ========== */}
+        <Route path="/drinks/smoothies/breakfast" component={BreakfastSmoothies} />
+        <Route path="/drinks/smoothies/dessert" component={DessertSmoothies} />
+        <Route path="/drinks/smoothies/green" component={GreenSmoothies} />
+        <Route path="/drinks/smoothies/protein" component={ProteinSmoothies} />
+        <Route path="/drinks/smoothies/workout" component={WorkoutSmoothies} />
+        <Route path="/drinks/smoothies" component={SmoothiesHub} />
 
-        {/* Smoothies */}
-        <Route path="/drinks/smoothies/:type" component={SmoothiesPage} />
-        <Route path="/drinks/smoothies" component={SmoothiesPage} />
+        {/* ========== PROTEIN SHAKES ROUTES ========== */}
+        <Route path="/drinks/protein-shakes/casein" component={CaseinProtein} />
+        <Route path="/drinks/protein-shakes/collagen" component={CollagenProtein} />
+        <Route path="/drinks/protein-shakes/plant-based" component={PlantBasedProtein} />
+        <Route path="/drinks/protein-shakes/whey" component={WheyProtein} />
+        <Route path="/drinks/protein-shakes" component={ProteinShakesHub} />
 
-        {/* Protein Shakes */}
-        <Route path="/drinks/protein-shakes/whey" component={WheyProteinShakesPage} />
-        <Route path="/drinks/protein-shakes/:type" component={ProteinShakesPage} />
-        <Route path="/drinks/protein-shakes" component={ProteinShakesPage} />
+        {/* ========== DETOXES ROUTES ========== */}
+        <Route path="/drinks/detoxes/juice" component={DetoxJuices} />
+        <Route path="/drinks/detoxes/tea" component={DetoxTeas} />
+        <Route path="/drinks/detoxes/water" component={DetoxWaters} />
+        <Route path="/drinks/detoxes" component={DetoxesHub} />
 
-        {/* Detoxes & Cleanses */}
-        <Route path="/drinks/detoxes/:type" component={DetoxesPage} />
-        <Route path="/drinks/detoxes" component={DetoxesPage} />
-
-        {/* ✅ NEW: Potent Potables (21+) — now properly in drinks directory */}
+        {/* ========== POTENT POTABLES ROUTES (AGE-GATED) ========== */}
         <Route path="/drinks/potent-potables/:rest*" component={PotentPotablesSection} />
-        <Route path="/drinks/potent-potables" component={PotentPotablesSection} />
+
+        {/* ========== MAIN DRINKS HUB ========== */}
+        <Route path="/drinks" component={DrinksHubPage} />
       </Switch>
     </DrinksProvider>
   );
@@ -117,14 +158,14 @@ function Router() {
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
 
-        {/* Explore (no recipes filters context needed) */}
+        {/* Explore */}
         <Route path="/explore" component={ExplorePage} />
 
-        {/* ✅ All recipes routes live under one provider */}
+        {/* Recipes routes */}
         <Route path="/recipes/:rest*" component={RecipesSection} />
         <Route path="/recipes" component={RecipesSection} />
 
-        {/* Backward-compat (old explore/filters -> recipes/filters) */}
+        {/* Backward-compat */}
         <Route path="/explore/filters">
           <Redirect to="/recipes/filters" />
         </Route>
@@ -138,7 +179,7 @@ function Router() {
           </ErrorBoundary>
         </Route>
 
-        {/* Store alias so header link "/store" works */}
+        {/* Store alias */}
         <Route path="/store" component={Marketplace} />
 
         {/* Others */}
@@ -146,17 +187,17 @@ function Router() {
         <Route path="/catering" component={CateringMarketplace} />
         <Route path="/catering/wedding-planning" component={WeddingPlanning} />
 
-        {/* ✅ BACKWARD COMPATIBILITY: Redirect old potent-potables route to new location */}
+        {/* Backward compatibility */}
         <Route path="/potent-potables">
           <Redirect to="/drinks/potent-potables" />
         </Route>
 
         <Route path="/nutrition" component={NutritionMealPlanner} />
 
-        {/* NEW: Substitutions UI */}
+        {/* Substitutions */}
         <Route path="/substitutions" component={SubstitutionsPage} />
 
-        {/* ✅ NEW: Drinks tree with your interactive hub - NOW WITH CONTEXT */}
+        {/* DRINKS TREE - ALL ROUTES */}
         <Route path="/drinks/:rest*" component={DrinksSection} />
         <Route path="/drinks" component={DrinksSection} />
 
