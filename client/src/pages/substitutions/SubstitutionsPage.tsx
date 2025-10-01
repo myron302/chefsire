@@ -11,159 +11,20 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Heart, Search } from "lucide-react";
-
-// Types
-interface Substitute {
-  id: string;
-  name: string;
-  ratio: string;
-  notes: string;
-}
-
-interface Ingredient {
-  id: string;
-  name: string;
-  category: string;
-  substitutes: Substitute[];
-}
-
-// Mock data
-const mockIngredients: Ingredient[] = [
-  {
-    id: "1",
-    name: "Butter",
-    category: "Dairy",
-    substitutes: [
-      {
-        id: "1-1",
-        name: "Margarine",
-        ratio: "1:1",
-        notes: "Best for baking, may alter flavor slightly"
-      },
-      {
-        id: "1-2",
-        name: "Coconut Oil",
-        ratio: "1:1",
-        notes: "Solid at room temp, good for vegan options"
-      },
-      {
-        id: "1-3",
-        name: "Applesauce",
-        ratio: "1:1",
-        notes: "Reduces calories, works well in cakes and muffins"
-      }
-    ]
-  },
-  {
-    id: "2",
-    name: "Eggs",
-    category: "Protein",
-    substitutes: [
-      {
-        id: "2-1",
-        name: "Flaxseed Meal",
-        ratio: "1 tbsp + 3 tbsp water = 1 egg",
-        notes: "Best for binding in baked goods"
-      },
-      {
-        id: "2-2",
-        name: "Applesauce",
-        ratio: "1/4 cup = 1 egg",
-        notes: "Adds moisture, works well in cakes"
-      },
-      {
-        id: "2-3",
-        name: "Commercial Egg Replacer",
-        ratio: "Follow package instructions",
-        notes: "Designed specifically for egg replacement"
-      }
-    ]
-  },
-  {
-    id: "3",
-    name: "Milk",
-    category: "Dairy",
-    substitutes: [
-      {
-        id: "3-1",
-        name: "Almond Milk",
-        ratio: "1:1",
-        notes: "Unsweetened works best for savory dishes"
-      },
-      {
-        id: "3-2",
-        name: "Oat Milk",
-        ratio: "1:1",
-        notes: "Creamy texture, good for coffee and baking"
-      },
-      {
-        id: "3-3",
-        name: "Soy Milk",
-        ratio: "1:1",
-        notes: "High protein content, closest to dairy milk"
-      }
-    ]
-  },
-  {
-    id: "4",
-    name: "Flour",
-    category: "Grains",
-    substitutes: [
-      {
-        id: "4-1",
-        name: "Almond Flour",
-        ratio: "1:1 (may need more eggs)",
-        notes: "Gluten-free, adds nutty flavor"
-      },
-      {
-        id: "4-2",
-        name: "Coconut Flour",
-        ratio: "1:4 (use much less)",
-        notes: "Highly absorbent, needs more liquid"
-      },
-      {
-        id: "4-3",
-        name: "Oat Flour",
-        ratio: "1:1",
-        notes: "Gluten-free when certified, adds fiber"
-      }
-    ]
-  },
-  {
-    id: "5",
-    name: "Sugar",
-    category: "Sweeteners",
-    substitutes: [
-      {
-        id: "5-1",
-        name: "Honey",
-        ratio: "3/4 cup = 1 cup sugar",
-        notes: "Reduce liquid in recipe by 1/4 cup"
-      },
-      {
-        id: "5-2",
-        name: "Maple Syrup",
-        ratio: "3/4 cup = 1 cup sugar",
-        notes: "Reduce liquid by 3 tbsp per cup"
-      },
-      {
-        id: "5-3",
-        name: "Stevia",
-        ratio: "1 tsp = 1 cup sugar",
-        notes: "Highly concentrated, adjust to taste"
-      }
-    ]
-  }
-];
+import {
+  type IngredientSubstitution,
+  ingredientSubstitutions,
+  searchIngredientSubstitutions,
+} from "../../data/ingredient-substitutions";
 
 export default function SubstitutionsPage() {
   // State
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<Ingredient[]>([]);
-  const [selectedIngredient, setSelectedIngredient] = useState<Ingredient | null>(null);
-  const [favorites, setFavorites] = useState<Ingredient[]>([]);
+  const [searchResults, setSearchResults] = useState<IngredientSubstitution[]>([]);
+  const [selectedIngredient, setSelectedIngredient] = useState<IngredientSubstitution | null>(null);
+  const [favorites, setFavorites] = useState<IngredientSubstitution[]>([]);
   const [showFavorites, setShowFavorites] = useState(false);
-  const [suggestions, setSuggestions] = useState<Ingredient[]>([]);
+  const [suggestions, setSuggestions] = useState<IngredientSubstitution[]>([]);
 
   // Load favorites from localStorage on mount
   useEffect(() => {
@@ -186,19 +47,21 @@ export default function SubstitutionsPage() {
       return;
     }
 
-    const query = searchQuery.toLowerCase();
-    const filtered = mockIngredients.filter(ingredient => 
-      ingredient.name.toLowerCase().includes(query) || 
-      ingredient.category.toLowerCase().includes(query)
-    );
-
+    const filtered = searchIngredientSubstitutions(searchQuery);
     setSearchResults(filtered);
     setSuggestions(filtered.slice(0, 5)); // Show top 5 suggestions
   }, [searchQuery]);
-
+  
   // Handle search input changes
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
+    // Live search as user types
+    if (e.target.value.trim()) {
+      const filtered = searchIngredientSubstitutions(e.target.value);
+      setSuggestions(filtered.slice(0, 5));
+    } else {
+      setSuggestions([]);
+    }
   };
 
   // Handle search submission
@@ -206,22 +69,23 @@ export default function SubstitutionsPage() {
     e.preventDefault();
     filterIngredients();
     setShowFavorites(false);
+    setSuggestions([]);
   };
 
   // Handle ingredient selection
-  const handleSelectIngredient = (ingredient: Ingredient) => {
+  const handleSelectIngredient = (ingredient: IngredientSubstitution) => {
     setSelectedIngredient(ingredient);
-    setSearchQuery(ingredient.name);
+    setSearchQuery(ingredient.ingredient);
     setSearchResults([]);
     setSuggestions([]);
   };
 
   // Toggle favorite status
-  const toggleFavorite = (ingredient: Ingredient) => {
+  const toggleFavorite = (ingredient: IngredientSubstitution) => {
     setFavorites(prev => {
-      const isFavorite = prev.some(fav => fav.id === ingredient.id);
+      const isFavorite = prev.some(fav => fav.ingredient === ingredient.ingredient);
       if (isFavorite) {
-        return prev.filter(fav => fav.id !== ingredient.id);
+        return prev.filter(fav => fav.ingredient !== ingredient.ingredient);
       } else {
         return [...prev, ingredient];
       }
@@ -229,9 +93,13 @@ export default function SubstitutionsPage() {
   };
 
   // Check if ingredient is favorited
-  const isFavorited = (ingredientId: string) => {
-    return favorites.some(fav => fav.id === ingredientId);
+  const isFavorited = (ingredientName: string) => {
+    return favorites.some(fav => fav.ingredient === ingredientName);
   };
+  
+  const popularIngredients = ingredientSubstitutions.filter(sub => 
+    ["Butter", "Eggs", "Milk", "Flour", "Sugar"].includes(sub.ingredient)
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 p-4 md:p-8">
@@ -274,13 +142,13 @@ export default function SubstitutionsPage() {
                 <CardContent className="p-2">
                   {suggestions.map(ingredient => (
                     <div
-                      key={ingredient.id}
+                      key={ingredient.ingredient}
                       onClick={() => handleSelectIngredient(ingredient)}
                       className="cursor-pointer rounded p-3 hover:bg-amber-50 flex items-center justify-between transition-colors"
                     >
-                      <span className="font-medium text-amber-800">{ingredient.name}</span>
+                      <span className="font-medium text-amber-800">{ingredient.ingredient}</span>
                       <span className="text-xs text-amber-700 bg-amber-100 px-2 py-1 rounded-full">
-                        {ingredient.category}
+                        {ingredient.amount}
                       </span>
                     </div>
                   ))}
@@ -323,12 +191,12 @@ export default function SubstitutionsPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {favorites.map(ingredient => (
-                    <Card key={ingredient.id} className="border-2 border-amber-200 hover:border-amber-400 transition-all hover:shadow-lg rounded-xl">
+                    <Card key={ingredient.ingredient} className="border-2 border-amber-200 hover:border-amber-400 transition-all hover:shadow-lg rounded-xl">
                       <CardHeader className="bg-amber-50 rounded-t-xl">
                         <div className="flex justify-between items-start">
                           <div>
-                            <CardTitle className="text-amber-800">{ingredient.name}</CardTitle>
-                            <CardDescription className="text-amber-600">{ingredient.category}</CardDescription>
+                            <CardTitle className="text-amber-800">{ingredient.ingredient}</CardTitle>
+                            <CardDescription className="text-amber-600">{ingredient.amount}</CardDescription>
                           </div>
                           <Button
                             variant="ghost"
@@ -374,8 +242,8 @@ export default function SubstitutionsPage() {
                 <CardHeader className="bg-gradient-to-r from-amber-100 to-orange-50 rounded-t-xl">
                   <div className="flex justify-between items-start">
                     <div>
-                      <CardTitle className="text-2xl text-amber-800">{selectedIngredient.name}</CardTitle>
-                      <CardDescription className="text-amber-600">{selectedIngredient.category}</CardDescription>
+                      <CardTitle className="text-2xl text-amber-800">{selectedIngredient.ingredient}</CardTitle>
+                      <CardDescription className="text-amber-600">{selectedIngredient.amount}</CardDescription>
                     </div>
                     <Button
                       variant="ghost"
@@ -383,23 +251,23 @@ export default function SubstitutionsPage() {
                       onClick={() => toggleFavorite(selectedIngredient)}
                       className="text-amber-500 hover:text-amber-700 hover:bg-amber-100 rounded-full"
                     >
-                      <Heart className={`h-6 w-6 ${isFavorited(selectedIngredient.id) ? 'fill-amber-500' : ''}`} />
+                      <Heart className={`h-6 w-6 ${isFavorited(selectedIngredient.ingredient) ? 'fill-amber-500' : ''}`} />
                     </Button>
                   </div>
                 </CardHeader>
                 <CardContent className="pt-6">
                   <h3 className="text-lg font-semibold text-amber-700 mb-4">Available Substitutes:</h3>
                   <div className="space-y-4">
-                    {selectedIngredient.substitutes.map(sub => (
-                      <Card key={sub.id} className="border border-amber-100 hover:border-amber-300 transition-colors rounded-lg">
+                    {selectedIngredient.substitutes.map((sub, index) => (
+                      <Card key={index} className="border border-amber-100 hover:border-amber-300 transition-colors rounded-lg">
                         <CardContent className="p-4">
                           <div className="flex justify-between items-start">
-                            <h4 className="font-medium text-amber-800 text-lg">{sub.name}</h4>
-                            <span className="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full">
-                              Ratio: {sub.ratio}
+                            <h4 className="font-medium text-amber-800 text-lg">{sub.substitute}</h4>
+                            <span className="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full whitespace-nowrap">
+                              Amount: {sub.amount}
                             </span>
                           </div>
-                          <p className="text-sm text-amber-600 mt-2">{sub.notes}</p>
+                          {sub.note && <p className="text-sm text-amber-600 mt-2">Note: {sub.note}</p>}
                         </CardContent>
                       </Card>
                     ))}
@@ -424,12 +292,12 @@ export default function SubstitutionsPage() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {searchResults.map(ingredient => (
-                  <Card key={ingredient.id} className="border-2 border-amber-200 hover:border-amber-400 transition-all hover:shadow-lg rounded-xl">
+                  <Card key={ingredient.ingredient} className="border-2 border-amber-200 hover:border-amber-400 transition-all hover:shadow-lg rounded-xl">
                     <CardHeader className="bg-amber-50 rounded-t-xl">
                       <div className="flex justify-between items-start">
                         <div>
-                          <CardTitle className="text-amber-800">{ingredient.name}</CardTitle>
-                          <CardDescription className="text-amber-600">{ingredient.category}</CardDescription>
+                          <CardTitle className="text-amber-800">{ingredient.ingredient}</CardTitle>
+                          <CardDescription className="text-amber-600">{ingredient.amount}</CardDescription>
                         </div>
                         <Button
                           variant="ghost"
@@ -437,7 +305,7 @@ export default function SubstitutionsPage() {
                           onClick={() => toggleFavorite(ingredient)}
                           className="text-amber-500 hover:text-amber-700 hover:bg-amber-100 rounded-full"
                         >
-                          <Heart className={`h-5 w-5 ${isFavorited(ingredient.id) ? 'fill-amber-500' : ''}`} />
+                          <Heart className={`h-5 w-5 ${isFavorited(ingredient.ingredient) ? 'fill-amber-500' : ''}`} />
                         </Button>
                       </div>
                     </CardHeader>
@@ -489,14 +357,14 @@ export default function SubstitutionsPage() {
                     Search for any ingredient to find perfect substitutes. Save your favorites for quick access.
                   </p>
                   <div className="flex flex-wrap justify-center gap-2 mb-6">
-                    {mockIngredients.slice(0, 5).map(ingredient => (
+                    {popularIngredients.map(ingredient => (
                       <Button
-                        key={ingredient.id}
+                        key={ingredient.ingredient}
                         variant="outline"
                         onClick={() => handleSelectIngredient(ingredient)}
                         className="border-amber-300 text-amber-700 hover:bg-amber-50 rounded-full"
                       >
-                        {ingredient.name}
+                        {ingredient.ingredient}
                       </Button>
                     ))}
                   </div>
