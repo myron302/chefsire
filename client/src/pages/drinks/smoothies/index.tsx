@@ -284,6 +284,35 @@ export default function SmoothiesPage({ params }: Params) {
                   <Dumbbell className="w-4 h-4 text-purple-500" />
                   <span className="font-bold">{userProgress.totalDrinksMade}</span>
                 </div>
+                {/* CROSS-HUB NAVIGATION */}
+<Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
+  <CardContent className="p-4">
+    <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <Link href="/drinks/protein-shakes">
+        <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
+          <FlaskConical className="h-4 w-4 mr-2 text-blue-600" />
+          <span>Protein Shakes</span>
+          <ArrowRight className="h-3 w-3 ml-auto" />
+        </Button>
+      </Link>
+      <Link href="/drinks/detoxes">
+        <Button variant="outline" className="w-full justify-start hover:bg-teal-50 hover:border-teal-300">
+          <Leaf className="h-4 w-4 mr-2 text-teal-600" />
+          <span>Detoxes & Cleanses</span>
+          <ArrowRight className="h-3 w-3 ml-auto" />
+        </Button>
+      </Link>
+      <Link href="/drinks/potent-potables">
+        <Button variant="outline" className="w-full justify-start hover:bg-purple-50 hover:border-purple-300">
+          <GlassWater className="h-4 w-4 mr-2 text-purple-600" />
+          <span>Potent Potables</span>
+          <ArrowRight className="h-3 w-3 ml-auto" />
+        </Button>
+      </Link>
+    </div>
+  </CardContent>
+</Card>
                 <div className="text-xs text-gray-600">drinks made</div>
               </div>
             </div>
