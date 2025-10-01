@@ -657,8 +657,6 @@ export default function HighProteinSmoothiesPage() {
                         <div className="text-xl font-bold text-green-600">{smoothie.nutrition.fiber}g</div>
                         <div className="text-gray-500">Fiber</div>
                       </div>
-<div className="text-gray-500">Fiber</div>
-                      </div>
                       <div>
                         <div className="text-xl font-bold text-amber-600">${smoothie.estimatedCost}</div>
                         <div className="text-gray-500">Cost</div>
