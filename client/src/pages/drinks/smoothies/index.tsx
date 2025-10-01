@@ -15,6 +15,104 @@ import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
 
 type Params = { params?: Record<string, string> };
+
+const smoothieSubcategories = [
+  { id: 'protein', name: 'High-Protein', icon: Zap, count: 24, route: '/drinks/smoothies/protein', description: 'Natural protein for muscle building' },
+  { id: 'green', name: 'Green Superfood', icon: Leaf, count: 28, route: '/drinks/smoothies/green', description: 'Nutrient-dense greens and superfoods' },
+  { id: 'dessert', name: 'Dessert', icon: IceCream, count: 32, route: '/drinks/smoothies/dessert', description: 'Guilt-free indulgent flavors' },
+  { id: 'breakfast', name: 'Breakfast', icon: Coffee, count: 26, route: '/drinks/smoothies/breakfast', description: 'Morning fuel with balanced nutrition' },
+  { id: 'workout', name: 'Workout', icon: Dumbbell, count: 22, route: '/drinks/smoothies/workout', description: 'Pre and post-workout energy' }
+];
+
+const ingredients = {
+  fruits: [
+    { name: "Banana", calories: 89, protein: 1.1, carbs: 22.8, fiber: 2.6, icon: "🍌", boost: "potassium" },
+    { name: "Strawberry", calories: 32, protein: 0.7, carbs: 7.7, fiber: 2.0, icon: "🍓", boost: "vitamin-c" },
+    { name: "Blueberry", calories: 57, protein: 0.7, carbs: 14.5, fiber: 2.4, icon: "🫐", boost: "antioxidants" },
+    { name: "Mango", calories: 60, protein: 0.8, carbs: 15.0, fiber: 1.6, icon: "🥭", boost: "vitamin-a" },
+    { name: "Pineapple", calories: 50, protein: 0.5, carbs: 13.1, fiber: 1.4, icon: "🍍", boost: "bromelain" }
+  ],
+  vegetables: [
+    { name: "Spinach", calories: 7, protein: 0.9, carbs: 1.1, fiber: 0.7, icon: "🥬", boost: "iron" },
+    { name: "Kale", calories: 8, protein: 0.6, carbs: 1.4, fiber: 0.6, icon: "🥬", boost: "vitamin-k" },
+    { name: "Carrot", calories: 10, protein: 0.2, carbs: 2.3, fiber: 0.7, icon: "🥕", boost: "beta-carotene" },
+    { name: "Beetroot", calories: 13, protein: 0.4, carbs: 2.8, fiber: 0.8, icon: "🟣", boost: "nitrates" }
+  ],
+  liquids: [
+    { name: "Almond Milk", calories: 15, protein: 0.6, carbs: 0.6, fiber: 0.3, icon: "🥛", boost: "calcium" },
+    { name: "Coconut Water", calories: 19, protein: 0.7, carbs: 3.7, fiber: 1.1, icon: "🥥", boost: "electrolytes" },
+    { name: "Greek Yogurt", calories: 59, protein: 10.0, carbs: 3.6, fiber: 0, icon: "🥛", boost: "probiotics" },
+    { name: "Oat Milk", calories: 16, protein: 0.3, carbs: 1.9, fiber: 0.7, icon: "🥛", boost: "fiber" }
+  ],
+  boosters: [
+    { name: "Protein Powder", calories: 120, protein: 25.0, carbs: 2.0, fiber: 1.0, icon: "💪", boost: "muscle-building" },
+    { name: "Chia Seeds", calories: 58, protein: 2.0, carbs: 5.1, fiber: 4.9, icon: "🌰", boost: "omega-3" },
+    { name: "Flax Seeds", calories: 55, protein: 1.9, carbs: 3.0, fiber: 2.8, icon: "🌰", boost: "lignans" },
+    { name: "Spirulina", calories: 4, protein: 0.8, carbs: 0.2, fiber: 0.1, icon: "🟢", boost: "chlorophyll" }
+  ]
+};
+
+const workoutGoals = [
+  { id: 'pre-workout', name: 'Pre-Workout Energy', icon: '⚡', color: 'bg-orange-500', focus: 'carbs' },
+  { id: 'post-workout', name: 'Post-Workout Recovery', icon: '💪', color: 'bg-blue-500', focus: 'protein' },
+  { id: 'weight-loss', name: 'Weight Loss', icon: '🔥', color: 'bg-red-500', focus: 'low-cal' },
+  { id: 'muscle-gain', name: 'Muscle Building', icon: '🏋️', color: 'bg-green-500', focus: 'protein' },
+  { id: 'endurance', name: 'Endurance', icon: '🏃', color: 'bg-purple-500', focus: 'electrolytes' },
+  { id: 'recovery', name: 'Recovery', icon: '😌', color: 'bg-pink-500', focus: 'antioxidants' }
+];
+
+const premadeRecipes = [
+  {
+    id: 1,
+    name: "Green Goddess Power",
+    ingredients: ["Spinach", "Banana", "Mango", "Coconut Water", "Chia Seeds"],
+    calories: 245,
+    protein: 8.2,
+    difficulty: "Easy",
+    time: "3 min",
+    rating: 4.8,
+    likes: 1247,
+    workoutType: "pre-workout",
+    image: "https://images.unsplash.com/photo-1610970881699-44a5587cabec?w=400&h=300&fit=crop"
+  },
+  {
+    id: 2,
+    name: "Chocolate Protein Beast",
+    ingredients: ["Banana", "Protein Powder", "Almond Milk", "Flax Seeds"],
+    calories: 320,
+    protein: 28.5,
+    difficulty: "Easy", 
+    time: "2 min",
+    rating: 4.9,
+    likes: 2156,
+    workoutType: "post-workout",
+    image: "https://images.unsplash.com/photo-1553909489-cd47e0ef937f?w=400&h=300&fit=crop"
+  },
+  {
+    id: 3,
+    name: "Berry Antioxidant Blast",
+    ingredients: ["Blueberry", "Strawberry", "Greek Yogurt", "Spirulina"],
+    calories: 180,
+    protein: 12.8,
+    difficulty: "Medium",
+    time: "4 min", 
+    rating: 4.7,
+    likes: 892,
+    workoutType: "recovery",
+    image: "https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400&h=300&fit=crop"
+  }
+];
+
+const dailyChallenge = {
+  name: "Green Machine Monday",
+  description: "Create a smoothie with at least 3 green ingredients",
+  progress: 2,
+  goal: 3,
+  participants: 3247,
+  reward: "Green Warrior Badge + 200 XP",
+  timeLeft: "18h 42m"
+};
+
 export default function SmoothiesPage({ params }: Params) {
   const { 
     userProgress, 
@@ -164,7 +262,6 @@ export default function SmoothiesPage({ params }: Params) {
 
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-8">
         
-        {/* Header with User Stats */}
         <div className="text-center relative">
           <div className="absolute top-0 right-0 bg-white rounded-2xl p-4 shadow-lg border">
             <div className="grid grid-cols-3 gap-4 text-sm">
@@ -206,7 +303,6 @@ export default function SmoothiesPage({ params }: Params) {
           )}
         </div>
 
-        {/* Universal Search */}
         <div className="max-w-2xl mx-auto mb-8">
           <UniversalSearch 
             onSelectDrink={handleDrinkSelection}
@@ -215,7 +311,6 @@ export default function SmoothiesPage({ params }: Params) {
           />
         </div>
 
-        {/* Smoothie Subcategories Navigation */}
         <Card className="bg-gradient-to-r from-green-50 to-purple-50 border-green-200">
           <CardContent className="p-6">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
@@ -245,7 +340,6 @@ export default function SmoothiesPage({ params }: Params) {
           </CardContent>
         </Card>
 
-        {/* Favorites Section */}
         {favorites.length > 0 && (
           <Card className="bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-200">
             <CardContent className="p-6">
@@ -275,7 +369,6 @@ export default function SmoothiesPage({ params }: Params) {
           </Card>
         )}
 
-        {/* Daily Challenge */}
         <Card className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0">
           <CardContent className="p-6">
             <div className="flex items-start justify-between mb-4">
@@ -314,7 +407,6 @@ export default function SmoothiesPage({ params }: Params) {
           </CardContent>
         </Card>
 
-        {/* Tabs */}
         <div className="flex gap-2 border-b">
           <Button
             variant={activeTab === 'create' ? 'default' : 'ghost'}
@@ -336,7 +428,6 @@ export default function SmoothiesPage({ params }: Params) {
 
         {activeTab === 'create' && (
           <div className="space-y-6">
-            {/* Fitness Goal Selection */}
             <Card>
               <CardContent className="p-6">
                 <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
@@ -361,7 +452,6 @@ export default function SmoothiesPage({ params }: Params) {
               </CardContent>
             </Card>
 
-            {/* Ingredient Selection */}
             <div className="grid md:grid-cols-2 gap-6">
               <Card>
                 <CardContent className="p-6">
@@ -377,7 +467,6 @@ export default function SmoothiesPage({ params }: Params) {
                   </div>
 
                   <div className="space-y-4">
-                    {/* Fruits */}
                     <div>
                       <h4 className="font-semibold mb-2 text-sm text-gray-600">Fruits</h4>
                       <div className="grid grid-cols-2 gap-2">
@@ -396,7 +485,6 @@ export default function SmoothiesPage({ params }: Params) {
                       </div>
                     </div>
 
-                    {/* Vegetables */}
                     <div>
                       <h4 className="font-semibold mb-2 text-sm text-gray-600">Vegetables</h4>
                       <div className="grid grid-cols-2 gap-2">
@@ -415,7 +503,6 @@ export default function SmoothiesPage({ params }: Params) {
                       </div>
                     </div>
 
-                    {/* Liquids */}
                     <div>
                       <h4 className="font-semibold mb-2 text-sm text-gray-600">Liquids</h4>
                       <div className="grid grid-cols-2 gap-2">
@@ -434,7 +521,6 @@ export default function SmoothiesPage({ params }: Params) {
                       </div>
                     </div>
 
-                    {/* Boosters */}
                     <div>
                       <h4 className="font-semibold mb-2 text-sm text-gray-600">Boosters</h4>
                       <div className="grid grid-cols-2 gap-2">
@@ -463,7 +549,6 @@ export default function SmoothiesPage({ params }: Params) {
                     Your Custom Smoothie
                   </h3>
 
-                  {/* Selected Ingredients */}
                   <div className="mb-4 space-y-2">
                     {customSmoothie.ingredients.length === 0 ? (
                       <div className="text-center py-8 text-gray-400">
@@ -494,7 +579,6 @@ export default function SmoothiesPage({ params }: Params) {
                     )}
                   </div>
 
-                  {/* Nutrition Summary */}
                   {customSmoothie.ingredients.length > 0 && (
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg">
@@ -508,7 +592,7 @@ export default function SmoothiesPage({ params }: Params) {
                           <div className="text-2xl font-bold text-blue-600">
                             {Math.round(customSmoothie.protein * 10) / 10}g
                           </div>
-                          <div className="text-xs text-gray-600">Protein</div>
+               <div className="text-xs text-gray-600">Protein</div>
                         </div>
                         <div className="text-center">
                           <div className="text-2xl font-bold text-green-600">
@@ -670,7 +754,6 @@ export default function SmoothiesPage({ params }: Params) {
           </div>
         )}
 
-        {/* Tips & Benefits */}
         <div className="grid md:grid-cols-2 gap-6">
           <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
             <CardContent className="p-6">
@@ -735,7 +818,6 @@ export default function SmoothiesPage({ params }: Params) {
           </Card>
         </div>
 
-        {/* Smoothie Stats */}
         <Card className="bg-gradient-to-r from-purple-100 to-pink-100 border-purple-200">
           <CardContent className="p-6">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
@@ -791,7 +873,6 @@ export default function SmoothiesPage({ params }: Params) {
           </CardContent>
         </Card>
 
-        {/* Call to Action */}
         <Card className="bg-gradient-to-r from-purple-600 to-pink-600 text-white border-0">
           <CardContent className="p-8 text-center">
             <Gift className="w-16 h-16 mx-auto mb-4" />
@@ -814,4 +895,4 @@ export default function SmoothiesPage({ params }: Params) {
       </div>
     </div>
   );
-}
+}          
