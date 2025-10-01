@@ -10,7 +10,7 @@ import {
   CheckCircle, Target, Flame, Droplets, Bed, Timer,
   Award, TrendingUp, ChefHat, Zap, Gift, Plus, Search,
   Filter, Shuffle, Camera, Share2, ArrowLeft, Activity,
-  BarChart3, Sparkles, Crown, Dumbbell, Zzz
+  BarChart3, Sparkles, Crown, Dumbbell, Moon
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
