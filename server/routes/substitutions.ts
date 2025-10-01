@@ -1,142 +1,130 @@
 // server/routes/substitutions.ts
 import { Router } from "express";
 
-type Alt = { name: string; note?: string; confidence?: number; tags?: string[] };
+// Server keeps a small copy of the catalog so the API can work
+// without importing TS from the client. You can expand this list
+// or later replace with a shared JSON file.
+type SubOption = { name: string; note?: string };
+type SubEntry = {
+  id: string;
+  name: string;
+  synonyms?: string[];
+  groupId: string;
+  pantryCategory:
+    | "produce" | "dairy" | "meat" | "seafood" | "grains"
+    | "spices" | "pantry" | "frozen" | "canned" | "beverages" | "other";
+  substitutes: SubOption[];
+  caution?: string;
+};
 
-const r = Router();
+const DATA: SubEntry[] = [
+  {
+    id: "buttermilk",
+    name: "Buttermilk",
+    synonyms: ["cultured buttermilk"],
+    groupId: "dairy",
+    pantryCategory: "dairy",
+    substitutes: [
+      { name: "Milk + lemon juice", note: "1 cup milk + 1 Tbsp lemon; rest 5–10 min" },
+      { name: "Milk + white vinegar", note: "1 cup milk + 1 Tbsp vinegar" },
+      { name: "Plain yogurt + milk", note: "3/4 cup yogurt + 1/4 cup milk" },
+    ],
+  },
+  {
+    id: "egg",
+    name: "Egg",
+    synonyms: ["eggs"],
+    groupId: "eggs",
+    pantryCategory: "pantry",
+    substitutes: [
+      { name: "Applesauce (unsweetened)", note: "1/4 cup per egg" },
+      { name: "Ground flax + water", note: "1 Tbsp flax + 3 Tbsp water = 1 egg" },
+    ],
+  },
+  {
+    id: "olive-oil",
+    name: "Olive Oil",
+    synonyms: ["evoo", "extra virgin olive oil"],
+    groupId: "oils-fats",
+    pantryCategory: "pantry",
+    substitutes: [
+      { name: "Avocado oil", note: "Neutral; high smoke point" },
+      { name: "Canola or sunflower oil", note: "Neutral; 1:1" },
+    ],
+  },
+  {
+    id: "brown-sugar",
+    name: "Brown Sugar",
+    synonyms: ["light brown sugar", "dark brown sugar"],
+    groupId: "sweeteners",
+    pantryCategory: "pantry",
+    substitutes: [
+      { name: "White sugar + molasses", note: "1 cup + 1 Tbsp molasses (light)" },
+      { name: "White sugar + maple syrup", note: "Adjust liquid in batter" },
+    ],
+  },
+];
 
-/** tiny helper: parse "a,b,c" OR repeatable query into string[] */
-function parseList(input: unknown): string[] {
-  if (Array.isArray(input)) {
-    return input.flatMap((x) => String(x).split(",")).map((s) => s.trim()).filter(Boolean);
-  }
-  if (typeof input === "string") {
-    return input.split(",").map((s) => s.trim()).filter(Boolean);
-  }
-  return [];
+function normalize(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-/** static, local library (no OpenAI) */
-function suggestForOne(ingredientRaw: string, diet?: string, avoid: string[] = []): Alt[] {
-  const ing = ingredientRaw.toLowerCase();
-  const lib: Record<string, Alt[]> = {
-    milk: [
-      { name: "oat milk", note: "neutral flavor", confidence: 0.9, tags: ["vegan"] },
-      { name: "almond milk", note: "light, nutty", confidence: 0.85, tags: ["vegan","nut"] },
-      { name: "soy milk", note: "higher protein", confidence: 0.85, tags: ["vegan","legume"] },
-      { name: "lactose-free milk", note: "still dairy", confidence: 0.7, tags: ["dairy"] },
-    ],
-    butter: [
-      { name: "olive oil", note: "⅞ volume of butter", confidence: 0.85, tags: ["vegan"] },
-      { name: "vegan butter", note: "1:1 swap", confidence: 0.9, tags: ["vegan"] },
-      { name: "ghee", note: "clarified butter", confidence: 0.6, tags: ["dairy"] },
-    ],
-    cheese: [
-      { name: "nutritional yeast", note: "cheesy umami", confidence: 0.75, tags: ["vegan"] },
-      { name: "vegan mozzarella", note: "melting dishes", confidence: 0.7, tags: ["vegan"] },
-      { name: "lactose-free cheese", note: "still dairy", confidence: 0.5, tags: ["dairy"] },
-    ],
-    egg: [
-      { name: "flax egg", note: "1 tbsp ground flax + 3 tbsp water", confidence: 0.8, tags: ["vegan","seed"] },
-      { name: "chia egg", note: "1 tbsp chia + 3 tbsp water", confidence: 0.75, tags: ["vegan","seed"] },
-      { name: "unsweetened applesauce", note: "¼ cup per egg (baking)", confidence: 0.7, tags: ["vegan","fruit"] },
-      { name: "silken tofu", note: "¼ cup per egg (custards/cakes)", confidence: 0.7, tags: ["vegan","soy"] },
-    ],
-    "all-purpose flour": [
-      { name: "gluten-free flour blend", note: "1:1 if labeled", confidence: 0.8, tags: ["gluten-free"] },
-      { name: "oat flour", note: "muffins/cookies", confidence: 0.6, tags: ["gluten-free"] },
-    ],
-    honey: [
-      { name: "maple syrup", note: "slightly thinner", confidence: 0.85, tags: ["vegan"] },
-      { name: "agave syrup", note: "neutral, sweeter", confidence: 0.75, tags: ["vegan"] },
-    ],
-    yogurt: [
-      { name: "coconut yogurt", note: "1:1, richer", confidence: 0.8, tags: ["vegan"] },
-      { name: "soy yogurt", note: "1:1, neutral", confidence: 0.75, tags: ["vegan","soy"] },
-    ],
-    cream: [
-      { name: "coconut cream", note: "soups/curries", confidence: 0.8, tags: ["vegan"] },
-      { name: "cashew cream", note: "blend soaked cashews", confidence: 0.75, tags: ["vegan","nut"] },
-      { name: "oat cream", note: "savory sauces", confidence: 0.7, tags: ["vegan"] },
-    ],
-    "sour cream": [
-      { name: "plant-based sour cream", note: "store-bought", confidence: 0.8, tags: ["vegan"] },
-      { name: "coconut yogurt + lemon", note: "DIY tang", confidence: 0.7, tags: ["vegan"] },
-    ],
-  };
+function scoreMatch(q: string, t: string) {
+  if (t.startsWith(q)) return 1.0;
+  if (t.includes(q)) return 0.8;
+  return 0;
+}
 
-  // choose base list by fuzzy key
-  const key =
-    Object.keys(lib).find((k) => ing.includes(k)) ||
-    (ing.includes("flour") ? "all-purpose flour" : "");
+const router = Router();
 
-  let alts: Alt[] = key ? lib[key] : [];
+/**
+ * GET /api/substitutions?q=buttermilk
+ * Optional: &groupId=dairy
+ */
+router.get("/", (req, res) => {
+  const qRaw = String(req.query.q || "").trim();
+  const groupId = req.query.groupId ? String(req.query.groupId) : undefined;
+  const q = normalize(qRaw);
+  if (!q) return res.json({ query: qRaw, results: [] });
 
-  // diet filtering
-  if (diet?.toLowerCase() === "vegan") {
-    alts = alts.filter((a) => !(a.tags || []).includes("dairy") && !(a.name.toLowerCase().includes("honey")));
-  }
+  const scored: { entry: SubEntry; score: number; matchedAs: "name"|"synonym" }[] = [];
 
-  // avoid filtering: if "nut" in avoid, drop almond/cashew etc.
-  const avoidL = avoid.map((s) => s.toLowerCase());
-  if (avoidL.length) {
-    alts = alts.filter((a) => {
-      const name = a.name.toLowerCase();
-      const tags = (a.tags || []).map((t) => t.toLowerCase());
-      return !avoidL.some((bad) => name.includes(bad) || tags.includes(bad));
-    });
-  }
+  for (const e of DATA) {
+    if (groupId && e.groupId !== groupId) continue;
 
-  // if we have no specific match, return generic fallbacks
-  if (!alts.length) {
-    if (diet?.toLowerCase() === "vegan") {
-      alts = [
-        { name: "olive oil", confidence: 0.5, tags: ["vegan"] },
-        { name: "oat-based alternative", confidence: 0.45, tags: ["vegan"] },
-      ];
-    } else {
-      alts = [{ name: "closest plant-based alternative", confidence: 0.3, tags: ["hint"] }];
+    const ns = normalize(e.name);
+    const s = scoreMatch(q, ns);
+    if (s > 0) scored.push({ entry: e, score: s, matchedAs: "name" });
+
+    if (e.synonyms) {
+      for (const syn of e.synonyms) {
+        const ss = scoreMatch(q, normalize(syn));
+        if (ss > 0) scored.push({ entry: e, score: ss * 0.95, matchedAs: "synonym" });
+      }
     }
   }
-  return alts;
-}
 
-function buildResponse(ingredients: string[], diet?: string, avoid?: string[]) {
-  return {
-    items: ingredients.map((ing) => ({
-      original: ing,
-      alternatives: suggestForOne(ing, diet, avoid),
-    })),
-    info: {
-      diet: diet || null,
-      avoid: avoid || [],
-      engine: "local-rule-based",
-    },
-  };
-}
-
-/** GET — browser-friendly: /api/substitutions/suggest?ingredients=milk,butter&diet=vegan&avoid=dairy,nut */
-r.get("/substitutions/suggest", (req, res) => {
-  const ingredients = parseList(req.query.ingredients || req.query.q);
-  const avoid = parseList(req.query.avoid);
-  const diet = typeof req.query.diet === "string" ? req.query.diet : undefined;
-
-  if (!ingredients.length) {
-    return res.status(400).json({ message: "Provide ?ingredients=a,b,c (or ?q=...)" });
+  // dedupe by id keep best
+  const best = new Map<string, typeof scored[number]>();
+  for (const r of scored) {
+    const prev = best.get(r.entry.id);
+    if (!prev || r.score > prev.score) best.set(r.entry.id, r);
   }
-  res.json(buildResponse(ingredients, diet, avoid));
+
+  const results = [...best.values()]
+    .sort((a, b) => b.score - a.score)
+    .map(({ entry, matchedAs, score }) => ({
+      id: entry.id,
+      name: entry.name,
+      groupId: entry.groupId,
+      pantryCategory: entry.pantryCategory,
+      matchedAs,
+      score,
+      substitutes: entry.substitutes,
+      caution: entry.caution,
+    }));
+
+  res.json({ query: qRaw, results });
 });
 
-/** POST — JSON body: { ingredients: [], diet?: "vegan", avoid?: [] } */
-r.post("/substitutions/suggest", (req, res) => {
-  const ingredients = Array.isArray(req.body?.ingredients) ? (req.body.ingredients as string[]) : [];
-  const diet = typeof req.body?.diet === "string" ? (req.body.diet as string) : undefined;
-  const avoid = Array.isArray(req.body?.avoid) ? (req.body.avoid as string[]) : [];
-
-  if (!ingredients.length) {
-    return res.status(400).json({ message: "Body must include { ingredients: string[] }" });
-  }
-  res.json(buildResponse(ingredients, diet, avoid));
-});
-
-export default r;
+export default router;
