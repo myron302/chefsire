@@ -1,4 +1,223 @@
-</div>
+import React, { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
+import { 
+  Crown, Clock, Star, Heart, Flame, Sparkles, Plus,
+  Search, Share2, ArrowLeft, Zap, Trophy, Sun
+} from 'lucide-react';
+import { useDrinks } from '@/contexts/DrinksContext';
+
+const breakfastSmoothies = [
+  {
+    id: 'breakfast-1',
+    name: 'Power Morning Fuel',
+    description: 'Complete nutrition to kickstart your day',
+    image: 'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=400&h=300&fit=crop',
+    breakfastType: 'Complete Meal',
+    energyLevel: 'High',
+    satietyLevel: 'Very High',
+    category: 'Complete Breakfast',
+    nutrition: { calories: 420, protein: 22, carbs: 58, fat: 12, fiber: 14, caffeine: 0 },
+    ingredients: ['Steel-Cut Oats', 'Greek Yogurt', 'Banana', 'Berries', 'Almond Butter', 'Chia Seeds'],
+    morningBenefits: ['Sustained Energy', 'Complete Nutrition', 'High Fiber'],
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.8,
+    reviews: 1892,
+    trending: true,
+    bestTime: 'Early Morning',
+    energyDuration: '4-5h'
+  },
+  {
+    id: 'breakfast-2',
+    name: 'Coffee Kick Mocha',
+    description: 'Espresso-infused morning energy',
+    image: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=400&h=300&fit=crop',
+    breakfastType: 'Energizing',
+    energyLevel: 'Very High',
+    satietyLevel: 'Medium',
+    category: 'Coffee Boost',
+    nutrition: { calories: 320, protein: 18, carbs: 42, fat: 8, fiber: 6, caffeine: 95 },
+    ingredients: ['Cold Brew', 'Protein Powder', 'Banana', 'Cacao', 'Dates', 'Almond Milk'],
+    morningBenefits: ['Caffeine Boost', 'Mental Focus', 'Quick Energy'],
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.7,
+    reviews: 1456,
+    trending: true,
+    bestTime: 'Morning',
+    energyDuration: '3-4h'
+  }
+];
+
+const breakfastTypes = [
+  {
+    id: 'complete',
+    name: 'Complete Meal',
+    description: 'Full breakfast replacement',
+    icon: Crown,
+    color: 'text-amber-600',
+    energyProfile: 'Sustained Release',
+    keyNutrients: ['Complex Carbs', 'Protein', 'Healthy Fats'],
+    idealFor: 'Meal Replacement',
+    satietyDuration: '4-5 hours',
+    avgCalories: 400
+  },
+  {
+    id: 'energizing',
+    name: 'Energy Boost',
+    description: 'Quick morning wake-up',
+    icon: Zap,
+    color: 'text-orange-600',
+    energyProfile: 'Quick Release',
+    keyNutrients: ['Caffeine', 'Simple Carbs', 'B Vitamins'],
+    idealFor: 'Energy Boost',
+    satietyDuration: '2-3 hours',
+    avgCalories: 280
+  }
+];
+
+const breakfastCategories = [
+  {
+    id: 'sustained-energy',
+    name: 'Sustained Energy',
+    description: 'Long-lasting morning fuel',
+    icon: Sun,
+    color: 'bg-yellow-500',
+    energyDuration: '4-5 hours',
+    macroFocus: 'Complex Carbs + Protein'
+  },
+  {
+    id: 'quick-boost',
+    name: 'Quick Energy',
+    description: 'Fast morning activation',
+    icon: Zap,
+    color: 'bg-orange-500',
+    energyDuration: '2-3 hours',
+    macroFocus: 'Simple Carbs + Caffeine'
+  }
+];
+
+export default function BreakfastSmoothiesPage() {
+  const { 
+    addToFavorites, 
+    isFavorite,
+    addToRecentlyViewed,
+    userProgress,
+    incrementDrinksMade,
+    addPoints
+  } = useDrinks();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedBreakfastType, setSelectedBreakfastType] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [energyLevel, setEnergyLevel] = useState(['Any']);
+  const [maxCalories, setMaxCalories] = useState([500]);
+  const [needsCaffeine, setNeedsCaffeine] = useState(false);
+  const [sortBy, setSortBy] = useState('rating');
+  const [activeTab, setActiveTab] = useState('browse');
+
+  const getFilteredSmoothies = () => {
+    let filtered = breakfastSmoothies.filter(smoothie => {
+      const matchesSearch = smoothie.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesType = !selectedBreakfastType || smoothie.breakfastType.includes(selectedBreakfastType);
+      const matchesCategory = !selectedCategory || smoothie.category.includes(selectedCategory);
+      const matchesEnergy = energyLevel[0] === 'Any' || smoothie.energyLevel === energyLevel[0];
+      const matchesCalories = smoothie.nutrition.calories <= maxCalories[0];
+      const matchesCaffeine = !needsCaffeine || smoothie.nutrition.caffeine > 0;
+      
+      return matchesSearch && matchesType && matchesCategory && matchesEnergy && matchesCalories && matchesCaffeine;
+    });
+
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'protein': return (b.nutrition.protein || 0) - (a.nutrition.protein || 0);
+        case 'energy': return b.energyDuration.localeCompare(a.energyDuration);
+        case 'calories': return (a.nutrition.calories || 0) - (b.nutrition.calories || 0);
+        default: return 0;
+      }
+    });
+
+    return filtered;
+  };
+
+  const filteredSmoothies = getFilteredSmoothies();
+  const featuredSmoothies = breakfastSmoothies.filter(s => s.trending);
+
+  const handleMakeSmoothie = (smoothie: any) => {
+    addToRecentlyViewed({
+      id: smoothie.id,
+      name: smoothie.name,
+      category: 'smoothies',
+      description: smoothie.description,
+      ingredients: smoothie.ingredients,
+      nutrition: smoothie.nutrition,
+      difficulty: smoothie.difficulty,
+      prepTime: smoothie.prepTime,
+      rating: smoothie.rating,
+      fitnessGoal: 'Breakfast',
+      bestTime: smoothie.bestTime
+    });
+    incrementDrinksMade();
+    addPoints(25);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-orange-50 to-pink-50">
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="sm" onClick={() => window.history.back()}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back
+              </Button>
+              <div className="h-6 w-px bg-gray-300" />
+              <div className="flex items-center gap-2">
+                <Crown className="h-6 w-6 text-amber-600" />
+                <h1 className="text-2xl font-bold text-gray-900">Breakfast Smoothies</h1>
+                <Badge className="bg-amber-100 text-amber-800">Morning Fuel</Badge>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Star className="h-4 w-4 text-yellow-500" />
+                <span>Level {userProgress.level}</span>
+                <div className="w-px h-4 bg-gray-300" />
+                <span>{userProgress.totalPoints} XP</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
+          {[
+            { id: 'browse', label: 'Browse All', icon: Search },
+            { id: 'breakfast-types', label: 'Breakfast Types', icon: Crown },
+            { id: 'categories', label: 'Categories', icon: Sparkles },
+            { id: 'featured', label: 'Featured', icon: Star }
+          ].map(tab => {
+            const Icon = tab.icon;
+            return (
+              <Button
+                key={tab.id}
+                variant={activeTab === tab.id ? "default" : "ghost"}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex-1 ${activeTab === tab.id ? 'bg-white shadow-sm' : ''}`}
+              >
+                <Icon className="h-4 w-4 mr-2" />
+                {tab.label}
+              </Button>
+            );
+          })}
+        </div>
 
         {activeTab === 'browse' && (
           <div>
@@ -108,6 +327,7 @@
                           difficulty: smoothie.difficulty,
                           prepTime: smoothie.prepTime,
                           rating: smoothie.rating,
+                          fitnessGoal: 'Breakfast',
                           bestTime: smoothie.bestTime
                         })}
                         className="text-gray-400 hover:text-red-500"
@@ -195,7 +415,7 @@
             </div>
           </div>
         )}
-  {/* Breakfast Types Tab */}
+
         {activeTab === 'breakfast-types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {breakfastTypes.map(type => {
@@ -272,7 +492,6 @@
           </div>
         )}
 
-        {/* Categories Tab */}
         {activeTab === 'categories' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {breakfastCategories.map(category => {
@@ -280,8 +499,6 @@
               const categorySmoothies = breakfastSmoothies.filter(smoothie => {
                 if (category.id === 'sustained-energy') return smoothie.energyDuration.includes('4') || smoothie.energyDuration.includes('5');
                 if (category.id === 'quick-boost') return smoothie.nutrition.caffeine > 0 || smoothie.energyLevel === 'Very High';
-                if (category.id === 'muscle-building') return smoothie.nutrition.protein >= 20;
-                if (category.id === 'gentle-detox') return smoothie.category.includes('Detox') || smoothie.category.includes('Light');
                 return false;
               });
               
@@ -322,8 +539,6 @@
                         onClick={() => {
                           if (category.id === 'sustained-energy') setSelectedCategory('Complete');
                           else if (category.id === 'quick-boost') setSelectedCategory('Coffee');
-                          else if (category.id === 'muscle-building') setSelectedCategory('Protein');
-                          else if (category.id === 'gentle-detox') setSelectedCategory('Detox');
                           setActiveTab('browse');
                         }}
                       >
@@ -336,7 +551,7 @@
             })}
           </div>
         )}
-  {/* Featured Tab */}
+
         {activeTab === 'featured' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {featuredSmoothies.map(smoothie => (
@@ -450,7 +665,6 @@
         )}
       </div>
 
-      {/* Floating Action Button */}
       <div className="fixed bottom-6 right-6 z-50">
         <Button 
           size="lg" 
@@ -461,7 +675,6 @@
         </Button>
       </div>
 
-      {/* Bottom Stats Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-6 text-sm">
