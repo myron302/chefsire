@@ -1,3 +1,20 @@
+import React, { useState } from 'react';
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { 
+  Sparkles, Clock, Users, Trophy, Heart, Star, Calendar, 
+  CheckCircle, Target, Flame, Droplets, Leaf, Apple,
+  Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
+  Dumbbell, Activity, BarChart3, Shuffle, Camera, Share2,
+  Search, ArrowRight, Coffee, IceCream, X
+} from 'lucide-react';
+
+import UniversalSearch from '@/components/UniversalSearch';
+import { useDrinks } from '@/contexts/DrinksContext';
+
+type Params = { params?: Record<string, string> };
 export default function SmoothiesPage({ params }: Params) {
   const { 
     userProgress, 
