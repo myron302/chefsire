@@ -1,19 +1,25 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from 'react';
 
 /**
- * Debounce any changing value.
- * Example:
- *   const [q, setQ] = useState("");
- *   const debouncedQ = useDebouncedValue(q, 300);
- *   // use debouncedQ in fetch calls so you don’t refetch on every keystroke
+ * A hook that debounces a value.
+ * @param value The value to debounce.
+ * @param delay The debounce delay in milliseconds.
+ * @returns The debounced value.
  */
-export default function useDebouncedValue<T>(value: T, delayMs = 300): T {
-  const [debounced, setDebounced] = useState<T>(value);
+export function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
 
   useEffect(() => {
-    const id = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(id);
-  }, [value, delayMs]);
+    // Set a timer to update the debounced value after the specified delay
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
 
-  return debounced;
+    // Cleanup function to clear the timer if the value or delay changes
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
 }
