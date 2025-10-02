@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'wouter';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import {
   CheckCircle, Target, Flame, Droplets, Leaf, Apple,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Dumbbell, Activity, BarChart3, Shuffle, Camera, Share2,
-  Search, ArrowRight, Coffee, IceCream, X
+  Search, ArrowRight, Coffee, IceCream, X, FlaskConical, GlassWater
 } from 'lucide-react';
 
 import UniversalSearch from '@/components/UniversalSearch';
@@ -262,6 +263,36 @@ export default function SmoothiesPage({ params }: Params) {
 
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-8">
         
+        {/* CROSS-HUB NAVIGATION */}
+        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Link href="/drinks/protein-shakes">
+                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
+                  <FlaskConical className="h-4 w-4 mr-2 text-blue-600" />
+                  <span>Protein Shakes</span>
+                  <ArrowRight className="h-3 w-3 ml-auto" />
+                </Button>
+              </Link>
+              <Link href="/drinks/detoxes">
+                <Button variant="outline" className="w-full justify-start hover:bg-teal-50 hover:border-teal-300">
+                  <Leaf className="h-4 w-4 mr-2 text-teal-600" />
+                  <span>Detoxes & Cleanses</span>
+                  <ArrowRight className="h-3 w-3 ml-auto" />
+                </Button>
+              </Link>
+              <Link href="/drinks/potent-potables">
+                <Button variant="outline" className="w-full justify-start hover:bg-purple-50 hover:border-purple-300">
+                  <GlassWater className="h-4 w-4 mr-2 text-purple-600" />
+                  <span>Potent Potables</span>
+                  <ArrowRight className="h-3 w-3 ml-auto" />
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="text-center relative">
           <div className="absolute top-0 right-0 bg-white rounded-2xl p-4 shadow-lg border">
             <div className="grid grid-cols-3 gap-4 text-sm">
@@ -284,35 +315,6 @@ export default function SmoothiesPage({ params }: Params) {
                   <Dumbbell className="w-4 h-4 text-purple-500" />
                   <span className="font-bold">{userProgress.totalDrinksMade}</span>
                 </div>
-                {/* CROSS-HUB NAVIGATION */}
-<Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
-  <CardContent className="p-4">
-    <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-      <Link href="/drinks/protein-shakes">
-        <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
-          <FlaskConical className="h-4 w-4 mr-2 text-blue-600" />
-          <span>Protein Shakes</span>
-          <ArrowRight className="h-3 w-3 ml-auto" />
-        </Button>
-      </Link>
-      <Link href="/drinks/detoxes">
-        <Button variant="outline" className="w-full justify-start hover:bg-teal-50 hover:border-teal-300">
-          <Leaf className="h-4 w-4 mr-2 text-teal-600" />
-          <span>Detoxes & Cleanses</span>
-          <ArrowRight className="h-3 w-3 ml-auto" />
-        </Button>
-      </Link>
-      <Link href="/drinks/potent-potables">
-        <Button variant="outline" className="w-full justify-start hover:bg-purple-50 hover:border-purple-300">
-          <GlassWater className="h-4 w-4 mr-2 text-purple-600" />
-          <span>Potent Potables</span>
-          <ArrowRight className="h-3 w-3 ml-auto" />
-        </Button>
-      </Link>
-    </div>
-  </CardContent>
-</Card>
                 <div className="text-xs text-gray-600">drinks made</div>
               </div>
             </div>
@@ -340,6 +342,7 @@ export default function SmoothiesPage({ params }: Params) {
           />
         </div>
 
+        {/* SMOOTHIE SUBCATEGORIES */}
         <Card className="bg-gradient-to-r from-green-50 to-purple-50 border-green-200">
           <CardContent className="p-6">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
@@ -350,25 +353,24 @@ export default function SmoothiesPage({ params }: Params) {
               {smoothieSubcategories.map((subcategory) => {
                 const Icon = subcategory.icon;
                 return (
-                  <Button
-                    key={subcategory.id}
-                    variant="outline"
-                    className="h-auto p-4 flex flex-col items-center gap-2 hover:bg-green-50 hover:border-green-300"
-                    onClick={() => window.location.href = subcategory.route}
-                  >
-                    <Icon className="h-6 w-6 text-green-600" />
-                    <div className="text-center">
-                      <div className="font-medium text-sm">{subcategory.name}</div>
-                      <div className="text-xs text-gray-500">{subcategory.count} recipes</div>
-                    </div>
-                    <ArrowRight className="h-3 w-3 text-gray-400" />
-                  </Button>
+                  <Link key={subcategory.id} href={subcategory.route}>
+                    <Button
+                      variant="outline"
+                      className="h-auto p-4 flex flex-col items-center gap-2 hover:bg-green-50 hover:border-green-300 w-full"
+                    >
+                      <Icon className="h-6 w-6 text-green-600" />
+                      <div className="text-center">
+                        <div className="font-medium text-sm">{subcategory.name}</div>
+                        <div className="text-xs text-gray-500">{subcategory.count} recipes</div>
+                      </div>
+                      <ArrowRight className="h-3 w-3 text-gray-400" />
+                    </Button>
+                  </Link>
                 );
               })}
             </div>
           </CardContent>
         </Card>
-
         {favorites.length > 0 && (
           <Card className="bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-200">
             <CardContent className="p-6">
@@ -621,7 +623,7 @@ export default function SmoothiesPage({ params }: Params) {
                           <div className="text-2xl font-bold text-blue-600">
                             {Math.round(customSmoothie.protein * 10) / 10}g
                           </div>
-               <div className="text-xs text-gray-600">Protein</div>
+                          <div className="text-xs text-gray-600">Protein</div>
                         </div>
                         <div className="text-center">
                           <div className="text-2xl font-bold text-green-600">
@@ -924,4 +926,4 @@ export default function SmoothiesPage({ params }: Params) {
       </div>
     </div>
   );
-}          
+}
