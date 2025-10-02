@@ -960,3 +960,4 @@ export default function InfusedWatersPage() {
     </div>
   );
 }
+export default InfusedWatersPage;
