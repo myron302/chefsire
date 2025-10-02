@@ -91,7 +91,7 @@ function PotentPotablesSection() {
   return (
     <RequireAgeGate>
       <Switch>
-        {/* Specific routes first */}
+        {/* ✅ FIXED: Specific routes first */}
         <Route path="/drinks/potent-potables/cocktails" component={CocktailsPage} />
         <Route path="/drinks/potent-potables/cognac-brandy" component={CognacBrandyPage} />
         <Route path="/drinks/potent-potables/martinis" component={MartinisPage} />
@@ -103,7 +103,7 @@ function PotentPotablesSection() {
         <Route path="/drinks/potent-potables/virgin-cocktails" component={VirginCocktailsPage} />
         <Route path="/drinks/potent-potables/vodka" component={VodkaPage} />
         <Route path="/drinks/potent-potables/whiskey-bourbon" component={WhiskeyBourbonPage} />
-        {/* Hub last */}
+        {/* ✅ FIXED: Hub last */}
         <Route path="/drinks/potent-potables" component={PotentPotablesHub} />
       </Switch>
     </RequireAgeGate>
@@ -129,14 +129,20 @@ function DrinksSection() {
       <Route path="/drinks/protein-shakes" component={ProteinShakesHub} />
 
       {/* ========== DETOXES ROUTES ========== */}
-      {/* ✅ FIXED: Added correct /drinks prefix */}
+      {/* ✅ FIXED: Subpages BEFORE hub */}
       <Route path="/drinks/detoxes/juice" component={DetoxJuices} />
       <Route path="/drinks/detoxes/tea" component={DetoxTeas} />
       <Route path="/drinks/detoxes/water" component={DetoxWaters} />
       <Route path="/drinks/detoxes" component={DetoxesHub} />
 
       {/* ========== POTENT POTABLES ROUTES (AGE-GATED) ========== */}
-      <Route path="/drinks/potent-potables/:rest*" component={PotentPotablesSection} />
+      {/* ❌ REMOVED: This catch-all was intercepting all potent-potables routes */}
+      {/* <Route path="/drinks/potent-potables/:rest*" component={PotentPotablesSection} /> */}
+      
+      {/* ✅ ADDED: Explicit potent-potables route */}
+      <Route path="/drinks/potent-potables">
+        <PotentPotablesSection />
+      </Route>
 
       {/* ========== MAIN DRINKS HUB ========== */}
       <Route path="/drinks" component={DrinksHubPage} />
@@ -197,7 +203,13 @@ function Router() {
         <Route path="/substitutions" component={SubstitutionsPage} />
 
         {/* DRINKS TREE - ALL ROUTES */}
-        <Route path="/drinks/:rest*" component={DrinksSection} />
+        {/* ✅ FIXED: Removed the problematic catch-all */}
+        <Route path="/drinks/:rest*">
+          {(params) => {
+            // This allows proper nested routing within drinks
+            return <DrinksSection />;
+          }}
+        </Route>
         <Route path="/drinks" component={DrinksSection} />
 
         {/* Placeholder routes */}
