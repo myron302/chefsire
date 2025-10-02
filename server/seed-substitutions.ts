@@ -2,18 +2,20 @@
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool } from "@neondatabase/serverless";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import fs from "node:fs";
+import path from "node:path";
+import readline from "node:readline";
 import crypto from "node:crypto";
+
 import {
   substitutionIngredients,
   substitutions,
-} from "../shared/schema.js"; // keep .js path like your existing seed.ts
+} from "../shared/schema.js";
 
 function reqEnv(name: string): string {
   const v = process.env[name];
-  if (!v || !v.trim()) {
-    throw new Error(`${name} is missing. In production, set it in Plesk → Custom environment variables.`);
-  }
+  if (!v || !v.trim()) throw new Error(`${name} is missing. Set it in server/.env`);
   return v;
 }
 
@@ -21,50 +23,42 @@ const DATABASE_URL = reqEnv("DATABASE_URL");
 const pool = new Pool({ connectionString: DATABASE_URL });
 const db = drizzle(pool);
 
-// ------- helpers -------
-type Comp = { item: string; amount?: number; unit?: string; note?: string };
+// ---- dataset discovery ----
+const candidateFiles = [
+  path.join(process.cwd(), "server/data/substitutions_seed_consolidated.jsonl"),
+  path.join(process.cwd(), "server/data/substitutions_seed_consolidated.ndjson"),
+  path.join(process.cwd(), "data/substitutions_seed_consolidated.jsonl"),
+  path.join(process.cwd(), "data/substitutions_seed_consolidated.ndjson"),
+];
+const datasetPath = candidateFiles.find((p) => fs.existsSync(p));
+
+type Component = { item: string; amount?: number; unit?: string; note?: string };
 type Method = { action?: string; time_min?: number; time_max?: number; temperature?: string };
+type SubRow = {
+  text: string;
+  components: Component[];
+  method?: Method;
+  context?: string;
+  diet_tags?: string[];
+  allergen_flags?: string[];
+  signature?: string;
+  signature_hash?: string;
+  variants?: any[];
+  provenance?: any[];
+};
+type Line = {
+  ingredient: string;
+  subs: SubRow[];
+};
 
-function makeText(components: Comp[], method?: Method, context?: string) {
-  const base = components
-    .map((c) =>
-      `${c.amount ?? ""}${c.amount ? " " : ""}${c.unit ? c.unit + " " : ""}${c.item}${c.note ? ` (${c.note})` : ""}`.trim()
-    )
-    .join(" + ");
-  const tail: string[] = [];
-  if (method?.action) tail.push(method.action);
-  if (method?.time_min != null || method?.time_max != null) {
-    const r = `${method?.time_min ?? ""}${method?.time_max != null ? `–${method.time_max}` : ""}`;
-    if (r) tail.push(`for ${r} min`);
-  }
-  if (method?.temperature) tail.push(`at ${method.temperature}`);
-  return `${base}${tail.length ? `, ${tail.join(" ")}` : ""}${context ? ` (${context})` : ""}`.trim();
-}
-
-function signature(components: Comp[], method?: Method, context?: string) {
-  const canon = [...components]
-    .map((c) => `${(c.item || "").toLowerCase()}|${(c.unit || "").toLowerCase()}|${c.amount ?? ""}|${(c.note || "").toLowerCase()}`)
-    .sort()
-    .join("+");
-  const parts = [canon];
-  if (method?.action) parts.push(`a:${method.action.toLowerCase()}`);
-  if (method?.time_min != null || method?.time_max != null) parts.push(`t:${method?.time_min ?? ""}-${method?.time_max ?? ""}`);
-  if (method?.temperature) parts.push(`temp:${method.temperature.toLowerCase()}`);
-  if (context) parts.push(`ctx:${context.toLowerCase()}`);
-  const sig = parts.join("|");
-  const hash = crypto.createHash("sha256").update(sig).digest("hex");
-  return { sig, hash };
-}
-
+// helpers
 async function getOrCreateIngredientId(name: string) {
-  // Use select/from/where (works without db.query.*)
-  const existing = await db
+  const found = await db
     .select({ id: substitutionIngredients.id })
     .from(substitutionIngredients)
     .where(eq(substitutionIngredients.ingredient, name))
     .limit(1);
-
-  if (existing[0]?.id) return existing[0].id;
+  if (found[0]?.id) return found[0].id;
 
   const inserted = await db
     .insert(substitutionIngredients)
@@ -81,100 +75,122 @@ async function getOrCreateIngredientId(name: string) {
   return inserted[0].id;
 }
 
-async function addSub(
-  ingredient: string,
-  components: Comp[],
-  opts: { context?: string; method?: Method } = {}
-) {
-  const { context, method } = opts;
-  const { sig, hash } = signature(components, method, context);
-  const text = makeText(components, method, context);
-  const ingredientId = await getOrCreateIngredientId(ingredient);
+function hashSignature(text: string) {
+  return crypto.createHash("sha256").update(text).digest("hex");
+}
 
-  try {
-    await db.insert(substitutions).values({
-      ingredientId,
-      text,
-      components,
-      method: method || {},
-      ratio: "",
-      context: context || "",
-      dietTags: [],
-      allergenFlags: [],
-      signature: sig,
-      signatureHash: hash,
-      variants: [],
-      provenance: [],
-    });
-  } catch (e: any) {
-    // Ignore duplicates enforced by (ingredient_id, signature_hash)
-    const msg = String(e?.message || "").toLowerCase();
-    if (!msg.includes("uniq_sub_signature_hash") && !msg.includes("unique")) {
-      throw e;
+async function seedFromJsonl(filePath: string) {
+  console.log(`📄 Using dataset: ${filePath}`);
+
+  // Optional: clear existing rows (comment out if you want append-only)
+  // console.log("🧹 Clearing existing substitutions…");
+  // await db.execute(sql`TRUNCATE TABLE ${substitutions} RESTART IDENTITY CASCADE;`);
+  // await db.execute(sql`TRUNCATE TABLE ${substitutionIngredients} RESTART IDENTITY CASCADE;`);
+
+  const rl = readline.createInterface({
+    input: fs.createReadStream(filePath, { encoding: "utf8" }),
+    crlfDelay: Infinity,
+  });
+
+  const batchSize = 500;
+  let pending: Parameters<typeof db.insert>[0][] = [];
+  let totalInserted = 0;
+  let totalSeen = 0;
+  let totalLines = 0;
+
+  async function flush() {
+    if (pending.length === 0) return;
+    try {
+      await db.insert(substitutions).values(pending as any).onConflictDoNothing();
+      totalInserted += pending.length;
+    } catch (e: any) {
+      // best-effort: if batch fails, try row-by-row to salvage
+      for (const row of pending) {
+        try {
+          await db.insert(substitutions).values(row as any).onConflictDoNothing();
+          totalInserted += 1;
+        } catch {
+          /* ignore dup/violations */
+        }
+      }
+    } finally {
+      pending = [];
+      process.stdout.write(`\rInserted: ${totalInserted} (processed ${totalSeen} subs across ${totalLines} lines)…`);
     }
   }
+
+  for await (const rawLine of rl) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    totalLines += 1;
+
+    let parsed: Line;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      console.warn(`Skipping malformed JSON line ${totalLines}`);
+      continue;
+    }
+
+    const ingredientName = (parsed.ingredient || "").trim();
+    if (!ingredientName || !Array.isArray(parsed.subs)) continue;
+
+    const ingredientId = await getOrCreateIngredientId(ingredientName);
+
+    for (const sub of parsed.subs) {
+      totalSeen += 1;
+      const text = (sub.text || "").trim();
+      const components = Array.isArray(sub.components) ? sub.components : [];
+      const method = sub.method ?? {};
+      const context = sub.context ?? "";
+      const dietTags = Array.isArray(sub.diet_tags) ? sub.diet_tags : [];
+      const allergenFlags = Array.isArray(sub.allergen_flags) ? sub.allergen_flags : [];
+      const variants = Array.isArray(sub.variants) ? sub.variants : [];
+      const provenance = Array.isArray(sub.provenance) ? sub.provenance : [];
+
+      // signature may or may not be present; ensure we have a stable one
+      const signature = sub.signature || text;
+      const signatureHash = sub.signature_hash || hashSignature(signature);
+
+      pending.push({
+        ingredientId,
+        text,
+        components,
+        method,
+        ratio: "",
+        context,
+        dietTags,
+        allergenFlags,
+        signature,
+        signatureHash,
+        variants,
+        provenance,
+      } as any);
+
+      if (pending.length >= batchSize) {
+        await flush();
+      }
+    }
+  }
+
+  await flush();
+  console.log(`\n✅ Done. Inserted ${totalInserted} substitution rows.`);
 }
 
-// ------- main -------
-async function seedSubs() {
-  console.log("Seeding sample substitutions…");
-
-  // Baking powder: 1 tsp = 1/4 tsp baking soda + 1/2 tsp cream of tartar + 1/4 tsp cornstarch
-  await addSub(
-    "Baking powder",
-    [
-      { item: "baking soda", amount: 0.25, unit: "teaspoon" },
-      { item: "cream of tartar", amount: 0.5, unit: "teaspoon" },
-      { item: "cornstarch", amount: 0.25, unit: "teaspoon" },
-    ],
-    { context: "baking" }
-  );
-
-  // Buttermilk: 1 cup milk + 1 tbsp lemon juice or white vinegar, rest 5–10 min
-  await addSub(
-    "Buttermilk",
-    [
-      { item: "milk", amount: 1, unit: "cup" },
-      { item: "lemon juice or white vinegar", amount: 1, unit: "tablespoon" },
-    ],
-    { context: "baking", method: { action: "stand", time_min: 5, time_max: 10 } }
-  );
-
-  // Unsweetened chocolate: 3 tbsp cocoa + 1 tbsp butter
-  await addSub(
-    "Unsweetened chocolate",
-    [
-      { item: "cocoa powder", amount: 3, unit: "tablespoon" },
-      { item: "butter", amount: 1, unit: "tablespoon" },
-    ],
-    { context: "baking" }
-  );
-
-  // Corn syrup: 1¼ cup sugar + ⅓ cup water
-  await addSub(
-    "Corn syrup",
-    [
-      { item: "granulated sugar", amount: 1.25, unit: "cup" },
-      { item: "water", amount: 0.3333, unit: "cup" },
-    ],
-    { context: "baking" }
-  );
-
-  // Egg → applesauce: 1 egg = 1/4 cup applesauce
-  await addSub(
-    "Egg",
-    [{ item: "applesauce", amount: 0.25, unit: "cup" }],
-    { context: "baking" }
-  );
-
-  console.log("✅ Done seeding sample substitutions.");
-}
-
-seedSubs()
-  .catch((e) => {
+(async function main() {
+  try {
+    if (!datasetPath) {
+      console.error(
+        "❌ No dataset found. Place your JSONL/NDJSON file at one of these paths:\n" +
+          candidateFiles.map((p) => " - " + p).join("\n")
+      );
+      process.exit(1);
+    }
+    await seedFromJsonl(datasetPath);
+  } catch (e) {
     console.error("❌ Seed failed:", e);
     process.exit(1);
-  })
-  .finally(async () => {
+  } finally {
     await pool.end();
-  });
+  }
+})();
