@@ -136,13 +136,11 @@ function DrinksSection() {
       <Route path="/drinks/detoxes" component={DetoxesHub} />
 
       {/* ========== POTENT POTABLES ROUTES (AGE-GATED) ========== */}
-      {/* ❌ REMOVED: This catch-all was intercepting all potent-potables routes */}
-      {/* <Route path="/drinks/potent-potables/:rest*" component={PotentPotablesSection} /> */}
-      
-      {/* ✅ ADDED: Explicit potent-potables route */}
-      <Route path="/drinks/potent-potables">
-        <PotentPotablesSection />
+      {/* ✅ FIXED: Use the PotentPotablesSection component */}
+      <Route path="/drinks/potent-potables/:rest*">
+        {(params) => <PotentPotablesSection />}
       </Route>
+      <Route path="/drinks/potent-potables" component={PotentPotablesSection} />
 
       {/* ========== MAIN DRINKS HUB ========== */}
       <Route path="/drinks" component={DrinksHubPage} />
@@ -203,12 +201,21 @@ function Router() {
         <Route path="/substitutions" component={SubstitutionsPage} />
 
         {/* DRINKS TREE - ALL ROUTES */}
-        {/* ✅ FIXED: Removed the problematic catch-all */}
+        {/* ✅ FIXED: Use explicit routes instead of catch-all */}
+        <Route path="/drinks/smoothies/:rest*">
+          {(params) => <DrinksSection />}
+        </Route>
+        <Route path="/drinks/protein-shakes/:rest*">
+          {(params) => <DrinksSection />}
+        </Route>
+        <Route path="/drinks/detoxes/:rest*">
+          {(params) => <DrinksSection />}
+        </Route>
+        <Route path="/drinks/potent-potables/:rest*">
+          {(params) => <DrinksSection />}
+        </Route>
         <Route path="/drinks/:rest*">
-          {(params) => {
-            // This allows proper nested routing within drinks
-            return <DrinksSection />;
-          }}
+          {(params) => <DrinksSection />}
         </Route>
         <Route path="/drinks" component={DrinksSection} />
 
