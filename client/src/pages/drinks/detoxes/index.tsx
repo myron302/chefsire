@@ -12,7 +12,8 @@ import {
   GlassWater, Dumbbell, IceCream, ArrowRight
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
-import { otherDrinkHubs, detoxSubcategories } from '@/data/detoxes';
+// ✅ FIXED IMPORT PATH
+import { otherDrinkHubs, detoxSubcategories } from '../data/detoxes';
 
 export default function DetoxesHub() {
   const { userProgress, addDrinkToJournal } = useDrinks();
