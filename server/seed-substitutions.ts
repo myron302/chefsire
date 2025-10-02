@@ -2,6 +2,7 @@
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool } from "@neondatabase/serverless";
+import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
 import {
   substitutionIngredients,
@@ -56,23 +57,28 @@ function signature(components: Comp[], method?: Method, context?: string) {
 }
 
 async function getOrCreateIngredientId(name: string) {
-  // no unique constraint on ingredient name, so: try select → else insert
-  const existing = await db.query.substitutionIngredients.findFirst({
-    where: (t, { eq }) => eq(t.ingredient, name),
-    columns: { id: true },
-  });
-  if (existing?.id) return existing.id;
+  // Use select/from/where (works without db.query.*)
+  const existing = await db
+    .select({ id: substitutionIngredients.id })
+    .from(substitutionIngredients)
+    .where(eq(substitutionIngredients.ingredient, name))
+    .limit(1);
 
-  const [ins] = await db.insert(substitutionIngredients).values({
-    ingredient: name,
-    aliases: [],
-    group: "",
-    pantryArea: "",
-    notes: "",
-    source: "",
-  }).returning({ id: substitutionIngredients.id });
+  if (existing[0]?.id) return existing[0].id;
 
-  return ins.id;
+  const inserted = await db
+    .insert(substitutionIngredients)
+    .values({
+      ingredient: name,
+      aliases: [],
+      group: "",
+      pantryArea: "",
+      notes: "",
+      source: "",
+    })
+    .returning({ id: substitutionIngredients.id });
+
+  return inserted[0].id;
 }
 
 async function addSub(
@@ -101,8 +107,9 @@ async function addSub(
       provenance: [],
     });
   } catch (e: any) {
-    // ignore duplicates based on (ingredientId, signatureHash)
-    if (!String(e?.message || "").toLowerCase().includes("uniq_sub_signature_hash")) {
+    // Ignore duplicates enforced by (ingredient_id, signature_hash)
+    const msg = String(e?.message || "").toLowerCase();
+    if (!msg.includes("uniq_sub_signature_hash") && !msg.includes("unique")) {
       throw e;
     }
   }
@@ -113,34 +120,52 @@ async function seedSubs() {
   console.log("Seeding sample substitutions…");
 
   // Baking powder: 1 tsp = 1/4 tsp baking soda + 1/2 tsp cream of tartar + 1/4 tsp cornstarch
-  await addSub("Baking powder", [
-    { item: "baking soda", amount: 0.25, unit: "teaspoon" },
-    { item: "cream of tartar", amount: 0.5, unit: "teaspoon" },
-    { item: "cornstarch", amount: 0.25, unit: "teaspoon" },
-  ], { context: "baking" });
+  await addSub(
+    "Baking powder",
+    [
+      { item: "baking soda", amount: 0.25, unit: "teaspoon" },
+      { item: "cream of tartar", amount: 0.5, unit: "teaspoon" },
+      { item: "cornstarch", amount: 0.25, unit: "teaspoon" },
+    ],
+    { context: "baking" }
+  );
 
   // Buttermilk: 1 cup milk + 1 tbsp lemon juice or white vinegar, rest 5–10 min
-  await addSub("Buttermilk", [
-    { item: "milk", amount: 1, unit: "cup" },
-    { item: "lemon juice or white vinegar", amount: 1, unit: "tablespoon" },
-  ], { context: "baking", method: { action: "stand", time_min: 5, time_max: 10 } });
+  await addSub(
+    "Buttermilk",
+    [
+      { item: "milk", amount: 1, unit: "cup" },
+      { item: "lemon juice or white vinegar", amount: 1, unit: "tablespoon" },
+    ],
+    { context: "baking", method: { action: "stand", time_min: 5, time_max: 10 } }
+  );
 
   // Unsweetened chocolate: 3 tbsp cocoa + 1 tbsp butter
-  await addSub("Unsweetened chocolate", [
-    { item: "cocoa powder", amount: 3, unit: "tablespoon" },
-    { item: "butter", amount: 1, unit: "tablespoon" },
-  ], { context: "baking" });
+  await addSub(
+    "Unsweetened chocolate",
+    [
+      { item: "cocoa powder", amount: 3, unit: "tablespoon" },
+      { item: "butter", amount: 1, unit: "tablespoon" },
+    ],
+    { context: "baking" }
+  );
 
   // Corn syrup: 1¼ cup sugar + ⅓ cup water
-  await addSub("Corn syrup", [
-    { item: "granulated sugar", amount: 1.25, unit: "cup" },
-    { item: "water", amount: 0.3333, unit: "cup" },
-  ], { context: "baking" });
+  await addSub(
+    "Corn syrup",
+    [
+      { item: "granulated sugar", amount: 1.25, unit: "cup" },
+      { item: "water", amount: 0.3333, unit: "cup" },
+    ],
+    { context: "baking" }
+  );
 
   // Egg → applesauce: 1 egg = 1/4 cup applesauce
-  await addSub("Egg", [
-    { item: "applesauce", amount: 0.25, unit: "cup" },
-  ], { context: "baking" });
+  await addSub(
+    "Egg",
+    [{ item: "applesauce", amount: 0.25, unit: "cup" }],
+    { context: "baking" }
+  );
 
   console.log("✅ Done seeding sample substitutions.");
 }
