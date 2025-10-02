@@ -28,6 +28,13 @@ import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 
+// ========== BABY FOOD PAGES ==========
+import BabyFoodHub from "@/pages/recipes/baby-food";
+import BabyFoodPurees from "@/pages/recipes/baby-food/purees";
+import BabyFoodMashed from "@/pages/recipes/baby-food/mashed";
+import BabyFoodFingerFoods from "@/pages/recipes/baby-food/finger-foods";
+import BabyFoodToddler from "@/pages/recipes/baby-food/toddler";
+
 // ========== DRINKS HUB PAGES ==========
 import DrinksHubPage from "@/pages/drinks";
 import SmoothiesHub from "@/pages/drinks/smoothies";
@@ -80,6 +87,14 @@ function RecipesSection() {
   return (
     <RecipesFiltersProvider>
       <Switch>
+        {/* ========== BABY FOOD ROUTES ========== */}
+        <Route path="/recipes/baby-food/purees" component={BabyFoodPurees} />
+        <Route path="/recipes/baby-food/mashed" component={BabyFoodMashed} />
+        <Route path="/recipes/baby-food/finger-foods" component={BabyFoodFingerFoods} />
+        <Route path="/recipes/baby-food/toddler" component={BabyFoodToddler} />
+        <Route path="/recipes/baby-food" component={BabyFoodHub} />
+        
+        {/* ========== MAIN RECIPE ROUTES ========== */}
         <Route path="/recipes/filters" component={RecipesFiltersPage} />
         <Route path="/recipes" component={RecipesListPage} />
       </Switch>
@@ -91,7 +106,7 @@ function PotentPotablesSection() {
   return (
     <RequireAgeGate>
       <Switch>
-        {/* ✅ FIXED: Specific routes first */}
+        {/* Specific routes first */}
         <Route path="/drinks/potent-potables/cocktails" component={CocktailsPage} />
         <Route path="/drinks/potent-potables/cognac-brandy" component={CognacBrandyPage} />
         <Route path="/drinks/potent-potables/martinis" component={MartinisPage} />
@@ -103,7 +118,7 @@ function PotentPotablesSection() {
         <Route path="/drinks/potent-potables/virgin-cocktails" component={VirginCocktailsPage} />
         <Route path="/drinks/potent-potables/vodka" component={VodkaPage} />
         <Route path="/drinks/potent-potables/whiskey-bourbon" component={WhiskeyBourbonPage} />
-        {/* ✅ FIXED: Hub last */}
+        {/* Hub last */}
         <Route path="/drinks/potent-potables" component={PotentPotablesHub} />
       </Switch>
     </RequireAgeGate>
@@ -129,14 +144,12 @@ function DrinksSection() {
       <Route path="/drinks/protein-shakes" component={ProteinShakesHub} />
 
       {/* ========== DETOXES ROUTES ========== */}
-      {/* ✅ FIXED: Subpages BEFORE hub */}
       <Route path="/drinks/detoxes/juice" component={DetoxJuices} />
       <Route path="/drinks/detoxes/tea" component={DetoxTeas} />
       <Route path="/drinks/detoxes/water" component={DetoxWaters} />
       <Route path="/drinks/detoxes" component={DetoxesHub} />
 
       {/* ========== POTENT POTABLES ROUTES (AGE-GATED) ========== */}
-      {/* ✅ FIXED: Use the PotentPotablesSection component */}
       <Route path="/drinks/potent-potables/:rest*">
         {(params) => <PotentPotablesSection />}
       </Route>
@@ -201,7 +214,6 @@ function Router() {
         <Route path="/substitutions" component={SubstitutionsPage} />
 
         {/* DRINKS TREE - ALL ROUTES */}
-        {/* ✅ FIXED: Use explicit routes instead of catch-all */}
         <Route path="/drinks/smoothies/:rest*">
           {(params) => <DrinksSection />}
         </Route>
