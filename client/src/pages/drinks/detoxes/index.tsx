@@ -1,3 +1,4 @@
+// client/src/pages/drinks/detoxes/index.tsx
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,96 +12,15 @@ import {
   GlassWater, Dumbbell, IceCream, ArrowRight
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
+import { otherDrinkHubs, detoxSubcategories } from '@/data/detoxes';
 
 export default function DetoxesHub() {
   const { userProgress, addDrinkToJournal } = useDrinks();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
-  // Cross-Hub Navigation - Other main drink categories
-  const otherDrinkHubs = [
-    {
-      id: 'smoothies',
-      name: 'Smoothies',
-      description: 'Nutrient-packed blends',
-      icon: Apple,
-      route: '/drinks/smoothies',
-      color: 'bg-green-500',
-      count: '847 recipes'
-    },
-    {
-      id: 'protein-shakes',
-      name: 'Protein Shakes',
-      description: 'Fitness-focused nutrition',
-      icon: Dumbbell,
-      route: '/drinks/protein-shakes',
-      color: 'bg-blue-500',
-      count: '523 recipes'
-    },
-    {
-      id: 'potent-potables',
-      name: 'Potent Potables',
-      description: 'Cocktails & beverages',
-      icon: GlassWater,
-      route: '/drinks/potent-potables',
-      color: 'bg-purple-500',
-      count: '1247 recipes'
-    }
-  ];
-
-  // Detox Subcategories - These are the subpages under /drinks/detoxes
-  const detoxSubcategories = [
-    {
-      id: 'juice-cleanse',
-      name: 'Detox Juices',
-      description: 'Cold-pressed juices for deep cleansing',
-      icon: Apple,
-      image: 'https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=600&h=400&fit=crop',
-      path: '/drinks/detoxes/juice',
-      count: 32,
-      bgColor: 'bg-orange-50',
-      borderColor: 'border-orange-200',
-      textColor: 'text-orange-600',
-      trending: true,
-      avgCalories: 120,
-      duration: '1-3 days',
-      topBenefit: 'Deep Cleanse'
-    },
-    {
-      id: 'detox-tea',
-      name: 'Detox Teas',
-      description: 'Herbal infusions for gentle detoxification',
-      icon: Coffee,
-      image: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=600&h=400&fit=crop',
-      path: '/drinks/detoxes/tea',
-      count: 28,
-      bgColor: 'bg-green-50',
-      borderColor: 'border-green-200',
-      textColor: 'text-green-600',
-      featured: true,
-      avgCalories: 5,
-      duration: 'Daily',
-      topBenefit: 'Gentle Detox'
-    },
-    {
-      id: 'infused-water',
-      name: 'Detox Infused Waters',
-      description: 'Fruit and herb infused hydration',
-      icon: Droplets,
-      image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=600&h=400&fit=crop',
-      path: '/drinks/detoxes/water',
-      count: 24,
-      bgColor: 'bg-blue-50',
-      borderColor: 'border-blue-200',
-      textColor: 'text-blue-600',
-      avgCalories: 15,
-      duration: 'All Day',
-      topBenefit: 'Hydration'
-    }
-  ];
-
   const quickStats = [
-    { label: 'Total Recipes', value: '84', icon: Trophy, color: 'text-yellow-600' },
-    { label: 'Avg Calories', value: '47', icon: Flame, color: 'text-orange-600' },
+    { label: 'Total Recipes', value: '26', icon: Trophy, color: 'text-yellow-600' },
+    { label: 'Avg Calories', value: '40', icon: Flame, color: 'text-orange-600' },
     { label: 'Your Detoxes', value: userProgress.totalDrinksMade, icon: Star, color: 'text-purple-600' },
     { label: 'Cleanse Programs', value: '12', icon: Target, color: 'text-green-600' }
   ];
