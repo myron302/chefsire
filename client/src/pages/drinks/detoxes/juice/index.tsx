@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { 
   Droplets, Clock, Heart, Star, Target, Flame, Leaf, Sparkles,
-  Search, Share2, ArrowLeft, Plus, Zap, Apple, Activity, Camera
+  Search, Share2, ArrowLeft, Plus, Zap, Apple, Activity, Camera,
+  FlaskConical, GlassWater, Coffee, Waves
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -368,10 +370,12 @@ export default function DetoxJuicesPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" className="text-gray-500">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Detoxes
-              </Button>
+              <Link href="/drinks/detoxes">
+                <Button variant="ghost" size="sm" className="text-gray-500">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Detoxes
+                </Button>
+              </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
                 <Droplets className="h-6 w-6 text-green-600" />
@@ -405,6 +409,66 @@ export default function DetoxJuicesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* CROSS-HUB NAVIGATION */}
+        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <Link href="/drinks/smoothies">
+                <Button variant="outline" className="w-full justify-start hover:bg-green-50 hover:border-green-300">
+                  <Apple className="h-4 w-4 mr-2 text-green-600" />
+                  <span>Smoothies</span>
+                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                </Button>
+              </Link>
+              <Link href="/drinks/protein-shakes">
+                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
+                  <FlaskConical className="h-4 w-4 mr-2 text-blue-600" />
+                  <span>Protein Shakes</span>
+                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                </Button>
+              </Link>
+              <Link href="/drinks/detoxes">
+                <Button variant="outline" className="w-full justify-start hover:bg-teal-50 hover:border-teal-300 border-teal-400">
+                  <Leaf className="h-4 w-4 mr-2 text-teal-600" />
+                  <span className="font-semibold">Detoxes Hub</span>
+                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                </Button>
+              </Link>
+              <Link href="/drinks/potent-potables">
+                <Button variant="outline" className="w-full justify-start hover:bg-purple-50 hover:border-purple-300">
+                  <GlassWater className="h-4 w-4 mr-2 text-purple-600" />
+                  <span>Potent Potables</span>
+                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* SISTER SUBPAGES NAVIGATION */}
+        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Detox Types</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Link href="/drinks/detoxes/tea">
+                <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
+                  <Coffee className="h-4 w-4 mr-2 text-amber-600" />
+                  <span>Detox Teas</span>
+                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                </Button>
+              </Link>
+              <Link href="/drinks/detoxes/water">
+                <Button variant="outline" className="w-full justify-start hover:bg-cyan-50 hover:border-cyan-300">
+                  <Waves className="h-4 w-4 mr-2 text-cyan-600" />
+                  <span>Infused Waters</span>
+                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardContent className="p-4 text-center">
