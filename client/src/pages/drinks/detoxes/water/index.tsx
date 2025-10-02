@@ -1,366 +1,729 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { 
-  Sparkles, Clock, Users, Trophy, Heart, Star, Calendar, 
-  CheckCircle, Target, Flame, Droplets, Leaf, Apple,
-  Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
-  Activity, BarChart3, Shuffle, Camera, Share2, PlayCircle,
-  Sun, Moon, Coffee, Wind, Waves, Sunrise, ArrowRight
+  Waves, Clock, Heart, Star, Target, Flame, Leaf, Sparkles,
+  Search, Share2, ArrowLeft, Plus, Zap, Droplets, Sun, Snowflake,
+  Apple, FlaskConical, GlassWater, Coffee
 } from 'lucide-react';
+import { useDrinks } from '@/contexts/DrinksContext';
+import UniversalSearch from '@/components/UniversalSearch';
 
-type Params = { params?: Record<string, string> };
-
-const detoxCategories = [
+const infusedWaters = [
   {
-    id: 'juices',
-    name: 'Detox Juices',
-    route: '/drinks/detoxes/juices',
-    icon: Droplets,
-    color: 'from-green-500 to-emerald-500',
-    bgColor: 'bg-green-50',
-    textColor: 'text-green-600',
-    description: 'Nutrient-packed juice blends for deep cleansing',
-    recipeCount: 8,
-    avgCalories: 105,
-    featured: true
-  },
-  {
-    id: 'teas',
-    name: 'Detox Teas',
-    route: '/drinks/detoxes/teas',
-    icon: Coffee,
-    color: 'from-amber-500 to-orange-500',
-    bgColor: 'bg-amber-50',
-    textColor: 'text-amber-600',
-    description: 'Healing herbal teas for gentle cleansing',
-    recipeCount: 8,
-    avgCalories: 4,
-    featured: true
-  },
-  {
-    id: 'waters',
-    name: 'Infused Waters',
-    route: '/drinks/detoxes/waters',
-    icon: Waves,
-    color: 'from-cyan-500 to-blue-500',
-    bgColor: 'bg-cyan-50',
-    textColor: 'text-cyan-600',
-    description: 'Zero-calorie hydration with natural flavors',
-    recipeCount: 12,
-    avgCalories: 10,
-    featured: true
-  }
-];
-
-const detoxPrograms = [
-  {
-    id: 'green-reset',
-    name: '3-Day Green Reset',
-    duration: 3,
+    id: 'water-1',
+    name: 'Cucumber Mint Refresher',
+    description: 'Classic hydrating combination for all-day sipping',
+    waterType: 'Hydrating',
+    flavorProfile: 'Light & Fresh',
+    infusionTime: '2-4 hours',
+    nutrition: {
+      calories: 5,
+      sugar: 0,
+      electrolytes: 'Moderate',
+      vitamins: 'C, K'
+    },
+    ingredients: ['Cucumber (1/2 sliced)', 'Fresh Mint (10 leaves)', 'Lemon (1/2 sliced)', 'Cold Water (32 oz)'],
+    benefits: ['Deep Hydration', 'Cooling', 'Skin Health', 'Zero Calories'],
     difficulty: 'Easy',
-    icon: Leaf,
-    color: 'from-green-500 to-emerald-500',
-    bgColor: 'bg-green-50',
-    textColor: 'text-green-600',
-    description: 'Gentle cleanse focused on leafy greens and hydration',
-    benefits: ['Improved energy', 'Clear skin', 'Better digestion'],
-    drinks: ['Green juice', 'Cucumber mint water', 'Spinach smoothie'],
-    participants: 2847,
+    prepTime: 5,
     rating: 4.8,
-    calories: 1200,
-    featured: true
+    reviews: 2341,
+    trending: true,
+    featured: true,
+    estimatedCost: 2.00,
+    bestTime: 'All Day',
+    duration: 'Daily',
+    temperature: 'Cold',
+    category: 'Classic Infusions'
   },
   {
-    id: 'juice-cleanse',
-    name: '5-Day Juice Cleanse',
-    duration: 5,
-    difficulty: 'Medium',
-    icon: Droplets,
-    color: 'from-orange-500 to-red-500',
-    bgColor: 'bg-orange-50',
-    textColor: 'text-orange-600',
-    description: 'Full juice cleanse with multiple daily servings',
-    benefits: ['Weight management', 'Toxin elimination', 'Mental clarity'],
-    drinks: ['Carrot ginger', 'Beet apple', 'Green detox', 'Citrus blast'],
-    participants: 1923,
-    rating: 4.6,
-    calories: 1000,
-    featured: true
-  },
-  {
-    id: 'herbal-infusion',
-    name: '7-Day Herbal Detox',
-    duration: 7,
+    id: 'water-2',
+    name: 'Strawberry Basil Bliss',
+    description: 'Sweet and herbaceous for a gourmet touch',
+    waterType: 'Antioxidant',
+    flavorProfile: 'Sweet & Herbal',
+    infusionTime: '3-6 hours',
+    nutrition: {
+      calories: 8,
+      sugar: 2,
+      antioxidants: 'High',
+      vitamins: 'C'
+    },
+    ingredients: ['Strawberries (6 sliced)', 'Fresh Basil (8 leaves)', 'Lemon (1/4 sliced)', 'Cold Water (32 oz)'],
+    benefits: ['Antioxidants', 'Heart Health', 'Natural Sweetness', 'Vitamin C'],
     difficulty: 'Easy',
-    icon: Coffee,
-    color: 'from-purple-500 to-pink-500',
-    bgColor: 'bg-purple-50',
-    textColor: 'text-purple-600',
-    description: 'Healing herbs and teas for gentle cleansing',
-    benefits: ['Reduced inflammation', 'Better sleep', 'Stress relief'],
-    drinks: ['Dandelion tea', 'Ginger turmeric', 'Chamomile blend'],
-    participants: 1567,
+    prepTime: 5,
     rating: 4.7,
-    calories: 1400,
-    featured: false
+    reviews: 1876,
+    trending: true,
+    featured: true,
+    estimatedCost: 3.50,
+    bestTime: 'Afternoon',
+    duration: 'Daily',
+    temperature: 'Cold',
+    category: 'Fruity Infusions'
   },
   {
-    id: 'water-detox',
-    name: '1-Day Water Flush',
-    duration: 1,
-    difficulty: 'Hard',
-    icon: Waves,
-    color: 'from-blue-500 to-cyan-500',
-    bgColor: 'bg-blue-50',
-    textColor: 'text-blue-600',
-    description: 'Intensive hydration-focused cleanse',
-    benefits: ['Quick reset', 'Hydration boost', 'System flush'],
-    drinks: ['Lemon water', 'Coconut water', 'Herbal tea'],
-    participants: 3421,
-    rating: 4.5,
-    calories: 800,
-    featured: true
+    id: 'water-3',
+    name: 'Lemon Ginger Detox',
+    description: 'Warming and cleansing for metabolism support',
+    waterType: 'Metabolic',
+    flavorProfile: 'Spicy & Citrus',
+    infusionTime: '1-2 hours',
+    nutrition: {
+      calories: 10,
+      sugar: 1,
+      thermogenic: 'High',
+      vitamins: 'C'
+    },
+    ingredients: ['Lemon (1 whole sliced)', 'Fresh Ginger (2 inch sliced)', 'Cayenne Pepper (pinch)', 'Warm Water (32 oz)'],
+    benefits: ['Metabolism Boost', 'Digestive Aid', 'Anti-inflammatory', 'Immune Support'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.6,
+    reviews: 3120,
+    trending: false,
+    featured: true,
+    estimatedCost: 1.50,
+    bestTime: 'Morning',
+    duration: 'Daily',
+    temperature: 'Warm',
+    category: 'Detox Waters'
   },
   {
-    id: 'seasonal-spring',
-    name: 'Spring Renewal',
-    duration: 14,
-    difficulty: 'Medium',
-    icon: Sunrise,
-    color: 'from-yellow-500 to-green-500',
-    bgColor: 'bg-yellow-50',
-    textColor: 'text-yellow-600',
-    description: 'Two-week seasonal cleanse with spring ingredients',
-    benefits: ['Seasonal alignment', 'Energy boost', 'Allergy relief'],
-    drinks: ['Dandelion greens', 'Nettle tea', 'Spring berry blend'],
-    participants: 892,
+    id: 'water-4',
+    name: 'Berry Blast Hydrator',
+    description: 'Triple berry antioxidant powerhouse',
+    waterType: 'Antioxidant',
+    flavorProfile: 'Sweet Berry',
+    infusionTime: '4-6 hours',
+    nutrition: {
+      calories: 12,
+      sugar: 3,
+      antioxidants: 'Very High',
+      vitamins: 'C, K'
+    },
+    ingredients: ['Blueberries (1/4 cup)', 'Strawberries (4 sliced)', 'Raspberries (1/4 cup)', 'Mint (6 leaves)', 'Cold Water (32 oz)'],
+    benefits: ['High Antioxidants', 'Brain Health', 'Anti-aging', 'Natural Flavor'],
+    difficulty: 'Easy',
+    prepTime: 5,
     rating: 4.9,
-    calories: 1300,
-    featured: false
+    reviews: 2890,
+    trending: true,
+    featured: false,
+    estimatedCost: 4.00,
+    bestTime: 'Anytime',
+    duration: 'Daily',
+    temperature: 'Cold',
+    category: 'Fruity Infusions'
+  },
+  {
+    id: 'water-5',
+    name: 'Citrus Sunrise Sparkler',
+    description: 'Vibrant citrus blend for morning energy',
+    waterType: 'Energizing',
+    flavorProfile: 'Tangy Citrus',
+    infusionTime: '2-3 hours',
+    nutrition: {
+      calories: 15,
+      sugar: 4,
+      vitamin_c: 'Very High',
+      electrolytes: 'Low'
+    },
+    ingredients: ['Orange (1/2 sliced)', 'Grapefruit (1/4 sliced)', 'Lime (1/2 sliced)', 'Lemon (1/2 sliced)', 'Cold Water (32 oz)'],
+    benefits: ['Vitamin C Boost', 'Energy', 'Immune Support', 'Alkalizing'],
+    difficulty: 'Easy',
+    prepTime: 6,
+    rating: 4.5,
+    reviews: 1654,
+    trending: false,
+    featured: true,
+    estimatedCost: 2.75,
+    bestTime: 'Morning',
+    duration: 'Daily',
+    temperature: 'Cold',
+    category: 'Citrus Infusions'
+  },
+  {
+    id: 'water-6',
+    name: 'Tropical Paradise Water',
+    description: 'Pineapple and coconut for vacation vibes',
+    waterType: 'Exotic',
+    flavorProfile: 'Sweet Tropical',
+    infusionTime: '3-5 hours',
+    nutrition: {
+      calories: 18,
+      sugar: 5,
+      enzymes: 'Present',
+      electrolytes: 'Moderate'
+    },
+    ingredients: ['Pineapple (1 cup chunks)', 'Coconut Water (8 oz)', 'Lime (1/2 sliced)', 'Mint (6 leaves)', 'Cold Water (24 oz)'],
+    benefits: ['Digestive Enzymes', 'Electrolytes', 'Tropical Flavor', 'Hydration'],
+    difficulty: 'Easy',
+    prepTime: 7,
+    rating: 4.8,
+    reviews: 2234,
+    trending: true,
+    featured: false,
+    estimatedCost: 3.25,
+    bestTime: 'Post-Workout',
+    duration: 'Daily',
+    temperature: 'Cold',
+    category: 'Tropical Infusions'
+  },
+  {
+    id: 'water-7',
+    name: 'Apple Cinnamon Comfort',
+    description: 'Warming autumn-inspired infusion',
+    waterType: 'Warming',
+    flavorProfile: 'Sweet & Spicy',
+    infusionTime: '1-2 hours',
+    nutrition: {
+      calories: 10,
+      sugar: 2,
+      antioxidants: 'Moderate',
+      warming: 'High'
+    },
+    ingredients: ['Apple (1 sliced)', 'Cinnamon Stick (2)', 'Cloves (3)', 'Star Anise (1)', 'Warm Water (32 oz)'],
+    benefits: ['Blood Sugar Balance', 'Warming', 'Antioxidants', 'Comforting'],
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.6,
+    reviews: 1432,
+    trending: false,
+    featured: true,
+    estimatedCost: 2.25,
+    bestTime: 'Evening',
+    duration: 'Seasonal',
+    temperature: 'Warm',
+    category: 'Warm Infusions'
+  },
+  {
+    id: 'water-8',
+    name: 'Watermelon Lime Cooler',
+    description: 'Summer refreshment with maximum hydration',
+    waterType: 'Hydrating',
+    flavorProfile: 'Sweet & Refreshing',
+    infusionTime: '2-4 hours',
+    nutrition: {
+      calories: 12,
+      sugar: 3,
+      electrolytes: 'High',
+      lycopene: 'Present'
+    },
+    ingredients: ['Watermelon (2 cups cubed)', 'Lime (1 whole sliced)', 'Fresh Mint (8 leaves)', 'Cold Water (32 oz)'],
+    benefits: ['Maximum Hydration', 'Electrolytes', 'Cooling', 'Lycopene'],
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.9,
+    reviews: 3456,
+    trending: true,
+    featured: true,
+    estimatedCost: 2.50,
+    bestTime: 'Summer Days',
+    duration: 'Seasonal',
+    temperature: 'Cold',
+    category: 'Summer Infusions'
+  },
+  {
+    id: 'water-9',
+    name: 'Lavender Lemon Calm',
+    description: 'Soothing floral infusion for relaxation',
+    waterType: 'Calming',
+    flavorProfile: 'Floral & Citrus',
+    infusionTime: '30-60 min',
+    nutrition: {
+      calories: 3,
+      sugar: 0,
+      calming: 'High',
+      vitamins: 'C'
+    },
+    ingredients: ['Food-grade Lavender (1 tsp)', 'Lemon (1/2 sliced)', 'Honey (1 tsp optional)', 'Warm Water (32 oz)'],
+    benefits: ['Stress Relief', 'Relaxation', 'Sleep Support', 'Aromatherapy'],
+    difficulty: 'Medium',
+    prepTime: 3,
+    rating: 4.4,
+    reviews: 987,
+    trending: false,
+    featured: false,
+    estimatedCost: 3.00,
+    bestTime: 'Evening',
+    duration: 'As Needed',
+    temperature: 'Warm',
+    category: 'Herbal Infusions'
+  },
+  {
+    id: 'water-10',
+    name: 'Green Tea Peach Fusion',
+    description: 'Light caffeine with fruity sweetness',
+    waterType: 'Energizing',
+    flavorProfile: 'Sweet & Tea',
+    infusionTime: '1-2 hours',
+    nutrition: {
+      calories: 8,
+      sugar: 2,
+      caffeine: 15,
+      antioxidants: 'High'
+    },
+    ingredients: ['Green Tea (1 bag)', 'Peach (1 sliced)', 'Lemon (1/4 sliced)', 'Mint (4 leaves)', 'Cold Water (32 oz)'],
+    benefits: ['Light Energy', 'Antioxidants', 'Metabolism', 'Fruity Flavor'],
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.7,
+    reviews: 1765,
+    trending: false,
+    featured: false,
+    estimatedCost: 2.75,
+    bestTime: 'Mid-Morning',
+    duration: 'Daily',
+    temperature: 'Cold',
+    category: 'Tea Infusions'
   }
 ];
 
-const dailyTasks = [
-  { id: 1, task: 'Morning lemon water', time: '7:00 AM', completed: true, points: 10 },
-  { id: 2, task: 'Green juice', time: '10:00 AM', completed: true, points: 15 },
-  { id: 3, task: 'Afternoon cleanse drink', time: '2:00 PM', completed: false, points: 15 },
-  { id: 4, task: 'Herbal tea', time: '4:00 PM', completed: false, points: 10 },
-  { id: 5, task: 'Evening elixir', time: '7:00 PM', completed: false, points: 15 }
+const waterTypes = [
+  {
+    id: 'hydrating',
+    name: 'Hydrating Waters',
+    description: 'Maximum hydration with electrolytes',
+    icon: Waves,
+    color: 'text-cyan-600',
+    benefits: ['Hydration', 'Electrolytes', 'Cooling'],
+    bestFor: 'All-day drinking and post-workout'
+  },
+  {
+    id: 'detox',
+    name: 'Detox Waters',
+    description: 'Cleansing and metabolism support',
+    icon: Sparkles,
+    color: 'text-green-600',
+    benefits: ['Cleansing', 'Metabolism', 'Digestion'],
+    bestFor: 'Morning rituals and cleanses'
+  },
+  {
+    id: 'antioxidant',
+    name: 'Antioxidant Blends',
+    description: 'Berry and fruit-based for cellular health',
+    icon: Star,
+    color: 'text-purple-600',
+    benefits: ['Antioxidants', 'Anti-aging', 'Immune'],
+    bestFor: 'Daily wellness and skin health'
+  },
+  {
+    id: 'energizing',
+    name: 'Energizing Waters',
+    description: 'Citrus and light caffeine for natural energy',
+    icon: Zap,
+    color: 'text-orange-600',
+    benefits: ['Energy', 'Vitamin C', 'Alertness'],
+    bestFor: 'Morning and afternoon pick-me-up'
+  }
 ];
 
-const achievements = [
-  { id: 'first-day', name: 'First Day Complete', description: 'Finish your first cleanse day', progress: 1, total: 1, unlocked: true },
-  { id: 'three-day', name: '3-Day Warrior', description: 'Complete a 3-day program', progress: 2, total: 3, unlocked: false },
-  { id: 'week-long', name: 'Week Champion', description: 'Complete a 7-day cleanse', progress: 0, total: 7, unlocked: false },
-  { id: 'community', name: 'Community Member', description: 'Join 5 group challenges', progress: 3, total: 5, unlocked: false }
-];
+export default function InfusedWatersPage() {
+  const { 
+    addToFavorites, 
+    isFavorite, 
+    addToRecentlyViewed, 
+    userProgress,
+    addPoints,
+    incrementDrinksMade
+  } = useDrinks();
 
-const communityStats = {
-  activePrograms: 156,
-  completedToday: 89,
-  totalParticipants: 12847,
-  averageRating: 4.7
-};
+  const [activeTab, setActiveTab] = useState('browse');
+  const [selectedWaterType, setSelectedWaterType] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [temperature, setTemperature] = useState(['Any']);
+  const [maxCalories, setMaxCalories] = useState([20]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('rating');
+  const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
-export default function DetoxesPage({ params }: Params) {
-  const [selectedProgram, setSelectedProgram] = useState(detoxPrograms[0]);
-  const [currentDay, setCurrentDay] = useState(1);
-  const [showAchievements, setShowAchievements] = useState(false);
-  const [userPoints, setUserPoints] = useState(145);
-  const [tasks, setTasks] = useState(dailyTasks);
-  const [streak, setStreak] = useState(3);
-  
-  const type = params?.type?.replaceAll("-", " ");
+  const getFilteredWaters = () => {
+    let filtered = infusedWaters.filter(water => {
+      const matchesSearch = water.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           water.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesType = !selectedWaterType || water.waterType.toLowerCase().includes(selectedWaterType.toLowerCase());
+      const matchesCategory = !selectedCategory || water.category.toLowerCase().includes(selectedCategory.toLowerCase());
+      const matchesTemp = temperature[0] === 'Any' || water.temperature === temperature[0];
+      const matchesCalories = water.nutrition.calories <= maxCalories[0];
+      
+      return matchesSearch && matchesType && matchesCategory && matchesTemp && matchesCalories;
+    });
 
-  const completedTasksToday = tasks.filter(t => t.completed).length;
-  const dailyProgress = (completedTasksToday / tasks.length) * 100;
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'calories': return (a.nutrition.calories || 0) - (b.nutrition.calories || 0);
+        case 'prepTime': return (a.prepTime || 0) - (b.prepTime || 0);
+        default: return 0;
+      }
+    });
 
-  const handleTaskComplete = (taskId: number) => {
-    setTasks(prev => prev.map(task => 
-      task.id === taskId 
-        ? { ...task, completed: !task.completed }
-        : task
-    ));
-    
-    const task = tasks.find(t => t.id === taskId);
-    if (task && !task.completed) {
-      setUserPoints(prev => prev + task.points);
-    }
+    return filtered;
+  };
+
+  const filteredWaters = getFilteredWaters();
+  const featuredWaters = infusedWaters.filter(water => water.featured);
+
+  const handleMakeWater = (water: any) => {
+    addToRecentlyViewed({
+      id: water.id,
+      name: water.name,
+      category: 'detoxes',
+      description: water.description,
+      ingredients: water.ingredients,
+      nutrition: water.nutrition,
+      difficulty: water.difficulty,
+      prepTime: water.prepTime,
+      rating: water.rating,
+      bestTime: water.bestTime
+    });
+    incrementDrinksMade();
+    addPoints(15);
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold flex items-center gap-3">
-            <Leaf className="h-10 w-10 text-green-500" />
-            Detoxes & Cleanses
-            {type && <span className="text-muted-foreground">• {type}</span>}
-          </h1>
-          <p className="text-lg text-muted-foreground mt-2">
-            Wellness-focused cleanse programs with community support
-          </p>
-        </div>
-        <div className="text-right">
-          <div className="text-2xl font-bold text-green-600">{userPoints} pts</div>
-          <div className="text-sm text-muted-foreground">
-            <Flame className="h-4 w-4 inline mr-1 text-orange-500" />
-            {streak} day streak
+    <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-white to-blue-50">
+      {showUniversalSearch && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4">
+            <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Daily Progress Card */}
-      <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-xl font-semibold">Today's Progress</h3>
-              <p className="text-sm text-muted-foreground">Day {currentDay} of {selectedProgram.duration}</p>
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4">
+              <Link href="/drinks/detoxes">
+                <Button variant="ghost" size="sm" className="text-gray-500">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Detoxes
+                </Button>
+              </Link>
+              <div className="h-6 w-px bg-gray-300" />
+              <div className="flex items-center gap-2">
+                <Waves className="h-6 w-6 text-cyan-600" />
+                <h1 className="text-2xl font-bold text-gray-900">Infused Waters</h1>
+                <Badge className="bg-cyan-100 text-cyan-800">Hydrating</Badge>
+              </div>
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-green-600">{Math.round(dailyProgress)}%</div>
-              <div className="text-sm text-muted-foreground">{completedTasksToday}/{tasks.length} tasks</div>
-            </div>
-          </div>
-          <Progress value={dailyProgress} className="h-3 mb-2" />
-          <p className="text-sm text-green-700">
-            {completedTasksToday === tasks.length 
-              ? "Amazing! All tasks completed today!" 
-              : `${tasks.length - completedTasksToday} tasks remaining`}
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Detox Categories - Quick Navigation */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold mb-4">Explore Detox Types</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {detoxCategories.map(category => (
-            <Link key={category.id} href={category.route}>
-              <Card className="cursor-pointer hover:shadow-xl transition-all hover:-translate-y-2 overflow-hidden">
-                <div className={`h-2 bg-gradient-to-r ${category.color}`} />
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className={`p-3 rounded-full ${category.bgColor}`}>
-                      <category.icon className={`h-8 w-8 ${category.textColor}`} />
-                    </div>
-                    {category.featured && (
-                      <Badge className="bg-yellow-500">
-                        <Star className="h-3 w-3 mr-1" />
-                        Popular
-                      </Badge>
-                    )}
-                  </div>
-                  
-                  <h3 className="text-xl font-bold mb-2">{category.name}</h3>
-                  <p className="text-gray-600 mb-4 text-sm">{category.description}</p>
-                  
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className="text-center p-2 bg-gray-50 rounded">
-                      <div className="font-bold text-lg">{category.recipeCount}</div>
-                      <div className="text-xs text-gray-600">Recipes</div>
-                    </div>
-                    <div className="text-center p-2 bg-gray-50 rounded">
-                      <div className="font-bold text-lg">{category.avgCalories}</div>
-                      <div className="text-xs text-gray-600">Avg Cal</div>
-                    </div>
-                  </div>
-                  
-                  <Button className={`w-full bg-gradient-to-r ${category.color}`}>
-                    <ArrowRight className="h-4 w-4 mr-2" />
-                    Explore {category.name}
-                  </Button>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Program Selection */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Program Cards */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold">Choose Your Program</h2>
-              <Button variant="outline" onClick={() => setShowAchievements(!showAchievements)}>
-                <Trophy className="h-4 w-4 mr-2" />
-                Achievements
+            
+            <div className="flex items-center gap-4">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowUniversalSearch(true)}
+              >
+                <Search className="h-4 w-4 mr-2" />
+                Universal Search
               </Button>
             </div>
+          </div>
+        </div>
+      </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {detoxPrograms.map(program => (
-                <Card 
-                  key={program.id}
-                  className={`cursor-pointer transition-all hover:shadow-lg ${
-                    selectedProgram.id === program.id ? 'ring-2 ring-green-500' : ''
-                  }`}
-                  onClick={() => setSelectedProgram(program)}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* CROSS-HUB NAVIGATION */}
+        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <Link href="/drinks/smoothies">
+                <Button variant="outline" className="w-full justify-start hover:bg-green-50 hover:border-green-300">
+                  <Apple className="h-4 w-4 mr-2 text-green-600" />
+                  <span>Smoothies</span>
+                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                </Button>
+              </Link>
+              <Link href="/drinks/protein-shakes">
+                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
+                  <FlaskConical className="h-4 w-4 mr-2 text-blue-600" />
+                  <span>Protein Shakes</span>
+                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                </Button>
+              </Link>
+              <Link href="/drinks/detoxes">
+                <Button variant="outline" className="w-full justify-start hover:bg-teal-50 hover:border-teal-300 border-teal-400">
+                  <Leaf className="h-4 w-4 mr-2 text-teal-600" />
+                  <span className="font-semibold">Detoxes Hub</span>
+                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                </Button>
+              </Link>
+              <Link href="/drinks/potent-potables">
+                <Button variant="outline" className="w-full justify-start hover:bg-purple-50 hover:border-purple-300">
+                  <GlassWater className="h-4 w-4 mr-2 text-purple-600" />
+                  <span>Potent Potables</span>
+                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* SISTER SUBPAGES NAVIGATION */}
+        <Card className="bg-gradient-to-r from-cyan-50 to-blue-50 border-cyan-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Detox Types</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Link href="/drinks/detoxes/juice">
+                <Button variant="outline" className="w-full justify-start hover:bg-green-50 hover:border-green-300">
+                  <Droplets className="h-4 w-4 mr-2 text-green-600" />
+                  <span>Detox Juices</span>
+                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                </Button>
+              </Link>
+              <Link href="/drinks/detoxes/tea">
+                <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
+                  <Coffee className="h-4 w-4 mr-2 text-amber-600" />
+                  <span>Detox Teas</span>
+                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-cyan-600">10</div>
+              <div className="text-sm text-gray-600">Avg Calories</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-blue-600">0g</div>
+              <div className="text-sm text-gray-600">Added Sugar</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-green-600">100%</div>
+              <div className="text-sm text-gray-600">Natural</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-purple-600">10</div>
+              <div className="text-sm text-gray-600">Recipes</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
+          {[
+            { id: 'browse', label: 'Browse All', icon: Search },
+            { id: 'water-types', label: 'Water Types', icon: Waves },
+            { id: 'featured', label: 'Featured', icon: Star }
+          ].map(tab => {
+            const Icon = tab.icon;
+            return (
+              <Button
+                key={tab.id}
+                variant={activeTab === tab.id ? "default" : "ghost"}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex-1 ${activeTab === tab.id ? 'bg-white shadow-sm' : ''}`}
+              >
+                <Icon className="h-4 w-4 mr-2" />
+                {tab.label}
+              </Button>
+            );
+          })}
+        </div>
+
+        {activeTab === 'browse' && (
+          <div>
+            <div className="flex flex-col md:flex-row gap-4 mb-6">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search infused waters..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              
+              <div className="flex gap-2">
+                <select 
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={selectedWaterType}
+                  onChange={(e) => setSelectedWaterType(e.target.value)}
                 >
-                  <div className={`h-2 bg-gradient-to-r ${program.color}`} />
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-full ${program.bgColor}`}>
-                          <program.icon className={`h-6 w-6 ${program.textColor}`} />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-lg">{program.name}</h3>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <span>{program.duration} days</span>
-                            <span>•</span>
-                            <span>{program.difficulty}</span>
-                          </div>
-                        </div>
+                  <option value="">All Water Types</option>
+                  <option value="Hydrating">Hydrating</option>
+                  <option value="Detox">Detox</option>
+                  <option value="Antioxidant">Antioxidant</option>
+                  <option value="Energizing">Energizing</option>
+                </select>
+                
+                <select 
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                >
+                  <option value="">All Categories</option>
+                  <option value="Classic">Classic Infusions</option>
+                  <option value="Fruity">Fruity Infusions</option>
+                  <option value="Citrus">Citrus Infusions</option>
+                  <option value="Tropical">Tropical Infusions</option>
+                </select>
+                
+                <select 
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={temperature[0]}
+                  onChange={(e) => setTemperature([e.target.value])}
+                >
+                  <option value="Any">Any Temperature</option>
+                  <option value="Cold">Cold</option>
+                  <option value="Warm">Warm</option>
+                </select>
+                
+                <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white min-w-[120px]">
+                  <span>Max Cal:</span>
+                  <Slider
+                    value={maxCalories}
+                    onValueChange={setMaxCalories}
+                    max={20}
+                    min={0}
+                    step={2}
+                    className="flex-1"
+                  />
+                  <span className="text-xs text-gray-500">{maxCalories[0]}</span>
+                </div>
+                
+                <select 
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                >
+                  <option value="rating">Sort by Rating</option>
+                  <option value="calories">Sort by Calories</option>
+                  <option value="prepTime">Sort by Prep Time</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredWaters.map(water => (
+                <Card key={water.id} className="hover:shadow-lg transition-shadow">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="text-lg mb-1">{water.name}</CardTitle>
+                        <p className="text-sm text-gray-600 mb-2">{water.description}</p>
                       </div>
-                      {program.featured && (
-                        <Badge className="bg-yellow-500">
-                          <Star className="h-3 w-3 mr-1" />
-                          Featured
-                        </Badge>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => addToFavorites({
+                          id: water.id,
+                          name: water.name,
+                          category: 'detoxes',
+                          description: water.description,
+                          ingredients: water.ingredients,
+                          nutrition: water.nutrition,
+                          difficulty: water.difficulty,
+                          prepTime: water.prepTime,
+                          rating: water.rating,
+                          bestTime: water.bestTime
+                        })}
+                        className="text-gray-400 hover:text-red-500"
+                      >
+                        <Heart className={`h-4 w-4 ${isFavorite(water.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                      </Button>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge className="bg-cyan-100 text-cyan-800">{water.waterType}</Badge>
+                      <Badge variant="outline">{water.flavorProfile}</Badge>
+                      {water.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                    </div>
+                  </CardHeader>
+                  
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
+                      <div>
+                        <div className="text-xl font-bold text-cyan-600">{water.nutrition.calories}</div>
+                        <div className="text-gray-500">Cal</div>
+                      </div>
+                      <div>
+                        <div className="text-xl font-bold text-blue-600">{water.nutrition.sugar}g</div>
+                        <div className="text-gray-500">Sugar</div>
+                      </div>
+                      <div>
+                        <div className="text-xl font-bold text-purple-600">{water.prepTime}m</div>
+                        <div className="text-gray-500">Prep</div>
+                      </div>
                     </div>
 
-                    <p className="text-sm text-muted-foreground mb-3">
-                      {program.description}
-                    </p>
+                    <div className="mb-4 bg-cyan-50 p-3 rounded-lg">
+                      <div className="flex items-center justify-between text-xs">
+                        <div>
+                          <span className="text-gray-600">Infusion:</span>
+                          <span className="font-medium ml-1">{water.infusionTime}</span>
+                        </div>
+                        <div>
+                          {water.temperature === 'Cold' ? (
+                            <Snowflake className="h-4 w-4 text-cyan-500" />
+                          ) : (
+                            <Sun className="h-4 w-4 text-orange-500" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
 
-                    <div className="space-y-2 mb-3">
-                      <div className="text-sm font-semibold">Key Benefits:</div>
+                    <div className="mb-4">
+                      <h4 className="font-medium text-sm text-gray-700 mb-2">Benefits:</h4>
                       <div className="flex flex-wrap gap-1">
-                        {program.benefits.map(benefit => (
-                          <Badge key={benefit} variant="outline" className="text-xs">
+                        {water.benefits.slice(0, 3).map((benefit, index) => (
+                          <Badge key={index} variant="outline" className="text-xs">
                             {benefit}
                           </Badge>
                         ))}
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-3 border-t">
-                      <div className="flex items-center gap-3 text-sm">
-                        <span className="flex items-center gap-1">
-                          <Users className="h-4 w-4" />
-                          {program.participants.toLocaleString()}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                          {program.rating}
-                        </span>
+                    <div className="space-y-2 mb-4 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Best Time:</span>
+                        <span className="font-medium">{water.bestTime}</span>
                       </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Duration:</span>
+                        <span className="font-medium">{water.duration}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-1">
+                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                        <span className="font-medium">{water.rating}</span>
+                        <span className="text-gray-500 text-sm">({water.reviews})</span>
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        {water.difficulty}
+                      </Badge>
+                    </div>
+
+                    <div className="flex gap-2">
                       <Button 
-                        size="sm"
-                        className={selectedProgram.id === program.id ? 'bg-green-600' : ''}
+                        className="flex-1 bg-cyan-600 hover:bg-cyan-700"
+                        onClick={() => handleMakeWater(water)}
                       >
-                        {selectedProgram.id === program.id ? 'Selected' : 'Select'}
+                        <Waves className="h-4 w-4 mr-2" />
+                        Make Water
+                      </Button>
+                      <Button variant="outline" size="sm">
+                        <Share2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </CardContent>
@@ -368,181 +731,230 @@ export default function DetoxesPage({ params }: Params) {
               ))}
             </div>
           </div>
+        )}
 
-          {/* Today's Tasks */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-6 w-6 text-green-600" />
-                Today's Schedule
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {tasks.map(task => (
-                  <div 
-                    key={task.id}
-                    className={`flex items-center justify-between p-3 rounded-lg border ${
-                      task.completed ? 'bg-green-50 border-green-200' : 'bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => handleTaskComplete(task.id)}
-                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                          task.completed 
-                            ? 'bg-green-500 border-green-500' 
-                            : 'border-gray-300 hover:border-green-500'
-                        }`}
-                      >
-                        {task.completed && <CheckCircle className="h-4 w-4 text-white" />}
-                      </button>
+        {activeTab === 'water-types' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {waterTypes.map(type => {
+              const Icon = type.icon;
+              const typeWaters = infusedWaters.filter(water => 
+                water.waterType.toLowerCase().includes(type.name.toLowerCase())
+              );
+              
+              return (
+                <Card key={type.id} className="hover:shadow-lg transition-shadow">
+                  <CardHeader>
+                    <div className="text-center">
+                      <Icon className={`h-8 w-8 mx-auto mb-2 ${type.color}`} />
+                      <CardTitle className="text-lg">{type.name}</CardTitle>
+                      <p className="text-sm text-gray-600">{type.description}</p>
+                    </div>
+                  </CardHeader>
+                  
+                  <CardContent>
+                    <div className="space-y-3 mb-4">
                       <div>
-                        <div className={`font-medium ${task.completed ? 'line-through text-gray-500' : ''}`}>
-                          {task.task}
-                        </div>
-                        <div className="text-sm text-muted-foreground flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {task.time}
+                        <h4 className="font-semibold text-sm mb-2">Benefits:</h4>
+                        <div className="flex flex-wrap gap-1">
+                          {type.benefits.map((benefit, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {benefit}
+                            </Badge>
+                          ))}
                         </div>
                       </div>
+                      
+                      <div className="bg-blue-50 p-3 rounded-lg">
+                        <div className="text-sm font-medium text-gray-700 mb-1">Best For:</div>
+                        <div className="text-sm text-blue-800">{type.bestFor}</div>
+                      </div>
                     </div>
-                    <Badge variant={task.completed ? "secondary" : "default"}>
-                      +{task.points} pts
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+                    
+                    <div className="text-center">
+                      <div className={`text-2xl font-bold ${type.color} mb-1`}>
+                        {typeWaters.length}
+                      </div>
+                      <div className="text-sm text-gray-600 mb-3">Available Recipes</div>
+                      <Button 
+                        className="w-full"
+                        onClick={() => {
+                          setSelectedWaterType(type.name.split(' ')[0]);
+                          setActiveTab('browse');
+                        }}
+                      >
+                        Explore {type.name}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
 
-          {/* Achievements Panel */}
-          {showAchievements && (
-            <Card className="border-2 border-yellow-200">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Trophy className="h-6 w-6 text-yellow-500" />
-                  Your Achievements
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {achievements.map(achievement => (
-                    <div 
-                      key={achievement.id} 
-                      className={`p-4 rounded-lg border ${
-                        achievement.unlocked 
-                          ? 'bg-green-50 border-green-200' 
-                          : 'bg-gray-50 border-gray-200'
-                      }`}
+        {activeTab === 'featured' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {featuredWaters.map(water => (
+              <Card key={water.id} className="overflow-hidden hover:shadow-xl transition-shadow">
+                <div className="relative bg-gradient-to-br from-cyan-100 to-blue-100 h-48 flex items-center justify-center">
+                  <Waves className="h-24 w-24 text-cyan-600 opacity-20" />
+                  <div className="absolute top-4 left-4">
+                    <Badge className="bg-cyan-500 text-white">Featured Water</Badge>
+                  </div>
+                  <div className="absolute top-4 right-4">
+                    <Badge className="bg-white text-cyan-800">{water.nutrition.calories} Cal</Badge>
+                  </div>
+                  <div className="absolute bottom-4 right-4">
+                    {water.temperature === 'Cold' ? (
+                      <Snowflake className="h-8 w-8 text-cyan-500" />
+                    ) : (
+                      <Sun className="h-8 w-8 text-orange-500" />
+                    )}
+                  </div>
+                </div>
+                
+                <CardHeader>
+                  <CardTitle className="text-xl">{water.name}</CardTitle>
+                  <p className="text-gray-600">{water.description}</p>
+                  
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge className="bg-cyan-100 text-cyan-800">{water.waterType}</Badge>
+                    <Badge variant="outline">{water.flavorProfile}</Badge>
+                    <div className="flex items-center gap-1 ml-auto">
+                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                      <span className="font-medium">{water.rating}</span>
+                      <span className="text-gray-500 text-sm">({water.reviews})</span>
+                    </div>
+                  </div>
+                </CardHeader>
+                
+                <CardContent>
+                  <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-cyan-50 rounded-lg">
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-cyan-600">{water.nutrition.calories}</div>
+                      <div className="text-xs text-gray-600">Calories</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-green-600">{water.nutrition.sugar}g</div>
+                      <div className="text-xs text-gray-600">Sugar</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-purple-600">{water.prepTime}m</div>
+                      <div className="text-xs text-gray-600">Prep Time</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-blue-600">${water.estimatedCost}</div>
+                      <div className="text-xs text-gray-600">Cost</div>
+                    </div>
+                  </div>
+
+                  <div className="mb-4 bg-blue-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-900 mb-2">Infusion Details:</h4>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className="text-gray-600">Infusion Time:</span>
+                        <div className="font-semibold text-cyan-600">{water.infusionTime}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Temperature:</span>
+                        <div className="font-semibold text-cyan-600">{water.temperature}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-4">
+                    <h4 className="font-medium text-gray-900 mb-2">Health Benefits:</h4>
+                    <div className="flex flex-wrap gap-1">
+                      {water.benefits.map((benefit, index) => (
+                        <Badge key={index} className="bg-cyan-100 text-cyan-800 text-xs">
+                          {benefit}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mb-4 bg-gray-50 p-4 rounded-lg">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-1">Best Time:</div>
+                        <div className="text-cyan-600 font-semibold">{water.bestTime}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-1">Duration:</div>
+                        <div className="text-blue-600 font-semibold">{water.duration}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-6">
+                    <h4 className="font-medium text-gray-900 mb-2">Ingredients:</h4>
+                    <div className="text-sm text-gray-700 space-y-1">
+                      {water.ingredients.map((ingredient, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <Droplets className="h-3 w-3 text-cyan-500" />
+                          {ingredient}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <Button 
+                      className="flex-1 bg-cyan-600 hover:bg-cyan-700"
+                      onClick={() => handleMakeWater(water)}
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-semibold">{achievement.name}</span>
-                        {achievement.unlocked && <CheckCircle className="h-5 w-5 text-green-500" />}
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-2">{achievement.description}</p>
-                      <Progress value={(achievement.progress / achievement.total) * 100} className="h-2" />
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {achievement.progress}/{achievement.total}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        {/* Right Column - Program Details & Actions */}
-        <div className="space-y-6">
-          {/* Selected Program Details */}
-          <Card className="sticky top-6">
-            <CardHeader>
-              <CardTitle>Program Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h3 className="font-bold text-xl mb-2">{selectedProgram.name}</h3>
-                <p className="text-sm text-muted-foreground">{selectedProgram.description}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <div className="text-muted-foreground">Duration</div>
-                  <div className="font-bold">{selectedProgram.duration} days</div>
-                </div>
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <div className="text-muted-foreground">Difficulty</div>
-                  <div className="font-bold">{selectedProgram.difficulty}</div>
-                </div>
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <div className="text-muted-foreground">Daily Calories</div>
-                  <div className="font-bold">{selectedProgram.calories}</div>
-                </div>
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <div className="text-muted-foreground">Rating</div>
-                  <div className="font-bold flex items-center gap-1">
-                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    {selectedProgram.rating}
+                      <Waves className="h-4 w-4 mr-2" />
+                      Make This Water
+                    </Button>
+                    <Button variant="outline">
+                      <Share2 className="h-4 w-4 mr-2" />
+                      Share
+                    </Button>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
 
-              <div>
-                <h4 className="font-semibold mb-2">Daily Drinks</h4>
-                <div className="space-y-2">
-                  {selectedProgram.drinks.map((drink, index) => (
-                    <div key={index} className="flex items-center gap-2 text-sm">
-                      <Droplets className="h-4 w-4 text-green-600" />
-                      <span>{drink}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+      <div className="fixed bottom-6 right-6 z-50">
+        <Button 
+          size="lg" 
+          className="rounded-full w-14 h-14 bg-cyan-600 hover:bg-cyan-700 shadow-lg"
+          onClick={() => setActiveTab('browse')}
+        >
+          <Plus className="h-6 w-6" />
+        </Button>
+      </div>
 
-              <div className="space-y-2 pt-4 border-t">
-                <Button className="w-full bg-green-600 hover:bg-green-700">
-                  <PlayCircle className="h-4 w-4 mr-2" />
-                  Start Program
-                </Button>
-                <Button variant="outline" className="w-full">
-                  <Share2 className="h-4 w-4 mr-2" />
-                  Share with Friends
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Community Stats */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-purple-600" />
-                Community
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Active Programs</span>
-                <span className="font-bold">{communityStats.activePrograms}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Completed Today</span>
-                <span className="font-bold">{communityStats.completedToday}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Total Participants</span>
-                <span className="font-bold">{communityStats.totalParticipants.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Avg Rating</span>
-                <span className="font-bold flex items-center gap-1">
-                  <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                  {communityStats.averageRating}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <Waves className="h-4 w-4 text-cyan-600" />
+              <span className="text-gray-600">Infused Waters Found:</span>
+              <span className="font-bold text-cyan-600">{filteredWaters.length}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Star className="h-4 w-4 text-yellow-500" />
+              <span className="text-gray-600">Your Level:</span>
+              <span className="font-bold text-yellow-600">{userProgress.level}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-cyan-500" />
+              <span className="text-gray-600">XP:</span>
+              <span className="font-bold text-cyan-600">{userProgress.totalPoints}</span>
+            </div>
+          </div>
+          
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          >
+            Back to Top
+          </Button>
         </div>
       </div>
     </div>
