@@ -129,10 +129,10 @@ function DrinksSection() {
       <Route path="/drinks/protein-shakes" component={ProteinShakesHub} />
 
       {/* ========== DETOXES ROUTES ========== */}
-      <Route path="/drinks/detoxes/juice" component={DetoxJuices} />
-      <Route path="/drinks/detoxes/tea" component={DetoxTeas} />
-      <Route path="/drinks/detoxes/water" component={DetoxWaters} />
-      <Route path="/drinks/detoxes" component={DetoxesHub} />
+<Route path="/detoxes/juice" component={DetoxJuices} />
+<Route path="/detoxes/tea" component={DetoxTeas} />
+<Route path="/detoxes/water" component={DetoxWaters} />
+<Route path="/detoxes" component={DetoxesHub} />
 
       {/* ========== POTENT POTABLES ROUTES (AGE-GATED) ========== */}
       <Route path="/drinks/potent-potables/:rest*" component={PotentPotablesSection} />
