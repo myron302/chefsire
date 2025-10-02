@@ -120,3 +120,259 @@
     "bufferutil": "^4.0.8"
   }
 }
+// server/scripts/build-and-seed-substitutions.ts
+import "dotenv/config";
+import fs from "node:fs";
+import path from "node:path";
+import { spawn } from "node:child_process";
+
+// ---------- SETTINGS ----------
+const DATA_DIR = path.join(process.cwd(), "server", "data");
+const OUT_JSONL = path.join(DATA_DIR, "substitutions_seed_consolidated.jsonl");
+
+// Heuristic patterns we’ll look for in PDFs to extract substitution lines.
+// This won’t copy prose; it only captures “X = Y” style substitution facts.
+const LINE_PATTERNS = [
+  // e.g., "1 tsp baking powder = 1/4 tsp baking soda + 1/2 tsp cream of tartar + 1/4 tsp cornstarch"
+  /(.+?)\s*=\s*(.+)/i,
+  // e.g., "Baking powder 1 tsp — 1/4 tsp baking soda + 1/2 tsp cream of tartar"
+  /(.+?)\s+[-–—]\s+(.+)/i,
+];
+
+// A tiny normalizer list for common ingredient headings -> canonical names
+const CANON_MAP: Record<string, string> = {
+  "baking powder": "Baking powder",
+  "baking soda": "Baking soda",
+  "unsweetened chocolate": "Unsweetened chocolate",
+  "cocoa powder": "Cocoa powder",
+  "cornstarch": "Cornstarch",
+  "cornstarch (for thickening)": "Cornstarch (for thickening)",
+  "all-purpose flour": "All-purpose flour",
+  "broth": "Broth (beef or chicken)",
+  "broth (beef or chicken)": "Broth (beef or chicken)",
+  "butter": "Butter",
+  "butter (salted)": "Butter (salted)",
+  "butter (unsalted)": "Butter (unsalted)",
+  "buttermilk": "Buttermilk",
+  "corn syrup": "Corn syrup",
+  "egg": "Egg",
+  "half-and-half": "Half-and-half",
+  "mayonnaise": "Mayonnaise",
+  "milk": "Milk, whole",
+  "milk, whole": "Milk, whole",
+  "skim milk": "Skim milk",
+  "sour cream": "Sour cream",
+  "vegetable oil": "Vegetable oil",
+  "brown sugar": "Brown sugar",
+  "white sugar": "White sugar",
+  "cake flour": "Cake flour",
+  "self-rising flour": "Self-rising flour",
+  "allspice": "Allspice",
+  "apple pie spice": "Apple pie spice",
+  "garlic": "Garlic (1 clove)",
+  "ginger": "Ginger (fresh)",
+  "herbs": "Herbs (fresh)",
+  "lemon zest": "Lemon zest",
+  "pumpkin pie spice": "Pumpkin pie spice",
+  "vanilla bean": "Vanilla bean",
+  "soy sauce": "Soy sauce",
+};
+
+// ---------- UTIL ----------
+function toCanonical(name: string) {
+  const k = name.trim().toLowerCase().replace(/\s+/g, " ");
+  return CANON_MAP[k] || name.trim();
+}
+
+function linesOf(s: string): string[] {
+  return s
+    .split(/\r?\n/g)
+    .map((l) => l.replace(/\u00AD/g, "")) // remove soft hyphens
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+async function importPdfParse() {
+  try {
+    const mod = await import("pdf-parse");
+    // @ts-ignore
+    return mod.default || mod;
+  } catch {
+    console.error("❌ Missing dev dependency 'pdf-parse'. Install it with:  npm i -D pdf-parse");
+    process.exit(1);
+  }
+}
+
+function parseSubstitutionLine(line: string): { ingredient: string; text: string } | null {
+  // try all patterns
+  for (const pat of LINE_PATTERNS) {
+    const m = line.match(pat);
+    if (!m) continue;
+    const left = m[1]?.trim();
+    const right = m[2]?.trim();
+    if (!left || !right) continue;
+
+    // The left side might be "1 tsp baking powder" or just "Baking powder"
+    // We try to strip leading quantity if it looks like a measure.
+    const leftNoQty = left
+      .replace(/^\d+(\.\d+)?\s*(tsp|teaspoon|tbsp|tablespoon|cup|oz|ounce|g|gram|kg|ml|l)\b\.?/i, "")
+      .trim();
+
+    const ingredient = toCanonical(leftNoQty || left);
+    const text = right;
+
+    return { ingredient, text };
+  }
+  return null;
+}
+
+// Very basic component extraction: try to split by '+' and capture “amount unit item”
+function componentsFrom(text: string) {
+  const parts = text.split(/\s*\+\s*/g);
+  const comps: Array<{ item: string; amount?: number; unit?: string }> = [];
+
+  for (const p of parts) {
+    // ex: "1/4 tsp baking soda", "2 tbsp cornstarch", "1 cup milk"
+    const m =
+      p.match(
+        /^\s*(\d+\/\d+|\d+(?:\.\d+)?)\s*(tsp|teaspoons?|tbsp|tablespoons?|cup|cups|oz|ounces?|g|grams?|kg|ml|l)\b\.?\s+(.+?)\s*$/i
+      ) || p.match(/^\s*(\d+\/\d+|\d+(?:\.\d+)?)\s+(.+?)\s*$/i);
+
+    if (m) {
+      const amountStr = m[1];
+      const unit = m[2] && /^(tsp|teaspoon|tbsp|tablespoon|cup|oz|g|kg|ml|l)/i.test(m[2]) ? m[2] : undefined;
+      const item = unit ? m[3] : m[2];
+
+      // convert simple fractions like 1/4
+      const amount =
+        amountStr.includes("/")
+          ? (() => {
+              const [a, b] = amountStr.split("/").map(Number);
+              return b ? a / b : Number(amountStr);
+            })()
+          : Number(amountStr);
+
+      comps.push({
+        item: (item || "").trim(),
+        amount: isNaN(amount) ? undefined : amount,
+        unit: unit ? unit.toLowerCase() : undefined,
+      });
+    } else {
+      comps.push({ item: p.trim() });
+    }
+  }
+
+  return comps;
+}
+
+// ---------- MAIN BUILD ----------
+async function buildJsonlFromPdfs(): Promise<number> {
+  if (!fs.existsSync(DATA_DIR)) {
+    console.error(`❌ Data directory not found: ${DATA_DIR}`);
+    process.exit(1);
+  }
+
+  const pdfs = fs.readdirSync(DATA_DIR).filter((f) => f.toLowerCase().endsWith(".pdf"));
+  if (pdfs.length === 0) {
+    console.error(`❌ No PDFs found in ${DATA_DIR}. Put your PDFs there and retry.`);
+    process.exit(1);
+  }
+
+  const pdfParse = await importPdfParse();
+
+  // Reset output
+  try { fs.unlinkSync(OUT_JSONL); } catch {}
+
+  let totalSubs = 0;
+  const seen = new Map<string, Set<string>>(); // ingredient -> set(signature text)
+
+  for (const fname of pdfs) {
+    const fpath = path.join(DATA_DIR, fname);
+    const buffer = fs.readFileSync(fpath);
+    const parsed = await pdfParse(buffer);
+    const text = String(parsed.text || "");
+    const L = linesOf(text);
+
+    // Collect pairs (ingredient -> subs[])
+    const buckets = new Map<string, Set<string>>();
+
+    for (const line of L) {
+      const parsed = parseSubstitutionLine(line);
+      if (!parsed) continue;
+
+      const { ingredient, text } = parsed;
+      // very rough filter: must contain separators like +, or commas and units,
+      // to resemble actual substitution content rather than headings.
+      if (!/[+]|(\b(tsp|tbsp|cup|oz|g|ml)\b)/i.test(text)) continue;
+
+      if (!buckets.has(ingredient)) buckets.set(ingredient, new Set());
+      buckets.get(ingredient)!.add(text);
+    }
+
+    // Write to JSONL
+    const fd = fs.openSync(OUT_JSONL, "a");
+    try {
+      for (const [ingredient, texts] of buckets) {
+        // prevent duplicates across PDFs
+        const seenForIng = seen.get(ingredient) || new Set();
+        const fresh = Array.from(texts).filter((t) => !seenForIng.has(t));
+        if (fresh.length === 0) continue;
+
+        // mark seen
+        fresh.forEach((t) => seenForIng.add(t));
+        seen.set(ingredient, seenForIng);
+
+        const subs = fresh.map((t) => ({
+          text: t,
+          components: componentsFrom(t),
+          method: {},
+          context: "",
+          diet_tags: [],
+          allergen_flags: [],
+          variants: [],
+          provenance: [{ source: fname }],
+        }));
+
+        const row = { ingredient, subs };
+        fs.writeSync(fd, JSON.stringify(row) + "\n");
+        totalSubs += subs.length;
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
+  console.log(`🧱 Built ${totalSubs} substitutions into ${OUT_JSONL}`);
+  return totalSubs;
+}
+
+async function runSeeder() {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(
+      process.execPath, // node
+      ["--import", "tsx", path.join(process.cwd(), "server", "seed-substitutions.ts")],
+      {
+        stdio: "inherit",
+        env: process.env,
+      }
+    );
+    child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`seeder exited ${code}`))));
+  });
+}
+
+(async () => {
+  try {
+    console.log("🔎 Scanning PDFs and building JSONL…");
+    const count = await buildJsonlFromPdfs();
+    if (count === 0) {
+      console.error("⚠️  No substitution lines detected. The PDFs may not be in a parseable format.");
+      process.exit(1);
+    }
+    console.log("🌱 Seeding database…");
+    await runSeeder();
+    console.log("✅ Done.");
+  } catch (e: any) {
+    console.error("❌ Failed:", e.message || e);
+    process.exit(1);
+  }
+})();
