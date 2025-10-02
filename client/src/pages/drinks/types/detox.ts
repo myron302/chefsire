@@ -1,4 +1,4 @@
-// client/src/types/detox.ts
+// client/src/pages/drinks/types/detox.ts
 import { LucideIcon } from 'lucide-react';
 
 export interface NutritionInfo {
