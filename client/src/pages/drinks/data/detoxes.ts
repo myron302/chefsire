@@ -1,11 +1,11 @@
-// client/src/data/detoxes.ts
+// client/src/pages/drinks/data/detoxes.ts
 import { 
   Droplets, Leaf, Heart, Sparkles, Clock, Users, Trophy, 
   Star, Flame, Target, Award, TrendingUp, Activity, Zap,
   ArrowLeft, Apple, Sun, Moon, Wind, FlaskConical, Coffee,
   GlassWater, Dumbbell, IceCream, ArrowRight, Waves
 } from 'lucide-react';
-import { DetoxRecipe, DrinkCategory, DetoxSubcategory, WaterType, DetoxType } from '@/types/detox';
+import { DetoxRecipe, DrinkCategory, DetoxSubcategory, WaterType, DetoxType } from '../types/detox';
 
 // Shared drink categories for cross-navigation
 export const otherDrinkHubs: DrinkCategory[] = [
@@ -118,8 +118,249 @@ export const infusedWaters: DetoxRecipe[] = [
     temperature: 'Cold',
     category: 'Classic Infusions'
   },
-  // ... include all other water recipes from your original code
-  // (I'll include a shortened version for brevity, but you should include all)
+  {
+    id: 'water-2',
+    name: 'Strawberry Basil Bliss',
+    description: 'Sweet and herbaceous for a gourmet touch',
+    waterType: 'Antioxidant',
+    flavorProfile: 'Sweet & Herbal',
+    infusionTime: '3-6 hours',
+    nutrition: {
+      calories: 8,
+      sugar: 2,
+      antioxidants: 'High',
+      vitamins: 'C'
+    },
+    ingredients: ['Strawberries (6 sliced)', 'Fresh Basil (8 leaves)', 'Lemon (1/4 sliced)', 'Cold Water (32 oz)'],
+    benefits: ['Antioxidants', 'Heart Health', 'Natural Sweetness', 'Vitamin C'],
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.7,
+    reviews: 1876,
+    trending: true,
+    featured: true,
+    estimatedCost: 3.50,
+    bestTime: 'Afternoon',
+    duration: 'Daily',
+    temperature: 'Cold',
+    category: 'Fruity Infusions'
+  },
+  {
+    id: 'water-3',
+    name: 'Lemon Ginger Detox',
+    description: 'Warming and cleansing for metabolism support',
+    waterType: 'Metabolic',
+    flavorProfile: 'Spicy & Citrus',
+    infusionTime: '1-2 hours',
+    nutrition: {
+      calories: 10,
+      sugar: 1,
+      thermogenic: 'High',
+      vitamins: 'C'
+    },
+    ingredients: ['Lemon (1 whole sliced)', 'Fresh Ginger (2 inch sliced)', 'Cayenne Pepper (pinch)', 'Warm Water (32 oz)'],
+    benefits: ['Metabolism Boost', 'Digestive Aid', 'Anti-inflammatory', 'Immune Support'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.6,
+    reviews: 3120,
+    trending: false,
+    featured: true,
+    estimatedCost: 1.50,
+    bestTime: 'Morning',
+    duration: 'Daily',
+    temperature: 'Warm',
+    category: 'Detox Waters'
+  },
+  {
+    id: 'water-4',
+    name: 'Berry Blast Hydrator',
+    description: 'Triple berry antioxidant powerhouse',
+    waterType: 'Antioxidant',
+    flavorProfile: 'Sweet Berry',
+    infusionTime: '4-6 hours',
+    nutrition: {
+      calories: 12,
+      sugar: 3,
+      antioxidants: 'Very High',
+      vitamins: 'C, K'
+    },
+    ingredients: ['Blueberries (1/4 cup)', 'Strawberries (4 sliced)', 'Raspberries (1/4 cup)', 'Mint (6 leaves)', 'Cold Water (32 oz)'],
+    benefits: ['High Antioxidants', 'Brain Health', 'Anti-aging', 'Natural Flavor'],
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.9,
+    reviews: 2890,
+    trending: true,
+    featured: false,
+    estimatedCost: 4.00,
+    bestTime: 'Anytime',
+    duration: 'Daily',
+    temperature: 'Cold',
+    category: 'Fruity Infusions'
+  },
+  {
+    id: 'water-5',
+    name: 'Citrus Sunrise Sparkler',
+    description: 'Vibrant citrus blend for morning energy',
+    waterType: 'Energizing',
+    flavorProfile: 'Tangy Citrus',
+    infusionTime: '2-3 hours',
+    nutrition: {
+      calories: 15,
+      sugar: 4,
+      vitamin_c: 'Very High',
+      electrolytes: 'Low'
+    },
+    ingredients: ['Orange (1/2 sliced)', 'Grapefruit (1/4 sliced)', 'Lime (1/2 sliced)', 'Lemon (1/2 sliced)', 'Cold Water (32 oz)'],
+    benefits: ['Vitamin C Boost', 'Energy', 'Immune Support', 'Alkalizing'],
+    difficulty: 'Easy',
+    prepTime: 6,
+    rating: 4.5,
+    reviews: 1654,
+    trending: false,
+    featured: true,
+    estimatedCost: 2.75,
+    bestTime: 'Morning',
+    duration: 'Daily',
+    temperature: 'Cold',
+    category: 'Citrus Infusions'
+  },
+  {
+    id: 'water-6',
+    name: 'Tropical Paradise Water',
+    description: 'Pineapple and coconut for vacation vibes',
+    waterType: 'Exotic',
+    flavorProfile: 'Sweet Tropical',
+    infusionTime: '3-5 hours',
+    nutrition: {
+      calories: 18,
+      sugar: 5,
+      enzymes: 'Present',
+      electrolytes: 'Moderate'
+    },
+    ingredients: ['Pineapple (1 cup chunks)', 'Coconut Water (8 oz)', 'Lime (1/2 sliced)', 'Mint (6 leaves)', 'Cold Water (24 oz)'],
+    benefits: ['Digestive Enzymes', 'Electrolytes', 'Tropical Flavor', 'Hydration'],
+    difficulty: 'Easy',
+    prepTime: 7,
+    rating: 4.8,
+    reviews: 2234,
+    trending: true,
+    featured: false,
+    estimatedCost: 3.25,
+    bestTime: 'Post-Workout',
+    duration: 'Daily',
+    temperature: 'Cold',
+    category: 'Tropical Infusions'
+  },
+  {
+    id: 'water-7',
+    name: 'Apple Cinnamon Comfort',
+    description: 'Warming autumn-inspired infusion',
+    waterType: 'Warming',
+    flavorProfile: 'Sweet & Spicy',
+    infusionTime: '1-2 hours',
+    nutrition: {
+      calories: 10,
+      sugar: 2,
+      antioxidants: 'Moderate',
+      warming: 'High'
+    },
+    ingredients: ['Apple (1 sliced)', 'Cinnamon Stick (2)', 'Cloves (3)', 'Star Anise (1)', 'Warm Water (32 oz)'],
+    benefits: ['Blood Sugar Balance', 'Warming', 'Antioxidants', 'Comforting'],
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.6,
+    reviews: 1432,
+    trending: false,
+    featured: true,
+    estimatedCost: 2.25,
+    bestTime: 'Evening',
+    duration: 'Seasonal',
+    temperature: 'Warm',
+    category: 'Warm Infusions'
+  },
+  {
+    id: 'water-8',
+    name: 'Watermelon Lime Cooler',
+    description: 'Summer refreshment with maximum hydration',
+    waterType: 'Hydrating',
+    flavorProfile: 'Sweet & Refreshing',
+    infusionTime: '2-4 hours',
+    nutrition: {
+      calories: 12,
+      sugar: 3,
+      electrolytes: 'High',
+      lycopene: 'Present'
+    },
+    ingredients: ['Watermelon (2 cups cubed)', 'Lime (1 whole sliced)', 'Fresh Mint (8 leaves)', 'Cold Water (32 oz)'],
+    benefits: ['Maximum Hydration', 'Electrolytes', 'Cooling', 'Lycopene'],
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.9,
+    reviews: 3456,
+    trending: true,
+    featured: true,
+    estimatedCost: 2.50,
+    bestTime: 'Summer Days',
+    duration: 'Seasonal',
+    temperature: 'Cold',
+    category: 'Summer Infusions'
+  },
+  {
+    id: 'water-9',
+    name: 'Lavender Lemon Calm',
+    description: 'Soothing floral infusion for relaxation',
+    waterType: 'Calming',
+    flavorProfile: 'Floral & Citrus',
+    infusionTime: '30-60 min',
+    nutrition: {
+      calories: 3,
+      sugar: 0,
+      calming: 'High',
+      vitamins: 'C'
+    },
+    ingredients: ['Food-grade Lavender (1 tsp)', 'Lemon (1/2 sliced)', 'Honey (1 tsp optional)', 'Warm Water (32 oz)'],
+    benefits: ['Stress Relief', 'Relaxation', 'Sleep Support', 'Aromatherapy'],
+    difficulty: 'Medium',
+    prepTime: 3,
+    rating: 4.4,
+    reviews: 987,
+    trending: false,
+    featured: false,
+    estimatedCost: 3.00,
+    bestTime: 'Evening',
+    duration: 'As Needed',
+    temperature: 'Warm',
+    category: 'Herbal Infusions'
+  },
+  {
+    id: 'water-10',
+    name: 'Green Tea Peach Fusion',
+    description: 'Light caffeine with fruity sweetness',
+    waterType: 'Energizing',
+    flavorProfile: 'Sweet & Tea',
+    infusionTime: '1-2 hours',
+    nutrition: {
+      calories: 8,
+      sugar: 2,
+      caffeine: 15,
+      antioxidants: 'High'
+    },
+    ingredients: ['Green Tea (1 bag)', 'Peach (1 sliced)', 'Lemon (1/4 sliced)', 'Mint (4 leaves)', 'Cold Water (32 oz)'],
+    benefits: ['Light Energy', 'Antioxidants', 'Metabolism', 'Fruity Flavor'],
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.7,
+    reviews: 1765,
+    trending: false,
+    featured: false,
+    estimatedCost: 2.75,
+    bestTime: 'Mid-Morning',
+    duration: 'Daily',
+    temperature: 'Cold',
+    category: 'Tea Infusions'
+  }
 ];
 
 // Detox Teas Data
@@ -152,7 +393,202 @@ export const detoxTeas: DetoxRecipe[] = [
     allergens: [],
     category: 'Metabolic Teas'
   },
-  // ... include all other tea recipes
+  {
+    id: 'detox-tea-2',
+    name: 'Gentle Evening Cleanse',
+    description: 'Herbal blend with dandelion and chamomile for overnight detox',
+    teaType: 'Herbal',
+    detoxFocus: 'Digestive',
+    brewTemp: '212°F',
+    steepTime: '5-7 min',
+    nutrition: {
+      calories: 2,
+      caffeine: 0,
+      antioxidants: 'High',
+      soothing: 'Very High'
+    },
+    ingredients: ['Dandelion Root', 'Chamomile', 'Fennel Seeds', 'Peppermint', 'Licorice Root'],
+    benefits: ['Digestive Support', 'Liver Cleanse', 'Sleep Quality', 'Relaxation'],
+    difficulty: 'Easy',
+    prepTime: 7,
+    rating: 4.8,
+    reviews: 987,
+    trending: false,
+    featured: true,
+    estimatedCost: 2.25,
+    bestTime: 'Evening',
+    duration: 'Daily',
+    allergens: [],
+    category: 'Evening Teas'
+  },
+  {
+    id: 'detox-tea-3',
+    name: 'Turmeric Golden Glow',
+    description: 'Anti-inflammatory turmeric with black pepper for absorption',
+    teaType: 'Herbal',
+    detoxFocus: 'Anti-inflammatory',
+    brewTemp: '200°F',
+    steepTime: '10 min',
+    nutrition: {
+      calories: 8,
+      caffeine: 0,
+      curcumin: 'High',
+      antioxidants: 'Very High'
+    },
+    ingredients: ['Fresh Turmeric', 'Black Pepper', 'Ginger', 'Cinnamon', 'Honey (optional)', 'Coconut Milk'],
+    benefits: ['Anti-inflammatory', 'Joint Health', 'Skin Glow', 'Immune Support'],
+    difficulty: 'Medium',
+    prepTime: 12,
+    rating: 4.6,
+    reviews: 756,
+    trending: true,
+    featured: false,
+    estimatedCost: 2.75,
+    bestTime: 'Afternoon',
+    duration: 'Daily',
+    allergens: [],
+    category: 'Golden Teas'
+  },
+  {
+    id: 'detox-tea-4',
+    name: 'Liver Love Blend',
+    description: 'Milk thistle and artichoke for liver support and detoxification',
+    teaType: 'Herbal',
+    detoxFocus: 'Liver',
+    brewTemp: '212°F',
+    steepTime: '7-10 min',
+    nutrition: {
+      calories: 3,
+      caffeine: 0,
+      silymarin: 'High',
+      bitter_compounds: 'Present'
+    },
+    ingredients: ['Milk Thistle', 'Artichoke Leaf', 'Dandelion Root', 'Burdock Root', 'Lemon Peel'],
+    benefits: ['Liver Support', 'Detoxification', 'Bile Production', 'Cellular Health'],
+    difficulty: 'Easy',
+    prepTime: 10,
+    rating: 4.5,
+    reviews: 645,
+    trending: false,
+    featured: true,
+    estimatedCost: 3.25,
+    bestTime: 'Midday',
+    duration: '2-4 weeks',
+    allergens: [],
+    category: 'Liver Support Teas'
+  },
+  {
+    id: 'detox-tea-5',
+    name: 'White Tea Antioxidant',
+    description: 'Delicate white tea with elderflower for gentle cleansing',
+    teaType: 'White Tea',
+    detoxFocus: 'Antioxidant',
+    brewTemp: '170°F',
+    steepTime: '4-5 min',
+    nutrition: {
+      calories: 2,
+      caffeine: 15,
+      antioxidants: 'Very High',
+      polyphenols: 'Highest'
+    },
+    ingredients: ['White Tea', 'Elderflower', 'Rose Petals', 'Jasmine', 'Lemon Verbena'],
+    benefits: ['Highest Antioxidants', 'Skin Health', 'Anti-aging', 'Gentle Energy'],
+    difficulty: 'Easy',
+    prepTime: 6,
+    rating: 4.7,
+    reviews: 534,
+    trending: false,
+    featured: false,
+    estimatedCost: 4.50,
+    bestTime: 'Morning or Afternoon',
+    duration: 'Daily',
+    allergens: [],
+    category: 'White Teas'
+  },
+  {
+    id: 'detox-tea-6',
+    name: 'Spicy Digestion Aid',
+    description: 'Warming spices to support digestive fire and bloating relief',
+    teaType: 'Herbal',
+    detoxFocus: 'Digestive',
+    brewTemp: '212°F',
+    steepTime: '5 min',
+    nutrition: {
+      calories: 6,
+      caffeine: 0,
+      digestive_enzymes: 'Present',
+      warming_properties: 'High'
+    },
+    ingredients: ['Ginger Root', 'Fennel Seeds', 'Cardamom', 'Coriander', 'Black Pepper', 'Cinnamon'],
+    benefits: ['Digestive Support', 'Bloating Relief', 'Metabolism', 'Warming'],
+    difficulty: 'Easy',
+    prepTime: 6,
+    rating: 4.6,
+    reviews: 892,
+    trending: true,
+    featured: true,
+    estimatedCost: 1.75,
+    bestTime: 'After Meals',
+    duration: 'As needed',
+    allergens: [],
+    category: 'Digestive Teas'
+  },
+  {
+    id: 'detox-tea-7',
+    name: 'Oolong Metabolism Enhancer',
+    description: 'Semi-oxidized oolong for sustained energy and fat burning',
+    teaType: 'Oolong Tea',
+    detoxFocus: 'Metabolic',
+    brewTemp: '195°F',
+    steepTime: '3-4 min',
+    nutrition: {
+      calories: 2,
+      caffeine: 35,
+      antioxidants: 'High',
+      polyphenols: 'Very High'
+    },
+    ingredients: ['Oolong Tea', 'Cinnamon Stick', 'Star Anise', 'Orange Peel', 'Cloves'],
+    benefits: ['Fat Metabolism', 'Sustained Energy', 'Mental Focus', 'Weight Management'],
+    difficulty: 'Medium',
+    prepTime: 5,
+    rating: 4.5,
+    reviews: 678,
+    trending: false,
+    featured: false,
+    estimatedCost: 3.75,
+    bestTime: 'Mid-morning',
+    duration: 'Daily',
+    allergens: [],
+    category: 'Oolong Teas'
+  },
+  {
+    id: 'detox-tea-8',
+    name: 'Peppermint Clarity Cooler',
+    description: 'Refreshing peppermint for mental clarity and digestive ease',
+    teaType: 'Herbal',
+    detoxFocus: 'Digestive',
+    brewTemp: '212°F',
+    steepTime: '5-7 min',
+    nutrition: {
+      calories: 1,
+      caffeine: 0,
+      menthol: 'High',
+      soothing: 'Very High'
+    },
+    ingredients: ['Peppermint Leaves', 'Spearmint', 'Lemon Balm', 'Nettle Leaf', 'Stevia (optional)'],
+    benefits: ['Digestive Relief', 'Mental Clarity', 'Cooling', 'IBS Support'],
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.8,
+    reviews: 1123,
+    trending: true,
+    featured: true,
+    estimatedCost: 1.25,
+    bestTime: 'Anytime',
+    duration: 'Daily',
+    allergens: [],
+    category: 'Mint Teas'
+  }
 ];
 
 // Detox Juices Data
@@ -186,7 +622,209 @@ export const detoxJuices: DetoxRecipe[] = [
     allergens: [],
     category: 'Green Juices'
   },
-  // ... include all other juice recipes
+  {
+    id: 'detox-juice-2',
+    name: 'Beet & Carrot Liver Flush',
+    description: 'Root vegetables for liver detoxification',
+    detoxType: 'Liver Support',
+    detoxLevel: 'Moderate',
+    servingSize: '12 oz',
+    nutrition: {
+      calories: 110,
+      carbs: 26,
+      fiber: 4,
+      sugar: 20,
+      vitamin_a: 250,
+      antioxidants: 'High'
+    },
+    ingredients: ['Beetroot (1 medium)', 'Carrots (3 medium)', 'Green Apple (1 medium)', 'Lemon (1/2)', 'Ginger (1/2 inch)', 'Turmeric (1/4 tsp)'],
+    benefits: ['Liver Cleanse', 'Blood Purifying', 'Antioxidants', 'Energy Boost'],
+    difficulty: 'Easy',
+    prepTime: 6,
+    rating: 4.8,
+    reviews: 1234,
+    trending: false,
+    featured: true,
+    estimatedCost: 3.75,
+    bestTime: 'Afternoon',
+    duration: '1-Day',
+    allergens: [],
+    category: 'Root Juices'
+  },
+  {
+    id: 'detox-juice-3',
+    name: 'Citrus Immunity Boost',
+    description: 'Vitamin C packed citrus for immune system',
+    detoxType: 'Immune Support',
+    detoxLevel: 'Gentle',
+    servingSize: '14 oz',
+    nutrition: {
+      calories: 140,
+      carbs: 34,
+      fiber: 2,
+      sugar: 28,
+      vitamin_c: 300,
+      natural_enzymes: 'High'
+    },
+    ingredients: ['Oranges (3 large)', 'Grapefruit (1 medium)', 'Lemon (1 whole)', 'Lime (1 whole)', 'Fresh Mint (6 leaves)', 'Cayenne Pepper (pinch)'],
+    benefits: ['Immune Boost', 'Vitamin C', 'Metabolism', 'Hydration'],
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.5,
+    reviews: 678,
+    trending: true,
+    featured: false,
+    estimatedCost: 3.25,
+    bestTime: 'Morning',
+    duration: '1-Day',
+    allergens: [],
+    category: 'Citrus Juices'
+  },
+  {
+    id: 'detox-juice-4',
+    name: 'Red Cleanse Revitalizer',
+    description: 'Antioxidant-rich red fruits and vegetables',
+    detoxType: 'Antioxidant',
+    detoxLevel: 'Gentle',
+    servingSize: '14 oz',
+    nutrition: {
+      calories: 125,
+      carbs: 30,
+      fiber: 5,
+      sugar: 24,
+      anthocyanins: 'Very High',
+      lycopene: 'High'
+    },
+    ingredients: ['Tomatoes (2 large)', 'Red Bell Pepper (1 large)', 'Strawberries (1 cup)', 'Watermelon (2 cups)', 'Lemon (1/2)', 'Basil (4 leaves)'],
+    benefits: ['Antioxidants', 'Skin Health', 'Heart Support', 'Anti-aging'],
+    difficulty: 'Easy',
+    prepTime: 6,
+    rating: 4.4,
+    reviews: 445,
+    trending: false,
+    featured: true,
+    estimatedCost: 4.00,
+    bestTime: 'Midday',
+    duration: '1-Day',
+    allergens: [],
+    category: 'Red Juices'
+  },
+  {
+    id: 'detox-juice-5',
+    name: 'Digestive Reset Blend',
+    description: 'Gentle on stomach, promotes gut health',
+    detoxType: 'Digestive',
+    detoxLevel: 'Gentle',
+    servingSize: '12 oz',
+    nutrition: {
+      calories: 85,
+      carbs: 20,
+      fiber: 4,
+      sugar: 14,
+      enzymes: 'High',
+      probiotics: 'Present'
+    },
+    ingredients: ['Pineapple (1.5 cups)', 'Papaya (1 cup)', 'Fresh Ginger (1 inch)', 'Lemon (1/2)', 'Fennel (1/4 bulb)', 'Mint (8 leaves)'],
+    benefits: ['Digestive Enzymes', 'Gut Health', 'Bloating Relief', 'Soothing'],
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.7,
+    reviews: 789,
+    trending: false,
+    featured: false,
+    estimatedCost: 4.25,
+    bestTime: 'After Meals',
+    duration: '1-Day',
+    allergens: [],
+    category: 'Digestive Juices'
+  },
+  {
+    id: 'detox-juice-6',
+    name: 'Metabolism Fire Tonic',
+    description: 'Spicy blend to boost metabolism and circulation',
+    detoxType: 'Metabolic',
+    detoxLevel: 'Intense',
+    servingSize: '10 oz',
+    nutrition: {
+      calories: 70,
+      carbs: 16,
+      fiber: 3,
+      sugar: 10,
+      capsaicin: 'High',
+      warming_properties: 'Very High'
+    },
+    ingredients: ['Green Apple (2 medium)', 'Lemon (1 whole)', 'Fresh Ginger (2 inches)', 'Cayenne Pepper (1/4 tsp)', 'Turmeric (1 tsp)', 'Black Pepper (pinch)'],
+    benefits: ['Metabolism Boost', 'Thermogenic', 'Anti-inflammatory', 'Circulation'],
+    difficulty: 'Medium',
+    prepTime: 6,
+    rating: 4.3,
+    reviews: 556,
+    trending: true,
+    featured: true,
+    estimatedCost: 2.75,
+    bestTime: 'Morning',
+    duration: '1-Day',
+    allergens: [],
+    category: 'Spicy Juices'
+  },
+  {
+    id: 'detox-juice-7',
+    name: 'Hydration Hero',
+    description: 'Maximum hydration with electrolytes',
+    detoxType: 'Hydration',
+    detoxLevel: 'Gentle',
+    servingSize: '16 oz',
+    nutrition: {
+      calories: 60,
+      carbs: 14,
+      fiber: 2,
+      sugar: 10,
+      electrolytes: 'Very High',
+      potassium: 650
+    },
+    ingredients: ['Cucumber (2 large)', 'Coconut Water (1 cup)', 'Celery (3 stalks)', 'Lime (1 whole)', 'Fresh Mint (10 leaves)', 'Sea Salt (pinch)'],
+    benefits: ['Deep Hydration', 'Electrolytes', 'Cooling', 'Skin Glow'],
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.6,
+    reviews: 923,
+    trending: false,
+    featured: false,
+    estimatedCost: 3.50,
+    bestTime: 'Post-Workout',
+    duration: '1-Day',
+    allergens: [],
+    category: 'Hydrating Juices'
+  },
+  {
+    id: 'detox-juice-8',
+    name: 'Purple Power Cleanse',
+    description: 'Antioxidant-rich purple produce for cellular health',
+    detoxType: 'Cellular',
+    detoxLevel: 'Moderate',
+    servingSize: '14 oz',
+    nutrition: {
+      calories: 135,
+      carbs: 32,
+      fiber: 6,
+      sugar: 26,
+      anthocyanins: 'Very High',
+      resveratrol: 'High'
+    },
+    ingredients: ['Red Cabbage (1 cup)', 'Blueberries (1 cup)', 'Blackberries (1/2 cup)', 'Red Grapes (1 cup)', 'Lemon (1/2)', 'Ginger (1/2 inch)'],
+    benefits: ['Cellular Health', 'Brain Health', 'Anti-aging', 'Antioxidants'],
+    difficulty: 'Medium',
+    prepTime: 7,
+    rating: 4.5,
+    reviews: 667,
+    trending: true,
+    featured: false,
+    estimatedCost: 5.25,
+    bestTime: 'Anytime',
+    duration: '1-Day',
+    allergens: [],
+    category: 'Purple Juices'
+  }
 ];
 
 // Water Types
@@ -200,7 +838,33 @@ export const waterTypes: WaterType[] = [
     benefits: ['Hydration', 'Electrolytes', 'Cooling'],
     bestFor: 'All-day drinking and post-workout'
   },
-  // ... other water types
+  {
+    id: 'detox',
+    name: 'Detox Waters',
+    description: 'Cleansing and metabolism support',
+    icon: Sparkles,
+    color: 'text-green-600',
+    benefits: ['Cleansing', 'Metabolism', 'Digestion'],
+    bestFor: 'Morning rituals and cleanses'
+  },
+  {
+    id: 'antioxidant',
+    name: 'Antioxidant Blends',
+    description: 'Berry and fruit-based for cellular health',
+    icon: Star,
+    color: 'text-purple-600',
+    benefits: ['Antioxidants', 'Anti-aging', 'Immune'],
+    bestFor: 'Daily wellness and skin health'
+  },
+  {
+    id: 'energizing',
+    name: 'Energizing Waters',
+    description: 'Citrus and light caffeine for natural energy',
+    icon: Zap,
+    color: 'text-orange-600',
+    benefits: ['Energy', 'Vitamin C', 'Alertness'],
+    bestFor: 'Morning and afternoon pick-me-up'
+  }
 ];
 
 // Tea Types
@@ -215,7 +879,36 @@ export const teaTypes: WaterType[] = [
     benefits: ['Metabolism', 'Antioxidants', 'Fat Burning'],
     bestFor: 'Morning energy and weight support'
   },
-  // ... other tea types
+  {
+    id: 'herbal',
+    name: 'Herbal Infusions',
+    description: 'Caffeine-free botanical blends for targeted support',
+    icon: Sparkles,
+    color: 'text-purple-600',
+    caffeine: 'None',
+    benefits: ['Caffeine-Free', 'Therapeutic', 'Relaxing'],
+    bestFor: 'Evening and sensitive individuals'
+  },
+  {
+    id: 'white-oolong',
+    name: 'White & Oolong',
+    description: 'Delicate oxidation for highest antioxidant content',
+    icon: Droplets,
+    color: 'text-blue-600',
+    caffeine: 'Very Low-Moderate',
+    benefits: ['Highest Antioxidants', 'Gentle', 'Complex'],
+    bestFor: 'All-day sipping and anti-aging'
+  },
+  {
+    id: 'spiced',
+    name: 'Spiced Detox',
+    description: 'Warming spices for circulation and digestion',
+    icon: Flame,
+    color: 'text-orange-600',
+    caffeine: 'Varies',
+    benefits: ['Warming', 'Digestive', 'Circulation'],
+    bestFor: 'Cold weather and after meals'
+  }
 ];
 
 // Detox Types
@@ -230,5 +923,34 @@ export const detoxTypes: DetoxType[] = [
     duration: '1-3 Days',
     benefits: ['Full System Reset', 'Liver Support', 'Alkalizing']
   },
-  // ... other detox types
+  {
+    id: 'gentle-detox',
+    name: 'Gentle Detox',
+    description: 'Mild cleansing for daily wellness',
+    icon: Leaf,
+    color: 'text-green-600',
+    intensity: 'Gentle',
+    duration: 'Daily',
+    benefits: ['Maintenance', 'Hydration', 'Nutrition']
+  },
+  {
+    id: 'targeted',
+    name: 'Targeted Support',
+    description: 'Specific organ or system focus',
+    icon: Target,
+    color: 'text-blue-600',
+    intensity: 'Moderate',
+    duration: '1-5 Days',
+    benefits: ['Organ Support', 'Specific Goals', 'Therapeutic']
+  },
+  {
+    id: 'metabolic',
+    name: 'Metabolic Boost',
+    description: 'Enhance metabolism and energy',
+    icon: Zap,
+    color: 'text-yellow-600',
+    intensity: 'Moderate',
+    duration: '1-7 Days',
+    benefits: ['Metabolism', 'Energy', 'Weight Support']
+  }
 ];
