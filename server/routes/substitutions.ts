@@ -1,130 +1,165 @@
 // server/routes/substitutions.ts
-import { Router } from "express";
+import "dotenv/config";
+import { Router, Request, Response } from "express";
+import { Pool } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-serverless";
+import { and, eq, ilike, sql } from "drizzle-orm";
+import {
+  substitutionIngredients,
+  substitutions,
+} from "../../shared/schema.js";
 
-// Server keeps a small copy of the catalog so the API can work
-// without importing TS from the client. You can expand this list
-// or later replace with a shared JSON file.
-type SubOption = { name: string; note?: string };
-type SubEntry = {
-  id: string;
-  name: string;
-  synonyms?: string[];
-  groupId: string;
-  pantryCategory:
-    | "produce" | "dairy" | "meat" | "seafood" | "grains"
-    | "spices" | "pantry" | "frozen" | "canned" | "beverages" | "other";
-  substitutes: SubOption[];
-  caution?: string;
-};
-
-const DATA: SubEntry[] = [
-  {
-    id: "buttermilk",
-    name: "Buttermilk",
-    synonyms: ["cultured buttermilk"],
-    groupId: "dairy",
-    pantryCategory: "dairy",
-    substitutes: [
-      { name: "Milk + lemon juice", note: "1 cup milk + 1 Tbsp lemon; rest 5–10 min" },
-      { name: "Milk + white vinegar", note: "1 cup milk + 1 Tbsp vinegar" },
-      { name: "Plain yogurt + milk", note: "3/4 cup yogurt + 1/4 cup milk" },
-    ],
-  },
-  {
-    id: "egg",
-    name: "Egg",
-    synonyms: ["eggs"],
-    groupId: "eggs",
-    pantryCategory: "pantry",
-    substitutes: [
-      { name: "Applesauce (unsweetened)", note: "1/4 cup per egg" },
-      { name: "Ground flax + water", note: "1 Tbsp flax + 3 Tbsp water = 1 egg" },
-    ],
-  },
-  {
-    id: "olive-oil",
-    name: "Olive Oil",
-    synonyms: ["evoo", "extra virgin olive oil"],
-    groupId: "oils-fats",
-    pantryCategory: "pantry",
-    substitutes: [
-      { name: "Avocado oil", note: "Neutral; high smoke point" },
-      { name: "Canola or sunflower oil", note: "Neutral; 1:1" },
-    ],
-  },
-  {
-    id: "brown-sugar",
-    name: "Brown Sugar",
-    synonyms: ["light brown sugar", "dark brown sugar"],
-    groupId: "sweeteners",
-    pantryCategory: "pantry",
-    substitutes: [
-      { name: "White sugar + molasses", note: "1 cup + 1 Tbsp molasses (light)" },
-      { name: "White sugar + maple syrup", note: "Adjust liquid in batter" },
-    ],
-  },
-];
-
-function normalize(s: string) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+// ---- DB (local, safe to reuse) ----
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  throw new Error("DATABASE_URL is missing. Set it in server/.env");
 }
+const pool = new Pool({ connectionString: DATABASE_URL });
+const db = drizzle(pool);
 
-function scoreMatch(q: string, t: string) {
-  if (t.startsWith(q)) return 1.0;
-  if (t.includes(q)) return 0.8;
-  return 0;
-}
-
+// ---- Router ----
 const router = Router();
 
 /**
- * GET /api/substitutions?q=buttermilk
- * Optional: &groupId=dairy
+ * GET /api/substitutions
+ *
+ * Query params:
+ *  - q: free text search (ingredient name or substitution text)
+ *  - ingredient: exact ingredient filter (e.g. "Buttermilk")
+ *  - limit: number (default 20, max 100)
+ *  - offset: number (default 0)
+ *
+ * Returns:
+ *  {
+ *    items: [{
+ *      id, ingredientId, ingredient, aliases, text, components, method, context, dietTags, allergenFlags
+ *    }],
+ *    total, limit, offset
+ *  }
  */
-router.get("/", (req, res) => {
-  const qRaw = String(req.query.q || "").trim();
-  const groupId = req.query.groupId ? String(req.query.groupId) : undefined;
-  const q = normalize(qRaw);
-  if (!q) return res.json({ query: qRaw, results: [] });
+router.get("/", async (req: Request, res: Response) => {
+  try {
+    const q = (req.query.q as string | undefined)?.trim();
+    const ingredientFilter = (req.query.ingredient as string | undefined)?.trim();
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? "20"), 10) || 20, 1), 100);
+    const offset = Math.max(parseInt(String(req.query.offset ?? "0"), 10) || 0, 0);
 
-  const scored: { entry: SubEntry; score: number; matchedAs: "name"|"synonym" }[] = [];
-
-  for (const e of DATA) {
-    if (groupId && e.groupId !== groupId) continue;
-
-    const ns = normalize(e.name);
-    const s = scoreMatch(q, ns);
-    if (s > 0) scored.push({ entry: e, score: s, matchedAs: "name" });
-
-    if (e.synonyms) {
-      for (const syn of e.synonyms) {
-        const ss = scoreMatch(q, normalize(syn));
-        if (ss > 0) scored.push({ entry: e, score: ss * 0.95, matchedAs: "synonym" });
-      }
+    // Build WHERE
+    const whereParts = [];
+    if (ingredientFilter) {
+      whereParts.push(eq(substitutionIngredients.ingredient, ingredientFilter));
     }
+    if (q) {
+      // search in ingredient name OR substitution free text
+      whereParts.push(
+        ilike(substitutionIngredients.ingredient, `%${q}%`)
+      );
+      whereParts.push(
+        ilike(substitutions.text, `%${q}%`)
+      );
+    }
+
+    // If both ingredient and q are present, we want (ingredient = X) AND (ingredient ILIKE q OR text ILIKE q)
+    // Build a single AND with combined OR for q if needed:
+    const where =
+      ingredientFilter && q
+        ? and(
+            eq(substitutionIngredients.ingredient, ingredientFilter),
+            // OR over two conditions:
+            sql`${substitutionIngredients.ingredient} ILIKE ${"%" + q + "%"} OR ${substitutions.text} ILIKE ${"%" + q + "%"}`
+          )
+        : q
+        ? // Only q (OR between name/text)
+          sql`${substitutionIngredients.ingredient} ILIKE ${"%" + q + "%"} OR ${substitutions.text} ILIKE ${"%" + q + "%"}`
+        : ingredientFilter
+        ? eq(substitutionIngredients.ingredient, ingredientFilter)
+        : undefined;
+
+    // Count total
+    const totalRows = await db
+      .select({
+        count: sql<number>`count(*)`.mapWith(Number),
+      })
+      .from(substitutions)
+      .innerJoin(
+        substitutionIngredients,
+        eq(substitutions.ingredientId, substitutionIngredients.id)
+      )
+      .where(where as any);
+
+    const total = totalRows[0]?.count ?? 0;
+
+    // Page of results
+    const rows = await db
+      .select({
+        id: substitutions.id,
+        ingredientId: substitutions.ingredientId,
+        ingredient: substitutionIngredients.ingredient,
+        aliases: substitutionIngredients.aliases,
+        text: substitutions.text,
+        components: substitutions.components,
+        method: substitutions.method,
+        ratio: substitutions.ratio,
+        context: substitutions.context,
+        dietTags: substitutions.dietTags,
+        allergenFlags: substitutions.allergenFlags,
+      })
+      .from(substitutions)
+      .innerJoin(
+        substitutionIngredients,
+        eq(substitutions.ingredientId, substitutionIngredients.id)
+      )
+      .where(where as any)
+      .limit(limit)
+      .offset(offset);
+
+    res.json({
+      items: rows,
+      total,
+      limit,
+      offset,
+    });
+  } catch (err: any) {
+    console.error("GET /api/substitutions error:", err);
+    res.status(500).json({ error: "Failed to fetch substitutions" });
   }
+});
 
-  // dedupe by id keep best
-  const best = new Map<string, typeof scored[number]>();
-  for (const r of scored) {
-    const prev = best.get(r.entry.id);
-    if (!prev || r.score > prev.score) best.set(r.entry.id, r);
+/**
+ * GET /api/substitutions/:ingredient
+ * Quick convenience endpoint to fetch by exact ingredient name.
+ */
+router.get("/:ingredient", async (req: Request, res: Response) => {
+  try {
+    const name = (req.params.ingredient || "").trim();
+    if (!name) return res.status(400).json({ error: "ingredient path param is required" });
+
+    const rows = await db
+      .select({
+        id: substitutions.id,
+        ingredientId: substitutions.ingredientId,
+        ingredient: substitutionIngredients.ingredient,
+        aliases: substitutionIngredients.aliases,
+        text: substitutions.text,
+        components: substitutions.components,
+        method: substitutions.method,
+        ratio: substitutions.ratio,
+        context: substitutions.context,
+        dietTags: substitutions.dietTags,
+        allergenFlags: substitutions.allergenFlags,
+      })
+      .from(substitutions)
+      .innerJoin(
+        substitutionIngredients,
+        eq(substitutions.ingredientId, substitutionIngredients.id)
+      )
+      .where(eq(substitutionIngredients.ingredient, name));
+
+    res.json({ items: rows, total: rows.length });
+  } catch (err: any) {
+    console.error("GET /api/substitutions/:ingredient error:", err);
+    res.status(500).json({ error: "Failed to fetch substitutions" });
   }
-
-  const results = [...best.values()]
-    .sort((a, b) => b.score - a.score)
-    .map(({ entry, matchedAs, score }) => ({
-      id: entry.id,
-      name: entry.name,
-      groupId: entry.groupId,
-      pantryCategory: entry.pantryCategory,
-      matchedAs,
-      score,
-      substitutes: entry.substitutes,
-      caution: entry.caution,
-    }));
-
-  res.json({ query: qRaw, results });
 });
 
 export default router;
