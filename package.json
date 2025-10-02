@@ -5,24 +5,19 @@
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
-
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=server/dist",
-
     "start": "NODE_ENV=production node server/dist/index.js",
-
     "check": "tsc",
-
     "db:ping": "dotenv -e server/.env -- tsx server/scripts/db-ping.ts",
     "db:push": "dotenv -e server/.env -- drizzle-kit push",
     "db:push:accept": "dotenv -e server/.env -- drizzle-kit push --force || dotenv -e server/.env -- drizzle-kit push --yes",
     "db:seed": "dotenv -e server/.env -- tsx server/seed.ts",
     "db:seed:subs": "dotenv -e server/.env -- tsx server/seed-substitutions.ts",
+    "db:seed:subs:full": "dotenv -e server/.env -- node --loader tsx server/scripts/build-and-seed-substitutions.ts",
     "db:export:neon": "dotenv -e server/.env -- tsx server/scripts/export-table.ts playing_with_neon",
-
     "postinstall": "npx update-browserslist-db@latest || true",
-
     "check:imports": "node tools/check-imports.js",
     "gen:shims": "node tools/generate-import-shims.js",
     "fix:filenames": "node tools/fix-filenames.js"
