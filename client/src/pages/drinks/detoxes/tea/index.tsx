@@ -1,3 +1,4 @@
+// client/src/pages/drinks/detoxes/tea/index.tsx
 import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,276 +13,8 @@ import {
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
-
-const detoxTeas = [
-  {
-    id: 'detox-tea-1',
-    name: 'Morning Metabolism Boost',
-    description: 'Green tea with ginger and lemon to kickstart your day',
-    teaType: 'Green Tea',
-    detoxFocus: 'Metabolic',
-    brewTemp: '175°F',
-    steepTime: '2-3 min',
-    nutrition: {
-      calories: 5,
-      caffeine: 25,
-      antioxidants: 'Very High',
-      catechins: 'High'
-    },
-    ingredients: ['Green Tea', 'Fresh Ginger', 'Lemon Peel', 'Mint Leaves', 'Cayenne (optional)'],
-    benefits: ['Metabolism Boost', 'Fat Oxidation', 'Energy', 'Thermogenic'],
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.7,
-    reviews: 1234,
-    trending: true,
-    featured: true,
-    estimatedCost: 1.50,
-    bestTime: 'Morning',
-    duration: 'Daily',
-    allergens: [],
-    category: 'Metabolic Teas'
-  },
-  {
-    id: 'detox-tea-2',
-    name: 'Gentle Evening Cleanse',
-    description: 'Herbal blend with dandelion and chamomile for overnight detox',
-    teaType: 'Herbal',
-    detoxFocus: 'Digestive',
-    brewTemp: '212°F',
-    steepTime: '5-7 min',
-    nutrition: {
-      calories: 2,
-      caffeine: 0,
-      antioxidants: 'High',
-      soothing: 'Very High'
-    },
-    ingredients: ['Dandelion Root', 'Chamomile', 'Fennel Seeds', 'Peppermint', 'Licorice Root'],
-    benefits: ['Digestive Support', 'Liver Cleanse', 'Sleep Quality', 'Relaxation'],
-    difficulty: 'Easy',
-    prepTime: 7,
-    rating: 4.8,
-    reviews: 987,
-    trending: false,
-    featured: true,
-    estimatedCost: 2.25,
-    bestTime: 'Evening',
-    duration: 'Daily',
-    allergens: [],
-    category: 'Evening Teas'
-  },
-  {
-    id: 'detox-tea-3',
-    name: 'Turmeric Golden Glow',
-    description: 'Anti-inflammatory turmeric with black pepper for absorption',
-    teaType: 'Herbal',
-    detoxFocus: 'Anti-inflammatory',
-    brewTemp: '200°F',
-    steepTime: '10 min',
-    nutrition: {
-      calories: 8,
-      caffeine: 0,
-      curcumin: 'High',
-      antioxidants: 'Very High'
-    },
-    ingredients: ['Fresh Turmeric', 'Black Pepper', 'Ginger', 'Cinnamon', 'Honey (optional)', 'Coconut Milk'],
-    benefits: ['Anti-inflammatory', 'Joint Health', 'Skin Glow', 'Immune Support'],
-    difficulty: 'Medium',
-    prepTime: 12,
-    rating: 4.6,
-    reviews: 756,
-    trending: true,
-    featured: false,
-    estimatedCost: 2.75,
-    bestTime: 'Afternoon',
-    duration: 'Daily',
-    allergens: [],
-    category: 'Golden Teas'
-  },
-  {
-    id: 'detox-tea-4',
-    name: 'Liver Love Blend',
-    description: 'Milk thistle and artichoke for liver support and detoxification',
-    teaType: 'Herbal',
-    detoxFocus: 'Liver',
-    brewTemp: '212°F',
-    steepTime: '7-10 min',
-    nutrition: {
-      calories: 3,
-      caffeine: 0,
-      silymarin: 'High',
-      bitter_compounds: 'Present'
-    },
-    ingredients: ['Milk Thistle', 'Artichoke Leaf', 'Dandelion Root', 'Burdock Root', 'Lemon Peel'],
-    benefits: ['Liver Support', 'Detoxification', 'Bile Production', 'Cellular Health'],
-    difficulty: 'Easy',
-    prepTime: 10,
-    rating: 4.5,
-    reviews: 645,
-    trending: false,
-    featured: true,
-    estimatedCost: 3.25,
-    bestTime: 'Midday',
-    duration: '2-4 weeks',
-    allergens: [],
-    category: 'Liver Support Teas'
-  },
-  {
-    id: 'detox-tea-5',
-    name: 'White Tea Antioxidant',
-    description: 'Delicate white tea with elderflower for gentle cleansing',
-    teaType: 'White Tea',
-    detoxFocus: 'Antioxidant',
-    brewTemp: '170°F',
-    steepTime: '4-5 min',
-    nutrition: {
-      calories: 2,
-      caffeine: 15,
-      antioxidants: 'Very High',
-      polyphenols: 'Highest'
-    },
-    ingredients: ['White Tea', 'Elderflower', 'Rose Petals', 'Jasmine', 'Lemon Verbena'],
-    benefits: ['Highest Antioxidants', 'Skin Health', 'Anti-aging', 'Gentle Energy'],
-    difficulty: 'Easy',
-    prepTime: 6,
-    rating: 4.7,
-    reviews: 534,
-    trending: false,
-    featured: false,
-    estimatedCost: 4.50,
-    bestTime: 'Morning or Afternoon',
-    duration: 'Daily',
-    allergens: [],
-    category: 'White Teas'
-  },
-  {
-    id: 'detox-tea-6',
-    name: 'Spicy Digestion Aid',
-    description: 'Warming spices to support digestive fire and bloating relief',
-    teaType: 'Herbal',
-    detoxFocus: 'Digestive',
-    brewTemp: '212°F',
-    steepTime: '5 min',
-    nutrition: {
-      calories: 6,
-      caffeine: 0,
-      digestive_enzymes: 'Present',
-      warming_properties: 'High'
-    },
-    ingredients: ['Ginger Root', 'Fennel Seeds', 'Cardamom', 'Coriander', 'Black Pepper', 'Cinnamon'],
-    benefits: ['Digestive Support', 'Bloating Relief', 'Metabolism', 'Warming'],
-    difficulty: 'Easy',
-    prepTime: 6,
-    rating: 4.6,
-    reviews: 892,
-    trending: true,
-    featured: true,
-    estimatedCost: 1.75,
-    bestTime: 'After Meals',
-    duration: 'As needed',
-    allergens: [],
-    category: 'Digestive Teas'
-  },
-  {
-    id: 'detox-tea-7',
-    name: 'Oolong Metabolism Enhancer',
-    description: 'Semi-oxidized oolong for sustained energy and fat burning',
-    teaType: 'Oolong Tea',
-    detoxFocus: 'Metabolic',
-    brewTemp: '195°F',
-    steepTime: '3-4 min',
-    nutrition: {
-      calories: 2,
-      caffeine: 35,
-      antioxidants: 'High',
-      polyphenols: 'Very High'
-    },
-    ingredients: ['Oolong Tea', 'Cinnamon Stick', 'Star Anise', 'Orange Peel', 'Cloves'],
-    benefits: ['Fat Metabolism', 'Sustained Energy', 'Mental Focus', 'Weight Management'],
-    difficulty: 'Medium',
-    prepTime: 5,
-    rating: 4.5,
-    reviews: 678,
-    trending: false,
-    featured: false,
-    estimatedCost: 3.75,
-    bestTime: 'Mid-morning',
-    duration: 'Daily',
-    allergens: [],
-    category: 'Oolong Teas'
-  },
-  {
-    id: 'detox-tea-8',
-    name: 'Peppermint Clarity Cooler',
-    description: 'Refreshing peppermint for mental clarity and digestive ease',
-    teaType: 'Herbal',
-    detoxFocus: 'Digestive',
-    brewTemp: '212°F',
-    steepTime: '5-7 min',
-    nutrition: {
-      calories: 1,
-      caffeine: 0,
-      menthol: 'High',
-      soothing: 'Very High'
-    },
-    ingredients: ['Peppermint Leaves', 'Spearmint', 'Lemon Balm', 'Nettle Leaf', 'Stevia (optional)'],
-    benefits: ['Digestive Relief', 'Mental Clarity', 'Cooling', 'IBS Support'],
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.8,
-    reviews: 1123,
-    trending: true,
-    featured: true,
-    estimatedCost: 1.25,
-    bestTime: 'Anytime',
-    duration: 'Daily',
-    allergens: [],
-    category: 'Mint Teas'
-  }
-];
-
-const teaTypes = [
-  {
-    id: 'green-tea',
-    name: 'Green Tea Blends',
-    description: 'Catechin-rich teas for metabolism and antioxidants',
-    icon: Leaf,
-    color: 'text-green-600',
-    caffeine: 'Low-Moderate',
-    benefits: ['Metabolism', 'Antioxidants', 'Fat Burning'],
-    bestFor: 'Morning energy and weight support'
-  },
-  {
-    id: 'herbal',
-    name: 'Herbal Infusions',
-    description: 'Caffeine-free botanical blends for targeted support',
-    icon: Sparkles,
-    color: 'text-purple-600',
-    caffeine: 'None',
-    benefits: ['Caffeine-Free', 'Therapeutic', 'Relaxing'],
-    bestFor: 'Evening and sensitive individuals'
-  },
-  {
-    id: 'white-oolong',
-    name: 'White & Oolong',
-    description: 'Delicate oxidation for highest antioxidant content',
-    icon: Droplets,
-    color: 'text-blue-600',
-    caffeine: 'Very Low-Moderate',
-    benefits: ['Highest Antioxidants', 'Gentle', 'Complex'],
-    bestFor: 'All-day sipping and anti-aging'
-  },
-  {
-    id: 'spiced',
-    name: 'Spiced Detox',
-    description: 'Warming spices for circulation and digestion',
-    icon: Flame,
-    color: 'text-orange-600',
-    caffeine: 'Varies',
-    benefits: ['Warming', 'Digestive', 'Circulation'],
-    bestFor: 'Cold weather and after meals'
-  }
-];
+import { otherDrinkHubs, detoxTeas, teaTypes } from '../../data/detoxes';
+import { DetoxRecipe } from '../../types/detox';
 
 export default function DetoxTeasPage() {
   const { 
@@ -305,11 +38,11 @@ export default function DetoxTeasPage() {
     let filtered = detoxTeas.filter(tea => {
       const matchesSearch = tea.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            tea.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesType = !selectedTeaType || tea.teaType.toLowerCase().includes(selectedTeaType.toLowerCase());
-      const matchesFocus = !selectedFocus || tea.detoxFocus.toLowerCase().includes(selectedFocus.toLowerCase());
+      const matchesType = !selectedTeaType || tea.teaType?.toLowerCase().includes(selectedTeaType.toLowerCase());
+      const matchesFocus = !selectedFocus || tea.detoxFocus?.toLowerCase().includes(selectedFocus.toLowerCase());
       const matchesCaffeine = caffeineLevel[0] === 'Any' || 
-        (caffeineLevel[0] === 'Caffeinated' && tea.nutrition.caffeine > 0) ||
-        (caffeineLevel[0] === 'Caffeine-Free' && tea.nutrition.caffeine === 0);
+        (caffeineLevel[0] === 'Caffeinated' && (tea.nutrition.caffeine || 0) > 0) ||
+        (caffeineLevel[0] === 'Caffeine-Free' && (tea.nutrition.caffeine || 0) === 0);
       
       return matchesSearch && matchesType && matchesFocus && matchesCaffeine;
     });
@@ -329,7 +62,7 @@ export default function DetoxTeasPage() {
   const filteredTeas = getFilteredTeas();
   const featuredTeas = detoxTeas.filter(tea => tea.featured);
 
-  const handleMakeTea = (tea: any) => {
+  const handleMakeTea = (tea: DetoxRecipe) => {
     addToRecentlyViewed({
       id: tea.id,
       name: tea.name,
@@ -459,6 +192,7 @@ export default function DetoxTeasPage() {
             </div>
           </CardContent>
         </Card>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardContent className="p-4 text-center">
@@ -691,8 +425,8 @@ export default function DetoxTeasPage() {
             {teaTypes.map(type => {
               const Icon = type.icon;
               const typeTeas = detoxTeas.filter(tea => 
-                tea.teaType.toLowerCase().includes(type.name.toLowerCase()) ||
-                tea.category.toLowerCase().includes(type.name.toLowerCase())
+                tea.teaType?.toLowerCase().includes(type.name.toLowerCase()) ||
+                tea.category?.toLowerCase().includes(type.name.toLowerCase())
               );
               
               return (
