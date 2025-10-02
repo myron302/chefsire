@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, decimal, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, decimal, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -243,6 +243,57 @@ export const nutritionLogs = pgTable("nutrition_logs", {
   userDateIdx: index("nutrition_user_date_idx").on(table.userId, table.date),
 }));
 
+// ===== SUBSTITUTION CATALOG =====
+// One row per ingredient (e.g., "Buttermilk", "Baking Powder")
+export const substitutionIngredients = pgTable("substitution_ingredients", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ingredient: varchar("ingredient", { length: 160 }).notNull(),
+  aliases: jsonb("aliases").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+  group: varchar("group", { length: 80 }).default(""),
+  pantryArea: varchar("pantry_area", { length: 80 }).default(""),
+  notes: text("notes").default(""),
+  source: varchar("source", { length: 200 }).default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  ingredientIdx: index("subs_ing_ingredient_idx").on(t.ingredient),
+}));
+
+// One row per substitution “formula” (facts-first, dedupe-ready)
+export const substitutions = pgTable("substitutions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ingredientId: varchar("ingredient_id").notNull()
+    .references(() => substitutionIngredients.id, { onDelete: "cascade" }),
+
+  // Display text we show in the UI (generated from facts so wording is original)
+  text: text("text").notNull(),
+
+  // Structured facts used to render text and dedupe
+  components: jsonb("components").$type<
+    { item: string; amount?: number; unit?: string; note?: string }[]
+  >().default(sql`'[]'::jsonb`).notNull(),
+  method: jsonb("method").$type<{
+    action?: string; time_min?: number; time_max?: number; temperature?: string;
+  }>().default(sql`'{}'::jsonb`).notNull(),
+
+  ratio: varchar("ratio", { length: 160 }).default(""),
+  context: varchar("context", { length: 80 }).default(""), // e.g. "baking", "sauce"
+  dietTags: jsonb("diet_tags").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+  allergenFlags: jsonb("allergen_flags").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+
+  // Dedupe fields (same formula, different wording → one row)
+  signature: varchar("signature", { length: 256 }).notNull(),
+  signatureHash: varchar("signature_hash", { length: 64 }).notNull(),
+
+  // Internal merge metadata (not shown to users)
+  variants: jsonb("variants").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+  provenance: jsonb("provenance").$type<{source:string; page?:string; url?:string}[]>().default(sql`'[]'::jsonb`).notNull(),
+
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  // Prevent duplicates per ingredient
+  uniqPerIngredient: uniqueIndex("uniq_sub_signature_hash").on(t.ingredientId, t.signatureHash),
+}));
+
 // ===== INSERT SCHEMAS =====
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -365,3 +416,7 @@ export type ProductWithSeller = Product & { seller: User };
 export type OrderWithDetails = Order & { product: Product; seller: User; buyer: User };
 export type MealPlanWithEntries = MealPlan & { entries: (MealPlanEntry & { recipe?: Recipe })[] };
 export type ChefWithCatering = User & { availableForCatering: boolean; distance?: number };
+
+// Substitution types
+export type SubstitutionIngredient = typeof substitutionIngredients.$inferSelect;
+export type Substitution = typeof substitutions.$inferSelect;
