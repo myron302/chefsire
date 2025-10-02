@@ -1,3 +1,4 @@
+// client/src/pages/drinks/detoxes/water.tsx
 import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,325 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { 
   Waves, Clock, Heart, Star, Target, Flame, Leaf, Sparkles,
-  Search, Share2, ArrowLeft, Plus, Zap, Droplets, Sun, Snowflake,
+  Search, Share2, ArrowLeft, Plus, Zap, Sun, Snowflake,
   Apple, FlaskConical, GlassWater, Coffee
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
+import { otherDrinkHubs, infusedWaters, waterTypes } from '@/data/detoxes';
+import { DetoxRecipe } from '@/types/detox';
 
-const infusedWaters = [
-  {
-    id: 'water-1',
-    name: 'Cucumber Mint Refresher',
-    description: 'Classic hydrating combination for all-day sipping',
-    waterType: 'Hydrating',
-    flavorProfile: 'Light & Fresh',
-    infusionTime: '2-4 hours',
-    nutrition: {
-      calories: 5,
-      sugar: 0,
-      electrolytes: 'Moderate',
-      vitamins: 'C, K'
-    },
-    ingredients: ['Cucumber (1/2 sliced)', 'Fresh Mint (10 leaves)', 'Lemon (1/2 sliced)', 'Cold Water (32 oz)'],
-    benefits: ['Deep Hydration', 'Cooling', 'Skin Health', 'Zero Calories'],
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.8,
-    reviews: 2341,
-    trending: true,
-    featured: true,
-    estimatedCost: 2.00,
-    bestTime: 'All Day',
-    duration: 'Daily',
-    temperature: 'Cold',
-    category: 'Classic Infusions'
-  },
-  {
-    id: 'water-2',
-    name: 'Strawberry Basil Bliss',
-    description: 'Sweet and herbaceous for a gourmet touch',
-    waterType: 'Antioxidant',
-    flavorProfile: 'Sweet & Herbal',
-    infusionTime: '3-6 hours',
-    nutrition: {
-      calories: 8,
-      sugar: 2,
-      antioxidants: 'High',
-      vitamins: 'C'
-    },
-    ingredients: ['Strawberries (6 sliced)', 'Fresh Basil (8 leaves)', 'Lemon (1/4 sliced)', 'Cold Water (32 oz)'],
-    benefits: ['Antioxidants', 'Heart Health', 'Natural Sweetness', 'Vitamin C'],
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.7,
-    reviews: 1876,
-    trending: true,
-    featured: true,
-    estimatedCost: 3.50,
-    bestTime: 'Afternoon',
-    duration: 'Daily',
-    temperature: 'Cold',
-    category: 'Fruity Infusions'
-  },
-  {
-    id: 'water-3',
-    name: 'Lemon Ginger Detox',
-    description: 'Warming and cleansing for metabolism support',
-    waterType: 'Metabolic',
-    flavorProfile: 'Spicy & Citrus',
-    infusionTime: '1-2 hours',
-    nutrition: {
-      calories: 10,
-      sugar: 1,
-      thermogenic: 'High',
-      vitamins: 'C'
-    },
-    ingredients: ['Lemon (1 whole sliced)', 'Fresh Ginger (2 inch sliced)', 'Cayenne Pepper (pinch)', 'Warm Water (32 oz)'],
-    benefits: ['Metabolism Boost', 'Digestive Aid', 'Anti-inflammatory', 'Immune Support'],
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.6,
-    reviews: 3120,
-    trending: false,
-    featured: true,
-    estimatedCost: 1.50,
-    bestTime: 'Morning',
-    duration: 'Daily',
-    temperature: 'Warm',
-    category: 'Detox Waters'
-  },
-  {
-    id: 'water-4',
-    name: 'Berry Blast Hydrator',
-    description: 'Triple berry antioxidant powerhouse',
-    waterType: 'Antioxidant',
-    flavorProfile: 'Sweet Berry',
-    infusionTime: '4-6 hours',
-    nutrition: {
-      calories: 12,
-      sugar: 3,
-      antioxidants: 'Very High',
-      vitamins: 'C, K'
-    },
-    ingredients: ['Blueberries (1/4 cup)', 'Strawberries (4 sliced)', 'Raspberries (1/4 cup)', 'Mint (6 leaves)', 'Cold Water (32 oz)'],
-    benefits: ['High Antioxidants', 'Brain Health', 'Anti-aging', 'Natural Flavor'],
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.9,
-    reviews: 2890,
-    trending: true,
-    featured: false,
-    estimatedCost: 4.00,
-    bestTime: 'Anytime',
-    duration: 'Daily',
-    temperature: 'Cold',
-    category: 'Fruity Infusions'
-  },
-  {
-    id: 'water-5',
-    name: 'Citrus Sunrise Sparkler',
-    description: 'Vibrant citrus blend for morning energy',
-    waterType: 'Energizing',
-    flavorProfile: 'Tangy Citrus',
-    infusionTime: '2-3 hours',
-    nutrition: {
-      calories: 15,
-      sugar: 4,
-      vitamin_c: 'Very High',
-      electrolytes: 'Low'
-    },
-    ingredients: ['Orange (1/2 sliced)', 'Grapefruit (1/4 sliced)', 'Lime (1/2 sliced)', 'Lemon (1/2 sliced)', 'Cold Water (32 oz)'],
-    benefits: ['Vitamin C Boost', 'Energy', 'Immune Support', 'Alkalizing'],
-    difficulty: 'Easy',
-    prepTime: 6,
-    rating: 4.5,
-    reviews: 1654,
-    trending: false,
-    featured: true,
-    estimatedCost: 2.75,
-    bestTime: 'Morning',
-    duration: 'Daily',
-    temperature: 'Cold',
-    category: 'Citrus Infusions'
-  },
-  {
-    id: 'water-6',
-    name: 'Tropical Paradise Water',
-    description: 'Pineapple and coconut for vacation vibes',
-    waterType: 'Exotic',
-    flavorProfile: 'Sweet Tropical',
-    infusionTime: '3-5 hours',
-    nutrition: {
-      calories: 18,
-      sugar: 5,
-      enzymes: 'Present',
-      electrolytes: 'Moderate'
-    },
-    ingredients: ['Pineapple (1 cup chunks)', 'Coconut Water (8 oz)', 'Lime (1/2 sliced)', 'Mint (6 leaves)', 'Cold Water (24 oz)'],
-    benefits: ['Digestive Enzymes', 'Electrolytes', 'Tropical Flavor', 'Hydration'],
-    difficulty: 'Easy',
-    prepTime: 7,
-    rating: 4.8,
-    reviews: 2234,
-    trending: true,
-    featured: false,
-    estimatedCost: 3.25,
-    bestTime: 'Post-Workout',
-    duration: 'Daily',
-    temperature: 'Cold',
-    category: 'Tropical Infusions'
-  },
-  {
-    id: 'water-7',
-    name: 'Apple Cinnamon Comfort',
-    description: 'Warming autumn-inspired infusion',
-    waterType: 'Warming',
-    flavorProfile: 'Sweet & Spicy',
-    infusionTime: '1-2 hours',
-    nutrition: {
-      calories: 10,
-      sugar: 2,
-      antioxidants: 'Moderate',
-      warming: 'High'
-    },
-    ingredients: ['Apple (1 sliced)', 'Cinnamon Stick (2)', 'Cloves (3)', 'Star Anise (1)', 'Warm Water (32 oz)'],
-    benefits: ['Blood Sugar Balance', 'Warming', 'Antioxidants', 'Comforting'],
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.6,
-    reviews: 1432,
-    trending: false,
-    featured: true,
-    estimatedCost: 2.25,
-    bestTime: 'Evening',
-    duration: 'Seasonal',
-    temperature: 'Warm',
-    category: 'Warm Infusions'
-  },
-  {
-    id: 'water-8',
-    name: 'Watermelon Lime Cooler',
-    description: 'Summer refreshment with maximum hydration',
-    waterType: 'Hydrating',
-    flavorProfile: 'Sweet & Refreshing',
-    infusionTime: '2-4 hours',
-    nutrition: {
-      calories: 12,
-      sugar: 3,
-      electrolytes: 'High',
-      lycopene: 'Present'
-    },
-    ingredients: ['Watermelon (2 cups cubed)', 'Lime (1 whole sliced)', 'Fresh Mint (8 leaves)', 'Cold Water (32 oz)'],
-    benefits: ['Maximum Hydration', 'Electrolytes', 'Cooling', 'Lycopene'],
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.9,
-    reviews: 3456,
-    trending: true,
-    featured: true,
-    estimatedCost: 2.50,
-    bestTime: 'Summer Days',
-    duration: 'Seasonal',
-    temperature: 'Cold',
-    category: 'Summer Infusions'
-  },
-  {
-    id: 'water-9',
-    name: 'Lavender Lemon Calm',
-    description: 'Soothing floral infusion for relaxation',
-    waterType: 'Calming',
-    flavorProfile: 'Floral & Citrus',
-    infusionTime: '30-60 min',
-    nutrition: {
-      calories: 3,
-      sugar: 0,
-      calming: 'High',
-      vitamins: 'C'
-    },
-    ingredients: ['Food-grade Lavender (1 tsp)', 'Lemon (1/2 sliced)', 'Honey (1 tsp optional)', 'Warm Water (32 oz)'],
-    benefits: ['Stress Relief', 'Relaxation', 'Sleep Support', 'Aromatherapy'],
-    difficulty: 'Medium',
-    prepTime: 3,
-    rating: 4.4,
-    reviews: 987,
-    trending: false,
-    featured: false,
-    estimatedCost: 3.00,
-    bestTime: 'Evening',
-    duration: 'As Needed',
-    temperature: 'Warm',
-    category: 'Herbal Infusions'
-  },
-  {
-    id: 'water-10',
-    name: 'Green Tea Peach Fusion',
-    description: 'Light caffeine with fruity sweetness',
-    waterType: 'Energizing',
-    flavorProfile: 'Sweet & Tea',
-    infusionTime: '1-2 hours',
-    nutrition: {
-      calories: 8,
-      sugar: 2,
-      caffeine: 15,
-      antioxidants: 'High'
-    },
-    ingredients: ['Green Tea (1 bag)', 'Peach (1 sliced)', 'Lemon (1/4 sliced)', 'Mint (4 leaves)', 'Cold Water (32 oz)'],
-    benefits: ['Light Energy', 'Antioxidants', 'Metabolism', 'Fruity Flavor'],
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.7,
-    reviews: 1765,
-    trending: false,
-    featured: false,
-    estimatedCost: 2.75,
-    bestTime: 'Mid-Morning',
-    duration: 'Daily',
-    temperature: 'Cold',
-    category: 'Tea Infusions'
-  }
-];
-
-const waterTypes = [
-  {
-    id: 'hydrating',
-    name: 'Hydrating Waters',
-    description: 'Maximum hydration with electrolytes',
-    icon: Waves,
-    color: 'text-cyan-600',
-    benefits: ['Hydration', 'Electrolytes', 'Cooling'],
-    bestFor: 'All-day drinking and post-workout'
-  },
-  {
-    id: 'detox',
-    name: 'Detox Waters',
-    description: 'Cleansing and metabolism support',
-    icon: Sparkles,
-    color: 'text-green-600',
-    benefits: ['Cleansing', 'Metabolism', 'Digestion'],
-    bestFor: 'Morning rituals and cleanses'
-  },
-  {
-    id: 'antioxidant',
-    name: 'Antioxidant Blends',
-    description: 'Berry and fruit-based for cellular health',
-    icon: Star,
-    color: 'text-purple-600',
-    benefits: ['Antioxidants', 'Anti-aging', 'Immune'],
-    bestFor: 'Daily wellness and skin health'
-  },
-  {
-    id: 'energizing',
-    name: 'Energizing Waters',
-    description: 'Citrus and light caffeine for natural energy',
-    icon: Zap,
-    color: 'text-orange-600',
-    benefits: ['Energy', 'Vitamin C', 'Alertness'],
-    bestFor: 'Morning and afternoon pick-me-up'
-  }
-];
-
-export default function InfusedWatersPage() {
+export default function DetoxWatersPage() {
   const { 
     addToFavorites, 
     isFavorite, 
@@ -348,8 +39,8 @@ export default function InfusedWatersPage() {
     let filtered = infusedWaters.filter(water => {
       const matchesSearch = water.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            water.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesType = !selectedWaterType || water.waterType.toLowerCase().includes(selectedWaterType.toLowerCase());
-      const matchesCategory = !selectedCategory || water.category.toLowerCase().includes(selectedCategory.toLowerCase());
+      const matchesType = !selectedWaterType || water.waterType?.toLowerCase().includes(selectedWaterType.toLowerCase());
+      const matchesCategory = !selectedCategory || water.category?.toLowerCase().includes(selectedCategory.toLowerCase());
       const matchesTemp = temperature[0] === 'Any' || water.temperature === temperature[0];
       const matchesCalories = water.nutrition.calories <= maxCalories[0];
       
@@ -371,7 +62,7 @@ export default function InfusedWatersPage() {
   const filteredWaters = getFilteredWaters();
   const featuredWaters = infusedWaters.filter(water => water.featured);
 
-  const handleMakeWater = (water: any) => {
+  const handleMakeWater = (water: DetoxRecipe) => {
     addToRecentlyViewed({
       id: water.id,
       name: water.name,
@@ -476,7 +167,7 @@ export default function InfusedWatersPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Link href="/drinks/detoxes/juice">
                 <Button variant="outline" className="w-full justify-start hover:bg-green-50 hover:border-green-300">
-                  <Droplets className="h-4 w-4 mr-2 text-green-600" />
+                  <Waves className="h-4 w-4 mr-2 text-green-600" />
                   <span>Detox Juices</span>
                   <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
                 </Button>
@@ -491,6 +182,7 @@ export default function InfusedWatersPage() {
             </div>
           </CardContent>
         </Card>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardContent className="p-4 text-center">
@@ -738,7 +430,7 @@ export default function InfusedWatersPage() {
             {waterTypes.map(type => {
               const Icon = type.icon;
               const typeWaters = infusedWaters.filter(water => 
-                water.waterType.toLowerCase().includes(type.name.toLowerCase())
+                water.waterType?.toLowerCase().includes(type.name.toLowerCase())
               );
               
               return (
@@ -891,7 +583,7 @@ export default function InfusedWatersPage() {
                     <div className="text-sm text-gray-700 space-y-1">
                       {water.ingredients.map((ingredient, index) => (
                         <div key={index} className="flex items-center gap-2">
-                          <Droplets className="h-3 w-3 text-cyan-500" />
+                          <Waves className="h-3 w-3 text-cyan-500" />
                           {ingredient}
                         </div>
                       ))}
