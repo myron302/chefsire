@@ -1,4 +1,4 @@
-// client/src/pages/drinks/detoxes/water.tsx
+// client/src/pages/drinks/detoxes/water/index.tsx
 import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,8 +13,8 @@ import {
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
-import { otherDrinkHubs, infusedWaters, waterTypes } from '@/data/detoxes';
-import { DetoxRecipe } from '@/types/detox';
+import { otherDrinkHubs, infusedWaters, waterTypes } from '../../data/detoxes';
+import { DetoxRecipe } from '../../types/detox';
 
 export default function DetoxWatersPage() {
   const { 
