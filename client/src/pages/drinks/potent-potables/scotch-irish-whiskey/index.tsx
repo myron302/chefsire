@@ -7,7 +7,8 @@ import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
   Castle, Clock, Heart, Star, Target, Sparkles, Mountain, 
   Search, Share2, ArrowLeft, Plus, Camera, Flame, GlassWater,
-  TrendingUp, Award, Crown, Coffee, Leaf, Zap, Cherry, Wind
+  TrendingUp, Award, Crown, Coffee, Leaf, Zap, Cherry, Wind,
+  Droplets, BookOpen
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -51,7 +52,8 @@ const scotchIrishCocktails = [
     garnish: 'Candied ginger',
     method: 'Shake',
     abv: '26-30%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Shake blended scotch, lemon juice, and honey-ginger syrup with ice. Strain over fresh ice in rocks glass. Float Islay scotch on top. Garnish with candied ginger.'
   },
   {
     id: 'scotch-2',
@@ -89,7 +91,8 @@ const scotchIrishCocktails = [
     garnish: 'Lemon peel or cherry',
     method: 'Stir',
     abv: '30-34%',
-    iba_official: true
+    iba_official: true,
+    instructions: 'Stir scotch, sweet vermouth, and bitters with ice until well chilled. Strain into chilled coupe glass. Garnish with lemon peel or cherry.'
   },
   {
     id: 'scotch-3',
@@ -128,7 +131,8 @@ const scotchIrishCocktails = [
     garnish: 'Orange peel',
     method: 'Shake',
     abv: '22-26%',
-    iba_official: true
+    iba_official: true,
+    instructions: 'Shake all equal parts with ice vigorously. Double strain into chilled coupe glass. Express orange peel over drink and garnish.'
   },
   {
     id: 'scotch-4',
@@ -165,7 +169,8 @@ const scotchIrishCocktails = [
     garnish: 'Lemon peel',
     method: 'Build',
     abv: '32-36%',
-    iba_official: true
+    iba_official: true,
+    instructions: 'Add scotch and Drambuie to rocks glass with ice. Stir gently. Express lemon peel over drink and drop in.'
   },
   {
     id: 'scotch-5',
@@ -201,7 +206,8 @@ const scotchIrishCocktails = [
     garnish: 'None',
     method: 'Build',
     abv: '34-38%',
-    iba_official: true
+    iba_official: true,
+    instructions: 'Pour scotch and amaretto over ice in rocks glass. Stir briefly and serve.'
   },
 
   // IRISH WHISKEY COCKTAILS
@@ -240,7 +246,8 @@ const scotchIrishCocktails = [
     garnish: 'Whipped cream float',
     method: 'Build',
     abv: '10-14%',
-    iba_official: true
+    iba_official: true,
+    instructions: 'Preheat glass with hot water. Add brown sugar and hot coffee, stir to dissolve. Add Irish whiskey. Float lightly whipped cream on top by pouring over the back of a spoon.'
   },
   {
     id: 'irish-2',
@@ -278,7 +285,8 @@ const scotchIrishCocktails = [
     garnish: 'Lime wedge, mint',
     method: 'Build',
     abv: '10-12%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Fill copper mug with ice. Add Irish whiskey and lime juice. Top with ginger beer. Stir gently. Garnish with lime wedge and mint sprig.'
   },
   {
     id: 'irish-3',
@@ -317,7 +325,8 @@ const scotchIrishCocktails = [
     garnish: 'Orange peel',
     method: 'Stir',
     abv: '32-36%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Add simple syrup and bitters to rocks glass. Add large ice cube and Irish whiskey. Stir until well chilled. Express orange peel over drink and garnish.'
   },
   {
     id: 'irish-4',
@@ -356,7 +365,8 @@ const scotchIrishCocktails = [
     garnish: 'Orange peel',
     method: 'Stir',
     abv: '28-32%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Stir all ingredients with ice until well chilled. Strain into chilled coupe glass. Express orange peel over drink and garnish.'
   },
 
   // MODERN INTERPRETATIONS
@@ -396,7 +406,8 @@ const scotchIrishCocktails = [
     garnish: 'Lemon peel',
     method: 'Stir',
     abv: '36-40%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Rinse chilled coupe glass with Islay scotch and discard excess. Stir gin and vermouth with ice until very cold. Strain into rinsed glass. Express lemon peel and garnish.'
   },
   {
     id: 'scotch-7',
@@ -435,7 +446,8 @@ const scotchIrishCocktails = [
     garnish: 'Lemon wheel, bitters',
     method: 'Shake',
     abv: '24-28%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Dry shake egg white (if using) first. Add scotch, lemon juice, honey syrup and ice. Shake vigorously. Double strain into coupe. Garnish with lemon wheel and drops of bitters.'
   },
   {
     id: 'irish-5',
@@ -474,7 +486,8 @@ const scotchIrishCocktails = [
     garnish: 'Mint sprig',
     method: 'Shake',
     abv: '20-24%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Shake all ingredients with ice until well chilled and frothy. Strain into coupe glass. Garnish with fresh mint sprig.'
   },
   {
     id: 'scotch-8',
@@ -513,16 +526,26 @@ const scotchIrishCocktails = [
     garnish: 'Lemon peel',
     method: 'Shake',
     abv: '26-30%',
-    iba_official: true
+    iba_official: true,
+    instructions: 'Shake both whiskies, lemon juice, orgeat, and bitters with ice vigorously. Double strain into chilled coupe. Express lemon peel and garnish.'
   }
 ];
 
 export default function ScotchIrishWhiskeyPage() {
-  const { favorites, toggleFavorite } = useDrinks();
+  const { 
+    addToFavorites, 
+    isFavorite,
+    addToRecentlyViewed,
+    userProgress,
+    addPoints,
+    incrementDrinksMade
+  } = useDrinks();
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
+  const [selectedCocktail, setSelectedCocktail] = useState<typeof scotchIrishCocktails[0] | null>(null);
 
   const categories = ['Classic Scotch', 'Irish Classics', 'Modern Scotch', 'Irish Modern'];
   const difficulties = ['Very Easy', 'Easy', 'Medium', 'Hard'];
@@ -534,6 +557,22 @@ export default function ScotchIrishWhiskeyPage() {
     const matchesDifficulty = !selectedDifficulty || cocktail.difficulty === selectedDifficulty;
     return matchesSearch && matchesCategory && matchesDifficulty;
   });
+
+  const handleCocktailClick = (cocktail: typeof scotchIrishCocktails[0]) => {
+    setSelectedCocktail(cocktail);
+    addToRecentlyViewed({
+      id: cocktail.id,
+      name: cocktail.name,
+      category: 'scotch-irish-whiskey',
+      timestamp: Date.now()
+    });
+  };
+
+  const handleMakeCocktail = (cocktail: typeof scotchIrishCocktails[0]) => {
+    incrementDrinksMade();
+    addPoints(40, 'Made a Scotch/Irish cocktail');
+    setSelectedCocktail(null);
+  };
 
   return (
     <RequireAgeGate>
@@ -674,7 +713,11 @@ export default function ScotchIrishWhiskeyPage() {
           {/* Cocktails Grid */}
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredCocktails.map((cocktail) => (
-              <Card key={cocktail.id} className="hover:shadow-lg transition-all duration-300 overflow-hidden group">
+              <Card 
+                key={cocktail.id} 
+                className="hover:shadow-lg transition-all duration-300 overflow-hidden group cursor-pointer"
+                onClick={() => handleCocktailClick(cocktail)}
+              >
                 <div className="relative bg-gradient-to-br from-amber-100 to-orange-100 p-6 h-48 flex items-center justify-center">
                   <Castle className="w-20 h-20 text-orange-700 group-hover:scale-110 transition-transform" />
                   {cocktail.trending && (
@@ -693,11 +736,19 @@ export default function ScotchIrishWhiskeyPage() {
                     variant="ghost"
                     size="sm"
                     className="absolute bottom-3 right-3 bg-white/80 hover:bg-white"
-                    onClick={() => toggleFavorite(cocktail.id, 'scotch-irish-whiskey')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      addToFavorites({
+                        id: cocktail.id,
+                        name: cocktail.name,
+                        category: 'scotch-irish-whiskey',
+                        timestamp: Date.now()
+                      });
+                    }}
                   >
                     <Heart
                       className={`w-5 h-5 ${
-                        favorites['scotch-irish-whiskey']?.includes(cocktail.id)
+                        isFavorite(cocktail.id)
                           ? 'fill-red-500 text-red-500'
                           : 'text-gray-600'
                       }`}
@@ -794,11 +845,17 @@ export default function ScotchIrishWhiskeyPage() {
 
                   {/* Action Buttons */}
                   <div className="flex gap-2 pt-3">
-                    <Button className="flex-1 bg-orange-700 hover:bg-orange-800">
+                    <Button 
+                      className="flex-1 bg-orange-700 hover:bg-orange-800"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCocktailClick(cocktail);
+                      }}
+                    >
                       <Plus className="w-4 h-4 mr-2" />
                       View Recipe
                     </Button>
-                    <Button variant="outline" size="icon">
+                    <Button variant="outline" size="icon" onClick={(e) => e.stopPropagation()}>
                       <Share2 className="w-4 h-4" />
                     </Button>
                   </div>
@@ -806,6 +863,195 @@ export default function ScotchIrishWhiskeyPage() {
               </Card>
             ))}
           </div>
+
+          {/* Cocktail Detail Modal */}
+          {selectedCocktail && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedCocktail(null)}>
+              <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-2xl">{selectedCocktail.name}</CardTitle>
+                      <p className="text-sm text-gray-500 mt-1">{selectedCocktail.origin}</p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedCocktail(null)}>×</Button>
+                  </div>
+                  <p className="text-gray-600">{selectedCocktail.description}</p>
+                  <div className="flex gap-2 mt-2">
+                    <Badge className="bg-orange-100 text-orange-700">{selectedCocktail.category}</Badge>
+                    <Badge className="bg-amber-100 text-amber-700">{selectedCocktail.spiritType}</Badge>
+                    <Badge className="bg-blue-100 text-blue-700">{selectedCocktail.difficulty}</Badge>
+                    {selectedCocktail.iba_official && (
+                      <Badge className="bg-blue-500 text-white">IBA Official</Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    {/* Cocktail Stats */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Target className="w-5 h-5 text-orange-500" />
+                        Cocktail Stats
+                      </h3>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="p-3 bg-orange-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">ABV</div>
+                          <div className="text-xl font-bold text-orange-600">{selectedCocktail.abv}</div>
+                        </div>
+                        <div className="p-3 bg-blue-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Prep Time</div>
+                          <div className="text-xl font-bold text-blue-600">{selectedCocktail.prepTime} min</div>
+                        </div>
+                        <div className="p-3 bg-purple-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Method</div>
+                          <div className="text-xl font-bold text-purple-600">{selectedCocktail.method}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Glassware & Garnish */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <GlassWater className="w-5 h-5 text-blue-500" />
+                        Glassware & Garnish
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="p-3 bg-blue-50 rounded-lg">
+                          <div className="text-sm text-gray-600">Glassware</div>
+                          <div className="font-bold text-blue-600">{selectedCocktail.glassware}</div>
+                        </div>
+                        <div className="p-3 bg-green-50 rounded-lg">
+                          <div className="text-sm text-gray-600">Garnish</div>
+                          <div className="font-bold text-green-600">{selectedCocktail.garnish}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Ingredients */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-amber-500" />
+                        Ingredients
+                      </h3>
+                      <div className="space-y-2">
+                        {selectedCocktail.ingredients.map((ingredient, idx) => (
+                          <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                            <Plus className="w-4 h-4 text-orange-500" />
+                            <span className="text-sm">{ingredient}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Flavor Profile */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Star className="w-5 h-5 text-yellow-500" />
+                        Flavor Profile
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedCocktail.profile.map(trait => (
+                          <Badge key={trait} className="bg-yellow-100 text-yellow-700 border-yellow-300">
+                            {trait}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Instructions */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <BookOpen className="w-5 h-5 text-orange-500" />
+                        Instructions
+                      </h3>
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <p className="text-sm text-gray-700">{selectedCocktail.instructions}</p>
+                      </div>
+                    </div>
+
+                    {/* Nutrition */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Droplets className="w-5 h-5 text-cyan-500" />
+                        Nutrition Information
+                      </h3>
+                      <div className="grid grid-cols-4 gap-3">
+                        <div className="p-3 bg-red-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Calories</div>
+                          <div className="text-xl font-bold text-red-600">{selectedCocktail.nutrition.calories}</div>
+                        </div>
+                        <div className="p-3 bg-yellow-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Carbs</div>
+                          <div className="text-xl font-bold text-yellow-600">{selectedCocktail.nutrition.carbs}g</div>
+                        </div>
+                        <div className="p-3 bg-pink-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Sugar</div>
+                          <div className="text-xl font-bold text-pink-600">{selectedCocktail.nutrition.sugar}g</div>
+                        </div>
+                        <div className="p-3 bg-purple-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Alcohol</div>
+                          <div className="text-xl font-bold text-purple-600">{selectedCocktail.nutrition.alcohol}g</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Pro Tips */}
+                    <div className="bg-amber-50 p-4 rounded-lg">
+                      <h3 className="font-semibold mb-2 flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-amber-500" />
+                        Pro Tips
+                      </h3>
+                      <ul className="space-y-2 text-sm text-amber-900">
+                        {selectedCocktail.category.includes('Scotch') ? (
+                          <>
+                            <li>• Quality scotch makes all the difference - don't use bottom-shelf</li>
+                            <li>• For peated cocktails, a little Islay goes a long way</li>
+                            <li>• Consider the region's character when selecting your scotch</li>
+                            <li>• Chill your glassware for the best experience</li>
+                          </>
+                        ) : (
+                          <>
+                            <li>• Irish whiskey's smoothness shines in cocktails</li>
+                            <li>• Triple-distilled means lighter, more approachable drinks</li>
+                            <li>• Perfect for whiskey newcomers</li>
+                            <li>• Works beautifully in both stirred and shaken drinks</li>
+                          </>
+                        )}
+                      </ul>
+                    </div>
+
+                    {/* Rating */}
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Star className="h-5 w-5 text-yellow-400 fill-current" />
+                        <span className="font-bold text-lg">{selectedCocktail.rating}</span>
+                        <span className="text-gray-500">({selectedCocktail.reviews.toLocaleString()} reviews)</span>
+                      </div>
+                      <Badge variant="outline">{selectedCocktail.difficulty}</Badge>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3">
+                      <Button 
+                        className="flex-1 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700"
+                        onClick={() => handleMakeCocktail(selectedCocktail)}
+                      >
+                        <Castle className="w-4 h-4 mr-2" />
+                        Make This Cocktail
+                      </Button>
+                      <Button variant="outline" size="icon">
+                        <Share2 className="w-4 h-4" />
+                      </Button>
+                      <Button variant="outline" size="icon">
+                        <Camera className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
           {/* Educational Section */}
           <Card className="mt-12 bg-gradient-to-br from-amber-50 to-orange-50 border-orange-200">
@@ -884,86 +1130,6 @@ export default function ScotchIrishWhiskeyPage() {
                   <div className="p-4 bg-white rounded-lg border border-green-200">
                     <div className="font-semibold text-green-700 mb-2">Blended</div>
                     <div className="text-sm text-gray-600">Mix of pot still, malt, and grain. Smooth, balanced.</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Cocktail Styles */}
-              <div>
-                <h3 className="font-semibold text-lg mb-3 text-orange-700">Cocktail Traditions</h3>
-                <div className="grid md:grid-cols-3 gap-6">
-                  <div>
-                    <h4 className="font-semibold mb-2 text-amber-700">Classic Scotch</h4>
-                    <p className="text-sm text-gray-700">Traditional stirred cocktails like Rob Roy and Rusty Nail that let the whisky shine.</p>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold mb-2 text-green-700">Irish Warmers</h4>
-                    <p className="text-sm text-gray-700">Hot toddies and Irish Coffee showcase the smooth, warming nature of Irish whiskey.</p>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold mb-2 text-orange-700">Modern Craft</h4>
-                    <p className="text-sm text-gray-700">Contemporary bartenders create innovative serves highlighting regional characteristics.</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Key Differences */}
-              <div className="p-6 bg-gradient-to-r from-amber-100 to-green-100 rounded-lg">
-                <h3 className="font-semibold text-lg mb-3 text-gray-800 flex items-center gap-2">
-                  <Sparkles className="w-5 h-5" />
-                  Key Differences
-                </h3>
-                <div className="grid md:grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <div className="font-semibold text-amber-700 mb-2">Scotch Characteristics:</div>
-                    <ul className="list-disc list-inside text-gray-700 space-y-1">
-                      <li>Typically double-distilled</li>
-                      <li>Can be peated (smoky)</li>
-                      <li>Regional diversity in flavor</li>
-                      <li>Often aged in ex-bourbon or sherry casks</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <div className="font-semibold text-green-700 mb-2">Irish Characteristics:</div>
-                    <ul className="list-disc list-inside text-gray-700 space-y-1">
-                      <li>Usually triple-distilled</li>
-                      <li>Generally unpeated (smooth)</li>
-                      <li>More uniform national style</li>
-                      <li>Known for exceptional smoothness</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tasting Notes Guide */}
-              <div>
-                <h3 className="font-semibold text-lg mb-3 text-orange-700">Common Flavor Profiles</h3>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-white rounded-lg border border-amber-200">
-                    <div className="font-semibold text-amber-700 mb-3">Scotch Flavors</div>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline" className="text-xs">Smoke</Badge>
-                      <Badge variant="outline" className="text-xs">Peat</Badge>
-                      <Badge variant="outline" className="text-xs">Heather</Badge>
-                      <Badge variant="outline" className="text-xs">Sea Salt</Badge>
-                      <Badge variant="outline" className="text-xs">Vanilla</Badge>
-                      <Badge variant="outline" className="text-xs">Sherry</Badge>
-                      <Badge variant="outline" className="text-xs">Dried Fruit</Badge>
-                      <Badge variant="outline" className="text-xs">Oak</Badge>
-                    </div>
-                  </div>
-                  <div className="p-4 bg-white rounded-lg border border-green-200">
-                    <div className="font-semibold text-green-700 mb-3">Irish Flavors</div>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline" className="text-xs">Honey</Badge>
-                      <Badge variant="outline" className="text-xs">Vanilla</Badge>
-                      <Badge variant="outline" className="text-xs">Caramel</Badge>
-                      <Badge variant="outline" className="text-xs">Cream</Badge>
-                      <Badge variant="outline" className="text-xs">Apple</Badge>
-                      <Badge variant="outline" className="text-xs">Citrus</Badge>
-                      <Badge variant="outline" className="text-xs">Spice</Badge>
-                      <Badge variant="outline" className="text-xs">Grain</Badge>
-                    </div>
                   </div>
                 </div>
               </div>
