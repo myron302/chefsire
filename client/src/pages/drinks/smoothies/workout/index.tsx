@@ -16,7 +16,7 @@ import {
   workoutTypes,
   smoothieSubcategories,
   otherDrinkHubs 
-} from '../../../data/smoothies'; // CORRECT IMPORT
+} from '../../data/smoothies'; // CORRECT IMPORT
 
 // ... rest of the 500+ line file remains exactly as I provided
 
