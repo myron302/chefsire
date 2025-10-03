@@ -7,7 +7,8 @@ import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
   Flame, Clock, Heart, Star, Target, Sparkles, Sun, 
   Search, Share2, ArrowLeft, Plus, Camera, GlassWater,
-  TrendingUp, Award, Crown, Coffee, Leaf, Zap, Cherry, Citrus
+  TrendingUp, Award, Crown, Coffee, Leaf, Zap, Cherry, Citrus,
+  Droplets, BookOpen
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -51,7 +52,8 @@ const tequilaMezcalCocktails = [
     garnish: 'Salt rim, lime wheel',
     method: 'Shake',
     abv: '18-22%',
-    iba_official: true
+    iba_official: true,
+    instructions: 'Rim glass with salt. Shake tequila, lime juice, and triple sec with ice. Strain into prepared glass over fresh ice. Garnish with lime wheel.'
   },
   {
     id: 'tequila-2',
@@ -90,7 +92,8 @@ const tequilaMezcalCocktails = [
     garnish: 'Salt rim, grapefruit slice',
     method: 'Build',
     abv: '10-12%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Rim highball glass with salt and fill with ice. Add tequila and lime juice. Top with grapefruit soda. Stir gently and garnish with grapefruit slice.'
   },
   {
     id: 'tequila-3',
@@ -129,7 +132,8 @@ const tequilaMezcalCocktails = [
     garnish: 'Orange slice, cherry',
     method: 'Build & Layer',
     abv: '10-12%',
-    iba_official: true
+    iba_official: true,
+    instructions: 'Fill glass with ice. Add tequila and orange juice, stir. Slowly pour grenadine down the side to create sunrise effect. Garnish with orange slice and cherry.'
   },
   {
     id: 'tequila-4',
@@ -168,7 +172,8 @@ const tequilaMezcalCocktails = [
     garnish: 'Salt rim, lime wheel',
     method: 'Shake',
     abv: '22-26%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Rim glass with salt. Shake tequila, lime juice, and agave nectar with ice. Strain over fresh ice. Garnish with lime wheel.'
   },
   {
     id: 'tequila-5',
@@ -207,7 +212,8 @@ const tequilaMezcalCocktails = [
     garnish: 'Lime wedge',
     method: 'Build',
     abv: '10-12%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Fill glass with ice. Add tequila, cassis, and lime juice. Top with ginger beer. Stir gently and garnish with lime wedge.'
   },
   {
     id: 'tequila-6',
@@ -246,7 +252,8 @@ const tequilaMezcalCocktails = [
     garnish: 'Orange peel',
     method: 'Stir',
     abv: '32-36%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Add agave nectar and bitters to rocks glass. Add large ice cube and tequila. Stir until well chilled. Express orange peel over drink and garnish.'
   },
 
   // MEZCAL COCKTAILS
@@ -287,7 +294,8 @@ const tequilaMezcalCocktails = [
     garnish: 'Salt rim, lime wheel',
     method: 'Shake',
     abv: '18-22%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Rim glass with salt. Shake mezcal, lime juice, and agave nectar with ice. Strain over fresh ice. Garnish with lime wheel.'
   },
   {
     id: 'mezcal-2',
@@ -326,7 +334,8 @@ const tequilaMezcalCocktails = [
     garnish: 'Orange peel, flamed',
     method: 'Stir',
     abv: '32-36%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Add agave nectar and bitters to glass. Add large ice cube, tequila, and mezcal. Stir until chilled. Flame orange peel over drink and garnish.'
   },
   {
     id: 'mezcal-3',
@@ -364,7 +373,8 @@ const tequilaMezcalCocktails = [
     garnish: 'None',
     method: 'Shake',
     abv: '26-30%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Shake all equal parts with ice vigorously. Double strain into chilled coupe glass.'
   },
   {
     id: 'mezcal-4',
@@ -402,7 +412,8 @@ const tequilaMezcalCocktails = [
     garnish: 'Orange peel',
     method: 'Stir',
     abv: '30-34%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Stir all equal parts with ice in rocks glass. Express orange peel over drink and garnish.'
   },
   {
     id: 'tequila-7',
@@ -440,7 +451,8 @@ const tequilaMezcalCocktails = [
     garnish: 'Lime wedge',
     method: 'Build',
     abv: '10-12%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Fill glass with ice. Add tequila and lime juice. Top with sparkling water. Stir gently and garnish with lime wedge.'
   },
   {
     id: 'tequila-8',
@@ -480,7 +492,8 @@ const tequilaMezcalCocktails = [
     garnish: 'Salt rim, jalapeño slice',
     method: 'Shake & Muddle',
     abv: '18-22%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Muddle jalapeño slices in shaker. Add tequila, lime juice, triple sec, and agave nectar with ice. Shake vigorously. Strain over fresh ice in salt-rimmed glass. Garnish with jalapeño slice.'
   },
   {
     id: 'mezcal-5',
@@ -519,16 +532,26 @@ const tequilaMezcalCocktails = [
     garnish: 'Bitters design',
     method: 'Shake',
     abv: '22-26%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Dry shake egg white first. Add mezcal, lemon juice, agave nectar, and ice. Shake vigorously. Double strain into coupe. Add drops of bitters on foam and create design.'
   }
 ];
 
 export default function TequilaMezcalPage() {
-  const { favorites, toggleFavorite } = useDrinks();
+  const { 
+    addToFavorites,
+    isFavorite,
+    addToRecentlyViewed,
+    userProgress,
+    addPoints,
+    incrementDrinksMade
+  } = useDrinks();
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
+  const [selectedCocktail, setSelectedCocktail] = useState<typeof tequilaMezcalCocktails[0] | null>(null);
 
   const categories = ['Classic Tequila', 'Modern Tequila', 'Mezcal Cocktails'];
   const difficulties = ['Very Easy', 'Easy', 'Medium'];
@@ -540,6 +563,22 @@ export default function TequilaMezcalPage() {
     const matchesDifficulty = !selectedDifficulty || cocktail.difficulty === selectedDifficulty;
     return matchesSearch && matchesCategory && matchesDifficulty;
   });
+
+  const handleCocktailClick = (cocktail: typeof tequilaMezcalCocktails[0]) => {
+    setSelectedCocktail(cocktail);
+    addToRecentlyViewed({
+      id: cocktail.id,
+      name: cocktail.name,
+      category: 'tequila-mezcal',
+      timestamp: Date.now()
+    });
+  };
+
+  const handleMakeCocktail = (cocktail: typeof tequilaMezcalCocktails[0]) => {
+    incrementDrinksMade();
+    addPoints(40, 'Made a tequila/mezcal cocktail');
+    setSelectedCocktail(null);
+  };
 
   return (
     <RequireAgeGate>
@@ -680,7 +719,11 @@ export default function TequilaMezcalPage() {
           {/* Cocktails Grid */}
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredCocktails.map((cocktail) => (
-              <Card key={cocktail.id} className="hover:shadow-lg transition-all duration-300 overflow-hidden group">
+              <Card 
+                key={cocktail.id} 
+                className="hover:shadow-lg transition-all duration-300 overflow-hidden group cursor-pointer"
+                onClick={() => handleCocktailClick(cocktail)}
+              >
                 <div className="relative bg-gradient-to-br from-lime-100 to-green-100 p-6 h-48 flex items-center justify-center">
                   <Flame className="w-20 h-20 text-green-600 group-hover:scale-110 transition-transform" />
                   {cocktail.trending && (
@@ -699,11 +742,19 @@ export default function TequilaMezcalPage() {
                     variant="ghost"
                     size="sm"
                     className="absolute bottom-3 right-3 bg-white/80 hover:bg-white"
-                    onClick={() => toggleFavorite(cocktail.id, 'tequila-mezcal')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      addToFavorites({
+                        id: cocktail.id,
+                        name: cocktail.name,
+                        category: 'tequila-mezcal',
+                        timestamp: Date.now()
+                      });
+                    }}
                   >
                     <Heart
                       className={`w-5 h-5 ${
-                        favorites['tequila-mezcal']?.includes(cocktail.id)
+                        isFavorite(cocktail.id)
                           ? 'fill-red-500 text-red-500'
                           : 'text-gray-600'
                       }`}
@@ -742,7 +793,7 @@ export default function TequilaMezcalPage() {
                     </div>
                   </div>
 
-                  {/* Rating with Martini Glasses */}
+                  {/* Rating */}
                   <div className="flex items-center gap-2">
                     <div className="flex">
                       {[...Array(5)].map((_, i) => (
@@ -800,11 +851,17 @@ export default function TequilaMezcalPage() {
 
                   {/* Action Buttons */}
                   <div className="flex gap-2 pt-3">
-                    <Button className="flex-1 bg-green-600 hover:bg-green-700">
+                    <Button 
+                      className="flex-1 bg-green-600 hover:bg-green-700"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCocktailClick(cocktail);
+                      }}
+                    >
                       <Plus className="w-4 h-4 mr-2" />
                       View Recipe
                     </Button>
-                    <Button variant="outline" size="icon">
+                    <Button variant="outline" size="icon" onClick={(e) => e.stopPropagation()}>
                       <Share2 className="w-4 h-4" />
                     </Button>
                   </div>
@@ -812,6 +869,195 @@ export default function TequilaMezcalPage() {
               </Card>
             ))}
           </div>
+
+          {/* Cocktail Detail Modal */}
+          {selectedCocktail && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedCocktail(null)}>
+              <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-2xl">{selectedCocktail.name}</CardTitle>
+                      <p className="text-sm text-gray-500 mt-1">{selectedCocktail.origin}</p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedCocktail(null)}>×</Button>
+                  </div>
+                  <p className="text-gray-600">{selectedCocktail.description}</p>
+                  <div className="flex gap-2 mt-2">
+                    <Badge className="bg-green-100 text-green-700">{selectedCocktail.category}</Badge>
+                    <Badge className="bg-lime-100 text-lime-700">{selectedCocktail.spiritType}</Badge>
+                    <Badge className="bg-blue-100 text-blue-700">{selectedCocktail.difficulty}</Badge>
+                    {selectedCocktail.iba_official && (
+                      <Badge className="bg-blue-500 text-white">IBA Official</Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    {/* Cocktail Stats */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Target className="w-5 h-5 text-green-500" />
+                        Cocktail Stats
+                      </h3>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="p-3 bg-green-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">ABV</div>
+                          <div className="text-xl font-bold text-green-600">{selectedCocktail.abv}</div>
+                        </div>
+                        <div className="p-3 bg-blue-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Prep Time</div>
+                          <div className="text-xl font-bold text-blue-600">{selectedCocktail.prepTime} min</div>
+                        </div>
+                        <div className="p-3 bg-purple-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Method</div>
+                          <div className="text-xl font-bold text-purple-600">{selectedCocktail.method}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Glassware & Garnish */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <GlassWater className="w-5 h-5 text-blue-500" />
+                        Glassware & Garnish
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="p-3 bg-blue-50 rounded-lg">
+                          <div className="text-sm text-gray-600">Glassware</div>
+                          <div className="font-bold text-blue-600">{selectedCocktail.glassware}</div>
+                        </div>
+                        <div className="p-3 bg-green-50 rounded-lg">
+                          <div className="text-sm text-gray-600">Garnish</div>
+                          <div className="font-bold text-green-600">{selectedCocktail.garnish}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Ingredients */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-lime-500" />
+                        Ingredients
+                      </h3>
+                      <div className="space-y-2">
+                        {selectedCocktail.ingredients.map((ingredient, idx) => (
+                          <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                            <Plus className="w-4 h-4 text-green-500" />
+                            <span className="text-sm">{ingredient}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Flavor Profile */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Star className="w-5 h-5 text-yellow-500" />
+                        Flavor Profile
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedCocktail.profile.map(trait => (
+                          <Badge key={trait} className="bg-yellow-100 text-yellow-700 border-yellow-300">
+                            {trait}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Instructions */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <BookOpen className="w-5 h-5 text-green-500" />
+                        Instructions
+                      </h3>
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <p className="text-sm text-gray-700">{selectedCocktail.instructions}</p>
+                      </div>
+                    </div>
+
+                    {/* Nutrition */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Droplets className="w-5 h-5 text-cyan-500" />
+                        Nutrition Information
+                      </h3>
+                      <div className="grid grid-cols-4 gap-3">
+                        <div className="p-3 bg-red-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Calories</div>
+                          <div className="text-xl font-bold text-red-600">{selectedCocktail.nutrition.calories}</div>
+                        </div>
+                        <div className="p-3 bg-yellow-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Carbs</div>
+                          <div className="text-xl font-bold text-yellow-600">{selectedCocktail.nutrition.carbs}g</div>
+                        </div>
+                        <div className="p-3 bg-pink-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Sugar</div>
+                          <div className="text-xl font-bold text-pink-600">{selectedCocktail.nutrition.sugar}g</div>
+                        </div>
+                        <div className="p-3 bg-purple-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Alcohol</div>
+                          <div className="text-xl font-bold text-purple-600">{selectedCocktail.nutrition.alcohol}g</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Pro Tips */}
+                    <div className="bg-lime-50 p-4 rounded-lg">
+                      <h3 className="font-semibold mb-2 flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-lime-500" />
+                        Pro Tips
+                      </h3>
+                      <ul className="space-y-2 text-sm text-lime-900">
+                        {selectedCocktail.spiritType === 'Mezcal' ? (
+                          <>
+                            <li>• Quality mezcal makes all the difference - look for artisanal brands</li>
+                            <li>• A little smoke goes a long way - don't overpower other flavors</li>
+                            <li>• Pair with agave nectar instead of simple syrup</li>
+                            <li>• Mezcal is best savored - take your time with each sip</li>
+                          </>
+                        ) : (
+                          <>
+                            <li>• Always use 100% agave tequila for best results</li>
+                            <li>• Fresh lime juice is essential - never use bottled</li>
+                            <li>• Salt rim is traditional but optional - try tajín for a twist</li>
+                            <li>• Chill your glassware for the perfect serve</li>
+                          </>
+                        )}
+                      </ul>
+                    </div>
+
+                    {/* Rating */}
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Star className="h-5 w-5 text-yellow-400 fill-current" />
+                        <span className="font-bold text-lg">{selectedCocktail.rating}</span>
+                        <span className="text-gray-500">({selectedCocktail.reviews.toLocaleString()} reviews)</span>
+                      </div>
+                      <Badge variant="outline">{selectedCocktail.difficulty}</Badge>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3">
+                      <Button 
+                        className="flex-1 bg-gradient-to-r from-green-600 to-lime-600 hover:from-green-700 hover:to-lime-700"
+                        onClick={() => handleMakeCocktail(selectedCocktail)}
+                      >
+                        <Flame className="w-4 h-4 mr-2" />
+                        Make This Cocktail
+                      </Button>
+                      <Button variant="outline" size="icon">
+                        <Share2 className="w-4 h-4" />
+                      </Button>
+                      <Button variant="outline" size="icon">
+                        <Camera className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
           {/* Educational Section */}
           <Card className="mt-12 bg-gradient-to-br from-lime-50 to-green-50 border-green-200">
@@ -861,53 +1107,6 @@ export default function TequilaMezcalPage() {
                   <div className="p-4 bg-white rounded-lg border border-lime-200">
                     <div className="font-semibold text-orange-700 mb-2">Extra Añejo</div>
                     <div className="text-sm text-gray-700">Aged 3+ years. Ultra-premium, rich and smooth.</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Key Differences */}
-              <div className="p-6 bg-gradient-to-r from-lime-100 to-green-100 rounded-lg">
-                <h3 className="font-semibold text-lg mb-3 text-green-800 flex items-center gap-2">
-                  <Sparkles className="w-5 h-5" />
-                  Tequila vs Mezcal
-                </h3>
-                <div className="grid md:grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <div className="font-semibold text-lime-700 mb-2">Tequila:</div>
-                    <ul className="list-disc list-inside text-gray-700 space-y-1">
-                      <li>Only blue agave</li>
-                      <li>Specific regions in Mexico</li>
-                      <li>Agave cooked in ovens/autoclaves</li>
-                      <li>Clean, crisp flavor profile</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <div className="font-semibold text-green-700 mb-2">Mezcal:</div>
-                    <ul className="list-disc list-inside text-gray-700 space-y-1">
-                      <li>30+ types of agave</li>
-                      <li>Nine Mexican states</li>
-                      <li>Agave roasted in earthen pits</li>
-                      <li>Smoky, complex flavor profile</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              {/* Cocktail Tips */}
-              <div>
-                <h3 className="font-semibold text-lg mb-3 text-lime-700">Cocktail Tips</h3>
-                <div className="grid md:grid-cols-3 gap-4">
-                  <div className="p-4 bg-gradient-to-br from-lime-50 to-green-50 rounded-lg">
-                    <div className="font-semibold text-lime-700 mb-2">Use 100% Agave</div>
-                    <div className="text-sm text-gray-700">For best flavor, always use 100% agave tequila or authentic mezcal.</div>
-                  </div>
-                  <div className="p-4 bg-gradient-to-br from-lime-50 to-green-50 rounded-lg">
-                    <div className="font-semibold text-green-700 mb-2">Fresh Citrus</div>
-                    <div className="text-sm text-gray-700">Always use fresh lime juice - bottled juice can't compare.</div>
-                  </div>
-                  <div className="p-4 bg-gradient-to-br from-lime-50 to-green-50 rounded-lg">
-                    <div className="font-semibold text-emerald-700 mb-2">Balance Sweetness</div>
-                    <div className="text-sm text-gray-700">Agave nectar complements agave spirits better than simple syrup.</div>
                   </div>
                 </div>
               </div>
