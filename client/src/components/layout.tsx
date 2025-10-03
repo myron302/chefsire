@@ -8,7 +8,7 @@ import {
   Search, Bell, MessageCircle, User, ChevronDown,
   ChefHat, Activity, ShoppingCart, Settings, LogOut,
   Home, Compass, BookOpen, GlassWater, Utensils, Heart, Wand2,
-  Apple, FlaskConical, Leaf, Wine, Sparkles
+  Apple, FlaskConical, Leaf, Wine, Sparkles, Baby
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
@@ -191,6 +191,13 @@ export default function Layout({ children }: LayoutProps) {
                               <BookOpen className="w-3 h-3 mr-2" /> Browse Recipes
                             </Link>
                             <Link
+                              href="/recipes/baby-food"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                            >
+                              <Baby className="w-3 h-3 mr-2" /> Baby Food
+                            </Link>
+                            <Link
                               href="/pantry"
                               onClick={() => setIsDropdownOpen(false)}
                               className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
@@ -214,45 +221,97 @@ export default function Layout({ children }: LayoutProps) {
                               <GlassWater className="w-4 h-4 mr-3" /> Drinks
                             </Link>
 
-                            <Link
-                              href="/drinks"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <GlassWater className="w-3 h-3 mr-2" /> Drinks Hub
-                            </Link>
+                            {/* Smoothies submenu */}
                             <Link
                               href="/drinks/smoothies"
                               onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
                             >
                               <Apple className="w-3 h-3 mr-2" /> Smoothies & Bowls
                             </Link>
                             <Link
+                              href="/drinks/smoothies/breakfast"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Breakfast Smoothies
+                            </Link>
+                            <Link
+                              href="/drinks/smoothies/green"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Green Smoothies
+                            </Link>
+                            <Link
+                              href="/drinks/smoothies/protein"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Protein Smoothies
+                            </Link>
+
+                            {/* Protein Shakes submenu */}
+                            <Link
                               href="/drinks/protein-shakes"
                               onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
                             >
                               <FlaskConical className="w-3 h-3 mr-2" /> Protein Shakes
                             </Link>
                             <Link
+                              href="/drinks/protein-shakes/whey"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Whey Protein
+                            </Link>
+                            <Link
+                              href="/drinks/protein-shakes/plant-based"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Plant-Based Protein
+                            </Link>
+
+                            {/* Detoxes submenu */}
+                            <Link
                               href="/drinks/detoxes"
                               onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
                             >
                               <Leaf className="w-3 h-3 mr-2" /> Detoxes & Cleanses
                             </Link>
+                            <Link
+                              href="/drinks/detoxes/juice"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Detox Juices
+                            </Link>
+                            <Link
+                              href="/drinks/detoxes/tea"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Detox Teas
+                            </Link>
+                            <Link
+                              href="/drinks/detoxes/water"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                            >
+                              Infused Waters
+                            </Link>
 
-                            {/* Potent Potables with nested spirit links */}
+                            {/* Potent Potables submenu */}
                             <Link
                               href="/drinks/potent-potables"
                               onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-semibold"
+                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
                             >
                               <Wine className="w-3 h-3 mr-2" /> Potent Potables <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">21+</span>
                             </Link>
-
-                            {/* Spirit links - nested under Potent Potables */}
                             <Link
                               href="/drinks/potent-potables/vodka"
                               onClick={() => setIsDropdownOpen(false)}
@@ -280,27 +339,6 @@ export default function Layout({ children }: LayoutProps) {
                               className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
                             >
                               Rum Cocktails
-                            </Link>
-                            <Link
-                              href="/drinks/potent-potables/cognac-brandy"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Cognac & Brandy
-                            </Link>
-                            <Link
-                              href="/drinks/potent-potables/scotch-irish-whiskey"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Scotch & Irish Whiskey
-                            </Link>
-                            <Link
-                              href="/drinks/virgin-cocktails"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Virgin Cocktails
                             </Link>
 
                             {/* Catering */}
@@ -382,7 +420,6 @@ export default function Layout({ children }: LayoutProps) {
                           isActive
                             ? "text-orange-600 underline decoration-2 underline-offset-4"
                             : "text-muted-foreground hover:text-orange-600",
-                          (item as any).indent ? "pl-6" : ""
                         ].join(" ")}
                         aria-current={isActive ? "page" : undefined}
                       >
