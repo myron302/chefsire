@@ -1,370 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { 
-  Apple, Clock, Users, Trophy, Heart, Star, Calendar, 
-  CheckCircle, Target, Flame, Droplets, Leaf, Milk,
-  Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
-  Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
-  Activity, BarChart3, Sparkles, Crown, Dumbbell, Banana
+  Apple, Clock, Heart, Star, Search, Share2, ArrowLeft,
+  Plus, Camera, Zap, Trophy, Milk, Sparkles, Target, Leaf,
+  Crown, Dumbbell
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
-
-// High-protein smoothie data
-const proteinSmoothies = [
-  {
-    id: 'protein-smoothie-1',
-    name: 'Greek Goddess Berry Blast',
-    description: 'Greek yogurt and berries for creamy protein power',
-    image: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=400&h=300&fit=crop',
-    primaryProtein: 'Greek Yogurt',
-    proteinSources: ['Greek Yogurt', 'Protein Powder', 'Chia Seeds'],
-    flavor: 'Mixed Berry',
-    servingSize: '16 oz',
-    nutrition: {
-      calories: 320,
-      protein: 28,
-      carbs: 35,
-      fat: 8,
-      fiber: 12,
-      sugar: 22,
-      calcium: 350
-    },
-    ingredients: ['Greek Yogurt (1 cup)', 'Mixed Berries (1 cup)', 'Vanilla Protein Powder (1 scoop)', 'Chia Seeds (1 tbsp)', 'Honey (1 tbsp)', 'Almond Milk (1/2 cup)'],
-    benefits: ['High Protein', 'Probiotics', 'Antioxidants', 'Sustained Energy'],
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.8,
-    reviews: 1456,
-    trending: true,
-    featured: true,
-    estimatedCost: 4.50,
-    bestTime: 'Breakfast',
-    fitnessGoal: 'Muscle Building',
-    naturalProtein: true,
-    allergens: ['Dairy'],
-    category: 'Breakfast Smoothies'
-  },
-  {
-    id: 'protein-smoothie-2',
-    name: 'Peanut Butter Power Bowl',
-    description: 'Creamy peanut butter with banana for natural protein',
-    primaryProtein: 'Peanut Butter',
-    proteinSources: ['Natural Peanut Butter', 'Greek Yogurt', 'Oats'],
-    flavor: 'Peanut Butter Banana',
-    servingSize: '18 oz',
-    nutrition: {
-      calories: 450,
-      protein: 24,
-      carbs: 42,
-      fat: 22,
-      fiber: 8,
-      sugar: 18,
-      potassium: 650
-    },
-    ingredients: ['Natural Peanut Butter (2 tbsp)', 'Banana (1 large)', 'Greek Yogurt (1/2 cup)', 'Rolled Oats (1/3 cup)', 'Almond Milk (1 cup)', 'Cinnamon (pinch)'],
-    benefits: ['Healthy Fats', 'Sustained Energy', 'Heart Health', 'Muscle Recovery'],
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.7,
-    reviews: 1234,
-    trending: false,
-    featured: true,
-    estimatedCost: 3.75,
-    bestTime: 'Post-Workout',
-    fitnessGoal: 'Weight Gain',
-    naturalProtein: true,
-    allergens: ['Nuts', 'Dairy'],
-    category: 'Recovery Smoothies'
-  },
-  {
-    id: 'protein-smoothie-3',
-    name: 'Tropical Cottage Cheese Paradise',
-    description: 'Cottage cheese with tropical fruits for casein protein',
-    primaryProtein: 'Cottage Cheese',
-    proteinSources: ['Low-Fat Cottage Cheese', 'Coconut Flakes'],
-    flavor: 'Tropical Mango',
-    servingSize: '16 oz',
-    nutrition: {
-      calories: 280,
-      protein: 26,
-      carbs: 32,
-      fat: 6,
-      fiber: 5,
-      sugar: 26,
-      vitamin_c: 95
-    },
-    ingredients: ['Low-Fat Cottage Cheese (1/2 cup)', 'Mango Chunks (1 cup)', 'Pineapple (1/2 cup)', 'Coconut Flakes (1 tbsp)', 'Coconut Water (1 cup)', 'Lime Juice (1 tsp)'],
-    benefits: ['Casein Protein', 'Tropical Vitamins', 'Digestive Health', 'Hydration'],
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.5,
-    reviews: 892,
-    trending: true,
-    featured: false,
-    estimatedCost: 4.25,
-    bestTime: 'Snack',
-    fitnessGoal: 'Weight Management',
-    naturalProtein: true,
-    allergens: ['Dairy'],
-    category: 'Tropical Smoothies'
-  },
-  {
-    id: 'protein-smoothie-4',
-    name: 'Chocolate Almond Butter Dream',
-    description: 'Rich chocolate with almond butter for plant protein',
-    primaryProtein: 'Almond Butter',
-    proteinSources: ['Almond Butter', 'Cacao Powder', 'Hemp Seeds'],
-    flavor: 'Chocolate Almond',
-    servingSize: '16 oz',
-    nutrition: {
-      calories: 380,
-      protein: 18,
-      carbs: 28,
-      fat: 24,
-      fiber: 10,
-      sugar: 14,
-      vitamin_e: 8
-    },
-    ingredients: ['Almond Butter (2 tbsp)', 'Raw Cacao Powder (2 tbsp)', 'Banana (1 medium)', 'Hemp Seeds (1 tbsp)', 'Almond Milk (1.5 cups)', 'Dates (2 pitted)'],
-    benefits: ['Plant Protein', 'Antioxidants', 'Healthy Fats', 'Natural Sweetness'],
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.6,
-    reviews: 678,
-    trending: false,
-    featured: true,
-    estimatedCost: 5.50,
-    bestTime: 'Afternoon',
-    fitnessGoal: 'Plant-Based',
-    naturalProtein: true,
-    allergens: ['Nuts'],
-    category: 'Chocolate Smoothies'
-  },
-  {
-    id: 'protein-smoothie-5',
-    name: 'Green Goddess Protein',
-    description: 'Spinach and avocado with natural protein sources',
-    primaryProtein: 'Hemp Hearts',
-    proteinSources: ['Hemp Hearts', 'Spirulina', 'Greek Yogurt'],
-    flavor: 'Green Apple',
-    servingSize: '18 oz',
-    nutrition: {
-      calories: 295,
-      protein: 20,
-      carbs: 25,
-      fat: 16,
-      fiber: 11,
-      sugar: 16,
-      iron: 4.2
-    },
-    ingredients: ['Baby Spinach (2 cups)', 'Avocado (1/2 medium)', 'Green Apple (1 medium)', 'Hemp Hearts (3 tbsp)', 'Greek Yogurt (1/3 cup)', 'Coconut Water (1 cup)', 'Lemon Juice (1 tbsp)'],
-    benefits: ['Greens Power', 'Healthy Fats', 'Alkalizing', 'Nutrient Dense'],
-    difficulty: 'Medium',
-    prepTime: 4,
-    rating: 4.4,
-    reviews: 534,
-    trending: true,
-    featured: false,
-    estimatedCost: 4.75,
-    bestTime: 'Morning',
-    fitnessGoal: 'Detox',
-    naturalProtein: true,
-    allergens: ['Dairy'],
-    category: 'Green Smoothies'
-  },
-  {
-    id: 'protein-smoothie-6',
-    name: 'Vanilla Cashew Cream',
-    description: 'Soaked cashews for creamy plant-based protein',
-    primaryProtein: 'Cashews',
-    proteinSources: ['Raw Cashews', 'Vanilla Protein Powder'],
-    flavor: 'Vanilla Bean',
-    servingSize: '16 oz',
-    nutrition: {
-      calories: 420,
-      protein: 22,
-      carbs: 30,
-      fat: 26,
-      fiber: 4,
-      sugar: 20,
-      magnesium: 180
-    },
-    ingredients: ['Soaked Raw Cashews (1/3 cup)', 'Vanilla Protein Powder (1/2 scoop)', 'Banana (1 medium)', 'Vanilla Extract (1 tsp)', 'Oat Milk (1.5 cups)', 'Maple Syrup (1 tbsp)'],
-    benefits: ['Creamy Texture', 'Plant Protein', 'Minerals', 'Sustained Energy'],
-    difficulty: 'Medium',
-    prepTime: 5,
-    rating: 4.3,
-    reviews: 445,
-    trending: false,
-    featured: false,
-    estimatedCost: 6.25,
-    bestTime: 'Dessert',
-    fitnessGoal: 'Plant-Based',
-    naturalProtein: true,
-    allergens: ['Nuts'],
-    category: 'Dessert Smoothies'
-  },
-  {
-    id: 'protein-smoothie-7',
-    name: 'Coffee Shop Mocha Boost',
-    description: 'Cold brew coffee with protein for morning energy',
-    primaryProtein: 'Protein Powder',
-    proteinSources: ['Chocolate Protein Powder', 'Greek Yogurt'],
-    flavor: 'Mocha Coffee',
-    servingSize: '16 oz',
-    nutrition: {
-      calories: 350,
-      protein: 30,
-      carbs: 28,
-      fat: 12,
-      fiber: 6,
-      sugar: 18,
-      caffeine: 95
-    },
-    ingredients: ['Cold Brew Coffee (1 cup)', 'Chocolate Protein Powder (1 scoop)', 'Greek Yogurt (1/2 cup)', 'Banana (1/2 medium)', 'Almond Butter (1 tbsp)', 'Ice Cubes'],
-    benefits: ['Energy Boost', 'Caffeine', 'High Protein', 'Morning Fuel'],
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.7,
-    reviews: 987,
-    trending: true,
-    featured: true,
-    estimatedCost: 4.00,
-    bestTime: 'Morning',
-    fitnessGoal: 'Energy',
-    naturalProtein: false,
-    allergens: ['Dairy', 'Nuts'],
-    category: 'Coffee Smoothies'
-  },
-  {
-    id: 'protein-smoothie-8',
-    name: 'Oatmeal Cookie Protein',
-    description: 'Oats and spices for a healthy cookie flavor',
-    primaryProtein: 'Oats',
-    proteinSources: ['Steel-Cut Oats', 'Protein Powder', 'Almond Butter'],
-    flavor: 'Oatmeal Cookie',
-    servingSize: '18 oz',
-    nutrition: {
-      calories: 395,
-      protein: 25,
-      carbs: 45,
-      fat: 14,
-      fiber: 9,
-      sugar: 16,
-      beta_glucan: 3
-    },
-    ingredients: ['Cooked Steel-Cut Oats (1/2 cup)', 'Vanilla Protein Powder (1 scoop)', 'Almond Butter (1 tbsp)', 'Cinnamon (1 tsp)', 'Nutmeg (pinch)', 'Almond Milk (1 cup)', 'Banana (1/2 medium)'],
-    benefits: ['Complex Carbs', 'Fiber Rich', 'Heart Health', 'Comfort Food'],
-    difficulty: 'Medium',
-    prepTime: 6,
-    rating: 4.5,
-    reviews: 623,
-    trending: false,
-    featured: false,
-    estimatedCost: 3.50,
-    bestTime: 'Breakfast',
-    fitnessGoal: 'Endurance',
-    naturalProtein: true,
-    allergens: ['Nuts'],
-    category: 'Comfort Smoothies'
-  }
-];
-
-const proteinSources = [
-  {
-    id: 'greek-yogurt',
-    name: 'Greek Yogurt',
-    description: 'High protein, probiotics, creamy texture',
-    icon: Milk,
-    color: 'text-blue-600',
-    proteinPer100g: 20,
-    benefits: ['Probiotics', 'Calcium', 'Complete Protein', 'Creamy Texture'],
-    bestFor: 'Breakfast & Recovery',
-    cost: 'Low',
-    allergens: ['Dairy']
-  },
-  {
-    id: 'nut-butters',
-    name: 'Nut Butters',
-    description: 'Natural protein with healthy fats',
-    icon: Apple,
-    color: 'text-amber-600',
-    proteinPer100g: 25,
-    benefits: ['Healthy Fats', 'Vitamin E', 'Sustained Energy', 'Natural'],
-    bestFor: 'Weight Gain & Satiety',
-    cost: 'Medium',
-    allergens: ['Nuts']
-  },
-  {
-    id: 'cottage-cheese',
-    name: 'Cottage Cheese',
-    description: 'Casein protein for slow release',
-    icon: Droplets,
-    color: 'text-green-600',
-    proteinPer100g: 18,
-    benefits: ['Casein Protein', 'Low Fat', 'Slow Release', 'Versatile'],
-    bestFor: 'Night Time & Satiety',
-    cost: 'Low',
-    allergens: ['Dairy']
-  },
-  {
-    id: 'seeds-nuts',
-    name: 'Seeds & Nuts',
-    description: 'Plant protein with minerals',
-    icon: Sparkles,
-    color: 'text-purple-600',
-    proteinPer100g: 15,
-    benefits: ['Plant Protein', 'Minerals', 'Fiber', 'Omega Fats'],
-    bestFor: 'Plant-Based & Nutrition',
-    cost: 'Medium',
-    allergens: ['Nuts (varies)']
-  }
-];
-
-const smoothieCategories = [
-  {
-    id: 'breakfast',
-    name: 'Breakfast Smoothies',
-    description: 'Morning fuel with balanced nutrition',
-    icon: Crown,
-    color: 'bg-yellow-500',
-    proteinTarget: '20-25g',
-    timing: 'Within 1 hour of waking'
-  },
-  {
-    id: 'recovery',
-    name: 'Recovery Smoothies',
-    description: 'Post-workout muscle repair',
-    icon: Dumbbell,
-    color: 'bg-red-500',
-    proteinTarget: '25-30g',
-    timing: 'Within 30 minutes post-workout'
-  },
-  {
-    id: 'meal-replacement',
-    name: 'Meal Replacement',
-    description: 'Complete nutrition in a glass',
-    icon: Target,
-    color: 'bg-blue-500',
-    proteinTarget: '20-30g',
-    timing: 'Anytime as meal substitute'
-  },
-  {
-    id: 'plant-based',
-    name: 'Plant-Based Power',
-    description: 'Vegan protein from whole foods',
-    icon: Leaf,
-    color: 'bg-green-500',
-    proteinTarget: '15-25g',
-    timing: 'Anytime'
-  }
-];
+import { 
+  proteinSmoothies, 
+  proteinSources,
+  smoothieCategories,
+  smoothieSubcategories,
+  otherDrinkHubs 
+} from '../../data/smoothies';
 
 export default function HighProteinSmoothiesPage() {
   const { 
@@ -446,10 +100,12 @@ export default function HighProteinSmoothiesPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" className="text-gray-500">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Smoothies
-              </Button>
+              <Link href="/drinks/smoothies">
+                <Button variant="ghost" size="sm" className="text-gray-500">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Smoothies
+                </Button>
+              </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
                 <Apple className="h-6 w-6 text-orange-600" />
@@ -483,6 +139,49 @@ export default function HighProteinSmoothiesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* CROSS-HUB NAVIGATION */}
+        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              {otherDrinkHubs.map((hub) => {
+                const Icon = hub.icon;
+                return (
+                  <Link key={hub.id} href={hub.route}>
+                    <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
+                      <Icon className="h-4 w-4 mr-2 text-blue-600" />
+                      <span>{hub.name}</span>
+                      <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* SISTER SUBPAGES NAVIGATION */}
+        <Card className="bg-gradient-to-r from-orange-50 to-amber-50 border-orange-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Smoothie Types</h3>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              {smoothieSubcategories.map((subcategory) => {
+                const Icon = subcategory.icon;
+                return (
+                  <Link key={subcategory.id} href={subcategory.path}>
+                    <Button variant="outline" className="w-full justify-start hover:bg-orange-50 hover:border-orange-300">
+                      <Icon className="h-4 w-4 mr-2 text-orange-600" />
+                      <span>{subcategory.name}</span>
+                      <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardContent className="p-4 text-center">
@@ -715,7 +414,6 @@ export default function HighProteinSmoothiesPage() {
           </div>
         )}
 
-        {/* Protein Sources Tab */}
         {activeTab === 'protein-sources' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {proteinSources.map(source => {
@@ -786,7 +484,6 @@ export default function HighProteinSmoothiesPage() {
           </div>
         )}
 
-        {/* Categories Tab */}
         {activeTab === 'categories' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {smoothieCategories.map(category => {
@@ -844,7 +541,6 @@ export default function HighProteinSmoothiesPage() {
           </div>
         )}
 
-        {/* Featured Tab */}
         {activeTab === 'featured' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {featuredSmoothies.map(smoothie => (
@@ -969,7 +665,6 @@ export default function HighProteinSmoothiesPage() {
         )}
       </div>
 
-      {/* Floating Action Button */}
       <div className="fixed bottom-6 right-6 z-50">
         <Button 
           size="lg" 
@@ -980,7 +675,6 @@ export default function HighProteinSmoothiesPage() {
         </Button>
       </div>
 
-      {/* Bottom Stats Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-6 text-sm">
