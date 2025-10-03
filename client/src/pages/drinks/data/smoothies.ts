@@ -342,7 +342,230 @@ export const proteinSmoothies = [
     allergens: ['Dairy'],
     category: 'Breakfast Smoothies'
   },
-  // ... protein smoothies 2-8 would continue here
+  {
+    id: 'protein-smoothie-2',
+    name: 'Peanut Butter Power Bowl',
+    description: 'Creamy peanut butter with banana for natural protein',
+    primaryProtein: 'Peanut Butter',
+    proteinSources: ['Natural Peanut Butter', 'Greek Yogurt', 'Oats'],
+    flavor: 'Peanut Butter Banana',
+    servingSize: '18 oz',
+    nutrition: {
+      calories: 450,
+      protein: 24,
+      carbs: 42,
+      fat: 22,
+      fiber: 8,
+      sugar: 18,
+      potassium: 650
+    },
+    ingredients: ['Natural Peanut Butter (2 tbsp)', 'Banana (1 large)', 'Greek Yogurt (1/2 cup)', 'Rolled Oats (1/3 cup)', 'Almond Milk (1 cup)', 'Cinnamon (pinch)'],
+    benefits: ['Healthy Fats', 'Sustained Energy', 'Heart Health', 'Muscle Recovery'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.7,
+    reviews: 1234,
+    trending: false,
+    featured: true,
+    estimatedCost: 3.75,
+    bestTime: 'Post-Workout',
+    fitnessGoal: 'Weight Gain',
+    naturalProtein: true,
+    allergens: ['Nuts', 'Dairy'],
+    category: 'Recovery Smoothies'
+  },
+  {
+    id: 'protein-smoothie-3',
+    name: 'Tropical Cottage Cheese Paradise',
+    description: 'Cottage cheese with tropical fruits for casein protein',
+    primaryProtein: 'Cottage Cheese',
+    proteinSources: ['Low-Fat Cottage Cheese', 'Coconut Flakes'],
+    flavor: 'Tropical Mango',
+    servingSize: '16 oz',
+    nutrition: {
+      calories: 280,
+      protein: 26,
+      carbs: 32,
+      fat: 6,
+      fiber: 5,
+      sugar: 26,
+      vitamin_c: 95
+    },
+    ingredients: ['Low-Fat Cottage Cheese (1/2 cup)', 'Mango Chunks (1 cup)', 'Pineapple (1/2 cup)', 'Coconut Flakes (1 tbsp)', 'Coconut Water (1 cup)', 'Lime Juice (1 tsp)'],
+    benefits: ['Casein Protein', 'Tropical Vitamins', 'Digestive Health', 'Hydration'],
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.5,
+    reviews: 892,
+    trending: true,
+    featured: false,
+    estimatedCost: 4.25,
+    bestTime: 'Snack',
+    fitnessGoal: 'Weight Management',
+    naturalProtein: true,
+    allergens: ['Dairy'],
+    category: 'Tropical Smoothies'
+  },
+  {
+    id: 'protein-smoothie-4',
+    name: 'Chocolate Almond Butter Dream',
+    description: 'Rich chocolate with almond butter for plant protein',
+    primaryProtein: 'Almond Butter',
+    proteinSources: ['Almond Butter', 'Cacao Powder', 'Hemp Seeds'],
+    flavor: 'Chocolate Almond',
+    servingSize: '16 oz',
+    nutrition: {
+      calories: 380,
+      protein: 18,
+      carbs: 28,
+      fat: 24,
+      fiber: 10,
+      sugar: 14,
+      vitamin_e: 8
+    },
+    ingredients: ['Almond Butter (2 tbsp)', 'Raw Cacao Powder (2 tbsp)', 'Banana (1 medium)', 'Hemp Seeds (1 tbsp)', 'Almond Milk (1.5 cups)', 'Dates (2 pitted)'],
+    benefits: ['Plant Protein', 'Antioxidants', 'Healthy Fats', 'Natural Sweetness'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.6,
+    reviews: 678,
+    trending: false,
+    featured: true,
+    estimatedCost: 5.50,
+    bestTime: 'Afternoon',
+    fitnessGoal: 'Plant-Based',
+    naturalProtein: true,
+    allergens: ['Nuts'],
+    category: 'Chocolate Smoothies'
+  },
+  {
+    id: 'protein-smoothie-5',
+    name: 'Green Goddess Protein',
+    description: 'Spinach and avocado with natural protein sources',
+    primaryProtein: 'Hemp Hearts',
+    proteinSources: ['Hemp Hearts', 'Spirulina', 'Greek Yogurt'],
+    flavor: 'Green Apple',
+    servingSize: '18 oz',
+    nutrition: {
+      calories: 295,
+      protein: 20,
+      carbs: 25,
+      fat: 16,
+      fiber: 11,
+      sugar: 16,
+      iron: 4.2
+    },
+    ingredients: ['Baby Spinach (2 cups)', 'Avocado (1/2 medium)', 'Green Apple (1 medium)', 'Hemp Hearts (3 tbsp)', 'Greek Yogurt (1/3 cup)', 'Coconut Water (1 cup)', 'Lemon Juice (1 tbsp)'],
+    benefits: ['Greens Power', 'Healthy Fats', 'Alkalizing', 'Nutrient Dense'],
+    difficulty: 'Medium',
+    prepTime: 4,
+    rating: 4.4,
+    reviews: 534,
+    trending: true,
+    featured: false,
+    estimatedCost: 4.75,
+    bestTime: 'Morning',
+    fitnessGoal: 'Detox',
+    naturalProtein: true,
+    allergens: ['Dairy'],
+    category: 'Green Smoothies'
+  },
+  {
+    id: 'protein-smoothie-6',
+    name: 'Vanilla Cashew Cream',
+    description: 'Soaked cashews for creamy plant-based protein',
+    primaryProtein: 'Cashews',
+    proteinSources: ['Raw Cashews', 'Vanilla Protein Powder'],
+    flavor: 'Vanilla Bean',
+    servingSize: '16 oz',
+    nutrition: {
+      calories: 420,
+      protein: 22,
+      carbs: 30,
+      fat: 26,
+      fiber: 4,
+      sugar: 20,
+      magnesium: 180
+    },
+    ingredients: ['Soaked Raw Cashews (1/3 cup)', 'Vanilla Protein Powder (1/2 scoop)', 'Banana (1 medium)', 'Vanilla Extract (1 tsp)', 'Oat Milk (1.5 cups)', 'Maple Syrup (1 tbsp)'],
+    benefits: ['Creamy Texture', 'Plant Protein', 'Minerals', 'Sustained Energy'],
+    difficulty: 'Medium',
+    prepTime: 5,
+    rating: 4.3,
+    reviews: 445,
+    trending: false,
+    featured: false,
+    estimatedCost: 6.25,
+    bestTime: 'Dessert',
+    fitnessGoal: 'Plant-Based',
+    naturalProtein: true,
+    allergens: ['Nuts'],
+    category: 'Dessert Smoothies'
+  },
+  {
+    id: 'protein-smoothie-7',
+    name: 'Coffee Shop Mocha Boost',
+    description: 'Cold brew coffee with protein for morning energy',
+    primaryProtein: 'Protein Powder',
+    proteinSources: ['Chocolate Protein Powder', 'Greek Yogurt'],
+    flavor: 'Mocha Coffee',
+    servingSize: '16 oz',
+    nutrition: {
+      calories: 350,
+      protein: 30,
+      carbs: 28,
+      fat: 12,
+      fiber: 6,
+      sugar: 18,
+      caffeine: 95
+    },
+    ingredients: ['Cold Brew Coffee (1 cup)', 'Chocolate Protein Powder (1 scoop)', 'Greek Yogurt (1/2 cup)', 'Banana (1/2 medium)', 'Almond Butter (1 tbsp)', 'Ice Cubes'],
+    benefits: ['Energy Boost', 'Caffeine', 'High Protein', 'Morning Fuel'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.7,
+    reviews: 987,
+    trending: true,
+    featured: true,
+    estimatedCost: 4.00,
+    bestTime: 'Morning',
+    fitnessGoal: 'Energy',
+    naturalProtein: false,
+    allergens: ['Dairy', 'Nuts'],
+    category: 'Coffee Smoothies'
+  },
+  {
+    id: 'protein-smoothie-8',
+    name: 'Oatmeal Cookie Protein',
+    description: 'Oats and spices for a healthy cookie flavor',
+    primaryProtein: 'Oats',
+    proteinSources: ['Steel-Cut Oats', 'Protein Powder', 'Almond Butter'],
+    flavor: 'Oatmeal Cookie',
+    servingSize: '18 oz',
+    nutrition: {
+      calories: 395,
+      protein: 25,
+      carbs: 45,
+      fat: 14,
+      fiber: 9,
+      sugar: 16,
+      beta_glucan: 3
+    },
+    ingredients: ['Cooked Steel-Cut Oats (1/2 cup)', 'Vanilla Protein Powder (1 scoop)', 'Almond Butter (1 tbsp)', 'Cinnamon (1 tsp)', 'Nutmeg (pinch)', 'Almond Milk (1 cup)', 'Banana (1/2 medium)'],
+    benefits: ['Complex Carbs', 'Fiber Rich', 'Heart Health', 'Comfort Food'],
+    difficulty: 'Medium',
+    prepTime: 6,
+    rating: 4.5,
+    reviews: 623,
+    trending: false,
+    featured: false,
+    estimatedCost: 3.50,
+    bestTime: 'Breakfast',
+    fitnessGoal: 'Endurance',
+    naturalProtein: true,
+    allergens: ['Nuts'],
+    category: 'Comfort Smoothies'
+  }
 ];
 
 export const proteinSources = [
@@ -358,7 +581,42 @@ export const proteinSources = [
     cost: 'Low',
     allergens: ['Dairy']
   },
-  // ... other protein sources
+  {
+    id: 'nut-butters',
+    name: 'Nut Butters',
+    description: 'Natural protein with healthy fats',
+    icon: Apple,
+    color: 'text-amber-600',
+    proteinPer100g: 25,
+    benefits: ['Healthy Fats', 'Vitamin E', 'Sustained Energy', 'Natural'],
+    bestFor: 'Weight Gain & Satiety',
+    cost: 'Medium',
+    allergens: ['Nuts']
+  },
+  {
+    id: 'cottage-cheese',
+    name: 'Cottage Cheese',
+    description: 'Casein protein for slow release',
+    icon: Droplets,
+    color: 'text-green-600',
+    proteinPer100g: 18,
+    benefits: ['Casein Protein', 'Low Fat', 'Slow Release', 'Versatile'],
+    bestFor: 'Night Time & Satiety',
+    cost: 'Low',
+    allergens: ['Dairy']
+  },
+  {
+    id: 'seeds-nuts',
+    name: 'Seeds & Nuts',
+    description: 'Plant protein with minerals',
+    icon: Sparkles,
+    color: 'text-purple-600',
+    proteinPer100g: 15,
+    benefits: ['Plant Protein', 'Minerals', 'Fiber', 'Omega Fats'],
+    bestFor: 'Plant-Based & Nutrition',
+    cost: 'Medium',
+    allergens: ['Nuts (varies)']
+  }
 ];
 
 export const smoothieCategories = [
@@ -371,7 +629,33 @@ export const smoothieCategories = [
     proteinTarget: '20-25g',
     timing: 'Within 1 hour of waking'
   },
-  // ... other categories
+  {
+    id: 'recovery',
+    name: 'Recovery Smoothies',
+    description: 'Post-workout muscle repair',
+    icon: Dumbbell,
+    color: 'bg-red-500',
+    proteinTarget: '25-30g',
+    timing: 'Within 30 minutes post-workout'
+  },
+  {
+    id: 'meal-replacement',
+    name: 'Meal Replacement',
+    description: 'Complete nutrition in a glass',
+    icon: Target,
+    color: 'bg-blue-500',
+    proteinTarget: '20-30g',
+    timing: 'Anytime as meal substitute'
+  },
+  {
+    id: 'plant-based',
+    name: 'Plant-Based Power',
+    description: 'Vegan protein from whole foods',
+    icon: Leaf,
+    color: 'bg-green-500',
+    proteinTarget: '15-25g',
+    timing: 'Anytime'
+  }
 ];
 
 export const greenSmoothies = [
@@ -410,7 +694,237 @@ export const greenSmoothies = [
     allergens: [],
     category: 'Detox Greens'
   },
-  // ... green smoothies 2-8 would continue here
+  {
+    id: 'green-smoothie-2',
+    name: 'Tropical Green Paradise',
+    description: 'Pineapple and mango mask the greens perfectly',
+    primaryGreens: 'Spinach',
+    greensContent: ['Baby Spinach', 'Romaine Hearts'],
+    flavor: 'Tropical Sweet',
+    servingSize: '18 oz',
+    nutrition: {
+      calories: 220,
+      protein: 5,
+      carbs: 48,
+      fat: 3,
+      fiber: 8,
+      sugar: 38,
+      vitamin_c: 180,
+      potassium: 750
+    },
+    ingredients: ['Baby Spinach (2 cups)', 'Pineapple Chunks (1 cup)', 'Mango (1/2 large)', 'Banana (1/2 medium)', 'Coconut Milk (1/2 cup)', 'Lime Juice (1 tbsp)', 'Chia Seeds (1 tbsp)'],
+    benefits: ['Vitamin C Boost', 'Digestive Health', 'Hidden Veggies', 'Natural Sweetness'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.8,
+    reviews: 1234,
+    trending: false,
+    featured: true,
+    estimatedCost: 4.25,
+    bestTime: 'Snack',
+    fitnessGoal: 'Energy',
+    superfoods: ['Chia Seeds'],
+    allergens: [],
+    category: 'Tropical Greens'
+  },
+  {
+    id: 'green-smoothie-3',
+    name: 'Chocolate Mint Green Machine',
+    description: 'Cacao and mint make greens taste like dessert',
+    primaryGreens: 'Spinach',
+    greensContent: ['Baby Spinach', 'Fresh Mint'],
+    flavor: 'Chocolate Mint',
+    servingSize: '16 oz',
+    nutrition: {
+      calories: 285,
+      protein: 12,
+      carbs: 35,
+      fat: 12,
+      fiber: 11,
+      sugar: 20,
+      magnesium: 95,
+      antioxidants: 'High'
+    },
+    ingredients: ['Baby Spinach (2.5 cups)', 'Raw Cacao Powder (2 tbsp)', 'Fresh Mint (8 leaves)', 'Avocado (1/4 medium)', 'Banana (1 medium)', 'Almond Butter (1 tbsp)', 'Almond Milk (1.5 cups)', 'Stevia (to taste)'],
+    benefits: ['Antioxidant Rich', 'Healthy Fats', 'Natural Sweetness', 'Mood Boost'],
+    difficulty: 'Medium',
+    prepTime: 4,
+    rating: 4.5,
+    reviews: 678,
+    trending: true,
+    featured: false,
+    estimatedCost: 4.75,
+    bestTime: 'Afternoon',
+    fitnessGoal: 'Craving Control',
+    superfoods: ['Raw Cacao', 'Avocado'],
+    allergens: ['Nuts'],
+    category: 'Dessert Greens'
+  },
+  {
+    id: 'green-smoothie-4',
+    name: 'Cucumber Celery Cleanse',
+    description: 'Hydrating greens for ultimate detoxification',
+    primaryGreens: 'Celery & Cucumber',
+    greensContent: ['Celery', 'Cucumber', 'Parsley', 'Cilantro'],
+    flavor: 'Fresh Vegetal',
+    servingSize: '20 oz',
+    nutrition: {
+      calories: 125,
+      protein: 4,
+      carbs: 22,
+      fat: 2,
+      fiber: 6,
+      sugar: 14,
+      sodium: 180,
+      potassium: 650
+    },
+    ingredients: ['Celery Stalks (3 large)', 'Cucumber (1 large)', 'Fresh Parsley (1/4 cup)', 'Cilantro (1/4 cup)', 'Green Apple (1 small)', 'Lemon Juice (2 tbsp)', 'Ginger (1 inch)', 'Coconut Water (1 cup)'],
+    benefits: ['Deep Cleanse', 'Hydration', 'Anti-inflammatory', 'Liver Support'],
+    difficulty: 'Medium',
+    prepTime: 5,
+    rating: 4.2,
+    reviews: 445,
+    trending: false,
+    featured: false,
+    estimatedCost: 3.25,
+    bestTime: 'Morning Fasted',
+    fitnessGoal: 'Cleanse',
+    superfoods: ['Fresh Ginger'],
+    allergens: [],
+    category: 'Cleanse Greens'
+  },
+  {
+    id: 'green-smoothie-5',
+    name: 'Matcha Green Tea Fusion',
+    description: 'Ceremonial matcha with greens for focused energy',
+    primaryGreens: 'Spinach',
+    greensContent: ['Baby Spinach', 'Matcha Powder'],
+    flavor: 'Matcha Vanilla',
+    servingSize: '14 oz',
+    nutrition: {
+      calories: 195,
+      protein: 9,
+      carbs: 28,
+      fat: 6,
+      fiber: 5,
+      sugar: 20,
+      caffeine: 70,
+      l_theanine: 25
+    },
+    ingredients: ['Baby Spinach (1.5 cups)', 'Ceremonial Matcha (1 tsp)', 'Vanilla Greek Yogurt (1/2 cup)', 'Banana (1/2 medium)', 'Honey (1 tbsp)', 'Coconut Milk (1 cup)', 'Ice Cubes'],
+    benefits: ['Sustained Energy', 'Mental Focus', 'Antioxidants', 'Metabolism Boost'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.7,
+    reviews: 756,
+    trending: true,
+    featured: true,
+    estimatedCost: 5.50,
+    bestTime: 'Pre-Workout',
+    fitnessGoal: 'Energy & Focus',
+    superfoods: ['Matcha', 'Greek Yogurt'],
+    allergens: ['Dairy'],
+    category: 'Energy Greens'
+  },
+  {
+    id: 'green-smoothie-6',
+    name: 'Avocado Green Dream',
+    description: 'Ultra-creamy avocado base with nutrient-dense greens',
+    primaryGreens: 'Kale',
+    greensContent: ['Lacinato Kale', 'Swiss Chard'],
+    flavor: 'Creamy Green',
+    servingSize: '16 oz',
+    nutrition: {
+      calories: 320,
+      protein: 8,
+      carbs: 32,
+      fat: 18,
+      fiber: 15,
+      sugar: 16,
+      folate: 180,
+      vitamin_k: 280
+    },
+    ingredients: ['Lacinato Kale (1.5 cups)', 'Avocado (1/2 large)', 'Green Grapes (1/2 cup)', 'Pear (1 medium)', 'Swiss Chard (1/2 cup)', 'Lime Juice (1 tbsp)', 'Coconut Water (1.5 cups)'],
+    benefits: ['Healthy Fats', 'Fiber Rich', 'Heart Health', 'Satiety'],
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.4,
+    reviews: 534,
+    trending: false,
+    featured: false,
+    estimatedCost: 4.00,
+    bestTime: 'Lunch',
+    fitnessGoal: 'Weight Management',
+    superfoods: ['Avocado'],
+    allergens: [],
+    category: 'Creamy Greens'
+  },
+  {
+    id: 'green-smoothie-7',
+    name: 'Wheatgrass Wonder Boost',
+    description: 'Potent wheatgrass shot in smoothie form',
+    primaryGreens: 'Wheatgrass',
+    greensContent: ['Wheatgrass Powder', 'Spinach', 'Parsley'],
+    flavor: 'Earthy Fresh',
+    servingSize: '12 oz',
+    nutrition: {
+      calories: 155,
+      protein: 6,
+      carbs: 28,
+      fat: 3,
+      fiber: 8,
+      sugar: 18,
+      chlorophyll: 'Very High',
+      enzymes: 'Active'
+    },
+    ingredients: ['Wheatgrass Powder (1 tbsp)', 'Baby Spinach (1 cup)', 'Fresh Parsley (2 tbsp)', 'Green Apple (1 small)', 'Lemon Juice (2 tbsp)', 'Ginger (1/2 inch)', 'Coconut Water (1 cup)', 'Stevia (optional)'],
+    benefits: ['Chlorophyll Boost', 'Enzyme Rich', 'Alkalizing', 'Immune Support'],
+    difficulty: 'Medium',
+    prepTime: 3,
+    rating: 4.1,
+    reviews: 312,
+    trending: false,
+    featured: false,
+    estimatedCost: 4.50,
+    bestTime: 'Morning',
+    fitnessGoal: 'Immune Health',
+    superfoods: ['Wheatgrass', 'Fresh Ginger'],
+    allergens: [],
+    category: 'Superfood Greens'
+  },
+  {
+    id: 'green-smoothie-8',
+    name: 'Green Protein Power Blend',
+    description: 'Plant protein meets nutrient-dense greens',
+    primaryGreens: 'Mixed Greens',
+    greensContent: ['Spinach', 'Kale', 'Hemp Hearts'],
+    flavor: 'Vanilla Green',
+    servingSize: '18 oz',
+    nutrition: {
+      calories: 275,
+      protein: 18,
+      carbs: 26,
+      fat: 12,
+      fiber: 10,
+      sugar: 14,
+      omega_3: 'High',
+      complete_protein: true
+    },
+    ingredients: ['Mixed Greens (2 cups)', 'Vanilla Plant Protein (1 scoop)', 'Hemp Hearts (2 tbsp)', 'Banana (1/2 medium)', 'Almond Butter (1 tbsp)', 'Vanilla Extract (1/2 tsp)', 'Oat Milk (1.5 cups)'],
+    benefits: ['Complete Protein', 'Omega Fatty Acids', 'Sustained Energy', 'Muscle Recovery'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.6,
+    reviews: 698,
+    trending: true,
+    featured: true,
+    estimatedCost: 5.25,
+    bestTime: 'Post-Workout',
+    fitnessGoal: 'Muscle Building',
+    superfoods: ['Hemp Hearts', 'Plant Protein'],
+    allergens: ['Nuts'],
+    category: 'Protein Greens'
+  }
 ];
 
 export const greensTypes = [
@@ -427,7 +941,45 @@ export const greensTypes = [
     cost: 'Low',
     seasonality: 'Year-Round'
   },
-  // ... other greens types
+  {
+    id: 'kale',
+    name: 'Kale',
+    description: 'Superfood with robust nutrition profile',
+    icon: TreePine,
+    color: 'text-emerald-600',
+    nutritionHighlights: ['Vitamin C', 'Vitamin K', 'Antioxidants'],
+    flavor: 'Earthy',
+    benefits: ['Antioxidant Rich', 'Vitamin C', 'Calcium', 'Fiber'],
+    bestFor: 'Nutrition Focus',
+    cost: 'Medium',
+    seasonality: 'Cool Weather'
+  },
+  {
+    id: 'cucumber',
+    name: 'Cucumber',
+    description: 'Hydrating and refreshing base',
+    icon: Droplets,
+    color: 'text-cyan-600',
+    nutritionHighlights: ['Hydration', 'Silica', 'Low Calorie'],
+    flavor: 'Fresh & Mild',
+    benefits: ['Hydrating', 'Low Calorie', 'Cooling', 'Anti-inflammatory'],
+    bestFor: 'Hydration & Cleanse',
+    cost: 'Low',
+    seasonality: 'Summer'
+  },
+  {
+    id: 'superfoods',
+    name: 'Superfoods',
+    description: 'Spirulina, chlorella, wheatgrass',
+    icon: Sparkles,
+    color: 'text-purple-600',
+    nutritionHighlights: ['Chlorophyll', 'B-Vitamins', 'Protein'],
+    flavor: 'Intense',
+    benefits: ['Nutrient Dense', 'Detoxifying', 'Energy Boost', 'Alkalizing'],
+    bestFor: 'Advanced Users',
+    cost: 'High',
+    seasonality: 'Year-Round'
+  }
 ];
 
 export const greenCategories = [
@@ -440,7 +992,33 @@ export const greenCategories = [
     greensLevel: 'Light',
     sweetness: 'High'
   },
-  // ... other green categories
+  {
+    id: 'detox',
+    name: 'Detox Powerhouse',
+    description: 'Maximum nutrition for cleansing',
+    icon: Flame,
+    color: 'bg-orange-500',
+    greensLevel: 'Heavy',
+    sweetness: 'Low'
+  },
+  {
+    id: 'energy',
+    name: 'Energy Boosters',
+    description: 'Natural caffeine and sustained energy',
+    icon: Zap,
+    color: 'bg-yellow-500',
+    greensLevel: 'Medium',
+    sweetness: 'Medium'
+  },
+  {
+    id: 'protein',
+    name: 'Protein Enhanced',
+    description: 'Greens plus plant protein power',
+    icon: Target,
+    color: 'bg-blue-500',
+    greensLevel: 'Medium',
+    sweetness: 'Medium'
+  }
 ];
 
 export const dessertSmoothies = [
@@ -465,7 +1043,48 @@ export const dessertSmoothies = [
     estimatedCost: 3.50,
     bestTime: 'Dessert'
   },
-  // ... dessert smoothies 2-3 would continue here
+  {
+    id: 'dessert-2',
+    name: 'Strawberry Cheesecake Dream',
+    description: 'Creamy cheesecake flavor with fresh berries',
+    image: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=400&h=300&fit=crop',
+    dessertType: 'Cheesecake',
+    flavorProfile: 'Creamy & Tangy',
+    guiltFactor: 'Low',
+    category: 'Fruity Delights',
+    nutrition: { calories: 320, protein: 18, carbs: 42, fat: 10, fiber: 8, added_sugar: 0 },
+    ingredients: ['Strawberries', 'Cream Cheese', 'Greek Yogurt', 'Graham Crackers', 'Honey', 'Vanilla'],
+    healthySwaps: ['Honey for sugar', 'Greek yogurt for heavy cream', 'Fresh berries'],
+    benefits: ['Vitamin C', 'Probiotics', 'Calcium'],
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.8,
+    reviews: 1987,
+    trending: true,
+    estimatedCost: 4.25,
+    bestTime: 'Dessert'
+  },
+  {
+    id: 'dessert-3',
+    name: 'Peanut Butter Cup',
+    description: 'Classic candy bar flavors in smoothie form',
+    image: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400&h=300&fit=crop',
+    dessertType: 'Chocolate',
+    flavorProfile: 'Nutty & Sweet',
+    guiltFactor: 'None',
+    category: 'Chocolate Lovers',
+    nutrition: { calories: 340, protein: 20, carbs: 35, fat: 14, fiber: 6, added_sugar: 0 },
+    ingredients: ['Peanut Butter', 'Cocoa Powder', 'Banana', 'Protein Powder', 'Dates', 'Almond Milk'],
+    healthySwaps: ['Natural PB', 'Dates for sweetness', 'Cocoa powder'],
+    benefits: ['High Protein', 'Healthy Fats', 'Energy'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.7,
+    reviews: 1654,
+    trending: false,
+    estimatedCost: 3.75,
+    bestTime: 'Snack'
+  }
 ];
 
 export const dessertTypes = [
@@ -481,7 +1100,42 @@ export const dessertTypes = [
     avgCalories: 300,
     guiltLevel: 'None'
   },
-  // ... other dessert types
+  {
+    id: 'fruity',
+    name: 'Fruity Delights',
+    description: 'Fresh fruit-forward desserts',
+    icon: Sparkles,
+    color: 'text-pink-600',
+    keyBenefit: 'Vitamins',
+    healthyIngredients: ['Berries', 'Mango', 'Peaches'],
+    popularFlavors: ['Berry Cheesecake', 'Peach Cobbler', 'Tropical'],
+    avgCalories: 280,
+    guiltLevel: 'None'
+  },
+  {
+    id: 'creamy',
+    name: 'Creamy Classics',
+    description: 'Smooth and indulgent',
+    icon: IceCream,
+    color: 'text-purple-600',
+    keyBenefit: 'Satisfaction',
+    healthyIngredients: ['Greek Yogurt', 'Avocado', 'Cashews'],
+    popularFlavors: ['Vanilla Bean', 'Cookies & Cream', 'Caramel'],
+    avgCalories: 320,
+    guiltLevel: 'Low'
+  },
+  {
+    id: 'bakery',
+    name: 'Bakery Inspired',
+    description: 'Like fresh-baked treats',
+    icon: Cake,
+    color: 'text-orange-600',
+    keyBenefit: 'Comfort',
+    healthyIngredients: ['Oats', 'Cinnamon', 'Vanilla'],
+    popularFlavors: ['Cinnamon Roll', 'Banana Bread', 'Pumpkin Pie'],
+    avgCalories: 310,
+    guiltLevel: 'Low'
+  }
 ];
 
 export const dessertCategories = [
@@ -494,7 +1148,33 @@ export const dessertCategories = [
     calorieRange: '200-300',
     sweetenerType: 'Dates, Banana, Honey'
   },
-  // ... other dessert categories
+  {
+    id: 'protein-rich',
+    name: 'Protein Desserts',
+    description: '15g+ protein per serving',
+    icon: Trophy,
+    color: 'bg-blue-500',
+    calorieRange: '280-350',
+    sweetenerType: 'Natural + Protein'
+  },
+  {
+    id: 'comfort',
+    name: 'Comfort Classics',
+    description: 'Nostalgic favorites made healthy',
+    icon: Cookie,
+    color: 'bg-amber-500',
+    calorieRange: '300-400',
+    sweetenerType: 'Honey, Maple'
+  },
+  {
+    id: 'celebration',
+    name: 'Celebration Treats',
+    description: 'Special occasion indulgences',
+    icon: Sparkles,
+    color: 'bg-pink-500',
+    calorieRange: '350-450',
+    sweetenerType: 'Mixed Natural'
+  }
 ];
 
 export const breakfastSmoothies = [
@@ -518,7 +1198,26 @@ export const breakfastSmoothies = [
     bestTime: 'Early Morning',
     energyDuration: '4-5h'
   },
-  // ... breakfast smoothie 2 would continue here
+  {
+    id: 'breakfast-2',
+    name: 'Coffee Kick Mocha',
+    description: 'Espresso-infused morning energy',
+    image: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=400&h=300&fit=crop',
+    breakfastType: 'Energizing',
+    energyLevel: 'Very High',
+    satietyLevel: 'Medium',
+    category: 'Coffee Boost',
+    nutrition: { calories: 320, protein: 18, carbs: 42, fat: 8, fiber: 6, caffeine: 95 },
+    ingredients: ['Cold Brew', 'Protein Powder', 'Banana', 'Cacao', 'Dates', 'Almond Milk'],
+    morningBenefits: ['Caffeine Boost', 'Mental Focus', 'Quick Energy'],
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.7,
+    reviews: 1456,
+    trending: true,
+    bestTime: 'Morning',
+    energyDuration: '3-4h'
+  }
 ];
 
 export const breakfastTypes = [
@@ -534,7 +1233,18 @@ export const breakfastTypes = [
     satietyDuration: '4-5 hours',
     avgCalories: 400
   },
-  // ... other breakfast types
+  {
+    id: 'energizing',
+    name: 'Energy Boost',
+    description: 'Quick morning wake-up',
+    icon: Zap,
+    color: 'text-orange-600',
+    energyProfile: 'Quick Release',
+    keyNutrients: ['Caffeine', 'Simple Carbs', 'B Vitamins'],
+    idealFor: 'Energy Boost',
+    satietyDuration: '2-3 hours',
+    avgCalories: 280
+  }
 ];
 
 export const breakfastCategories = [
@@ -547,7 +1257,15 @@ export const breakfastCategories = [
     energyDuration: '4-5 hours',
     macroFocus: 'Complex Carbs + Protein'
   },
-  // ... other breakfast categories
+  {
+    id: 'quick-boost',
+    name: 'Quick Energy',
+    description: 'Fast morning activation',
+    icon: Zap,
+    color: 'bg-orange-500',
+    energyDuration: '2-3 hours',
+    macroFocus: 'Simple Carbs + Caffeine'
+  }
 ];
 
 export const ingredients = {
