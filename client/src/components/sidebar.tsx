@@ -1,4 +1,3 @@
-// client/src/components/sidebar.tsx
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
@@ -20,6 +19,7 @@ import {
   Leaf,
   Wine,
   Sparkles,
+  Baby,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -43,7 +43,7 @@ type NavItem =
     });
 
 /**
- * ✅ UPDATED NAV - includes all spirit pages
+ * ✅ CLEANED UP NAV - Consistent submenu structure for all drink categories
  */
 const NAV: NavItem[] = [
   { name: "Feed", href: "/feed", icon: Home },
@@ -55,12 +55,13 @@ const NAV: NavItem[] = [
     hasSubmenu: true,
     submenu: [
       { name: "Browse Recipes", href: "/recipes", icon: BookOpen },
+      { name: "Baby Food", href: "/recipes/baby-food", icon: Baby },
       { name: "My Pantry", href: "/pantry", icon: ChefHat },
       { name: "Ingredient Substitutions", href: "/substitutions", icon: Wand2 },
     ],
   },
 
-  // ✅ DRINKS - with all spirit pages
+  // ✅ DRINKS - Consistent submenu structure
   {
     name: "Drinks",
     href: "/drinks",
@@ -68,18 +69,67 @@ const NAV: NavItem[] = [
     hasSubmenu: true,
     submenu: [
       { name: "Drinks Hub", href: "/drinks", icon: GlassWater },
-      { name: "Smoothies & Bowls", href: "/drinks/smoothies", icon: Apple },
-      { name: "Protein Shakes", href: "/drinks/protein-shakes", icon: FlaskConical },
-      { name: "Detoxes & Cleanses", href: "/drinks/detoxes", icon: Leaf },
-      { name: "Potent Potables (21+)", href: "/drinks/potent-potables", icon: Wine },
-      // Spirit pages - indented with arrows for visual hierarchy
-      { name: "  → Vodka", href: "/drinks/potent-potables/vodka", icon: Wine },
-      { name: "  → Whiskey & Bourbon", href: "/drinks/potent-potables/whiskey-bourbon", icon: Wine },
-      { name: "  → Tequila & Mezcal", href: "/drinks/potent-potables/tequila-mezcal", icon: Wine },
-      { name: "  → Rum", href: "/drinks/potent-potables/rum", icon: Wine },
-      { name: "  → Cognac & Brandy", href: "/drinks/potent-potables/cognac-brandy", icon: Wine },
-      { name: "  → Scotch & Irish", href: "/drinks/potent-potables/scotch-irish-whiskey", icon: Wine },
-      { name: "  → Virgin Cocktails", href: "/drinks/virgin-cocktails", icon: Sparkles },
+      
+      // Smoothies with sub-items
+      {
+        name: "Smoothies & Bowls",
+        href: "/drinks/smoothies",
+        icon: Apple,
+        hasSubmenu: true,
+        submenu: [
+          { name: "Breakfast", href: "/drinks/smoothies/breakfast", icon: Apple },
+          { name: "Green", href: "/drinks/smoothies/green", icon: Leaf },
+          { name: "Protein", href: "/drinks/smoothies/protein", icon: FlaskConical },
+          { name: "Dessert", href: "/drinks/smoothies/dessert", icon: Sparkles },
+          { name: "Workout", href: "/drinks/smoothies/workout", icon: Activity },
+        ],
+      },
+      
+      // Protein Shakes with sub-items
+      {
+        name: "Protein Shakes",
+        href: "/drinks/protein-shakes",
+        icon: FlaskConical,
+        hasSubmenu: true,
+        submenu: [
+          { name: "Whey", href: "/drinks/protein-shakes/whey", icon: FlaskConical },
+          { name: "Plant-Based", href: "/drinks/protein-shakes/plant-based", icon: Leaf },
+          { name: "Casein", href: "/drinks/protein-shakes/casein", icon: FlaskConical },
+          { name: "Collagen", href: "/drinks/protein-shakes/collagen", icon: Sparkles },
+        ],
+      },
+      
+      // Detoxes with sub-items
+      {
+        name: "Detoxes & Cleanses",
+        href: "/drinks/detoxes",
+        icon: Leaf,
+        hasSubmenu: true,
+        submenu: [
+          { name: "Detox Juices", href: "/drinks/detoxes/juice", icon: Apple },
+          { name: "Detox Teas", href: "/drinks/detoxes/tea", icon: Leaf },
+          { name: "Infused Waters", href: "/drinks/detoxes/water", icon: GlassWater },
+        ],
+      },
+      
+      // Potent Potables with sub-items
+      {
+        name: "Potent Potables (21+)",
+        href: "/drinks/potent-potables",
+        icon: Wine,
+        hasSubmenu: true,
+        submenu: [
+          { name: "Vodka", href: "/drinks/potent-potables/vodka", icon: Wine },
+          { name: "Whiskey & Bourbon", href: "/drinks/potent-potables/whiskey-bourbon", icon: Wine },
+          { name: "Tequila & Mezcal", href: "/drinks/potent-potables/tequila-mezcal", icon: Wine },
+          { name: "Rum", href: "/drinks/potent-potables/rum", icon: Wine },
+          { name: "Cognac & Brandy", href: "/drinks/potent-potables/cognac-brandy", icon: Wine },
+          { name: "Scotch & Irish", href: "/drinks/potent-potables/scotch-irish-whiskey", icon: Wine },
+          { name: "Martinis", href: "/drinks/potent-potables/martinis", icon: Wine },
+          { name: "Cocktails", href: "/drinks/potent-potables/cocktails", icon: Wine },
+          { name: "Virgin Cocktails", href: "/drinks/potent-potables/virgin-cocktails", icon: Sparkles },
+        ],
+      },
     ],
   },
 
@@ -112,7 +162,12 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
         if ("hasSubmenu" in item && item.hasSubmenu) {
           const anyActive =
             isActive(item.href) ||
-            item.submenu.some((s) => isActive(s.href));
+            item.submenu.some((s) => {
+              if ("hasSubmenu" in s && s.hasSubmenu) {
+                return isActive(s.href) || s.submenu.some((nested) => isActive(nested.href));
+              }
+              return isActive(s.href);
+            });
           if (anyActive) {
             map[[...parentTrail, item.name].join(" / ")] = true;
           }
@@ -135,7 +190,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
       return { ...prev, [k]: !(prev[k] ?? autoOpen[k] ?? false) };
     });
 
-  const Row = ({ item, trail = [] as string[] }) => {
+  const Row = ({ item, trail = [] as string[], depth = 0 }) => {
     const currentTrail = [...trail, item.name];
 
     if ("hasSubmenu" in item && item.hasSubmenu) {
@@ -147,11 +202,13 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
                 className={[
                   "flex items-center flex-1 hover:bg-muted rounded px-2 py-1 cursor-pointer",
                   isActive(item.href) ? "bg-muted" : "",
+                  depth > 0 ? "text-sm" : "font-bold",
                 ].join(" ")}
+                style={{ paddingLeft: `${depth * 0.5}rem` }}
                 aria-current={isActive(item.href) ? "page" : undefined}
               >
-                <item.icon className="w-5 h-5 mr-2" />
-                <span className="font-bold">{item.name}</span>
+                <item.icon className={depth > 0 ? "w-4 h-4 mr-2" : "w-5 h-5 mr-2"} />
+                <span>{item.name}</span>
               </div>
             </Link>
 
@@ -160,7 +217,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
               aria-expanded={isOpen(currentTrail)}
               onClick={() => toggle(currentTrail)}
               className={[
-                "ml-2 p-1 rounded hover:bg-muted transition-colors",
+                "ml-2 p-1 rounded hover:bg-muted transition-transform",
                 isOpen(currentTrail) ? "rotate-90" : "",
               ].join(" ")}
             >
@@ -169,23 +226,9 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
           </div>
 
           {isOpen(currentTrail) && (
-            <div className="ml-6 space-y-1">
+            <div className="ml-4 space-y-1">
               {item.submenu.map((sub) => (
-                <Link key={sub.name} href={sub.href}>
-                  <div
-                    className={[
-                      "flex items-center py-1 hover:bg-muted rounded px-2 cursor-pointer",
-                      isActive(sub.href) ? "bg-muted" : "",
-                    ].join(" ")}
-                    aria-current={isActive(sub.href) ? "page" : undefined}
-                  >
-                    <sub.icon className="w-4 h-4 mr-2" />
-                    <span className="text-sm">{sub.name}</span>
-                    {"isPremium" in sub && sub.isPremium && (
-                      <span className="ml-2 px-2 py-0.5 bg-yellow-300 text-xs rounded">Premium</span>
-                    )}
-                  </div>
-                </Link>
+                <Row key={sub.name} item={sub} trail={currentTrail} depth={depth + 1} />
               ))}
             </div>
           )}
@@ -200,10 +243,12 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
           className={[
             "flex items-center py-2 hover:bg-muted rounded px-2 cursor-pointer",
             isActive(item.href) ? "bg-muted" : "",
+            depth > 0 ? "text-sm" : "",
           ].join(" ")}
+          style={{ paddingLeft: `${depth * 0.75}rem` }}
           aria-current={isActive(item.href) ? "page" : undefined}
         >
-          <item.icon className="w-5 h-5 mr-2" />
+          <item.icon className={depth > 0 ? "w-4 h-4 mr-2" : "w-5 h-5 mr-2"} />
           <span>{item.name}</span>
           {"isPremium" in item && item.isPremium && (
             <span className="ml-2 px-2 py-0.5 bg-yellow-300 text-xs rounded">Premium</span>
@@ -217,7 +262,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
     <aside className="hidden lg:flex flex-col w-64 h-screen bg-card border-r border-border fixed">
       <nav className="flex-1 py-6 px-4 space-y-2 overflow-y-auto">
         {NAV.map((item) => (
-          <Row key={item.name} item={item} />
+          <Row key={item.name} item={item} depth={0} />
         ))}
 
         <button
