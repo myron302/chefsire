@@ -16,9 +16,7 @@ import {
   workoutTypes,
   smoothieSubcategories,
   otherDrinkHubs 
-} from '../../data/smoothies'; // CORRECT IMPORT
-
-// ... rest of the 500+ line file remains exactly as I provided
+} from '../../data/smoothies';
 
 export default function WorkoutSmoothiesPage() {
   const { 
@@ -118,6 +116,49 @@ export default function WorkoutSmoothiesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* CROSS-HUB NAVIGATION */}
+        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              {otherDrinkHubs.map((hub) => {
+                const Icon = hub.icon;
+                return (
+                  <Link key={hub.id} href={hub.route}>
+                    <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
+                      <Icon className="h-4 w-4 mr-2 text-blue-600" />
+                      <span>{hub.name}</span>
+                      <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* SISTER SUBPAGES NAVIGATION */}
+        <Card className="bg-gradient-to-r from-orange-50 to-green-50 border-orange-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Smoothie Types</h3>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              {smoothieSubcategories.map((subcategory) => {
+                const Icon = subcategory.icon;
+                return (
+                  <Link key={subcategory.id} href={subcategory.path}>
+                    <Button variant="outline" className="w-full justify-start hover:bg-orange-50 hover:border-orange-300">
+                      <Icon className="h-4 w-4 mr-2 text-orange-600" />
+                      <span>{subcategory.name}</span>
+                      <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardContent className="p-4 text-center">
@@ -139,7 +180,7 @@ export default function WorkoutSmoothiesPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">6</div>
+              <div className="text-2xl font-bold text-purple-600">{workoutSmoothies.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -149,7 +190,8 @@ export default function WorkoutSmoothiesPage() {
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
             { id: 'types', label: 'Workout Types', icon: Activity },
-            { id: 'featured', label: 'Featured', icon: Star }
+            { id: 'featured', label: 'Featured', icon: Star },
+            { id: 'trending', label: 'Trending', icon: Zap }
           ].map(tab => {
             const Icon = tab.icon;
             return (
@@ -437,6 +479,60 @@ export default function WorkoutSmoothiesPage() {
             ))}
           </div>
         )}
+
+        {activeTab === 'trending' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {trendingSmoothies.map(smoothie => (
+              <Card key={smoothie.id} className="hover:shadow-lg transition-shadow border-2 border-orange-200">
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="text-lg mb-1">{smoothie.name}</CardTitle>
+                      <p className="text-sm text-gray-600 mb-2">{smoothie.description}</p>
+                    </div>
+                    <Badge className="bg-red-500 text-white">🔥 Trending</Badge>
+                  </div>
+                </CardHeader>
+                
+                <CardContent>
+                  <Button 
+                    className="w-full bg-orange-600 hover:bg-orange-700"
+                    onClick={() => handleMakeSmoothie(smoothie)}
+                  >
+                    <Zap className="h-4 w-4 mr-2" />
+                    Try This Trend
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Navigation Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <Dumbbell className="h-4 w-4 text-orange-600" />
+              <span className="text-gray-600">Found:</span>
+              <span className="font-bold text-orange-600">{filteredSmoothies.length}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Star className="h-4 w-4 text-yellow-500" />
+              <span className="text-gray-600">Level:</span>
+              <span className="font-bold text-yellow-600">{userProgress.level}</span>
+            </div>
+          </div>
+          
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          >
+            Back to Top
+          </Button>
+        </div>
       </div>
 
       <div className="fixed bottom-6 right-6 z-50">
