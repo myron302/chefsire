@@ -177,7 +177,10 @@ function Router() {
         {/* Explore */}
         <Route path="/explore" component={ExplorePage} />
 
-        {/* Recipes routes */}
+        {/* ========== RECIPES ROUTES - MIRRORING DRINKS STRUCTURE ========== */}
+        <Route path="/recipes/baby-food/:rest*">
+          {(params) => <RecipesSection />}
+        </Route>
         <Route path="/recipes/:rest*" component={RecipesSection} />
         <Route path="/recipes" component={RecipesSection} />
 
@@ -213,7 +216,7 @@ function Router() {
         {/* Substitutions */}
         <Route path="/substitutions" component={SubstitutionsPage} />
 
-        {/* DRINKS TREE - ALL ROUTES */}
+        {/* ========== DRINKS TREE - ALL ROUTES ========== */}
         <Route path="/drinks/smoothies/:rest*">
           {(params) => <DrinksSection />}
         </Route>
