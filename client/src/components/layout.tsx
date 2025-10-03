@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-  Search, Bell, MessageCircle, User, ChevronDown,
+  Search, Bell, MessageCircle, User, ChevronDown, ChevronRight,
   ChefHat, Activity, ShoppingCart, Settings, LogOut,
   Home, Compass, BookOpen, GlassWater, Utensils, Heart, Wand2,
   Apple, FlaskConical, Leaf, Wine, Sparkles, Baby
@@ -22,6 +22,7 @@ export default function Layout({ children }: LayoutProps) {
   const [pathname, setLocation] = useLocation();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const link = document.createElement("link");
@@ -56,6 +57,12 @@ export default function Layout({ children }: LayoutProps) {
     } else {
       setLocation("/recipes");
     }
+  };
+
+  const toggleSubmenu = (key: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setExpandedMenus(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   return (
@@ -113,7 +120,10 @@ export default function Layout({ children }: LayoutProps) {
 
               <div
                 className="relative"
-                onMouseLeave={() => setIsDropdownOpen(false)}
+                onMouseLeave={() => {
+                  setIsDropdownOpen(false);
+                  setExpandedMenus({});
+                }}
               >
                 <button
                   onClick={() => setIsDropdownOpen((v) => !v)}
@@ -133,9 +143,12 @@ export default function Layout({ children }: LayoutProps) {
                   <>
                     <div
                       className="fixed inset-0 z-10"
-                      onClick={() => setIsDropdownOpen(false)}
+                      onClick={() => {
+                        setIsDropdownOpen(false);
+                        setExpandedMenus({});
+                      }}
                     />
-                    <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-20 overflow-hidden">
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-20 overflow-hidden max-h-[calc(100vh-5rem)] overflow-y-auto">
                       <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-b px-4 py-3">
                         <div className="flex items-center space-x-3">
                           <div className="w-7 h-7 rounded-full overflow-hidden bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-md">
@@ -175,180 +188,144 @@ export default function Layout({ children }: LayoutProps) {
                               <Compass className="w-4 h-4 mr-3" /> Explore
                             </Link>
 
-                            {/* Recipes (parent) */}
-                            <Link
-                              href="/recipes"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded font-semibold"
-                            >
-                              <BookOpen className="w-4 h-4 mr-3" /> Recipes
-                            </Link>
-                            <Link
-                              href="/recipes"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <BookOpen className="w-3 h-3 mr-2" /> Browse Recipes
-                            </Link>
-                            <Link
-                              href="/recipes/baby-food"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <Baby className="w-3 h-3 mr-2" /> Baby Food
-                            </Link>
-                            <Link
-                              href="/pantry"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <ChefHat className="w-3 h-3 mr-2" /> My Pantry
-                            </Link>
-                            <Link
-                              href="/substitutions"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                            >
-                              <Wand2 className="w-3 h-3 mr-2" /> Ingredient Substitutions
-                            </Link>
+                            {/* Recipes (parent with toggle) */}
+                            <div>
+                              <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <Link
+                                  href="/recipes"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center flex-1 font-semibold"
+                                >
+                                  <BookOpen className="w-4 h-4 mr-3" /> Recipes
+                                </Link>
+                                <button
+                                  onClick={(e) => toggleSubmenu('recipes', e)}
+                                  className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                >
+                                  <ChevronRight className={`w-3 h-3 transition-transform ${expandedMenus.recipes ? 'rotate-90' : ''}`} />
+                                </button>
+                              </div>
+                              {expandedMenus.recipes && (
+                                <div className="ml-6 space-y-1">
+                                  <Link
+                                    href="/recipes"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <BookOpen className="w-3 h-3 mr-2" /> Browse Recipes
+                                  </Link>
+                                  <Link
+                                    href="/recipes/baby-food"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Baby className="w-3 h-3 mr-2" /> Baby Food
+                                  </Link>
+                                  <Link
+                                    href="/pantry"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <ChefHat className="w-3 h-3 mr-2" /> My Pantry
+                                  </Link>
+                                  <Link
+                                    href="/substitutions"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Wand2 className="w-3 h-3 mr-2" /> Substitutions
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
 
-                            {/* Drinks (parent) */}
-                            <Link
-                              href="/drinks"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded font-semibold"
-                            >
-                              <GlassWater className="w-4 h-4 mr-3" /> Drinks
-                            </Link>
+                            {/* Drinks (parent with toggle) */}
+                            <div>
+                              <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <Link
+                                  href="/drinks"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center flex-1 font-semibold"
+                                >
+                                  <GlassWater className="w-4 h-4 mr-3" /> Drinks
+                                </Link>
+                                <button
+                                  onClick={(e) => toggleSubmenu('drinks', e)}
+                                  className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                >
+                                  <ChevronRight className={`w-3 h-3 transition-transform ${expandedMenus.drinks ? 'rotate-90' : ''}`} />
+                                </button>
+                              </div>
+                              {expandedMenus.drinks && (
+                                <div className="ml-6 space-y-1">
+                                  <Link
+                                    href="/drinks/smoothies"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Apple className="w-3 h-3 mr-2" /> Smoothies
+                                  </Link>
+                                  <Link
+                                    href="/drinks/protein-shakes"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <FlaskConical className="w-3 h-3 mr-2" /> Protein Shakes
+                                  </Link>
+                                  <Link
+                                    href="/drinks/detoxes"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Leaf className="w-3 h-3 mr-2" /> Detoxes
+                                  </Link>
+                                  <Link
+                                    href="/drinks/potent-potables"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Wine className="w-3 h-3 mr-2" /> Potent Potables <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700">21+</span>
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
 
-                            {/* Smoothies submenu */}
-                            <Link
-                              href="/drinks/smoothies"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
-                            >
-                              <Apple className="w-3 h-3 mr-2" /> Smoothies & Bowls
-                            </Link>
-                            <Link
-                              href="/drinks/smoothies/breakfast"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Breakfast Smoothies
-                            </Link>
-                            <Link
-                              href="/drinks/smoothies/green"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Green Smoothies
-                            </Link>
-                            <Link
-                              href="/drinks/smoothies/protein"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Protein Smoothies
-                            </Link>
-
-                            {/* Protein Shakes submenu */}
-                            <Link
-                              href="/drinks/protein-shakes"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
-                            >
-                              <FlaskConical className="w-3 h-3 mr-2" /> Protein Shakes
-                            </Link>
-                            <Link
-                              href="/drinks/protein-shakes/whey"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Whey Protein
-                            </Link>
-                            <Link
-                              href="/drinks/protein-shakes/plant-based"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Plant-Based Protein
-                            </Link>
-
-                            {/* Detoxes submenu */}
-                            <Link
-                              href="/drinks/detoxes"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
-                            >
-                              <Leaf className="w-3 h-3 mr-2" /> Detoxes & Cleanses
-                            </Link>
-                            <Link
-                              href="/drinks/detoxes/juice"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Detox Juices
-                            </Link>
-                            <Link
-                              href="/drinks/detoxes/tea"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Detox Teas
-                            </Link>
-                            <Link
-                              href="/drinks/detoxes/water"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Infused Waters
-                            </Link>
-
-                            {/* Potent Potables submenu */}
-                            <Link
-                              href="/drinks/potent-potables"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-9 pr-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
-                            >
-                              <Wine className="w-3 h-3 mr-2" /> Potent Potables <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">21+</span>
-                            </Link>
-                            <Link
-                              href="/drinks/potent-potables/vodka"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Vodka Cocktails
-                            </Link>
-                            <Link
-                              href="/drinks/potent-potables/whiskey-bourbon"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Whiskey & Bourbon
-                            </Link>
-                            <Link
-                              href="/drinks/potent-potables/tequila-mezcal"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Tequila & Mezcal
-                            </Link>
-                            <Link
-                              href="/drinks/potent-potables/rum"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center pl-14 pr-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                            >
-                              Rum Cocktails
-                            </Link>
-
-                            {/* Catering */}
-                            <Link
-                              href="/catering"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded font-semibold"
-                            >
-                              <Utensils className="w-4 h-4 mr-3" /> Catering
-                            </Link>
+                            {/* Catering (parent with toggle) */}
+                            <div>
+                              <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <Link
+                                  href="/catering"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center flex-1 font-semibold"
+                                >
+                                  <Utensils className="w-4 h-4 mr-3" /> Catering
+                                </Link>
+                                <button
+                                  onClick={(e) => toggleSubmenu('catering', e)}
+                                  className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                >
+                                  <ChevronRight className={`w-3 h-3 transition-transform ${expandedMenus.catering ? 'rotate-90' : ''}`} />
+                                </button>
+                              </div>
+                              {expandedMenus.catering && (
+                                <div className="ml-6 space-y-1">
+                                  <Link
+                                    href="/catering"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Utensils className="w-3 h-3 mr-2" /> Browse Caterers
+                                  </Link>
+                                  <Link
+                                    href="/catering/wedding-planning"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Heart className="w-3 h-3 mr-2" /> Wedding Planning
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
 
                             {/* Marketplace */}
                             <Link
