@@ -1,105 +1,22 @@
 import React, { useState } from 'react';
+import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { 
-  Crown, Clock, Star, Heart, Flame, Sparkles, Plus,
-  Search, Share2, ArrowLeft, Zap, Trophy, Sun
+  Crown, Clock, Heart, Star, Search, Share2, ArrowLeft,
+  Plus, Camera, Zap, Trophy, Sun, Sparkles, Activity
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
-
-const breakfastSmoothies = [
-  {
-    id: 'breakfast-1',
-    name: 'Power Morning Fuel',
-    description: 'Complete nutrition to kickstart your day',
-    image: 'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=400&h=300&fit=crop',
-    breakfastType: 'Complete Meal',
-    energyLevel: 'High',
-    satietyLevel: 'Very High',
-    category: 'Complete Breakfast',
-    nutrition: { calories: 420, protein: 22, carbs: 58, fat: 12, fiber: 14, caffeine: 0 },
-    ingredients: ['Steel-Cut Oats', 'Greek Yogurt', 'Banana', 'Berries', 'Almond Butter', 'Chia Seeds'],
-    morningBenefits: ['Sustained Energy', 'Complete Nutrition', 'High Fiber'],
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.8,
-    reviews: 1892,
-    trending: true,
-    bestTime: 'Early Morning',
-    energyDuration: '4-5h'
-  },
-  {
-    id: 'breakfast-2',
-    name: 'Coffee Kick Mocha',
-    description: 'Espresso-infused morning energy',
-    image: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=400&h=300&fit=crop',
-    breakfastType: 'Energizing',
-    energyLevel: 'Very High',
-    satietyLevel: 'Medium',
-    category: 'Coffee Boost',
-    nutrition: { calories: 320, protein: 18, carbs: 42, fat: 8, fiber: 6, caffeine: 95 },
-    ingredients: ['Cold Brew', 'Protein Powder', 'Banana', 'Cacao', 'Dates', 'Almond Milk'],
-    morningBenefits: ['Caffeine Boost', 'Mental Focus', 'Quick Energy'],
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.7,
-    reviews: 1456,
-    trending: true,
-    bestTime: 'Morning',
-    energyDuration: '3-4h'
-  }
-];
-
-const breakfastTypes = [
-  {
-    id: 'complete',
-    name: 'Complete Meal',
-    description: 'Full breakfast replacement',
-    icon: Crown,
-    color: 'text-amber-600',
-    energyProfile: 'Sustained Release',
-    keyNutrients: ['Complex Carbs', 'Protein', 'Healthy Fats'],
-    idealFor: 'Meal Replacement',
-    satietyDuration: '4-5 hours',
-    avgCalories: 400
-  },
-  {
-    id: 'energizing',
-    name: 'Energy Boost',
-    description: 'Quick morning wake-up',
-    icon: Zap,
-    color: 'text-orange-600',
-    energyProfile: 'Quick Release',
-    keyNutrients: ['Caffeine', 'Simple Carbs', 'B Vitamins'],
-    idealFor: 'Energy Boost',
-    satietyDuration: '2-3 hours',
-    avgCalories: 280
-  }
-];
-
-const breakfastCategories = [
-  {
-    id: 'sustained-energy',
-    name: 'Sustained Energy',
-    description: 'Long-lasting morning fuel',
-    icon: Sun,
-    color: 'bg-yellow-500',
-    energyDuration: '4-5 hours',
-    macroFocus: 'Complex Carbs + Protein'
-  },
-  {
-    id: 'quick-boost',
-    name: 'Quick Energy',
-    description: 'Fast morning activation',
-    icon: Zap,
-    color: 'bg-orange-500',
-    energyDuration: '2-3 hours',
-    macroFocus: 'Simple Carbs + Caffeine'
-  }
-];
+import { 
+  breakfastSmoothies, 
+  breakfastTypes,
+  breakfastCategories,
+  smoothieSubcategories,
+  otherDrinkHubs 
+} from '../../data/smoothies';
 
 export default function BreakfastSmoothiesPage() {
   const { 
@@ -172,10 +89,12 @@ export default function BreakfastSmoothiesPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" onClick={() => window.history.back()}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
+              <Link href="/drinks/smoothies">
+                <Button variant="ghost" size="sm" className="text-gray-500">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Smoothies
+                </Button>
+              </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
                 <Crown className="h-6 w-6 text-amber-600" />
@@ -197,6 +116,49 @@ export default function BreakfastSmoothiesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* CROSS-HUB NAVIGATION */}
+        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              {otherDrinkHubs.map((hub) => {
+                const Icon = hub.icon;
+                return (
+                  <Link key={hub.id} href={hub.route}>
+                    <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
+                      <Icon className="h-4 w-4 mr-2 text-blue-600" />
+                      <span>{hub.name}</span>
+                      <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* SISTER SUBPAGES NAVIGATION */}
+        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Smoothie Types</h3>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              {smoothieSubcategories.map((subcategory) => {
+                const Icon = subcategory.icon;
+                return (
+                  <Link key={subcategory.id} href={subcategory.path}>
+                    <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
+                      <Icon className="h-4 w-4 mr-2 text-amber-600" />
+                      <span>{subcategory.name}</span>
+                      <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
