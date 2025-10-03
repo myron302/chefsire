@@ -16,7 +16,9 @@ import {
   workoutTypes,
   smoothieSubcategories,
   otherDrinkHubs 
-} from '../data/smoothies';
+} from '../../../data/smoothies'; // CORRECT IMPORT
+
+// ... rest of the 500+ line file remains exactly as I provided
 
 export default function WorkoutSmoothiesPage() {
   const { 
