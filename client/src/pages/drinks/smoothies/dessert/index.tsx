@@ -1,171 +1,22 @@
 import React, { useState } from 'react';
+import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { 
-  IceCream, Clock, Star, Heart, Flame, Sparkles, Cookie,
-  Search, Share2, ArrowLeft, Cake, Candy, ChefHat, Plus,
-  Zap, Trophy
+  IceCream, Clock, Heart, Star, Search, Share2, ArrowLeft,
+  Plus, Camera, Sparkles, Cookie, Cake, ChefHat, Trophy
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
-
-const dessertSmoothies = [
-  {
-    id: 'dessert-1',
-    name: 'Chocolate Brownie Bliss',
-    description: 'Rich chocolate indulgence without the guilt',
-    image: 'https://images.unsplash.com/photo-1587049633312-d628ae50a8ae?w=400&h=300&fit=crop',
-    dessertType: 'Chocolate',
-    flavorProfile: 'Rich & Decadent',
-    guiltFactor: 'None',
-    category: 'Chocolate Lovers',
-    nutrition: { calories: 280, protein: 15, carbs: 38, fat: 8, fiber: 10, added_sugar: 0 },
-    ingredients: ['Cocoa Powder', 'Banana', 'Greek Yogurt', 'Almond Butter', 'Dates', 'Vanilla'],
-    healthySwaps: ['Dates for sugar', 'Cocoa for chocolate', 'Greek yogurt for cream'],
-    benefits: ['Antioxidants', 'Protein Rich', 'Natural Sweetness'],
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.9,
-    reviews: 2345,
-    trending: true,
-    estimatedCost: 3.50,
-    bestTime: 'Dessert'
-  },
-  {
-    id: 'dessert-2',
-    name: 'Strawberry Cheesecake Dream',
-    description: 'Creamy cheesecake flavor with fresh berries',
-    image: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=400&h=300&fit=crop',
-    dessertType: 'Cheesecake',
-    flavorProfile: 'Creamy & Tangy',
-    guiltFactor: 'Low',
-    category: 'Fruity Delights',
-    nutrition: { calories: 320, protein: 18, carbs: 42, fat: 10, fiber: 8, added_sugar: 0 },
-    ingredients: ['Strawberries', 'Cream Cheese', 'Greek Yogurt', 'Graham Crackers', 'Honey', 'Vanilla'],
-    healthySwaps: ['Honey for sugar', 'Greek yogurt for heavy cream', 'Fresh berries'],
-    benefits: ['Vitamin C', 'Probiotics', 'Calcium'],
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.8,
-    reviews: 1987,
-    trending: true,
-    estimatedCost: 4.25,
-    bestTime: 'Dessert'
-  },
-  {
-    id: 'dessert-3',
-    name: 'Peanut Butter Cup',
-    description: 'Classic candy bar flavors in smoothie form',
-    image: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400&h=300&fit=crop',
-    dessertType: 'Chocolate',
-    flavorProfile: 'Nutty & Sweet',
-    guiltFactor: 'None',
-    category: 'Chocolate Lovers',
-    nutrition: { calories: 340, protein: 20, carbs: 35, fat: 14, fiber: 6, added_sugar: 0 },
-    ingredients: ['Peanut Butter', 'Cocoa Powder', 'Banana', 'Protein Powder', 'Dates', 'Almond Milk'],
-    healthySwaps: ['Natural PB', 'Dates for sweetness', 'Cocoa powder'],
-    benefits: ['High Protein', 'Healthy Fats', 'Energy'],
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.7,
-    reviews: 1654,
-    trending: false,
-    estimatedCost: 3.75,
-    bestTime: 'Snack'
-  }
-];
-
-const dessertTypes = [
-  {
-    id: 'chocolate',
-    name: 'Chocolate Dreams',
-    description: 'Rich cocoa-based treats',
-    icon: Cookie,
-    color: 'text-amber-600',
-    keyBenefit: 'Antioxidants',
-    healthyIngredients: ['Cocoa Powder', 'Dark Chocolate', 'Cacao Nibs'],
-    popularFlavors: ['Brownie', 'Mocha', 'Mint Chip'],
-    avgCalories: 300,
-    guiltLevel: 'None'
-  },
-  {
-    id: 'fruity',
-    name: 'Fruity Delights',
-    description: 'Fresh fruit-forward desserts',
-    icon: Sparkles,
-    color: 'text-pink-600',
-    keyBenefit: 'Vitamins',
-    healthyIngredients: ['Berries', 'Mango', 'Peaches'],
-    popularFlavors: ['Berry Cheesecake', 'Peach Cobbler', 'Tropical'],
-    avgCalories: 280,
-    guiltLevel: 'None'
-  },
-  {
-    id: 'creamy',
-    name: 'Creamy Classics',
-    description: 'Smooth and indulgent',
-    icon: IceCream,
-    color: 'text-purple-600',
-    keyBenefit: 'Satisfaction',
-    healthyIngredients: ['Greek Yogurt', 'Avocado', 'Cashews'],
-    popularFlavors: ['Vanilla Bean', 'Cookies & Cream', 'Caramel'],
-    avgCalories: 320,
-    guiltLevel: 'Low'
-  },
-  {
-    id: 'bakery',
-    name: 'Bakery Inspired',
-    description: 'Like fresh-baked treats',
-    icon: Cake,
-    color: 'text-orange-600',
-    keyBenefit: 'Comfort',
-    healthyIngredients: ['Oats', 'Cinnamon', 'Vanilla'],
-    popularFlavors: ['Cinnamon Roll', 'Banana Bread', 'Pumpkin Pie'],
-    avgCalories: 310,
-    guiltLevel: 'Low'
-  }
-];
-
-const dessertCategories = [
-  {
-    id: 'guilt-free',
-    name: 'Guilt-Free Treats',
-    description: 'Zero added sugar, all natural',
-    icon: Heart,
-    color: 'bg-green-500',
-    calorieRange: '200-300',
-    sweetenerType: 'Dates, Banana, Honey'
-  },
-  {
-    id: 'protein-rich',
-    name: 'Protein Desserts',
-    description: '15g+ protein per serving',
-    icon: Trophy,
-    color: 'bg-blue-500',
-    calorieRange: '280-350',
-    sweetenerType: 'Natural + Protein'
-  },
-  {
-    id: 'comfort',
-    name: 'Comfort Classics',
-    description: 'Nostalgic favorites made healthy',
-    icon: Cookie,
-    color: 'bg-amber-500',
-    calorieRange: '300-400',
-    sweetenerType: 'Honey, Maple'
-  },
-  {
-    id: 'celebration',
-    name: 'Celebration Treats',
-    description: 'Special occasion indulgences',
-    icon: Sparkles,
-    color: 'bg-pink-500',
-    calorieRange: '350-450',
-    sweetenerType: 'Mixed Natural'
-  }
-];
+import { 
+  dessertSmoothies, 
+  dessertTypes,
+  dessertCategories,
+  smoothieSubcategories,
+  otherDrinkHubs 
+} from '../../data/smoothies';
 
 export default function DessertSmoothiesPage() {
   const { 
@@ -233,15 +84,16 @@ export default function DessertSmoothiesPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50">
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" onClick={() => window.history.back()}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
+              <Link href="/drinks/smoothies">
+                <Button variant="ghost" size="sm" className="text-gray-500">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Smoothies
+                </Button>
+              </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
                 <IceCream className="h-6 w-6 text-pink-600" />
@@ -263,7 +115,49 @@ export default function DessertSmoothiesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Tabs */}
+        
+        {/* CROSS-HUB NAVIGATION */}
+        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              {otherDrinkHubs.map((hub) => {
+                const Icon = hub.icon;
+                return (
+                  <Link key={hub.id} href={hub.route}>
+                    <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
+                      <Icon className="h-4 w-4 mr-2 text-blue-600" />
+                      <span>{hub.name}</span>
+                      <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* SISTER SUBPAGES NAVIGATION */}
+        <Card className="bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Smoothie Types</h3>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              {smoothieSubcategories.map((subcategory) => {
+                const Icon = subcategory.icon;
+                return (
+                  <Link key={subcategory.id} href={subcategory.path}>
+                    <Button variant="outline" className="w-full justify-start hover:bg-pink-50 hover:border-pink-300">
+                      <Icon className="h-4 w-4 mr-2 text-pink-600" />
+                      <span>{subcategory.name}</span>
+                      <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
@@ -432,6 +326,24 @@ export default function DessertSmoothiesPage() {
                     </div>
                   </CardHeader>
                   <CardContent>
+                    <div className="space-y-3 mb-4">
+                      <div className="text-center bg-gray-50 p-3 rounded-lg">
+                        <div className="text-sm font-medium text-gray-700 mb-1">Key Benefit</div>
+                        <div className="text-lg font-bold text-pink-600">{type.keyBenefit}</div>
+                      </div>
+                      
+                      <div>
+                        <h4 className="font-semibold text-sm mb-2">Healthy Ingredients:</h4>
+                        <div className="flex flex-wrap gap-1">
+                          {type.healthyIngredients.map((ingredient, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {ingredient}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    
                     <Button className="w-full" onClick={() => setActiveTab('browse')}>
                       Explore {type.name}
                     </Button>
@@ -460,6 +372,13 @@ export default function DessertSmoothiesPage() {
                     </div>
                   </CardHeader>
                   <CardContent>
+                    <div className="space-y-3 mb-4">
+                      <div className="text-center bg-gray-50 p-3 rounded-lg">
+                        <div className="text-sm font-medium text-gray-700 mb-1">Calorie Range</div>
+                        <div className="text-lg font-bold text-pink-600">{category.calorieRange}</div>
+                      </div>
+                    </div>
+                    
                     <Button className="w-full" onClick={() => setActiveTab('browse')}>
                       View {category.name}
                     </Button>
@@ -503,7 +422,6 @@ export default function DessertSmoothiesPage() {
         )}
       </div>
 
-      {/* Floating Action Button */}
       <div className="fixed bottom-6 right-6 z-50">
         <Button 
           size="lg" 
@@ -514,7 +432,6 @@ export default function DessertSmoothiesPage() {
         </Button>
       </div>
 
-      {/* Bottom Stats Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-6 text-sm">
