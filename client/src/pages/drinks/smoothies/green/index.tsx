@@ -18,7 +18,7 @@ import {
   greenCategories,
   smoothieSubcategories,
   otherDrinkHubs 
-} from '../../../data/smoothies'; // FIXED PATH - 3 levels up
+} from '../../data/smoothies'; // FIXED PATH - 3 levels up
 
 export default function GreenSmoothiesPage() {
   const { 
