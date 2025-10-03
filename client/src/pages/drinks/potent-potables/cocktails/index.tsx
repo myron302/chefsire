@@ -32,12 +32,14 @@ const classicCocktails = [
     trending: true,
     featured: true,
     tags: ['Whiskey', 'Classic', 'Strong', 'Stirred'],
-    instructions: 'Muddle sugar cube with bitters. Add whiskey and ice. Stir until chilled. Express orange peel over drink.',
+    instructions: 'Muddle sugar cube with bitters and a splash of water in rocks glass. Add whiskey and large ice cube. Stir until chilled. Express orange peel oils over drink, then garnish.',
     history: 'Dating back to the 1880s, considered the original cocktail.',
     abv: '35%',
     era: '1880s',
     origin: 'United States',
-    category: 'Spirit-forward'
+    category: 'Spirit-forward',
+    garnish: 'Orange peel',
+    profile: ['Strong', 'Bitter-sweet', 'Aromatic', 'Classic']
   },
   {
     id: 'classic-2',
@@ -53,12 +55,14 @@ const classicCocktails = [
     trending: false,
     featured: true,
     tags: ['Gin', 'Dry', 'Elegant', 'Stirred'],
-    instructions: 'Stir gin and vermouth with ice until very cold. Strain into chilled martini glass. Garnish.',
+    instructions: 'Stir gin and vermouth with ice until very cold. Strain into chilled martini glass. Garnish with lemon twist or olive.',
     history: 'Evolved from the Martinez in the 1880s, perfected in the early 1900s.',
     abv: '28%',
     era: '1880s',
     origin: 'United States',
-    category: 'Spirit-forward'
+    category: 'Spirit-forward',
+    garnish: 'Lemon twist or olive',
+    profile: ['Dry', 'Botanical', 'Strong', 'Elegant']
   },
   {
     id: 'classic-3',
@@ -79,7 +83,9 @@ const classicCocktails = [
     abv: '30%',
     era: '1870s',
     origin: 'New York, USA',
-    category: 'Spirit-forward'
+    category: 'Spirit-forward',
+    garnish: 'Maraschino cherry',
+    profile: ['Sweet', 'Rich', 'Complex', 'Smooth']
   },
   {
     id: 'classic-4',
@@ -100,7 +106,9 @@ const classicCocktails = [
     abv: '24%',
     era: '1919',
     origin: 'Florence, Italy',
-    category: 'Aperitif'
+    category: 'Aperitif',
+    garnish: 'Orange peel',
+    profile: ['Bitter', 'Herbal', 'Bold', 'Aperitif']
   },
   {
     id: 'classic-5',
@@ -121,7 +129,9 @@ const classicCocktails = [
     abv: '20%',
     era: '1862',
     origin: 'United States',
-    category: 'Sour'
+    category: 'Sour',
+    garnish: 'Cherry and orange slice',
+    profile: ['Sour', 'Sweet', 'Balanced', 'Refreshing']
   },
   {
     id: 'classic-6',
@@ -142,7 +152,9 @@ const classicCocktails = [
     abv: '18%',
     era: '1900',
     origin: 'Cuba',
-    category: 'Sour'
+    category: 'Sour',
+    garnish: 'Lime wheel',
+    profile: ['Tart', 'Sweet', 'Refreshing', 'Clean']
   },
   {
     id: 'classic-7',
@@ -163,7 +175,9 @@ const classicCocktails = [
     abv: '32%',
     era: '1850s',
     origin: 'New Orleans, USA',
-    category: 'Spirit-forward'
+    category: 'Spirit-forward',
+    garnish: 'Lemon peel',
+    profile: ['Complex', 'Herbal', 'Anise', 'Bold']
   },
   {
     id: 'classic-8',
@@ -184,7 +198,9 @@ const classicCocktails = [
     abv: '25%',
     era: '1800s',
     origin: 'Southern USA',
-    category: 'Refreshing'
+    category: 'Refreshing',
+    garnish: 'Mint sprig',
+    profile: ['Minty', 'Sweet', 'Refreshing', 'Southern']
   }
 ];
 
@@ -266,6 +282,7 @@ export default function ClassicCocktailsPage() {
   const [selectedDifficulty, setSelectedDifficulty] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
+  const [selectedCocktail, setSelectedCocktail] = useState<typeof classicCocktails[0] | null>(null);
 
   // Filter and sort cocktails
   const getFilteredCocktails = () => {
@@ -283,7 +300,7 @@ export default function ClassicCocktailsPage() {
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'rating': return (b.rating || 0) - (a.rating || 0);
-        case 'era': return cocktail.era.localeCompare(cocktail.era);
+        case 'era': return a.era.localeCompare(b.era);
         case 'difficulty': 
           const difficultyOrder = { 'Easy': 1, 'Medium': 2, 'Hard': 3 };
           return difficultyOrder[a.difficulty] - difficultyOrder[b.difficulty];
@@ -299,29 +316,20 @@ export default function ClassicCocktailsPage() {
   const featuredCocktails = classicCocktails.filter(cocktail => cocktail.featured);
   const trendingCocktails = classicCocktails.filter(cocktail => cocktail.trending);
 
-  const handleMakeCocktail = (cocktail: any) => {
+  const handleCocktailClick = (cocktail: typeof classicCocktails[0]) => {
+    setSelectedCocktail(cocktail);
     addToRecentlyViewed({
       id: cocktail.id,
       name: cocktail.name,
       category: 'potent-potables',
-      description: cocktail.description,
-      ingredients: cocktail.ingredients,
-      nutrition: {
-        calories: 150,
-        protein: 0,
-        carbs: 8,
-        fat: 0
-      },
-      difficulty: cocktail.difficulty,
-      prepTime: cocktail.prepTime,
-      rating: cocktail.rating,
-      fitnessGoal: 'Social',
-      bestTime: 'Evening'
+      timestamp: Date.now()
     });
+  };
+
+  const handleMakeCocktail = (cocktail: typeof classicCocktails[0]) => {
     incrementDrinksMade();
-    addPoints(40);
-    
-    console.log(`Made ${cocktail.name}! +40 XP`);
+    addPoints(40, 'Made a classic cocktail');
+    setSelectedCocktail(null);
   };
 
   return (
@@ -477,7 +485,11 @@ export default function ClassicCocktailsPage() {
               {/* Results */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredCocktails.map(cocktail => (
-                  <Card key={cocktail.id} className="hover:shadow-lg transition-shadow">
+                  <Card 
+                    key={cocktail.id} 
+                    className="hover:shadow-lg transition-shadow cursor-pointer"
+                    onClick={() => handleCocktailClick(cocktail)}
+                  >
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -487,19 +499,15 @@ export default function ClassicCocktailsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => addToFavorites({
-                            id: cocktail.id,
-                            name: cocktail.name,
-                            category: 'potent-potables',
-                            description: cocktail.description,
-                            ingredients: cocktail.ingredients,
-                            nutrition: { calories: 150, protein: 0, carbs: 8, fat: 0 },
-                            difficulty: cocktail.difficulty,
-                            prepTime: cocktail.prepTime,
-                            rating: cocktail.rating,
-                            fitnessGoal: 'Social',
-                            bestTime: 'Evening'
-                          })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToFavorites({
+                              id: cocktail.id,
+                              name: cocktail.name,
+                              category: 'potent-potables',
+                              timestamp: Date.now()
+                            });
+                          }}
                           className="text-gray-400 hover:text-red-500"
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(cocktail.id) ? 'fill-red-500 text-red-500' : ''}`} />
@@ -558,12 +566,15 @@ export default function ClassicCocktailsPage() {
                       <div className="flex gap-2">
                         <Button 
                           className="flex-1 bg-amber-600 hover:bg-amber-700"
-                          onClick={() => handleMakeCocktail(cocktail)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCocktailClick(cocktail);
+                          }}
                         >
                           <Wine className="h-4 w-4 mr-2" />
-                          Mix Cocktail
+                          View Recipe
                         </Button>
-                        <Button variant="outline" size="sm">
+                        <Button variant="outline" size="sm" onClick={(e) => e.stopPropagation()}>
                           <Share2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -689,7 +700,11 @@ export default function ClassicCocktailsPage() {
           {activeTab === 'featured' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {featuredCocktails.map(cocktail => (
-                <Card key={cocktail.id} className="overflow-hidden hover:shadow-xl transition-shadow">
+                <Card 
+                  key={cocktail.id} 
+                  className="overflow-hidden hover:shadow-xl transition-shadow cursor-pointer"
+                  onClick={() => handleCocktailClick(cocktail)}
+                >
                   <div className="relative">
                     {cocktail.image && (
                       <img 
@@ -735,8 +750,8 @@ export default function ClassicCocktailsPage() {
                         <div className="text-xl font-bold text-blue-600">{cocktail.prepTime}min</div>
                         <div className="text-xs text-gray-600">Prep</div>
                       </div>
-                      <div className="text-xl font-bold text-purple-600 text-center">
-                        <div>{cocktail.method}</div>
+                      <div className="text-center">
+                        <div className="text-xl font-bold text-purple-600">{cocktail.method}</div>
                         <div className="text-xs text-gray-600">Method</div>
                       </div>
                       <div className="text-center">
@@ -768,12 +783,15 @@ export default function ClassicCocktailsPage() {
                     <div className="flex gap-3">
                       <Button 
                         className="flex-1 bg-amber-600 hover:bg-amber-700"
-                        onClick={() => handleMakeCocktail(cocktail)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCocktailClick(cocktail);
+                        }}
                       >
                         <Wine className="h-4 w-4 mr-2" />
-                        Mix This Classic
+                        View Full Recipe
                       </Button>
-                      <Button variant="outline">
+                      <Button variant="outline" onClick={(e) => e.stopPropagation()}>
                         <Share2 className="h-4 w-4 mr-2" />
                         Share
                       </Button>
@@ -781,6 +799,165 @@ export default function ClassicCocktailsPage() {
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          )}
+
+          {/* Cocktail Detail Modal */}
+          {selectedCocktail && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedCocktail(null)}>
+              <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-2xl">{selectedCocktail.name}</CardTitle>
+                      <p className="text-sm text-gray-500 mt-1">{selectedCocktail.origin}</p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedCocktail(null)}>×</Button>
+                  </div>
+                  <p className="text-gray-600">{selectedCocktail.description}</p>
+                  <div className="flex gap-2 mt-2">
+                    <Badge className="bg-amber-100 text-amber-700">{selectedCocktail.era}</Badge>
+                    <Badge className="bg-purple-100 text-purple-700">{selectedCocktail.category}</Badge>
+                    <Badge className="bg-blue-100 text-blue-700">{selectedCocktail.difficulty}</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    {/* Historical Note */}
+                    <div className="bg-amber-50 p-4 rounded-lg">
+                      <h4 className="font-medium text-amber-900 mb-2 flex items-center gap-2">
+                        <BookOpen className="w-5 h-5" />
+                        Historical Note
+                      </h4>
+                      <p className="text-sm text-amber-800">{selectedCocktail.history}</p>
+                    </div>
+
+                    {/* Cocktail Stats */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Target className="w-5 h-5 text-amber-500" />
+                        Cocktail Stats
+                      </h3>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="p-3 bg-amber-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">ABV</div>
+                          <div className="text-xl font-bold text-amber-600">{selectedCocktail.abv}</div>
+                        </div>
+                        <div className="p-3 bg-blue-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Prep Time</div>
+                          <div className="text-xl font-bold text-blue-600">{selectedCocktail.prepTime} min</div>
+                        </div>
+                        <div className="p-3 bg-purple-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Method</div>
+                          <div className="text-xl font-bold text-purple-600">{selectedCocktail.method}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Glassware */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <GlassWater className="w-5 h-5 text-blue-500" />
+                        Glassware & Garnish
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="p-3 bg-blue-50 rounded-lg">
+                          <div className="text-sm text-gray-600">Glassware</div>
+                          <div className="font-bold text-blue-600">{selectedCocktail.glassware}</div>
+                        </div>
+                        <div className="p-3 bg-green-50 rounded-lg">
+                          <div className="text-sm text-gray-600">Garnish</div>
+                          <div className="font-bold text-green-600">{selectedCocktail.garnish}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Ingredients */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-purple-500" />
+                        Ingredients
+                      </h3>
+                      <div className="space-y-2">
+                        {selectedCocktail.ingredients.map((ingredient, idx) => (
+                          <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                            <Plus className="w-4 h-4 text-amber-500" />
+                            <span className="text-sm">{ingredient}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Flavor Profile */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Star className="w-5 h-5 text-yellow-500" />
+                        Flavor Profile
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedCocktail.profile.map(trait => (
+                          <Badge key={trait} className="bg-yellow-100 text-yellow-700 border-yellow-300">
+                            {trait}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Instructions */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Target className="w-5 h-5 text-amber-500" />
+                        Instructions
+                      </h3>
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <p className="text-sm text-gray-700">{selectedCocktail.instructions}</p>
+                      </div>
+                    </div>
+
+                    {/* Pro Tips */}
+                    <div className="bg-amber-50 p-4 rounded-lg">
+                      <h3 className="font-semibold mb-2 flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-amber-500" />
+                        Pro Tips
+                      </h3>
+                      <ul className="space-y-2 text-sm text-amber-900">
+                        <li>• Always use fresh ice and pre-chill your glassware</li>
+                        <li>• Quality ingredients make all the difference in classic cocktails</li>
+                        <li>• Follow the specified method - stir or shake matters!</li>
+                        <li>• Fresh citrus juice is essential - never use bottled</li>
+                        <li>• Take your time with the preparation - classics deserve respect</li>
+                      </ul>
+                    </div>
+
+                    {/* Rating */}
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Star className="h-5 w-5 text-yellow-400 fill-current" />
+                        <span className="font-bold text-lg">{selectedCocktail.rating}</span>
+                        <span className="text-gray-500">({selectedCocktail.reviews} reviews)</span>
+                      </div>
+                      <Badge variant="outline">{selectedCocktail.difficulty}</Badge>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3">
+                      <Button 
+                        className="flex-1 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700"
+                        onClick={() => handleMakeCocktail(selectedCocktail)}
+                      >
+                        <Wine className="w-4 h-4 mr-2" />
+                        Make This Cocktail
+                      </Button>
+                      <Button variant="outline" size="icon">
+                        <Share2 className="w-4 h-4" />
+                      </Button>
+                      <Button variant="outline" size="icon">
+                        <Camera className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           )}
         </div>
