@@ -7,7 +7,8 @@ import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
   Palmtree, Clock, Heart, Star, Target, Sparkles, Sun, 
   Search, Share2, ArrowLeft, Plus, Camera, Flame, GlassWater,
-  TrendingUp, Award, Crown, Coffee, Leaf, Zap, Cherry, Waves
+  TrendingUp, Award, Crown, Coffee, Leaf, Zap, Cherry, Waves,
+  Droplets, BookOpen
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -51,7 +52,8 @@ const rumCocktails = [
     garnish: 'Mint sprig, lime wheel',
     method: 'Muddle & Build',
     abv: '10-12%',
-    iba_official: true
+    iba_official: true,
+    instructions: 'Muddle mint leaves with lime juice and simple syrup in glass. Add rum and ice. Top with soda water. Stir gently and garnish with mint sprig and lime wheel.'
   },
   {
     id: 'rum-2',
@@ -88,7 +90,8 @@ const rumCocktails = [
     garnish: 'Lime wheel',
     method: 'Shake',
     abv: '20-24%',
-    iba_official: true
+    iba_official: true,
+    instructions: 'Shake all ingredients vigorously with ice. Double strain into chilled coupe glass. Garnish with lime wheel.'
   },
   {
     id: 'rum-3',
@@ -126,7 +129,8 @@ const rumCocktails = [
     garnish: 'Pineapple wedge, cherry',
     method: 'Blend',
     abv: '12-15%',
-    iba_official: true
+    iba_official: true,
+    instructions: 'Blend all ingredients with crushed ice until smooth. Pour into hurricane glass. Garnish with pineapple wedge and cherry.'
   },
   {
     id: 'rum-4',
@@ -165,7 +169,8 @@ const rumCocktails = [
     garnish: 'Mint sprig, lime shell, pineapple',
     method: 'Shake',
     abv: '20-24%',
-    iba_official: true
+    iba_official: true,
+    instructions: 'Shake all ingredients with ice. Strain over crushed ice in rocks glass. Garnish elaborately with mint sprig, spent lime shell, and pineapple.'
   },
   {
     id: 'rum-5',
@@ -203,7 +208,8 @@ const rumCocktails = [
     garnish: 'Lime wedge',
     method: 'Build',
     abv: '10-12%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Fill highball glass with ice. Add rum and lime juice. Top with ginger beer. Stir gently and garnish with lime wedge.'
   },
   {
     id: 'rum-6',
@@ -245,7 +251,8 @@ const rumCocktails = [
     garnish: 'Mint sprig, cherry, pineapple',
     method: 'Shake',
     abv: '28-32%',
-    iba_official: true
+    iba_official: true,
+    instructions: 'Shake all three rums, juices, syrups, and bitters with ice. Strain over crushed ice in tiki mug. Garnish elaborately with mint, cherry, and pineapple.'
   },
   {
     id: 'rum-7',
@@ -283,7 +290,8 @@ const rumCocktails = [
     garnish: 'Lime wedge',
     method: 'Build',
     abv: '9-11%',
-    iba_official: true
+    iba_official: true,
+    instructions: 'Fill highball glass with ice. Squeeze lime wedge and drop in. Add rum and top with Coca-Cola. Stir gently.'
   },
   {
     id: 'rum-8',
@@ -324,10 +332,9 @@ const rumCocktails = [
     garnish: 'Orange slice, cherry',
     method: 'Shake',
     abv: '14-18%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Shake both rums, passion fruit syrup, juices, and simple syrup with ice. Strain into hurricane glass over ice. Float grenadine. Garnish with orange slice and cherry.'
   },
-
-  // CONTEMPORARY RUM
   {
     id: 'rum-9',
     name: 'Ti\' Punch',
@@ -363,7 +370,8 @@ const rumCocktails = [
     garnish: 'Lime disc',
     method: 'Build',
     abv: '30-35%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Add lime disc and cane syrup to glass. Muddle gently. Add rhum agricole. Stir. Add ice if desired.'
   },
   {
     id: 'rum-10',
@@ -401,7 +409,8 @@ const rumCocktails = [
     garnish: 'Nutmeg, orange slice, cherry',
     method: 'Shake',
     abv: '12-15%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Shake all ingredients with ice. Strain into hurricane glass over crushed ice. Top with freshly grated nutmeg. Garnish with orange slice and cherry.'
   },
   {
     id: 'rum-11',
@@ -440,7 +449,8 @@ const rumCocktails = [
     garnish: 'Pineapple wedge',
     method: 'Shake',
     abv: '18-22%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Shake all ingredients with ice. Strain over fresh ice in rocks glass. Garnish with pineapple wedge.'
   },
   {
     id: 'rum-12',
@@ -479,16 +489,26 @@ const rumCocktails = [
     garnish: 'Orange peel',
     method: 'Stir',
     abv: '32-36%',
-    iba_official: false
+    iba_official: false,
+    instructions: 'Add demerara syrup and bitters to rocks glass. Add large ice cube and rum. Stir until well chilled. Express orange peel over drink and garnish.'
   }
 ];
 
 export default function RumCocktailsPage() {
-  const { favorites, toggleFavorite } = useDrinks();
+  const { 
+    addToFavorites,
+    isFavorite,
+    addToRecentlyViewed,
+    userProgress,
+    addPoints,
+    incrementDrinksMade
+  } = useDrinks();
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
+  const [selectedCocktail, setSelectedCocktail] = useState<typeof rumCocktails[0] | null>(null);
 
   const categories = ['Classic Rum', 'Tropical Rum', 'Tiki Rum', 'Contemporary Rum'];
   const difficulties = ['Very Easy', 'Easy', 'Medium', 'Hard'];
@@ -500,6 +520,22 @@ export default function RumCocktailsPage() {
     const matchesDifficulty = !selectedDifficulty || cocktail.difficulty === selectedDifficulty;
     return matchesSearch && matchesCategory && matchesDifficulty;
   });
+
+  const handleCocktailClick = (cocktail: typeof rumCocktails[0]) => {
+    setSelectedCocktail(cocktail);
+    addToRecentlyViewed({
+      id: cocktail.id,
+      name: cocktail.name,
+      category: 'rum-cocktails',
+      timestamp: Date.now()
+    });
+  };
+
+  const handleMakeCocktail = (cocktail: typeof rumCocktails[0]) => {
+    incrementDrinksMade();
+    addPoints(40, 'Made a rum cocktail');
+    setSelectedCocktail(null);
+  };
 
   return (
     <RequireAgeGate>
@@ -640,7 +676,11 @@ export default function RumCocktailsPage() {
           {/* Cocktails Grid */}
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredCocktails.map((cocktail) => (
-              <Card key={cocktail.id} className="hover:shadow-lg transition-all duration-300 overflow-hidden group">
+              <Card 
+                key={cocktail.id} 
+                className="hover:shadow-lg transition-all duration-300 overflow-hidden group cursor-pointer"
+                onClick={() => handleCocktailClick(cocktail)}
+              >
                 <div className="relative bg-gradient-to-br from-amber-100 to-orange-100 p-6 h-48 flex items-center justify-center">
                   <Palmtree className="w-20 h-20 text-orange-600 group-hover:scale-110 transition-transform" />
                   {cocktail.trending && (
@@ -659,11 +699,19 @@ export default function RumCocktailsPage() {
                     variant="ghost"
                     size="sm"
                     className="absolute bottom-3 right-3 bg-white/80 hover:bg-white"
-                    onClick={() => toggleFavorite(cocktail.id, 'rum-cocktails')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      addToFavorites({
+                        id: cocktail.id,
+                        name: cocktail.name,
+                        category: 'rum-cocktails',
+                        timestamp: Date.now()
+                      });
+                    }}
                   >
                     <Heart
                       className={`w-5 h-5 ${
-                        favorites['rum-cocktails']?.includes(cocktail.id)
+                        isFavorite(cocktail.id)
                           ? 'fill-red-500 text-red-500'
                           : 'text-gray-600'
                       }`}
@@ -760,11 +808,17 @@ export default function RumCocktailsPage() {
 
                   {/* Action Buttons */}
                   <div className="flex gap-2 pt-3">
-                    <Button className="flex-1 bg-orange-600 hover:bg-orange-700">
+                    <Button 
+                      className="flex-1 bg-orange-600 hover:bg-orange-700"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCocktailClick(cocktail);
+                      }}
+                    >
                       <Plus className="w-4 h-4 mr-2" />
                       View Recipe
                     </Button>
-                    <Button variant="outline" size="icon">
+                    <Button variant="outline" size="icon" onClick={(e) => e.stopPropagation()}>
                       <Share2 className="w-4 h-4" />
                     </Button>
                   </div>
@@ -772,6 +826,185 @@ export default function RumCocktailsPage() {
               </Card>
             ))}
           </div>
+
+          {/* Cocktail Detail Modal */}
+          {selectedCocktail && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedCocktail(null)}>
+              <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-2xl">{selectedCocktail.name}</CardTitle>
+                      <p className="text-sm text-gray-500 mt-1">{selectedCocktail.origin}</p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedCocktail(null)}>×</Button>
+                  </div>
+                  <p className="text-gray-600">{selectedCocktail.description}</p>
+                  <div className="flex gap-2 mt-2">
+                    <Badge className="bg-orange-100 text-orange-700">{selectedCocktail.category}</Badge>
+                    <Badge className="bg-amber-100 text-amber-700">{selectedCocktail.spiritType}</Badge>
+                    <Badge className="bg-blue-100 text-blue-700">{selectedCocktail.difficulty}</Badge>
+                    {selectedCocktail.iba_official && (
+                      <Badge className="bg-blue-500 text-white">IBA Official</Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    {/* Cocktail Stats */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Target className="w-5 h-5 text-orange-500" />
+                        Cocktail Stats
+                      </h3>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="p-3 bg-orange-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">ABV</div>
+                          <div className="text-xl font-bold text-orange-600">{selectedCocktail.abv}</div>
+                        </div>
+                        <div className="p-3 bg-blue-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Prep Time</div>
+                          <div className="text-xl font-bold text-blue-600">{selectedCocktail.prepTime} min</div>
+                        </div>
+                        <div className="p-3 bg-purple-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Method</div>
+                          <div className="text-xl font-bold text-purple-600">{selectedCocktail.method}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Glassware & Garnish */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <GlassWater className="w-5 h-5 text-blue-500" />
+                        Glassware & Garnish
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="p-3 bg-blue-50 rounded-lg">
+                          <div className="text-sm text-gray-600">Glassware</div>
+                          <div className="font-bold text-blue-600">{selectedCocktail.glassware}</div>
+                        </div>
+                        <div className="p-3 bg-green-50 rounded-lg">
+                          <div className="text-sm text-gray-600">Garnish</div>
+                          <div className="font-bold text-green-600">{selectedCocktail.garnish}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Ingredients */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-amber-500" />
+                        Ingredients
+                      </h3>
+                      <div className="space-y-2">
+                        {selectedCocktail.ingredients.map((ingredient, idx) => (
+                          <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                            <Plus className="w-4 h-4 text-orange-500" />
+                            <span className="text-sm">{ingredient}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Flavor Profile */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Star className="w-5 h-5 text-yellow-500" />
+                        Flavor Profile
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedCocktail.profile.map(trait => (
+                          <Badge key={trait} className="bg-yellow-100 text-yellow-700 border-yellow-300">
+                            {trait}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Instructions */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <BookOpen className="w-5 h-5 text-orange-500" />
+                        Instructions
+                      </h3>
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <p className="text-sm text-gray-700">{selectedCocktail.instructions}</p>
+                      </div>
+                    </div>
+
+                    {/* Nutrition */}
+                    <div>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Droplets className="w-5 h-5 text-cyan-500" />
+                        Nutrition Information
+                      </h3>
+                      <div className="grid grid-cols-4 gap-3">
+                        <div className="p-3 bg-red-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Calories</div>
+                          <div className="text-xl font-bold text-red-600">{selectedCocktail.nutrition.calories}</div>
+                        </div>
+                        <div className="p-3 bg-yellow-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Carbs</div>
+                          <div className="text-xl font-bold text-yellow-600">{selectedCocktail.nutrition.carbs}g</div>
+                        </div>
+                        <div className="p-3 bg-pink-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Sugar</div>
+                          <div className="text-xl font-bold text-pink-600">{selectedCocktail.nutrition.sugar}g</div>
+                        </div>
+                        <div className="p-3 bg-purple-50 rounded-lg text-center">
+                          <div className="text-sm text-gray-600">Alcohol</div>
+                          <div className="text-xl font-bold text-purple-600">{selectedCocktail.nutrition.alcohol}g</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Pro Tips */}
+                    <div className="bg-amber-50 p-4 rounded-lg">
+                      <h3 className="font-semibold mb-2 flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-amber-500" />
+                        Pro Tips
+                      </h3>
+                      <ul className="space-y-2 text-sm text-amber-900">
+                        <li>• Use quality rum - it makes all the difference</li>
+                        <li>• Fresh citrus juice is essential for tropical drinks</li>
+                        <li>• Crushed ice is key for many rum cocktails</li>
+                        <li>• Don't skip the garnish - presentation matters</li>
+                        <li>• Experiment with different rum styles for variety</li>
+                      </ul>
+                    </div>
+
+                    {/* Rating */}
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Star className="h-5 w-5 text-yellow-400 fill-current" />
+                        <span className="font-bold text-lg">{selectedCocktail.rating}</span>
+                        <span className="text-gray-500">({selectedCocktail.reviews.toLocaleString()} reviews)</span>
+                      </div>
+                      <Badge variant="outline">{selectedCocktail.difficulty}</Badge>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3">
+                      <Button 
+                        className="flex-1 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700"
+                        onClick={() => handleMakeCocktail(selectedCocktail)}
+                      >
+                        <Palmtree className="w-4 h-4 mr-2" />
+                        Make This Cocktail
+                      </Button>
+                      <Button variant="outline" size="icon">
+                        <Share2 className="w-4 h-4" />
+                      </Button>
+                      <Button variant="outline" size="icon">
+                        <Camera className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
           {/* Educational Section */}
           <Card className="mt-12 bg-gradient-to-br from-amber-50 to-orange-50 border-orange-200">
@@ -829,39 +1062,6 @@ export default function RumCocktailsPage() {
                     <div className="text-sm text-gray-700">Martinique, Guadeloupe. Agricole-style, grassy notes.</div>
                   </div>
                 </div>
-              </div>
-
-              {/* Cocktail Styles */}
-              <div>
-                <h3 className="font-semibold text-lg mb-3 text-orange-700">Rum Cocktail Styles</h3>
-                <div className="grid md:grid-cols-3 gap-6">
-                  <div>
-                    <h4 className="font-semibold mb-2 text-amber-600">Classic Caribbean</h4>
-                    <p className="text-sm text-gray-700">Traditional drinks like Mojito, Daiquiri, and Cuba Libre that showcase rum's versatility.</p>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold mb-2 text-orange-600">Tiki Tropical</h4>
-                    <p className="text-sm text-gray-700">Complex, multi-rum concoctions like Mai Tai, Zombie, and Hurricane from the tiki era.</p>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold mb-2 text-red-600">Contemporary Craft</h4>
-                    <p className="text-sm text-gray-700">Modern interpretations and premium aged rum cocktails for sophisticated palates.</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tiki Culture */}
-              <div className="p-6 bg-gradient-to-r from-orange-100 to-red-100 rounded-lg">
-                <h3 className="font-semibold text-lg mb-3 text-orange-800 flex items-center gap-2">
-                  <Sparkles className="w-5 h-5" />
-                  The Tiki Movement
-                </h3>
-                <p className="text-gray-700 text-sm leading-relaxed">
-                  Tiki culture emerged in the 1930s-60s in America, creating elaborate tropical-themed bars and complex 
-                  rum cocktails. Pioneers like Donn Beach and Trader Vic crafted multi-layered drinks using various rum 
-                  styles, exotic juices, and secret spice blends. Today's craft cocktail renaissance has revived interest 
-                  in these historical recipes, with bartenders rediscovering authentic tiki techniques and quality rum blends.
-                </p>
               </div>
             </CardContent>
           </Card>
