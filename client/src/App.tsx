@@ -97,6 +97,11 @@ function RecipesSection() {
         {/* ========== MAIN RECIPE ROUTES ========== */}
         <Route path="/recipes/filters" component={RecipesFiltersPage} />
         <Route path="/recipes" component={RecipesListPage} />
+        
+        {/* Catch-all for recipes section */}
+        <Route>
+          <Redirect to="/recipes" />
+        </Route>
       </Switch>
     </RecipesFiltersProvider>
   );
@@ -120,6 +125,11 @@ function PotentPotablesSection() {
         <Route path="/drinks/potent-potables/whiskey-bourbon" component={WhiskeyBourbonPage} />
         {/* Hub last */}
         <Route path="/drinks/potent-potables" component={PotentPotablesHub} />
+        
+        {/* Catch-all for potent potables */}
+        <Route>
+          <Redirect to="/drinks/potent-potables" />
+        </Route>
       </Switch>
     </RequireAgeGate>
   );
@@ -157,6 +167,11 @@ function DrinksSection() {
 
       {/* ========== MAIN DRINKS HUB ========== */}
       <Route path="/drinks" component={DrinksHubPage} />
+      
+      {/* Catch-all for drinks section */}
+      <Route>
+        <Redirect to="/drinks" />
+      </Route>
     </Switch>
   );
 }
@@ -177,11 +192,14 @@ function Router() {
         {/* Explore */}
         <Route path="/explore" component={ExplorePage} />
 
-        {/* ========== RECIPES ROUTES - MIRRORING DRINKS STRUCTURE ========== */}
+        {/* ========== RECIPES ROUTES - FIXED STRUCTURE ========== */}
         <Route path="/recipes/baby-food/:rest*">
           {(params) => <RecipesSection />}
         </Route>
-        <Route path="/recipes/:rest*" component={RecipesSection} />
+        <Route path="/recipes/filters" component={RecipesFiltersPage} />
+        <Route path="/recipes/:rest*">
+          {(params) => <RecipesSection />}
+        </Route>
         <Route path="/recipes" component={RecipesSection} />
 
         {/* Backward-compat */}
