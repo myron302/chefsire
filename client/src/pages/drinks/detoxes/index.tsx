@@ -9,22 +9,14 @@ import {
   Droplets, Leaf, Heart, Sparkles, Clock, Users, Trophy, 
   Star, Flame, Target, Award, TrendingUp, Activity, Zap,
   ArrowLeft, Apple, Sun, Moon, Wind, FlaskConical, Coffee,
-  GlassWater, Dumbbell, IceCream, ArrowRight
+  GlassWater, Dumbbell, IceCream, ArrowRight, Wine, Home
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
-// ✅ FIXED IMPORT PATH
 import { otherDrinkHubs, detoxSubcategories } from '../data/detoxes';
 
 export default function DetoxesHub() {
   const { userProgress, addDrinkToJournal } = useDrinks();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
-
-  const quickStats = [
-    { label: 'Total Recipes', value: '26', icon: Trophy, color: 'text-yellow-600' },
-    { label: 'Avg Calories', value: '40', icon: Flame, color: 'text-orange-600' },
-    { label: 'Your Detoxes', value: userProgress.totalDrinksMade, icon: Star, color: 'text-purple-600' },
-    { label: 'Cleanse Programs', value: '12', icon: Target, color: 'text-green-600' }
-  ];
 
   const popularDetoxes = [
     { name: 'Lemon Ginger Blast', type: 'Morning', time: '5 min', rating: 4.9 },
@@ -44,47 +36,68 @@ export default function DetoxesHub() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50">
-      {/* Hero Section */}
-      <div className="bg-gradient-to-r from-green-600 via-teal-600 to-blue-600 text-white py-16 px-4">
-        <div className="max-w-7xl mx-auto">
-          <Link href="/drinks">
-            <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Drinks Hub
-            </Button>
-          </Link>
-          
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
-              <Sparkles className="h-12 w-12" />
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+        
+        {/* UNIFORM HERO SECTION */}
+        <div className="bg-gradient-to-r from-green-600 via-teal-600 to-blue-600 text-white py-12 px-6 rounded-xl shadow-2xl">
+          <div className="max-w-7xl mx-auto">
+            <Link href="/drinks">
+              <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Drinks Hub
+              </Button>
+            </Link>
+            
+            <div className="flex items-center gap-4 mb-6">
+              <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
+                <Sparkles className="h-12 w-12" />
+              </div>
+              <div>
+                <h1 className="text-4xl md:text-5xl font-bold mb-2">Detox Hub</h1>
+                <p className="text-xl text-green-100">Cleanse, Refresh, Revitalize</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-5xl font-bold mb-2">Detox Hub</h1>
-              <p className="text-xl text-green-100">Cleanse, Refresh, Revitalize</p>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
-            {quickStats.map((stat, index) => (
-              <Card key={index} className="bg-white/10 backdrop-blur border-white/20">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
                 <CardContent className="p-4 text-center">
-                  <stat.icon className={`h-8 w-8 mx-auto mb-2 ${stat.color}`} />
-                  <div className="text-2xl font-bold">{stat.value}</div>
-                  <div className="text-sm text-green-100">{stat.label}</div>
+                  <Trophy className="h-8 w-8 mx-auto mb-2 text-yellow-400" />
+                  <div className="text-2xl font-bold">26</div>
+                  <div className="text-sm text-green-100">Total Recipes</div>
                 </CardContent>
               </Card>
-            ))}
+
+              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                <CardContent className="p-4 text-center">
+                  <Droplets className="h-8 w-8 mx-auto mb-2 text-blue-300" />
+                  <div className="text-2xl font-bold">40</div>
+                  <div className="text-sm text-green-100">Avg Calories</div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                <CardContent className="p-4 text-center">
+                  <Star className="h-8 w-8 mx-auto mb-2 text-purple-300" />
+                  <div className="text-2xl font-bold">{userProgress.totalDrinksMade}</div>
+                  <div className="text-sm text-green-100">Detoxes Made</div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                <CardContent className="p-4 text-center">
+                  <Target className="h-8 w-8 mx-auto mb-2 text-green-300" />
+                  <div className="text-2xl font-bold">12</div>
+                  <div className="text-sm text-green-100">Cleanse Programs</div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 py-12">
-        
-        {/* CROSS-HUB NAVIGATION - Links to other main drink categories */}
-        <Card className="mb-8 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+        {/* Cross-Hub Navigation */}
+        <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
           <CardContent className="p-6">
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
               <GlassWater className="h-6 w-6 text-purple-600" />
               Explore Other Drink Categories
             </h2>
@@ -116,7 +129,7 @@ export default function DetoxesHub() {
           </CardContent>
         </Card>
 
-        {/* SUBCATEGORY NAVIGATION - Links to detox subpages */}
+        {/* Subcategory Navigation */}
         <div className="mb-8">
           <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
             <Target className="h-6 w-6 text-green-600" />
