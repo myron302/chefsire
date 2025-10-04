@@ -69,7 +69,8 @@ import RumPage from "@/pages/drinks/potent-potables/rum";
 import ScotchIrishWhiskeyPage from "@/pages/drinks/potent-potables/scotch-irish-whiskey";
 import SeasonalPage from "@/pages/drinks/potent-potables/seasonal";
 import TequilaMezcalPage from "@/pages/drinks/potent-potables/tequila-mezcal";
-import VirginCocktailsPage from "@/pages/drinks/potent-potables/virgin-cocktails";
+// ✅ FIX: import the actual component/name/path you sent
+import VirginDrinksPage from "@/pages/drinks/potent-potables/VirginDrinksPage";
 import VodkaPage from "@/pages/drinks/potent-potables/vodka";
 import WhiskeyBourbonPage from "@/pages/drinks/potent-potables/whiskey-bourbon";
 
@@ -120,7 +121,8 @@ function PotentPotablesSection() {
         <Route path="/drinks/potent-potables/scotch-irish-whiskey" component={ScotchIrishWhiskeyPage} />
         <Route path="/drinks/potent-potables/seasonal" component={SeasonalPage} />
         <Route path="/drinks/potent-potables/tequila-mezcal" component={TequilaMezcalPage} />
-        <Route path="/drinks/potent-potables/virgin-cocktails" component={VirginCocktailsPage} />
+        {/* ✅ FIX: make route match the card link */}
+        <Route path="/drinks/potent-potables/virgin" component={VirginDrinksPage} />
         <Route path="/drinks/potent-potables/vodka" component={VodkaPage} />
         <Route path="/drinks/potent-potables/whiskey-bourbon" component={WhiskeyBourbonPage} />
         {/* Hub last */}
