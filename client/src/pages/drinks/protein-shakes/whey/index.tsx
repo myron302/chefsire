@@ -11,7 +11,7 @@ import {
   Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
   Beaker, Activity, BarChart3, Sparkles
 } from 'lucide-react';
-import { useDrinks } from '../contexts/DrinksContext';
+import { useDrinks } from "@/contexts/DrinksContext";
 
 // Whey-specific data
 const wheyProteinShakes = [
