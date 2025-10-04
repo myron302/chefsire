@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,10 +11,9 @@ import {
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Dumbbell, Activity, BarChart3, Shuffle, Camera, Share2,
   FlaskConical, Weight, Gauge, Triangle, Waves, Shield,
-  Search, ArrowRight, Wine, Home
+  Search, ArrowRight, Wine, Home, ArrowLeft
 } from 'lucide-react';
 
-// ✅ Import the universal search and context
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
 
@@ -116,7 +115,6 @@ const popularRecipes = [
   }
 ];
 
-// ✅ Protein subcategories for navigation
 const proteinSubcategories = [
   { id: 'whey', name: 'Whey Protein', icon: Zap, count: 6, route: '/drinks/protein-shakes/whey' },
   { id: 'plant', name: 'Plant Protein', icon: Leaf, count: 4, route: '/drinks/protein-shakes/plant-based' },
@@ -126,7 +124,6 @@ const proteinSubcategories = [
 ];
 
 export default function ProteinShakesPage({ params }: Params) {
-  // ✅ Use the drinks context
   const { 
     userProgress, 
     addPoints, 
@@ -148,21 +145,18 @@ export default function ProteinShakesPage({ params }: Params) {
   const [consumedProtein, setConsumedProtein] = useState(85);
 
   const type = params?.type?.replaceAll("-", " ");
-
-  // ✅ Get recommendations from context
   const recommendations = getRecommendations('protein-shakes');
 
   const calculateNutrition = () => {
     const protein = proteinAmount[0];
     const carbs = selectedGoal.carbs;
-    const calories = (protein * 4) + (carbs * 4) + 50; // rough calculation
+    const calories = (protein * 4) + (carbs * 4) + 50;
     return { protein, carbs, calories };
   };
 
   const nutrition = calculateNutrition();
   const proteinProgress = (consumedProtein / dailyProteinGoal) * 100;
 
-  // ✅ Enhanced buildShake with context integration
   const buildShake = () => {
     const shakeData = {
       id: `custom-protein-${Date.now()}`,
@@ -174,7 +168,7 @@ export default function ProteinShakesPage({ params }: Params) {
         calories: nutrition.calories,
         protein: nutrition.protein,
         carbs: nutrition.carbs,
-        fat: 3 // estimated
+        fat: 3
       },
       difficulty: 'Easy' as const,
       prepTime: 3,
@@ -188,11 +182,9 @@ export default function ProteinShakesPage({ params }: Params) {
     addPoints(125);
     setConsumedProtein(prev => prev + nutrition.protein);
     
-    // Show success feedback
     console.log(`Built ${shakeData.name}! +125 XP`);
   };
 
-  // ✅ Enhanced makeRecipe with context integration
   const makeRecipe = (recipe) => {
     const shakeData = {
       id: recipe.id,
@@ -204,7 +196,7 @@ export default function ProteinShakesPage({ params }: Params) {
         calories: recipe.calories,
         protein: recipe.protein,
         carbs: recipe.carbs,
-        fat: 5 // estimated
+        fat: 5
       },
       difficulty: 'Easy' as const,
       prepTime: 3,
@@ -221,14 +213,69 @@ export default function ProteinShakesPage({ params }: Params) {
     console.log(`Made ${recipe.name}! +100 XP`);
   };
 
-  // ✅ Handle cross-page drink selection
   const handleDrinkSelection = (drink) => {
     console.log('Selected drink from universal search:', drink);
   };
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-      {/* ✅ Cross-Hub Navigation */}
+      {/* UNIFORM HERO SECTION */}
+      <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white py-12 px-6 rounded-xl shadow-2xl">
+        <div className="max-w-7xl mx-auto">
+          <Link href="/drinks">
+            <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Drinks Hub
+            </Button>
+          </Link>
+          
+          <div className="flex items-center gap-4 mb-6">
+            <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
+              <FlaskConical className="h-12 w-12" />
+            </div>
+            <div>
+              <h1 className="text-4xl md:text-5xl font-bold mb-2">Protein Shakes</h1>
+              <p className="text-xl text-blue-100">Science-backed protein solutions for your fitness goals</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+              <CardContent className="p-4 text-center">
+                <FlaskConical className="h-8 w-8 mx-auto mb-2 text-blue-300" />
+                <div className="text-2xl font-bold">18</div>
+                <div className="text-sm text-blue-100">Total Recipes</div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+              <CardContent className="p-4 text-center">
+                <Dumbbell className="h-8 w-8 mx-auto mb-2 text-purple-300" />
+                <div className="text-2xl font-bold">30g</div>
+                <div className="text-sm text-blue-100">Avg Protein</div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+              <CardContent className="p-4 text-center">
+                <Star className="h-8 w-8 mx-auto mb-2 text-yellow-400" />
+                <div className="text-2xl font-bold">{userProgress.totalDrinksMade}</div>
+                <div className="text-sm text-blue-100">Shakes Made</div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+              <CardContent className="p-4 text-center">
+                <Trophy className="h-8 w-8 mx-auto mb-2 text-orange-400" />
+                <div className="text-2xl font-bold">Level {userProgress.level}</div>
+                <div className="text-sm text-blue-100">{userProgress.totalPoints} XP</div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+
+      {/* Cross-Hub Navigation */}
       <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
         <CardContent className="p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -264,27 +311,8 @@ export default function ProteinShakesPage({ params }: Params) {
         </CardContent>
       </Card>
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold flex items-center gap-3">
-            <FlaskConical className="h-10 w-10 text-blue-500" />
-            Protein Shakes
-            {type && <span className="text-muted-foreground">• {type}</span>}
-          </h1>
-          <p className="text-lg text-muted-foreground mt-2">
-            Science-backed protein solutions for your fitness goals
-          </p>
-        </div>
-        <div className="text-right">
-          <div className="text-2xl font-bold text-blue-600">{consumedProtein}g</div>
-          <div className="text-sm text-muted-foreground">of {dailyProteinGoal}g daily</div>
-          <Progress value={proteinProgress} className="w-24 h-2 mt-1" />
-        </div>
-      </div>
-
-      {/* ✅ Universal Search Component */}
-      <div className="max-w-2xl mx-auto mb-8">
+      {/* Universal Search */}
+      <div className="max-w-2xl mx-auto">
         <UniversalSearch 
           onSelectDrink={handleDrinkSelection}
           placeholder="Search all drinks or find protein shake inspiration..."
@@ -292,14 +320,14 @@ export default function ProteinShakesPage({ params }: Params) {
         />
       </div>
 
-      {/* ✅ Protein Subcategories Navigation */}
+      {/* Protein Subcategories Navigation */}
       <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
         <CardContent className="p-6">
           <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
             <FlaskConical className="w-5 h-5 text-blue-500" />
             Explore Protein Types
           </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {proteinSubcategories.map((subcategory) => {
               const Icon = subcategory.icon;
               return (
@@ -322,7 +350,7 @@ export default function ProteinShakesPage({ params }: Params) {
         </CardContent>
       </Card>
 
-      {/* ✅ Favorites Quick Access */}
+      {/* Rest of the content remains the same... */}
       {favorites.filter(f => f.category === 'protein-shakes').length > 0 && (
         <Card className="bg-gradient-to-r from-red-100 to-orange-100 border-red-200">
           <CardContent className="p-6">
@@ -345,7 +373,6 @@ export default function ProteinShakesPage({ params }: Params) {
         </Card>
       )}
 
-      {/* ✅ Enhanced Daily Protein Tracking with User Progress */}
       <Card className="bg-gradient-to-r from-blue-50 to-purple-50">
         <CardContent className="p-6">
           <div className="flex items-center justify-between mb-4">
@@ -372,9 +399,7 @@ export default function ProteinShakesPage({ params }: Params) {
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Builder */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Fitness Goals */}
           <Card>
             <CardContent className="p-6">
               <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
@@ -403,7 +428,6 @@ export default function ProteinShakesPage({ params }: Params) {
             </CardContent>
           </Card>
 
-          {/* Protein Selection */}
           <Card>
             <CardContent className="p-6">
               <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
@@ -434,7 +458,6 @@ export default function ProteinShakesPage({ params }: Params) {
             </CardContent>
           </Card>
 
-          {/* Protein Amount */}
           <Card>
             <CardContent className="p-6">
               <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
@@ -459,9 +482,7 @@ export default function ProteinShakesPage({ params }: Params) {
           </Card>
         </div>
 
-        {/* Right Column - Nutrition & Actions */}
         <div className="space-y-6">
-          {/* Live Nutrition */}
           <Card>
             <CardContent className="p-6">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -493,7 +514,6 @@ export default function ProteinShakesPage({ params }: Params) {
             </CardContent>
           </Card>
 
-          {/* ✅ Enhanced Build Actions with Context Integration */}
           <Card>
             <CardContent className="p-6 space-y-3">
               <Button 
@@ -533,7 +553,6 @@ export default function ProteinShakesPage({ params }: Params) {
             </CardContent>
           </Card>
 
-          {/* Quick Add Supplements */}
           <Card>
             <CardContent className="p-6">
               <h3 className="text-lg font-semibold mb-4">Add Supplements</h3>
@@ -555,7 +574,6 @@ export default function ProteinShakesPage({ params }: Params) {
         </div>
       </div>
 
-      {/* Workout Timing Phases */}
       <Card>
         <CardContent className="p-6">
           <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
@@ -644,10 +662,7 @@ export default function ProteinShakesPage({ params }: Params) {
                   
                   <Button 
                     className="w-full mt-4 bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600"
-                    onClick={() => {
-                      // Quick build for this phase
-                      buildShake();
-                    }}
+                    onClick={() => buildShake()}
                   >
                     Build {phase.name} Shake
                   </Button>
@@ -658,7 +673,6 @@ export default function ProteinShakesPage({ params }: Params) {
         </CardContent>
       </Card>
 
-      {/* ✅ Enhanced Popular Recipes with Context Integration */}
       <Card>
         <CardContent className="p-6">
           <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
@@ -738,7 +752,6 @@ export default function ProteinShakesPage({ params }: Params) {
         </CardContent>
       </Card>
 
-      {/* ✅ Cross-Page Integration Footer */}
       <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
         <CardContent className="p-6">
           <div className="flex items-center justify-between">
