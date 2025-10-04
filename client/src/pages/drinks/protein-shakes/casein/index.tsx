@@ -250,7 +250,7 @@ const sleepGoals = [
     id: 'muscle-recovery',
     name: 'Muscle Recovery',
     description: 'Maximize overnight muscle repair',
-    icon: Muscle,
+    icon: Activity, // Changed from Muscle to Activity
     color: 'bg-red-500',
     recommendedTiming: '30-60 minutes before bed',
     keyNutrients: ['Protein', 'Glutamine', 'Leucine']
@@ -274,6 +274,15 @@ const sleepGoals = [
     keyNutrients: ['Protein', 'Fiber', 'Calcium']
   },
   {
+    id: 'lean-mass',
+    name: 'Lean Mass',
+    description: 'Preserve muscle during cutting',
+    icon: Dumbbell, // Changed from Muscle to Dumbbell
+    color: 'bg-green-500',
+    recommendedTiming: 'Before extended fasting',
+    keyNutrients: ['BCAA', 'Glutamine', 'HMB']
+  }
+];
     id: 'lean-mass',
     name: 'Lean Mass',
     description: 'Preserve muscle during cutting',
