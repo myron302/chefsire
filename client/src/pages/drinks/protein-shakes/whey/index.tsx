@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
-import { wheyProteinShakes, wheyTypes } from '../data/protein';
+import { wheyProteinShakes, wheyTypes } from '../../data/protein';
 
 // TypeScript interfaces
 interface Nutrition {
