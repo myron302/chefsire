@@ -4,984 +4,364 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
-  Sparkles, Clock, Users, Trophy, Heart, Star, Calendar, 
-  CheckCircle, Target, Flame, Droplets, Leaf, Apple,
-  Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
-  Dumbbell, Activity, BarChart3, Shuffle, Camera, Share2,
-  Search, ArrowRight, Coffee, IceCream, X, FlaskConical, 
-  GlassWater, ArrowLeft, Home, Wine
+  Sparkles, Clock, Users, Trophy, Heart, Star,
+  Target, Flame, Droplets, Wine, ArrowRight,
+  GlassWater, Martini, ChefHat, ArrowLeft, Home,
+  FlaskConical, Leaf, Apple
 } from 'lucide-react';
-
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
 
-type Params = { params?: Record<string, string> };
-
-const smoothieSubcategories = [
-  { id: 'protein', name: 'High-Protein', icon: Zap, count: 24, route: '/drinks/smoothies/protein', description: 'Natural protein for muscle building' },
-  { id: 'green', name: 'Green Superfood', icon: Leaf, count: 28, route: '/drinks/smoothies/green', description: 'Nutrient-dense greens and superfoods' },
-  { id: 'dessert', name: 'Dessert', icon: IceCream, count: 32, route: '/drinks/smoothies/dessert', description: 'Guilt-free indulgent flavors' },
-  { id: 'breakfast', name: 'Breakfast', icon: Coffee, count: 26, route: '/drinks/smoothies/breakfast', description: 'Morning fuel with balanced nutrition' },
-  { id: 'workout', name: 'Workout', icon: Dumbbell, count: 22, route: '/drinks/smoothies/workout', description: 'Pre and post-workout energy' }
+const potentPotablesSubcategories = [
+  { id: 'vodka', name: 'Vodka Cocktails', icon: Droplets, count: 12, route: '/drinks/potent-potables/vodka', color: 'from-cyan-500 to-blue-500', description: 'Clean, versatile, and endlessly mixable' },
+  { id: 'whiskey-bourbon', name: 'Whiskey & Bourbon', icon: Wine, count: 12, route: '/drinks/potent-potables/whiskey-bourbon', color: 'from-amber-500 to-orange-500', description: 'From Kentucky bourbon to classic rye whiskey' },
+  { id: 'tequila-mezcal', name: 'Tequila & Mezcal', icon: Flame, count: 12, route: '/drinks/potent-potables/tequila-mezcal', color: 'from-lime-500 to-green-500', description: 'Agave spirits from Mexico' },
+  { id: 'rum', name: 'Rum Cocktails', icon: GlassWater, count: 12, route: '/drinks/potent-potables/rum', color: 'from-orange-500 to-red-500', description: 'Caribbean classics and tropical vibes' },
+  { id: 'cognac-brandy', name: 'Cognac & Brandy', icon: Wine, count: 12, route: '/drinks/potent-potables/cognac-brandy', color: 'from-orange-600 to-red-600', description: 'Sophisticated French spirits' },
+  { id: 'scotch-irish-whiskey', name: 'Scotch & Irish', icon: Wine, count: 12, route: '/drinks/potent-potables/scotch-irish-whiskey', color: 'from-amber-600 to-yellow-700', description: 'Classic whiskeys from the UK and Ireland' },
+  { id: 'martinis', name: 'Martinis', icon: Martini, count: 8, route: '/drinks/potent-potables/martinis', color: 'from-purple-500 to-pink-500', description: 'Elegant and timeless' },
+  { id: 'cocktails', name: 'Classic Cocktails', icon: GlassWater, count: 15, route: '/drinks/potent-potables/cocktails', color: 'from-blue-500 to-indigo-500', description: 'Timeless recipes and favorites' },
+  { id: 'seasonal', name: 'Seasonal Specials', icon: Sparkles, count: 10, route: '/drinks/potent-potables/seasonal', color: 'from-teal-500 to-cyan-500', description: 'Drinks for every season' },
+  { id: 'mocktails', name: 'Mocktails', icon: Sparkles, count: 12, route: '/drinks/potent-potables/mocktails', color: 'from-green-500 to-emerald-500', description: 'Zero-proof sophisticated drinks' },
+  { id: 'virgin-cocktails', name: 'Virgin Cocktails', icon: Sparkles, count: 14, route: '/drinks/potent-potables/virgin', color: 'from-emerald-500 to-teal-500', description: 'Alcohol-free alternatives' }
 ];
 
-const ingredients = {
-  fruits: [
-    { name: "Banana", calories: 89, protein: 1.1, carbs: 22.8, fiber: 2.6, icon: "🍌", boost: "potassium" },
-    { name: "Strawberry", calories: 32, protein: 0.7, carbs: 7.7, fiber: 2.0, icon: "🍓", boost: "vitamin-c" },
-    { name: "Blueberry", calories: 57, protein: 0.7, carbs: 14.5, fiber: 2.4, icon: "🫐", boost: "antioxidants" },
-    { name: "Mango", calories: 60, protein: 0.8, carbs: 15.0, fiber: 1.6, icon: "🥭", boost: "vitamin-a" },
-    { name: "Pineapple", calories: 50, protein: 0.5, carbs: 13.1, fiber: 1.4, icon: "🍍", boost: "bromelain" }
-  ],
-  vegetables: [
-    { name: "Spinach", calories: 7, protein: 0.9, carbs: 1.1, fiber: 0.7, icon: "🥬", boost: "iron" },
-    { name: "Kale", calories: 8, protein: 0.6, carbs: 1.4, fiber: 0.6, icon: "🥬", boost: "vitamin-k" },
-    { name: "Carrot", calories: 10, protein: 0.2, carbs: 2.3, fiber: 0.7, icon: "🥕", boost: "beta-carotene" },
-    { name: "Beetroot", calories: 13, protein: 0.4, carbs: 2.8, fiber: 0.8, icon: "🟣", boost: "nitrates" }
-  ],
-  liquids: [
-    { name: "Almond Milk", calories: 15, protein: 0.6, carbs: 0.6, fiber: 0.3, icon: "🥛", boost: "calcium" },
-    { name: "Coconut Water", calories: 19, protein: 0.7, carbs: 3.7, fiber: 1.1, icon: "🥥", boost: "electrolytes" },
-    { name: "Greek Yogurt", calories: 59, protein: 10.0, carbs: 3.6, fiber: 0, icon: "🥛", boost: "probiotics" },
-    { name: "Oat Milk", calories: 16, protein: 0.3, carbs: 1.9, fiber: 0.7, icon: "🥛", boost: "fiber" }
-  ],
-  boosters: [
-    { name: "Protein Powder", calories: 120, protein: 25.0, carbs: 2.0, fiber: 1.0, icon: "💪", boost: "muscle-building" },
-    { name: "Chia Seeds", calories: 58, protein: 2.0, carbs: 5.1, fiber: 4.9, icon: "🌰", boost: "omega-3" },
-    { name: "Flax Seeds", calories: 55, protein: 1.9, carbs: 3.0, fiber: 2.8, icon: "🌰", boost: "lignans" },
-    { name: "Spirulina", calories: 4, protein: 0.8, carbs: 0.2, fiber: 0.1, icon: "🟢", boost: "chlorophyll" }
-  ]
-};
-
-const workoutGoals = [
-  { id: 'pre-workout', name: 'Pre-Workout Energy', icon: '⚡', color: 'bg-orange-500', focus: 'carbs' },
-  { id: 'post-workout', name: 'Post-Workout Recovery', icon: '💪', color: 'bg-blue-500', focus: 'protein' },
-  { id: 'weight-loss', name: 'Weight Loss', icon: '🔥', color: 'bg-red-500', focus: 'low-cal' },
-  { id: 'muscle-gain', name: 'Muscle Building', icon: '🏋️', color: 'bg-green-500', focus: 'protein' },
-  { id: 'endurance', name: 'Endurance', icon: '🏃', color: 'bg-purple-500', focus: 'electrolytes' },
-  { id: 'recovery', name: 'Recovery', icon: '😌', color: 'bg-pink-500', focus: 'antioxidants' }
-];
-
-const premadeRecipes = [
+const featuredCocktails = [
   {
-    id: 1,
-    name: "Green Goddess Power",
-    ingredients: ["Spinach", "Banana", "Mango", "Coconut Water", "Chia Seeds"],
-    calories: 245,
-    protein: 8.2,
+    id: 'featured-1',
+    name: "Old Fashioned",
+    spirit: "Whiskey",
     difficulty: "Easy",
-    time: "3 min",
-    rating: 4.8,
-    likes: 1247,
-    workoutType: "pre-workout",
-    image: "https://images.unsplash.com/photo-1610970881699-44a5587cabec?w=400&h=300&fit=crop"
-  },
-  {
-    id: 2,
-    name: "Chocolate Protein Beast",
-    ingredients: ["Banana", "Protein Powder", "Almond Milk", "Flax Seeds"],
-    calories: 320,
-    protein: 28.5,
-    difficulty: "Easy", 
-    time: "2 min",
     rating: 4.9,
-    likes: 2156,
-    workoutType: "post-workout",
-    image: "https://images.unsplash.com/photo-1553909489-cd47e0ef937f?w=400&h=300&fit=crop"
+    reviews: 5234,
+    time: "5 min",
+    image: "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop",
+    tags: ['Classic', 'Strong', 'Sophisticated']
   },
   {
-    id: 3,
-    name: "Berry Antioxidant Blast",
-    ingredients: ["Blueberry", "Strawberry", "Greek Yogurt", "Spirulina"],
-    calories: 180,
-    protein: 12.8,
+    id: 'featured-2',
+    name: "Margarita",
+    spirit: "Tequila",
+    difficulty: "Easy",
+    rating: 4.8,
+    reviews: 4892,
+    time: "3 min",
+    image: "https://images.unsplash.com/photo-1551024601-bec78aea704b?w=400&h=300&fit=crop",
+    tags: ['Citrus', 'Refreshing', 'Party']
+  },
+  {
+    id: 'featured-3',
+    name: "Mojito",
+    spirit: "Rum",
     difficulty: "Medium",
-    time: "4 min", 
     rating: 4.7,
-    likes: 892,
-    workoutType: "recovery",
-    image: "https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400&h=300&fit=crop"
+    reviews: 3654,
+    time: "7 min",
+    image: "https://images.unsplash.com/photo-1551538827-9c037cb4f32a?w=400&h=300&fit=crop",
+    tags: ['Minty', 'Refreshing', 'Summer']
   }
 ];
 
-const dailyChallenge = {
-  name: "Green Machine Monday",
-  description: "Create a smoothie with at least 3 green ingredients",
-  progress: 2,
-  goal: 3,
-  participants: 3247,
-  reward: "Green Warrior Badge + 200 XP",
-  timeLeft: "18h 42m"
-};
-
-export default function SmoothiesPage({ params }: Params) {
-  const { 
-    userProgress, 
-    addPoints, 
-    incrementDrinksMade, 
-    addToFavorites, 
-    isFavorite,
-    addToRecentlyViewed,
-    favorites
-  } = useDrinks();
-
-  const type = params?.type?.replaceAll("-", " ");
-  const [activeTab, setActiveTab] = useState('create');
-  const [selectedGoal, setSelectedGoal] = useState(workoutGoals[0]);
-  const [customSmoothie, setCustomSmoothie] = useState({
-    ingredients: [],
-    calories: 0,
-    protein: 0,
-    carbs: 0,
-    fiber: 0
-  });
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [createdSmoothie, setCreatedSmoothie] = useState(null);
-
-  const addIngredient = (ingredient, category) => {
-    const newIngredient = { ...ingredient, category, id: Date.now() };
-    const newIngredients = [...customSmoothie.ingredients, newIngredient];
-    
-    setCustomSmoothie({
-      ingredients: newIngredients,
-      calories: newIngredients.reduce((sum, ing) => sum + ing.calories, 0),
-      protein: newIngredients.reduce((sum, ing) => sum + ing.protein, 0),
-      carbs: newIngredients.reduce((sum, ing) => sum + ing.carbs, 0),
-      fiber: newIngredients.reduce((sum, ing) => sum + ing.fiber, 0)
-    });
-  };
-
-  const removeIngredient = (ingredientId) => {
-    const newIngredients = customSmoothie.ingredients.filter(ing => ing.id !== ingredientId);
-    setCustomSmoothie({
-      ingredients: newIngredients,
-      calories: newIngredients.reduce((sum, ing) => sum + ing.calories, 0),
-      protein: newIngredients.reduce((sum, ing) => sum + ing.protein, 0),
-      carbs: newIngredients.reduce((sum, ing) => sum + ing.carbs, 0),
-      fiber: newIngredients.reduce((sum, ing) => sum + ing.fiber, 0)
-    });
-  };
-
-  const createSmoothie = () => {
-    if (customSmoothie.ingredients.length >= 3) {
-      const smoothieData = {
-        id: `custom-${Date.now()}`,
-        name: `Custom ${selectedGoal.name} Smoothie`,
-        category: 'smoothies' as const,
-        description: `Custom blend with ${customSmoothie.ingredients.length} ingredients`,
-        ingredients: customSmoothie.ingredients.map(ing => ing.name),
-        nutrition: {
-          calories: Math.round(customSmoothie.calories),
-          protein: Math.round(customSmoothie.protein * 10) / 10,
-          carbs: Math.round(customSmoothie.carbs * 10) / 10,
-          fat: 2
-        },
-        difficulty: 'Custom' as const,
-        prepTime: 5,
-        rating: 5,
-        fitnessGoal: selectedGoal.name,
-        bestTime: selectedGoal.id.includes('pre') ? 'Pre-workout' : 'Post-workout'
-      };
-
-      setCreatedSmoothie(customSmoothie);
-      setShowSuccess(true);
-      
-      addToRecentlyViewed(smoothieData);
-      incrementDrinksMade();
-      addPoints(150);
-      
-      setTimeout(() => setShowSuccess(false), 3000);
-    }
-  };
-
-  const makePremadeRecipe = (recipe) => {
-    const smoothieData = {
-      id: `recipe-${recipe.id}`,
-      name: recipe.name,
-      category: 'smoothies' as const,
-      description: `Popular recipe with ${recipe.rating}★ rating`,
-      ingredients: recipe.ingredients,
-      nutrition: {
-        calories: recipe.calories,
-        protein: recipe.protein,
-        carbs: Math.round(recipe.calories * 0.6 / 4),
-        fat: 3
-      },
-      difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
-      prepTime: parseInt(recipe.time),
-      rating: recipe.rating,
-      fitnessGoal: recipe.workoutType,
-      bestTime: recipe.workoutType.includes('pre') ? 'Pre-workout' : 'Post-workout'
-    };
-
-    addToRecentlyViewed(smoothieData);
-    incrementDrinksMade();
-    addPoints(100);
-    
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 3000);
-  };
-
-  const randomizeSmoothie = () => {
-    const randomFruit = ingredients.fruits[Math.floor(Math.random() * ingredients.fruits.length)];
-    const randomLiquid = ingredients.liquids[Math.floor(Math.random() * ingredients.liquids.length)];
-    const randomVeggie = ingredients.vegetables[Math.floor(Math.random() * ingredients.vegetables.length)];
-    
-    const randomIngredients = [
-      { ...randomFruit, category: 'fruits', id: Date.now() + 1 },
-      { ...randomLiquid, category: 'liquids', id: Date.now() + 2 },
-      { ...randomVeggie, category: 'vegetables', id: Date.now() + 3 }
-    ];
-
-    setCustomSmoothie({
-      ingredients: randomIngredients,
-      calories: randomIngredients.reduce((sum, ing) => sum + ing.calories, 0),
-      protein: randomIngredients.reduce((sum, ing) => sum + ing.protein, 0),
-      carbs: randomIngredients.reduce((sum, ing) => sum + ing.carbs, 0),
-      fiber: randomIngredients.reduce((sum, ing) => sum + ing.fiber, 0)
-    });
-  };
+export default function PotentPotablesPage() {
+  const { userProgress, addToFavorites, isFavorite, favorites } = useDrinks();
 
   const handleDrinkSelection = (drink) => {
     console.log('Selected drink from universal search:', drink);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
-      
-      {showSuccess && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
-          <div className="bg-gradient-to-r from-green-400 to-blue-500 text-white p-8 rounded-3xl shadow-2xl animate-bounce">
-            <div className="text-center">
-              <Sparkles className="w-20 h-20 mx-auto mb-4" />
-              <h2 className="text-3xl font-bold mb-2">Smoothie Created!</h2>
-              <p className="text-xl">+{customSmoothie.ingredients.length >= 3 ? '150' : '100'} XP earned!</p>
+    <RequireAgeGate>
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
+        <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-8">
+          
+          {/* UNIFORM HERO SECTION */}
+          <div className="bg-gradient-to-r from-red-700 via-purple-800 to-gray-900 text-white py-12 px-6 rounded-xl shadow-2xl">
+            <div className="max-w-7xl mx-auto">
+              <Link href="/drinks">
+                <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Back to Drinks Hub
+                </Button>
+              </Link>
+              
+              <div className="flex items-center gap-4 mb-6">
+                <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
+                  <Wine className="h-12 w-12" />
+                </div>
+                <div>
+                  <h1 className="text-4xl md:text-5xl font-bold mb-2">Potent Potables 🍸</h1>
+                  <p className="text-xl text-purple-100">Cocktails, mocktails, and specialty beverages</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                  <CardContent className="p-4 text-center">
+                    <Martini className="h-8 w-8 mx-auto mb-2 text-pink-300" />
+                    <div className="text-2xl font-bold">127</div>
+                    <div className="text-sm text-purple-100">Total Recipes</div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                  <CardContent className="p-4 text-center">
+                    <Star className="h-8 w-8 mx-auto mb-2 text-yellow-300" />
+                    <div className="text-2xl font-bold">4.8</div>
+                    <div className="text-sm text-purple-100">Avg Rating</div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                  <CardContent className="p-4 text-center">
+                    <Trophy className="h-8 w-8 mx-auto mb-2 text-orange-300" />
+                    <div className="text-2xl font-bold">{userProgress.totalDrinksMade}</div>
+                    <div className="text-sm text-purple-100">Cocktails Made</div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                  <CardContent className="p-4 text-center">
+                    <Heart className="h-8 w-8 mx-auto mb-2 text-red-300" />
+                    <div className="text-2xl font-bold">{favorites.filter(f => f.category === 'potent-potables' || f.category === 'cocktails').length}</div>
+                    <div className="text-sm text-purple-100">Favorites</div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="max-w-md mx-auto mt-6 text-center">
+                <Badge className="bg-orange-500 text-white text-xs">
+                  21+ Content • Please drink responsibly
+                </Badge>
+              </div>
             </div>
           </div>
-        </div>
-      )}
 
-      <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-8">
-        
-        {/* UNIFORM HERO SECTION */}
-        <div className="bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 text-white py-12 px-6 rounded-xl shadow-2xl">
-          <div className="max-w-7xl mx-auto">
-            <Link href="/drinks">
-              <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Drinks Hub
-              </Button>
-            </Link>
-            
-            <div className="flex items-center gap-4 mb-6">
-              <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
-                <Apple className="h-12 w-12" />
+          {/* Cross-Hub Navigation */}
+          <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Home className="w-4 h-4 text-gray-600" />
+                <span className="text-sm text-gray-600">Explore Other Categories</span>
               </div>
-              <div>
-                <h1 className="text-4xl md:text-5xl font-bold mb-2">Smoothie Studio</h1>
-                <p className="text-xl text-purple-100">Craft the perfect smoothie for your fitness goals</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-                <CardContent className="p-4 text-center">
-                  <Apple className="h-8 w-8 mx-auto mb-2 text-pink-300" />
-                  <div className="text-2xl font-bold">132</div>
-                  <div className="text-sm text-purple-100">Total Recipes</div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-                <CardContent className="p-4 text-center">
-                  <Flame className="h-8 w-8 mx-auto mb-2 text-orange-300" />
-                  <div className="text-2xl font-bold">245</div>
-                  <div className="text-sm text-purple-100">Avg Calories</div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-                <CardContent className="p-4 text-center">
-                  <Heart className="h-8 w-8 mx-auto mb-2 text-red-300" />
-                  <div className="text-2xl font-bold">{favorites.length}</div>
-                  <div className="text-sm text-purple-100">Favorites</div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-                <CardContent className="p-4 text-center">
-                  <Sparkles className="h-8 w-8 mx-auto mb-2 text-yellow-300" />
-                  <div className="text-2xl font-bold">{userProgress.currentStreak}</div>
-                  <div className="text-sm text-purple-100">Day Streak</div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </div>
-
-        {/* Cross-Hub Navigation */}
-        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
-          <CardContent className="p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Link href="/drinks/protein-shakes">
-                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
-                  <FlaskConical className="h-4 w-4 mr-2 text-blue-600" />
-                  <span>Protein Shakes</span>
-                  <ArrowRight className="h-3 w-3 ml-auto" />
-                </Button>
-              </Link>
-              <Link href="/drinks/detoxes">
-                <Button variant="outline" className="w-full justify-start hover:bg-teal-50 hover:border-teal-300">
-                  <Leaf className="h-4 w-4 mr-2 text-teal-600" />
-                  <span>Detoxes & Cleanses</span>
-                  <ArrowRight className="h-3 w-3 ml-auto" />
-                </Button>
-              </Link>
-              <Link href="/drinks/potent-potables">
-                <Button variant="outline" className="w-full justify-start hover:bg-purple-50 hover:border-purple-300">
-                  <GlassWater className="h-4 w-4 mr-2 text-purple-600" />
-                  <span>Potent Potables</span>
-                  <ArrowRight className="h-3 w-3 ml-auto" />
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Universal Search */}
-        <div className="max-w-2xl mx-auto">
-          <UniversalSearch 
-            onSelectDrink={handleDrinkSelection}
-            placeholder="Search all drinks or find smoothie inspiration..."
-            className="w-full"
-          />
-        </div>
-
-        {/* Smoothie Subcategories */}
-        <Card className="bg-gradient-to-r from-green-50 to-purple-50 border-green-200">
-          <CardContent className="p-6">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Apple className="w-5 h-5 text-green-500" />
-              Explore Smoothie Types
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {smoothieSubcategories.map((subcategory) => {
-                const Icon = subcategory.icon;
-                return (
-                  <Link key={subcategory.id} href={subcategory.route}>
-                    <Button
-                      variant="outline"
-                      className="h-auto p-4 flex flex-col items-center gap-2 hover:bg-green-50 hover:border-green-300 w-full"
-                    >
-                      <Icon className="h-6 w-6 text-green-600" />
-                      <div className="text-center">
-                        <div className="font-medium text-sm">{subcategory.name}</div>
-                        <div className="text-xs text-gray-500">{subcategory.count} recipes</div>
-                      </div>
-                      <ArrowRight className="h-3 w-3 text-gray-400" />
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Favorites */}
-        {favorites.length > 0 && (
-          <Card className="bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-200">
-            <CardContent className="p-6">
-              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <Heart className="w-5 h-5 text-red-500 fill-current" />
-                Your Favorite Smoothies ({favorites.length})
-              </h3>
-              <div className="grid md:grid-cols-3 gap-4">
-                {favorites.slice(0, 3).map((fav) => (
-                  <div key={fav.id} className="p-4 bg-white rounded-lg border">
-                    <div className="font-semibold mb-1">{fav.name}</div>
-                    <div className="text-sm text-gray-600 mb-2">{fav.description}</div>
-                    <div className="flex items-center gap-3 text-xs">
-                      <span className="flex items-center gap-1">
-                        <Flame className="h-3 w-3" />
-                        {fav.nutrition.calories} cal
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Dumbbell className="h-3 w-3" />
-                        {fav.nutrition.protein}g
-                      </span>
-                    </div>
-                  </div>
-                ))}
+              <div className="flex flex-wrap gap-2">
+                <Link href="/drinks">
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    All Drinks
+                  </Button>
+                </Link>
+                <Link href="/drinks/smoothies">
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Apple className="w-4 h-4" />
+                    Smoothies
+                  </Button>
+                </Link>
+                <Link href="/drinks/protein-shakes">
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <FlaskConical className="w-4 h-4" />
+                    Protein Shakes
+                  </Button>
+                </Link>
+                <Link href="/drinks/detoxes">
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Leaf className="w-4 h-4" />
+                    Detoxes
+                  </Button>
+                </Link>
               </div>
             </CardContent>
           </Card>
-        )}
 
-        {/* Daily Challenge */}
-        <Card className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0">
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Target className="w-6 h-6" />
-                  <h3 className="text-2xl font-bold">{dailyChallenge.name}</h3>
-                </div>
-                <p className="text-blue-100 mb-4">{dailyChallenge.description}</p>
-                <div className="flex items-center gap-4 text-sm">
-                  <span className="flex items-center gap-1">
-                    <Users className="w-4 h-4" />
-                    {dailyChallenge.participants.toLocaleString()} participating
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-4 h-4" />
-                    {dailyChallenge.timeLeft} left
-                  </span>
-                </div>
-              </div>
-              <div className="text-right">
-                <Badge className="bg-yellow-400 text-yellow-900 mb-2">
-                  <Award className="w-3 h-3 mr-1" />
-                  Reward
-                </Badge>
-                <div className="text-sm">{dailyChallenge.reward}</div>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span>Progress: {dailyChallenge.progress}/{dailyChallenge.goal}</span>
-                <span>{Math.round((dailyChallenge.progress / dailyChallenge.goal) * 100)}%</span>
-              </div>
-              <Progress value={(dailyChallenge.progress / dailyChallenge.goal) * 100} className="h-3 bg-blue-300" />
-            </div>
-          </CardContent>
-        </Card>
+          {/* Universal Search */}
+          <div className="max-w-2xl mx-auto">
+            <UniversalSearch 
+              onSelectDrink={handleDrinkSelection}
+              placeholder="Search all drinks or find cocktail inspiration..."
+              className="w-full"
+            />
+          </div>
 
-        {/* Tab Navigation */}
-        <div className="flex gap-2 border-b">
-          <Button
-            variant={activeTab === 'create' ? 'default' : 'ghost'}
-            className={activeTab === 'create' ? 'bg-purple-600' : ''}
-            onClick={() => setActiveTab('create')}
-          >
-            <ChefHat className="w-4 h-4 mr-2" />
-            Create Custom
-          </Button>
-          <Button
-            variant={activeTab === 'browse' ? 'default' : 'ghost'}
-            className={activeTab === 'browse' ? 'bg-purple-600' : ''}
-            onClick={() => setActiveTab('browse')}
-          >
-            <Trophy className="w-4 h-4 mr-2" />
-            Popular Recipes
-          </Button>
-        </div>
+          {/* Spirit Categories Grid */}
+          <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+            <CardContent className="p-6">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <GlassWater className="w-5 h-5 text-purple-500" />
+                Explore Spirit Categories
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {potentPotablesSubcategories.map((subcategory) => {
+                  const Icon = subcategory.icon;
+                  return (
+                    <Link key={subcategory.id} href={subcategory.route}>
+                      <Card className="group cursor-pointer hover:shadow-lg transition-all hover:-translate-y-1 overflow-hidden border-2">
+                        <div className={`h-24 bg-gradient-to-br ${subcategory.color} p-4 flex items-center justify-center`}>
+                          <Icon className="h-12 w-12 text-white group-hover:scale-110 transition-transform" />
+                        </div>
+                        <CardContent className="p-3">
+                          <div className="font-medium text-sm mb-1">{subcategory.name}</div>
+                          <div className="text-xs text-gray-600 mb-2">{subcategory.description}</div>
+                          <div className="flex items-center justify-between text-xs text-gray-500">
+                            <span>{subcategory.count} recipes</span>
+                            <ArrowRight className="h-3 w-3 group-hover:translate-x-1 transition-transform" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
 
-        {/* CREATE TAB */}
-        {activeTab === 'create' && (
-          <div className="space-y-6">
-            {/* Goal Selection */}
-            <Card>
+          {/* Favorites */}
+          {favorites.filter(f => f.category === 'potent-potables' || f.category === 'cocktails').length > 0 && (
+            <Card className="bg-gradient-to-r from-purple-100 to-pink-100 border-purple-200">
               <CardContent className="p-6">
-                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <Target className="w-5 h-5 text-purple-600" />
-                  Choose Your Fitness Goal
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                  <Heart className="w-5 h-5 text-purple-500" />
+                  Your Favorite Cocktails ({favorites.filter(f => f.category === 'potent-potables' || f.category === 'cocktails').length})
                 </h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {workoutGoals.map((goal) => (
-                    <Button
-                      key={goal.id}
-                      variant={selectedGoal.id === goal.id ? 'default' : 'outline'}
-                      className={`h-auto p-4 ${selectedGoal.id === goal.id ? goal.color + ' text-white' : ''}`}
-                      onClick={() => setSelectedGoal(goal)}
-                    >
-                      <div className="text-center w-full">
-                        <div className="text-2xl mb-2">{goal.icon}</div>
-                        <div className="font-medium">{goal.name}</div>
-                      </div>
-                    </Button>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Ingredient Builder */}
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold flex items-center gap-2">
-                      <Apple className="w-5 h-5 text-red-500" />
-                      Select Ingredients
-                    </h3>
-                    <Button size="sm" variant="outline" onClick={randomizeSmoothie}>
-                      <Shuffle className="w-4 h-4 mr-2" />
-                      Randomize
-                    </Button>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="font-semibold mb-2 text-sm text-gray-600">Fruits</h4>
-                      <div className="grid grid-cols-2 gap-2">
-                        {ingredients.fruits.map((fruit) => (
-                          <Button
-                            key={fruit.name}
-                            size="sm"
-                            variant="outline"
-                            onClick={() => addIngredient(fruit, 'fruits')}
-                            className="justify-start"
-                          >
-                            <span className="mr-2">{fruit.icon}</span>
-                            {fruit.name}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <h4 className="font-semibold mb-2 text-sm text-gray-600">Vegetables</h4>
-                      <div className="grid grid-cols-2 gap-2">
-                        {ingredients.vegetables.map((veg) => (
-                          <Button
-                            key={veg.name}
-                            size="sm"
-                            variant="outline"
-                            onClick={() => addIngredient(veg, 'vegetables')}
-                            className="justify-start"
-                          >
-                            <span className="mr-2">{veg.icon}</span>
-                            {veg.name}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <h4 className="font-semibold mb-2 text-sm text-gray-600">Liquids</h4>
-                      <div className="grid grid-cols-2 gap-2">
-                        {ingredients.liquids.map((liquid) => (
-                          <Button
-                            key={liquid.name}
-                            size="sm"
-                            variant="outline"
-                            onClick={() => addIngredient(liquid, 'liquids')}
-                            className="justify-start"
-                          >
-                            <span className="mr-2">{liquid.icon}</span>
-                            {liquid.name}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <h4 className="font-semibold mb-2 text-sm text-gray-600">Boosters</h4>
-                      <div className="grid grid-cols-2 gap-2">
-                        {ingredients.boosters.map((booster) => (
-                          <Button
-                            key={booster.name}
-                            size="sm"
-                            variant="outline"
-                            onClick={() => addIngredient(booster, 'boosters')}
-                            className="justify-start"
-                          >
-                            <span className="mr-2">{booster.icon}</span>
-                            {booster.name}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Custom Smoothie Preview */}
-              <Card>
-                <CardContent className="p-6">
-                  <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-purple-600" />
-                    Your Custom Smoothie
-                  </h3>
-
-                  <div className="mb-4 space-y-2">
-                    {customSmoothie.ingredients.length === 0 ? (
-                      <div className="text-center py-8 text-gray-400">
-                        <Apple className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                        <p>Start adding ingredients to create your smoothie</p>
-                      </div>
-                    ) : (
-                      customSmoothie.ingredients.map((ing) => (
-                        <div key={ing.id} className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <span className="text-2xl">{ing.icon}</span>
-                            <div>
-                              <div className="font-medium">{ing.name}</div>
-                              <div className="text-xs text-gray-600">
-                                {ing.calories} cal • {ing.protein}g protein
-                              </div>
-                            </div>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => removeIngredient(ing.id)}
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  {customSmoothie.ingredients.length > 0 && (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg">
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-orange-600">
-                            {Math.round(customSmoothie.calories)}
-                          </div>
-                          <div className="text-xs text-gray-600">Calories</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-blue-600">
-                            {Math.round(customSmoothie.protein * 10) / 10}g
-                          </div>
-                          <div className="text-xs text-gray-600">Protein</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-green-600">
-                            {Math.round(customSmoothie.carbs * 10) / 10}g
-                          </div>
-                          <div className="text-xs text-gray-600">Carbs</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-purple-600">
-                            {Math.round(customSmoothie.fiber * 10) / 10}g
-                          </div>
-                          <div className="text-xs text-gray-600">Fiber</div>
-                        </div>
-                      </div>
-
-                      <Button
-                        className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white"
-                        size="lg"
-                        onClick={createSmoothie}
-                        disabled={customSmoothie.ingredients.length < 3}
-                      >
-                        {customSmoothie.ingredients.length < 3 ? (
-                          <>
-                            <Target className="w-5 h-5 mr-2" />
-                            Add {3 - customSmoothie.ingredients.length} more ingredients
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="w-5 h-5 mr-2" />
-                            Create Smoothie (+150 XP)
-                          </>
-                        )}
+                <div className="flex gap-3 overflow-x-auto pb-2">
+                  {favorites.filter(f => f.category === 'potent-potables' || f.category === 'cocktails').slice(0, 5).map((drink) => (
+                    <div key={drink.id} className="flex-shrink-0 bg-white rounded-lg p-3 shadow-sm min-w-[200px]">
+                      <div className="font-medium text-sm mb-1">{drink.name}</div>
+                      <div className="text-xs text-gray-600 mb-2">Cocktail</div>
+                      <Button size="sm" variant="outline" className="w-full text-xs">
+                        Make Again
                       </Button>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        )}
-
-        {/* BROWSE TAB */}
-        {activeTab === 'browse' && (
-          <div className="space-y-6">
-            <Card>
-              <CardContent className="p-6">
-                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-orange-500" />
-                  Popular Smoothie Recipes
-                </h3>
-                <div className="grid md:grid-cols-3 gap-6">
-                  {premadeRecipes.map((recipe) => (
-                    <Card key={recipe.id} className="overflow-hidden hover:shadow-xl transition-shadow">
-                      <div className="relative h-48">
-                        <img
-                          src={recipe.image}
-                          alt={recipe.name}
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute top-3 right-3">
-                          <Badge className="bg-white text-gray-900">
-                            <Star className="w-3 h-3 mr-1 text-yellow-400 fill-current" />
-                            {recipe.rating}
-                          </Badge>
-                        </div>
-                      </div>
-                      
-                      <CardContent className="p-4">
-                        <h4 className="font-bold text-lg mb-2">{recipe.name}</h4>
-                        
-                        <div className="flex items-center gap-4 mb-3 text-sm text-gray-600">
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-4 h-4" />
-                            {recipe.time}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Heart className="w-4 h-4" />
-                            {recipe.likes}
-                          </span>
-                        </div>
-
-                        <div className="mb-3">
-                          <div className="text-sm font-medium mb-2">Ingredients:</div>
-                          <div className="flex flex-wrap gap-1">
-                            {recipe.ingredients.map((ing, idx) => (
-                              <Badge key={idx} variant="outline" className="text-xs">
-                                {ing}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 mb-4 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg">
-                          <div className="text-center">
-                            <div className="text-lg font-bold text-orange-600">
-                              {recipe.calories}
-                            </div>
-                            <div className="text-xs text-gray-600">Calories</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-lg font-bold text-blue-600">
-                              {recipe.protein}g
-                            </div>
-                            <div className="text-xs text-gray-600">Protein</div>
-                          </div>
-                        </div>
-
-                        <div className="flex gap-2">
-                          <Button
-                            className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600"
-                            onClick={() => makePremadeRecipe(recipe)}
-                          >
-                            <Sparkles className="w-4 h-4 mr-2" />
-                            Make It
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => {
-                              const recipeData = {
-                                id: `recipe-${recipe.id}`,
-                                name: recipe.name,
-                                category: 'smoothies' as const,
-                                description: `Popular recipe with ${recipe.rating}★ rating`,
-                                ingredients: recipe.ingredients,
-                                nutrition: {
-                                  calories: recipe.calories,
-                                  protein: recipe.protein,
-                                  carbs: Math.round(recipe.calories * 0.6 / 4),
-                                  fat: 3
-                                },
-                                difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
-                                prepTime: parseInt(recipe.time),
-                                rating: recipe.rating,
-                                fitnessGoal: recipe.workoutType,
-                                bestTime: recipe.workoutType.includes('pre') ? 'Pre-workout' : 'Post-workout'
-                              };
-                              if (isFavorite(recipeData.id)) {
-                                // Remove from favorites logic would go here
-                              } else {
-                                addToFavorites(recipeData);
-                              }
-                            }}
-                          >
-                            <Heart
-                              className={`w-4 h-4 ${
-                                isFavorite(`recipe-${recipe.id}`)
-                                  ? 'fill-current text-red-500'
-                                  : ''
-                              }`}
-                            />
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
                   ))}
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {/* Featured Cocktails */}
+          <div>
+            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+              <Star className="w-6 h-6 text-yellow-500" />
+              Featured Cocktails
+            </h2>
+            <div className="grid md:grid-cols-3 gap-6">
+              {featuredCocktails.map((cocktail) => (
+                <Card key={cocktail.id} className="overflow-hidden hover:shadow-xl transition-all hover:scale-105">
+                  <div className="relative">
+                    <img src={cocktail.image} alt={cocktail.name} className="w-full h-48 object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                    <div className="absolute bottom-2 left-2">
+                      <Badge className="bg-purple-500 text-white">{cocktail.spirit}</Badge>
+                    </div>
+                    <div className="absolute top-2 right-2">
+                      <Button variant="ghost" size="sm" className="bg-white/80 hover:bg-white text-gray-600">
+                        <Heart className={`h-4 w-4 ${isFavorite(cocktail.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                      </Button>
+                    </div>
+                  </div>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-xl font-bold">{cocktail.name}</h3>
+                      <div className="flex items-center gap-1">
+                        <Star className="w-4 h-4 text-yellow-500 fill-current" />
+                        <span className="text-sm font-bold">{cocktail.rating}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-4 h-4" />
+                        <span>{cocktail.time}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Users className="w-4 h-4" />
+                        <span>{cocktail.reviews.toLocaleString()}</span>
+                      </div>
+                      <Badge variant="outline">{cocktail.difficulty}</Badge>
+                    </div>
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {cocktail.tags.map(tag => (
+                        <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
+                      ))}
+                    </div>
+                    <Button className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600">
+                      View Recipe
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
-        )}
 
-        {/* Tips & Benefits */}
-        <div className="grid md:grid-cols-2 gap-6">
-          <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+          {/* Education */}
+          <Card className="bg-gradient-to-r from-purple-50 to-orange-50 border-purple-200">
             <CardContent className="p-6">
-              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <Leaf className="w-5 h-5 text-green-600" />
-                Smoothie Pro Tips
+              <h3 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                <ChefHat className="w-6 h-6 text-purple-600" />
+                Mixology 101
               </h3>
-              <ul className="space-y-3 text-sm">
-                <li className="flex items-start gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <span>Use frozen fruits for a thicker, creamier texture without ice</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <span>Add liquid first to help blender process ingredients smoothly</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <span>Balance sweet fruits with greens for optimal nutrition</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <span>Prep ingredient packs in advance for quick morning smoothies</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <span>Add protein powder after blending for best texture</span>
-                </li>
-              </ul>
+              <div className="grid md:grid-cols-3 gap-6">
+                <div>
+                  <h4 className="font-semibold mb-2 text-purple-600">Essential Techniques</h4>
+                  <ul className="text-sm text-gray-700 space-y-1">
+                    <li>• Shaking vs Stirring</li>
+                    <li>• Muddling herbs and fruits</li>
+                    <li>• Building in glass</li>
+                    <li>• Proper garnishing</li>
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="font-semibold mb-2 text-orange-600">Bar Essentials</h4>
+                  <ul className="text-sm text-gray-700 space-y-1">
+                    <li>• Quality spirits</li>
+                    <li>• Fresh citrus</li>
+                    <li>• Simple syrup</li>
+                    <li>• Bitters collection</li>
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="font-semibold mb-2 text-pink-600">Pro Tips</h4>
+                  <ul className="text-sm text-gray-700 space-y-1">
+                    <li>• Use fresh ingredients</li>
+                    <li>• Measure accurately</li>
+                    <li>• Chill your glassware</li>
+                    <li>• Taste and adjust</li>
+                  </ul>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200">
+          {/* Footer */}
+          <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
             <CardContent className="p-6">
-              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-blue-600" />
-                Health Benefits
-              </h3>
-              <ul className="space-y-3 text-sm">
-                <li className="flex items-start gap-2">
-                  <Heart className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                  <span>Boosts energy levels with natural sugars and nutrients</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Zap className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
-                  <span>Supports muscle recovery with protein and antioxidants</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Droplets className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                  <span>Improves hydration with high water content fruits</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Target className="w-5 h-5 text-purple-500 flex-shrink-0 mt-0.5" />
-                  <span>Aids weight management with fiber and protein</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Award className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
-                  <span>Enhances immune system with vitamins and minerals</span>
-                </li>
-              </ul>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold mb-2">Explore More Drinks</h3>
+                  <p className="text-gray-600 mb-4">Discover smoothies, protein shakes, and detoxes</p>
+                  <div className="flex gap-2">
+                    <Link href="/drinks/smoothies">
+                      <Button variant="outline" size="sm">Smoothies</Button>
+                    </Link>
+                    <Link href="/drinks/protein-shakes">
+                      <Button variant="outline" size="sm">Protein Shakes</Button>
+                    </Link>
+                    <Link href="/drinks/detoxes">
+                      <Button variant="outline" size="sm">Detoxes</Button>
+                    </Link>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-600 mb-1">{userProgress.totalDrinksMade}</div>
+                  <div className="text-sm text-gray-600 mb-2">Total Drinks Made</div>
+                  <Progress value={userProgress.dailyGoalProgress} className="w-24" />
+                  <div className="text-xs text-gray-500 mt-1">Daily Goal</div>
+                </div>
+              </div>
             </CardContent>
           </Card>
+
         </div>
-
-        {/* User Progress */}
-        <Card className="bg-gradient-to-r from-purple-100 to-pink-100 border-purple-200">
-          <CardContent className="p-6">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-purple-600" />
-              Your Smoothie Journey
-            </h3>
-            <div className="grid md:grid-cols-4 gap-6">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-purple-600 mb-1">
-                  {userProgress.totalDrinksMade}
-                </div>
-                <div className="text-sm text-gray-600">Smoothies Made</div>
-                <Progress value={userProgress.dailyGoalProgress} className="mt-2 h-2" />
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-blue-600 mb-1">
-                  {userProgress.currentStreak}
-                </div>
-                <div className="text-sm text-gray-600">Day Streak</div>
-                <div className="flex justify-center gap-1 mt-2">
-                  {[...Array(7)].map((_, i) => (
-                    <div
-                      key={i}
-                      className={`w-6 h-6 rounded ${
-                        i < userProgress.currentStreak
-                          ? 'bg-orange-400'
-                          : 'bg-gray-200'
-                      }`}
-                    />
-                  ))}
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-green-600 mb-1">
-                  {favorites.length}
-                </div>
-                <div className="text-sm text-gray-600">Favorite Recipes</div>
-                <div className="flex justify-center gap-1 mt-2">
-                  <Heart className="w-6 h-6 text-red-400 fill-current" />
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-orange-600 mb-1">
-                  Level {userProgress.level}
-                </div>
-                <div className="text-sm text-gray-600">{userProgress.totalPoints} XP</div>
-                <Progress 
-                  value={(userProgress.totalPoints % 1000) / 10} 
-                  className="mt-2 h-2" 
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Share CTA */}
-        <Card className="bg-gradient-to-r from-purple-600 to-pink-600 text-white border-0">
-          <CardContent className="p-8 text-center">
-            <Gift className="w-16 h-16 mx-auto mb-4" />
-            <h3 className="text-2xl font-bold mb-2">Share Your Creation!</h3>
-            <p className="text-purple-100 mb-6">
-              Post your custom smoothies to inspire others and earn bonus XP
-            </p>
-            <div className="flex gap-4 justify-center">
-              <Button variant="secondary" size="lg">
-                <Camera className="w-5 h-5 mr-2" />
-                Take Photo
-              </Button>
-              <Button variant="secondary" size="lg">
-                <Share2 className="w-5 h-5 mr-2" />
-                Share Recipe
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Footer */}
-        <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold mb-2">Explore More Drinks</h3>
-                <p className="text-gray-600 mb-4">Discover protein shakes, detoxes, and cocktails</p>
-                <div className="flex gap-2">
-                  <Link href="/drinks/protein-shakes">
-                    <Button variant="outline" size="sm">Protein Shakes</Button>
-                  </Link>
-                  <Link href="/drinks/detoxes">
-                    <Button variant="outline" size="sm">Detox Drinks</Button>
-                  </Link>
-                  <Link href="/drinks/potent-potables">
-                    <Button variant="outline" size="sm">Cocktails</Button>
-                  </Link>
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600 mb-1">{userProgress.totalDrinksMade}</div>
-                <div className="text-sm text-gray-600 mb-2">Total Drinks Made</div>
-                <Progress value={userProgress.dailyGoalProgress} className="w-24" />
-                <div className="text-xs text-gray-500 mt-1">Daily Goal</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
-    </div>
+    </RequireAgeGate>
   );
 }
