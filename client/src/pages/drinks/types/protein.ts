@@ -1,32 +1,50 @@
-// client/src/pages/drinks/types/protein.ts
-import { LucideIcon } from 'lucide-react';
-
-export interface NutritionInfo {
+export interface ProteinNutrition {
   calories: number;
   protein: number;
   carbs: number;
   fat: number;
   fiber?: number;
   sugar?: number;
-  iron?: number;
-  bcaa?: number;
-  omega3?: number;
-  magnesium?: number;
+  calcium?: number;
   vitamin_c?: number;
   biotin?: number;
-  calcium?: number;
+  glucosamine?: number;
+  chondroitin?: number;
+  omega_3?: number;
+  selenium?: number;
+  glycine?: number;
+  proline?: number;
+  lysine?: number;
+  silica?: number;
+  curcumin?: number;
+  resveratrol?: number;
+  iron?: number;
+  bcaa?: number;
+  magnesium?: number;
   potassium?: number;
   vitamin_e?: number;
-  folate?: number;
-  vitamin_k?: number;
-  [key: string]: string | number | undefined;
+  beta_glucan?: number;
+  caffeine?: number;
+  melatonin?: number;
+  zinc?: number;
+  phosphorus?: number;
+  glutamine?: number;
+  leucine?: number;
+  tryptophan?: number;
+  vitamin_b6?: number;
+  l_theanine?: number;
 }
 
-export interface ProteinRecipe {
+export interface ProteinShake {
   id: string;
   name: string;
   description: string;
   image?: string;
+  proteinType: 'whey' | 'casein' | 'plant' | 'collagen' | 'egg' | 'beef';
+  proteinSource: string;
+  flavor: string;
+  servingSize: string;
+  nutrition: ProteinNutrition;
   ingredients: string[];
   benefits: string[];
   difficulty: 'Easy' | 'Medium' | 'Hard';
@@ -35,135 +53,91 @@ export interface ProteinRecipe {
   reviews: number;
   trending: boolean;
   featured: boolean;
-  estimatedCost?: number;
-  price?: number;
+  price: number;
   bestTime: string;
   fitnessGoal: string;
-  nutrition: NutritionInfo;
-  allergens: string[];
-  // Protein-specific properties
-  primaryProtein: string;
-  proteinSources: string[];
-  proteinType: string;
-  flavor: string;
-  servingSize: string;
-  naturalProtein?: boolean;
-  absorption?: string;
-  bioavailability?: number;
-  leucineContent?: number;
+  
+  // Whey-specific properties
+  wheyType?: 'Isolate' | 'Concentrate' | 'Hydrolyzed' | 'Whey-Casein Blend';
+  absorptionTime?: string;
+  leucineContent?: string;
+  
+  // Casein-specific properties
+  caseinType?: 'Micellar Casein' | 'Calcium Caseinate' | 'Hydrolyzed Casein';
+  releaseTime?: string;
+  absorption?: 'Fast' | 'Slow' | 'Very Slow' | 'Medium';
+  mixability?: 'Good' | 'Excellent' | 'Fair';
+  texture?: 'Thick' | 'Creamy' | 'Smooth' | 'Rich' | 'Frothy';
+  
+  // Collagen-specific properties
   collagenTypes?: string[];
   source?: string;
+  bioavailability?: number;
   certifications?: string[];
-  sustainability?: string;
+  ageGroup?: string;
+  
+  // Plant-based specific properties
   allergenFree?: string[];
-  wheyType?: string;
-  absorptionTime?: string;
-}
-
-export interface DrinkCategory {
-  id: string;
-  name: string;
-  description: string;
-  icon: LucideIcon;
-  route: string;
-  color: string;
-  count: string;
-}
-
-export interface ProteinSubcategory {
-  id: string;
-  name: string;
-  description: string;
-  icon: LucideIcon;
-  image?: string;
-  path: string;
-  count: number;
-  bgColor: string;
-  borderColor: string;
-  textColor: string;
-  trending?: boolean;
-  featured?: boolean;
-  avgCalories: number;
-  duration: string;
-  topBenefit: string;
-}
-
-export interface ProteinSource {
-  id: string;
-  name: string;
-  description: string;
-  icon: LucideIcon;
-  color: string;
-  proteinPer100g: number;
-  benefits: string[];
-  bestFor: string;
-  cost: string;
-  allergens: string[];
+  sustainability?: string;
+  certifications?: string[];
 }
 
 export interface ProteinType {
   id: string;
   name: string;
   description: string;
-  icon: LucideIcon;
+  icon: any; // Lucide icon component
   color: string;
-  benefits: string[];
-  digestibility: number;
-  sustainability: string;
-  commonUses: string[];
+  absorption?: string;
+  timing?: string;
+  biovalue?: number;
+  benefits?: string[];
+  releaseTime?: string;
+  bestFor?: string;
+  digestibility?: number;
+  sustainability?: string;
+  commonUses?: string[];
+  proteinContent?: string;
 }
 
 export interface FitnessGoal {
   id: string;
   name: string;
   description: string;
-  icon: LucideIcon;
+  icon: any;
   color: string;
-  recommendedIntake: string;
+  protein: number;
+  carbs: number;
+  recommendedIntake?: string;
+  timing?: string;
+  keyNutrients?: string[];
+  recommendedTiming?: string;
+}
+
+export interface Supplement {
+  id: string;
+  name: string;
+  amount: string;
+  benefit: string;
   timing: string;
 }
 
-export interface CollagenType {
-  id: string;
+export interface WorkoutPhase {
   name: string;
-  description: string;
-  icon: LucideIcon;
+  timing: string;
+  icon: any;
   color: string;
-  benefits: string[];
-  sources: string[];
-  percentage: string;
-  primaryUse: string;
+  focus: string;
+  recommendations: string[];
 }
 
-export interface CollagenSource {
-  id: string;
+export interface PopularRecipe {
   name: string;
-  description: string;
-  icon: LucideIcon;
-  color: string;
-  bioavailability: string;
-  absorption: string;
-  benefits: string[];
-  bestFor: string;
-}
-
-export interface BeautyGoal {
-  id: string;
-  name: string;
-  description: string;
-  icon: LucideIcon;
-  color: string;
-  recommendedTypes: string[];
-  recommendedDosage: string;
-  timeline: string;
-}
-
-export interface WheyType {
-  id: string;
-  name: string;
-  description: string;
-  icon: LucideIcon;
-  absorptionTime: string;
-  proteinContent: string;
-  bestFor: string;
+  protein: number;
+  carbs: number;
+  calories: number;
+  ingredients: string[];
+  rating: number;
+  reviews: number;
+  goal: string;
 }
