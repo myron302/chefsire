@@ -705,3 +705,216 @@ export default function CaseinProteinPage() {
                 <Card key={goal.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="flex items-center gap-3 mb-2">
+                      <div className={`p-2 ${goal.color.replace('bg-', 'bg-').replace('-500', '-100')} rounded-lg`}>
+                        <Icon className={`h-6 w-6 ${goal.color.replace('bg-', 'text-')}`} />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">{goal.name}</CardTitle>
+                        <p className="text-sm text-gray-600">{goal.description}</p>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  
+                  <CardContent>
+                    <div className="space-y-3 mb-4">
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <div className="text-sm font-medium text-gray-700 mb-1">Timing:</div>
+                        <div className="text-sm text-purple-800">{goal.recommendedTiming}</div>
+                      </div>
+                      
+                      <div>
+                        <h4 className="font-semibold text-sm mb-2">Key Nutrients:</h4>
+                        <div className="flex flex-wrap gap-1">
+                          {goal.keyNutrients.map((nutrient, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {nutrient}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="text-center">
+                      <div className={`text-2xl font-bold ${goal.color.replace('bg-', 'text-')} mb-1`}>
+                        {goalShakes.length}
+                      </div>
+                      <div className="text-sm text-gray-600 mb-3">Perfect Matches</div>
+                      <Button 
+                        className="w-full"
+                        onClick={() => {
+                          setSelectedGoal(goal.name.split(' ')[0]);
+                          setActiveTab('browse');
+                        }}
+                      >
+                        View {goal.name} Options
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Featured Tab */}
+        {activeTab === 'featured' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {featuredShakes.map(shake => (
+              <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow">
+                <div className="relative">
+                  <img 
+                    src={shake.image} 
+                    alt={shake.name}
+                    className="w-full h-48 object-cover"
+                    onError={(e) => {
+                      e.currentTarget.src = 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=300&fit=crop';
+                    }}
+                  />
+                  <div className="absolute top-4 left-4">
+                    <Badge className="bg-purple-500 text-white">Featured Casein</Badge>
+                  </div>
+                  <div className="absolute top-4 right-4">
+                    <Badge className="bg-white text-purple-800">{shake.releaseTime}</Badge>
+                  </div>
+                </div>
+                
+                <CardHeader>
+                  <CardTitle className="text-xl">{shake.name}</CardTitle>
+                  <p className="text-gray-600">{shake.description}</p>
+                  
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge className="bg-purple-100 text-purple-800">{shake.caseinType}</Badge>
+                    <Badge variant="outline">{shake.flavor}</Badge>
+                    <div className="flex items-center gap-1 ml-auto">
+                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                      <span className="font-medium">{shake.rating}</span>
+                      <span className="text-gray-500 text-sm">({shake.reviews})</span>
+                    </div>
+                  </div>
+                </CardHeader>
+                
+                <CardContent>
+                  {/* Enhanced nutrition display */}
+                  <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-purple-50 rounded-lg">
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-purple-600">{shake.nutrition.protein}g</div>
+                      <div className="text-xs text-gray-600">Protein</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div>
+                      <div className="text-xs text-gray-600">Calories</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-green-600">{shake.nutrition.calcium}mg</div>
+                      <div className="text-xs text-gray-600">Calcium</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-amber-600">${shake.price}</div>
+                      <div className="text-xs text-gray-600">Price</div>
+                    </div>
+                  </div>
+
+                  {/* Benefits */}
+                  <div className="mb-4">
+                    <h4 className="font-medium text-gray-900 mb-2">Key Benefits:</h4>
+                    <div className="flex flex-wrap gap-1">
+                      {shake.benefits.map((benefit, index) => (
+                        <Badge key={index} variant="outline" className="text-xs">
+                          {benefit}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Timing & Usage */}
+                  <div className="mb-4 bg-gray-50 p-4 rounded-lg">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-1">Best Time:</div>
+                        <div className="text-purple-600 font-semibold">{shake.bestTime}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-1">Release Time:</div>
+                        <div className="text-blue-600 font-semibold">{shake.releaseTime}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ingredients */}
+                  <div className="mb-6">
+                    <h4 className="font-medium text-gray-900 mb-2">Ingredients:</h4>
+                    <div className="text-sm text-gray-700 space-y-1">
+                      {shake.ingredients.map((ingredient, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <Moon className="h-3 w-3 text-purple-500" />
+                          {ingredient}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex gap-3">
+                    <Button 
+                      className="flex-1 bg-purple-600 hover:bg-purple-700"
+                      onClick={() => handleMakeShake(shake)}
+                    >
+                      <Moon className="h-4 w-4 mr-2" />
+                      Make This Shake
+                    </Button>
+                    <Button variant="outline">
+                      <Share2 className="h-4 w-4 mr-2" />
+                      Share
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Floating Action Button */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <Button 
+          size="lg" 
+          className="rounded-full w-14 h-14 bg-purple-600 hover:bg-purple-700 shadow-lg"
+          onClick={() => setActiveTab('browse')}
+        >
+          <Plus className="h-6 w-6" />
+        </Button>
+      </div>
+
+      {/* Bottom Stats Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <Moon className="h-4 w-4 text-purple-600" />
+              <span className="text-gray-600">Casein Proteins Found:</span>
+              <span className="font-bold text-purple-600">{filteredShakes.length}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Star className="h-4 w-4 text-yellow-500" />
+              <span className="text-gray-600">Your Level:</span>
+              <span className="font-bold text-yellow-600">{userProgress.level}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-green-500" />
+              <span className="text-gray-600">XP:</span>
+              <span className="font-bold text-green-600">{userProgress.totalPoints}</span>
+            </div>
+          </div>
+          
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          >
+            Back to Top
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
