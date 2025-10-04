@@ -69,8 +69,7 @@ import RumPage from "@/pages/drinks/potent-potables/rum";
 import ScotchIrishWhiskeyPage from "@/pages/drinks/potent-potables/scotch-irish-whiskey";
 import SeasonalPage from "@/pages/drinks/potent-potables/seasonal";
 import TequilaMezcalPage from "@/pages/drinks/potent-potables/tequila-mezcal";
-// ✅ FIX: import the actual component/name/path you sent
-import VirginDrinksPage from "@/pages/drinks/potent-potables/VirginDrinksPage";
+import VirginCocktailsPage from "@/pages/drinks/potent-potables/virgin-cocktails";
 import VodkaPage from "@/pages/drinks/potent-potables/vodka";
 import WhiskeyBourbonPage from "@/pages/drinks/potent-potables/whiskey-bourbon";
 
@@ -88,18 +87,13 @@ function RecipesSection() {
   return (
     <RecipesFiltersProvider>
       <Switch>
-        {/* ========== BABY FOOD ROUTES ========== */}
         <Route path="/recipes/baby-food/purees" component={BabyFoodPurees} />
         <Route path="/recipes/baby-food/mashed" component={BabyFoodMashed} />
         <Route path="/recipes/baby-food/finger-foods" component={BabyFoodFingerFoods} />
         <Route path="/recipes/baby-food/toddler" component={BabyFoodToddler} />
         <Route path="/recipes/baby-food" component={BabyFoodHub} />
-        
-        {/* ========== MAIN RECIPE ROUTES ========== */}
         <Route path="/recipes/filters" component={RecipesFiltersPage} />
         <Route path="/recipes" component={RecipesListPage} />
-        
-        {/* Catch-all for recipes section */}
         <Route>
           <Redirect to="/recipes" />
         </Route>
@@ -112,7 +106,6 @@ function PotentPotablesSection() {
   return (
     <RequireAgeGate>
       <Switch>
-        {/* Specific routes first */}
         <Route path="/drinks/potent-potables/cocktails" component={CocktailsPage} />
         <Route path="/drinks/potent-potables/cognac-brandy" component={CognacBrandyPage} />
         <Route path="/drinks/potent-potables/martinis" component={MartinisPage} />
@@ -121,14 +114,12 @@ function PotentPotablesSection() {
         <Route path="/drinks/potent-potables/scotch-irish-whiskey" component={ScotchIrishWhiskeyPage} />
         <Route path="/drinks/potent-potables/seasonal" component={SeasonalPage} />
         <Route path="/drinks/potent-potables/tequila-mezcal" component={TequilaMezcalPage} />
-        {/* ✅ FIX: make route match the card link */}
-        <Route path="/drinks/potent-potables/virgin" component={VirginDrinksPage} />
+        {/* ✅ Virgin routes */}
+        <Route path="/drinks/potent-potables/virgin" component={VirginCocktailsPage} />
+        <Route path="/drinks/potent-potables/virgin-cocktails" component={VirginCocktailsPage} />
         <Route path="/drinks/potent-potables/vodka" component={VodkaPage} />
         <Route path="/drinks/potent-potables/whiskey-bourbon" component={WhiskeyBourbonPage} />
-        {/* Hub last */}
         <Route path="/drinks/potent-potables" component={PotentPotablesHub} />
-        
-        {/* Catch-all for potent potables */}
         <Route>
           <Redirect to="/drinks/potent-potables" />
         </Route>
@@ -140,37 +131,26 @@ function PotentPotablesSection() {
 function DrinksSection() {
   return (
     <Switch>
-      {/* ========== SMOOTHIES ROUTES ========== */}
       <Route path="/drinks/smoothies/breakfast" component={BreakfastSmoothies} />
       <Route path="/drinks/smoothies/dessert" component={DessertSmoothies} />
       <Route path="/drinks/smoothies/green" component={GreenSmoothies} />
       <Route path="/drinks/smoothies/protein" component={ProteinSmoothies} />
       <Route path="/drinks/smoothies/workout" component={WorkoutSmoothies} />
       <Route path="/drinks/smoothies" component={SmoothiesHub} />
-
-      {/* ========== PROTEIN SHAKES ROUTES ========== */}
       <Route path="/drinks/protein-shakes/casein" component={CaseinProtein} />
       <Route path="/drinks/protein-shakes/collagen" component={CollagenProtein} />
       <Route path="/drinks/protein-shakes/plant-based" component={PlantBasedProtein} />
       <Route path="/drinks/protein-shakes/whey" component={WheyProtein} />
       <Route path="/drinks/protein-shakes" component={ProteinShakesHub} />
-
-      {/* ========== DETOXES ROUTES ========== */}
       <Route path="/drinks/detoxes/juice" component={DetoxJuices} />
       <Route path="/drinks/detoxes/tea" component={DetoxTeas} />
       <Route path="/drinks/detoxes/water" component={DetoxWaters} />
       <Route path="/drinks/detoxes" component={DetoxesHub} />
-
-      {/* ========== POTENT POTABLES ROUTES (AGE-GATED) ========== */}
       <Route path="/drinks/potent-potables/:rest*">
         {(params) => <PotentPotablesSection />}
       </Route>
       <Route path="/drinks/potent-potables" component={PotentPotablesSection} />
-
-      {/* ========== MAIN DRINKS HUB ========== */}
       <Route path="/drinks" component={DrinksHubPage} />
-      
-      {/* Catch-all for drinks section */}
       <Route>
         <Redirect to="/drinks" />
       </Route>
@@ -184,17 +164,10 @@ function Router() {
       {shouldShowDebugConsole() && <DebugConsole />}
 
       <Switch>
-        {/* Most specific routes first */}
         <Route path="/profile/:userId?" component={Profile} />
-
-        {/* Main navigation routes */}
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
-
-        {/* Explore */}
         <Route path="/explore" component={ExplorePage} />
-
-        {/* ========== RECIPES ROUTES - FIXED STRUCTURE ========== */}
         <Route path="/recipes/baby-food/:rest*">
           {(params) => <RecipesSection />}
         </Route>
@@ -203,40 +176,24 @@ function Router() {
           {(params) => <RecipesSection />}
         </Route>
         <Route path="/recipes" component={RecipesSection} />
-
-        {/* Backward-compat */}
         <Route path="/explore/filters">
           <Redirect to="/recipes/filters" />
         </Route>
-
         <Route path="/create" component={CreatePost} />
-
-        {/* Feature routes */}
         <Route path="/pantry">
           <ErrorBoundary>
             <Pantry />
           </ErrorBoundary>
         </Route>
-
-        {/* Store alias */}
         <Route path="/store" component={Marketplace} />
-
-        {/* Others */}
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/catering" component={CateringMarketplace} />
         <Route path="/catering/wedding-planning" component={WeddingPlanning} />
-
-        {/* Backward compatibility */}
         <Route path="/potent-potables">
           <Redirect to="/drinks/potent-potables" />
         </Route>
-
         <Route path="/nutrition" component={NutritionMealPlanner} />
-
-        {/* Substitutions */}
         <Route path="/substitutions" component={SubstitutionsPage} />
-
-        {/* ========== DRINKS TREE - ALL ROUTES ========== */}
         <Route path="/drinks/smoothies/:rest*">
           {(params) => <DrinksSection />}
         </Route>
@@ -253,13 +210,9 @@ function Router() {
           {(params) => <DrinksSection />}
         </Route>
         <Route path="/drinks" component={DrinksSection} />
-
-        {/* Placeholder routes */}
         <Route path="/saved" component={NotFound} />
         <Route path="/following" component={NotFound} />
         <Route path="/settings" component={NotFound} />
-
-        {/* Catch-all route - must be last */}
         <Route component={NotFound} />
       </Switch>
     </Layout>
