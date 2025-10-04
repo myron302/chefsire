@@ -4,14 +4,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Slider } from "@/components/ui/slider";
 import { 
   Sparkles, Clock, Users, Trophy, Heart, Star, Calendar, 
   CheckCircle, Target, Flame, Droplets, Leaf, Apple,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Dumbbell, Activity, BarChart3, Shuffle, Camera, Share2,
-  FlaskConical, Weight, Gauge, Triangle, Waves, Shield,
-  Search, ArrowRight, Wine, Home, ArrowLeft
+  Search, ArrowRight, Coffee, IceCream, X, FlaskConical, 
+  GlassWater, ArrowLeft, Home, Wine
 } from 'lucide-react';
 
 import UniversalSearch from '@/components/UniversalSearch';
@@ -19,111 +18,104 @@ import { useDrinks } from '@/contexts/DrinksContext';
 
 type Params = { params?: Record<string, string> };
 
-const fitnessGoals = [
-  { id: 'muscle', name: 'Muscle Building', icon: Dumbbell, color: 'bg-red-500', protein: 35, carbs: 40, description: 'Maximum muscle growth and recovery' },
-  { id: 'lean', name: 'Lean Muscle', icon: Target, color: 'bg-blue-500', protein: 30, carbs: 20, description: 'Build muscle while staying lean' },
-  { id: 'strength', name: 'Strength', icon: Trophy, color: 'bg-purple-500', protein: 32, carbs: 35, description: 'Power and performance focused' },
-  { id: 'endurance', name: 'Endurance', icon: Activity, color: 'bg-green-500', protein: 25, carbs: 45, description: 'Sustained energy and recovery' },
-  { id: 'weight-loss', name: 'Weight Loss', icon: TrendingUp, color: 'bg-orange-500', protein: 28, carbs: 15, description: 'Fat loss with muscle preservation' },
-  { id: 'recovery', name: 'Recovery', icon: Heart, color: 'bg-pink-500', protein: 30, carbs: 25, description: 'Optimal recovery and repair' }
+const smoothieSubcategories = [
+  { id: 'protein', name: 'High-Protein', icon: Zap, count: 24, route: '/drinks/smoothies/protein', description: 'Natural protein for muscle building' },
+  { id: 'green', name: 'Green Superfood', icon: Leaf, count: 28, route: '/drinks/smoothies/green', description: 'Nutrient-dense greens and superfoods' },
+  { id: 'dessert', name: 'Dessert', icon: IceCream, count: 32, route: '/drinks/smoothies/dessert', description: 'Guilt-free indulgent flavors' },
+  { id: 'breakfast', name: 'Breakfast', icon: Coffee, count: 26, route: '/drinks/smoothies/breakfast', description: 'Morning fuel with balanced nutrition' },
+  { id: 'workout', name: 'Workout', icon: Dumbbell, count: 22, route: '/drinks/smoothies/workout', description: 'Pre and post-workout energy' }
 ];
 
-const proteinTypes = [
-  { id: 'whey', name: 'Whey Protein', absorption: 'Fast', timing: 'Post-workout', biovalue: 95, description: 'Complete amino profile, fast absorption' },
-  { id: 'casein', name: 'Casein', absorption: 'Slow', timing: 'Before bed', biovalue: 85, description: 'Sustained release, anti-catabolic' },
-  { id: 'plant', name: 'Plant Protein', absorption: 'Medium', timing: 'Anytime', biovalue: 75, description: 'Vegan-friendly, digestive friendly' },
-  { id: 'egg', name: 'Egg Protein', absorption: 'Medium', timing: 'Morning', biovalue: 90, description: 'Complete amino acids, lactose-free' },
-  { id: 'beef', name: 'Beef Protein', absorption: 'Fast', timing: 'Post-workout', biovalue: 88, description: 'Rich in creatine and amino acids' }
+const ingredients = {
+  fruits: [
+    { name: "Banana", calories: 89, protein: 1.1, carbs: 22.8, fiber: 2.6, icon: "🍌", boost: "potassium" },
+    { name: "Strawberry", calories: 32, protein: 0.7, carbs: 7.7, fiber: 2.0, icon: "🍓", boost: "vitamin-c" },
+    { name: "Blueberry", calories: 57, protein: 0.7, carbs: 14.5, fiber: 2.4, icon: "🫐", boost: "antioxidants" },
+    { name: "Mango", calories: 60, protein: 0.8, carbs: 15.0, fiber: 1.6, icon: "🥭", boost: "vitamin-a" },
+    { name: "Pineapple", calories: 50, protein: 0.5, carbs: 13.1, fiber: 1.4, icon: "🍍", boost: "bromelain" }
+  ],
+  vegetables: [
+    { name: "Spinach", calories: 7, protein: 0.9, carbs: 1.1, fiber: 0.7, icon: "🥬", boost: "iron" },
+    { name: "Kale", calories: 8, protein: 0.6, carbs: 1.4, fiber: 0.6, icon: "🥬", boost: "vitamin-k" },
+    { name: "Carrot", calories: 10, protein: 0.2, carbs: 2.3, fiber: 0.7, icon: "🥕", boost: "beta-carotene" },
+    { name: "Beetroot", calories: 13, protein: 0.4, carbs: 2.8, fiber: 0.8, icon: "🟣", boost: "nitrates" }
+  ],
+  liquids: [
+    { name: "Almond Milk", calories: 15, protein: 0.6, carbs: 0.6, fiber: 0.3, icon: "🥛", boost: "calcium" },
+    { name: "Coconut Water", calories: 19, protein: 0.7, carbs: 3.7, fiber: 1.1, icon: "🥥", boost: "electrolytes" },
+    { name: "Greek Yogurt", calories: 59, protein: 10.0, carbs: 3.6, fiber: 0, icon: "🥛", boost: "probiotics" },
+    { name: "Oat Milk", calories: 16, protein: 0.3, carbs: 1.9, fiber: 0.7, icon: "🥛", boost: "fiber" }
+  ],
+  boosters: [
+    { name: "Protein Powder", calories: 120, protein: 25.0, carbs: 2.0, fiber: 1.0, icon: "💪", boost: "muscle-building" },
+    { name: "Chia Seeds", calories: 58, protein: 2.0, carbs: 5.1, fiber: 4.9, icon: "🌰", boost: "omega-3" },
+    { name: "Flax Seeds", calories: 55, protein: 1.9, carbs: 3.0, fiber: 2.8, icon: "🌰", boost: "lignans" },
+    { name: "Spirulina", calories: 4, protein: 0.8, carbs: 0.2, fiber: 0.1, icon: "🟢", boost: "chlorophyll" }
+  ]
+};
+
+const workoutGoals = [
+  { id: 'pre-workout', name: 'Pre-Workout Energy', icon: '⚡', color: 'bg-orange-500', focus: 'carbs' },
+  { id: 'post-workout', name: 'Post-Workout Recovery', icon: '💪', color: 'bg-blue-500', focus: 'protein' },
+  { id: 'weight-loss', name: 'Weight Loss', icon: '🔥', color: 'bg-red-500', focus: 'low-cal' },
+  { id: 'muscle-gain', name: 'Muscle Building', icon: '🏋️', color: 'bg-green-500', focus: 'protein' },
+  { id: 'endurance', name: 'Endurance', icon: '🏃', color: 'bg-purple-500', focus: 'electrolytes' },
+  { id: 'recovery', name: 'Recovery', icon: '😌', color: 'bg-pink-500', focus: 'antioxidants' }
 ];
 
-const supplements = [
-  { id: 'creatine', name: 'Creatine', amount: '5g', benefit: 'Strength & Power', timing: 'Post-workout' },
-  { id: 'bcaa', name: 'BCAA', amount: '10g', benefit: 'Muscle Recovery', timing: 'Intra-workout' },
-  { id: 'glutamine', name: 'L-Glutamine', amount: '5g', benefit: 'Recovery & Immunity', timing: 'Post-workout' },
-  { id: 'beta-alanine', name: 'Beta-Alanine', amount: '3g', benefit: 'Endurance', timing: 'Pre-workout' },
-  { id: 'hmb', name: 'HMB', amount: '3g', benefit: 'Anti-Catabolic', timing: 'Post-workout' }
-];
-
-const workoutPhases = [
+const premadeRecipes = [
   {
-    name: 'Pre-Workout',
-    timing: '30-60 min before',
-    icon: Timer,
-    color: 'bg-orange-500',
-    focus: 'Energy & Focus',
-    recommendations: ['Light protein', 'Fast carbs', 'Caffeine', 'Beta-Alanine']
-  },
-  {
-    name: 'Post-Workout',
-    timing: '0-30 min after',
-    icon: Zap,
-    color: 'bg-green-500',
-    focus: 'Recovery & Growth',
-    recommendations: ['Fast protein', 'Simple carbs', 'Creatine', 'Glutamine']
-  },
-  {
-    name: 'Before Bed',
-    timing: '1-2 hours before bed',
-    icon: Calendar,
-    color: 'bg-purple-500',
-    focus: 'Overnight Recovery',
-    recommendations: ['Casein protein', 'Avoid caffeine', 'Magnesium', 'ZMA']
-  },
-  {
-    name: 'Intra-Workout',
-    timing: 'During training',
-    icon: Activity,
-    color: 'bg-blue-500',
-    focus: 'Performance & Hydration',
-    recommendations: ['BCAA', 'Electrolytes', 'Simple carbs', 'Caffeine']
-  }
-];
-
-const popularRecipes = [
-  {
-    id: 'protein-recipe-1',
-    name: 'Beast Mode Builder',
-    protein: 35,
-    carbs: 42,
-    calories: 380,
-    ingredients: ['Whey Protein', 'Banana', 'Oats', 'Peanut Butter', 'Milk'],
+    id: 1,
+    name: "Green Goddess Power",
+    ingredients: ["Spinach", "Banana", "Mango", "Coconut Water", "Chia Seeds"],
+    calories: 245,
+    protein: 8.2,
+    difficulty: "Easy",
+    time: "3 min",
     rating: 4.8,
-    reviews: 234,
-    goal: 'muscle'
+    likes: 1247,
+    workoutType: "pre-workout",
+    image: "https://images.unsplash.com/photo-1610970881699-44a5587cabec?w=400&h=300&fit=crop"
   },
   {
-    id: 'protein-recipe-2',
-    name: 'Lean Machine',
-    protein: 30,
-    carbs: 18,
-    calories: 220,
-    ingredients: ['Plant Protein', 'Berries', 'Spinach', 'Almond Milk', 'Chia Seeds'],
-    rating: 4.6,
-    reviews: 189,
-    goal: 'lean'
+    id: 2,
+    name: "Chocolate Protein Beast",
+    ingredients: ["Banana", "Protein Powder", "Almond Milk", "Flax Seeds"],
+    calories: 320,
+    protein: 28.5,
+    difficulty: "Easy", 
+    time: "2 min",
+    rating: 4.9,
+    likes: 2156,
+    workoutType: "post-workout",
+    image: "https://images.unsplash.com/photo-1553909489-cd47e0ef937f?w=400&h=300&fit=crop"
   },
   {
-    id: 'protein-recipe-3',
-    name: 'Power Surge',
-    protein: 32,
-    carbs: 38,
-    calories: 340,
-    ingredients: ['Whey Protein', 'Sweet Potato', 'Cinnamon', 'Greek Yogurt'],
+    id: 3,
+    name: "Berry Antioxidant Blast",
+    ingredients: ["Blueberry", "Strawberry", "Greek Yogurt", "Spirulina"],
+    calories: 180,
+    protein: 12.8,
+    difficulty: "Medium",
+    time: "4 min", 
     rating: 4.7,
-    reviews: 156,
-    goal: 'strength'
+    likes: 892,
+    workoutType: "recovery",
+    image: "https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400&h=300&fit=crop"
   }
 ];
 
-const proteinSubcategories = [
-  { id: 'whey', name: 'Whey Protein', icon: Zap, count: 6, route: '/drinks/protein-shakes/whey' },
-  { id: 'plant', name: 'Plant Protein', icon: Leaf, count: 4, route: '/drinks/protein-shakes/plant-based' },
-  { id: 'casein', name: 'Casein', icon: Calendar, count: 3, route: '/drinks/protein-shakes/casein' },
-  { id: 'collagen', name: 'Collagen', icon: Sparkles, count: 2, route: '/drinks/protein-shakes/collagen' },
-  { id: 'egg', name: 'Egg Protein', icon: Target, count: 2, route: '/drinks/protein-shakes/egg' }
-];
+const dailyChallenge = {
+  name: "Green Machine Monday",
+  description: "Create a smoothie with at least 3 green ingredients",
+  progress: 2,
+  goal: 3,
+  participants: 3247,
+  reward: "Green Warrior Badge + 200 XP",
+  timeLeft: "18h 42m"
+};
 
-export default function ProteinShakesPage({ params }: Params) {
+export default function SmoothiesPage({ params }: Params) {
   const { 
     userProgress, 
     addPoints, 
@@ -131,86 +123,124 @@ export default function ProteinShakesPage({ params }: Params) {
     addToFavorites, 
     isFavorite,
     addToRecentlyViewed,
-    favorites,
-    getRecommendations
+    favorites
   } = useDrinks();
 
-  const [selectedGoal, setSelectedGoal] = useState(fitnessGoals[0]);
-  const [selectedProtein, setSelectedProtein] = useState(proteinTypes[0]);
-  const [selectedSupplements, setSelectedSupplements] = useState([]);
-  const [selectedPhase, setSelectedPhase] = useState(workoutPhases[1]);
-  const [proteinAmount, setProteinAmount] = useState([30]);
-  const [showNutrition, setShowNutrition] = useState(false);
-  const [dailyProteinGoal] = useState(150);
-  const [consumedProtein, setConsumedProtein] = useState(85);
-
   const type = params?.type?.replaceAll("-", " ");
-  const recommendations = getRecommendations('protein-shakes');
+  const [activeTab, setActiveTab] = useState('create');
+  const [selectedGoal, setSelectedGoal] = useState(workoutGoals[0]);
+  const [customSmoothie, setCustomSmoothie] = useState({
+    ingredients: [],
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fiber: 0
+  });
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [createdSmoothie, setCreatedSmoothie] = useState(null);
 
-  const calculateNutrition = () => {
-    const protein = proteinAmount[0];
-    const carbs = selectedGoal.carbs;
-    const calories = (protein * 4) + (carbs * 4) + 50;
-    return { protein, carbs, calories };
-  };
-
-  const nutrition = calculateNutrition();
-  const proteinProgress = (consumedProtein / dailyProteinGoal) * 100;
-
-  const buildShake = () => {
-    const shakeData = {
-      id: `custom-protein-${Date.now()}`,
-      name: `Custom ${selectedGoal.name} Protein Shake`,
-      category: 'protein-shakes' as const,
-      description: `${selectedProtein.name} shake optimized for ${selectedGoal.name.toLowerCase()}`,
-      ingredients: [selectedProtein.name, 'Water/Milk', ...selectedSupplements.map(s => s.name)],
-      nutrition: {
-        calories: nutrition.calories,
-        protein: nutrition.protein,
-        carbs: nutrition.carbs,
-        fat: 3
-      },
-      difficulty: 'Easy' as const,
-      prepTime: 3,
-      rating: 5,
-      fitnessGoal: selectedGoal.name,
-      bestTime: selectedProtein.timing
-    };
-
-    addToRecentlyViewed(shakeData);
-    incrementDrinksMade();
-    addPoints(125);
-    setConsumedProtein(prev => prev + nutrition.protein);
+  const addIngredient = (ingredient, category) => {
+    const newIngredient = { ...ingredient, category, id: Date.now() };
+    const newIngredients = [...customSmoothie.ingredients, newIngredient];
     
-    console.log(`Built ${shakeData.name}! +125 XP`);
+    setCustomSmoothie({
+      ingredients: newIngredients,
+      calories: newIngredients.reduce((sum, ing) => sum + ing.calories, 0),
+      protein: newIngredients.reduce((sum, ing) => sum + ing.protein, 0),
+      carbs: newIngredients.reduce((sum, ing) => sum + ing.carbs, 0),
+      fiber: newIngredients.reduce((sum, ing) => sum + ing.fiber, 0)
+    });
   };
 
-  const makeRecipe = (recipe) => {
-    const shakeData = {
-      id: recipe.id,
+  const removeIngredient = (ingredientId) => {
+    const newIngredients = customSmoothie.ingredients.filter(ing => ing.id !== ingredientId);
+    setCustomSmoothie({
+      ingredients: newIngredients,
+      calories: newIngredients.reduce((sum, ing) => sum + ing.calories, 0),
+      protein: newIngredients.reduce((sum, ing) => sum + ing.protein, 0),
+      carbs: newIngredients.reduce((sum, ing) => sum + ing.carbs, 0),
+      fiber: newIngredients.reduce((sum, ing) => sum + ing.fiber, 0)
+    });
+  };
+
+  const createSmoothie = () => {
+    if (customSmoothie.ingredients.length >= 3) {
+      const smoothieData = {
+        id: `custom-${Date.now()}`,
+        name: `Custom ${selectedGoal.name} Smoothie`,
+        category: 'smoothies' as const,
+        description: `Custom blend with ${customSmoothie.ingredients.length} ingredients`,
+        ingredients: customSmoothie.ingredients.map(ing => ing.name),
+        nutrition: {
+          calories: Math.round(customSmoothie.calories),
+          protein: Math.round(customSmoothie.protein * 10) / 10,
+          carbs: Math.round(customSmoothie.carbs * 10) / 10,
+          fat: 2
+        },
+        difficulty: 'Custom' as const,
+        prepTime: 5,
+        rating: 5,
+        fitnessGoal: selectedGoal.name,
+        bestTime: selectedGoal.id.includes('pre') ? 'Pre-workout' : 'Post-workout'
+      };
+
+      setCreatedSmoothie(customSmoothie);
+      setShowSuccess(true);
+      
+      addToRecentlyViewed(smoothieData);
+      incrementDrinksMade();
+      addPoints(150);
+      
+      setTimeout(() => setShowSuccess(false), 3000);
+    }
+  };
+
+  const makePremadeRecipe = (recipe) => {
+    const smoothieData = {
+      id: `recipe-${recipe.id}`,
       name: recipe.name,
-      category: 'protein-shakes' as const,
-      description: `Popular ${recipe.goal} protein shake`,
+      category: 'smoothies' as const,
+      description: `Popular recipe with ${recipe.rating}★ rating`,
       ingredients: recipe.ingredients,
       nutrition: {
         calories: recipe.calories,
         protein: recipe.protein,
-        carbs: recipe.carbs,
-        fat: 5
+        carbs: Math.round(recipe.calories * 0.6 / 4),
+        fat: 3
       },
-      difficulty: 'Easy' as const,
-      prepTime: 3,
+      difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
+      prepTime: parseInt(recipe.time),
       rating: recipe.rating,
-      fitnessGoal: recipe.goal,
-      bestTime: 'Post-workout'
+      fitnessGoal: recipe.workoutType,
+      bestTime: recipe.workoutType.includes('pre') ? 'Pre-workout' : 'Post-workout'
     };
 
-    addToRecentlyViewed(shakeData);
+    addToRecentlyViewed(smoothieData);
     incrementDrinksMade();
     addPoints(100);
-    setConsumedProtein(prev => prev + recipe.protein);
     
-    console.log(`Made ${recipe.name}! +100 XP`);
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 3000);
+  };
+
+  const randomizeSmoothie = () => {
+    const randomFruit = ingredients.fruits[Math.floor(Math.random() * ingredients.fruits.length)];
+    const randomLiquid = ingredients.liquids[Math.floor(Math.random() * ingredients.liquids.length)];
+    const randomVeggie = ingredients.vegetables[Math.floor(Math.random() * ingredients.vegetables.length)];
+    
+    const randomIngredients = [
+      { ...randomFruit, category: 'fruits', id: Date.now() + 1 },
+      { ...randomLiquid, category: 'liquids', id: Date.now() + 2 },
+      { ...randomVeggie, category: 'vegetables', id: Date.now() + 3 }
+    ];
+
+    setCustomSmoothie({
+      ingredients: randomIngredients,
+      calories: randomIngredients.reduce((sum, ing) => sum + ing.calories, 0),
+      protein: randomIngredients.reduce((sum, ing) => sum + ing.protein, 0),
+      carbs: randomIngredients.reduce((sum, ing) => sum + ing.carbs, 0),
+      fiber: randomIngredients.reduce((sum, ing) => sum + ing.fiber, 0)
+    });
   };
 
   const handleDrinkSelection = (drink) => {
@@ -218,567 +248,740 @@ export default function ProteinShakesPage({ params }: Params) {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-      {/* UNIFORM HERO SECTION */}
-      <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white py-12 px-6 rounded-xl shadow-2xl">
-        <div className="max-w-7xl mx-auto">
-          <Link href="/drinks">
-            <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Drinks Hub
-            </Button>
-          </Link>
-          
-          <div className="flex items-center gap-4 mb-6">
-            <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
-              <FlaskConical className="h-12 w-12" />
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
+      
+      {showSuccess && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+          <div className="bg-gradient-to-r from-green-400 to-blue-500 text-white p-8 rounded-3xl shadow-2xl animate-bounce">
+            <div className="text-center">
+              <Sparkles className="w-20 h-20 mx-auto mb-4" />
+              <h2 className="text-3xl font-bold mb-2">Smoothie Created!</h2>
+              <p className="text-xl">+{customSmoothie.ingredients.length >= 3 ? '150' : '100'} XP earned!</p>
             </div>
-            <div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-2">Protein Shakes</h1>
-              <p className="text-xl text-blue-100">Science-backed protein solutions for your fitness goals</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <FlaskConical className="h-8 w-8 mx-auto mb-2 text-blue-300" />
-                <div className="text-2xl font-bold">18</div>
-                <div className="text-sm text-blue-100">Total Recipes</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Dumbbell className="h-8 w-8 mx-auto mb-2 text-purple-300" />
-                <div className="text-2xl font-bold">30g</div>
-                <div className="text-sm text-blue-100">Avg Protein</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Star className="h-8 w-8 mx-auto mb-2 text-yellow-400" />
-                <div className="text-2xl font-bold">{userProgress.totalDrinksMade}</div>
-                <div className="text-sm text-blue-100">Shakes Made</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Trophy className="h-8 w-8 mx-auto mb-2 text-orange-400" />
-                <div className="text-2xl font-bold">Level {userProgress.level}</div>
-                <div className="text-sm text-blue-100">{userProgress.totalPoints} XP</div>
-              </CardContent>
-            </Card>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Cross-Hub Navigation */}
-      <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Home className="w-4 h-4 text-gray-600" />
-            <span className="text-sm text-gray-600">Explore Other Categories</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
+      <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-8">
+        
+        {/* UNIFORM HERO SECTION */}
+        <div className="bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 text-white py-12 px-6 rounded-xl shadow-2xl">
+          <div className="max-w-7xl mx-auto">
             <Link href="/drinks">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Sparkles className="w-4 h-4" />
-                All Drinks
+              <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Drinks Hub
               </Button>
             </Link>
-            <Link href="/drinks/smoothies">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Apple className="w-4 h-4" />
-                Smoothies
-              </Button>
-            </Link>
-            <Link href="/drinks/detoxes">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Leaf className="w-4 h-4" />
-                Detoxes
-              </Button>
-            </Link>
-            <Link href="/drinks/potent-potables">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Wine className="w-4 h-4" />
-                Potent Potables (21+)
-              </Button>
-            </Link>
+            
+            <div className="flex items-center gap-4 mb-6">
+              <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
+                <Apple className="h-12 w-12" />
+              </div>
+              <div>
+                <h1 className="text-4xl md:text-5xl font-bold mb-2">Smoothie Studio</h1>
+                <p className="text-xl text-purple-100">Craft the perfect smoothie for your fitness goals</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                <CardContent className="p-4 text-center">
+                  <Apple className="h-8 w-8 mx-auto mb-2 text-pink-300" />
+                  <div className="text-2xl font-bold">132</div>
+                  <div className="text-sm text-purple-100">Total Recipes</div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                <CardContent className="p-4 text-center">
+                  <Flame className="h-8 w-8 mx-auto mb-2 text-orange-300" />
+                  <div className="text-2xl font-bold">245</div>
+                  <div className="text-sm text-purple-100">Avg Calories</div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                <CardContent className="p-4 text-center">
+                  <Heart className="h-8 w-8 mx-auto mb-2 text-red-300" />
+                  <div className="text-2xl font-bold">{favorites.length}</div>
+                  <div className="text-sm text-purple-100">Favorites</div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                <CardContent className="p-4 text-center">
+                  <Sparkles className="h-8 w-8 mx-auto mb-2 text-yellow-300" />
+                  <div className="text-2xl font-bold">{userProgress.currentStreak}</div>
+                  <div className="text-sm text-purple-100">Day Streak</div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Universal Search */}
-      <div className="max-w-2xl mx-auto">
-        <UniversalSearch 
-          onSelectDrink={handleDrinkSelection}
-          placeholder="Search all drinks or find protein shake inspiration..."
-          className="w-full"
-        />
-      </div>
-
-      {/* Protein Subcategories Navigation */}
-      <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
-        <CardContent className="p-6">
-          <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-            <FlaskConical className="w-5 h-5 text-blue-500" />
-            Explore Protein Types
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {proteinSubcategories.map((subcategory) => {
-              const Icon = subcategory.icon;
-              return (
-                <Link key={subcategory.id} href={subcategory.route}>
-                  <Button
-                    variant="outline"
-                    className="h-auto p-4 flex flex-col items-center gap-2 hover:bg-blue-50 hover:border-blue-300 w-full"
-                  >
-                    <Icon className="h-6 w-6 text-blue-600" />
-                    <div className="text-center">
-                      <div className="font-medium text-sm">{subcategory.name}</div>
-                      <div className="text-xs text-gray-500">{subcategory.count} recipes</div>
-                    </div>
-                    <ArrowRight className="h-3 w-3 text-gray-400" />
-                  </Button>
-                </Link>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Rest of the content remains the same... */}
-      {favorites.filter(f => f.category === 'protein-shakes').length > 0 && (
-        <Card className="bg-gradient-to-r from-red-100 to-orange-100 border-red-200">
-          <CardContent className="p-6">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Heart className="w-5 h-5 text-red-500" />
-              Your Favorite Protein Shakes ({favorites.filter(f => f.category === 'protein-shakes').length})
-            </h3>
-            <div className="flex gap-3 overflow-x-auto pb-2">
-              {favorites.filter(f => f.category === 'protein-shakes').slice(0, 5).map((drink) => (
-                <div key={drink.id} className="flex-shrink-0 bg-white rounded-lg p-3 shadow-sm min-w-[200px]">
-                  <div className="font-medium text-sm mb-1">{drink.name}</div>
-                  <div className="text-xs text-gray-600 mb-2">{drink.nutrition?.protein}g protein</div>
-                  <Button size="sm" variant="outline" className="w-full text-xs">
-                    Make Again
-                  </Button>
-                </div>
-              ))}
+        {/* Cross-Hub Navigation */}
+        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Link href="/drinks/protein-shakes">
+                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
+                  <FlaskConical className="h-4 w-4 mr-2 text-blue-600" />
+                  <span>Protein Shakes</span>
+                  <ArrowRight className="h-3 w-3 ml-auto" />
+                </Button>
+              </Link>
+              <Link href="/drinks/detoxes">
+                <Button variant="outline" className="w-full justify-start hover:bg-teal-50 hover:border-teal-300">
+                  <Leaf className="h-4 w-4 mr-2 text-teal-600" />
+                  <span>Detoxes & Cleanses</span>
+                  <ArrowRight className="h-3 w-3 ml-auto" />
+                </Button>
+              </Link>
+              <Link href="/drinks/potent-potables">
+                <Button variant="outline" className="w-full justify-start hover:bg-purple-50 hover:border-purple-300">
+                  <GlassWater className="h-4 w-4 mr-2 text-purple-600" />
+                  <span>Potent Potables</span>
+                  <ArrowRight className="h-3 w-3 ml-auto" />
+                </Button>
+              </Link>
             </div>
           </CardContent>
         </Card>
-      )}
 
-      <Card className="bg-gradient-to-r from-blue-50 to-purple-50">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-semibold">Daily Protein Progress</h3>
-            <div className="flex items-center gap-4">
-              <Badge className="bg-blue-500">
-                <Target className="h-4 w-4 mr-1" />
-                {Math.round(proteinProgress)}% Complete
-              </Badge>
-              <Badge variant="outline" className="text-blue-600">
-                Level {userProgress.level}
-              </Badge>
+        {/* Universal Search */}
+        <div className="max-w-2xl mx-auto">
+          <UniversalSearch 
+            onSelectDrink={handleDrinkSelection}
+            placeholder="Search all drinks or find smoothie inspiration..."
+            className="w-full"
+          />
+        </div>
+
+        {/* Smoothie Subcategories */}
+        <Card className="bg-gradient-to-r from-green-50 to-purple-50 border-green-200">
+          <CardContent className="p-6">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+              <Apple className="w-5 h-5 text-green-500" />
+              Explore Smoothie Types
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {smoothieSubcategories.map((subcategory) => {
+                const Icon = subcategory.icon;
+                return (
+                  <Link key={subcategory.id} href={subcategory.route}>
+                    <Button
+                      variant="outline"
+                      className="h-auto p-4 flex flex-col items-center gap-2 hover:bg-green-50 hover:border-green-300 w-full"
+                    >
+                      <Icon className="h-6 w-6 text-green-600" />
+                      <div className="text-center">
+                        <div className="font-medium text-sm">{subcategory.name}</div>
+                        <div className="text-xs text-gray-500">{subcategory.count} recipes</div>
+                      </div>
+                      <ArrowRight className="h-3 w-3 text-gray-400" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Favorites */}
+        {favorites.length > 0 && (
+          <Card className="bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-200">
+            <CardContent className="p-6">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <Heart className="w-5 h-5 text-red-500 fill-current" />
+                Your Favorite Smoothies ({favorites.length})
+              </h3>
+              <div className="grid md:grid-cols-3 gap-4">
+                {favorites.slice(0, 3).map((fav) => (
+                  <div key={fav.id} className="p-4 bg-white rounded-lg border">
+                    <div className="font-semibold mb-1">{fav.name}</div>
+                    <div className="text-sm text-gray-600 mb-2">{fav.description}</div>
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="flex items-center gap-1">
+                        <Flame className="h-3 w-3" />
+                        {fav.nutrition.calories} cal
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Dumbbell className="h-3 w-3" />
+                        {fav.nutrition.protein}g
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Daily Challenge */}
+        <Card className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Target className="w-6 h-6" />
+                  <h3 className="text-2xl font-bold">{dailyChallenge.name}</h3>
+                </div>
+                <p className="text-blue-100 mb-4">{dailyChallenge.description}</p>
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="flex items-center gap-1">
+                    <Users className="w-4 h-4" />
+                    {dailyChallenge.participants.toLocaleString()} participating
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-4 h-4" />
+                    {dailyChallenge.timeLeft} left
+                  </span>
+                </div>
+              </div>
+              <div className="text-right">
+                <Badge className="bg-yellow-400 text-yellow-900 mb-2">
+                  <Award className="w-3 h-3 mr-1" />
+                  Reward
+                </Badge>
+                <div className="text-sm">{dailyChallenge.reward}</div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span>Progress: {dailyChallenge.progress}/{dailyChallenge.goal}</span>
+                <span>{Math.round((dailyChallenge.progress / dailyChallenge.goal) * 100)}%</span>
+              </div>
+              <Progress value={(dailyChallenge.progress / dailyChallenge.goal) * 100} className="h-3 bg-blue-300" />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Tab Navigation */}
+        <div className="flex gap-2 border-b">
+          <Button
+            variant={activeTab === 'create' ? 'default' : 'ghost'}
+            className={activeTab === 'create' ? 'bg-purple-600' : ''}
+            onClick={() => setActiveTab('create')}
+          >
+            <ChefHat className="w-4 h-4 mr-2" />
+            Create Custom
+          </Button>
+          <Button
+            variant={activeTab === 'browse' ? 'default' : 'ghost'}
+            className={activeTab === 'browse' ? 'bg-purple-600' : ''}
+            onClick={() => setActiveTab('browse')}
+          >
+            <Trophy className="w-4 h-4 mr-2" />
+            Popular Recipes
+          </Button>
+        </div>
+
+        {/* CREATE TAB */}
+        {activeTab === 'create' && (
+          <div className="space-y-6">
+            {/* Goal Selection */}
+            <Card>
+              <CardContent className="p-6">
+                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <Target className="w-5 h-5 text-purple-600" />
+                  Choose Your Fitness Goal
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {workoutGoals.map((goal) => (
+                    <Button
+                      key={goal.id}
+                      variant={selectedGoal.id === goal.id ? 'default' : 'outline'}
+                      className={`h-auto p-4 ${selectedGoal.id === goal.id ? goal.color + ' text-white' : ''}`}
+                      onClick={() => setSelectedGoal(goal)}
+                    >
+                      <div className="text-center w-full">
+                        <div className="text-2xl mb-2">{goal.icon}</div>
+                        <div className="font-medium">{goal.name}</div>
+                      </div>
+                    </Button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Ingredient Builder */}
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold flex items-center gap-2">
+                      <Apple className="w-5 h-5 text-red-500" />
+                      Select Ingredients
+                    </h3>
+                    <Button size="sm" variant="outline" onClick={randomizeSmoothie}>
+                      <Shuffle className="w-4 h-4 mr-2" />
+                      Randomize
+                    </Button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="font-semibold mb-2 text-sm text-gray-600">Fruits</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {ingredients.fruits.map((fruit) => (
+                          <Button
+                            key={fruit.name}
+                            size="sm"
+                            variant="outline"
+                            onClick={() => addIngredient(fruit, 'fruits')}
+                            className="justify-start"
+                          >
+                            <span className="mr-2">{fruit.icon}</span>
+                            {fruit.name}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-semibold mb-2 text-sm text-gray-600">Vegetables</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {ingredients.vegetables.map((veg) => (
+                          <Button
+                            key={veg.name}
+                            size="sm"
+                            variant="outline"
+                            onClick={() => addIngredient(veg, 'vegetables')}
+                            className="justify-start"
+                          >
+                            <span className="mr-2">{veg.icon}</span>
+                            {veg.name}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-semibold mb-2 text-sm text-gray-600">Liquids</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {ingredients.liquids.map((liquid) => (
+                          <Button
+                            key={liquid.name}
+                            size="sm"
+                            variant="outline"
+                            onClick={() => addIngredient(liquid, 'liquids')}
+                            className="justify-start"
+                          >
+                            <span className="mr-2">{liquid.icon}</span>
+                            {liquid.name}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-semibold mb-2 text-sm text-gray-600">Boosters</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {ingredients.boosters.map((booster) => (
+                          <Button
+                            key={booster.name}
+                            size="sm"
+                            variant="outline"
+                            onClick={() => addIngredient(booster, 'boosters')}
+                            className="justify-start"
+                          >
+                            <span className="mr-2">{booster.icon}</span>
+                            {booster.name}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Custom Smoothie Preview */}
+              <Card>
+                <CardContent className="p-6">
+                  <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-purple-600" />
+                    Your Custom Smoothie
+                  </h3>
+
+                  <div className="mb-4 space-y-2">
+                    {customSmoothie.ingredients.length === 0 ? (
+                      <div className="text-center py-8 text-gray-400">
+                        <Apple className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                        <p>Start adding ingredients to create your smoothie</p>
+                      </div>
+                    ) : (
+                      customSmoothie.ingredients.map((ing) => (
+                        <div key={ing.id} className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl">{ing.icon}</span>
+                            <div>
+                              <div className="font-medium">{ing.name}</div>
+                              <div className="text-xs text-gray-600">
+                                {ing.calories} cal • {ing.protein}g protein
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => removeIngredient(ing.id)}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {customSmoothie.ingredients.length > 0 && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg">
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-orange-600">
+                            {Math.round(customSmoothie.calories)}
+                          </div>
+                          <div className="text-xs text-gray-600">Calories</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-blue-600">
+                            {Math.round(customSmoothie.protein * 10) / 10}g
+                          </div>
+                          <div className="text-xs text-gray-600">Protein</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-green-600">
+                            {Math.round(customSmoothie.carbs * 10) / 10}g
+                          </div>
+                          <div className="text-xs text-gray-600">Carbs</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-purple-600">
+                            {Math.round(customSmoothie.fiber * 10) / 10}g
+                          </div>
+                          <div className="text-xs text-gray-600">Fiber</div>
+                        </div>
+                      </div>
+
+                      <Button
+                        className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white"
+                        size="lg"
+                        onClick={createSmoothie}
+                        disabled={customSmoothie.ingredients.length < 3}
+                      >
+                        {customSmoothie.ingredients.length < 3 ? (
+                          <>
+                            <Target className="w-5 h-5 mr-2" />
+                            Add {3 - customSmoothie.ingredients.length} more ingredients
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-5 h-5 mr-2" />
+                            Create Smoothie (+150 XP)
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           </div>
-          <Progress value={proteinProgress} className="h-4 mb-2" />
-          <div className="flex justify-between text-sm text-muted-foreground">
-            <span>{consumedProtein}g consumed</span>
-            <span>{dailyProteinGoal - consumedProtein}g remaining</span>
-          </div>
-          <div className="mt-3 text-xs text-gray-600">
-            Total drinks made: {userProgress.totalDrinksMade} • XP: {userProgress.totalPoints}
-          </div>
-        </CardContent>
-      </Card>
+        )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardContent className="p-6">
-              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Target className="h-6 w-6" />
-                Choose Your Goal
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {fitnessGoals.map(goal => (
-                  <div
-                    key={goal.id}
-                    onClick={() => setSelectedGoal(goal)}
-                    className={`p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
-                      selectedGoal.id === goal.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
-                    }`}
-                  >
-                    <goal.icon className={`h-8 w-8 mx-auto mb-2 ${
-                      selectedGoal.id === goal.id ? 'text-blue-500' : 'text-gray-500'
-                    }`} />
-                    <h4 className="font-semibold text-center text-sm">{goal.name}</h4>
-                    <p className="text-xs text-center text-muted-foreground mt-1">
-                      {goal.description}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+        {/* BROWSE TAB */}
+        {activeTab === 'browse' && (
+          <div className="space-y-6">
+            <Card>
+              <CardContent className="p-6">
+                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-orange-500" />
+                  Popular Smoothie Recipes
+                </h3>
+                <div className="grid md:grid-cols-3 gap-6">
+                  {premadeRecipes.map((recipe) => (
+                    <Card key={recipe.id} className="overflow-hidden hover:shadow-xl transition-shadow">
+                      <div className="relative h-48">
+                        <img
+                          src={recipe.image}
+                          alt={recipe.name}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute top-3 right-3">
+                          <Badge className="bg-white text-gray-900">
+                            <Star className="w-3 h-3 mr-1 text-yellow-400 fill-current" />
+                            {recipe.rating}
+                          </Badge>
+                        </div>
+                      </div>
+                      
+                      <CardContent className="p-4">
+                        <h4 className="font-bold text-lg mb-2">{recipe.name}</h4>
+                        
+                        <div className="flex items-center gap-4 mb-3 text-sm text-gray-600">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-4 h-4" />
+                            {recipe.time}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Heart className="w-4 h-4" />
+                            {recipe.likes}
+                          </span>
+                        </div>
 
-          <Card>
-            <CardContent className="p-6">
-              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <FlaskConical className="h-6 w-6" />
-                Protein Type
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {proteinTypes.map(protein => (
-                  <div
-                    key={protein.id}
-                    onClick={() => setSelectedProtein(protein)}
-                    className={`p-4 rounded-lg border cursor-pointer transition-all ${
-                      selectedProtein.id === protein.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <h4 className="font-semibold">{protein.name}</h4>
-                      <Badge variant="outline">{protein.biovalue} BV</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-2">{protein.description}</p>
-                    <div className="flex gap-2">
-                      <Badge className="text-xs">{protein.absorption}</Badge>
-                      <Badge variant="outline" className="text-xs">{protein.timing}</Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+                        <div className="mb-3">
+                          <div className="text-sm font-medium mb-2">Ingredients:</div>
+                          <div className="flex flex-wrap gap-1">
+                            {recipe.ingredients.map((ing, idx) => (
+                              <Badge key={idx} variant="outline" className="text-xs">
+                                {ing}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
 
-          <Card>
-            <CardContent className="p-6">
-              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Weight className="h-6 w-6" />
-                Protein Amount
-              </h3>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span>Protein: {proteinAmount[0]}g</span>
-                  <Badge>Recommended: {selectedGoal.protein}g</Badge>
+                        <div className="grid grid-cols-2 gap-3 mb-4 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg">
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-orange-600">
+                              {recipe.calories}
+                            </div>
+                            <div className="text-xs text-gray-600">Calories</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-blue-600">
+                              {recipe.protein}g
+                            </div>
+                            <div className="text-xs text-gray-600">Protein</div>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Button
+                            className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600"
+                            onClick={() => makePremadeRecipe(recipe)}
+                          >
+                            <Sparkles className="w-4 h-4 mr-2" />
+                            Make It
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => {
+                              const recipeData = {
+                                id: `recipe-${recipe.id}`,
+                                name: recipe.name,
+                                category: 'smoothies' as const,
+                                description: `Popular recipe with ${recipe.rating}★ rating`,
+                                ingredients: recipe.ingredients,
+                                nutrition: {
+                                  calories: recipe.calories,
+                                  protein: recipe.protein,
+                                  carbs: Math.round(recipe.calories * 0.6 / 4),
+                                  fat: 3
+                                },
+                                difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
+                                prepTime: parseInt(recipe.time),
+                                rating: recipe.rating,
+                                fitnessGoal: recipe.workoutType,
+                                bestTime: recipe.workoutType.includes('pre') ? 'Pre-workout' : 'Post-workout'
+                              };
+                              if (isFavorite(recipeData.id)) {
+                                // Remove from favorites logic would go here
+                              } else {
+                                addToFavorites(recipeData);
+                              }
+                            }}
+                          >
+                            <Heart
+                              className={`w-4 h-4 ${
+                                isFavorite(`recipe-${recipe.id}`)
+                                  ? 'fill-current text-red-500'
+                                  : ''
+                              }`}
+                            />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
-                <Slider
-                  value={proteinAmount}
-                  onValueChange={setProteinAmount}
-                  max={50}
-                  min={15}
-                  step={5}
-                  className="w-full"
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Tips & Benefits */}
+        <div className="grid md:grid-cols-2 gap-6">
+          <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+            <CardContent className="p-6">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <Leaf className="w-5 h-5 text-green-600" />
+                Smoothie Pro Tips
+              </h3>
+              <ul className="space-y-3 text-sm">
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <span>Use frozen fruits for a thicker, creamier texture without ice</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <span>Add liquid first to help blender process ingredients smoothly</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <span>Balance sweet fruits with greens for optimal nutrition</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <span>Prep ingredient packs in advance for quick morning smoothies</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <span>Add protein powder after blending for best texture</span>
+                </li>
+              </ul>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200">
+            <CardContent className="p-6">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-blue-600" />
+                Health Benefits
+              </h3>
+              <ul className="space-y-3 text-sm">
+                <li className="flex items-start gap-2">
+                  <Heart className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <span>Boosts energy levels with natural sugars and nutrients</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Zap className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                  <span>Supports muscle recovery with protein and antioxidants</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Droplets className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                  <span>Improves hydration with high water content fruits</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Target className="w-5 h-5 text-purple-500 flex-shrink-0 mt-0.5" />
+                  <span>Aids weight management with fiber and protein</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Award className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+                  <span>Enhances immune system with vitamins and minerals</span>
+                </li>
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* User Progress */}
+        <Card className="bg-gradient-to-r from-purple-100 to-pink-100 border-purple-200">
+          <CardContent className="p-6">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-purple-600" />
+              Your Smoothie Journey
+            </h3>
+            <div className="grid md:grid-cols-4 gap-6">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-purple-600 mb-1">
+                  {userProgress.totalDrinksMade}
+                </div>
+                <div className="text-sm text-gray-600">Smoothies Made</div>
+                <Progress value={userProgress.dailyGoalProgress} className="mt-2 h-2" />
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-blue-600 mb-1">
+                  {userProgress.currentStreak}
+                </div>
+                <div className="text-sm text-gray-600">Day Streak</div>
+                <div className="flex justify-center gap-1 mt-2">
+                  {[...Array(7)].map((_, i) => (
+                    <div
+                      key={i}
+                      className={`w-6 h-6 rounded ${
+                        i < userProgress.currentStreak
+                          ? 'bg-orange-400'
+                          : 'bg-gray-200'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-green-600 mb-1">
+                  {favorites.length}
+                </div>
+                <div className="text-sm text-gray-600">Favorite Recipes</div>
+                <div className="flex justify-center gap-1 mt-2">
+                  <Heart className="w-6 h-6 text-red-400 fill-current" />
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-orange-600 mb-1">
+                  Level {userProgress.level}
+                </div>
+                <div className="text-sm text-gray-600">{userProgress.totalPoints} XP</div>
+                <Progress 
+                  value={(userProgress.totalPoints % 1000) / 10} 
+                  className="mt-2 h-2" 
                 />
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        <div className="space-y-6">
-          <Card>
-            <CardContent className="p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Nutrition Facts
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span>Protein:</span>
-                  <span className="font-bold">{nutrition.protein}g</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Carbs:</span>
-                  <span className="font-bold">{nutrition.carbs}g</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Calories:</span>
-                  <span className="font-bold">{nutrition.calories}</span>
-                </div>
-                <div className="pt-3 border-t">
-                  <div className="text-sm text-muted-foreground">
-                    Goal: {selectedGoal.name}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Protein: {selectedProtein.name}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6 space-y-3">
-              <Button 
-                className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
-                onClick={buildShake}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Build This Shake (+125 XP)
+        {/* Share CTA */}
+        <Card className="bg-gradient-to-r from-purple-600 to-pink-600 text-white border-0">
+          <CardContent className="p-8 text-center">
+            <Gift className="w-16 h-16 mx-auto mb-4" />
+            <h3 className="text-2xl font-bold mb-2">Share Your Creation!</h3>
+            <p className="text-purple-100 mb-6">
+              Post your custom smoothies to inspire others and earn bonus XP
+            </p>
+            <div className="flex gap-4 justify-center">
+              <Button variant="secondary" size="lg">
+                <Camera className="w-5 h-5 mr-2" />
+                Take Photo
               </Button>
-              <Button 
-                variant="outline" 
-                className="w-full"
-                onClick={() => {
-                  const shakeData = {
-                    id: `custom-protein-${Date.now()}`,
-                    name: `Custom ${selectedGoal.name} Protein Shake`,
-                    category: 'protein-shakes' as const,
-                    description: `${selectedProtein.name} shake optimized for ${selectedGoal.name.toLowerCase()}`,
-                    ingredients: [selectedProtein.name, 'Water/Milk'],
-                    nutrition: nutrition,
-                    difficulty: 'Easy' as const,
-                    prepTime: 3,
-                    rating: 5,
-                    fitnessGoal: selectedGoal.name,
-                    bestTime: selectedProtein.timing
-                  };
-                  addToFavorites(shakeData);
-                }}
-              >
-                <Heart className="h-4 w-4 mr-2" />
-                Save Recipe (+10 XP)
-              </Button>
-              <Button variant="outline" className="w-full">
-                <Share2 className="h-4 w-4 mr-2" />
+              <Button variant="secondary" size="lg">
+                <Share2 className="w-5 h-5 mr-2" />
                 Share Recipe
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </CardContent>
+        </Card>
 
-          <Card>
-            <CardContent className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Add Supplements</h3>
-              <div className="space-y-2">
-                {supplements.slice(0, 3).map(supplement => (
-                  <div key={supplement.id} className="flex items-center justify-between p-2 rounded border">
-                    <div>
-                      <div className="font-medium text-sm">{supplement.name}</div>
-                      <div className="text-xs text-muted-foreground">{supplement.benefit}</div>
-                    </div>
-                    <Button size="sm" variant="outline">
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
+        {/* Footer */}
+        <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold mb-2">Explore More Drinks</h3>
+                <p className="text-gray-600 mb-4">Discover protein shakes, detoxes, and cocktails</p>
+                <div className="flex gap-2">
+                  <Link href="/drinks/protein-shakes">
+                    <Button variant="outline" size="sm">Protein Shakes</Button>
+                  </Link>
+                  <Link href="/drinks/detoxes">
+                    <Button variant="outline" size="sm">Detox Drinks</Button>
+                  </Link>
+                  <Link href="/drinks/potent-potables">
+                    <Button variant="outline" size="sm">Cocktails</Button>
+                  </Link>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-600 mb-1">{userProgress.totalDrinksMade}</div>
+                <div className="text-sm text-gray-600 mb-2">Total Drinks Made</div>
+                <Progress value={userProgress.dailyGoalProgress} className="w-24" />
+                <div className="text-xs text-gray-500 mt-1">Daily Goal</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
-
-      <Card>
-        <CardContent className="p-6">
-          <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-            <Clock className="h-6 w-6" />
-            Workout Timing Optimization
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {workoutPhases.map(phase => (
-              <Card key={phase.name} className="cursor-pointer hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={`p-2 rounded-full ${phase.color}`}>
-                      <phase.icon className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold">{phase.name}</h4>
-                      <p className="text-xs text-muted-foreground">{phase.timing}</p>
-                    </div>
-                  </div>
-                  
-                  <div className="mb-3">
-                    <div className="text-sm font-medium text-blue-600">{phase.focus}</div>
-                  </div>
-
-                  <div className="space-y-2">
-                    {phase.name === 'Post-Workout' && (
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span>Fast protein:</span>
-                          <span className="font-bold">25-35g</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Simple carbs:</span>
-                          <span className="font-bold">30-50g</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Creatine:</span>
-                          <span className="font-bold">5g</span>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {phase.name === 'Pre-Workout' && (
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span>Light protein:</span>
-                          <span className="font-bold">15-20g</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Carbs (optional):</span>
-                          <span className="font-bold">20-30g</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>L-Glutamine:</span>
-                          <span className="font-bold">5-10g</span>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {phase.name === 'Before Bed' && (
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span>Casein protein:</span>
-                          <span className="font-bold">20-30g</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Avoid caffeine:</span>
-                          <span className="font-bold">Important</span>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {phase.name === 'Intra-Workout' && (
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span>BCAA:</span>
-                          <span className="font-bold">10-15g</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Electrolytes:</span>
-                          <span className="font-bold">As needed</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <Button 
-                    className="w-full mt-4 bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600"
-                    onClick={() => buildShake()}
-                  >
-                    Build {phase.name} Shake
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-6">
-          <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-            <Star className="h-6 w-6" />
-            Popular Recipes
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {popularRecipes.map((recipe, index) => (
-              <Card key={index} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <h4 className="font-semibold">{recipe.name}</h4>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const shakeData = {
-                          id: recipe.id,
-                          name: recipe.name,
-                          category: 'protein-shakes' as const,
-                          description: `Popular ${recipe.goal} protein shake`,
-                          ingredients: recipe.ingredients,
-                          nutrition: {
-                            calories: recipe.calories,
-                            protein: recipe.protein,
-                            carbs: recipe.carbs,
-                            fat: 5
-                          },
-                          difficulty: 'Easy' as const,
-                          prepTime: 3,
-                          rating: recipe.rating,
-                          fitnessGoal: recipe.goal,
-                          bestTime: 'Post-workout'
-                        };
-                        addToFavorites(shakeData);
-                      }}
-                      className="text-gray-400 hover:text-red-500"
-                    >
-                      <Heart className={`h-4 w-4 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                      <span className="text-sm">{recipe.rating}</span>
-                    </div>
-                    <span className="text-sm text-muted-foreground">({recipe.reviews} reviews)</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-center mb-3">
-                    <div>
-                      <div className="font-bold text-blue-600">{recipe.protein}g</div>
-                      <div className="text-xs text-muted-foreground">Protein</div>
-                    </div>
-                    <div>
-                      <div className="font-bold text-green-600">{recipe.carbs}g</div>
-                      <div className="text-xs text-muted-foreground">Carbs</div>
-                    </div>
-                    <div>
-                      <div className="font-bold text-orange-600">{recipe.calories}</div>
-                      <div className="text-xs text-muted-foreground">Calories</div>
-                    </div>
-                  </div>
-                  <div className="text-sm text-muted-foreground mb-3">
-                    {recipe.ingredients.join(', ')}
-                  </div>
-                  <Button 
-                    variant="outline" 
-                    className="w-full"
-                    onClick={() => makeRecipe(recipe)}
-                  >
-                    Try This Recipe (+100 XP)
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-bold mb-2">Explore More Drinks</h3>
-              <p className="text-gray-600 mb-4">Discover smoothies, detoxes, and cocktails</p>
-              <div className="flex gap-2">
-                <Link href="/drinks/smoothies">
-                  <Button variant="outline" size="sm">Smoothies</Button>
-                </Link>
-                <Link href="/drinks/detoxes">
-                  <Button variant="outline" size="sm">Detox Drinks</Button>
-                </Link>
-                <Link href="/drinks/potent-potables">
-                  <Button variant="outline" size="sm">Cocktails</Button>
-                </Link>
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-purple-600 mb-1">{userProgress.totalDrinksMade}</div>
-              <div className="text-sm text-gray-600 mb-2">Total Drinks Made</div>
-              <Progress value={userProgress.dailyGoalProgress} className="w-24" />
-              <div className="text-xs text-gray-500 mt-1">Daily Goal</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
