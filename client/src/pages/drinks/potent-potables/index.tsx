@@ -23,7 +23,7 @@ const potentPotablesSubcategories = [
   { id: 'cocktails', name: 'Classic Cocktails', icon: GlassWater, count: 15, route: '/drinks/potent-potables/cocktails', color: 'from-blue-500 to-indigo-500', description: 'Timeless recipes and favorites' },
   { id: 'seasonal', name: 'Seasonal Specials', icon: Sparkles, count: 10, route: '/drinks/potent-potables/seasonal', color: 'from-teal-500 to-cyan-500', description: 'Drinks for every season' },
   { id: 'mocktails', name: 'Mocktails', icon: Sparkles, count: 12, route: '/drinks/potent-potables/mocktails', color: 'from-green-500 to-emerald-500', description: 'Zero-proof sophisticated drinks' },
-  { id: 'virgin-cocktails', name: 'Virgin Cocktails', icon: Sparkles, count: 14, route: '/drinks/virgin-cocktails', color: 'from-emerald-500 to-teal-500', description: 'Alcohol-free alternatives' }
+  { id: 'virgin-cocktails', name: 'Virgin Cocktails', icon: Sparkles, count: 14, route: '/drinks/potent-potables/virgin', color: 'from-emerald-500 to-teal-500', description: 'Alcohol-free alternatives' }
 ];
 
 const featuredCocktails = [
