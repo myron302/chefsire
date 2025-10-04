@@ -119,8 +119,9 @@ const popularRecipes = [
 // ✅ Protein subcategories for navigation
 const proteinSubcategories = [
   { id: 'whey', name: 'Whey Protein', icon: Zap, count: 6, route: '/drinks/protein-shakes/whey' },
-  { id: 'plant', name: 'Plant Protein', icon: Leaf, count: 4, route: '/drinks/protein-shakes/plant' },
+  { id: 'plant', name: 'Plant Protein', icon: Leaf, count: 4, route: '/drinks/protein-shakes/plant-based' },
   { id: 'casein', name: 'Casein', icon: Calendar, count: 3, route: '/drinks/protein-shakes/casein' },
+  { id: 'collagen', name: 'Collagen', icon: Sparkles, count: 2, route: '/drinks/protein-shakes/collagen' },
   { id: 'egg', name: 'Egg Protein', icon: Target, count: 2, route: '/drinks/protein-shakes/egg' }
 ];
 
@@ -235,30 +236,30 @@ export default function ProteinShakesPage({ params }: Params) {
             <span className="text-sm text-gray-600">Explore Other Categories</span>
           </div>
           <div className="flex flex-wrap gap-2">
-            <a href="/drinks">
+            <Link href="/drinks">
               <Button variant="outline" size="sm" className="gap-2">
                 <Sparkles className="w-4 h-4" />
                 All Drinks
               </Button>
-            </a>
-            <a href="/drinks/smoothies">
+            </Link>
+            <Link href="/drinks/smoothies">
               <Button variant="outline" size="sm" className="gap-2">
                 <Apple className="w-4 h-4" />
                 Smoothies
               </Button>
-            </a>
-            <a href="/drinks/detoxes">
+            </Link>
+            <Link href="/drinks/detoxes">
               <Button variant="outline" size="sm" className="gap-2">
                 <Leaf className="w-4 h-4" />
                 Detoxes
               </Button>
-            </a>
-            <a href="/drinks/potent-potables">
+            </Link>
+            <Link href="/drinks/potent-potables">
               <Button variant="outline" size="sm" className="gap-2">
                 <Wine className="w-4 h-4" />
                 Potent Potables (21+)
               </Button>
-            </a>
+            </Link>
           </div>
         </CardContent>
       </Card>
@@ -302,7 +303,7 @@ export default function ProteinShakesPage({ params }: Params) {
             {proteinSubcategories.map((subcategory) => {
               const Icon = subcategory.icon;
               return (
-                <a key={subcategory.id} href={subcategory.route}>
+                <Link key={subcategory.id} href={subcategory.route}>
                   <Button
                     variant="outline"
                     className="h-auto p-4 flex flex-col items-center gap-2 hover:bg-blue-50 hover:border-blue-300 w-full"
@@ -314,7 +315,7 @@ export default function ProteinShakesPage({ params }: Params) {
                     </div>
                     <ArrowRight className="h-3 w-3 text-gray-400" />
                   </Button>
-                </a>
+                </Link>
               );
             })}
           </div>
@@ -745,15 +746,15 @@ export default function ProteinShakesPage({ params }: Params) {
               <h3 className="text-lg font-bold mb-2">Explore More Drinks</h3>
               <p className="text-gray-600 mb-4">Discover smoothies, detoxes, and cocktails</p>
               <div className="flex gap-2">
-                <a href="/drinks/smoothies">
+                <Link href="/drinks/smoothies">
                   <Button variant="outline" size="sm">Smoothies</Button>
-                </a>
-                <a href="/drinks/detoxes">
+                </Link>
+                <Link href="/drinks/detoxes">
                   <Button variant="outline" size="sm">Detox Drinks</Button>
-                </a>
-                <a href="/drinks/potent-potables">
+                </Link>
+                <Link href="/drinks/potent-potables">
                   <Button variant="outline" size="sm">Cocktails</Button>
-                </a>
+                </Link>
               </div>
             </div>
             <div className="text-center">
