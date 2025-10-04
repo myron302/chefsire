@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { Link } from 'wouter';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,70 +9,11 @@ import {
   CheckCircle, Target, Flame, Droplets, Leaf, Apple,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
-  Beaker, Activity, BarChart3, Sparkles, FlaskConical, Weight
+  Beaker, Activity, BarChart3, Sparkles
 } from 'lucide-react';
-import { useDrinks } from '@/contexts/DrinksContext';
+import { useDrinks } from '../contexts/DrinksContext';
 
-// Navigation data
-const otherDrinkHubs = [
-  {
-    id: 'smoothies',
-    name: 'Smoothies',
-    route: '/drinks/smoothies',
-    icon: FlaskConical
-  },
-  {
-    id: 'protein-shakes',
-    name: 'Protein Shakes',
-    route: '/drinks/protein-shakes',
-    icon: Dumbbell
-  },
-  {
-    id: 'potent-potables',
-    name: 'Potent Potables',
-    route: '/drinks/potent-potables',
-    icon: Trophy
-  },
-  {
-    id: 'detoxes',
-    name: 'Detoxes',
-    route: '/drinks/detoxes',
-    icon: Sparkles
-  }
-];
-
-const proteinSubcategories = [
-  {
-    id: 'whey',
-    name: 'Whey Protein',
-    path: '/drinks/protein-shakes/whey',
-    icon: Zap,
-    color: 'blue'
-  },
-  {
-    id: 'casein',
-    name: 'Casein Protein',
-    path: '/drinks/protein-shakes/casein',
-    icon: Moon,
-    color: 'purple'
-  },
-  {
-    id: 'plant-based',
-    name: 'Plant-Based',
-    path: '/drinks/protein-shakes/plant-based',
-    icon: Leaf,
-    color: 'green'
-  },
-  {
-    id: 'collagen',
-    name: 'Collagen',
-    path: '/drinks/protein-shakes/collagen',
-    icon: Sparkles,
-    color: 'pink'
-  }
-];
-
-// Whey-specific data (keeping your existing data)
+// Whey-specific data
 const wheyProteinShakes = [
   {
     id: 'whey-1',
@@ -97,7 +37,112 @@ const wheyProteinShakes = [
     absorptionTime: '30-60 minutes',
     leucineContent: '2.5g'
   },
-  // ... (keep all your existing whey shakes data)
+  {
+    id: 'whey-2',
+    name: 'Chocolate Peanut Butter Powerhouse',
+    description: 'Rich chocolate whey with natural peanut butter for mass gaining',
+    image: 'https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop',
+    nutrition: { calories: 420, protein: 40, carbs: 15, fat: 18 },
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.9,
+    reviews: 567,
+    trending: false,
+    featured: true,
+    tags: ['Whey Concentrate', 'High Calorie', 'Mass Gain', 'Chocolate'],
+    ingredients: ['Whey protein concentrate (35g)', 'Natural peanut butter (2 tbsp)', 'Banana', 'Whole milk', 'Honey'],
+    instructions: 'Blend until creamy. Add extra milk if too thick. Perfect for bulking phases.',
+    benefits: ['High protein', 'Calorie dense', 'Great taste', 'Sustained energy'],
+    bestTime: 'Post-workout or meal replacement',
+    fitnessGoal: 'Mass Gaining',
+    wheyType: 'Concentrate',
+    absorptionTime: '60-90 minutes',
+    leucineContent: '3.2g'
+  },
+  {
+    id: 'whey-3',
+    name: 'Strawberry Lean Machine',
+    description: 'Low-calorie whey isolate perfect for cutting phases',
+    nutrition: { calories: 160, protein: 30, carbs: 5, fat: 1 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.6,
+    reviews: 234,
+    trending: true,
+    featured: false,
+    tags: ['Whey Isolate', 'Low Calorie', 'Cutting', 'Fat Loss'],
+    ingredients: ['Whey protein isolate (30g)', 'Frozen strawberries', 'Water', 'Stevia', 'Ice'],
+    instructions: 'Blend with ice for refreshing texture. Ideal for maintaining muscle during calorie deficit.',
+    benefits: ['Low calorie', 'Fat burning support', 'Refreshing', 'Muscle preservation'],
+    bestTime: 'Morning or pre-workout',
+    fitnessGoal: 'Fat Loss',
+    wheyType: 'Isolate',
+    absorptionTime: '30-60 minutes',
+    leucineContent: '2.4g'
+  },
+  {
+    id: 'whey-4',
+    name: 'Pre-Workout Energy Blast',
+    description: 'Whey protein with natural energy boosters for enhanced performance',
+    nutrition: { calories: 320, protein: 32, carbs: 25, fat: 6 },
+    difficulty: 'Medium',
+    prepTime: 5,
+    rating: 4.7,
+    reviews: 189,
+    trending: false,
+    featured: false,
+    tags: ['Whey Concentrate', 'Pre-workout', 'Energy', 'Performance'],
+    ingredients: ['Whey protein concentrate (30g)', 'Cold brew coffee', 'Banana', 'Oats', 'Cinnamon'],
+    instructions: 'Blend well. Consume 30-60 minutes before workout for sustained energy and protein.',
+    benefits: ['Energy boost', 'Sustained fuel', 'Performance enhancement', 'Muscle protection'],
+    bestTime: 'Pre-workout (30-60 minutes)',
+    fitnessGoal: 'Performance',
+    wheyType: 'Concentrate',
+    absorptionTime: '60-90 minutes',
+    leucineContent: '2.8g'
+  },
+  {
+    id: 'whey-5',
+    name: 'Hydrolyzed Recovery Formula',
+    description: 'Premium hydrolyzed whey for ultra-fast absorption',
+    nutrition: { calories: 200, protein: 38, carbs: 6, fat: 2 },
+    difficulty: 'Easy',
+    prepTime: 2,
+    rating: 4.9,
+    reviews: 89,
+    trending: true,
+    featured: true,
+    tags: ['Hydrolyzed Whey', 'Premium', 'Ultra-fast', 'Recovery'],
+    ingredients: ['Hydrolyzed whey protein (35g)', 'Coconut water', 'Sea salt', 'Lemon juice'],
+    instructions: 'Mix gently - no blending needed. Consume immediately post-workout.',
+    benefits: ['Fastest absorption', 'Superior recovery', 'Reduced muscle soreness', 'Premium quality'],
+    bestTime: 'Immediately post-workout',
+    fitnessGoal: 'Elite Performance',
+    wheyType: 'Hydrolyzed',
+    absorptionTime: '15-30 minutes',
+    leucineContent: '3.8g'
+  },
+  {
+    id: 'whey-6',
+    name: 'Bedtime Casein-Whey Blend',
+    description: 'Slow and fast protein combination for overnight recovery',
+    nutrition: { calories: 280, protein: 35, carbs: 8, fat: 8 },
+    difficulty: 'Medium',
+    prepTime: 4,
+    rating: 4.5,
+    reviews: 156,
+    trending: false,
+    featured: false,
+    tags: ['Whey-Casein Blend', 'Night Formula', 'Slow Release', 'Recovery'],
+    ingredients: ['Whey protein (20g)', 'Casein protein (15g)', 'Almond milk', 'Greek yogurt', 'Vanilla'],
+    instructions: 'Blend until smooth. Consume 30 minutes before bed for overnight muscle recovery.',
+    benefits: ['Sustained protein release', 'Overnight recovery', 'Muscle preservation', 'Better sleep'],
+    bestTime: 'Before bed (30 minutes)',
+    fitnessGoal: 'Recovery & Growth',
+    wheyType: 'Whey-Casein Blend',
+    absorptionTime: '2-8 hours',
+    leucineContent: '3.0g'
+  }
 ];
 
 const fitnessGoals = [
@@ -155,7 +200,7 @@ export default function WheyProteinShakesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
 
-  // Filter and sort shakes (keep your existing logic)
+  // Filter and sort shakes
   const getFilteredShakes = () => {
     let filtered = wheyProteinShakes.filter(shake => {
       const matchesSearch = shake.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -166,6 +211,7 @@ export default function WheyProteinShakesPage() {
       return matchesSearch && matchesGoal && matchesWheyType;
     });
 
+    // Sort results
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'rating': return (b.rating || 0) - (a.rating || 0);
@@ -188,6 +234,7 @@ export default function WheyProteinShakesPage() {
     incrementDrinksMade();
     addPoints(25);
     
+    // Show success animation or toast here
     console.log(`Made ${shake.name}! +25 XP`);
   };
 
@@ -198,17 +245,15 @@ export default function WheyProteinShakesPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
-              <Link href="/drinks/protein-shakes">
-                <Button variant="ghost" size="sm" className="text-gray-500">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Protein Shakes
-                </Button>
-              </Link>
+              <Button variant="ghost" size="sm" className="text-gray-500">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Protein Shakes
+              </Button>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
                 <Dumbbell className="h-6 w-6 text-blue-600" />
                 <h1 className="text-2xl font-bold text-gray-900">Whey Protein Shakes</h1>
-                <Badge className="bg-blue-100 text-blue-800">Fast Absorption</Badge>
+                <Badge className="bg-blue-100 text-blue-800">Premium</Badge>
               </div>
             </div>
             
@@ -229,54 +274,6 @@ export default function WheyProteinShakesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        {/* CROSS-HUB NAVIGATION */}
-        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
-          <CardContent className="p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              {otherDrinkHubs.map((hub) => {
-                const Icon = hub.icon;
-                return (
-                  <Link key={hub.id} href={hub.route}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
-                      <Icon className="h-4 w-4 mr-2 text-blue-600" />
-                      <span>{hub.name}</span>
-                      <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* SISTER SUBPAGES NAVIGATION */}
-        <Card className="bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-200 mb-6">
-          <CardContent className="p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Protein Types</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              {proteinSubcategories.map((subcategory) => {
-                const Icon = subcategory.icon;
-                return (
-                  <Link key={subcategory.id} href={subcategory.path}>
-                    <Button 
-                      variant="outline" 
-                      className={`w-full justify-start hover:bg-blue-50 hover:border-blue-300 ${
-                        subcategory.id === 'whey' ? 'bg-blue-50 border-blue-300' : ''
-                      }`}
-                    >
-                      <Icon className="h-4 w-4 mr-2 text-blue-600" />
-                      <span>{subcategory.name}</span>
-                      <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Quick Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card>
@@ -471,9 +468,240 @@ export default function WheyProteinShakesPage() {
           </div>
         )}
 
-        {/* Rest of your existing tabs (Whey Types, Goals, Featured) remain the same */}
-        {/* ... (keep all your existing tab content) */}
-        
+        {/* Whey Types Tab */}
+        {activeTab === 'types' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {wheyTypes.map(type => {
+              const Icon = type.icon;
+              const typeShakes = wheyProteinShakes.filter(shake => 
+                shake.wheyType.toLowerCase().includes(type.id)
+              );
+              
+              return (
+                <Card key={type.id} className="hover:shadow-lg transition-shadow">
+                  <CardHeader>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 bg-blue-100 rounded-lg">
+                        <Icon className="h-6 w-6 text-blue-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">{type.name}</CardTitle>
+                        <p className="text-sm text-gray-600">{type.description}</p>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  
+                  <CardContent>
+                    <div className="space-y-3 mb-4">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Absorption:</span>
+                        <span className="font-medium">{type.absorptionTime}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Protein Content:</span>
+                        <span className="font-medium">{type.proteinContent}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Best For:</span>
+                        <span className="font-medium text-xs">{type.bestFor}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600 mb-1">
+                        {typeShakes.length}
+                      </div>
+                      <div className="text-sm text-gray-600 mb-3">Available Recipes</div>
+                      <Button 
+                        className="w-full"
+                        onClick={() => {
+                          setSelectedWheyType(type.name);
+                          setActiveTab('browse');
+                        }}
+                      >
+                        View {type.name} Recipes
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Goals Tab */}
+        {activeTab === 'goals' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {fitnessGoals.map(goal => {
+              const Icon = goal.icon;
+              const goalShakes = wheyProteinShakes.filter(shake => 
+                shake.fitnessGoal.toLowerCase().includes(goal.name.toLowerCase())
+              );
+              
+              return (
+                <Card key={goal.id} className="hover:shadow-lg transition-shadow">
+                  <CardHeader>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className={`p-2 rounded-lg ${goal.color.replace('text-', 'bg-').replace('-600', '-100')}`}>
+                        <Icon className={`h-6 w-6 ${goal.color}`} />
+                      </div>
+                      <CardTitle className="text-lg">{goal.name}</CardTitle>
+                    </div>
+                  </CardHeader>
+                  
+                  <CardContent>
+                    <div className="text-center">
+                      <div className={`text-3xl font-bold ${goal.color} mb-1`}>
+                        {goalShakes.length}
+                      </div>
+                      <div className="text-sm text-gray-600 mb-4">Optimized Recipes</div>
+                      <Button 
+                        className="w-full"
+                        onClick={() => {
+                          setSelectedGoal(goal.name);
+                          setActiveTab('browse');
+                        }}
+                      >
+                        View {goal.name} Shakes
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Featured Tab */}
+        {activeTab === 'featured' && (
+          <div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {featuredShakes.map(shake => (
+                <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow">
+                  <div className="relative">
+                    {shake.image && (
+                      <img 
+                        src={shake.image} 
+                        alt={shake.name}
+                        className="w-full h-48 object-cover"
+                      />
+                    )}
+                    <div className="absolute top-4 left-4">
+                      <Badge className="bg-yellow-500 text-white">Featured</Badge>
+                    </div>
+                    <div className="absolute top-4 right-4">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => addToFavorites(shake)}
+                        className="bg-white/80 hover:bg-white text-gray-600 hover:text-red-500"
+                      >
+                        <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <CardHeader>
+                    <CardTitle className="text-xl">{shake.name}</CardTitle>
+                    <p className="text-gray-600">{shake.description}</p>
+                    
+                    <div className="flex items-center gap-2 mt-2">
+                      <Badge variant="outline">{shake.wheyType}</Badge>
+                      <Badge className="bg-blue-100 text-blue-800">{shake.fitnessGoal}</Badge>
+                      <div className="flex items-center gap-1 ml-auto">
+                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                        <span className="font-medium">{shake.rating}</span>
+                        <span className="text-gray-500 text-sm">({shake.reviews})</span>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  
+                  <CardContent>
+                    {/* Enhanced nutrition display */}
+                    <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
+                      <div className="text-center">
+                        <div className="text-xl font-bold text-blue-600">{shake.nutrition.protein}g</div>
+                        <div className="text-xs text-gray-600">Protein</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xl font-bold text-green-600">{shake.nutrition.calories}</div>
+                        <div className="text-xs text-gray-600">Calories</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xl font-bold text-purple-600">{shake.nutrition.carbs}g</div>
+                        <div className="text-xs text-gray-600">Carbs</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xl font-bold text-orange-600">{shake.prepTime}min</div>
+                        <div className="text-xs text-gray-600">Prep</div>
+                      </div>
+                    </div>
+
+                    {/* Detailed info */}
+                    <div className="space-y-3 mb-6">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Absorption Time:</span>
+                        <span className="font-medium">{shake.absorptionTime}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Leucine Content:</span>
+                        <span className="font-medium">{shake.leucineContent}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Best Time:</span>
+                        <span className="font-medium">{shake.bestTime}</span>
+                      </div>
+                    </div>
+
+                    {/* Ingredients */}
+                    <div className="mb-4">
+                      <h4 className="font-medium text-gray-900 mb-2">Key Ingredients:</h4>
+                      <div className="flex flex-wrap gap-1">
+                        {shake.ingredients.slice(0, 3).map((ingredient, index) => (
+                          <Badge key={index} variant="outline" className="text-xs">
+                            {ingredient}
+                          </Badge>
+                        ))}
+                        {shake.ingredients.length > 3 && (
+                          <Badge variant="outline" className="text-xs">
+                            +{shake.ingredients.length - 3} more
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Benefits */}
+                    <div className="mb-6">
+                      <h4 className="font-medium text-gray-900 mb-2">Key Benefits:</h4>
+                      <div className="flex flex-wrap gap-1">
+                        {shake.benefits.map((benefit, index) => (
+                          <Badge key={index} className="bg-green-100 text-green-800 text-xs">
+                            {benefit}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex gap-3">
+                      <Button 
+                        className="flex-1 bg-blue-600 hover:bg-blue-700"
+                        onClick={() => handleMakeShake(shake)}
+                      >
+                        <Zap className="h-4 w-4 mr-2" />
+                        Make This Shake
+                      </Button>
+                      <Button variant="outline">
+                        <Share2 className="h-4 w-4 mr-2" />
+                        Share
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Floating Action Button */}
