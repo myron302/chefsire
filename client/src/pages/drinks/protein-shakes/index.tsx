@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'wouter';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -235,30 +235,30 @@ export default function ProteinShakesPage({ params }: Params) {
             <span className="text-sm text-gray-600">Explore Other Categories</span>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link href="/drinks">
+            <a href="/drinks">
               <Button variant="outline" size="sm" className="gap-2">
                 <Sparkles className="w-4 h-4" />
                 All Drinks
               </Button>
-            </Link>
-            <Link href="/drinks/smoothies">
+            </a>
+            <a href="/drinks/smoothies">
               <Button variant="outline" size="sm" className="gap-2">
                 <Apple className="w-4 h-4" />
                 Smoothies
               </Button>
-            </Link>
-            <Link href="/drinks/detoxes">
+            </a>
+            <a href="/drinks/detoxes">
               <Button variant="outline" size="sm" className="gap-2">
                 <Leaf className="w-4 h-4" />
                 Detoxes
               </Button>
-            </Link>
-            <Link href="/drinks/potent-potables">
+            </a>
+            <a href="/drinks/potent-potables">
               <Button variant="outline" size="sm" className="gap-2">
                 <Wine className="w-4 h-4" />
                 Potent Potables (21+)
               </Button>
-            </Link>
+            </a>
           </div>
         </CardContent>
       </Card>
@@ -302,7 +302,7 @@ export default function ProteinShakesPage({ params }: Params) {
             {proteinSubcategories.map((subcategory) => {
               const Icon = subcategory.icon;
               return (
-                <Link key={subcategory.id} href={subcategory.route}>
+                <a key={subcategory.id} href={subcategory.route}>
                   <Button
                     variant="outline"
                     className="h-auto p-4 flex flex-col items-center gap-2 hover:bg-blue-50 hover:border-blue-300 w-full"
@@ -314,7 +314,7 @@ export default function ProteinShakesPage({ params }: Params) {
                     </div>
                     <ArrowRight className="h-3 w-3 text-gray-400" />
                   </Button>
-                </Link>
+                </a>
               );
             })}
           </div>
@@ -745,15 +745,15 @@ export default function ProteinShakesPage({ params }: Params) {
               <h3 className="text-lg font-bold mb-2">Explore More Drinks</h3>
               <p className="text-gray-600 mb-4">Discover smoothies, detoxes, and cocktails</p>
               <div className="flex gap-2">
-                <Link href="/drinks/smoothies">
+                <a href="/drinks/smoothies">
                   <Button variant="outline" size="sm">Smoothies</Button>
-                </Link>
-                <Link href="/drinks/detoxes">
+                </a>
+                <a href="/drinks/detoxes">
                   <Button variant="outline" size="sm">Detox Drinks</Button>
-                </Link>
-                <Link href="/drinks/potent-potables">
+                </a>
+                <a href="/drinks/potent-potables">
                   <Button variant="outline" size="sm">Cocktails</Button>
-                </Link>
+                </a>
               </div>
             </div>
             <div className="text-center">
