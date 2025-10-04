@@ -8,11 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { 
   Sparkles, Clock, Users, Trophy, Heart, Star, Calendar, 
-  CheckCircle, Target, Flame, Droplets, Leaf, Apple,
+  CheckCircle, Target, Flame, Droplets, Leaf, Apple, Moon,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
   Dumbbell, Activity, BarChart3, FlaskConical, Weight, 
-  Gauge, Waves, Shield, Milk, Moon, Bone
+  Gauge, Waves, Shield, Milk, Bone
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 
