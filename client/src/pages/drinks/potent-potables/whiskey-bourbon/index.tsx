@@ -5,410 +5,139 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
-  Droplets, Clock, Heart, Star, Target, Sparkles, Wine, 
-  Search, Share2, ArrowLeft, Plus, Camera, Flame, GlassWater,
-  TrendingUp, Award, Snowflake, Cherry, Coffee, Zap, Crown
+  Wine, Clock, Heart, Star, Target, Sparkles, Flame, 
+  Search, Share2, ArrowLeft, Plus, Camera, GlassWater,
+  TrendingUp, Award, Crown, Leaf, Mountain, Droplets, Zap
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 
-const vodkaCocktails = [
-  // CLASSIC VODKA COCKTAILS
+const whiskeyCocktails = [
+  // BOURBON COCKTAILS
   {
-    id: 'vodka-1',
-    name: 'Moscow Mule',
-    description: 'Spicy ginger beer with vodka and lime in copper mug',
-    spiritType: 'Vodka',
-    origin: 'Los Angeles, USA',
-    glassware: 'Copper Mug',
-    servingSize: '10 oz',
+    id: 'whiskey-1',
+    name: 'Old Fashioned',
+    description: 'The grandfather of cocktails - bourbon, sugar, bitters',
+    spiritType: 'Bourbon',
+    origin: 'Louisville, Kentucky',
+    glassware: 'Old Fashioned Glass',
+    servingSize: '4 oz',
     nutrition: {
-      calories: 182,
-      carbs: 18,
-      sugar: 16,
-      alcohol: 11
-    },
-    ingredients: [
-      'Vodka (2 oz)',
-      'Fresh Lime Juice (0.5 oz)',
-      'Ginger Beer (6 oz)',
-      'Lime Wedge',
-      'Fresh Mint',
-      'Ice'
-    ],
-    profile: ['Spicy', 'Citrus', 'Refreshing', 'Effervescent'],
-    difficulty: 'Very Easy',
-    prepTime: 2,
-    rating: 4.8,
-    reviews: 4892,
-    trending: true,
-    featured: true,
-    estimatedCost: 3.50,
-    bestTime: 'Evening',
-    occasion: 'Casual',
-    allergens: [],
-    category: 'Classic Vodka',
-    garnish: 'Lime wedge, mint sprig',
-    method: 'Build',
-    abv: '10-12%',
-    iba_official: true
-  },
-  {
-    id: 'vodka-2',
-    name: 'Bloody Mary',
-    description: 'Savory tomato juice cocktail with spices and garnishes',
-    spiritType: 'Vodka',
-    origin: 'Paris, France',
-    glassware: 'Highball Glass',
-    servingSize: '10 oz',
-    nutrition: {
-      calories: 125,
-      carbs: 15,
-      sugar: 11,
+      calories: 155,
+      carbs: 4,
+      sugar: 3,
       alcohol: 14
     },
     ingredients: [
-      'Vodka (2 oz)',
-      'Tomato Juice (6 oz)',
-      'Fresh Lemon Juice (0.5 oz)',
-      'Worcestershire Sauce (3 dashes)',
-      'Hot Sauce (2-3 dashes)',
-      'Celery Salt (pinch)',
-      'Black Pepper (pinch)',
-      'Horseradish (optional, 1 tsp)',
-      'Celery Stalk',
-      'Lemon Wedge',
-      'Olives',
-      'Ice'
-    ],
-    profile: ['Savory', 'Spicy', 'Umami', 'Brunch'],
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.6,
-    reviews: 5234,
-    trending: false,
-    featured: true,
-    estimatedCost: 4.00,
-    bestTime: 'Brunch',
-    occasion: 'Morning',
-    allergens: [],
-    category: 'Classic Vodka',
-    garnish: 'Celery stalk, lemon wedge, olives, bacon (optional)',
-    method: 'Build & Stir',
-    abv: '12-16%',
-    iba_official: true
-  },
-  {
-    id: 'vodka-3',
-    name: 'Cosmopolitan',
-    description: '90s icon with cranberry, lime, and triple sec',
-    spiritType: 'Vodka',
-    origin: 'New York City, USA',
-    glassware: 'Martini Glass',
-    servingSize: '4 oz',
-    nutrition: {
-      calories: 150,
-      carbs: 8,
-      sugar: 7,
-      alcohol: 12
-    },
-    ingredients: [
-      'Vodka (1.5 oz)',
-      'Triple Sec (0.5 oz)',
-      'Fresh Lime Juice (0.5 oz)',
-      'Cranberry Juice (0.25 oz)',
+      'Bourbon (2 oz)',
+      'Sugar Cube (1)',
+      'Angostura Bitters (2-3 dashes)',
       'Orange Peel',
-      'Ice'
+      'Maraschino Cherry',
+      'Large Ice Cube'
     ],
-    profile: ['Fruity', 'Tart', 'Sophisticated', 'Pink'],
+    profile: ['Strong', 'Bitter-Sweet', 'Aromatic', 'Classic'],
     difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.7,
-    reviews: 6234,
+    prepTime: 5,
+    rating: 4.9,
+    reviews: 5234,
     trending: true,
     featured: true,
     estimatedCost: 4.50,
     bestTime: 'Evening',
-    occasion: 'Cocktail Party',
-    allergens: [],
-    category: 'Classic Vodka',
-    garnish: 'Orange peel twist',
-    method: 'Shake',
-    abv: '18-22%',
-    iba_official: true
-  },
-  {
-    id: 'vodka-4',
-    name: 'Vodka Martini',
-    description: 'Clean, crisp, iconic cocktail',
-    spiritType: 'Vodka',
-    origin: 'United States',
-    glassware: 'Martini Glass',
-    servingSize: '3 oz',
-    nutrition: {
-      calories: 175,
-      carbs: 1,
-      sugar: 0,
-      alcohol: 18
-    },
-    ingredients: [
-      'Vodka (2.5 oz)',
-      'Dry Vermouth (0.5 oz)',
-      'Lemon Peel or Olives',
-      'Ice'
-    ],
-    profile: ['Dry', 'Clean', 'Strong', 'Classic'],
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.6,
-    reviews: 4567,
-    trending: false,
-    featured: true,
-    estimatedCost: 4.00,
-    bestTime: 'Evening',
     occasion: 'Sophisticated',
     allergens: [],
-    category: 'Classic Vodka',
-    garnish: 'Lemon twist or olives',
-    method: 'Stir',
+    category: 'Bourbon Classics',
+    garnish: 'Orange peel, cherry',
+    method: 'Build & Muddle',
     abv: '30-35%',
     iba_official: true
   },
   {
-    id: 'vodka-5',
-    name: 'White Russian',
-    description: 'Creamy coffee liqueur dessert cocktail',
-    spiritType: 'Vodka',
-    origin: 'Belgium',
-    glassware: 'Old Fashioned Glass',
-    servingSize: '6 oz',
+    id: 'whiskey-2',
+    name: 'Mint Julep',
+    description: 'Kentucky Derby classic with bourbon and fresh mint',
+    spiritType: 'Bourbon',
+    origin: 'Southern United States',
+    glassware: 'Julep Cup',
+    servingSize: '8 oz',
     nutrition: {
-      calories: 280,
-      carbs: 18,
-      sugar: 16,
-      alcohol: 14
+      calories: 168,
+      carbs: 12,
+      sugar: 10,
+      alcohol: 12
     },
     ingredients: [
-      'Vodka (2 oz)',
-      'Coffee Liqueur (1 oz)',
-      'Heavy Cream (1 oz)',
-      'Ice'
+      'Bourbon (2.5 oz)',
+      'Fresh Mint Leaves (10-12)',
+      'Simple Syrup (0.5 oz)',
+      'Crushed Ice',
+      'Mint Sprig',
+      'Powdered Sugar (optional)'
     ],
-    profile: ['Creamy', 'Coffee', 'Sweet', 'Dessert'],
-    difficulty: 'Very Easy',
-    prepTime: 2,
-    rating: 4.5,
-    reviews: 3876,
+    profile: ['Minty', 'Refreshing', 'Southern', 'Classic'],
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.7,
+    reviews: 3892,
     trending: false,
-    featured: false,
-    estimatedCost: 4.50,
-    bestTime: 'After Dinner',
-    occasion: 'Dessert',
-    allergens: ['Dairy'],
-    category: 'Creamy Vodka',
-    garnish: 'None',
-    method: 'Build',
-    abv: '18-22%',
+    featured: true,
+    estimatedCost: 4.00,
+    bestTime: 'Afternoon',
+    occasion: 'Derby Party',
+    allergens: [],
+    category: 'Bourbon Classics',
+    garnish: 'Mint sprig, powdered sugar',
+    method: 'Muddle & Build',
+    abv: '20-24%',
     iba_official: true
   },
   {
-    id: 'vodka-6',
-    name: 'Espresso Martini',
-    description: 'Caffeinated vodka cocktail with coffee',
-    spiritType: 'Vodka',
-    origin: 'London, England',
-    glassware: 'Martini Glass',
+    id: 'whiskey-3',
+    name: 'Manhattan',
+    description: 'Sophisticated blend of whiskey and vermouth',
+    spiritType: 'Rye Whiskey',
+    origin: 'New York City, USA',
+    glassware: 'Coupe Glass',
     servingSize: '4 oz',
     nutrition: {
-      calories: 195,
-      carbs: 12,
-      sugar: 10,
-      alcohol: 13
+      calories: 185,
+      carbs: 6,
+      sugar: 4,
+      alcohol: 16
     },
     ingredients: [
-      'Vodka (2 oz)',
-      'Coffee Liqueur (0.5 oz)',
-      'Espresso (1 oz, fresh)',
-      'Simple Syrup (0.25 oz)',
-      'Coffee Beans',
+      'Rye Whiskey (2 oz)',
+      'Sweet Vermouth (1 oz)',
+      'Angostura Bitters (2 dashes)',
+      'Maraschino Cherry',
       'Ice'
     ],
-    profile: ['Coffee', 'Energizing', 'Smooth', 'Modern'],
-    difficulty: 'Medium',
-    prepTime: 4,
+    profile: ['Rich', 'Complex', 'Herbal', 'Sophisticated'],
+    difficulty: 'Easy',
+    prepTime: 3,
     rating: 4.8,
-    reviews: 5892,
+    reviews: 4567,
     trending: true,
     featured: true,
     estimatedCost: 5.00,
     bestTime: 'Evening',
-    occasion: 'Night Out',
+    occasion: 'Sophisticated',
     allergens: [],
-    category: 'Modern Vodka',
-    garnish: '3 coffee beans',
-    method: 'Shake',
-    abv: '20-24%',
+    category: 'Whiskey Classics',
+    garnish: 'Maraschino cherry',
+    method: 'Stir',
+    abv: '28-32%',
     iba_official: true
   },
   {
-    id: 'vodka-7',
-    name: 'Vodka Tonic',
-    description: 'Simple, refreshing highball',
-    spiritType: 'Vodka',
-    origin: 'Modern',
-    glassware: 'Highball Glass',
-    servingSize: '8 oz',
-    nutrition: {
-      calories: 175,
-      carbs: 15,
-      sugar: 14,
-      alcohol: 12
-    },
-    ingredients: [
-      'Vodka (2 oz)',
-      'Tonic Water (5 oz)',
-      'Lime Wedge',
-      'Ice'
-    ],
-    profile: ['Crisp', 'Bitter', 'Light', 'Refreshing'],
-    difficulty: 'Very Easy',
-    prepTime: 1,
-    rating: 4.3,
-    reviews: 2345,
-    trending: false,
-    featured: false,
-    estimatedCost: 3.00,
-    bestTime: 'Anytime',
-    occasion: 'Casual',
-    allergens: [],
-    category: 'Classic Vodka',
-    garnish: 'Lime wedge',
-    method: 'Build',
-    abv: '10-12%',
-    iba_official: false
-  },
-  {
-    id: 'vodka-8',
-    name: 'Lemon Drop',
-    description: 'Sweet and sour citrus vodka cocktail',
-    spiritType: 'Vodka',
-    origin: 'San Francisco, USA',
-    glassware: 'Martini Glass',
-    servingSize: '4 oz',
-    nutrition: {
-      calories: 185,
-      carbs: 14,
-      sugar: 12,
-      alcohol: 13
-    },
-    ingredients: [
-      'Vodka (2 oz)',
-      'Triple Sec (0.5 oz)',
-      'Fresh Lemon Juice (0.75 oz)',
-      'Simple Syrup (0.5 oz)',
-      'Sugar (for rim)',
-      'Lemon Wheel',
-      'Ice'
-    ],
-    profile: ['Citrus', 'Sweet', 'Tart', 'Refreshing'],
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.6,
-    reviews: 3456,
-    trending: false,
-    featured: true,
-    estimatedCost: 3.50,
-    bestTime: 'Evening',
-    occasion: 'Party',
-    allergens: [],
-    category: 'Classic Vodka',
-    garnish: 'Sugar rim, lemon wheel',
-    method: 'Shake',
-    abv: '20-24%',
-    iba_official: false
-  },
-  {
-    id: 'vodka-9',
-    name: 'Sea Breeze',
-    description: 'Fruity vodka with cranberry and grapefruit',
-    spiritType: 'Vodka',
+    id: 'whiskey-4',
+    name: 'Whiskey Sour',
+    description: 'Classic sour with whiskey, lemon, and egg white',
+    spiritType: 'Bourbon',
     origin: 'United States',
-    glassware: 'Highball Glass',
-    servingSize: '8 oz',
-    nutrition: {
-      calories: 175,
-      carbs: 16,
-      sugar: 14,
-      alcohol: 11
-    },
-    ingredients: [
-      'Vodka (1.5 oz)',
-      'Cranberry Juice (3 oz)',
-      'Grapefruit Juice (1.5 oz)',
-      'Lime Wedge',
-      'Ice'
-    ],
-    profile: ['Fruity', 'Tart', 'Refreshing', 'Beach'],
-    difficulty: 'Very Easy',
-    prepTime: 2,
-    rating: 4.4,
-    reviews: 2876,
-    trending: false,
-    featured: false,
-    estimatedCost: 3.50,
-    bestTime: 'Afternoon',
-    occasion: 'Beach',
-    allergens: [],
-    category: 'Fruity Vodka',
-    garnish: 'Lime wedge',
-    method: 'Build',
-    abv: '10-12%',
-    iba_official: true
-  },
-  {
-    id: 'vodka-10',
-    name: 'Black Russian',
-    description: 'Simple vodka and coffee liqueur',
-    spiritType: 'Vodka',
-    origin: 'Belgium',
-    glassware: 'Old Fashioned Glass',
-    servingSize: '4 oz',
-    nutrition: {
-      calories: 220,
-      carbs: 15,
-      sugar: 14,
-      alcohol: 16
-    },
-    ingredients: [
-      'Vodka (2 oz)',
-      'Coffee Liqueur (1 oz)',
-      'Ice'
-    ],
-    profile: ['Coffee', 'Strong', 'Simple', 'Classic'],
-    difficulty: 'Very Easy',
-    prepTime: 2,
-    rating: 4.4,
-    reviews: 1987,
-    trending: false,
-    featured: false,
-    estimatedCost: 4.00,
-    bestTime: 'After Dinner',
-    occasion: 'Nightcap',
-    allergens: [],
-    category: 'Classic Vodka',
-    garnish: 'None',
-    method: 'Build',
-    abv: '25-30%',
-    iba_official: true
-  },
-  {
-    id: 'vodka-11',
-    name: 'French Martini',
-    description: 'Vodka with pineapple and raspberry',
-    spiritType: 'Vodka',
-    origin: 'New York City, USA',
-    glassware: 'Martini Glass',
-    servingSize: '4 oz',
+    glassware: 'Coupe Glass',
+    servingSize: '5 oz',
     nutrition: {
       calories: 195,
       carbs: 12,
@@ -416,78 +145,351 @@ const vodkaCocktails = [
       alcohol: 13
     },
     ingredients: [
-      'Vodka (2 oz)',
-      'Chambord (0.5 oz)',
-      'Pineapple Juice (1 oz)',
+      'Bourbon (2 oz)',
+      'Fresh Lemon Juice (0.75 oz)',
+      'Simple Syrup (0.5 oz)',
+      'Egg White (1)',
+      'Angostura Bitters',
       'Ice'
     ],
-    profile: ['Fruity', 'Sweet', 'Sophisticated', 'Berry'],
+    profile: ['Tart', 'Frothy', 'Balanced', 'Classic'],
+    difficulty: 'Medium',
+    prepTime: 5,
+    rating: 4.7,
+    reviews: 4123,
+    trending: true,
+    featured: true,
+    estimatedCost: 4.00,
+    bestTime: 'Evening',
+    occasion: 'Cocktail Party',
+    allergens: ['Eggs'],
+    category: 'Bourbon Classics',
+    garnish: 'Lemon wheel, bitters design',
+    method: 'Shake',
+    abv: '22-26%',
+    iba_official: true
+  },
+  {
+    id: 'whiskey-5',
+    name: 'Boulevardier',
+    description: 'Whiskey Negroni with bourbon, Campari, vermouth',
+    spiritType: 'Bourbon',
+    origin: 'Paris, France',
+    glassware: 'Old Fashioned Glass',
+    servingSize: '4 oz',
+    nutrition: {
+      calories: 195,
+      carbs: 8,
+      sugar: 6,
+      alcohol: 17
+    },
+    ingredients: [
+      'Bourbon (1.5 oz)',
+      'Campari (1 oz)',
+      'Sweet Vermouth (1 oz)',
+      'Orange Peel',
+      'Ice'
+    ],
+    profile: ['Bitter', 'Complex', 'Bold', 'Sophisticated'],
     difficulty: 'Easy',
     prepTime: 3,
-    rating: 4.7,
-    reviews: 3124,
+    rating: 4.6,
+    reviews: 2876,
     trending: true,
     featured: true,
     estimatedCost: 5.50,
     bestTime: 'Evening',
-    occasion: 'Date Night',
+    occasion: 'Sophisticated',
     allergens: [],
-    category: 'Modern Vodka',
-    garnish: 'Raspberry',
+    category: 'Modern Whiskey',
+    garnish: 'Orange peel',
+    method: 'Stir',
+    abv: '30-34%',
+    iba_official: false
+  },
+  {
+    id: 'whiskey-6',
+    name: 'Sazerac',
+    description: 'New Orleans classic with rye and absinthe rinse',
+    spiritType: 'Rye Whiskey',
+    origin: 'New Orleans, Louisiana',
+    glassware: 'Old Fashioned Glass',
+    servingSize: '3 oz',
+    nutrition: {
+      calories: 180,
+      carbs: 4,
+      sugar: 3,
+      alcohol: 19
+    },
+    ingredients: [
+      'Rye Whiskey (2 oz)',
+      'Sugar Cube (1)',
+      'Peychaud\'s Bitters (3 dashes)',
+      'Absinthe (rinse)',
+      'Lemon Peel',
+      'Ice'
+    ],
+    profile: ['Anise', 'Bold', 'Aromatic', 'Historic'],
+    difficulty: 'Medium',
+    prepTime: 6,
+    rating: 4.7,
+    reviews: 2345,
+    trending: false,
+    featured: true,
+    estimatedCost: 6.00,
+    bestTime: 'Evening',
+    occasion: 'Sophisticated',
+    allergens: [],
+    category: 'Whiskey Classics',
+    garnish: 'Lemon peel',
+    method: 'Stir',
+    abv: '35-40%',
+    iba_official: true
+  },
+  {
+    id: 'whiskey-7',
+    name: 'Whiskey Highball',
+    description: 'Simple Japanese-style whiskey and soda',
+    spiritType: 'Japanese Whisky',
+    origin: 'Japan',
+    glassware: 'Highball Glass',
+    servingSize: '8 oz',
+    nutrition: {
+      calories: 155,
+      carbs: 0,
+      sugar: 0,
+      alcohol: 12
+    },
+    ingredients: [
+      'Japanese Whisky (2 oz)',
+      'Soda Water (5 oz)',
+      'Lemon Peel',
+      'Large Ice Cubes'
+    ],
+    profile: ['Clean', 'Crisp', 'Refreshing', 'Simple'],
+    difficulty: 'Very Easy',
+    prepTime: 2,
+    rating: 4.5,
+    reviews: 1987,
+    trending: true,
+    featured: false,
+    estimatedCost: 4.50,
+    bestTime: 'Anytime',
+    occasion: 'Casual',
+    allergens: [],
+    category: 'Modern Whiskey',
+    garnish: 'Lemon peel',
+    method: 'Build',
+    abv: '12-15%',
+    iba_official: false
+  },
+  {
+    id: 'whiskey-8',
+    name: 'Gold Rush',
+    description: 'Modern classic with bourbon, honey, and lemon',
+    spiritType: 'Bourbon',
+    origin: 'New York City, USA',
+    glassware: 'Old Fashioned Glass',
+    servingSize: '4 oz',
+    nutrition: {
+      calories: 205,
+      carbs: 14,
+      sugar: 12,
+      alcohol: 14
+    },
+    ingredients: [
+      'Bourbon (2 oz)',
+      'Fresh Lemon Juice (0.75 oz)',
+      'Honey Syrup (0.75 oz)',
+      'Lemon Wheel',
+      'Ice'
+    ],
+    profile: ['Sweet', 'Tart', 'Smooth', 'Modern'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.8,
+    reviews: 3456,
+    trending: true,
+    featured: true,
+    estimatedCost: 4.00,
+    bestTime: 'Evening',
+    occasion: 'Cocktail Party',
+    allergens: [],
+    category: 'Modern Whiskey',
+    garnish: 'Lemon wheel',
     method: 'Shake',
+    abv: '24-28%',
+    iba_official: false
+  },
+  {
+    id: 'whiskey-9',
+    name: 'New York Sour',
+    description: 'Whiskey sour with red wine float',
+    spiritType: 'Rye Whiskey',
+    origin: 'New York City, USA',
+    glassware: 'Old Fashioned Glass',
+    servingSize: '5 oz',
+    nutrition: {
+      calories: 220,
+      carbs: 15,
+      sugar: 12,
+      alcohol: 15
+    },
+    ingredients: [
+      'Rye Whiskey (2 oz)',
+      'Fresh Lemon Juice (0.75 oz)',
+      'Simple Syrup (0.5 oz)',
+      'Egg White (1)',
+      'Red Wine (float, 0.5 oz)',
+      'Ice'
+    ],
+    profile: ['Tart', 'Complex', 'Layered', 'Sophisticated'],
+    difficulty: 'Hard',
+    prepTime: 6,
+    rating: 4.7,
+    reviews: 1654,
+    trending: true,
+    featured: true,
+    estimatedCost: 6.00,
+    bestTime: 'Evening',
+    occasion: 'Impressive',
+    allergens: ['Eggs'],
+    category: 'Modern Whiskey',
+    garnish: 'Lemon wheel',
+    method: 'Shake & Float',
+    abv: '22-26%',
+    iba_official: false
+  },
+  {
+    id: 'whiskey-10',
+    name: 'Hot Toddy',
+    description: 'Warm whiskey with honey, lemon, and spices',
+    spiritType: 'Bourbon',
+    origin: 'Scotland/Ireland',
+    glassware: 'Irish Coffee Glass',
+    servingSize: '8 oz',
+    nutrition: {
+      calories: 175,
+      carbs: 12,
+      sugar: 10,
+      alcohol: 12
+    },
+    ingredients: [
+      'Bourbon (2 oz)',
+      'Honey (1 tbsp)',
+      'Fresh Lemon Juice (0.5 oz)',
+      'Hot Water (4 oz)',
+      'Cinnamon Stick',
+      'Cloves (2-3)',
+      'Lemon Wheel'
+    ],
+    profile: ['Warm', 'Soothing', 'Spicy', 'Comforting'],
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.6,
+    reviews: 2987,
+    trending: false,
+    featured: true,
+    estimatedCost: 3.50,
+    bestTime: 'Evening',
+    occasion: 'Cold Weather',
+    allergens: [],
+    category: 'Bourbon Classics',
+    garnish: 'Cinnamon stick, lemon wheel',
+    method: 'Build',
+    abv: '12-15%',
+    iba_official: false
+  },
+  {
+    id: 'whiskey-11',
+    name: 'Whiskey Smash',
+    description: 'Refreshing bourbon with lemon and mint',
+    spiritType: 'Bourbon',
+    origin: 'United States',
+    glassware: 'Old Fashioned Glass',
+    servingSize: '5 oz',
+    nutrition: {
+      calories: 185,
+      carbs: 11,
+      sugar: 9,
+      alcohol: 13
+    },
+    ingredients: [
+      'Bourbon (2 oz)',
+      'Fresh Lemon Juice (0.75 oz)',
+      'Simple Syrup (0.5 oz)',
+      'Fresh Mint Leaves (6-8)',
+      'Mint Sprig',
+      'Ice'
+    ],
+    profile: ['Refreshing', 'Minty', 'Citrus', 'Balanced'],
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.6,
+    reviews: 2234,
+    trending: false,
+    featured: false,
+    estimatedCost: 4.00,
+    bestTime: 'Afternoon',
+    occasion: 'Casual',
+    allergens: [],
+    category: 'Bourbon Classics',
+    garnish: 'Mint sprig',
+    method: 'Muddle & Shake',
     abv: '20-24%',
     iba_official: false
   },
   {
-    id: 'vodka-12',
-    name: 'Vodka Cranberry',
-    description: 'Simple vodka and cranberry juice',
-    spiritType: 'Vodka',
-    origin: 'United States',
-    glassware: 'Highball Glass',
-    servingSize: '8 oz',
+    id: 'whiskey-12',
+    name: 'Paper Plane',
+    description: 'Modern equal-parts cocktail with bourbon and Aperol',
+    spiritType: 'Bourbon',
+    origin: 'Chicago, USA',
+    glassware: 'Coupe Glass',
+    servingSize: '4 oz',
     nutrition: {
-      calories: 165,
-      carbs: 14,
-      sugar: 13,
-      alcohol: 12
+      calories: 195,
+      carbs: 10,
+      sugar: 8,
+      alcohol: 15
     },
     ingredients: [
-      'Vodka (2 oz)',
-      'Cranberry Juice (5 oz)',
-      'Lime Wedge',
+      'Bourbon (0.75 oz)',
+      'Aperol (0.75 oz)',
+      'Amaro Nonino (0.75 oz)',
+      'Fresh Lemon Juice (0.75 oz)',
       'Ice'
     ],
-    profile: ['Fruity', 'Tart', 'Simple', 'Easy'],
-    difficulty: 'Very Easy',
-    prepTime: 1,
-    rating: 4.2,
-    reviews: 4321,
-    trending: false,
-    featured: false,
-    estimatedCost: 3.00,
-    bestTime: 'Anytime',
-    occasion: 'Casual',
+    profile: ['Balanced', 'Bitter-Sweet', 'Citrus', 'Complex'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.7,
+    reviews: 1876,
+    trending: true,
+    featured: true,
+    estimatedCost: 7.00,
+    bestTime: 'Evening',
+    occasion: 'Cocktail Party',
     allergens: [],
-    category: 'Fruity Vodka',
-    garnish: 'Lime wedge',
-    method: 'Build',
-    abv: '10-12%',
+    category: 'Modern Whiskey',
+    garnish: 'None',
+    method: 'Shake',
+    abv: '24-28%',
     iba_official: false
   }
 ];
 
-export default function VodkaCocktailsPage() {
+export default function WhiskeyBourbonPage() {
   const { favorites, toggleFavorite } = useDrinks();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
-  const categories = ['Classic Vodka', 'Modern Vodka', 'Fruity Vodka', 'Creamy Vodka'];
-  const difficulties = ['Very Easy', 'Easy', 'Medium'];
+  const categories = ['Bourbon Classics', 'Whiskey Classics', 'Modern Whiskey'];
+  const difficulties = ['Very Easy', 'Easy', 'Medium', 'Hard'];
 
-  const filteredCocktails = vodkaCocktails.filter(cocktail => {
+  const filteredCocktails = whiskeyCocktails.filter(cocktail => {
     const matchesSearch = cocktail.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          cocktail.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = !selectedCategory || cocktail.category === selectedCategory;
@@ -497,14 +499,14 @@ export default function VodkaCocktailsPage() {
 
   return (
     <RequireAgeGate>
-      <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-blue-50 to-purple-50">
+      <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50">
         {/* Universal Search Modal */}
         {showUniversalSearch && (
           <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
         )}
 
         {/* Hero Section */}
-        <div className="bg-gradient-to-r from-cyan-600 via-blue-600 to-purple-600 text-white py-16 px-4">
+        <div className="bg-gradient-to-r from-amber-700 via-orange-700 to-red-700 text-white py-16 px-4">
           <div className="max-w-7xl mx-auto">
             <div className="flex items-center gap-3 mb-4">
               <Button
@@ -517,12 +519,12 @@ export default function VodkaCocktailsPage() {
                 Back
               </Button>
             </div>
-            
+
             <div className="flex items-center gap-4 mb-6">
-              <Droplets className="w-12 h-12" />
+              <Wine className="w-12 h-12" />
               <div>
-                <h1 className="text-4xl md:text-5xl font-bold mb-2">Vodka Cocktails</h1>
-                <p className="text-xl text-white/90">Clean, versatile, and endlessly mixable</p>
+                <h1 className="text-4xl md:text-5xl font-bold mb-2">Whiskey & Bourbon</h1>
+                <p className="text-xl text-white/90">From Kentucky bourbon to classic rye whiskey</p>
               </div>
             </div>
 
@@ -532,7 +534,7 @@ export default function VodkaCocktailsPage() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <Input
                   type="text"
-                  placeholder="Search vodka cocktails..."
+                  placeholder="Search whiskey cocktails..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 py-6 text-lg bg-white/95 border-0"
@@ -540,7 +542,7 @@ export default function VodkaCocktailsPage() {
               </div>
               <Button
                 onClick={() => setShowUniversalSearch(true)}
-                className="bg-white text-cyan-600 hover:bg-white/90 px-6"
+                className="bg-white text-amber-700 hover:bg-white/90 px-6"
                 size="lg"
               >
                 <Target className="w-5 h-5 mr-2" />
@@ -551,7 +553,7 @@ export default function VodkaCocktailsPage() {
             {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
               <div className="bg-white/10 backdrop-blur rounded-lg p-4">
-                <div className="text-3xl font-bold">{vodkaCocktails.length}</div>
+                <div className="text-3xl font-bold">{whiskeyCocktails.length}</div>
                 <div className="text-white/80 text-sm">Cocktails</div>
               </div>
               <div className="bg-white/10 backdrop-blur rounded-lg p-4">
@@ -559,11 +561,11 @@ export default function VodkaCocktailsPage() {
                 <div className="text-white/80 text-sm">Categories</div>
               </div>
               <div className="bg-white/10 backdrop-blur rounded-lg p-4">
-                <div className="text-3xl font-bold">{vodkaCocktails.filter(c => c.trending).length}</div>
+                <div className="text-3xl font-bold">{whiskeyCocktails.filter(c => c.trending).length}</div>
                 <div className="text-white/80 text-sm">Trending</div>
               </div>
               <div className="bg-white/10 backdrop-blur rounded-lg p-4">
-                <div className="text-3xl font-bold">{vodkaCocktails.filter(c => c.iba_official).length}</div>
+                <div className="text-3xl font-bold">{whiskeyCocktails.filter(c => c.iba_official).length}</div>
                 <div className="text-white/80 text-sm">IBA Official</div>
               </div>
             </div>
@@ -581,7 +583,7 @@ export default function VodkaCocktailsPage() {
                     variant={selectedCategory === null ? "default" : "outline"}
                     size="sm"
                     onClick={() => setSelectedCategory(null)}
-                    className={selectedCategory === null ? "bg-cyan-600" : ""}
+                    className={selectedCategory === null ? "bg-amber-700" : ""}
                   >
                     All
                   </Button>
@@ -591,7 +593,7 @@ export default function VodkaCocktailsPage() {
                       variant={selectedCategory === category ? "default" : "outline"}
                       size="sm"
                       onClick={() => setSelectedCategory(category)}
-                      className={selectedCategory === category ? "bg-cyan-600" : ""}
+                      className={selectedCategory === category ? "bg-amber-700" : ""}
                     >
                       {category}
                     </Button>
@@ -606,7 +608,7 @@ export default function VodkaCocktailsPage() {
                     variant={selectedDifficulty === null ? "default" : "outline"}
                     size="sm"
                     onClick={() => setSelectedDifficulty(null)}
-                    className={selectedDifficulty === null ? "bg-cyan-600" : ""}
+                    className={selectedDifficulty === null ? "bg-amber-700" : ""}
                   >
                     All Levels
                   </Button>
@@ -616,7 +618,7 @@ export default function VodkaCocktailsPage() {
                       variant={selectedDifficulty === diff ? "default" : "outline"}
                       size="sm"
                       onClick={() => setSelectedDifficulty(diff)}
-                      className={selectedDifficulty === diff ? "bg-cyan-600" : ""}
+                      className={selectedDifficulty === diff ? "bg-amber-700" : ""}
                     >
                       {diff}
                     </Button>
@@ -628,17 +630,17 @@ export default function VodkaCocktailsPage() {
 
           {/* Results Count */}
           <div className="mb-4 text-gray-600">
-            Showing {filteredCocktails.length} of {vodkaCocktails.length} cocktails
+            Showing {filteredCocktails.length} of {whiskeyCocktails.length} cocktails
           </div>
 
           {/* Cocktails Grid */}
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredCocktails.map((cocktail) => (
               <Card key={cocktail.id} className="hover:shadow-lg transition-all duration-300 overflow-hidden group">
-                <div className="relative bg-gradient-to-br from-cyan-100 to-blue-100 p-6 h-48 flex items-center justify-center">
-                  <Droplets className="w-20 h-20 text-cyan-600 group-hover:scale-110 transition-transform" />
+                <div className="relative bg-gradient-to-br from-amber-100 to-orange-100 p-6 h-48 flex items-center justify-center">
+                  <Wine className="w-20 h-20 text-amber-700 group-hover:scale-110 transition-transform" />
                   {cocktail.trending && (
-                    <Badge className="absolute top-3 left-3 bg-purple-500">
+                    <Badge className="absolute top-3 left-3 bg-red-500">
                       <TrendingUp className="w-3 h-3 mr-1" />
                       Trending
                     </Badge>
@@ -653,14 +655,14 @@ export default function VodkaCocktailsPage() {
                     variant="ghost"
                     size="sm"
                     className="absolute bottom-3 right-3 bg-white/80 hover:bg-white"
-                    onClick={() => toggleFavorite(cocktail.id, 'vodka-cocktails')}
+                    onClick={() => toggleFavorite(cocktail.id, 'whiskey-bourbon')}
                   >
                     <Heart
-                      className={`w-5 h-5 ${
-                        favorites['vodka-cocktails']?.includes(cocktail.id)
+                      className={w-5 h-5 ${
+                        favorites['whiskey-bourbon']?.includes(cocktail.id)
                           ? 'fill-red-500 text-red-500'
                           : 'text-gray-600'
-                      }`}
+                      }}
                     />
                   </Button>
                 </div>
@@ -679,19 +681,19 @@ export default function VodkaCocktailsPage() {
                   {/* Key Info */}
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="flex items-center gap-2">
-                      <GlassWater className="w-4 h-4 text-cyan-600" />
+                      <GlassWater className="w-4 h-4 text-amber-700" />
                       <span className="text-gray-600">{cocktail.glassware}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-cyan-600" />
+                      <Clock className="w-4 h-4 text-amber-700" />
                       <span className="text-gray-600">{cocktail.prepTime} min</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Flame className="w-4 h-4 text-cyan-600" />
+                      <Flame className="w-4 h-4 text-amber-700" />
                       <span className="text-gray-600">{cocktail.abv} ABV</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Droplets className="w-4 h-4 text-cyan-600" />
+                      <Wine className="w-4 h-4 text-amber-700" />
                       <span className="text-gray-600">{cocktail.spiritType}</span>
                     </div>
                   </div>
@@ -702,11 +704,11 @@ export default function VodkaCocktailsPage() {
                       {[...Array(5)].map((_, i) => (
                         <GlassWater
                           key={i}
-                          className={`w-4 h-4 ${
+                          className={w-4 h-4 ${
                             i < Math.floor(cocktail.rating)
-                              ? 'fill-cyan-500 text-cyan-500'
+                              ? 'fill-amber-500 text-amber-500'
                               : 'text-gray-300'
-                          }`}
+                          }}
                         />
                       ))}
                     </div>
@@ -754,7 +756,7 @@ export default function VodkaCocktailsPage() {
 
                   {/* Action Buttons */}
                   <div className="flex gap-2 pt-3">
-                    <Button className="flex-1 bg-cyan-600 hover:bg-cyan-700">
+                    <Button className="flex-1 bg-amber-700 hover:bg-amber-800">
                       <Plus className="w-4 h-4 mr-2" />
                       View Recipe
                     </Button>
@@ -768,76 +770,77 @@ export default function VodkaCocktailsPage() {
           </div>
 
           {/* Educational Section */}
-          <Card className="mt-12 bg-gradient-to-br from-cyan-50 to-blue-50 border-cyan-200">
+          <Card className="mt-12 bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-2xl">
-                <Droplets className="w-7 h-7 text-cyan-600" />
-                About Vodka
+                <Wine className="w-7 h-7 text-amber-700" />
+                About Whiskey & Bourbon
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <p className="text-gray-700 leading-relaxed">
-                Vodka is a clear distilled spirit originating from Eastern Europe, traditionally made from grains 
-                or potatoes. Known for its neutral flavor profile and versatility, vodka has become the world's 
-                most popular spirit and the foundation for countless cocktails. Its clean taste allows other 
-                ingredients to shine while providing the alcoholic backbone that defines mixed drinks.
+                Whiskey is a distilled spirit made from fermented grain mash, aged in wooden barrels. The term 
+                encompasses many regional styles including bourbon, rye, Tennessee whiskey, and more. Each style 
+                has distinct characteristics based on the grains used, distillation method, and aging process.
               </p>
 
-              {/* Vodka Types */}
+              {/* Whiskey Types */}
               <div>
-                <h3 className="font-semibold text-lg mb-3 text-cyan-700">Types of Vodka</h3>
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="p-4 bg-white rounded-lg border border-cyan-200">
-                    <div className="font-semibold text-cyan-600 mb-2">Grain Vodka</div>
-                    <div className="text-sm text-gray-700">Made from wheat, rye, or corn. Smooth and neutral flavor.</div>
+                <h3 className="font-semibold text-lg mb-3 text-amber-700">Types of Whiskey</h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-white rounded-lg border border-amber-200">
+                    <div className="font-semibold text-amber-700 mb-2">Bourbon</div>
+                    <div className="text-sm text-gray-700">Must be made in USA with 51%+ corn. Aged in new charred oak. Sweet, vanilla notes.</div>
                   </div>
-                  <div className="p-4 bg-white rounded-lg border border-cyan-200">
-                    <div className="font-semibold text-blue-600 mb-2">Potato Vodka</div>
-                    <div className="text-sm text-gray-700">Creamy texture with slightly earthy notes. Traditional style.</div>
+                  <div className="p-4 bg-white rounded-lg border border-amber-200">
+                    <div className="font-semibold text-orange-700 mb-2">Rye Whiskey</div>
+                    <div className="text-sm text-gray-700">51%+ rye grain. Spicy, peppery character. Popular in classic cocktails.</div>
                   </div>
-                  <div className="p-4 bg-white rounded-lg border border-cyan-200">
-                    <div className="font-semibold text-purple-600 mb-2">Flavored Vodka</div>
-                    <div className="text-sm text-gray-700">Infused with fruits, herbs, or spices. Popular for mixing.</div>
+                  <div className="p-4 bg-white rounded-lg border border-amber-200">
+                    <div className="font-semibold text-red-700 mb-2">Tennessee Whiskey</div>
+                    <div className="text-sm text-gray-700">Similar to bourbon but charcoal filtered. Smooth, mellow flavor.</div>
                   </div>
-                  <div className="p-4 bg-white rounded-lg border border-cyan-200">
-                    <div className="font-semibold text-indigo-600 mb-2">Premium Vodka</div>
-                    <div className="text-sm text-gray-700">Multiple distillations and filtrations. Ultra-smooth finish.</div>
+                  <div className="p-4 bg-white rounded-lg border border-amber-200">
+                    <div className="font-semibold text-yellow-700 mb-2">Japanese Whisky</div>
+                    <div className="text-sm text-gray-700">Inspired by Scotch. Delicate, refined, increasingly popular worldwide.</div>
                   </div>
                 </div>
               </div>
 
-              {/* Cocktail Categories */}
+              {/* Cocktail Styles */}
               <div>
-                <h3 className="font-semibold text-lg mb-3 text-cyan-700">Vodka Cocktail Styles</h3>
+                <h3 className="font-semibold text-lg mb-3 text-amber-700">Whiskey Cocktail Traditions</h3>
                 <div className="grid md:grid-cols-3 gap-6">
                   <div>
-                    <h4 className="font-semibold mb-2 text-cyan-600">Classic Vodka</h4>
-                    <p className="text-sm text-gray-700">Timeless cocktails like Martini, Moscow Mule, and Bloody Mary that showcase vodka's versatility.</p>
+                    <h4 className="font-semibold mb-2 text-amber-600">Bourbon Classics</h4>
+                    <p className="text-sm text-gray-700">Southern staples like Old Fashioned, Mint Julep, and Whiskey Sour that celebrate American bourbon.</p>
                   </div>
                   <div>
-                    <h4 className="font-semibold mb-2 text-blue-600">Modern Creations</h4>
-                    <p className="text-sm text-gray-700">Contemporary drinks like Espresso Martini and French Martini from the craft cocktail renaissance.</p>
+                    <h4 className="font-semibold mb-2 text-orange-600">Rye Heritage</h4>
+                    <p className="text-sm text-gray-700">Historic cocktails like Manhattan and Sazerac that showcase rye's spicy character.</p>
                   </div>
                   <div>
-                    <h4 className="font-semibold mb-2 text-purple-600">Fruity & Fun</h4>
-                    <p className="text-sm text-gray-700">Approachable, refreshing cocktails perfect for casual drinking and social occasions.</p>
+                    <h4 className="font-semibold mb-2 text-red-600">Modern Craft</h4>
+                    <p className="text-sm text-gray-700">Contemporary creations like Paper Plane and Gold Rush from today's mixology scene.</p>
                   </div>
                 </div>
               </div>
 
-              {/* Production Info */}
-              <div className="p-6 bg-gradient-to-r from-cyan-100 to-blue-100 rounded-lg">
-                <h3 className="font-semibold text-lg mb-3 text-cyan-800 flex items-center gap-2">
+              {/* Bourbon Requirements */}
+              <div className="p-6 bg-gradient-to-r from-amber-100 to-orange-100 rounded-lg">
+                <h3 className="font-semibold text-lg mb-3 text-amber-800 flex items-center gap-2">
                   <Sparkles className="w-5 h-5" />
-                  Vodka Production
+                  What Makes It Bourbon?
                 </h3>
-                <p className="text-gray-700 text-sm leading-relaxed">
-                  Quality vodka undergoes multiple distillations (often 3-5 times) to achieve exceptional purity 
-                  and smoothness. Many premium brands use additional filtration through charcoal, quartz, or even 
-                  diamonds. The result is a spirit so clean it can be sipped neat or mixed into virtually any 
-                  cocktail without overwhelming other flavors. This neutrality is vodka's greatest strength, 
-                  making it the perfect canvas for mixologists and home bartenders alike.
-                </p>
+                <ul className="text-sm text-gray-700 space-y-2">
+                  <li>• Must be made in the United States</li>
+                  <li>• Mash bill must be at least 51% corn</li>
+                  <li>• Distilled to no more than 160 proof (80% ABV)</li>
+                  <li>• Aged in new charred oak barrels</li>
+                  <li>• Entered into barrel at no more than 125 proof</li>
+                  <li>• Bottled at 80 proof or higher</li>
+                  <li>• No additives allowed except water</li>
+                </ul>
               </div>
             </CardContent>
           </Card>
@@ -846,3 +849,4 @@ export default function VodkaCocktailsPage() {
     </RequireAgeGate>
   );
 }
+
