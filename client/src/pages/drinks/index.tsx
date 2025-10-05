@@ -9,7 +9,8 @@ import {
   CheckCircle, Target, Flame, Droplets, Leaf, Apple,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Coffee, GlassWater, FlaskConical, Beaker, ArrowRight,
-  PlayCircle, BookOpen, Share2, Eye, ThumbsUp, MessageCircle
+  PlayCircle, BookOpen, Share2, Eye, ThumbsUp, MessageCircle,
+  X
 } from 'lucide-react';
 
 const drinkCategories = [
@@ -67,7 +68,7 @@ const drinkCategories = [
     textColor: 'text-purple-600',
     bgColor: 'bg-purple-50',
     borderColor: 'border-purple-200',
-    route: '/potent-potables',
+    route: '/drinks/potent-potables',
     recipeCount: 1247,
     features: ['Cocktail Builder', 'Gaming Elements', 'Social Features'],
     trending: true,
@@ -79,34 +80,70 @@ const drinkCategories = [
 
 const featuredRecipes = [
   {
+    id: 'recipe-1',
     name: 'Green Goddess Bowl',
     category: 'Smoothies',
     image: 'https://images.unsplash.com/photo-1610348725531-843dff563e2c?w=250&h=180&fit=crop',
     rating: 4.8,
     time: '5 min',
     calories: 280,
+    protein: 8,
+    carbs: 45,
     difficulty: 'Easy',
-    tags: ['Antioxidants', 'Energy']
+    tags: ['Antioxidants', 'Energy'],
+    ingredients: ['Spinach', 'Kale', 'Banana', 'Mango', 'Chia Seeds', 'Almond Milk'],
+    instructions: [
+      'Add almond milk to blender first',
+      'Add leafy greens (spinach and kale)',
+      'Add frozen banana and mango chunks',
+      'Sprinkle chia seeds on top',
+      'Blend until smooth and creamy',
+      'Pour into bowl and add toppings'
+    ]
   },
   {
+    id: 'recipe-2',
     name: 'Beast Mode Builder',
     category: 'Protein Shakes',
     image: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=250&h=180&fit=crop',
     rating: 4.9,
     time: '3 min',
     calories: 380,
+    protein: 35,
+    carbs: 42,
     difficulty: 'Medium',
-    tags: ['Muscle Building', 'Post-Workout']
+    tags: ['Muscle Building', 'Post-Workout'],
+    ingredients: ['Whey Protein', 'Banana', 'Oats', 'Peanut Butter', 'Whole Milk'],
+    instructions: [
+      'Add 1 cup whole milk to blender',
+      'Add 1 scoop whey protein powder',
+      'Add 1 banana and 1/3 cup oats',
+      'Add 1 tbsp peanut butter',
+      'Blend on high for 30 seconds',
+      'Serve immediately after workout'
+    ]
   },
   {
+    id: 'recipe-3',
     name: 'Cosmic Martini',
     category: 'Cocktails',
     image: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=250&h=180&fit=crop',
     rating: 4.7,
     time: '5 min',
     calories: 180,
+    protein: 0,
+    carbs: 8,
     difficulty: 'Medium',
-    tags: ['Elegant', 'Party']
+    tags: ['Elegant', 'Party'],
+    ingredients: ['Vodka', 'Blue Curaçao', 'Lime Juice', 'Simple Syrup', 'Edible Glitter'],
+    instructions: [
+      'Chill martini glass with ice',
+      'Add vodka and blue curaçao to shaker',
+      'Add fresh lime juice and simple syrup',
+      'Fill shaker with ice and shake vigorously',
+      'Strain into chilled glass',
+      'Garnish with edible glitter and lime wheel'
+    ]
   }
 ];
 
@@ -120,6 +157,7 @@ const userStats = {
 export default function DrinksPage() {
   const [hoveredCategory, setHoveredCategory] = useState(null);
   const [showStats, setShowStats] = useState(false);
+  const [selectedRecipe, setSelectedRecipe] = useState(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowStats(true), 500);
@@ -127,44 +165,151 @@ export default function DrinksPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-      {/* Hero Section */}
-      <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-teal-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 py-12">
-          <div className="text-center mb-8">
-            <h1 className="text-5xl font-bold mb-4 flex items-center justify-center gap-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+      
+      {/* Recipe Modal */}
+      {selectedRecipe && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedRecipe(null)}>
+          <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <CardContent className="p-0">
+              <div className="relative h-64">
+                <img 
+                  src={selectedRecipe.image} 
+                  alt={selectedRecipe.name}
+                  className="w-full h-full object-cover"
+                />
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  className="absolute top-4 right-4 bg-white/90 hover:bg-white"
+                  onClick={() => setSelectedRecipe(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+                <div className="absolute bottom-4 left-4">
+                  <Badge className="bg-white text-gray-900 mb-2">
+                    {selectedRecipe.category}
+                  </Badge>
+                </div>
+              </div>
+              
+              <div className="p-6">
+                <h2 className="text-3xl font-bold mb-4">{selectedRecipe.name}</h2>
+                
+                <div className="grid grid-cols-4 gap-4 mb-6">
+                  <div className="text-center p-3 bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg">
+                    <Clock className="h-5 w-5 mx-auto mb-1 text-blue-600" />
+                    <div className="font-bold">{selectedRecipe.time}</div>
+                    <div className="text-xs text-gray-600">Prep Time</div>
+                  </div>
+                  <div className="text-center p-3 bg-gradient-to-br from-orange-50 to-red-50 rounded-lg">
+                    <Flame className="h-5 w-5 mx-auto mb-1 text-orange-600" />
+                    <div className="font-bold">{selectedRecipe.calories}</div>
+                    <div className="text-xs text-gray-600">Calories</div>
+                  </div>
+                  <div className="text-center p-3 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg">
+                    <Target className="h-5 w-5 mx-auto mb-1 text-green-600" />
+                    <div className="font-bold">{selectedRecipe.protein}g</div>
+                    <div className="text-xs text-gray-600">Protein</div>
+                  </div>
+                  <div className="text-center p-3 bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg">
+                    <Star className="h-5 w-5 mx-auto mb-1 text-yellow-600" />
+                    <div className="font-bold">{selectedRecipe.rating}</div>
+                    <div className="text-xs text-gray-600">Rating</div>
+                  </div>
+                </div>
+
+                <div className="mb-6">
+                  <h3 className="font-bold text-lg mb-3">Ingredients</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {selectedRecipe.ingredients.map((ingredient, idx) => (
+                      <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <span className="text-sm">{ingredient}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mb-6">
+                  <h3 className="font-bold text-lg mb-3">Instructions</h3>
+                  <ol className="space-y-2">
+                    {selectedRecipe.instructions.map((step, idx) => (
+                      <li key={idx} className="flex gap-3">
+                        <span className="flex-shrink-0 w-6 h-6 bg-purple-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                          {idx + 1}
+                        </span>
+                        <span className="text-sm pt-0.5">{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+
+                <div className="flex gap-3">
+                  <Button className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600">
+                    <Zap className="h-4 w-4 mr-2" />
+                    Make This Recipe
+                  </Button>
+                  <Button variant="outline">
+                    <Heart className="h-4 w-4 mr-2" />
+                    Save
+                  </Button>
+                  <Button variant="outline">
+                    <Share2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* UNIFORM HERO SECTION */}
+      <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-teal-600 text-white py-12 px-6 rounded-none shadow-2xl">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center gap-4 mb-6 justify-center">
+            <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
               <Droplets className="h-12 w-12" />
-              Drinks Hub
-            </h1>
-            <p className="text-xl opacity-90 max-w-2xl mx-auto">
-              Your ultimate destination for smoothies, protein shakes, detoxes, and cocktails
-            </p>
+            </div>
+            <div>
+              <h1 className="text-4xl md:text-5xl font-bold mb-2">Drinks Hub</h1>
+              <p className="text-xl text-blue-100">Your ultimate destination for all beverages</p>
+            </div>
           </div>
 
-          {/* Quick Stats */}
-          {showStats && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto">
-              <div className="text-center">
-                <div className="text-3xl font-bold">{userStats.recipesCreated}</div>
-                <div className="text-sm opacity-80">Recipes Created</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold">{userStats.favoritesSaved}</div>
-                <div className="text-sm opacity-80">Favorites Saved</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold">{userStats.totalViews.toLocaleString()}</div>
-                <div className="text-sm opacity-80">Recipe Views</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold flex items-center justify-center gap-1">
-                  <Flame className="h-6 w-6" />
-                  {userStats.streak}
-                </div>
-                <div className="text-sm opacity-80">Day Streak</div>
-              </div>
-            </div>
-          )}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+              <CardContent className="p-4 text-center">
+                <Plus className="h-8 w-8 mx-auto mb-2 text-blue-300" />
+                <div className="text-2xl font-bold">{userStats.recipesCreated}</div>
+                <div className="text-sm text-blue-100">Recipes Created</div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+              <CardContent className="p-4 text-center">
+                <Heart className="h-8 w-8 mx-auto mb-2 text-pink-300" />
+                <div className="text-2xl font-bold">{userStats.favoritesSaved}</div>
+                <div className="text-sm text-blue-100">Favorites Saved</div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+              <CardContent className="p-4 text-center">
+                <Eye className="h-8 w-8 mx-auto mb-2 text-purple-300" />
+                <div className="text-2xl font-bold">{userStats.totalViews.toLocaleString()}</div>
+                <div className="text-sm text-blue-100">Recipe Views</div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+              <CardContent className="p-4 text-center">
+                <Flame className="h-8 w-8 mx-auto mb-2 text-orange-300" />
+                <div className="text-2xl font-bold">{userStats.streak}</div>
+                <div className="text-sm text-blue-100">Day Streak</div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 
@@ -252,8 +397,12 @@ export default function DrinksPage() {
             </Button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {featuredRecipes.map((recipe, index) => (
-              <Card key={index} className="group cursor-pointer hover:shadow-xl transition-all duration-300 hover:-translate-y-2 overflow-hidden">
+            {featuredRecipes.map((recipe) => (
+              <Card 
+                key={recipe.id} 
+                className="group cursor-pointer hover:shadow-xl transition-all duration-300 hover:-translate-y-2 overflow-hidden"
+                onClick={() => setSelectedRecipe(recipe)}
+              >
                 <div className="relative h-40 overflow-hidden">
                   <img 
                     src={recipe.image} 
@@ -295,10 +444,14 @@ export default function DrinksPage() {
                   <div className="flex items-center justify-between">
                     <Badge variant="outline">{recipe.difficulty}</Badge>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="ghost">
+                      <Button size="sm" variant="ghost" onClick={(e) => {
+                        e.stopPropagation();
+                      }}>
                         <Heart className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost">
+                      <Button size="sm" variant="ghost" onClick={(e) => {
+                        e.stopPropagation();
+                      }}>
                         <Share2 className="h-4 w-4" />
                       </Button>
                     </div>
