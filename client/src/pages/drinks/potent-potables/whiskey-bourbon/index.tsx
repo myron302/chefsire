@@ -224,7 +224,7 @@ const whiskeyCocktails = [
     ingredients: [
       'Rye Whiskey (2 oz)',
       'Sugar Cube (1)',
-      'Peychaud\'s Bitters (3 dashes)',
+      "Peychaud's Bitters (3 dashes)",
       'Absinthe (rinse)',
       'Lemon Peel',
       'Ice'
@@ -655,14 +655,22 @@ export default function WhiskeyBourbonPage() {
                     variant="ghost"
                     size="sm"
                     className="absolute bottom-3 right-3 bg-white/80 hover:bg-white"
-                    onClick={() => toggleFavorite(cocktail.id, 'whiskey-bourbon')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFavorite(cocktail.id, 'whiskey-bourbon');
+                    }}
+                    aria-label={
+                      favorites['whiskey-bourbon']?.includes(cocktail.id)
+                        ? 'Remove favorite'
+                        : 'Add favorite'
+                    }
                   >
                     <Heart
-                      className={w-5 h-5 ${
+                      className={`w-5 h-5 ${
                         favorites['whiskey-bourbon']?.includes(cocktail.id)
                           ? 'fill-red-500 text-red-500'
                           : 'text-gray-600'
-                      }}
+                      }`}
                     />
                   </Button>
                 </div>
@@ -704,11 +712,11 @@ export default function WhiskeyBourbonPage() {
                       {[...Array(5)].map((_, i) => (
                         <GlassWater
                           key={i}
-                          className={w-4 h-4 ${
+                          className={`w-4 h-4 ${
                             i < Math.floor(cocktail.rating)
                               ? 'fill-amber-500 text-amber-500'
                               : 'text-gray-300'
-                          }}
+                          }`}
                         />
                       ))}
                     </div>
@@ -849,4 +857,3 @@ export default function WhiskeyBourbonPage() {
     </RequireAgeGate>
   );
 }
-
