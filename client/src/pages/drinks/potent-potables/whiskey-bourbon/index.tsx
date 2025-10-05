@@ -357,8 +357,7 @@ export default function WhiskeyBourbonPage() {
     const matchesDifficulty = !selectedDifficulty || cocktail.difficulty === selectedDifficulty;
     return matchesSearch && matchesCategory && matchesDifficulty;
   });
-
-  return (
+ return (
     <RequireAgeGate>
       <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50">
         {showUniversalSearch && (
@@ -592,6 +591,14 @@ export default function WhiskeyBourbonPage() {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+              <div className="bg-white/10 backdrop-blur rounded-lg p-4">
+                <div className="text-3xl font-bold">{whiskeyCocktails.length}</div>
+                <div className="text-white/80 text-sm">Cocktails</div>
+              </div>
+              <div className="bg-white/10 backdrop-blur rounded-lg p-4">
+                <div className="text-3xl font-bold">{categories.length}</div>
+                <div className="text-white/80 text-sm">Categories</div>
+              </div>
               <div className="bg-white/10 backdrop-blur rounded-lg p-4">
                 <div className="text-3xl font-bold">{whiskeyCocktails.filter(c => c.trending).length}</div>
                 <div className="text-white/80 text-sm">Trending</div>
@@ -870,12 +877,4 @@ export default function WhiskeyBourbonPage() {
       </div>
     </RequireAgeGate>
   );
-} rounded-lg p-4">
-                <div className="text-3xl font-bold">{whiskeyCocktails.length}</div>
-                <div className="text-white/80 text-sm">Cocktails</div>
-              </div>
-              <div className="bg-white/10 backdrop-blur rounded-lg p-4">
-                <div className="text-3xl font-bold">{categories.length}</div>
-                <div className="text-white/80 text-sm">Categories</div>
-              </div>
-              <div className="bg-white/10 backdrop-blur
+} 
