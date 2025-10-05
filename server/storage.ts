@@ -1,4 +1,4 @@
-// server/storage.ts — Part 1/4
+// server/storage.ts — COMPLETE FILE WITH DRINKS
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool } from "@neondatabase/serverless";
 import { eq, desc, and, or, sql, asc, ilike } from "drizzle-orm";
@@ -7,7 +7,7 @@ import {
   users,
   posts,
   recipes,
-  stories, // “bites” in the app, table is `stories`
+  stories,
   likes,
   comments,
   follows,
@@ -17,6 +17,11 @@ import {
   mealPlanEntries,
   pantryItems,
   nutritionLogs,
+  customDrinks,
+  drinkPhotos,
+  drinkLikes,
+  drinkSaves,
+  userDrinkStats,
   type User,
   type InsertUser,
   type Post,
@@ -40,11 +45,19 @@ import {
   type Product,
   type InsertProduct,
   type ProductWithSeller,
+  type CustomDrink,
+  type InsertCustomDrink,
+  type DrinkPhoto,
+  type InsertDrinkPhoto,
+  type DrinkLike,
+  type InsertDrinkLike,
+  type DrinkSave,
+  type InsertDrinkSave,
+  type UserDrinkStats,
+  type InsertUserDrinkStats,
+  type CustomDrinkWithUser,
 } from "@shared/schema";
 
-/** ----------------------------------------------------------------
- * DB init (safe: does NOT crash when DATABASE_URL is missing)
- * ---------------------------------------------------------------- */
 const DATABASE_URL = process.env.DATABASE_URL;
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -66,9 +79,6 @@ function getDb() {
   return _db;
 }
 
-/** ----------------------------------------------------------------
- * Interface
- * ---------------------------------------------------------------- */
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
@@ -221,11 +231,41 @@ export interface IStorage {
     missingIngredients: string[];
     availableInMarketplace: any[];
   }>;
+
+  // Custom Drinks
+  getCustomDrink(id: string): Promise<CustomDrink | undefined>;
+  getCustomDrinkWithUser(id: string): Promise<CustomDrinkWithUser | undefined>;
+  getUserCustomDrinks(userId: string, category?: string): Promise<CustomDrink[]>;
+  getPublicCustomDrinks(category?: string, limit?: number): Promise<CustomDrinkWithUser[]>;
+  createCustomDrink(drink: InsertCustomDrink): Promise<CustomDrink>;
+  updateCustomDrink(id: string, updates: Partial<CustomDrink>): Promise<CustomDrink | undefined>;
+  deleteCustomDrink(id: string): Promise<boolean>;
+  
+  // Drink Photos
+  createDrinkPhoto(photo: InsertDrinkPhoto): Promise<DrinkPhoto>;
+  getDrinkPhotos(drinkId: string): Promise<DrinkPhoto[]>;
+  deleteDrinkPhoto(id: string): Promise<boolean>;
+  
+  // Drink Likes
+  likeDrink(userId: string, drinkId: string): Promise<DrinkLike>;
+  unlikeDrink(userId: string, drinkId: string): Promise<boolean>;
+  isDrinkLiked(userId: string, drinkId: string): Promise<boolean>;
+  
+  // Drink Saves
+  saveDrink(userId: string, drinkId: string): Promise<DrinkSave>;
+  unsaveDrink(userId: string, drinkId: string): Promise<boolean>;
+  isDrinkSaved(userId: string, drinkId: string): Promise<boolean>;
+  getUserSavedDrinks(userId: string, category?: string): Promise<CustomDrinkWithUser[]>;
+  
+  // User Drink Stats
+  getUserDrinkStats(userId: string): Promise<UserDrinkStats | undefined>;
+  createUserDrinkStats(userId: string): Promise<UserDrinkStats>;
+  updateUserDrinkStats(userId: string, updates: Partial<UserDrinkStats>): Promise<UserDrinkStats | undefined>;
+  incrementDrinkCount(userId: string, category: string): Promise<void>;
+  updateStreak(userId: string): Promise<void>;
+  addBadge(userId: string, badge: string): Promise<void>;
 }
 
-/** ----------------------------------------------------------------
- * Implementation
- * ---------------------------------------------------------------- */
 export class DrizzleStorage implements IStorage {
   // ---------- Users ----------
   async getUser(id: string): Promise<User | undefined> {
@@ -350,11 +390,9 @@ export class DrizzleStorage implements IStorage {
   }
 
   async getExplorePosts(offset = 0, limit = 10): Promise<PostWithUser[]> {
-    // Simple explore = recent posts (tweak to likes in last 7d if you want)
     return this.getFeedPosts("", offset, limit);
   }
 
-  // (continues in Part 2/4...)
   // ---------- Recipes ----------
   async getRecipe(id: string): Promise<Recipe | undefined> {
     const db = getDb();
@@ -421,7 +459,7 @@ export class DrizzleStorage implements IStorage {
       }
 
       if (conditions.length > 0) {
-        // @ts-expect-error drizzle typing for .where(and(...)) can be fussy
+        // @ts-expect-error drizzle typing
         query = query.where(and(...conditions));
       }
 
@@ -639,8 +677,7 @@ export class DrizzleStorage implements IStorage {
     return result.map((row) => row.user);
   }
 
-  // (continues in Part 3/4...)
-    // ---------- Catering ----------
+  // ---------- Catering ----------
   async enableCatering(
     userId: string,
     location: string,
@@ -709,7 +746,6 @@ export class DrizzleStorage implements IStorage {
       )
       .limit(limit);
 
-    // Simple placeholder distance calc
     return result.map((u) => ({
       ...u,
       availableForCatering: true,
@@ -811,7 +847,7 @@ export class DrizzleStorage implements IStorage {
       .select({ product: products, seller: users })
       .from(products)
       .innerJoin(users, eq(products.sellerId, users.id))
-      // @ts-expect-error drizzle typing for .where(and(...)) can be fussy
+      // @ts-expect-error drizzle typing
       .where(and(...conditions))
       .orderBy(desc(products.createdAt))
       .offset(offset)
@@ -837,9 +873,7 @@ export class DrizzleStorage implements IStorage {
     return result.length > 0;
   }
 
-  // (continues in Part 4/4…)
-  
-    // ---------- Nutrition ----------
+  // ---------- Nutrition ----------
   async enableNutritionPremium(userId: string, trialDays: number): Promise<User | undefined> {
     const db = getDb();
     const trialEndDate = new Date();
@@ -847,7 +881,7 @@ export class DrizzleStorage implements IStorage {
 
     const result = await db
       .update(users)
-      .set({ isNutritionPremium: true, nutritionTrialEnd: trialEndDate })
+      .set({ nutritionPremium: true, nutritionTrialEndsAt: trialEndDate })
       .where(eq(users.id, userId))
       .returning();
 
@@ -1050,14 +1084,14 @@ export class DrizzleStorage implements IStorage {
     options: {
       requireAllIngredients?: boolean;
       maxMissingIngredients?: number;
-      includeExpiringSoon?: boolean; // placeholder for future scoring
+      includeExpiringSoon?: boolean;
       limit?: number;
     } = {}
   ): Promise<any[]> {
     const {
       requireAllIngredients = false,
       maxMissingIngredients = 3,
-      includeExpiringSoon = true, // currently unused
+      includeExpiringSoon = true,
       limit = 20,
     } = options;
 
@@ -1154,7 +1188,349 @@ export class DrizzleStorage implements IStorage {
       availableInMarketplace,
     };
   }
-} // ← end class DrizzleStorage
 
-// Export a singleton instance
+  // ---------- Custom Drinks ----------
+  async getCustomDrink(id: string): Promise<CustomDrink | undefined> {
+    const db = getDb();
+    const result = await db.select().from(customDrinks).where(eq(customDrinks.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getCustomDrinkWithUser(id: string): Promise<CustomDrinkWithUser | undefined> {
+    const db = getDb();
+    const result = await db
+      .select({ drink: customDrinks, user: users })
+      .from(customDrinks)
+      .innerJoin(users, eq(customDrinks.userId, users.id))
+      .where(eq(customDrinks.id, id))
+      .limit(1);
+
+    if (!result[0]) return undefined;
+
+    const photos = await this.getDrinkPhotos(id);
+    return { 
+      ...result[0].drink, 
+      user: result[0].user,
+      photos 
+    };
+  }
+
+  async getUserCustomDrinks(userId: string, category?: string): Promise<CustomDrink[]> {
+    const db = getDb();
+    const conditions = [eq(customDrinks.userId, userId)];
+    if (category) {
+      conditions.push(eq(customDrinks.category, category));
+    }
+
+    return db
+      .select()
+      .from(customDrinks)
+      // @ts-expect-error drizzle typing
+      .where(and(...conditions))
+      .orderBy(desc(customDrinks.createdAt));
+  }
+
+  async getPublicCustomDrinks(category?: string, limit = 20): Promise<CustomDrinkWithUser[]> {
+    const db = getDb();
+    const conditions = [eq(customDrinks.isPublic, true)];
+    if (category) {
+      conditions.push(eq(customDrinks.category, category));
+    }
+
+    const result = await db
+      .select({ drink: customDrinks, user: users })
+      .from(customDrinks)
+      .innerJoin(users, eq(customDrinks.userId, users.id))
+      // @ts-expect-error drizzle typing
+      .where(and(...conditions))
+      .orderBy(desc(customDrinks.likesCount), desc(customDrinks.createdAt))
+      .limit(limit);
+
+    return result.map((row) => ({ ...row.drink, user: row.user }));
+  }
+
+  async createCustomDrink(drink: InsertCustomDrink): Promise<CustomDrink> {
+    const db = getDb();
+    const result = await db.insert(customDrinks).values(drink).returning();
+    
+    await this.incrementDrinkCount(drink.userId, drink.category);
+    await this.updateStreak(drink.userId);
+    
+    return result[0];
+  }
+
+  async updateCustomDrink(id: string, updates: Partial<CustomDrink>): Promise<CustomDrink | undefined> {
+    const db = getDb();
+    const result = await db
+      .update(customDrinks)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(customDrinks.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deleteCustomDrink(id: string): Promise<boolean> {
+    const db = getDb();
+    const result = await db.delete(customDrinks).where(eq(customDrinks.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // ---------- Drink Photos ----------
+  async createDrinkPhoto(photo: InsertDrinkPhoto): Promise<DrinkPhoto> {
+    const db = getDb();
+    const result = await db.insert(drinkPhotos).values(photo).returning();
+    return result[0];
+  }
+
+  async getDrinkPhotos(drinkId: string): Promise<DrinkPhoto[]> {
+    const db = getDb();
+    return db
+      .select()
+      .from(drinkPhotos)
+      .where(eq(drinkPhotos.drinkId, drinkId))
+      .orderBy(desc(drinkPhotos.createdAt));
+  }
+
+  async deleteDrinkPhoto(id: string): Promise<boolean> {
+    const db = getDb();
+    const result = await db.delete(drinkPhotos).where(eq(drinkPhotos.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // ---------- Drink Likes ----------
+  async likeDrink(userId: string, drinkId: string): Promise<DrinkLike> {
+    const db = getDb();
+    const result = await db.insert(drinkLikes).values({ userId, drinkId }).returning();
+    
+    await db
+      .update(customDrinks)
+      .set({ likesCount: sql`${customDrinks.likesCount} + 1` })
+      .where(eq(customDrinks.id, drinkId));
+    
+    return result[0];
+  }
+
+  async unlikeDrink(userId: string, drinkId: string): Promise<boolean> {
+    const db = getDb();
+    const result = await db
+      .delete(drinkLikes)
+      .where(and(eq(drinkLikes.userId, userId), eq(drinkLikes.drinkId, drinkId)))
+      .returning();
+    
+    if (result[0]) {
+      await db
+        .update(customDrinks)
+        .set({ likesCount: sql`${customDrinks.likesCount} - 1` })
+        .where(eq(customDrinks.id, drinkId));
+      return true;
+    }
+    return false;
+  }
+
+  async isDrinkLiked(userId: string, drinkId: string): Promise<boolean> {
+    const db = getDb();
+    const result = await db
+      .select()
+      .from(drinkLikes)
+      .where(and(eq(drinkLikes.userId, userId), eq(drinkLikes.drinkId, drinkId)))
+      .limit(1);
+    return result.length > 0;
+  }
+
+  // ---------- Drink Saves ----------
+  async saveDrink(userId: string, drinkId: string): Promise<DrinkSave> {
+    const db = getDb();
+    const result = await db.insert(drinkSaves).values({ userId, drinkId }).returning();
+    
+    await db
+      .update(customDrinks)
+      .set({ savesCount: sql`${customDrinks.savesCount} + 1` })
+      .where(eq(customDrinks.id, drinkId));
+    
+    return result[0];
+  }
+
+  async unsaveDrink(userId: string, drinkId: string): Promise<boolean> {
+    const db = getDb();
+    const result = await db
+      .delete(drinkSaves)
+      .where(and(eq(drinkSaves.userId, userId), eq(drinkSaves.drinkId, drinkId)))
+      .returning();
+    
+    if (result[0]) {
+      await db
+        .update(customDrinks)
+        .set({ savesCount: sql`${customDrinks.savesCount} - 1` })
+        .where(eq(customDrinks.id, drinkId));
+      return true;
+    }
+    return false;
+  }
+
+  async isDrinkSaved(userId: string, drinkId: string): Promise<boolean> {
+    const db = getDb();
+    const result = await db
+      .select()
+      .from(drinkSaves)
+      .where(and(eq(drinkSaves.userId, userId), eq(drinkSaves.drinkId, drinkId)))
+      .limit(1);
+    return result.length > 0;
+  }
+
+  async getUserSavedDrinks(userId: string, category?: string): Promise<CustomDrinkWithUser[]> {
+    const db = getDb();
+    const conditions = [eq(drinkSaves.userId, userId)];
+    
+    if (category) {
+      conditions.push(eq(customDrinks.category, category));
+    }
+
+    const result = await db
+      .select({ drink: customDrinks, user: users })
+      .from(drinkSaves)
+      .innerJoin(customDrinks, eq(drinkSaves.drinkId, customDrinks.id))
+      .innerJoin(users, eq(customDrinks.userId, users.id))
+      // @ts-expect-error drizzle typing
+      .where(and(...conditions))
+      .orderBy(desc(drinkSaves.createdAt));
+
+    return result.map((row) => ({ 
+      ...row.drink, 
+      user: row.user,
+      isSaved: true 
+    }));
+  }
+
+  // ---------- User Drink Stats ----------
+  async getUserDrinkStats(userId: string): Promise<UserDrinkStats | undefined> {
+    const db = getDb();
+    const result = await db
+      .select()
+      .from(userDrinkStats)
+      .where(eq(userDrinkStats.userId, userId))
+      .limit(1);
+    
+    if (!result[0]) {
+      return this.createUserDrinkStats(userId);
+    }
+    
+    return result[0];
+  }
+
+  async createUserDrinkStats(userId: string): Promise<UserDrinkStats> {
+    const db = getDb();
+    const result = await db
+      .insert(userDrinkStats)
+      .values({ userId })
+      .returning();
+    return result[0];
+  }
+
+  async updateUserDrinkStats(
+    userId: string, 
+    updates: Partial<UserDrinkStats>
+  ): Promise<UserDrinkStats | undefined> {
+    const db = getDb();
+    const result = await db
+      .update(userDrinkStats)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(userDrinkStats.userId, userId))
+      .returning();
+    return result[0];
+  }
+
+  async incrementDrinkCount(userId: string, category: string): Promise<void> {
+    const db = getDb();
+    
+    await this.getUserDrinkStats(userId);
+    
+    const updates: any = {
+      totalDrinksMade: sql`${userDrinkStats.totalDrinksMade} + 1`,
+      totalPoints: sql`${userDrinkStats.totalPoints} + 100`,
+    };
+
+    if (category === 'smoothies') {
+      updates.smoothiesMade = sql`${userDrinkStats.smoothiesMade} + 1`;
+    } else if (category === 'protein-shakes') {
+      updates.proteinShakesMade = sql`${userDrinkStats.proteinShakesMade} + 1`;
+    } else if (category === 'detoxes') {
+      updates.detoxesMade = sql`${userDrinkStats.detoxesMade} + 1`;
+    } else if (category === 'potent-potables') {
+      updates.cocktailsMade = sql`${userDrinkStats.cocktailsMade} + 1`;
+    }
+
+    await db
+      .update(userDrinkStats)
+      .set(updates)
+      .where(eq(userDrinkStats.userId, userId));
+
+    const stats = await this.getUserDrinkStats(userId);
+    if (stats) {
+      const newLevel = Math.floor(stats.totalPoints / 1000) + 1;
+      if (newLevel > stats.level) {
+        await this.updateUserDrinkStats(userId, { level: newLevel });
+      }
+    }
+  }
+
+  async updateStreak(userId: string): Promise<void> {
+    const db = getDb();
+    const stats = await this.getUserDrinkStats(userId);
+    if (!stats) return;
+
+    const now = new Date();
+    const lastDrink = stats.lastDrinkDate;
+
+    if (!lastDrink) {
+      await this.updateUserDrinkStats(userId, {
+        currentStreak: 1,
+        longestStreak: 1,
+        lastDrinkDate: now,
+      });
+      return;
+    }
+
+    const hoursSinceLastDrink = (now.getTime() - new Date(lastDrink).getTime()) / (1000 * 60 * 60);
+
+    if (hoursSinceLastDrink < 24) {
+      await this.updateUserDrinkStats(userId, { lastDrinkDate: now });
+    } else if (hoursSinceLastDrink < 48) {
+      const newStreak = stats.currentStreak + 1;
+      await this.updateUserDrinkStats(userId, {
+        currentStreak: newStreak,
+        longestStreak: Math.max(newStreak, stats.longestStreak),
+        lastDrinkDate: now,
+      });
+      
+      if (newStreak % 7 === 0) {
+        await db
+          .update(userDrinkStats)
+          .set({ totalPoints: sql`${userDrinkStats.totalPoints} + 500` })
+          .where(eq(userDrinkStats.userId, userId));
+      }
+    } else {
+      await this.updateUserDrinkStats(userId, {
+        currentStreak: 1,
+        lastDrinkDate: now,
+      });
+    }
+  }
+
+  async addBadge(userId: string, badge: string): Promise<void> {
+    const db = getDb();
+    const stats = await this.getUserDrinkStats(userId);
+    if (!stats) return;
+
+    const currentBadges = (stats.badges as string[]) || [];
+    if (!currentBadges.includes(badge)) {
+      await db
+        .update(userDrinkStats)
+        .set({ 
+          badges: sql`${userDrinkStats.badges} || ${JSON.stringify([badge])}::jsonb`
+        })
+        .where(eq(userDrinkStats.userId, userId));
+    }
+  }
+}
+
 export const storage = new DrizzleStorage();
