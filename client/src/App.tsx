@@ -28,6 +28,9 @@ import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 
+// ✅ NEW — BiteMap local guide
+import BiteMapPage from "@/pages/bitemap";
+
 // ========== BABY FOOD PAGES ==========
 import BabyFoodHub from "@/pages/recipes/baby-food";
 import BabyFoodPurees from "@/pages/recipes/baby-food/purees";
@@ -168,6 +171,13 @@ function Router() {
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
         <Route path="/explore" component={ExplorePage} />
+
+        {/* ✅ BiteMap Route */}
+        <Route path="/bitemap" component={BiteMapPage} />
+        <Route path="/restaurants">
+          <Redirect to="/bitemap" />
+        </Route>
+
         <Route path="/recipes/baby-food/:rest*">
           {(params) => <RecipesSection />}
         </Route>
