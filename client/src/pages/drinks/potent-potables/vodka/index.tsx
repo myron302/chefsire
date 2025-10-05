@@ -7,14 +7,12 @@ import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
   Droplets, Clock, Heart, Star, Target, Sparkles, Wine, 
   Search, Share2, ArrowLeft, Plus, Camera, Flame, GlassWater,
-  TrendingUp, Award, Snowflake, Cherry, Coffee, Zap, Crown,
-  BookOpen
+  TrendingUp, Award, Snowflake, Cherry, Coffee, Zap, Crown
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 
 const vodkaCocktails = [
-  // CLASSIC VODKA COCKTAILS
   {
     id: 'vodka-1',
     name: 'Moscow Mule',
@@ -23,20 +21,8 @@ const vodkaCocktails = [
     origin: 'Los Angeles, USA',
     glassware: 'Copper Mug',
     servingSize: '10 oz',
-    nutrition: {
-      calories: 182,
-      carbs: 18,
-      sugar: 16,
-      alcohol: 11
-    },
-    ingredients: [
-      'Vodka (2 oz)',
-      'Fresh Lime Juice (0.5 oz)',
-      'Ginger Beer (6 oz)',
-      'Lime Wedge',
-      'Fresh Mint',
-      'Ice'
-    ],
+    nutrition: { calories: 182, carbs: 18, sugar: 16, alcohol: 11 },
+    ingredients: ['Vodka (2 oz)', 'Fresh Lime Juice (0.5 oz)', 'Ginger Beer (6 oz)', 'Lime Wedge', 'Fresh Mint', 'Ice'],
     profile: ['Spicy', 'Citrus', 'Refreshing', 'Effervescent'],
     difficulty: 'Very Easy',
     prepTime: 2,
@@ -52,8 +38,7 @@ const vodkaCocktails = [
     garnish: 'Lime wedge, mint sprig',
     method: 'Build',
     abv: '10-12%',
-    iba_official: true,
-    instructions: 'Fill copper mug with ice. Add vodka and lime juice. Top with ginger beer. Stir gently and garnish with lime wedge and mint sprig.'
+    iba_official: true
   },
   {
     id: 'vodka-2',
@@ -63,26 +48,8 @@ const vodkaCocktails = [
     origin: 'Paris, France',
     glassware: 'Highball Glass',
     servingSize: '10 oz',
-    nutrition: {
-      calories: 125,
-      carbs: 15,
-      sugar: 11,
-      alcohol: 14
-    },
-    ingredients: [
-      'Vodka (2 oz)',
-      'Tomato Juice (6 oz)',
-      'Fresh Lemon Juice (0.5 oz)',
-      'Worcestershire Sauce (3 dashes)',
-      'Hot Sauce (2-3 dashes)',
-      'Celery Salt (pinch)',
-      'Black Pepper (pinch)',
-      'Horseradish (optional, 1 tsp)',
-      'Celery Stalk',
-      'Lemon Wedge',
-      'Olives',
-      'Ice'
-    ],
+    nutrition: { calories: 125, carbs: 15, sugar: 11, alcohol: 14 },
+    ingredients: ['Vodka (2 oz)', 'Tomato Juice (6 oz)', 'Fresh Lemon Juice (0.5 oz)', 'Worcestershire Sauce (3 dashes)', 'Hot Sauce (2-3 dashes)', 'Celery Salt (pinch)', 'Black Pepper (pinch)', 'Horseradish (optional, 1 tsp)', 'Celery Stalk', 'Lemon Wedge', 'Olives', 'Ice'],
     profile: ['Savory', 'Spicy', 'Umami', 'Brunch'],
     difficulty: 'Easy',
     prepTime: 4,
@@ -98,8 +65,7 @@ const vodkaCocktails = [
     garnish: 'Celery stalk, lemon wedge, olives, bacon (optional)',
     method: 'Build & Stir',
     abv: '12-16%',
-    iba_official: true,
-    instructions: 'Fill glass with ice. Add vodka, tomato juice, lemon juice, Worcestershire, hot sauce, celery salt, pepper, and horseradish. Stir well. Garnish elaborately with celery, lemon, and olives.'
+    iba_official: true
   },
   {
     id: 'vodka-3',
@@ -109,20 +75,8 @@ const vodkaCocktails = [
     origin: 'New York City, USA',
     glassware: 'Martini Glass',
     servingSize: '4 oz',
-    nutrition: {
-      calories: 150,
-      carbs: 8,
-      sugar: 7,
-      alcohol: 12
-    },
-    ingredients: [
-      'Vodka (1.5 oz)',
-      'Triple Sec (0.5 oz)',
-      'Fresh Lime Juice (0.5 oz)',
-      'Cranberry Juice (0.25 oz)',
-      'Orange Peel',
-      'Ice'
-    ],
+    nutrition: { calories: 150, carbs: 8, sugar: 7, alcohol: 12 },
+    ingredients: ['Vodka (1.5 oz)', 'Triple Sec (0.5 oz)', 'Fresh Lime Juice (0.5 oz)', 'Cranberry Juice (0.25 oz)', 'Orange Peel', 'Ice'],
     profile: ['Fruity', 'Tart', 'Sophisticated', 'Pink'],
     difficulty: 'Easy',
     prepTime: 3,
@@ -138,8 +92,7 @@ const vodkaCocktails = [
     garnish: 'Orange peel twist',
     method: 'Shake',
     abv: '18-22%',
-    iba_official: true,
-    instructions: 'Shake vodka, triple sec, lime juice, and cranberry juice with ice. Strain into chilled martini glass. Express orange peel over drink and garnish.'
+    iba_official: true
   },
   {
     id: 'vodka-4',
@@ -149,18 +102,8 @@ const vodkaCocktails = [
     origin: 'United States',
     glassware: 'Martini Glass',
     servingSize: '3 oz',
-    nutrition: {
-      calories: 175,
-      carbs: 1,
-      sugar: 0,
-      alcohol: 18
-    },
-    ingredients: [
-      'Vodka (2.5 oz)',
-      'Dry Vermouth (0.5 oz)',
-      'Lemon Peel or Olives',
-      'Ice'
-    ],
+    nutrition: { calories: 175, carbs: 1, sugar: 0, alcohol: 18 },
+    ingredients: ['Vodka (2.5 oz)', 'Dry Vermouth (0.5 oz)', 'Lemon Peel or Olives', 'Ice'],
     profile: ['Dry', 'Clean', 'Strong', 'Classic'],
     difficulty: 'Easy',
     prepTime: 3,
@@ -176,8 +119,7 @@ const vodkaCocktails = [
     garnish: 'Lemon twist or olives',
     method: 'Stir',
     abv: '30-35%',
-    iba_official: true,
-    instructions: 'Stir vodka and vermouth with ice until very cold. Strain into chilled martini glass. Garnish with lemon twist or olives.'
+    iba_official: true
   },
   {
     id: 'vodka-5',
@@ -187,18 +129,8 @@ const vodkaCocktails = [
     origin: 'Belgium',
     glassware: 'Old Fashioned Glass',
     servingSize: '6 oz',
-    nutrition: {
-      calories: 280,
-      carbs: 18,
-      sugar: 16,
-      alcohol: 14
-    },
-    ingredients: [
-      'Vodka (2 oz)',
-      'Coffee Liqueur (1 oz)',
-      'Heavy Cream (1 oz)',
-      'Ice'
-    ],
+    nutrition: { calories: 280, carbs: 18, sugar: 16, alcohol: 14 },
+    ingredients: ['Vodka (2 oz)', 'Coffee Liqueur (1 oz)', 'Heavy Cream (1 oz)', 'Ice'],
     profile: ['Creamy', 'Coffee', 'Sweet', 'Dessert'],
     difficulty: 'Very Easy',
     prepTime: 2,
@@ -214,8 +146,7 @@ const vodkaCocktails = [
     garnish: 'None',
     method: 'Build',
     abv: '18-22%',
-    iba_official: true,
-    instructions: 'Fill rocks glass with ice. Add vodka and coffee liqueur. Float cream on top by pouring over the back of a spoon.'
+    iba_official: true
   },
   {
     id: 'vodka-6',
@@ -225,20 +156,8 @@ const vodkaCocktails = [
     origin: 'London, England',
     glassware: 'Martini Glass',
     servingSize: '4 oz',
-    nutrition: {
-      calories: 195,
-      carbs: 12,
-      sugar: 10,
-      alcohol: 13
-    },
-    ingredients: [
-      'Vodka (2 oz)',
-      'Coffee Liqueur (0.5 oz)',
-      'Espresso (1 oz, fresh)',
-      'Simple Syrup (0.25 oz)',
-      'Coffee Beans',
-      'Ice'
-    ],
+    nutrition: { calories: 195, carbs: 12, sugar: 10, alcohol: 13 },
+    ingredients: ['Vodka (2 oz)', 'Coffee Liqueur (0.5 oz)', 'Espresso (1 oz, fresh)', 'Simple Syrup (0.25 oz)', 'Coffee Beans', 'Ice'],
     profile: ['Coffee', 'Energizing', 'Smooth', 'Modern'],
     difficulty: 'Medium',
     prepTime: 4,
@@ -254,8 +173,7 @@ const vodkaCocktails = [
     garnish: '3 coffee beans',
     method: 'Shake',
     abv: '20-24%',
-    iba_official: true,
-    instructions: 'Shake vodka, coffee liqueur, fresh espresso, and simple syrup vigorously with ice. Double strain into chilled martini glass. Garnish with 3 coffee beans.'
+    iba_official: true
   },
   {
     id: 'vodka-7',
@@ -265,18 +183,8 @@ const vodkaCocktails = [
     origin: 'Modern',
     glassware: 'Highball Glass',
     servingSize: '8 oz',
-    nutrition: {
-      calories: 175,
-      carbs: 15,
-      sugar: 14,
-      alcohol: 12
-    },
-    ingredients: [
-      'Vodka (2 oz)',
-      'Tonic Water (5 oz)',
-      'Lime Wedge',
-      'Ice'
-    ],
+    nutrition: { calories: 175, carbs: 15, sugar: 14, alcohol: 12 },
+    ingredients: ['Vodka (2 oz)', 'Tonic Water (5 oz)', 'Lime Wedge', 'Ice'],
     profile: ['Crisp', 'Bitter', 'Light', 'Refreshing'],
     difficulty: 'Very Easy',
     prepTime: 1,
@@ -292,8 +200,7 @@ const vodkaCocktails = [
     garnish: 'Lime wedge',
     method: 'Build',
     abv: '10-12%',
-    iba_official: false,
-    instructions: 'Fill highball glass with ice. Add vodka and top with tonic water. Stir gently and garnish with lime wedge.'
+    iba_official: false
   },
   {
     id: 'vodka-8',
@@ -303,21 +210,8 @@ const vodkaCocktails = [
     origin: 'San Francisco, USA',
     glassware: 'Martini Glass',
     servingSize: '4 oz',
-    nutrition: {
-      calories: 185,
-      carbs: 14,
-      sugar: 12,
-      alcohol: 13
-    },
-    ingredients: [
-      'Vodka (2 oz)',
-      'Triple Sec (0.5 oz)',
-      'Fresh Lemon Juice (0.75 oz)',
-      'Simple Syrup (0.5 oz)',
-      'Sugar (for rim)',
-      'Lemon Wheel',
-      'Ice'
-    ],
+    nutrition: { calories: 185, carbs: 14, sugar: 12, alcohol: 13 },
+    ingredients: ['Vodka (2 oz)', 'Triple Sec (0.5 oz)', 'Fresh Lemon Juice (0.75 oz)', 'Simple Syrup (0.5 oz)', 'Sugar (for rim)', 'Lemon Wheel', 'Ice'],
     profile: ['Citrus', 'Sweet', 'Tart', 'Refreshing'],
     difficulty: 'Easy',
     prepTime: 3,
@@ -333,8 +227,7 @@ const vodkaCocktails = [
     garnish: 'Sugar rim, lemon wheel',
     method: 'Shake',
     abv: '20-24%',
-    iba_official: false,
-    instructions: 'Rim glass with sugar. Shake vodka, triple sec, lemon juice, and simple syrup with ice. Strain into prepared glass. Garnish with lemon wheel.'
+    iba_official: false
   },
   {
     id: 'vodka-9',
@@ -344,19 +237,8 @@ const vodkaCocktails = [
     origin: 'United States',
     glassware: 'Highball Glass',
     servingSize: '8 oz',
-    nutrition: {
-      calories: 175,
-      carbs: 16,
-      sugar: 14,
-      alcohol: 11
-    },
-    ingredients: [
-      'Vodka (1.5 oz)',
-      'Cranberry Juice (3 oz)',
-      'Grapefruit Juice (1.5 oz)',
-      'Lime Wedge',
-      'Ice'
-    ],
+    nutrition: { calories: 175, carbs: 16, sugar: 14, alcohol: 11 },
+    ingredients: ['Vodka (1.5 oz)', 'Cranberry Juice (3 oz)', 'Grapefruit Juice (1.5 oz)', 'Lime Wedge', 'Ice'],
     profile: ['Fruity', 'Tart', 'Refreshing', 'Beach'],
     difficulty: 'Very Easy',
     prepTime: 2,
@@ -372,8 +254,7 @@ const vodkaCocktails = [
     garnish: 'Lime wedge',
     method: 'Build',
     abv: '10-12%',
-    iba_official: true,
-    instructions: 'Fill glass with ice. Add vodka, cranberry juice, and grapefruit juice. Stir and garnish with lime wedge.'
+    iba_official: true
   },
   {
     id: 'vodka-10',
@@ -383,17 +264,8 @@ const vodkaCocktails = [
     origin: 'Belgium',
     glassware: 'Old Fashioned Glass',
     servingSize: '4 oz',
-    nutrition: {
-      calories: 220,
-      carbs: 15,
-      sugar: 14,
-      alcohol: 16
-    },
-    ingredients: [
-      'Vodka (2 oz)',
-      'Coffee Liqueur (1 oz)',
-      'Ice'
-    ],
+    nutrition: { calories: 220, carbs: 15, sugar: 14, alcohol: 16 },
+    ingredients: ['Vodka (2 oz)', 'Coffee Liqueur (1 oz)', 'Ice'],
     profile: ['Coffee', 'Strong', 'Simple', 'Classic'],
     difficulty: 'Very Easy',
     prepTime: 2,
@@ -409,8 +281,7 @@ const vodkaCocktails = [
     garnish: 'None',
     method: 'Build',
     abv: '25-30%',
-    iba_official: true,
-    instructions: 'Fill rocks glass with ice. Add vodka and coffee liqueur. Stir briefly.'
+    iba_official: true
   },
   {
     id: 'vodka-11',
@@ -420,18 +291,8 @@ const vodkaCocktails = [
     origin: 'New York City, USA',
     glassware: 'Martini Glass',
     servingSize: '4 oz',
-    nutrition: {
-      calories: 195,
-      carbs: 12,
-      sugar: 10,
-      alcohol: 13
-    },
-    ingredients: [
-      'Vodka (2 oz)',
-      'Chambord (0.5 oz)',
-      'Pineapple Juice (1 oz)',
-      'Ice'
-    ],
+    nutrition: { calories: 195, carbs: 12, sugar: 10, alcohol: 13 },
+    ingredients: ['Vodka (2 oz)', 'Chambord (0.5 oz)', 'Pineapple Juice (1 oz)', 'Ice'],
     profile: ['Fruity', 'Sweet', 'Sophisticated', 'Berry'],
     difficulty: 'Easy',
     prepTime: 3,
@@ -447,8 +308,7 @@ const vodkaCocktails = [
     garnish: 'Raspberry',
     method: 'Shake',
     abv: '20-24%',
-    iba_official: false,
-    instructions: 'Shake vodka, Chambord, and pineapple juice with ice. Strain into chilled martini glass. Garnish with fresh raspberry.'
+    iba_official: false
   },
   {
     id: 'vodka-12',
@@ -458,18 +318,8 @@ const vodkaCocktails = [
     origin: 'United States',
     glassware: 'Highball Glass',
     servingSize: '8 oz',
-    nutrition: {
-      calories: 165,
-      carbs: 14,
-      sugar: 13,
-      alcohol: 12
-    },
-    ingredients: [
-      'Vodka (2 oz)',
-      'Cranberry Juice (5 oz)',
-      'Lime Wedge',
-      'Ice'
-    ],
+    nutrition: { calories: 165, carbs: 14, sugar: 13, alcohol: 12 },
+    ingredients: ['Vodka (2 oz)', 'Cranberry Juice (5 oz)', 'Lime Wedge', 'Ice'],
     profile: ['Fruity', 'Tart', 'Simple', 'Easy'],
     difficulty: 'Very Easy',
     prepTime: 1,
@@ -485,21 +335,12 @@ const vodkaCocktails = [
     garnish: 'Lime wedge',
     method: 'Build',
     abv: '10-12%',
-    iba_official: false,
-    instructions: 'Fill glass with ice. Add vodka and cranberry juice. Stir and garnish with lime wedge.'
+    iba_official: false
   }
 ];
 
 export default function VodkaCocktailsPage() {
-  const { 
-    addToFavorites,
-    isFavorite,
-    addToRecentlyViewed,
-    userProgress,
-    addPoints,
-    incrementDrinksMade
-  } = useDrinks();
-  
+  const { favorites, toggleFavorite } = useDrinks();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
@@ -517,31 +358,196 @@ export default function VodkaCocktailsPage() {
     return matchesSearch && matchesCategory && matchesDifficulty;
   });
 
-  const handleCocktailClick = (cocktail: typeof vodkaCocktails[0]) => {
-    setSelectedCocktail(cocktail);
-    addToRecentlyViewed({
-      id: cocktail.id,
-      name: cocktail.name,
-      category: 'vodka-cocktails',
-      timestamp: Date.now()
-    });
-  };
-
-  const handleMakeCocktail = (cocktail: typeof vodkaCocktails[0]) => {
-    incrementDrinksMade();
-    addPoints(40, 'Made a vodka cocktail');
-    setSelectedCocktail(null);
-  };
-
   return (
     <RequireAgeGate>
       <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-blue-50 to-purple-50">
-        {/* Universal Search Modal */}
         {showUniversalSearch && (
           <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
         )}
 
-        {/* Hero Section */}
+        {selectedCocktail && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start justify-center p-4 overflow-y-auto pt-8 pb-8">
+            <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl">
+              <div className="relative bg-gradient-to-br from-cyan-100 to-blue-100 p-8 rounded-t-2xl">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSelectedCocktail(null)}
+                  className="absolute top-4 right-4 bg-white/80 hover:bg-white"
+                >
+                  <span className="text-xl">×</span>
+                </Button>
+                
+                <div className="flex items-start gap-4">
+                  <Droplets className="w-16 h-16 text-cyan-600 flex-shrink-0" />
+                  <div className="flex-1">
+                    <h2 className="text-3xl font-bold text-gray-900 mb-2">{selectedCocktail.name}</h2>
+                    <p className="text-gray-700 mb-3">{selectedCocktail.description}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge className="bg-cyan-600">{selectedCocktail.category}</Badge>
+                      <Badge variant="outline">{selectedCocktail.difficulty}</Badge>
+                      {selectedCocktail.iba_official && (
+                        <Badge className="bg-blue-600">
+                          <Award className="w-3 h-3 mr-1" />
+                          IBA Official
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-8 space-y-6 max-h-[65vh] overflow-y-auto">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center p-3 bg-gray-50 rounded-lg">
+                    <Clock className="w-5 h-5 mx-auto mb-1 text-cyan-600" />
+                    <div className="text-xs text-gray-500">Prep Time</div>
+                    <div className="font-semibold">{selectedCocktail.prepTime} min</div>
+                  </div>
+                  <div className="text-center p-3 bg-gray-50 rounded-lg">
+                    <GlassWater className="w-5 h-5 mx-auto mb-1 text-cyan-600" />
+                    <div className="text-xs text-gray-500">Glass</div>
+                    <div className="font-semibold text-sm">{selectedCocktail.glassware}</div>
+                  </div>
+                  <div className="text-center p-3 bg-gray-50 rounded-lg">
+                    <Droplets className="w-5 h-5 mx-auto mb-1 text-cyan-600" />
+                    <div className="text-xs text-gray-500">Serving</div>
+                    <div className="font-semibold">{selectedCocktail.servingSize}</div>
+                  </div>
+                  <div className="text-center p-3 bg-gray-50 rounded-lg">
+                    <Flame className="w-5 h-5 mx-auto mb-1 text-cyan-600" />
+                    <div className="text-xs text-gray-500">ABV</div>
+                    <div className="font-semibold text-sm">{selectedCocktail.abv}</div>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h3 className="font-semibold text-gray-900 mb-3">Nutrition Information</h3>
+                  <div className="grid grid-cols-4 gap-4 text-center">
+                    <div>
+                      <div className="text-2xl font-bold text-cyan-600">{selectedCocktail.nutrition.calories}</div>
+                      <div className="text-xs text-gray-500">Calories</div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-cyan-600">{selectedCocktail.nutrition.carbs}g</div>
+                      <div className="text-xs text-gray-500">Carbs</div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-cyan-600">{selectedCocktail.nutrition.sugar}g</div>
+                      <div className="text-xs text-gray-500">Sugar</div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-cyan-600">{selectedCocktail.nutrition.alcohol}g</div>
+                      <div className="text-xs text-gray-500">Alcohol</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <Droplets className="w-5 h-5 text-cyan-600" />
+                    Ingredients
+                  </h3>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <ul className="space-y-2">
+                      {selectedCocktail.ingredients.map((ingredient, index) => (
+                        <li key={index} className="flex items-start gap-2">
+                          <span className="text-cyan-600 mt-1">•</span>
+                          <span className="text-gray-700">{ingredient}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <Target className="w-5 h-5 text-cyan-600" />
+                    Method
+                  </h3>
+                  <div className="bg-cyan-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 text-cyan-700">
+                      <Badge className="bg-cyan-600">{selectedCocktail.method}</Badge>
+                      <span className="text-sm">for this cocktail</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-semibold text-gray-900 mb-3">Flavor Profile</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedCocktail.profile.map((flavor, index) => (
+                      <Badge key={index} variant="secondary" className="text-sm">
+                        {flavor}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <Cherry className="w-5 h-5 text-cyan-600" />
+                    Garnish
+                  </h3>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-gray-700">{selectedCocktail.garnish}</p>
+                  </div>
+                </div>
+
+                {selectedCocktail.allergens.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-3">Allergens</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedCocktail.allergens.map((allergen, index) => (
+                        <Badge key={index} variant="destructive" className="text-sm">
+                          {allergen}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">Origin:</span>
+                    <span className="ml-2 font-semibold text-gray-900">{selectedCocktail.origin}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Occasion:</span>
+                    <span className="ml-2 font-semibold text-gray-900">{selectedCocktail.occasion}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Est. Cost:</span>
+                    <span className="ml-2 font-semibold text-gray-900">${selectedCocktail.estimatedCost.toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Rating:</span>
+                    <span className="ml-2 font-semibold text-gray-900">{selectedCocktail.rating} / 5.0</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 bg-gray-50 rounded-b-2xl flex gap-3">
+                <Button 
+                  className="flex-1 bg-cyan-600 hover:bg-cyan-700"
+                  onClick={() => toggleFavorite(selectedCocktail.id, 'vodka-cocktails')}
+                >
+                  <Heart
+                    className={`w-4 h-4 mr-2 ${
+                      favorites['vodka-cocktails']?.includes(selectedCocktail.id) ? 'fill-white' : ''
+                    }`}
+                  />
+                  {favorites['vodka-cocktails']?.includes(selectedCocktail.id) ? 'Saved' : 'Save Recipe'}
+                </Button>
+                <Button variant="outline" className="flex-1">
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Share
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="bg-gradient-to-r from-cyan-600 via-blue-600 to-purple-600 text-white py-16 px-4">
           <div className="max-w-7xl mx-auto">
             <div className="flex items-center gap-3 mb-4">
@@ -564,7 +570,6 @@ export default function VodkaCocktailsPage() {
               </div>
             </div>
 
-            {/* Search Bar */}
             <div className="flex gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -586,7 +591,6 @@ export default function VodkaCocktailsPage() {
               </Button>
             </div>
 
-            {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
               <div className="bg-white/10 backdrop-blur rounded-lg p-4">
                 <div className="text-3xl font-bold">{vodkaCocktails.length}</div>
@@ -608,7 +612,6 @@ export default function VodkaCocktailsPage() {
           </div>
         </div>
 
-        {/* Filters */}
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
             <div className="space-y-4">
@@ -664,19 +667,13 @@ export default function VodkaCocktailsPage() {
             </div>
           </div>
 
-          {/* Results Count */}
           <div className="mb-4 text-gray-600">
             Showing {filteredCocktails.length} of {vodkaCocktails.length} cocktails
           </div>
 
-          {/* Cocktails Grid */}
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredCocktails.map((cocktail) => (
-              <Card 
-                key={cocktail.id} 
-                className="hover:shadow-lg transition-all duration-300 overflow-hidden group cursor-pointer"
-                onClick={() => handleCocktailClick(cocktail)}
-              >
+              <Card key={cocktail.id} className="hover:shadow-lg transition-all duration-300 overflow-hidden group">
                 <div className="relative bg-gradient-to-br from-cyan-100 to-blue-100 p-6 h-48 flex items-center justify-center">
                   <Droplets className="w-20 h-20 text-cyan-600 group-hover:scale-110 transition-transform" />
                   {cocktail.trending && (
@@ -695,19 +692,11 @@ export default function VodkaCocktailsPage() {
                     variant="ghost"
                     size="sm"
                     className="absolute bottom-3 right-3 bg-white/80 hover:bg-white"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      addToFavorites({
-                        id: cocktail.id,
-                        name: cocktail.name,
-                        category: 'vodka-cocktails',
-                        timestamp: Date.now()
-                      });
-                    }}
+                    onClick={() => toggleFavorite(cocktail.id, 'vodka-cocktails')}
                   >
                     <Heart
                       className={`w-5 h-5 ${
-                        isFavorite(cocktail.id)
+                        favorites['vodka-cocktails']?.includes(cocktail.id)
                           ? 'fill-red-500 text-red-500'
                           : 'text-gray-600'
                       }`}
@@ -726,7 +715,6 @@ export default function VodkaCocktailsPage() {
                 </CardHeader>
 
                 <CardContent className="space-y-4">
-                  {/* Key Info */}
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="flex items-center gap-2">
                       <GlassWater className="w-4 h-4 text-cyan-600" />
@@ -746,7 +734,6 @@ export default function VodkaCocktailsPage() {
                     </div>
                   </div>
 
-                  {/* Rating */}
                   <div className="flex items-center gap-2">
                     <div className="flex">
                       {[...Array(5)].map((_, i) => (
@@ -764,7 +751,6 @@ export default function VodkaCocktailsPage() {
                     <span className="text-sm text-gray-500">({cocktail.reviews.toLocaleString()})</span>
                   </div>
 
-                  {/* Profile Tags */}
                   <div className="flex flex-wrap gap-2">
                     {cocktail.profile.slice(0, 3).map((tag, index) => (
                       <Badge key={index} variant="secondary" className="text-xs">
@@ -773,7 +759,6 @@ export default function VodkaCocktailsPage() {
                     ))}
                   </div>
 
-                  {/* Nutrition Highlights */}
                   <div className="grid grid-cols-4 gap-2 pt-3 border-t text-center">
                     <div>
                       <div className="text-xs text-gray-500">Cal</div>
@@ -793,7 +778,6 @@ export default function VodkaCocktailsPage() {
                     </div>
                   </div>
 
-                  {/* Ingredients Preview */}
                   <div className="pt-3 border-t">
                     <div className="text-sm font-semibold mb-2 text-gray-700">Main Ingredients:</div>
                     <div className="text-sm text-gray-600">
@@ -802,19 +786,15 @@ export default function VodkaCocktailsPage() {
                     </div>
                   </div>
 
-                  {/* Action Buttons */}
                   <div className="flex gap-2 pt-3">
                     <Button 
                       className="flex-1 bg-cyan-600 hover:bg-cyan-700"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCocktailClick(cocktail);
-                      }}
+                      onClick={() => setSelectedCocktail(cocktail)}
                     >
                       <Plus className="w-4 h-4 mr-2" />
                       View Recipe
                     </Button>
-                    <Button variant="outline" size="icon" onClick={(e) => e.stopPropagation()}>
+                    <Button variant="outline" size="icon">
                       <Share2 className="w-4 h-4" />
                     </Button>
                   </div>
@@ -823,186 +803,6 @@ export default function VodkaCocktailsPage() {
             ))}
           </div>
 
-          {/* Cocktail Detail Modal */}
-          {selectedCocktail && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedCocktail(null)}>
-              <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-2xl">{selectedCocktail.name}</CardTitle>
-                      <p className="text-sm text-gray-500 mt-1">{selectedCocktail.origin}</p>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedCocktail(null)}>×</Button>
-                  </div>
-                  <p className="text-gray-600">{selectedCocktail.description}</p>
-                  <div className="flex gap-2 mt-2">
-                    <Badge className="bg-cyan-100 text-cyan-700">{selectedCocktail.category}</Badge>
-                    <Badge className="bg-blue-100 text-blue-700">{selectedCocktail.spiritType}</Badge>
-                    <Badge className="bg-purple-100 text-purple-700">{selectedCocktail.difficulty}</Badge>
-                    {selectedCocktail.iba_official && (
-                      <Badge className="bg-blue-500 text-white">IBA Official</Badge>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6">
-                    {/* Cocktail Stats */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <Target className="w-5 h-5 text-cyan-500" />
-                        Cocktail Stats
-                      </h3>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="p-3 bg-cyan-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">ABV</div>
-                          <div className="text-xl font-bold text-cyan-600">{selectedCocktail.abv}</div>
-                        </div>
-                        <div className="p-3 bg-blue-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Prep Time</div>
-                          <div className="text-xl font-bold text-blue-600">{selectedCocktail.prepTime} min</div>
-                        </div>
-                        <div className="p-3 bg-purple-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Method</div>
-                          <div className="text-xl font-bold text-purple-600">{selectedCocktail.method}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Glassware & Garnish */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <GlassWater className="w-5 h-5 text-blue-500" />
-                        Glassware & Garnish
-                      </h3>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="p-3 bg-blue-50 rounded-lg">
-                          <div className="text-sm text-gray-600">Glassware</div>
-                          <div className="font-bold text-blue-600">{selectedCocktail.glassware}</div>
-                        </div>
-                        <div className="p-3 bg-green-50 rounded-lg">
-                          <div className="text-sm text-gray-600">Garnish</div>
-                          <div className="font-bold text-green-600">{selectedCocktail.garnish}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Ingredients */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-cyan-500" />
-                        Ingredients
-                      </h3>
-                      <div className="space-y-2">
-                        {selectedCocktail.ingredients.map((ingredient, idx) => (
-                          <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                            <Plus className="w-4 h-4 text-cyan-500" />
-                            <span className="text-sm">{ingredient}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Flavor Profile */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <Star className="w-5 h-5 text-yellow-500" />
-                        Flavor Profile
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedCocktail.profile.map(trait => (
-                          <Badge key={trait} className="bg-yellow-100 text-yellow-700 border-yellow-300">
-                            {trait}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Instructions */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <BookOpen className="w-5 h-5 text-cyan-500" />
-                        Instructions
-                      </h3>
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <p className="text-sm text-gray-700">{selectedCocktail.instructions}</p>
-                      </div>
-                    </div>
-
-                    {/* Nutrition */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <Droplets className="w-5 h-5 text-cyan-500" />
-                        Nutrition Information
-                      </h3>
-                      <div className="grid grid-cols-4 gap-3">
-                        <div className="p-3 bg-red-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Calories</div>
-                          <div className="text-xl font-bold text-red-600">{selectedCocktail.nutrition.calories}</div>
-                        </div>
-                        <div className="p-3 bg-yellow-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Carbs</div>
-                          <div className="text-xl font-bold text-yellow-600">{selectedCocktail.nutrition.carbs}g</div>
-                        </div>
-                        <div className="p-3 bg-pink-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Sugar</div>
-                          <div className="text-xl font-bold text-pink-600">{selectedCocktail.nutrition.sugar}g</div>
-                        </div>
-                        <div className="p-3 bg-purple-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Alcohol</div>
-                          <div className="text-xl font-bold text-purple-600">{selectedCocktail.nutrition.alcohol}g</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Pro Tips */}
-                    <div className="bg-cyan-50 p-4 rounded-lg">
-                      <h3 className="font-semibold mb-2 flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-cyan-500" />
-                        Pro Tips
-                      </h3>
-                      <ul className="space-y-2 text-sm text-cyan-900">
-                        <li>• Use premium vodka for the cleanest taste</li>
-                        <li>• Always chill your glassware beforehand</li>
-                        <li>• Fresh ingredients make all the difference</li>
-                        <li>• Vodka's neutrality lets other flavors shine</li>
-                        <li>• Store vodka in the freezer for extra smoothness</li>
-                      </ul>
-                    </div>
-
-                    {/* Rating */}
-                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <Star className="h-5 w-5 text-yellow-400 fill-current" />
-                        <span className="font-bold text-lg">{selectedCocktail.rating}</span>
-                        <span className="text-gray-500">({selectedCocktail.reviews.toLocaleString()} reviews)</span>
-                      </div>
-                      <Badge variant="outline">{selectedCocktail.difficulty}</Badge>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex gap-3">
-                      <Button 
-                        className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700"
-                        onClick={() => handleMakeCocktail(selectedCocktail)}
-                      >
-                        <Droplets className="w-4 h-4 mr-2" />
-                        Make This Cocktail
-                      </Button>
-                      <Button variant="outline" size="icon">
-                        <Share2 className="w-4 h-4" />
-                      </Button>
-                      <Button variant="outline" size="icon">
-                        <Camera className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {/* Educational Section */}
           <Card className="mt-12 bg-gradient-to-br from-cyan-50 to-blue-50 border-cyan-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-2xl">
@@ -1018,7 +818,6 @@ export default function VodkaCocktailsPage() {
                 ingredients to shine while providing the alcoholic backbone that defines mixed drinks.
               </p>
 
-              {/* Vodka Types */}
               <div>
                 <h3 className="font-semibold text-lg mb-3 text-cyan-700">Types of Vodka</h3>
                 <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1039,6 +838,38 @@ export default function VodkaCocktailsPage() {
                     <div className="text-sm text-gray-700">Multiple distillations and filtrations. Ultra-smooth finish.</div>
                   </div>
                 </div>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-lg mb-3 text-cyan-700">Vodka Cocktail Styles</h3>
+                <div className="grid md:grid-cols-3 gap-6">
+                  <div>
+                    <h4 className="font-semibold mb-2 text-cyan-600">Classic Vodka</h4>
+                    <p className="text-sm text-gray-700">Timeless cocktails like Martini, Moscow Mule, and Bloody Mary that showcase vodka's versatility.</p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold mb-2 text-blue-600">Modern Creations</h4>
+                    <p className="text-sm text-gray-700">Contemporary drinks like Espresso Martini and French Martini from the craft cocktail renaissance.</p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold mb-2 text-purple-600">Fruity & Fun</h4>
+                    <p className="text-sm text-gray-700">Approachable, refreshing cocktails perfect for casual drinking and social occasions.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 bg-gradient-to-r from-cyan-100 to-blue-100 rounded-lg">
+                <h3 className="font-semibold text-lg mb-3 text-cyan-800 flex items-center gap-2">
+                  <Sparkles className="w-5 h-5" />
+                  Vodka Production
+                </h3>
+                <p className="text-gray-700 text-sm leading-relaxed">
+                  Quality vodka undergoes multiple distillations (often 3-5 times) to achieve exceptional purity 
+                  and smoothness. Many premium brands use additional filtration through charcoal, quartz, or even 
+                  diamonds. The result is a spirit so clean it can be sipped neat or mixed into virtually any 
+                  cocktail without overwhelming other flavors. This neutrality is vodka's greatest strength, 
+                  making it the perfect canvas for mixologists and home bartenders alike.
+                </p>
               </div>
             </CardContent>
           </Card>
