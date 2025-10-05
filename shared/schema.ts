@@ -18,14 +18,14 @@ export const users = pgTable("users", {
   followingCount: integer("following_count").default(0),
   postsCount: integer("posts_count").default(0),
   cateringEnabled: boolean("catering_enabled").default(false),
-  cateringLocation: text("catering_location"), // postal code for privacy
-  cateringRadius: integer("catering_radius").default(25), // miles
-  cateringBio: text("catering_bio"), // separate bio for catering services
-  cateringAvailable: boolean("catering_available").default(true), // can toggle availability
-  subscriptionTier: text("subscription_tier").default("free"), // free, starter, professional, enterprise, premium_plus
-  subscriptionStatus: text("subscription_status").default("active"), // active, cancelled, past_due
+  cateringLocation: text("catering_location"),
+  cateringRadius: integer("catering_radius").default(25),
+  cateringBio: text("catering_bio"),
+  cateringAvailable: boolean("catering_available").default(true),
+  subscriptionTier: text("subscription_tier").default("free"),
+  subscriptionStatus: text("subscription_status").default("active"),
   subscriptionEndsAt: timestamp("subscription_ends_at"),
-  monthlyRevenue: decimal("monthly_revenue", { precision: 10, scale: 2 }).default("0"), // for commission calculations
+  monthlyRevenue: decimal("monthly_revenue", { precision: 10, scale: 2 }).default("0"),
   nutritionPremium: boolean("nutrition_premium").default(false),
   nutritionTrialEndsAt: timestamp("nutrition_trial_ends_at"),
   dailyCalorieGoal: integer("daily_calorie_goal"),
@@ -51,14 +51,14 @@ export const posts = pgTable("posts", {
 
 export const recipes = pgTable("recipes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  postId: varchar("post_id").references(() => posts.id), // Made nullable for seeding
+  postId: varchar("post_id").references(() => posts.id),
   title: text("title").notNull(),
   imageUrl: text("image_url"),
   ingredients: jsonb("ingredients").$type<string[]>().notNull(),
   instructions: jsonb("instructions").$type<string[]>().notNull(),
-  cookTime: integer("cook_time"), // in minutes
+  cookTime: integer("cook_time"),
   servings: integer("servings"),
-  difficulty: text("difficulty"), // Easy, Medium, Hard
+  difficulty: text("difficulty"),
   nutrition: jsonb("nutrition").$type<Record<string, any>>(),
   calories: integer("calories"),
   protein: decimal("protein", { precision: 5, scale: 2 }),
@@ -98,8 +98,6 @@ export const follows = pgTable("follows", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// ===== NEW TABLES FOR EXPANDED FEATURES =====
-
 // CATERING SYSTEM
 export const cateringInquiries = pgTable("catering_inquiries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -107,11 +105,11 @@ export const cateringInquiries = pgTable("catering_inquiries", {
   chefId: varchar("chef_id").references(() => users.id).notNull(),
   eventDate: timestamp("event_date").notNull(),
   guestCount: integer("guest_count"),
-  eventType: text("event_type"), // wedding, corporate, birthday, etc
+  eventType: text("event_type"),
   cuisinePreferences: jsonb("cuisine_preferences").$type<string[]>().default(sql`'[]'::jsonb`),
   budget: decimal("budget", { precision: 10, scale: 2 }),
   message: text("message"),
-  status: text("status").default("pending"), // pending, accepted, declined, completed
+  status: text("status").default("pending"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -122,12 +120,12 @@ export const products = pgTable("products", {
   name: text("name").notNull(),
   description: text("description"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  category: text("category").notNull(), // spices, ingredients, cookware, cookbooks
+  category: text("category").notNull(),
   images: jsonb("images").$type<string[]>().default(sql`'[]'::jsonb`),
   inventory: integer("inventory").default(0),
   shippingEnabled: boolean("shipping_enabled").default(true),
   localPickupEnabled: boolean("local_pickup_enabled").default(false),
-  pickupLocation: text("pickup_location"), // postal code
+  pickupLocation: text("pickup_location"),
   pickupInstructions: text("pickup_instructions"),
   shippingCost: decimal("shipping_cost", { precision: 8, scale: 2 }),
   isExternal: boolean("is_external").default(false),
@@ -158,8 +156,8 @@ export const orders = pgTable("orders", {
     zipCode: string;
     country: string;
   }>(),
-  fulfillmentMethod: text("fulfillment_method").notNull(), // shipping, pickup
-  status: text("status").default("pending"), // pending, paid, shipped, delivered, cancelled
+  fulfillmentMethod: text("fulfillment_method").notNull(),
+  status: text("status").default("pending"),
   trackingNumber: text("tracking_number"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
@@ -176,7 +174,7 @@ export const subscriptionHistory = pgTable("subscription_history", {
   amount: decimal("amount", { precision: 8, scale: 2 }).notNull(),
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date").notNull(),
-  status: text("status").notNull(), // active, cancelled, expired
+  status: text("status").notNull(),
   paymentMethod: text("payment_method"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -197,9 +195,9 @@ export const mealPlanEntries = pgTable("meal_plan_entries", {
   mealPlanId: varchar("meal_plan_id").references(() => mealPlans.id).notNull(),
   recipeId: varchar("recipe_id").references(() => recipes.id),
   date: timestamp("date").notNull(),
-  mealType: text("meal_type").notNull(), // breakfast, lunch, dinner, snack
+  mealType: text("meal_type").notNull(),
   servings: integer("servings").default(1),
-  customName: text("custom_name"), // for non-recipe meals
+  customName: text("custom_name"),
   customCalories: integer("custom_calories"),
 });
 
@@ -208,9 +206,9 @@ export const pantryItems = pgTable("pantry_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id).notNull(),
   name: text("name").notNull(),
-  category: text("category"), // vegetables, proteins, spices, etc
+  category: text("category"),
   quantity: decimal("quantity", { precision: 8, scale: 2 }),
-  unit: text("unit"), // cups, lbs, oz, etc
+  unit: text("unit"),
   expirationDate: timestamp("expiration_date"),
   purchaseDate: timestamp("purchase_date"),
   notes: text("notes"),
@@ -225,7 +223,7 @@ export const nutritionLogs = pgTable("nutrition_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id).notNull(),
   date: timestamp("date").notNull(),
-  mealType: text("meal_type").notNull(), // breakfast, lunch, dinner, snack
+  mealType: text("meal_type").notNull(),
   recipeId: varchar("recipe_id").references(() => recipes.id),
   customFoodName: text("custom_food_name"),
   servings: decimal("servings", { precision: 5, scale: 2 }).default("1"),
@@ -243,8 +241,7 @@ export const nutritionLogs = pgTable("nutrition_logs", {
   userDateIdx: index("nutrition_user_date_idx").on(table.userId, table.date),
 }));
 
-// ===== SUBSTITUTION CATALOG =====
-// One row per ingredient (e.g., "Buttermilk", "Baking Powder")
+// SUBSTITUTION CATALOG
 export const substitutionIngredients = pgTable("substitution_ingredients", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   ingredient: varchar("ingredient", { length: 160 }).notNull(),
@@ -258,41 +255,131 @@ export const substitutionIngredients = pgTable("substitution_ingredients", {
   ingredientIdx: index("subs_ing_ingredient_idx").on(t.ingredient),
 }));
 
-// One row per substitution “formula” (facts-first, dedupe-ready)
 export const substitutions = pgTable("substitutions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   ingredientId: varchar("ingredient_id").notNull()
     .references(() => substitutionIngredients.id, { onDelete: "cascade" }),
-
-  // Display text we show in the UI (generated from facts so wording is original)
   text: text("text").notNull(),
-
-  // Structured facts used to render text and dedupe
   components: jsonb("components").$type<
     { item: string; amount?: number; unit?: string; note?: string }[]
   >().default(sql`'[]'::jsonb`).notNull(),
   method: jsonb("method").$type<{
     action?: string; time_min?: number; time_max?: number; temperature?: string;
   }>().default(sql`'{}'::jsonb`).notNull(),
-
   ratio: varchar("ratio", { length: 160 }).default(""),
-  context: varchar("context", { length: 80 }).default(""), // e.g. "baking", "sauce"
+  context: varchar("context", { length: 80 }).default(""),
   dietTags: jsonb("diet_tags").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   allergenFlags: jsonb("allergen_flags").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
-
-  // Dedupe fields (same formula, different wording → one row)
   signature: varchar("signature", { length: 256 }).notNull(),
   signatureHash: varchar("signature_hash", { length: 64 }).notNull(),
-
-  // Internal merge metadata (not shown to users)
   variants: jsonb("variants").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   provenance: jsonb("provenance").$type<{source:string; page?:string; url?:string}[]>().default(sql`'[]'::jsonb`).notNull(),
-
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => ({
-  // Prevent duplicates per ingredient
   uniqPerIngredient: uniqueIndex("uniq_sub_signature_hash").on(t.ingredientId, t.signatureHash),
 }));
+
+// ===== CUSTOM DRINKS SYSTEM =====
+
+export const customDrinks = pgTable("custom_drinks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  name: text("name").notNull(),
+  category: text("category").notNull(), // 'smoothies', 'protein-shakes', 'detoxes', 'potent-potables'
+  drinkType: text("drink_type"), // 'pre-workout', 'green', 'juice-detox', etc.
+  
+  // Ingredients as JSON
+  ingredients: jsonb("ingredients").$type<Array<{
+    name: string;
+    category: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fiber: number;
+    icon: string;
+  }>>().notNull(),
+  
+  // Nutrition totals
+  calories: integer("calories").notNull(),
+  protein: decimal("protein", { precision: 5, scale: 2 }).notNull(),
+  carbs: decimal("carbs", { precision: 5, scale: 2 }).notNull(),
+  fiber: decimal("fiber", { precision: 5, scale: 2 }).notNull(),
+  fat: decimal("fat", { precision: 5, scale: 2 }).notNull(),
+  
+  // Optional
+  description: text("description"),
+  imageUrl: text("image_url"),
+  fitnessGoal: text("fitness_goal"),
+  difficulty: text("difficulty"),
+  prepTime: integer("prep_time"),
+  rating: integer("rating").default(5),
+  
+  // Social
+  isPublic: boolean("is_public").default(false),
+  likesCount: integer("likes_count").default(0),
+  savesCount: integer("saves_count").default(0),
+  sharesCount: integer("shares_count").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  userIdx: index("custom_drinks_user_idx").on(table.userId),
+  categoryIdx: index("custom_drinks_category_idx").on(table.category),
+  publicIdx: index("custom_drinks_public_idx").on(table.isPublic),
+}));
+
+export const drinkPhotos = pgTable("drink_photos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  drinkId: varchar("drink_id").references(() => customDrinks.id, { onDelete: "cascade" }).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  imageUrl: text("image_url").notNull(),
+  caption: text("caption"),
+  likesCount: integer("likes_count").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  drinkIdx: index("drink_photos_drink_idx").on(table.drinkId),
+  userIdx: index("drink_photos_user_idx").on(table.userId),
+}));
+
+export const drinkLikes = pgTable("drink_likes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  drinkId: varchar("drink_id").references(() => customDrinks.id, { onDelete: "cascade" }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  userDrinkIdx: uniqueIndex("drink_likes_user_drink_idx").on(table.userId, table.drinkId),
+}));
+
+export const drinkSaves = pgTable("drink_saves", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  drinkId: varchar("drink_id").references(() => customDrinks.id, { onDelete: "cascade" }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  userDrinkIdx: uniqueIndex("drink_saves_user_drink_idx").on(table.userId, table.drinkId),
+}));
+
+export const userDrinkStats = pgTable("user_drink_stats", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull().unique(),
+  totalDrinksMade: integer("total_drinks_made").default(0),
+  totalPoints: integer("total_points").default(0),
+  level: integer("level").default(1),
+  currentStreak: integer("current_streak").default(0),
+  longestStreak: integer("longest_streak").default(0),
+  lastDrinkDate: timestamp("last_drink_date"),
+  smoothiesMade: integer("smoothies_made").default(0),
+  proteinShakesMade: integer("protein_shakes_made").default(0),
+  detoxesMade: integer("detoxes_made").default(0),
+  cocktailsMade: integer("cocktails_made").default(0),
+  badges: jsonb("badges").$type<string[]>().default(sql`'[]'::jsonb`),
+  achievements: jsonb("achievements").$type<Array<{
+    id: string;
+    name: string;
+    earnedAt: string;
+  }>>().default(sql`'[]'::jsonb`),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
 // ===== INSERT SCHEMAS =====
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -376,6 +463,36 @@ export const insertNutritionLogSchema = createInsertSchema(nutritionLogs).omit({
   createdAt: true,
 });
 
+export const insertCustomDrinkSchema = createInsertSchema(customDrinks).omit({
+  id: true,
+  likesCount: true,
+  savesCount: true,
+  sharesCount: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertDrinkPhotoSchema = createInsertSchema(drinkPhotos).omit({
+  id: true,
+  likesCount: true,
+  createdAt: true,
+});
+
+export const insertDrinkLikeSchema = createInsertSchema(drinkLikes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertDrinkSaveSchema = createInsertSchema(drinkSaves).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertUserDrinkStatsSchema = createInsertSchema(userDrinkStats).omit({
+  id: true,
+  updatedAt: true,
+});
+
 // ===== TYPES =====
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -407,8 +524,18 @@ export type PantryItem = typeof pantryItems.$inferSelect;
 export type InsertPantryItem = z.infer<typeof insertPantryItemSchema>;
 export type NutritionLog = typeof nutritionLogs.$inferSelect;
 export type InsertNutritionLog = z.infer<typeof insertNutritionLogSchema>;
+export type CustomDrink = typeof customDrinks.$inferSelect;
+export type InsertCustomDrink = z.infer<typeof insertCustomDrinkSchema>;
+export type DrinkPhoto = typeof drinkPhotos.$inferSelect;
+export type InsertDrinkPhoto = z.infer<typeof insertDrinkPhotoSchema>;
+export type DrinkLike = typeof drinkLikes.$inferSelect;
+export type InsertDrinkLike = z.infer<typeof insertDrinkLikeSchema>;
+export type DrinkSave = typeof drinkSaves.$inferSelect;
+export type InsertDrinkSave = z.infer<typeof insertDrinkSaveSchema>;
+export type UserDrinkStats = typeof userDrinkStats.$inferSelect;
+export type InsertUserDrinkStats = z.infer<typeof insertUserDrinkStatsSchema>;
 
-// Extended types for API responses
+// Extended types
 export type PostWithUser = Post & { user: User; recipe?: Recipe; isLiked?: boolean; isSaved?: boolean };
 export type StoryWithUser = Story & { user: User };
 export type CommentWithUser = Comment & { user: User };
@@ -416,7 +543,11 @@ export type ProductWithSeller = Product & { seller: User };
 export type OrderWithDetails = Order & { product: Product; seller: User; buyer: User };
 export type MealPlanWithEntries = MealPlan & { entries: (MealPlanEntry & { recipe?: Recipe })[] };
 export type ChefWithCatering = User & { availableForCatering: boolean; distance?: number };
-
-// Substitution types
 export type SubstitutionIngredient = typeof substitutionIngredients.$inferSelect;
 export type Substitution = typeof substitutions.$inferSelect;
+export type CustomDrinkWithUser = CustomDrink & { 
+  user: User; 
+  isLiked?: boolean; 
+  isSaved?: boolean;
+  photos?: DrinkPhoto[];
+};
