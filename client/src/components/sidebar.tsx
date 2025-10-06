@@ -20,6 +20,7 @@ import {
   Wine,
   Sparkles,
   Baby,
+  Map, // ✅ added
 } from "lucide-react";
 
 interface SidebarProps {
@@ -48,6 +49,10 @@ type NavItem =
 const NAV: NavItem[] = [
   { name: "Feed", href: "/feed", icon: Home },
   { name: "Explore", href: "/explore", icon: Compass },
+
+  // ✅ BiteMap (new top-level item)
+  { name: "BiteMap", href: "/bitemap", icon: Map },
+
   {
     name: "Recipes",
     href: "/recipes",
@@ -69,7 +74,7 @@ const NAV: NavItem[] = [
     hasSubmenu: true,
     submenu: [
       { name: "Drinks Hub", href: "/drinks", icon: GlassWater },
-      
+
       // Smoothies with sub-items
       {
         name: "Smoothies & Bowls",
@@ -84,7 +89,7 @@ const NAV: NavItem[] = [
           { name: "Workout", href: "/drinks/smoothies/workout", icon: Activity },
         ],
       },
-      
+
       // Protein Shakes with sub-items
       {
         name: "Protein Shakes",
@@ -98,7 +103,7 @@ const NAV: NavItem[] = [
           { name: "Collagen", href: "/drinks/protein-shakes/collagen", icon: Sparkles },
         ],
       },
-      
+
       // Detoxes with sub-items
       {
         name: "Detoxes & Cleanses",
@@ -111,7 +116,7 @@ const NAV: NavItem[] = [
           { name: "Infused Waters", href: "/drinks/detoxes/water", icon: GlassWater },
         ],
       },
-      
+
       // Potent Potables with sub-items
       {
         name: "Potent Potables (21+)",
