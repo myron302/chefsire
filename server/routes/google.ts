@@ -1,115 +1,176 @@
-import * as React from "react";
-import { Star, Landmark, Globe2, ImageOff } from "lucide-react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+// server/routes/google.ts
+import { Router } from "express";
+import fetch from "node-fetch";
 
-type PlaceSource = "fsq" | "google";
-type CategoryLike = string | { id?: string; title?: string; name?: string } | null | undefined;
+export const googleRouter = Router();
 
-function catLabel(c: CategoryLike): string {
-  if (typeof c === "string") return c;
-  if (!c) return "";
-  return (c.title || c.name || "").toString();
-}
-function PriceBadge({ price, source }: { price?: number | null; source: PlaceSource }) {
-  if (price == null) return null;
-  const count = source === "google" ? Math.max(1, price) : price;
-  const safe = Math.max(1, Math.min(4, Number(count) || 1));
-  return <Badge variant="secondary">{"$".repeat(safe)}</Badge>;
+const GOOGLE_KEY = process.env.GOOGLE_MAPS_API_KEY ?? "";
+const UA = "ChefSire-BiteMap/1.0 (+https://chefsire.com)";
+
+function sendJson(res: any, code: number, body: any) {
+  res.status(code).json(body);
 }
 
-export default function RestaurantCard(props: {
-  name: string;
-  address?: string | null;
-  rating?: number;
-  price?: number | null;
-  categories?: CategoryLike[];
-  source: PlaceSource;
-  onSelect?: () => void;
-  raw?: any; // expects __photoRef for Google items
-}) {
-  const { name, address, rating, price, categories = [], source, onSelect, raw } = props;
-  const catStrings = categories.map(catLabel).filter(Boolean).slice(0, 3);
+// Diagnostics
+googleRouter.get("/diagnostics", (_req, res) => {
+  return sendJson(res, 200, {
+    ok: true,
+    hasKey: Boolean(GOOGLE_KEY),
+    keyLen: GOOGLE_KEY ? GOOGLE_KEY.length : 0,
+    note:
+      "If hasKey=false, set GOOGLE_MAPS_API_KEY in Plesk → Node.js → Environment Variables, then Restart App.",
+  });
+});
 
-  const photoRef: string | null = raw?.__photoRef || null;
-  const imgSrc =
-    source === "google" && photoRef
-      ? `/api/google/photo?ref=${encodeURIComponent(photoRef)}&maxWidth=600`
-      : null;
+// Geocode helper
+async function geocode(near: string) {
+  const u = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+  u.searchParams.set("address", near);
+  u.searchParams.set("key", GOOGLE_KEY);
 
-  const [hideImg, setHideImg] = React.useState(false);
+  const r = await fetch(u.toString(), { headers: { "User-Agent": UA } });
+  if (!r.ok) throw new Error(`geocode http ${r.status}`);
 
-  return (
-    <Card className="h-full overflow-hidden">
-      {/* Image header (hidden on error) */}
-      <div className="w-full h-40 bg-muted relative">
-        {imgSrc && !hideImg ? (
-          <img
-            src={imgSrc}
-            alt={name}
-            className="w-full h-full object-cover"
-            loading="lazy"
-            onError={() => setHideImg(true)}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-            <ImageOff className="w-6 h-6" />
-          </div>
-        )}
-      </div>
-
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base font-semibold leading-tight line-clamp-2">
-          {name}
-        </CardTitle>
-        <div className="mt-1 text-xs text-muted-foreground line-clamp-1">
-          {address || "—"}
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-2">
-        <div className="flex items-center gap-2 text-sm">
-          {typeof rating === "number" && (
-            <div className="flex items-center gap-1">
-              <Star className="w-4 h-4 fill-yellow-400 stroke-yellow-400" />
-              <span>{rating.toFixed(1)}</span>
-            </div>
-          )}
-
-          <PriceBadge price={price ?? null} source={source} />
-
-          <div className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
-            {source === "fsq" ? (
-              <>
-                <Landmark className="w-3.5 h-3.5" />
-                <span>Foursquare</span>
-              </>
-            ) : (
-              <>
-                <Globe2 className="w-3.5 h-3.5" />
-                <span>Google</span>
-              </>
-            )}
-          </div>
-        </div>
-
-        {catStrings.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {catStrings.map((c, i) => (
-              <Badge key={`${c}-${i}`} variant="outline" className="text-[11px]">
-                {c}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        <div className="pt-1">
-          <Button onClick={onSelect} variant="secondary" size="sm" className="w-full">
-            View details & reviews
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  const j: any = await r.json();
+  const status = j?.status || "UNKNOWN";
+  if (status !== "OK") {
+    throw new Error(`geocode api ${status}: ${j?.error_message || "no message"}`);
+  }
+  const c = j?.results?.[0]?.geometry?.location;
+  if (!c) throw new Error("geocode api OK but no results");
+  return { lat: c.lat, lng: c.lng };
 }
+
+// Search (Nearby if ll, else Text)
+googleRouter.get("/search", async (req, res) => {
+  try {
+    if (!GOOGLE_KEY) {
+      return sendJson(res, 500, {
+        error: "missing_key",
+        message: "GOOGLE_MAPS_API_KEY not visible to server process.",
+      });
+    }
+
+    const q =
+      (req.query.q as string) ||
+      (req.query.query as string) ||
+      (req.query.keyword as string) ||
+      "restaurant";
+    const near = (req.query.near as string) || (req.query.location as string) || "New York, NY";
+    const ll = (req.query.ll as string) || "";
+    const limit = Math.min(60, Number(req.query.limit) || 20);
+
+    let lat: number | undefined;
+    let lng: number | undefined;
+
+    if (ll) {
+      const [la, ln] = ll.split(",").map(Number);
+      if (Number.isFinite(la) && Number.isFinite(ln)) {
+        lat = la;
+        lng = ln;
+      }
+    } else if (near) {
+      try {
+        const c = await geocode(near);
+        lat = c.lat;
+        lng = c.lng;
+      } catch (e: any) {
+        return sendJson(res, 502, { error: "geocode_failed", message: e?.message || "Geocoding failed" });
+      }
+    }
+
+    let url: string;
+    if (typeof lat === "number" && typeof lng === "number") {
+      const u = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
+      u.searchParams.set("key", GOOGLE_KEY);
+      u.searchParams.set("location", `${lat},${lng}`);
+      u.searchParams.set("radius", "4000");
+      u.searchParams.set("keyword", q);
+      u.searchParams.set("type", "restaurant");
+      url = u.toString();
+    } else {
+      const u = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
+      u.searchParams.set("key", GOOGLE_KEY);
+      u.searchParams.set("query", `${q} in ${near}`);
+      u.searchParams.set("type", "restaurant");
+      url = u.toString();
+    }
+
+    const r = await fetch(url, { headers: { "User-Agent": UA } });
+    if (!r.ok) return sendJson(res, 502, { error: "google_http_error", status: r.status });
+
+    const j: any = await r.json();
+    const status = j?.status || "UNKNOWN";
+    if (status !== "OK" && status !== "ZERO_RESULTS") {
+      return sendJson(res, 502, {
+        error: "google_api_error",
+        status,
+        message: j?.error_message || null,
+      });
+    }
+
+    const results = Array.isArray(j.results) ? j.results.slice(0, limit) : [];
+    return sendJson(res, 200, { status, results });
+  } catch (e: any) {
+    console.error("google/search error", e);
+    return sendJson(res, 500, { error: "google_search_failed", message: e?.message || String(e) });
+  }
+});
+
+// Place Photo proxy (no JSX!)
+googleRouter.get("/photo", async (req, res) => {
+  try {
+    if (!GOOGLE_KEY) return res.status(500).send("Missing GOOGLE_MAPS_API_KEY");
+    const ref = (req.query.ref as string) || (req.query.photo_reference as string);
+    if (!ref) return res.status(400).send("Missing photo reference");
+    const maxWidth = String(Math.max(200, Math.min(1600, Number(req.query.maxWidth) || 600)));
+
+    const u = new URL("https://maps.googleapis.com/maps/api/place/photo");
+    u.searchParams.set("key", GOOGLE_KEY);
+    u.searchParams.set("photo_reference", ref);
+    u.searchParams.set("maxwidth", maxWidth);
+
+    const r = await fetch(u.toString(), { redirect: "follow" as any, headers: { "User-Agent": UA } });
+    if (!r.ok) return res.status(404).send("no_photo");
+
+    const ct = r.headers.get("content-type") || "image/jpeg";
+    res.set("Content-Type", ct);
+    res.set("Cache-Control", "public, max-age=86400");
+    return r.body?.pipe(res);
+  } catch (e) {
+    console.error("google/photo error", e);
+    return res.status(404).send("no_photo");
+  }
+});
+
+// Static Map proxy
+googleRouter.get("/staticmap", async (req, res) => {
+  try {
+    if (!GOOGLE_KEY) return res.status(500).send("Missing GOOGLE_MAPS_API_KEY");
+
+    const center = (req.query.center as string) || "";
+    const markers = (req.query.markers as string) || "";
+    const zoom = String(Math.max(3, Math.min(19, Number(req.query.zoom) || 13)));
+    const size = (req.query.size as string) || "640x360";
+    const scale = String(Number(req.query.scale) || 2);
+
+    const u = new URL("https://maps.googleapis.com/maps/api/staticmap");
+    u.searchParams.set("key", GOOGLE_KEY);
+    u.searchParams.set("size", size);
+    u.searchParams.set("scale", scale);
+    if (center) u.searchParams.set("center", center);
+    u.searchParams.set("zoom", zoom);
+    if (markers) u.searchParams.append("markers", markers);
+
+    const r = await fetch(u.toString(), { headers: { "User-Agent": UA } });
+    if (!r.ok) return res.status(404).send("no_map");
+
+    const ct = r.headers.get("content-type") || "image/png";
+    res.set("Content-Type", ct);
+    res.set("Cache-Control", "public, max-age=86400");
+    return r.body?.pipe(res);
+  } catch (e) {
+    console.error("google/staticmap error", e);
+    return res.status(404).send("no_map");
+  }
+});
