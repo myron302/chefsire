@@ -21,7 +21,7 @@ export type BaseItem = {
   };
   geocodes?: any;
   geometry?: any;
-  _raw?: any; // we’ll stash Google photoRef here
+  _raw?: any;
 };
 
 type NearbyOpts = {
@@ -117,7 +117,6 @@ function dedupeList(items: BaseItem[]): BaseItem[] {
   });
   return merged;
 }
-
 function mapFsq(item: any): BaseItem {
   const lat = item?.geocodes?.main?.latitude ?? item?.geocodes?.roof?.latitude ?? null;
   const lng = item?.geocodes?.main?.longitude ?? item?.geocodes?.roof?.longitude ?? null;
@@ -139,22 +138,13 @@ function mapFsq(item: any): BaseItem {
     _raw: item,
   };
 }
-
 function mapGoogle(item: any): BaseItem {
   const loc =
     item?.geometry?.location ||
     item?.geocodes?.location ||
     item?.geocodes?.geometry?.location;
-
   const lat = typeof loc?.lat === "number" ? loc.lat : null;
   const lng = typeof loc?.lng === "number" ? loc.lng : null;
-
-  // 👉 Grab first photo reference if available
-  const photoRef =
-    Array.isArray(item?.photos) && item.photos[0]?.photo_reference
-      ? item.photos[0].photo_reference
-      : null;
-
   return {
     id: String(item.place_id || item.id || Math.random()),
     source: "google",
@@ -170,7 +160,7 @@ function mapGoogle(item: any): BaseItem {
       lat, lng,
     },
     geometry: item.geometry,
-    _raw: { ...item, __photoRef: photoRef }, // <— used by RestaurantCard for thumbnails
+    _raw: item,
   };
 }
 
