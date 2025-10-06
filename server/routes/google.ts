@@ -2,146 +2,70 @@
 import { Router } from "express";
 import fetch from "node-fetch";
 
-const router = Router();
+export const googleRouter = Router();
 
-const GOOGLE_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
-if (!GOOGLE_API_KEY) {
-  console.warn("[google] Missing GOOGLE_MAPS_API_KEY — set it in server/.env");
+const GOOGLE_KEY = process.env.GOOGLE_MAPS_API_KEY;
+
+// helper: geocode a city string -> {lat,lng}
+async function geocode(near: string) {
+  const u = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+  u.searchParams.set("address", near);
+  u.searchParams.set("key", GOOGLE_KEY || "");
+  const r = await fetch(u.toString());
+  if (!r.ok) throw new Error(`geocode ${r.status}`);
+  const j: any = await r.json();
+  const c = j?.results?.[0]?.geometry?.location;
+  if (!c) return null;
+  return { lat: c.lat, lng: c.lng };
 }
 
-// Helper to call Google Places Web Service
-async function gmaps(endpoint: string, params: Record<string, string | number>) {
-  const url = new URL(`https://maps.googleapis.com/maps/api/place/${endpoint}`);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
-  url.searchParams.set("key", GOOGLE_API_KEY || "");
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`Google ${endpoint} ${res.status}`);
-  const json = await res.json();
-  if (json.status && json.status !== "OK" && json.status !== "ZERO_RESULTS") {
-    // include status/error_message for easier debugging
-    throw new Error(`Google ${endpoint}: ${json.status} ${json.error_message || ""}`);
-  }
-  return json;
-}
-
-/**
- * GET /api/google/search
- * Query params:
- *   ll=lat,lon  (optional; if omitted we use text search with 'near')
- *   near=city   (fallback if ll missing)
- *   q=keyword   (default: "restaurant")
- *   radius=meters (only when ll is provided; Google caps ~50,000)
- *   limit=number (client-side cap; Google returns up to 20 per page)
- *
- * Strategy:
- *  - If ll provided -> Nearby Search (type=restaurant)
- *  - else -> Text Search (query: "<q> in <near>")
- */
-router.get("/search", async (req, res) => {
+// GET /google/search?q=&near=&ll=&limit=
+googleRouter.get("/search", async (req, res) => {
   try {
-    const { ll, near, q, radius, limit } = req.query as Record<string, string>;
-    const searchLimit = Math.min(Number(limit || 20), 50);
-    const keyword = q?.trim() || "restaurant";
+    if (!GOOGLE_KEY) return res.status(500).json({ error: "Missing GOOGLE_MAPS_API_KEY" });
 
-    let results: any[] = [];
+    const q = (req.query.q as string) || (req.query.query as string) || "restaurant";
+    const near = (req.query.near as string) || (req.query.location as string);
+    const ll = (req.query.ll as string) || "";
+    const limit = Math.min(60, Number(req.query.limit) || 20);
+
+    let lat: number | undefined, lng: number | undefined;
+
     if (ll) {
-      const [lat, lng] = ll.split(",").map(Number);
-      const nearby = await gmaps("nearbysearch/json", {
-        location: `${lat},${lng}`,
-        radius: Math.max(100, Math.min(Number(radius || 3000), 50000)),
-        type: "restaurant",
-        keyword,
-      });
-      results = nearby.results || [];
-    } else {
-      const place = near?.trim() || "New York, NY";
-      const text = await gmaps("textsearch/json", {
-        query: `${keyword} in ${place}`,
-        type: "restaurant",
-      });
-      results = text.results || [];
+      const [la, ln] = ll.split(",").map(Number);
+      if (Number.isFinite(la) && Number.isFinite(ln)) { lat = la; lng = ln; }
+    } else if (near) {
+      const c = await geocode(near);
+      if (c) { lat = c.lat; lng = c.lng; }
     }
 
-    // Normalize for client
-    const items = results.slice(0, searchLimit).map((r: any) => ({
-      id: r.place_id as string,
-      name: r.name as string,
-      categories: (r.types || []).slice(0, 3) as string[],
-      location: {
-        address: r.formatted_address,
-      },
-      geocodes: r.geometry,
-      rating: typeof r.rating === "number" ? r.rating : null,
-      price: typeof r.price_level === "number" ? r.price_level : null,
-      user_ratings_total: r.user_ratings_total ?? null,
-      source: "google" as const,
-    }));
+    // Prefer Places Text Search (city search) OR Nearby Search (when we have coords)
+    let url: string;
+    if (typeof lat === "number" && typeof lng === "number") {
+      const u = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
+      u.searchParams.set("key", GOOGLE_KEY);
+      u.searchParams.set("location", `${lat},${lng}`);
+      u.searchParams.set("radius", "4000"); // 4km
+      u.searchParams.set("keyword", q);
+      u.searchParams.set("type", "restaurant");
+      url = u.toString();
+    } else {
+      const u = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
+      u.searchParams.set("key", GOOGLE_KEY);
+      u.searchParams.set("query", `${q} in ${near || "New York, NY"}`);
+      u.searchParams.set("type", "restaurant");
+      url = u.toString();
+    }
 
-    res.json({ items });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || "Google search failed" });
+    const r = await fetch(url);
+    if (!r.ok) return res.status(502).json({ error: `Google ${r.status}` });
+    const j: any = await r.json();
+
+    // trim to limit, keep fields we care about
+    j.results = Array.isArray(j.results) ? j.results.slice(0, limit) : [];
+    return res.json(j);
+  } catch (e: any) {
+    console.error("google/search error", e);
+    return res.status(500).json({ error: "google_search_failed" });
   }
 });
-
-/**
- * GET /api/google/:placeId/details
- * Returns rich details + up to N review excerpts.
- * Query: reviewsLimit (default 5, max 5 from Google)
- */
-router.get("/:placeId/details", async (req, res) => {
-  try {
-    const { placeId } = req.params;
-    const reviewsLimit = Math.min(Number(req.query.reviewsLimit || 5), 5);
-
-    const fields = [
-      "place_id",
-      "name",
-      "formatted_address",
-      "formatted_phone_number",
-      "website",
-      "opening_hours",
-      "price_level",
-      "rating",
-      "user_ratings_total",
-      "url",
-      "reviews",
-      "types",
-      "geometry",
-    ].join(",");
-
-    const details = await gmaps("details/json", {
-      place_id: placeId,
-      fields,
-      reviews_no_translations: "true",
-      reviews_sort: "newest",
-    });
-
-    const r = details.result || {};
-    res.json({
-      id: r.place_id,
-      name: r.name,
-      location: { address: r.formatted_address },
-      tel: r.formatted_phone_number || null,
-      website: r.website || null,
-      url: r.url || null,
-      rating: typeof r.rating === "number" ? r.rating : null,
-      user_ratings_total: r.user_ratings_total ?? null,
-      price: typeof r.price_level === "number" ? r.price_level : null,
-      categories: (r.types || []).slice(0, 5),
-      hours: r.opening_hours || null,
-      geocodes: r.geometry || null,
-      reviews:
-        (r.reviews || []).slice(0, reviewsLimit).map((v: any) => ({
-          id: String(v.time),
-          author: v.author_name,
-          text: v.text,
-          rating: v.rating,
-          created_at: v.relative_time_description, // human string
-        })) || [],
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || "Google details failed" });
-  }
-});
-
-export default router;
