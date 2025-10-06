@@ -1,4 +1,3 @@
-// client/src/hooks/usePlaceDetails.ts
 import { useQuery } from "@tanstack/react-query";
 
 export type PlaceSource = "fsq" | "google";
@@ -23,11 +22,23 @@ export interface PlaceDetails {
   id: string;
   name: string;
   website?: string | null;
-  url?: string | null; // Google listing url (Google only)
+  url?: string | null;
   tel?: string | null;
-  location?: { address?: string; locality?: string; region?: string };
+  location?: {
+    address?: string;
+    locality?: string;
+    region?: string;
+    lat?: number;
+    lng?: number;
+  };
+  geometry?: {
+    location?: {
+      lat?: number;
+      lng?: number;
+    };
+  };
   rating?: number | null;
-  user_ratings_total?: number | null; // Google only
+  user_ratings_total?: number | null;
   price?: number | null;
   categories?: string[];
   reviews: (FsqTip | GoogleReview)[];
@@ -38,6 +49,7 @@ export function usePlaceDetails(source: PlaceSource, id?: string) {
   return useQuery({
     queryKey: ["bitemap:details", source, id],
     enabled: !!id,
+    staleTime: 5 * 60 * 1000, // 5 minutes
     queryFn: async (): Promise<PlaceDetails> => {
       if (!id) throw new Error("Missing place id");
 
@@ -49,9 +61,11 @@ export function usePlaceDetails(source: PlaceSource, id?: string) {
           id: d.id,
           name: d.name,
           website: d.website ?? null,
+          url: null,
           tel: d.tel ?? null,
           location: d.location,
           rating: d.rating ?? null,
+          user_ratings_total: null,
           price: d.price ?? null,
           categories: d.categories || [],
           reviews: (d.tips || []).map((t: any) => ({
@@ -65,7 +79,7 @@ export function usePlaceDetails(source: PlaceSource, id?: string) {
         };
       }
 
-      // google
+      // Google
       const res = await fetch(`/api/google/${id}/details?reviewsLimit=5`);
       if (!res.ok) throw new Error("Google details failed");
       const d = await res.json();
@@ -76,6 +90,7 @@ export function usePlaceDetails(source: PlaceSource, id?: string) {
         url: d.url ?? null,
         tel: d.tel ?? null,
         location: d.location,
+        geometry: d.geometry,
         rating: d.rating ?? null,
         user_ratings_total: d.user_ratings_total ?? null,
         price: d.price ?? null,
