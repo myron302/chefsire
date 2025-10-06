@@ -7,8 +7,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import {
   Map as MapIcon,
-  MapPin,
-  Star,
   Compass,
   LocateFixed,
   Loader2,
@@ -36,7 +34,6 @@ import DetailsSheet from "./components/DetailsSheet";
 
 function PriceBadge({ price, source }: { price?: number | null; source: "fsq" | "google" }) {
   if (price == null) return null;
-  // FSQ price is 1–4; Google price_level is 0–4 (0 means free). Normalize a bit.
   const count = source === "google" ? Math.max(1, price) : price;
   return <Badge variant="secondary">{"$".repeat(Math.max(1, Math.min(4, count || 1)))}</Badge>;
 }
@@ -49,17 +46,19 @@ export default function BiteMapPage() {
   const [tab, setTab] = React.useState<"all" | "fsq" | "google">("all");
   const [view, setView] = React.useState<"list" | "grid">("list");
   const [mapOpen, setMapOpen] = React.useState<boolean>(false);
+  const [dedupe, setDedupe] = React.useState<boolean>(true); // ✅ NEW
 
   // Selection for details
   const [selected, setSelected] = React.useState<{ id: string; source: PlaceSource } | null>(null);
 
-  // Fetch list with global hook
+  // Fetch list with global hook (now passes dedupe)
   const list = useNearbyBites({
     q,
     near: ll ? undefined : near,
     ll,
     source: tab === "all" ? "both" : (tab as Source),
     limit: 60,
+    dedupe: tab === "all" ? dedupe : false,
   });
 
   // Fetch details (unified) when selected
@@ -73,7 +72,7 @@ export default function BiteMapPage() {
     );
   }
 
-  // Prepare markers for MapView (optional)
+  // Prepare markers for MapView
   const center = React.useMemo(() => {
     if (ll) {
       const [lat, lng] = ll.split(",").map(Number);
@@ -86,11 +85,8 @@ export default function BiteMapPage() {
     if (!list.data) return [];
     return list.data
       .map((it) => {
-        // FSQ: it.geocodes?.main?.latitude, .longitude
         const fsqLat = (it as any).geocodes?.main?.latitude;
         const fsqLng = (it as any).geocodes?.main?.longitude;
-
-        // Google: it.geocodes?.location?.lat/lng or geometry?.location
         const gglLoc =
           (it as any).geocodes?.location ||
           (it as any).geocodes?.geometry?.location ||
@@ -98,9 +94,8 @@ export default function BiteMapPage() {
 
         const gLat = gglLoc?.lat;
         const gLng = gglLoc?.lng;
-
-        const lat = fsqLat ?? gLat;
-        const lng = fsqLng ?? gLng;
+        const lat = fsqLat ?? gLat ?? it.location?.lat ?? null;
+        const lng = fsqLng ?? gLng ?? it.location?.lng ?? null;
 
         if (typeof lat === "number" && typeof lng === "number") {
           return { lat, lng, name: it.name };
@@ -181,19 +176,31 @@ export default function BiteMapPage() {
           </Button>
         </div>
 
-        <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="ml-auto">
-          <TabsList>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="fsq">
-              <Landmark className="w-3.5 h-3.5 mr-1" />
-              Foursquare
-            </TabsTrigger>
-            <TabsTrigger value="google">
-              <Globe2 className="w-3.5 h-3.5 mr-1" />
-              Google
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex items-center gap-2 ml-auto">
+          <Tabs value={tab} onValueChange={(v) => setTab(v as any)} >
+            <TabsList>
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="fsq">
+                <Landmark className="w-3.5 h-3.5 mr-1" />
+                Foursquare
+              </TabsTrigger>
+              <TabsTrigger value="google">
+                <Globe2 className="w-3.5 h-3.5 mr-1" />
+                Google
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {/* ✅ De-dupe toggle (only relevant in 'All' tab) */}
+          <Button
+            variant={tab === "all" && dedupe ? "default" : "outline"}
+            onClick={() => setDedupe((v) => !v)}
+            disabled={tab !== "all"}
+            title="Merge duplicates across sources"
+          >
+            {tab === "all" ? (dedupe ? "De-dupe: On" : "De-dupe: Off") : "De-dupe (All only)"}
+          </Button>
+        </div>
       </div>
 
       {/* Map */}
@@ -242,9 +249,7 @@ export default function BiteMapPage() {
         userCount={details.data?.user_ratings_total ?? undefined}
         reviews={details.data?.reviews as any}
         loading={details.isLoading}
-        onOpen={() => {
-          // no-op, selection is handled via onOpenDetails
-        }}
+        onOpen={() => {}}
       />
     </div>
   );
