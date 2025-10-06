@@ -10,18 +10,18 @@ function json(res: any, code: number, body: any) {
   res.status(code).json(body);
 }
 
-// Quick diagnostics route so you can see what the server sees
-googleRouter.get("/diagnostics", (req, res) => {
+// ---- Diagnostics
+googleRouter.get("/diagnostics", (_req, res) => {
   return json(res, 200, {
     ok: true,
     hasKey: Boolean(GOOGLE_KEY),
     keyLen: GOOGLE_KEY ? GOOGLE_KEY.length : 0,
     note:
-      "If hasKey=false, your Node process doesn't see GOOGLE_MAPS_API_KEY. Set it in Plesk Node.js → Environment Variables and Restart App.",
+      "If hasKey=false, set GOOGLE_MAPS_API_KEY in Plesk Node.js → Environment Variables and Restart App.",
   });
 });
 
-// helper: geocode "near" → {lat,lng}
+// ---- Geocode helper
 async function geocode(near: string) {
   const u = new URL("https://maps.googleapis.com/maps/api/geocode/json");
   u.searchParams.set("address", near);
@@ -38,15 +38,11 @@ async function geocode(near: string) {
   return { lat: c.lat, lng: c.lng };
 }
 
-// GET /google/search?q=&near=&ll=&limit=
+// ---- Search (Nearby when we have ll, else Text search)
 googleRouter.get("/search", async (req, res) => {
   try {
     if (!GOOGLE_KEY) {
-      return json(res, 500, {
-        error: "missing_key",
-        message:
-          "GOOGLE_MAPS_API_KEY is not visible to the Node process. Add it in Plesk → Node.js → Environment Variables and Restart App.",
-      });
+      return json(res, 500, { error: "missing_key", message: "Set GOOGLE_MAPS_API_KEY" });
     }
 
     const q =
@@ -64,67 +60,104 @@ googleRouter.get("/search", async (req, res) => {
     if (ll) {
       const [la, ln] = ll.split(",").map(Number);
       if (Number.isFinite(la) && Number.isFinite(ln)) {
-        lat = la;
-        lng = ln;
+        lat = la; lng = ln;
       }
     } else if (near) {
-      try {
-        const c = await geocode(near);
-        lat = c.lat;
-        lng = c.lng;
-      } catch (e: any) {
-        return json(res, 502, {
-          error: "geocode_failed",
-          message: e?.message || "Geocoding failed",
-        });
-      }
+      const c = await geocode(near);
+      lat = c.lat; lng = c.lng;
     }
 
     let url: string;
-    let which: "nearby" | "text" = "text";
     if (typeof lat === "number" && typeof lng === "number") {
-      // Nearby Search when we have coordinates
       const u = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
       u.searchParams.set("key", GOOGLE_KEY);
       u.searchParams.set("location", `${lat},${lng}`);
-      u.searchParams.set("radius", "4000"); // 4km
+      u.searchParams.set("radius", "4000");
       u.searchParams.set("keyword", q);
       u.searchParams.set("type", "restaurant");
       url = u.toString();
-      which = "nearby";
     } else {
-      // Text Search fallback
       const u = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
       u.searchParams.set("key", GOOGLE_KEY);
       u.searchParams.set("query", `${q} in ${near}`);
       u.searchParams.set("type", "restaurant");
       url = u.toString();
-      which = "text";
     }
-
-    // Helpful server log
-    console.log(`[google ${which}]`, url);
 
     const r = await fetch(url);
-    if (!r.ok) {
-      return json(res, 502, { error: "google_http_error", status: r.status });
-    }
-
+    if (!r.ok) return json(res, 502, { error: "google_http_error", status: r.status });
     const j: any = await r.json();
     const status = j?.status || "UNKNOWN";
     if (status !== "OK" && status !== "ZERO_RESULTS") {
-      // return the real Google error to the client so you see what's wrong
-      return json(res, 502, {
-        error: "google_api_error",
-        status,
-        message: j?.error_message || null,
-      });
+      return json(res, 502, { error: "google_api_error", status, message: j?.error_message || null });
     }
 
-    const results = Array.isArray(j.results) ? j.results.slice(0, limit) : [];
-    return json(res, 200, { status, results });
+    // Trim list on server
+    j.results = Array.isArray(j.results) ? j.results.slice(0, limit) : [];
+    return json(res, 200, { status, results: j.results });
   } catch (e: any) {
     console.error("google/search error", e);
     return json(res, 500, { error: "google_search_failed", message: e?.message || String(e) });
+  }
+});
+
+// ---- Proxy: Google Place Photo (keeps your key server-side)
+googleRouter.get("/photo", async (req, res) => {
+  try {
+    if (!GOOGLE_KEY) return res.status(500).send("Missing GOOGLE_MAPS_API_KEY");
+    const ref = (req.query.ref as string) || (req.query.photo_reference as string);
+    if (!ref) return res.status(400).send("Missing photo reference");
+    const maxWidth = String(Number(req.query.maxWidth) || 400);
+
+    const u = new URL("https://maps.googleapis.com/maps/api/place/photo");
+    u.searchParams.set("key", GOOGLE_KEY);
+    u.searchParams.set("photo_reference", ref);
+    u.searchParams.set("maxwidth", maxWidth);
+
+    // Google returns a 302 to the actual image CDN — follow it
+    const r = await fetch(u.toString(), { redirect: "follow" as any });
+    if (!r.ok) return res.status(502).send("Photo fetch failed");
+
+    // Pass through the image
+    res.set("Content-Type", r.headers.get("content-type") || "image/jpeg");
+    return r.body?.pipe(res);
+  } catch (e) {
+    console.error("google/photo error", e);
+    return res.status(500).send("photo_failed");
+  }
+});
+
+// ---- Proxy: Static Maps with optional center/markers
+googleRouter.get("/staticmap", async (req, res) => {
+  try {
+    if (!GOOGLE_KEY) return res.status(500).send("Missing GOOGLE_MAPS_API_KEY");
+
+    const center = (req.query.center as string) || "";
+    const markers = (req.query.markers as string) || ""; // can be "lat,lng|lat,lng"
+    const zoom = String(Number(req.query.zoom) || 13);
+    const size = (req.query.size as string) || "640x360";
+    const scale = String(Number(req.query.scale) || 2);
+
+    const u = new URL("https://maps.googleapis.com/maps/api/staticmap");
+    u.searchParams.set("key", GOOGLE_KEY);
+    u.searchParams.set("size", size);
+    u.searchParams.set("scale", scale);
+
+    if (center) u.searchParams.set("center", center);
+    u.searchParams.set("zoom", zoom);
+
+    if (markers) {
+      // default red markers; you can style if wanted
+      u.searchParams.append("markers", markers);
+    }
+
+    const r = await fetch(u.toString());
+    if (!r.ok) return res.status(502).send("Static map fetch failed");
+
+    res.set("Content-Type", r.headers.get("content-type") || "image/png");
+    return r.body?.pipe(res);
+  } catch (e) {
+    console.error("google/staticmap error", e);
+    return res.status(500).send("staticmap_failed");
   }
 });
