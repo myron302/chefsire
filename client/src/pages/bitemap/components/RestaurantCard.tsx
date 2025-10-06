@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Star, Landmark, Globe2 } from "lucide-react";
+import { Star, Landmark, Globe2, ImageOff } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,6 @@ function catLabel(c: CategoryLike): string {
 
 function PriceBadge({ price, source }: { price?: number | null; source: PlaceSource }) {
   if (price == null) return null;
-  // FSQ price: 1–4; Google price_level: 0–4 (0 can mean free)
   const count = source === "google" ? Math.max(1, price) : price;
   const safe = Math.max(1, Math.min(4, Number(count) || 1));
   return <Badge variant="secondary">{"$".repeat(safe)}</Badge>;
@@ -34,17 +33,38 @@ export default function RestaurantCard(props: {
   categories?: CategoryLike[];
   source: PlaceSource;
   onSelect?: () => void;
+  // OPTIONAL: pass _raw so we can grab Google photoRef
+  raw?: any;
 }) {
-  const { name, address, rating, price, categories = [], source, onSelect } = props;
+  const { name, address, rating, price, categories = [], source, onSelect, raw } = props;
 
-  // Normalize categories to strings (avoid React error #31)
-  const catStrings = categories
-    .map(catLabel)
-    .filter(Boolean)
-    .slice(0, 3); // show up to 3
+  const catStrings = categories.map(catLabel).filter(Boolean).slice(0, 3);
+
+  // If Google result has a photos[0].photo_reference, we can show a thumbnail
+  const photoRef: string | null = raw?.__photoRef || null;
+  const imgSrc =
+    source === "google" && photoRef
+      ? `/api/google/photo?ref=${encodeURIComponent(photoRef)}&maxWidth=600`
+      : null;
 
   return (
-    <Card className="h-full">
+    <Card className="h-full overflow-hidden">
+      {/* Image header */}
+      <div className="w-full h-40 bg-muted relative">
+        {imgSrc ? (
+          <img
+            src={imgSrc}
+            alt={name}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+            <ImageOff className="w-6 h-6" />
+          </div>
+        )}
+      </div>
+
       <CardHeader className="pb-2">
         <CardTitle className="text-base font-semibold leading-tight line-clamp-2">
           {name}
