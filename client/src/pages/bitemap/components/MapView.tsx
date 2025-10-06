@@ -1,26 +1,53 @@
-// client/src/pages/bitemap/components/MapView.tsx
-import React from "react";
-import { MapPin } from "lucide-react";
+import * as React from "react";
 
-interface MapViewProps {
-  center?: { lat: number; lng: number };
-  markers?: { lat: number; lng: number; name?: string }[];
-}
+type LatLng = { lat: number; lng: number };
+type Marker = LatLng & { name?: string };
 
-export default function MapView({ center, markers }: MapViewProps) {
+export default function MapView({
+  center,
+  markers = [],
+  zoom = 13,
+}: {
+  center?: LatLng;
+  markers?: Marker[];
+  zoom?: number;
+}) {
+  // If we don't have at least a center or markers, don't render anything.
+  if (!center && markers.length === 0) return null;
+
+  // Build the markers query string: "lat,lng|lat,lng|..."
+  const markerParam = markers
+    .map((m) => `${m.lat},${m.lng}`)
+    .slice(0, 20) // small safety cap for URL length
+    .join("|");
+
+  // Prefer explicit center; otherwise center on the first marker
+  const centerParam = center
+    ? `${center.lat},${center.lng}`
+    : markers.length
+    ? `${markers[0].lat},${markers[0].lng}`
+    : "";
+
+  // ✅ Static Maps hard limit is 640x640; use scale=2 for retina
+  const src = `/api/google/staticmap?center=${encodeURIComponent(
+    centerParam
+  )}&zoom=${zoom}&size=640x360&scale=2${
+    markerParam ? `&markers=${encodeURIComponent(markerParam)}` : ""
+  }`;
+
+  // Hide the image if Google rejects it (404/403/etc.)
+  const [hide, setHide] = React.useState(false);
+  if (hide) return null;
+
   return (
-    <div className="relative w-full h-96 bg-muted flex items-center justify-center rounded-md border border-border">
-      <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-        <MapPin className="w-6 h-6 mr-2" />
-        <span>Map view coming soon</span>
-      </div>
-
-      {/* Later: replace with real Google Maps or Leaflet render */}
-      {center && (
-        <div className="absolute bottom-2 left-2 text-xs text-muted-foreground">
-          Center: {center.lat.toFixed(4)}, {center.lng.toFixed(4)}
-        </div>
-      )}
+    <div className="w-full rounded-lg overflow-hidden border">
+      <img
+        src={src}
+        alt="Map"
+        className="w-full h-64 object-cover"
+        loading="lazy"
+        onError={() => setHide(true)}
+      />
     </div>
   );
 }
