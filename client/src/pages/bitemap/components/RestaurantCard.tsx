@@ -20,7 +20,6 @@ function catLabel(c: CategoryLike): string {
 
 function PriceBadge({ price, source }: { price?: number | null; source: PlaceSource }) {
   if (price == null) return null;
-  // FSQ price: 1–4; Google price_level: 0–4 (0 may mean free)
   const count = source === "google" ? Math.max(1, price) : price;
   const safe = Math.max(1, Math.min(4, Number(count) || 1));
   return <Badge variant="secondary">{"$".repeat(safe)}</Badge>;
@@ -41,22 +40,47 @@ export default function RestaurantCard(props: {
   const catStrings = categories.map(catLabel).filter(Boolean).slice(0, 3);
 
   // If Google result includes a photo reference, use our server proxy to load the image
-  const photoRef: string | null = raw?.__photoRef || null;
-  const imgSrc =
-    source === "google" && photoRef
-      ? `/api/google/photo?ref=${encodeURIComponent(photoRef)}&maxWidth=600`
+  const initialSrc =
+    source === "google" && raw?.__photoRef
+      ? `/api/google/photo?ref=${encodeURIComponent(raw.__photoRef)}&maxWidth=600`
       : null;
 
+  const [imgSrc, setImgSrc] = React.useState<string | null>(initialSrc);
+  const [imgOk, setImgOk] = React.useState<boolean>(Boolean(initialSrc));
+
+  React.useEffect(() => {
+    setImgSrc(initialSrc);
+    setImgOk(Boolean(initialSrc));
+  }, [initialSrc]);
+
+  // Make the entire card clickable (and keyboard accessible)
+  const handleOpen = (e?: React.SyntheticEvent) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    onSelect?.();
+  };
+
   return (
-    <Card className="h-full overflow-hidden">
-      {/* Image header */}
-      <div className="w-full h-40 bg-muted relative">
-        {imgSrc ? (
+    <Card
+      className="h-full overflow-hidden cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+      role="button"
+      tabIndex={0}
+      onClick={handleOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          handleOpen(e);
+        }
+      }}
+    >
+      {/* Image header (also clickable) */}
+      <div className="w-full h-40 bg-muted relative" onClick={handleOpen}>
+        {imgSrc && imgOk ? (
           <img
             src={imgSrc}
             alt={name}
             className="w-full h-full object-cover"
             loading="lazy"
+            onError={() => setImgOk(false)} // fallback to placeholder on error
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-muted-foreground">
@@ -111,7 +135,7 @@ export default function RestaurantCard(props: {
         )}
 
         <div className="pt-1">
-          <Button onClick={onSelect} variant="secondary" size="sm" className="w-full">
+          <Button onClick={handleOpen} variant="secondary" size="sm" className="w-full">
             View details & reviews
           </Button>
         </div>
