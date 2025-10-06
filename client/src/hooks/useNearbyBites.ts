@@ -1,248 +1,189 @@
-// client/src/hooks/useNearbyBites.ts
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Router } from "express";
+import fetch from "node-fetch";
 
-export type Source = "fsq" | "google" | "both";
-export type PlaceSource = "fsq" | "google";
+export const googleRouter = Router();
 
-export type BaseItem = {
-  id: string;
-  source: PlaceSource;
-  name: string;
-  rating?: number | null;
-  price?: number | null;
-  categories?: { id?: string; title?: string; name?: string }[];
-  location?: {
-    address?: string | null;
-    locality?: string | null;
-    region?: string | null;
-    country?: string | null;
-    lat?: number | null;
-    lng?: number | null;
-  };
-  geocodes?: any;
-  geometry?: any;
-  _raw?: any;
-};
+const GOOGLE_KEY = process.env.GOOGLE_MAPS_API_KEY ?? "";
+const UA = "ChefSire-BiteMap/1.0 (+https://chefsire.com)";
 
-type NearbyOpts = {
-  q: string;
-  near?: string;
-  ll?: string; // "lat,lng"
-  source: Source;
-  limit?: number;
-  /** When source === "both", merge obvious duplicates (name + distance) */
-  dedupe?: boolean;
-};
-
-// ---------- small helpers ----------
-function normName(name?: string) {
-  return (name || "")
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+function sendJson(res: any, code: number, body: any) {
+  res.status(code).json(body);
 }
-function haversine(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
-  const R = 6371e3;
-  const φ1 = (a.lat * Math.PI) / 180;
-  const φ2 = (b.lat * Math.PI) / 180;
-  const Δφ = ((b.lat - a.lat) * Math.PI) / 180;
-  const Δλ = ((b.lng - a.lng) * Math.PI) / 180;
-  const s =
-    Math.sin(Δφ / 2) ** 2 +
-    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-  return 2 * R * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
-}
-function isSameVenue(a: BaseItem, b: BaseItem, maxMeters = 120) {
-  const na = normName(a.name);
-  const nb = normName(b.name);
-  if (!na || !nb) return false;
-  if (na !== nb && !(na.startsWith(nb) || nb.startsWith(na))) return false;
-  const la = a.location?.lat, loa = a.location?.lng;
-  const lb = b.location?.lat, lob = b.location?.lng;
-  if (typeof la === "number" && typeof loa === "number" && typeof lb === "number" && typeof lob === "number") {
-    return haversine({ lat: la, lng: loa }, { lat: lb, lng: lob }) <= maxMeters;
+
+// -------------------------------------
+// Diagnostics
+// -------------------------------------
+googleRouter.get("/diagnostics", (_req, res) => {
+  return sendJson(res, 200, {
+    ok: true,
+    hasKey: Boolean(GOOGLE_KEY),
+    keyLen: GOOGLE_KEY ? GOOGLE_KEY.length : 0,
+    note:
+      "If hasKey=false, set GOOGLE_MAPS_API_KEY in Plesk → Node.js → Environment Variables, then Restart App.",
+  });
+});
+
+// -------------------------------------
+// Geocode helper for "near" strings
+// -------------------------------------
+async function geocode(near: string) {
+  const u = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+  u.searchParams.set("address", near);
+  u.searchParams.set("key", GOOGLE_KEY);
+
+  const r = await fetch(u.toString(), { headers: { "User-Agent": UA } });
+  if (!r.ok) throw new Error(`geocode http ${r.status}`);
+
+  const j: any = await r.json();
+  const status = j?.status || "UNKNOWN";
+  if (status !== "OK") {
+    throw new Error(`geocode api ${status}: ${j?.error_message || "no message"}`);
   }
-  return na === nb;
+  const c = j?.results?.[0]?.geometry?.location;
+  if (!c) throw new Error("geocode api OK but no results");
+  return { lat: c.lat, lng: c.lng };
 }
-function mergeItems(a: BaseItem, b: BaseItem): BaseItem {
-  const pick = <T,>(...vals: (T | null | undefined)[]) => vals.find((v) => v != null) ?? undefined;
-  const categories =
-    a.categories?.length || b.categories?.length
-      ? (a.categories || []).concat(b.categories || [])
-      : undefined;
-  const lat = pick(a.location?.lat, b.location?.lat);
-  const lng = pick(a.location?.lng, b.location?.lng);
-  return {
-    id: `${a.id}__${b.id}`,
-    source: "fsq", // arbitrary tag for merged; UI is source-agnostic
-    name: pick(a.name, b.name) || "",
-    rating: pick(a.rating, b.rating) ?? null,
-    price: pick(a.price, b.price) ?? null,
-    categories,
-    location: {
-      address: pick(a.location?.address, b.location?.address) ?? null,
-      locality: pick(a.location?.locality, b.location?.locality) ?? null,
-      region: pick(a.location?.region, b.location?.region) ?? null,
-      country: pick(a.location?.country, b.location?.country) ?? null,
-      lat: lat ?? null,
-      lng: lng ?? null,
-    },
-    geocodes: pick(a.geocodes, b.geocodes),
-    geometry: pick(a.geometry, b.geometry),
-    _raw: { a: a._raw, b: b._raw },
-  };
-}
-function dedupeList(items: BaseItem[]): BaseItem[] {
-  const fsq = items.filter((x) => x.source === "fsq");
-  const ggl = items.filter((x) => x.source === "google");
-  const usedG = new Set<number>();
-  const merged: BaseItem[] = [];
-  for (const f of fsq) {
-    let m: BaseItem | null = null;
-    for (let i = 0; i < ggl.length; i++) {
-      if (usedG.has(i)) continue;
-      const g = ggl[i];
-      if (isSameVenue(f, g)) {
-        m = mergeItems(f, g);
-        usedG.add(i);
-        break;
+
+// -------------------------------------
+// Search (Nearby if ll, else Text Search)
+// -------------------------------------
+googleRouter.get("/search", async (req, res) => {
+  try {
+    if (!GOOGLE_KEY) {
+      return sendJson(res, 500, {
+        error: "missing_key",
+        message: "GOOGLE_MAPS_API_KEY not visible to server process.",
+      });
+    }
+
+    const q =
+      (req.query.q as string) ||
+      (req.query.query as string) ||
+      (req.query.keyword as string) ||
+      "restaurant";
+    const near = (req.query.near as string) || (req.query.location as string) || "New York, NY";
+    const ll = (req.query.ll as string) || "";
+    const limit = Math.min(60, Number(req.query.limit) || 20);
+
+    let lat: number | undefined;
+    let lng: number | undefined;
+
+    if (ll) {
+      const [la, ln] = ll.split(",").map(Number);
+      if (Number.isFinite(la) && Number.isFinite(ln)) {
+        lat = la;
+        lng = ln;
+      }
+    } else if (near) {
+      try {
+        const c = await geocode(near);
+        lat = c.lat;
+        lng = c.lng;
+      } catch (e: any) {
+        return sendJson(res, 502, { error: "geocode_failed", message: e?.message || "Geocoding failed" });
       }
     }
-    merged.push(m || f);
-  }
-  ggl.forEach((g, i) => {
-    if (!usedG.has(i)) merged.push(g);
-  });
-  return merged;
-}
-function mapFsq(item: any): BaseItem {
-  const lat = item?.geocodes?.main?.latitude ?? item?.geocodes?.roof?.latitude ?? null;
-  const lng = item?.geocodes?.main?.longitude ?? item?.geocodes?.roof?.longitude ?? null;
-  return {
-    id: String(item.fsq_id || item.id || Math.random()),
-    source: "fsq",
-    name: item.name || "",
-    rating: typeof item.rating === "number" ? item.rating : null,
-    price: typeof item.price === "number" ? item.price : null,
-    categories: item.categories?.map((c: any) => ({ id: c?.id, title: c?.name, name: c?.name })) || [],
-    location: {
-      address: item.location?.address ?? null,
-      locality: item.location?.locality ?? null,
-      region: item.location?.region ?? null,
-      country: item.location?.country ?? null,
-      lat, lng,
-    },
-    geocodes: item.geocodes,
-    _raw: item,
-  };
-}
-function mapGoogle(item: any): BaseItem {
-  const loc =
-    item?.geometry?.location ||
-    item?.geocodes?.location ||
-    item?.geocodes?.geometry?.location;
-  const lat = typeof loc?.lat === "number" ? loc.lat : null;
-  const lng = typeof loc?.lng === "number" ? loc.lng : null;
-  return {
-    id: String(item.place_id || item.id || Math.random()),
-    source: "google",
-    name: item.name || "",
-    rating: typeof item.rating === "number" ? item.rating : null,
-    price: typeof item.price_level === "number" ? item.price_level : null,
-    categories: (item.types || []).map((t: string) => ({ title: t, name: t })),
-    location: {
-      address: item.formatted_address ?? null,
-      locality: item.vicinity ?? null,
-      region: null,
-      country: null,
-      lat, lng,
-    },
-    geometry: item.geometry,
-    _raw: item,
-  };
-}
 
-type HookState<T> = { data: T | null; isLoading: boolean; error: any };
-
-// All API calls go through /api
-const API_PREFIX = "/api";
-
-export function useNearbyBites(opts: NearbyOpts) {
-  const { q, near, ll, source, limit = 50, dedupe = false } = opts;
-  const [state, setState] = useState<HookState<BaseItem[]>>({
-    data: null,
-    isLoading: false,
-    error: null,
-  });
-  const abortRef = useRef<AbortController | null>(null);
-
-  const fetcher = useCallback(async () => {
-    abortRef.current?.abort();
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-    setState((s) => ({ ...s, isLoading: true, error: null }));
-
-    const params = new URLSearchParams();
-    if (q) { params.set("q", q); params.set("query", q); params.set("keyword", q); }
-    if (near) { params.set("near", near); params.set("location", near); }
-    if (ll) params.set("ll", ll);
-    if (limit) params.set("limit", String(limit));
-
-    try {
-      if (source === "fsq") {
-        const r = await fetch(`${API_PREFIX}/fsq/search?${params}`, { signal: ctrl.signal });
-        if (!r.ok) { setState({ data: [], isLoading: false, error: null }); return; }
-        const js = await r.json();
-        const list = (js?.results || js?.data || js || []).map(mapFsq);
-        setState({ data: list, isLoading: false, error: null });
-        return;
-      }
-
-      if (source === "google") {
-        const r = await fetch(`${API_PREFIX}/google/search?${params}`, { signal: ctrl.signal });
-        if (!r.ok) throw new Error(`Google ${r.status}`);
-        const js = await r.json();
-        const list = (js?.results || js?.data || js || []).map(mapGoogle);
-        setState({ data: list, isLoading: false, error: null });
-        return;
-      }
-
-      // BOTH
-      const [rf, rg] = await Promise.allSettled([
-        fetch(`${API_PREFIX}/fsq/search?${params}`, { signal: ctrl.signal }),
-        fetch(`${API_PREFIX}/google/search?${params}`, { signal: ctrl.signal }),
-      ]);
-
-      let fsqList: BaseItem[] = [];
-      let gglList: BaseItem[] = [];
-
-      if (rf.status === "fulfilled" && rf.value.ok) {
-        const jf = await rf.value.json();
-        fsqList = (jf?.results || jf?.data || jf || []).map(mapFsq);
-      }
-      if (rg.status === "fulfilled" && rg.value.ok) {
-        const jg = await rg.value.json();
-        gglList = (jg?.results || jg?.data || jg || []).map(mapGoogle);
-      }
-
-      const combined = fsqList.concat(gglList);
-      const final = dedupe ? dedupeList(combined) : combined;
-      setState({ data: final, isLoading: false, error: null });
-    } catch (err: any) {
-      if (err?.name === "AbortError") return;
-      setState({ data: null, isLoading: false, error: err });
+    let url: string;
+    if (typeof lat === "number" && typeof lng === "number") {
+      // Nearby
+      const u = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
+      u.searchParams.set("key", GOOGLE_KEY);
+      u.searchParams.set("location", `${lat},${lng}`);
+      u.searchParams.set("radius", "4000");
+      u.searchParams.set("keyword", q);
+      u.searchParams.set("type", "restaurant");
+      url = u.toString();
+    } else {
+      // Text
+      const u = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
+      u.searchParams.set("key", GOOGLE_KEY);
+      u.searchParams.set("query", `${q} in ${near}`);
+      u.searchParams.set("type", "restaurant");
+      url = u.toString();
     }
-  }, [q, near, ll, source, limit, dedupe]);
 
-  useEffect(() => {
-    fetcher();
-    return () => abortRef.current?.abort();
-  }, [fetcher]);
+    const r = await fetch(url, { headers: { "User-Agent": UA } });
+    if (!r.ok) return sendJson(res, 502, { error: "google_http_error", status: r.status });
 
-  const refetch = useCallback(() => fetcher(), [fetcher]);
-  const data = useMemo(() => state.data ?? [], [state.data]);
+    const j: any = await r.json();
+    const status = j?.status || "UNKNOWN";
+    if (status !== "OK" && status !== "ZERO_RESULTS") {
+      return sendJson(res, 502, {
+        error: "google_api_error",
+        status,
+        message: j?.error_message || null,
+      });
+    }
 
-  return { data, isLoading: state.isLoading, error: state.error, refetch };
-}
+    const results = Array.isArray(j.results) ? j.results.slice(0, limit) : [];
+    return sendJson(res, 200, { status, results });
+  } catch (e: any) {
+    console.error("google/search error", e);
+    return sendJson(res, 500, { error: "google_search_failed", message: e?.message || String(e) });
+  }
+});
+
+// -------------------------------------
+// Place Photo proxy
+// GET /api/google/photo?ref=...&maxWidth=600
+// -------------------------------------
+googleRouter.get("/photo", async (req, res) => {
+  try {
+    if (!GOOGLE_KEY) return res.status(500).send("Missing GOOGLE_MAPS_API_KEY");
+    const ref = (req.query.ref as string) || (req.query.photo_reference as string);
+    if (!ref) return res.status(400).send("Missing photo reference");
+    const maxWidth = String(Math.max(200, Math.min(1600, Number(req.query.maxWidth) || 600)));
+
+    const u = new URL("https://maps.googleapis.com/maps/api/place/photo");
+    u.searchParams.set("key", GOOGLE_KEY);
+    u.searchParams.set("photo_reference", ref);
+    u.searchParams.set("maxwidth", maxWidth);
+
+    const r = await fetch(u.toString(), { redirect: "follow" as any, headers: { "User-Agent": UA } });
+    if (!r.ok) return res.status(404).send("no_photo");
+
+    const ct = r.headers.get("content-type") || "image/jpeg";
+    res.set("Content-Type", ct);
+    res.set("Cache-Control", "public, max-age=86400");
+    return r.body?.pipe(res);
+  } catch (e) {
+    console.error("google/photo error", e);
+    return res.status(404).send("no_photo");
+  }
+});
+
+// -------------------------------------
+// Static Map proxy
+// GET /api/google/staticmap?center=lat,lng&zoom=13&size=640x360&scale=2&markers=lat,lng|lat,lng
+// -------------------------------------
+googleRouter.get("/staticmap", async (req, res) => {
+  try {
+    if (!GOOGLE_KEY) return res.status(500).send("Missing GOOGLE_MAPS_API_KEY");
+
+    const center = (req.query.center as string) || "";
+    const markers = (req.query.markers as string) || "";
+    const zoom = String(Math.max(3, Math.min(19, Number(req.query.zoom) || 13)));
+    const size = (req.query.size as string) || "640x360"; // <= 640x640 per Google rule
+    const scale = String(Number(req.query.scale) || 2);
+
+    const u = new URL("https://maps.googleapis.com/maps/api/staticmap");
+    u.searchParams.set("key", GOOGLE_KEY);
+    u.searchParams.set("size", size);
+    u.searchParams.set("scale", scale);
+    if (center) u.searchParams.set("center", center);
+    u.searchParams.set("zoom", zoom);
+    if (markers) u.searchParams.append("markers", markers);
+
+    const r = await fetch(u.toString(), { headers: { "User-Agent": UA } });
+    if (!r.ok) return res.status(404).send("no_map");
+
+    const ct = r.headers.get("content-type") || "image/png";
+    res.set("Content-Type", ct);
+    res.set("Cache-Control", "public, max-age=86400");
+    return r.body?.pipe(res);
+  } catch (e) {
+    console.error("google/staticmap error", e);
+    return res.status(404).send("no_map");
+  }
+});
