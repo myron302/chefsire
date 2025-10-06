@@ -4,44 +4,86 @@ import fetch from "node-fetch";
 
 export const googleRouter = Router();
 
-const GOOGLE_KEY = process.env.GOOGLE_MAPS_API_KEY;
+const GOOGLE_KEY = process.env.GOOGLE_MAPS_API_KEY ?? "";
 
-// helper: geocode a city string -> {lat,lng}
+function json(res: any, code: number, body: any) {
+  res.status(code).json(body);
+}
+
+// Quick diagnostics route so you can see what the server sees
+googleRouter.get("/diagnostics", (req, res) => {
+  return json(res, 200, {
+    ok: true,
+    hasKey: Boolean(GOOGLE_KEY),
+    keyLen: GOOGLE_KEY ? GOOGLE_KEY.length : 0,
+    note:
+      "If hasKey=false, your Node process doesn't see GOOGLE_MAPS_API_KEY. Set it in Plesk Node.js → Environment Variables and Restart App.",
+  });
+});
+
+// helper: geocode "near" → {lat,lng}
 async function geocode(near: string) {
   const u = new URL("https://maps.googleapis.com/maps/api/geocode/json");
   u.searchParams.set("address", near);
-  u.searchParams.set("key", GOOGLE_KEY || "");
+  u.searchParams.set("key", GOOGLE_KEY);
   const r = await fetch(u.toString());
-  if (!r.ok) throw new Error(`geocode ${r.status}`);
+  if (!r.ok) throw new Error(`geocode http ${r.status}`);
   const j: any = await r.json();
+  const status = j?.status || "UNKNOWN";
+  if (status !== "OK") {
+    throw new Error(`geocode api ${status}: ${j?.error_message || "no message"}`);
+  }
   const c = j?.results?.[0]?.geometry?.location;
-  if (!c) return null;
+  if (!c) throw new Error("geocode api OK but no results");
   return { lat: c.lat, lng: c.lng };
 }
 
 // GET /google/search?q=&near=&ll=&limit=
 googleRouter.get("/search", async (req, res) => {
   try {
-    if (!GOOGLE_KEY) return res.status(500).json({ error: "Missing GOOGLE_MAPS_API_KEY" });
+    if (!GOOGLE_KEY) {
+      return json(res, 500, {
+        error: "missing_key",
+        message:
+          "GOOGLE_MAPS_API_KEY is not visible to the Node process. Add it in Plesk → Node.js → Environment Variables and Restart App.",
+      });
+    }
 
-    const q = (req.query.q as string) || (req.query.query as string) || "restaurant";
-    const near = (req.query.near as string) || (req.query.location as string);
+    const q =
+      (req.query.q as string) ||
+      (req.query.query as string) ||
+      (req.query.keyword as string) ||
+      "restaurant";
+    const near = (req.query.near as string) || (req.query.location as string) || "New York, NY";
     const ll = (req.query.ll as string) || "";
     const limit = Math.min(60, Number(req.query.limit) || 20);
 
-    let lat: number | undefined, lng: number | undefined;
+    let lat: number | undefined;
+    let lng: number | undefined;
 
     if (ll) {
       const [la, ln] = ll.split(",").map(Number);
-      if (Number.isFinite(la) && Number.isFinite(ln)) { lat = la; lng = ln; }
+      if (Number.isFinite(la) && Number.isFinite(ln)) {
+        lat = la;
+        lng = ln;
+      }
     } else if (near) {
-      const c = await geocode(near);
-      if (c) { lat = c.lat; lng = c.lng; }
+      try {
+        const c = await geocode(near);
+        lat = c.lat;
+        lng = c.lng;
+      } catch (e: any) {
+        return json(res, 502, {
+          error: "geocode_failed",
+          message: e?.message || "Geocoding failed",
+        });
+      }
     }
 
-    // Prefer Places Text Search (city search) OR Nearby Search (when we have coords)
     let url: string;
+    let which: "nearby" | "text" = "text";
     if (typeof lat === "number" && typeof lng === "number") {
+      // Nearby Search when we have coordinates
       const u = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
       u.searchParams.set("key", GOOGLE_KEY);
       u.searchParams.set("location", `${lat},${lng}`);
@@ -49,23 +91,40 @@ googleRouter.get("/search", async (req, res) => {
       u.searchParams.set("keyword", q);
       u.searchParams.set("type", "restaurant");
       url = u.toString();
+      which = "nearby";
     } else {
+      // Text Search fallback
       const u = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
       u.searchParams.set("key", GOOGLE_KEY);
-      u.searchParams.set("query", `${q} in ${near || "New York, NY"}`);
+      u.searchParams.set("query", `${q} in ${near}`);
       u.searchParams.set("type", "restaurant");
       url = u.toString();
+      which = "text";
     }
 
-    const r = await fetch(url);
-    if (!r.ok) return res.status(502).json({ error: `Google ${r.status}` });
-    const j: any = await r.json();
+    // Helpful server log
+    console.log(`[google ${which}]`, url);
 
-    // trim to limit, keep fields we care about
-    j.results = Array.isArray(j.results) ? j.results.slice(0, limit) : [];
-    return res.json(j);
+    const r = await fetch(url);
+    if (!r.ok) {
+      return json(res, 502, { error: "google_http_error", status: r.status });
+    }
+
+    const j: any = await r.json();
+    const status = j?.status || "UNKNOWN";
+    if (status !== "OK" && status !== "ZERO_RESULTS") {
+      // return the real Google error to the client so you see what's wrong
+      return json(res, 502, {
+        error: "google_api_error",
+        status,
+        message: j?.error_message || null,
+      });
+    }
+
+    const results = Array.isArray(j.results) ? j.results.slice(0, limit) : [];
+    return json(res, 200, { status, results });
   } catch (e: any) {
     console.error("google/search error", e);
-    return res.status(500).json({ error: "google_search_failed" });
+    return json(res, 500, { error: "google_search_failed", message: e?.message || String(e) });
   }
 });
