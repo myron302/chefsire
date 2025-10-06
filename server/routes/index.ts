@@ -1,7 +1,7 @@
 // server/routes/index.ts
 import { Router } from "express";
 
-// Feature routers
+// Feature routers (existing)
 import recipesRouter from "./recipes";
 import bitesRouter from "./bites";
 import usersRouter from "./users";
@@ -11,9 +11,14 @@ import marketplaceRouter from "./marketplace";
 import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
 
-// NEW: barcode lookup (OpenFoodFacts proxy) and shopping-list export
+// New: barcode lookup + export
 import lookupRouter from "./lookup";
 import exportRouter from "./exportList";
+
+// ✅ NEW: Google Places proxy
+import { googleRouter } from "./google";
+// If/when Foursquare is ready, uncomment:
+// import { fsqRouter } from "./fsq";
 
 const r = Router();
 
@@ -27,13 +32,12 @@ r.use(marketplaceRouter);
 r.use(substitutionsRouter);
 r.use(drinksRouter);
 
-// New endpoints
-// GET /api/lookup/:barcode           → return PantryCandidate or null
+// New endpoints (existing)
 r.use("/lookup", lookupRouter);
-
-// POST /api/export/instacart-links  → [{name, url}], body: ShoppingItem[]
-// POST /api/export/text              → text/plain shopping list
-// POST /api/export/csv               → CSV download
 r.use("/export", exportRouter);
+
+// ✅ Mount new API namespaces
+r.use("/google", googleRouter);
+// r.use("/fsq", fsqRouter); // when available
 
 export default r;
