@@ -33,16 +33,19 @@ export default function RestaurantCard(props: {
   categories?: CategoryLike[];
   source: PlaceSource;
   onSelect?: () => void;
-  raw?: any; // contains __photoRef for Google items
+  raw?: any;
 }) {
   const { name, address, rating, price, categories = [], source, onSelect, raw } = props;
 
   const catStrings = categories.map(catLabel).filter(Boolean).slice(0, 3);
 
+  // Extract photo reference - check both locations
+  const photoRef = raw?.__photoRef || raw?.photos?.[0]?.photo_reference || null;
+
   // If Google result includes a photo reference, use our server proxy to load the image
   const initialSrc =
-    source === "google" && raw?.__photoRef
-      ? `/api/google/photo?ref=${encodeURIComponent(raw.__photoRef)}&maxWidth=600`
+    source === "google" && photoRef
+      ? `/api/google/photo?ref=${encodeURIComponent(photoRef)}&maxWidth=600`
       : null;
 
   const [imgSrc, setImgSrc] = React.useState<string | null>(initialSrc);
@@ -62,7 +65,7 @@ export default function RestaurantCard(props: {
 
   return (
     <Card
-      className="h-full overflow-hidden cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+      className="h-full overflow-hidden cursor-pointer transition-shadow hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
       role="button"
       tabIndex={0}
       onClick={handleOpen}
