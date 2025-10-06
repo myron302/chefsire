@@ -1,3 +1,4 @@
+// client/src/components/layout.tsx
 import { useEffect, useState, FormEvent } from "react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
@@ -8,7 +9,7 @@ import {
   Search, Bell, MessageCircle, User, ChevronDown, ChevronRight,
   ChefHat, Activity, ShoppingCart, Settings, LogOut,
   Home, Compass, BookOpen, GlassWater, Utensils, Heart, Wand2,
-  Apple, FlaskConical, Leaf, Wine, Sparkles, Baby
+  Apple, FlaskConical, Leaf, Wine, Sparkles, Baby, Map
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
@@ -35,8 +36,10 @@ export default function Layout({ children }: LayoutProps) {
     };
   }, []);
 
+  // ✅ BiteMap added here
   const secondaryLinks = [
     { href: "/", label: "Home" },
+    { href: "/bitemap", label: "BiteMap" },
     { href: "/recipes", label: "Recipes" },
     { href: "/drinks", label: "Drinks" },
     { href: "/catering", label: "Catering" },
@@ -51,12 +54,8 @@ export default function Layout({ children }: LayoutProps) {
     e.preventDefault();
     const q = searchText.trim();
     setIsDropdownOpen(false);
-
-    if (q) {
-      setLocation(`/recipes?q=${encodeURIComponent(q)}`);
-    } else {
-      setLocation("/recipes");
-    }
+    if (q) setLocation(`/recipes?q=${encodeURIComponent(q)}`);
+    else setLocation("/recipes");
   };
 
   const toggleSubmenu = (key: string, e: React.MouseEvent) => {
@@ -186,6 +185,15 @@ export default function Layout({ children }: LayoutProps) {
                               className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                             >
                               <Compass className="w-4 h-4 mr-3" /> Explore
+                            </Link>
+
+                            {/* ✅ BiteMap direct link in dropdown */}
+                            <Link
+                              href="/bitemap"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                            >
+                              <Map className="w-4 h-4 mr-3" /> BiteMap
                             </Link>
 
                             {/* Recipes (parent with toggle) */}
