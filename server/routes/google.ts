@@ -1,4 +1,3 @@
-// server/routes/google.ts
 import { Router } from "express";
 import fetch from "node-fetch";
 
@@ -109,7 +108,14 @@ googleRouter.get("/search", async (req, res) => {
       });
     }
 
-    const results = Array.isArray(j.results) ? j.results.slice(0, limit) : [];
+    // Attach photo reference to each result
+    const results = Array.isArray(j.results)
+      ? j.results.slice(0, limit).map((place: any) => ({
+          ...place,
+          __photoRef: place.photos?.[0]?.photo_reference || null,
+        }))
+      : [];
+
     return sendJson(res, 200, { status, results });
   } catch (e: any) {
     console.error("google/search error", e);
@@ -117,7 +123,75 @@ googleRouter.get("/search", async (req, res) => {
   }
 });
 
-// Place Photo proxy (no JSX!)
+// Place Details (NEW)
+googleRouter.get("/:placeId/details", async (req, res) => {
+  try {
+    if (!GOOGLE_KEY) {
+      return sendJson(res, 500, { error: "missing_key" });
+    }
+
+    const placeId = req.params.placeId;
+    const reviewsLimit = Math.min(10, Number(req.query.reviewsLimit) || 5);
+
+    const u = new URL("https://maps.googleapis.com/maps/api/place/details/json");
+    u.searchParams.set("key", GOOGLE_KEY);
+    u.searchParams.set("place_id", placeId);
+    u.searchParams.set(
+      "fields",
+      "place_id,name,formatted_address,geometry,rating,user_ratings_total,price_level,website,url,formatted_phone_number,reviews,types"
+    );
+
+    const r = await fetch(u.toString(), { headers: { "User-Agent": UA } });
+    if (!r.ok) {
+      return sendJson(res, 502, { error: "google_http_error", status: r.status });
+    }
+
+    const j: any = await r.json();
+    if (j.status !== "OK") {
+      return sendJson(res, 502, {
+        error: "google_api_error",
+        status: j.status,
+        message: j.error_message || null,
+      });
+    }
+
+    const result = j.result || {};
+    const reviews = (result.reviews || []).slice(0, reviewsLimit).map((r: any, idx: number) => ({
+      id: r.time ? String(r.time) : `review-${idx}`,
+      author: r.author_name || "Anonymous",
+      text: r.text || "",
+      rating: r.rating || null,
+      created_at: r.time ? new Date(r.time * 1000).toISOString() : null,
+    }));
+
+    return sendJson(res, 200, {
+      id: placeId,
+      name: result.name || "",
+      website: result.website || null,
+      url: result.url || null,
+      tel: result.formatted_phone_number || null,
+      location: {
+        address: result.formatted_address || null,
+        lat: result.geometry?.location?.lat || null,
+        lng: result.geometry?.location?.lng || null,
+      },
+      geometry: result.geometry || null,
+      rating: result.rating || null,
+      user_ratings_total: result.user_ratings_total || null,
+      price: result.price_level || null,
+      categories: result.types || [],
+      reviews,
+    });
+  } catch (e: any) {
+    console.error("google details error", e);
+    return sendJson(res, 500, {
+      error: "google_details_failed",
+      message: e?.message || String(e),
+    });
+  }
+});
+
+// Place Photo proxy
 googleRouter.get("/photo", async (req, res) => {
   try {
     if (!GOOGLE_KEY) return res.status(500).send("Missing GOOGLE_MAPS_API_KEY");
