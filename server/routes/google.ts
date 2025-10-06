@@ -21,6 +21,18 @@ googleRouter.get("/diagnostics", (_req, res) => {
   });
 });
 
+// Endpoint to provide Google Maps API key securely
+googleRouter.get("/maps-script", (_req, res) => {
+  if (!GOOGLE_KEY) {
+    return res.status(500).send("GOOGLE_MAPS_API_KEY not configured");
+  }
+  
+  // Return just the API key (the client will construct the script URL)
+  res.set("Content-Type", "text/plain");
+  res.set("Cache-Control", "private, max-age=3600"); // Cache for 1 hour
+  return res.send(GOOGLE_KEY);
+});
+
 // Geocode helper
 async function geocode(near: string) {
   const u = new URL("https://maps.googleapis.com/maps/api/geocode/json");
@@ -123,7 +135,7 @@ googleRouter.get("/search", async (req, res) => {
   }
 });
 
-// Place Details (NEW)
+// Place Details
 googleRouter.get("/:placeId/details", async (req, res) => {
   try {
     if (!GOOGLE_KEY) {
