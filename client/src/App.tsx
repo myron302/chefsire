@@ -4,13 +4,15 @@ import { Switch, Route, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 
 import { queryClient } from "@/lib/query-client";
+
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Layout from "@/components/layout";
 import RequireAgeGate from "@/components/RequireAgeGate";
+
 import { DrinksProvider } from "@/contexts/DrinksContext";
 
-// Pages
+// Pages (existing)
 import Feed from "@/pages/feed";
 import ExplorePage from "@/pages/explore/ExplorePage";
 import RecipesListPage from "@/pages/recipes/RecipesListPage";
@@ -26,42 +28,42 @@ import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 
-// ✅ BiteMap page (fixed import)
-import BiteMapPage from "@/pages/bitemap/index";
+// ✅ BiteMap page — IMPORTANT: point to the file, not the folder
+import BiteMapPage from "@/pages/bitemap/index.tsx";
 
-// Baby food
+// ========== BABY FOOD PAGES ==========
 import BabyFoodHub from "@/pages/recipes/baby-food";
 import BabyFoodPurees from "@/pages/recipes/baby-food/purees";
 import BabyFoodMashed from "@/pages/recipes/baby-food/mashed";
 import BabyFoodFingerFoods from "@/pages/recipes/baby-food/finger-foods";
 import BabyFoodToddler from "@/pages/recipes/baby-food/toddler";
 
-// Drinks
+// ========== DRINKS HUB PAGES ==========
 import DrinksHubPage from "@/pages/drinks";
 import SmoothiesHub from "@/pages/drinks/smoothies";
 import ProteinShakesHub from "@/pages/drinks/protein-shakes";
 import DetoxesHub from "@/pages/drinks/detoxes";
 import PotentPotablesHub from "@/pages/drinks/potent-potables";
 
-// Smoothies
+// ========== SMOOTHIES SUBCATEGORY PAGES ==========
 import BreakfastSmoothies from "@/pages/drinks/smoothies/breakfast";
 import DessertSmoothies from "@/pages/drinks/smoothies/dessert";
 import GreenSmoothies from "@/pages/drinks/smoothies/green";
 import ProteinSmoothies from "@/pages/drinks/smoothies/protein";
 import WorkoutSmoothies from "@/pages/drinks/smoothies/workout";
 
-// Protein shakes
+// ========== PROTEIN SHAKES SUBCATEGORY PAGES ==========
 import CaseinProtein from "@/pages/drinks/protein-shakes/casein";
 import CollagenProtein from "@/pages/drinks/protein-shakes/collagen";
 import PlantBasedProtein from "@/pages/drinks/protein-shakes/plant-based";
 import WheyProtein from "@/pages/drinks/protein-shakes/whey";
 
-// Detoxes
+// ========== DETOXES SUBCATEGORY PAGES ==========
 import DetoxJuices from "@/pages/drinks/detoxes/juice";
 import DetoxTeas from "@/pages/drinks/detoxes/tea";
 import DetoxWaters from "@/pages/drinks/detoxes/water";
 
-// Potent potables
+// ========== POTENT POTABLES SUBCATEGORY PAGES ==========
 import CocktailsPage from "@/pages/drinks/potent-potables/cocktails";
 import CognacBrandyPage from "@/pages/drinks/potent-potables/cognac-brandy";
 import MartinisPage from "@/pages/drinks/potent-potables/martinis";
@@ -84,7 +86,6 @@ function Redirect({ to }: { to: string }) {
   return null;
 }
 
-// Recipes grouped routes
 function RecipesSection() {
   return (
     <RecipesFiltersProvider>
@@ -104,7 +105,6 @@ function RecipesSection() {
   );
 }
 
-// Drinks grouped routes
 function PotentPotablesSection() {
   return (
     <RequireAgeGate>
@@ -117,6 +117,7 @@ function PotentPotablesSection() {
         <Route path="/drinks/potent-potables/scotch-irish-whiskey" component={ScotchIrishWhiskeyPage} />
         <Route path="/drinks/potent-potables/seasonal" component={SeasonalPage} />
         <Route path="/drinks/potent-potables/tequila-mezcal" component={TequilaMezcalPage} />
+        {/* ✅ Virgin routes */}
         <Route path="/drinks/potent-potables/virgin" component={VirginCocktailsPage} />
         <Route path="/drinks/potent-potables/virgin-cocktails" component={VirginCocktailsPage} />
         <Route path="/drinks/potent-potables/vodka" component={VodkaPage} />
@@ -130,7 +131,6 @@ function PotentPotablesSection() {
   );
 }
 
-// Drinks hub section
 function DrinksSection() {
   return (
     <Switch>
@@ -161,11 +161,11 @@ function DrinksSection() {
   );
 }
 
-// Main Router
 function Router() {
   return (
     <Layout>
       {shouldShowDebugConsole() && <DebugConsole />}
+
       <Switch>
         <Route path="/profile/:userId?" component={Profile} />
         <Route path="/" component={Feed} />
@@ -186,18 +186,15 @@ function Router() {
           {(params) => <RecipesSection />}
         </Route>
         <Route path="/recipes" component={RecipesSection} />
-
         <Route path="/explore/filters">
           <Redirect to="/recipes/filters" />
         </Route>
-
         <Route path="/create" component={CreatePost} />
         <Route path="/pantry">
           <ErrorBoundary>
             <Pantry />
           </ErrorBoundary>
         </Route>
-
         <Route path="/store" component={Marketplace} />
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/catering" component={CateringMarketplace} />
@@ -205,10 +202,8 @@ function Router() {
         <Route path="/potent-potables">
           <Redirect to="/drinks/potent-potables" />
         </Route>
-
         <Route path="/nutrition" component={NutritionMealPlanner} />
         <Route path="/substitutions" component={SubstitutionsPage} />
-
         <Route path="/drinks/smoothies/:rest*">
           {(params) => <DrinksSection />}
         </Route>
@@ -234,7 +229,6 @@ function Router() {
   );
 }
 
-// App wrapper
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
