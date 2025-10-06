@@ -20,6 +20,7 @@ function catLabel(c: CategoryLike): string {
 
 function PriceBadge({ price, source }: { price?: number | null; source: PlaceSource }) {
   if (price == null) return null;
+  // FSQ price: 1–4; Google price_level: 0–4 (0 may mean free)
   const count = source === "google" ? Math.max(1, price) : price;
   const safe = Math.max(1, Math.min(4, Number(count) || 1));
   return <Badge variant="secondary">{"$".repeat(safe)}</Badge>;
@@ -33,14 +34,13 @@ export default function RestaurantCard(props: {
   categories?: CategoryLike[];
   source: PlaceSource;
   onSelect?: () => void;
-  // OPTIONAL: pass _raw so we can grab Google photoRef
-  raw?: any;
+  raw?: any; // contains __photoRef for Google items
 }) {
   const { name, address, rating, price, categories = [], source, onSelect, raw } = props;
 
   const catStrings = categories.map(catLabel).filter(Boolean).slice(0, 3);
 
-  // If Google result has a photos[0].photo_reference, we can show a thumbnail
+  // If Google result includes a photo reference, use our server proxy to load the image
   const photoRef: string | null = raw?.__photoRef || null;
   const imgSrc =
     source === "google" && photoRef
