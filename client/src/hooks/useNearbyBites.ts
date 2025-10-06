@@ -30,9 +30,11 @@ type NearbyOpts = {
   ll?: string; // "lat,lng"
   source: Source;
   limit?: number;
+  /** When source === "both", merge obvious duplicates (name + distance) */
   dedupe?: boolean;
 };
 
+// ---------- small helpers ----------
 function normName(name?: string) {
   return (name || "")
     .toLowerCase()
@@ -74,7 +76,7 @@ function mergeItems(a: BaseItem, b: BaseItem): BaseItem {
   const lng = pick(a.location?.lng, b.location?.lng);
   return {
     id: `${a.id}__${b.id}`,
-    source: "fsq",
+    source: "fsq", // arbitrary tag for merged; UI is source-agnostic
     name: pick(a.name, b.name) || "",
     rating: pick(a.rating, b.rating) ?? null,
     price: pick(a.price, b.price) ?? null,
@@ -115,7 +117,6 @@ function dedupeList(items: BaseItem[]): BaseItem[] {
   });
   return merged;
 }
-
 function mapFsq(item: any): BaseItem {
   const lat = item?.geocodes?.main?.latitude ?? item?.geocodes?.roof?.latitude ?? null;
   const lng = item?.geocodes?.main?.longitude ?? item?.geocodes?.roof?.longitude ?? null;
@@ -165,10 +166,15 @@ function mapGoogle(item: any): BaseItem {
 
 type HookState<T> = { data: T | null; isLoading: boolean; error: any };
 
+// 🔴 IMPORTANT: all API calls go through /api now
+const API_PREFIX = "/api";
+
 export function useNearbyBites(opts: NearbyOpts) {
   const { q, near, ll, source, limit = 50, dedupe = false } = opts;
   const [state, setState] = useState<HookState<BaseItem[]>>({
-    data: null, isLoading: false, error: null,
+    data: null,
+    isLoading: false,
+    error: null,
   });
   const abortRef = useRef<AbortController | null>(null);
 
@@ -178,24 +184,24 @@ export function useNearbyBites(opts: NearbyOpts) {
     abortRef.current = ctrl;
     setState((s) => ({ ...s, isLoading: true, error: null }));
 
-    // Send multiple param aliases so the server can accept anything
     const params = new URLSearchParams();
-    if (q) { params.set("q", q); params.set("query", q); keywordify(params, q); }
+    if (q) { params.set("q", q); params.set("query", q); params.set("keyword", q); }
     if (near) { params.set("near", near); params.set("location", near); }
     if (ll) params.set("ll", ll);
     if (limit) params.set("limit", String(limit));
 
     try {
       if (source === "fsq") {
-        const r = await fetch(`/fsq/search?${params}`, { signal: ctrl.signal });
+        const r = await fetch(`${API_PREFIX}/fsq/search?${params}`, { signal: ctrl.signal });
         if (!r.ok) { setState({ data: [], isLoading: false, error: null }); return; }
         const js = await r.json();
         const list = (js?.results || js?.data || js || []).map(mapFsq);
         setState({ data: list, isLoading: false, error: null });
         return;
       }
+
       if (source === "google") {
-        const r = await fetch(`/google/search?${params}`, { signal: ctrl.signal });
+        const r = await fetch(`${API_PREFIX}/google/search?${params}`, { signal: ctrl.signal });
         if (!r.ok) throw new Error(`Google ${r.status}`);
         const js = await r.json();
         const list = (js?.results || js?.data || js || []).map(mapGoogle);
@@ -203,10 +209,10 @@ export function useNearbyBites(opts: NearbyOpts) {
         return;
       }
 
-      // BOTH (gracefully handle fsq missing)
+      // BOTH
       const [rf, rg] = await Promise.allSettled([
-        fetch(`/fsq/search?${params}`, { signal: ctrl.signal }),
-        fetch(`/google/search?${params}`, { signal: ctrl.signal }),
+        fetch(`${API_PREFIX}/fsq/search?${params}`, { signal: ctrl.signal }),
+        fetch(`${API_PREFIX}/google/search?${params}`, { signal: ctrl.signal }),
       ]);
 
       let fsqList: BaseItem[] = [];
@@ -239,11 +245,4 @@ export function useNearbyBites(opts: NearbyOpts) {
   const data = useMemo(() => state.data ?? [], [state.data]);
 
   return { data, isLoading: state.isLoading, error: state.error, refetch };
-}
-
-function keywordify(params: URLSearchParams, q: string) {
-  // helpful alias some backends use
-  params.set("keyword", q);
-  params.set("text", q);
-  params.set("term", q);
 }
