@@ -82,22 +82,7 @@ import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole"
 
 // 🚀 NEW — Competitions pages
 import CreateCompetitionPage from "@/pages/competitions/CreateCompetitionPage";
-
-// Temporary placeholder for /competitions/:id until the live room page is built
-function CompetitionRoomPlaceholder({ params }: { params: { id: string } }) {
-  return (
-    <div className="mx-auto max-w-3xl px-4 py-6">
-      <h1 className="font-serif text-2xl">Cookoff Room</h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Room ID: <code className="rounded bg-muted px-2 py-0.5">{params.id}</code>
-      </p>
-      <p className="mt-4">
-        This is a placeholder page. Next, we’ll wire the live video grid, chat, countdown,
-        submissions, and the 24-hour judging view here.
-      </p>
-    </div>
-  );
-}
+import CompetitionRoomPage from "@/pages/competitions/CompetitionRoomPage";
 
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
@@ -199,9 +184,7 @@ function AppRouter() {
 
         {/* ✅ NEW — Competitions */}
         <Route path="/competitions/new" component={CreateCompetitionPage} />
-        <Route path="/competitions/:id">
-          {(params) => <CompetitionRoomPlaceholder params={params as any} />}
-        </Route>
+        <Route path="/competitions/:id" component={CompetitionRoomPage} />
 
         <Route path="/recipes/baby-food/:rest*">
           {() => <RecipesSection />}
