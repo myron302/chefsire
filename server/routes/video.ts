@@ -8,16 +8,16 @@ const router = Router();
 /**
  * POST /api/video/token
  * Body: { roomId: string, role?: "host"|"participant"|"viewer" }
- * Returns: { provider: "mock", roomId, token }
+ * Returns: { provider: "mock", roomId, role, token }
  *
- * In production: replace with Daily/Agora SDK call that issues a real token.
+ * Swap this to Daily/Agora SDK later for real tokens.
  */
-router.post("/token", (_req: Request, res: Response) => {
-  const roomId = String((_req.body?.roomId ?? "")).trim();
-  const role = (_req.body?.role === "host" || _req.body?.role === "participant") ? _req.body.role : "viewer";
+router.post("/token", (req: Request, res: Response) => {
+  const roomId = String(req.body?.roomId ?? "").trim();
+  const role =
+    req.body?.role === "host" || req.body?.role === "participant" ? req.body.role : "viewer";
   if (!roomId) return res.status(400).json({ error: "roomId required" });
 
-  // Mock token (do NOT use in prod)
   const token = crypto.randomBytes(24).toString("hex");
   res.json({ provider: "mock", roomId, role, token });
 });
