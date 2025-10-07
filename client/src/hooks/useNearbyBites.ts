@@ -1,8 +1,11 @@
-// client/src/hooks/useNearbyBites.ts
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+/** ---------- Public types (Google-only) ---------- */
+export type PlaceSource = "google";
 
 export type BaseItem = {
   id: string;
+  source: PlaceSource;
   name: string;
   rating?: number | null;
   price?: number | null;
@@ -20,32 +23,34 @@ export type BaseItem = {
 };
 
 type NearbyOpts = {
+  /** search keywords, e.g. "sushi", "pizza" */
   q: string;
+  /** user-entered city/area, e.g. "Chicago, IL" (optional if ll provided) */
   near?: string;
-  ll?: string; // "lat,lng"
+  /** "lat,lng" string from GPS (optional; takes priority if both provided) */
+  ll?: string;
+  /** max results (defaults 50; server will clamp as needed) */
   limit?: number;
 };
 
-type HookState<T> = { data: T | null; isLoading: boolean; error: any };
-
-// All API calls go through /api
-const API_PREFIX = "/api";
-
+/** ---------- Small helpers ---------- */
 function mapGoogle(item: any): BaseItem {
   const loc =
     item?.geometry?.location ||
     item?.geocodes?.location ||
     item?.geocodes?.geometry?.location;
+
   const lat = typeof loc?.lat === "number" ? loc.lat : null;
   const lng = typeof loc?.lng === "number" ? loc.lng : null;
 
-  // carry through first photo_reference if present (your backend also attaches __photoRef)
+  // keep first photo_reference if present (server also passes __photoRef)
+  const ref = item?.photos?.[0]?.photo_reference || item?.photo_reference;
   const _raw = { ...item };
-  const ref = item?.photos?.[0]?.photo_reference || item?.photo_reference || item?.__photoRef;
   if (typeof ref === "string" && ref.length > 0) (_raw as any).__photoRef = ref;
 
   return {
     id: String(item.place_id || item.id || Math.random()),
+    source: "google",
     name: item.name || "",
     rating: typeof item.rating === "number" ? item.rating : null,
     price: typeof item.price_level === "number" ? item.price_level : null,
@@ -63,6 +68,12 @@ function mapGoogle(item: any): BaseItem {
   };
 }
 
+type HookState<T> = { data: T | null; isLoading: boolean; error: any };
+
+/** All API calls go through /api */
+const API_PREFIX = "/api";
+
+/** ---------- Main hook: Google-only nearby search ---------- */
 export function useNearbyBites(opts: NearbyOpts) {
   const { q, near, ll, limit = 50 } = opts;
   const [state, setState] = useState<HookState<BaseItem[]>>({
@@ -76,19 +87,37 @@ export function useNearbyBites(opts: NearbyOpts) {
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+
     setState((s) => ({ ...s, isLoading: true, error: null }));
 
     const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    if (near) params.set("near", near);
-    if (ll) params.set("ll", ll);
-    params.set("limit", String(limit));
+    if (q) {
+      // the server accepts any of these; send all for compatibility
+      params.set("q", q);
+      params.set("query", q);
+      params.set("keyword", q);
+    }
+    if (typeof limit === "number") params.set("limit", String(limit));
+
+    // If GPS is available, prefer it over near (server will do NearbySearch)
+    if (ll && ll.includes(",")) {
+      params.set("ll", ll);
+    } else if (near && near.trim()) {
+      params.set("near", near.trim());
+      params.set("location", near.trim());
+    } else {
+      // neither provided → the server will fall back to "New York, NY"
+    }
 
     try {
-      const r = await fetch(`${API_PREFIX}/google/search?${params}`, {
+      const r = await fetch(`${API_PREFIX}/google/search?${params.toString()}`, {
         signal: ctrl.signal,
       });
-      if (!r.ok) throw new Error(`Google ${r.status}`);
+      if (!r.ok) {
+        // Don’t crash UI — show an empty list gracefully
+        setState({ data: [], isLoading: false, error: null });
+        return;
+      }
       const js = await r.json();
       const list = (js?.results || js?.data || js || []).map(mapGoogle);
       setState({ data: list, isLoading: false, error: null });
@@ -107,4 +136,73 @@ export function useNearbyBites(opts: NearbyOpts) {
   const data = useMemo(() => state.data ?? [], [state.data]);
 
   return { data, isLoading: state.isLoading, error: state.error, refetch };
+}
+
+/** ---------- Optional helper hook: “Use my location” button ---------- */
+/**
+ * Call request() when the user taps “Use my location”.
+ * You’ll get:
+ *  - ll as "lat,lng" on success
+ *  - status updates: "idle" | "prompting" | "granted" | "denied" | "error"
+ *  - error message if something goes wrong
+ */
+export function useUserLocation(timeoutMs: number = 10000) {
+  const [ll, setLL] = useState<string | null>(null);
+  const [status, setStatus] = useState<
+    "idle" | "prompting" | "granted" | "denied" | "error"
+  >("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  const request = useCallback(() => {
+    setError(null);
+
+    if (!("geolocation" in navigator)) {
+      setStatus("error");
+      setError("Geolocation is not supported by this browser.");
+      return;
+    }
+
+    // If the Permissions API exists, peek (don’t rely on it entirely)
+    if ("permissions" in navigator && (navigator as any).permissions?.query) {
+      (navigator as any).permissions
+        .query({ name: "geolocation" as PermissionName })
+        .then((res: any) => {
+          if (res.state === "denied") {
+            setStatus("denied");
+          } else {
+            setStatus("prompting");
+          }
+        })
+        .catch(() => {
+          setStatus("prompting");
+        });
+    } else {
+      setStatus("prompting");
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords || {};
+        if (typeof latitude === "number" && typeof longitude === "number") {
+          setLL(`${latitude},${longitude}`);
+          setStatus("granted");
+        } else {
+          setStatus("error");
+          setError("Invalid coordinates returned.");
+        }
+      },
+      (err) => {
+        if (err?.code === err.PERMISSION_DENIED) setStatus("denied");
+        else setStatus("error");
+        setError(err?.message || "Failed to get location.");
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: timeoutMs,
+        maximumAge: 60_000, // cached up to 1 min
+      }
+    );
+  }, [timeoutMs]);
+
+  return { ll, status, error, request };
 }
