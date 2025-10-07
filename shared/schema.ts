@@ -1,41 +1,58 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, decimal, index, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  varchar,
+  integer,
+  boolean,
+  timestamp,
+  jsonb,
+  decimal,
+  index,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// ===== EXISTING TABLES =====
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  email: text("email").notNull().unique(),
-  password: text("password").notNull(),
-  displayName: text("display_name").notNull(),
-  bio: text("bio"),
-  avatar: text("avatar"),
-  specialty: text("specialty"),
-  isChef: boolean("is_chef").default(false),
-  followersCount: integer("followers_count").default(0),
-  followingCount: integer("following_count").default(0),
-  postsCount: integer("posts_count").default(0),
-  cateringEnabled: boolean("catering_enabled").default(false),
-  cateringLocation: text("catering_location"),
-  cateringRadius: integer("catering_radius").default(25),
-  cateringBio: text("catering_bio"),
-  cateringAvailable: boolean("catering_available").default(true),
-  subscriptionTier: text("subscription_tier").default("free"),
-  subscriptionStatus: text("subscription_status").default("active"),
-  subscriptionEndsAt: timestamp("subscription_ends_at"),
-  monthlyRevenue: decimal("monthly_revenue", { precision: 10, scale: 2 }).default("0"),
-  nutritionPremium: boolean("nutrition_premium").default(false),
-  nutritionTrialEndsAt: timestamp("nutrition_trial_ends_at"),
-  dailyCalorieGoal: integer("daily_calorie_goal"),
-  macroGoals: jsonb("macro_goals").$type<{ protein: number; carbs: number; fat: number }>(),
-  dietaryRestrictions: jsonb("dietary_restrictions").$type<string[]>().default(sql`'[]'::jsonb`),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => ({
-  cateringLocationIdx: index("catering_location_idx").on(table.cateringLocation),
-  subscriptionTierIdx: index("subscription_tier_idx").on(table.subscriptionTier),
-}));
+/* =========================================================================
+   ===== EXISTING TABLES (unchanged)
+   ========================================================================= */
+export const users = pgTable(
+  "users",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    username: text("username").notNull().unique(),
+    email: text("email").notNull().unique(),
+    password: text("password").notNull(),
+    displayName: text("display_name").notNull(),
+    bio: text("bio"),
+    avatar: text("avatar"),
+    specialty: text("specialty"),
+    isChef: boolean("is_chef").default(false),
+    followersCount: integer("followers_count").default(0),
+    followingCount: integer("following_count").default(0),
+    postsCount: integer("posts_count").default(0),
+    cateringEnabled: boolean("catering_enabled").default(false),
+    cateringLocation: text("catering_location"),
+    cateringRadius: integer("catering_radius").default(25),
+    cateringBio: text("catering_bio"),
+    cateringAvailable: boolean("catering_available").default(true),
+    subscriptionTier: text("subscription_tier").default("free"),
+    subscriptionStatus: text("subscription_status").default("active"),
+    subscriptionEndsAt: timestamp("subscription_ends_at"),
+    monthlyRevenue: decimal("monthly_revenue", { precision: 10, scale: 2 }).default("0"),
+    nutritionPremium: boolean("nutrition_premium").default(false),
+    nutritionTrialEndsAt: timestamp("nutrition_trial_ends_at"),
+    dailyCalorieGoal: integer("daily_calorie_goal"),
+    macroGoals: jsonb("macro_goals").$type<{ protein: number; carbs: number; fat: number }>(),
+    dietaryRestrictions: jsonb("dietary_restrictions").$type<string[]>().default(sql`'[]'::jsonb`),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    cateringLocationIdx: index("catering_location_idx").on(table.cateringLocation),
+    subscriptionTierIdx: index("subscription_tier_idx").on(table.subscriptionTier),
+  })
+);
 
 export const posts = pgTable("posts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -98,7 +115,7 @@ export const follows = pgTable("follows", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// CATERING SYSTEM
+/* ===== CATERING ===== */
 export const cateringInquiries = pgTable("catering_inquiries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   customerId: varchar("customer_id").references(() => users.id).notNull(),
@@ -113,60 +130,68 @@ export const cateringInquiries = pgTable("catering_inquiries", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// MARKETPLACE SYSTEM
-export const products = pgTable("products", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  sellerId: varchar("seller_id").references(() => users.id).notNull(),
-  name: text("name").notNull(),
-  description: text("description"),
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  category: text("category").notNull(),
-  images: jsonb("images").$type<string[]>().default(sql`'[]'::jsonb`),
-  inventory: integer("inventory").default(0),
-  shippingEnabled: boolean("shipping_enabled").default(true),
-  localPickupEnabled: boolean("local_pickup_enabled").default(false),
-  pickupLocation: text("pickup_location"),
-  pickupInstructions: text("pickup_instructions"),
-  shippingCost: decimal("shipping_cost", { precision: 8, scale: 2 }),
-  isExternal: boolean("is_external").default(false),
-  externalUrl: text("external_url"),
-  salesCount: integer("sales_count").default(0),
-  viewsCount: integer("views_count").default(0),
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => ({
-  categoryIdx: index("products_category_idx").on(table.category),
-  sellerIdx: index("products_seller_idx").on(table.sellerId),
-  pickupLocationIdx: index("products_pickup_location_idx").on(table.pickupLocation),
-}));
+/* ===== MARKETPLACE ===== */
+export const products = pgTable(
+  "products",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    sellerId: varchar("seller_id").references(() => users.id).notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+    category: text("category").notNull(),
+    images: jsonb("images").$type<string[]>().default(sql`'[]'::jsonb`),
+    inventory: integer("inventory").default(0),
+    shippingEnabled: boolean("shipping_enabled").default(true),
+    localPickupEnabled: boolean("local_pickup_enabled").default(false),
+    pickupLocation: text("pickup_location"),
+    pickupInstructions: text("pickup_instructions"),
+    shippingCost: decimal("shipping_cost", { precision: 8, scale: 2 }),
+    isExternal: boolean("is_external").default(false),
+    externalUrl: text("external_url"),
+    salesCount: integer("sales_count").default(0),
+    viewsCount: integer("views_count").default(0),
+    isActive: boolean("is_active").default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    categoryIdx: index("products_category_idx").on(table.category),
+    sellerIdx: index("products_seller_idx").on(table.sellerId),
+    pickupLocationIdx: index("products_pickup_location_idx").on(table.pickupLocation),
+  })
+);
 
-export const orders = pgTable("orders", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  buyerId: varchar("buyer_id").references(() => users.id).notNull(),
-  sellerId: varchar("seller_id").references(() => users.id).notNull(),
-  productId: varchar("product_id").references(() => products.id).notNull(),
-  quantity: integer("quantity").notNull(),
-  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
-  platformFee: decimal("platform_fee", { precision: 8, scale: 2 }).notNull(),
-  sellerAmount: decimal("seller_amount", { precision: 10, scale: 2 }).notNull(),
-  shippingAddress: jsonb("shipping_address").$type<{
-    street: string;
-    city: string;
-    state: string;
-    zipCode: string;
-    country: string;
-  }>(),
-  fulfillmentMethod: text("fulfillment_method").notNull(),
-  status: text("status").default("pending"),
-  trackingNumber: text("tracking_number"),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => ({
-  buyerIdx: index("orders_buyer_idx").on(table.buyerId),
-  sellerIdx: index("orders_seller_idx").on(table.sellerId),
-  statusIdx: index("orders_status_idx").on(table.status),
-}));
+export const orders = pgTable(
+  "orders",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    buyerId: varchar("buyer_id").references(() => users.id).notNull(),
+    sellerId: varchar("seller_id").references(() => users.id).notNull(),
+    productId: varchar("product_id").references(() => products.id).notNull(),
+    quantity: integer("quantity").notNull(),
+    totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+    platformFee: decimal("platform_fee", { precision: 8, scale: 2 }).notNull(),
+    sellerAmount: decimal("seller_amount", { precision: 10, scale: 2 }).notNull(),
+    shippingAddress: jsonb("shipping_address").$type<{
+      street: string;
+      city: string;
+      state: string;
+      zipCode: string;
+      country: string;
+    }>(),
+    fulfillmentMethod: text("fulfillment_method").notNull(),
+    status: text("status").default("pending"),
+    trackingNumber: text("tracking_number"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    buyerIdx: index("orders_buyer_idx").on(table.buyerId),
+    sellerIdx: index("orders_seller_idx").on(table.sellerId),
+    statusIdx: index("orders_status_idx").on(table.status),
+  })
+);
 
-// SUBSCRIPTION MANAGEMENT
+/* ===== SUBSCRIPTION ===== */
 export const subscriptionHistory = pgTable("subscription_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id).notNull(),
@@ -179,7 +204,7 @@ export const subscriptionHistory = pgTable("subscription_history", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// MEAL PLANNING SYSTEM
+/* ===== MEAL PLANNING ===== */
 export const mealPlans = pgTable("meal_plans", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id).notNull(),
@@ -201,163 +226,199 @@ export const mealPlanEntries = pgTable("meal_plan_entries", {
   customCalories: integer("custom_calories"),
 });
 
-// PANTRY MANAGEMENT
-export const pantryItems = pgTable("pantry_items", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  name: text("name").notNull(),
-  category: text("category"),
-  quantity: decimal("quantity", { precision: 8, scale: 2 }),
-  unit: text("unit"),
-  expirationDate: timestamp("expiration_date"),
-  purchaseDate: timestamp("purchase_date"),
-  notes: text("notes"),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => ({
-  userIdx: index("pantry_user_idx").on(table.userId),
-  expirationIdx: index("pantry_expiration_idx").on(table.expirationDate),
-}));
+/* ===== PANTRY ===== */
+export const pantryItems = pgTable(
+  "pantry_items",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    name: text("name").notNull(),
+    category: text("category"),
+    quantity: decimal("quantity", { precision: 8, scale: 2 }),
+    unit: text("unit"),
+    expirationDate: timestamp("expiration_date"),
+    purchaseDate: timestamp("purchase_date"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    userIdx: index("pantry_user_idx").on(table.userId),
+    expirationIdx: index("pantry_expiration_idx").on(table.expirationDate),
+  })
+);
 
-// NUTRITION TRACKING
-export const nutritionLogs = pgTable("nutrition_logs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  date: timestamp("date").notNull(),
-  mealType: text("meal_type").notNull(),
-  recipeId: varchar("recipe_id").references(() => recipes.id),
-  customFoodName: text("custom_food_name"),
-  servings: decimal("servings", { precision: 5, scale: 2 }).default("1"),
-  calories: integer("calories").notNull(),
-  protein: decimal("protein", { precision: 5, scale: 2 }),
-  carbs: decimal("carbs", { precision: 5, scale: 2 }),
-  fat: decimal("fat", { precision: 5, scale: 2 }),
-  fiber: decimal("fiber", { precision: 5, scale: 2 }),
-  sodium: decimal("sodium", { precision: 8, scale: 2 }),
-  sugar: decimal("sugar", { precision: 5, scale: 2 }),
-  imageUrl: text("image_url"),
-  recognitionConfidence: decimal("recognition_confidence", { precision: 3, scale: 2 }),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => ({
-  userDateIdx: index("nutrition_user_date_idx").on(table.userId, table.date),
-}));
+/* ===== NUTRITION LOGS ===== */
+export const nutritionLogs = pgTable(
+  "nutrition_logs",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    date: timestamp("date").notNull(),
+    mealType: text("meal_type").notNull(),
+    recipeId: varchar("recipe_id").references(() => recipes.id),
+    customFoodName: text("custom_food_name"),
+    servings: decimal("servings", { precision: 5, scale: 2 }).default("1"),
+    calories: integer("calories").notNull(),
+    protein: decimal("protein", { precision: 5, scale: 2 }),
+    carbs: decimal("carbs", { precision: 5, scale: 2 }),
+    fat: decimal("fat", { precision: 5, scale: 2 }),
+    fiber: decimal("fiber", { precision: 5, scale: 2 }),
+    sodium: decimal("sodium", { precision: 8, scale: 2 }),
+    sugar: decimal("sugar", { precision: 5, scale: 2 }),
+    imageUrl: text("image_url"),
+    recognitionConfidence: decimal("recognition_confidence", { precision: 3, scale: 2 }),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    userDateIdx: index("nutrition_user_date_idx").on(table.userId, table.date),
+  })
+);
 
-// SUBSTITUTION CATALOG
-export const substitutionIngredients = pgTable("substitution_ingredients", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  ingredient: varchar("ingredient", { length: 160 }).notNull(),
-  aliases: jsonb("aliases").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
-  group: varchar("group", { length: 80 }).default(""),
-  pantryArea: varchar("pantry_area", { length: 80 }).default(""),
-  notes: text("notes").default(""),
-  source: varchar("source", { length: 200 }).default(""),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (t) => ({
-  ingredientIdx: index("subs_ing_ingredient_idx").on(t.ingredient),
-}));
+/* ===== SUBSTITUTIONS ===== */
+export const substitutionIngredients = pgTable(
+  "substitution_ingredients",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    ingredient: varchar("ingredient", { length: 160 }).notNull(),
+    aliases: jsonb("aliases").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    group: varchar("group", { length: 80 }).default(""),
+    pantryArea: varchar("pantry_area", { length: 80 }).default(""),
+    notes: text("notes").default(""),
+    source: varchar("source", { length: 200 }).default(""),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    ingredientIdx: index("subs_ing_ingredient_idx").on(t.ingredient),
+  })
+);
 
-export const substitutions = pgTable("substitutions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  ingredientId: varchar("ingredient_id").notNull()
-    .references(() => substitutionIngredients.id, { onDelete: "cascade" }),
-  text: text("text").notNull(),
-  components: jsonb("components").$type<
-    { item: string; amount?: number; unit?: string; note?: string }[]
-  >().default(sql`'[]'::jsonb`).notNull(),
-  method: jsonb("method").$type<{
-    action?: string; time_min?: number; time_max?: number; temperature?: string;
-  }>().default(sql`'{}'::jsonb`).notNull(),
-  ratio: varchar("ratio", { length: 160 }).default(""),
-  context: varchar("context", { length: 80 }).default(""),
-  dietTags: jsonb("diet_tags").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
-  allergenFlags: jsonb("allergen_flags").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
-  signature: varchar("signature", { length: 256 }).notNull(),
-  signatureHash: varchar("signature_hash", { length: 64 }).notNull(),
-  variants: jsonb("variants").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
-  provenance: jsonb("provenance").$type<{source:string; page?:string; url?:string}[]>().default(sql`'[]'::jsonb`).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (t) => ({
-  uniqPerIngredient: uniqueIndex("uniq_sub_signature_hash").on(t.ingredientId, t.signatureHash),
-}));
+export const substitutions = pgTable(
+  "substitutions",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    ingredientId: varchar("ingredient_id")
+      .notNull()
+      .references(() => substitutionIngredients.id, { onDelete: "cascade" }),
+    text: text("text").notNull(),
+    components: jsonb("components")
+      .$type<{ item: string; amount?: number; unit?: string; note?: string }[]>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
+    method: jsonb("method")
+      .$type<{ action?: string; time_min?: number; time_max?: number; temperature?: string }>()
+      .default(sql`'{}'::jsonb`)
+      .notNull(),
+    ratio: varchar("ratio", { length: 160 }).default(""),
+    context: varchar("context", { length: 80 }).default(""),
+    dietTags: jsonb("diet_tags").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    allergenFlags: jsonb("allergen_flags").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    signature: varchar("signature", { length: 256 }).notNull(),
+    signatureHash: varchar("signature_hash", { length: 64 }).notNull(),
+    variants: jsonb("variants").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    provenance: jsonb("provenance").$type<{ source: string; page?: string; url?: string }[]>().default(sql`'[]'::jsonb`).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    uniqPerIngredient: uniqueIndex("uniq_sub_signature_hash").on(t.ingredientId, t.signatureHash),
+  })
+);
 
-// ===== CUSTOM DRINKS SYSTEM =====
+/* ===== CUSTOM DRINKS ===== */
+export const customDrinks = pgTable(
+  "custom_drinks",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    name: text("name").notNull(),
+    category: text("category").notNull(), // smoothies, protein-shakes, detoxes, potent-potables
+    drinkType: text("drink_type"), // pre-workout, green, juice-detox, etc.
 
-export const customDrinks = pgTable("custom_drinks", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  name: text("name").notNull(),
-  category: text("category").notNull(), // 'smoothies', 'protein-shakes', 'detoxes', 'potent-potables'
-  drinkType: text("drink_type"), // 'pre-workout', 'green', 'juice-detox', etc.
-  
-  // Ingredients as JSON
-  ingredients: jsonb("ingredients").$type<Array<{
-    name: string;
-    category: string;
-    calories: number;
-    protein: number;
-    carbs: number;
-    fiber: number;
-    icon: string;
-  }>>().notNull(),
-  
-  // Nutrition totals
-  calories: integer("calories").notNull(),
-  protein: decimal("protein", { precision: 5, scale: 2 }).notNull(),
-  carbs: decimal("carbs", { precision: 5, scale: 2 }).notNull(),
-  fiber: decimal("fiber", { precision: 5, scale: 2 }).notNull(),
-  fat: decimal("fat", { precision: 5, scale: 2 }).notNull(),
-  
-  // Optional
-  description: text("description"),
-  imageUrl: text("image_url"),
-  fitnessGoal: text("fitness_goal"),
-  difficulty: text("difficulty"),
-  prepTime: integer("prep_time"),
-  rating: integer("rating").default(5),
-  
-  // Social
-  isPublic: boolean("is_public").default(false),
-  likesCount: integer("likes_count").default(0),
-  savesCount: integer("saves_count").default(0),
-  sharesCount: integer("shares_count").default(0),
-  
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({
-  userIdx: index("custom_drinks_user_idx").on(table.userId),
-  categoryIdx: index("custom_drinks_category_idx").on(table.category),
-  publicIdx: index("custom_drinks_public_idx").on(table.isPublic),
-}));
+    // Ingredients as JSON
+    ingredients: jsonb("ingredients").$type<
+      Array<{
+        name: string;
+        category: string;
+        calories: number;
+        protein: number;
+        carbs: number;
+        fiber: number;
+        icon: string;
+      }>
+    >().notNull(),
 
-export const drinkPhotos = pgTable("drink_photos", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  drinkId: varchar("drink_id").references(() => customDrinks.id, { onDelete: "cascade" }).notNull(),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  imageUrl: text("image_url").notNull(),
-  caption: text("caption"),
-  likesCount: integer("likes_count").default(0),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({
-  drinkIdx: index("drink_photos_drink_idx").on(table.drinkId),
-  userIdx: index("drink_photos_user_idx").on(table.userId),
-}));
+    // Nutrition totals
+    calories: integer("calories").notNull(),
+    protein: decimal("protein", { precision: 5, scale: 2 }).notNull(),
+    carbs: decimal("carbs", { precision: 5, scale: 2 }).notNull(),
+    fiber: decimal("fiber", { precision: 5, scale: 2 }).notNull(),
+    fat: decimal("fat", { precision: 5, scale: 2 }).notNull(),
 
-export const drinkLikes = pgTable("drink_likes", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  drinkId: varchar("drink_id").references(() => customDrinks.id, { onDelete: "cascade" }).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({
-  userDrinkIdx: uniqueIndex("drink_likes_user_drink_idx").on(table.userId, table.drinkId),
-}));
+    // Optional
+    description: text("description"),
+    imageUrl: text("image_url"),
+    fitnessGoal: text("fitness_goal"),
+    difficulty: text("difficulty"),
+    prepTime: integer("prep_time"),
+    rating: integer("rating").default(5),
 
-export const drinkSaves = pgTable("drink_saves", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  drinkId: varchar("drink_id").references(() => customDrinks.id, { onDelete: "cascade" }).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({
-  userDrinkIdx: uniqueIndex("drink_saves_user_drink_idx").on(table.userId, table.drinkId),
-}));
+    // Social
+    isPublic: boolean("is_public").default(false),
+    likesCount: integer("likes_count").default(0),
+    savesCount: integer("saves_count").default(0),
+    sharesCount: integer("shares_count").default(0),
+
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("custom_drinks_user_idx").on(table.userId),
+    categoryIdx: index("custom_drinks_category_idx").on(table.category),
+    publicIdx: index("custom_drinks_public_idx").on(table.isPublic),
+  })
+);
+
+export const drinkPhotos = pgTable(
+  "drink_photos",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    drinkId: varchar("drink_id").references(() => customDrinks.id, { onDelete: "cascade" }).notNull(),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    imageUrl: text("image_url").notNull(),
+    caption: text("caption"),
+    likesCount: integer("likes_count").default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    drinkIdx: index("drink_photos_drink_idx").on(table.drinkId),
+    userIdx: index("drink_photos_user_idx").on(table.userId),
+  })
+);
+
+export const drinkLikes = pgTable(
+  "drink_likes",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    drinkId: varchar("drink_id").references(() => customDrinks.id, { onDelete: "cascade" }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userDrinkIdx: uniqueIndex("drink_likes_user_drink_idx").on(table.userId, table.drinkId),
+  })
+);
+
+export const drinkSaves = pgTable(
+  "drink_saves",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    drinkId: varchar("drink_id").references(() => customDrinks.id, { onDelete: "cascade" }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userDrinkIdx: uniqueIndex("drink_saves_user_drink_idx").on(table.userId, table.drinkId),
+  })
+);
 
 export const userDrinkStats = pgTable("user_drink_stats", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -373,15 +434,182 @@ export const userDrinkStats = pgTable("user_drink_stats", {
   detoxesMade: integer("detoxes_made").default(0),
   cocktailsMade: integer("cocktails_made").default(0),
   badges: jsonb("badges").$type<string[]>().default(sql`'[]'::jsonb`),
-  achievements: jsonb("achievements").$type<Array<{
-    id: string;
-    name: string;
-    earnedAt: string;
-  }>>().default(sql`'[]'::jsonb`),
+  achievements: jsonb("achievements").$type<
+    Array<{
+      id: string;
+      name: string;
+      earnedAt: string;
+    }>
+  >().default(sql`'[]'::jsonb`),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// ===== INSERT SCHEMAS =====
+/* =========================================================================
+   ===== NEW: COMPETITIONS / COOKOFFS
+   ========================================================================= */
+
+// THEMES
+export const competitionThemes = pgTable(
+  "competition_themes",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    slug: varchar("slug", { length: 64 }).notNull().unique(),
+    name: varchar("name", { length: 100 }).notNull(),
+    description: text("description"),
+    createdAt: timestamp("created_at").defaultNow(),
+  }
+);
+
+// COMPETITIONS (ROOMS)
+export const competitions = pgTable(
+  "competitions",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    creatorId: varchar("creator_id").references(() => users.id).notNull(),
+    themeId: varchar("theme_id").references(() => competitionThemes.id),
+    themeName: varchar("theme_name", { length: 100 }), // denormalized for search
+    recipeId: varchar("recipe_id", { length: 64 }), // optional
+    title: varchar("title", { length: 140 }),
+    isPrivate: boolean("is_private").notNull().default(false),
+    timeLimitMinutes: integer("time_limit_minutes").notNull(), // 30–120
+    minOfficialVoters: integer("min_official_voters").notNull().default(3),
+
+    status: varchar("status", { length: 20 }).notNull().default("upcoming"), // upcoming|live|judging|completed|canceled
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    startTime: timestamp("start_time", { withTimezone: true }),
+    endTime: timestamp("end_time", { withTimezone: true }),
+    judgingClosesAt: timestamp("judging_closes_at", { withTimezone: true }),
+
+    videoProvider: varchar("video_provider", { length: 20 }).notNull().default("daily"),
+    videoRoomId: varchar("video_room_id", { length: 128 }),
+    videoRecordingUrl: text("video_recording_url"),
+    isOfficial: boolean("is_official").notNull().default(false),
+
+    // winnerParticipantId is kept as varchar for simplicity (no FK cycle)
+    winnerParticipantId: varchar("winner_participant_id"),
+  },
+  (t) => ({
+    idx_status: index("competitions_status_idx").on(t.status),
+    idx_theme: index("competitions_theme_idx").on(t.themeId, t.themeName),
+    idx_times: index("competitions_times_idx").on(t.startTime, t.endTime, t.judgingClosesAt),
+  })
+);
+
+// PARTICIPANTS
+export const competitionParticipants = pgTable(
+  "competition_participants",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    competitionId: varchar("competition_id")
+      .notNull()
+      .references(() => competitions.id, { onDelete: "cascade" }),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    role: varchar("role", { length: 20 }).notNull().default("competitor"), // competitor|host|judge
+    joinAt: timestamp("join_at", { withTimezone: true }).defaultNow(),
+
+    // Final submission
+    finalDishPhotoUrl: text("final_dish_photo_url"),
+    dishTitle: varchar("dish_title", { length: 140 }),
+    dishDescription: text("dish_description"),
+
+    // Aggregates computed at finalize
+    presentationAvg: integer("presentation_avg"),
+    creativityAvg: integer("creativity_avg"),
+    techniqueAvg: integer("technique_avg"),
+    totalScore: integer("total_score"),
+    placement: integer("placement"), // 1,2,3...
+  },
+  (t) => ({
+    uniq: uniqueIndex("competition_participants_competition_user_uniq").on(
+      t.competitionId,
+      t.userId
+    ),
+  })
+);
+
+// VOTES (spectators only; participants cannot vote → enforce in service)
+export const competitionVotes = pgTable(
+  "competition_votes",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    competitionId: varchar("competition_id")
+      .notNull()
+      .references(() => competitions.id, { onDelete: "cascade" }),
+    voterId: varchar("voter_id").references(() => users.id).notNull(),
+    participantId: varchar("participant_id")
+      .notNull()
+      .references(() => competitionParticipants.id, { onDelete: "cascade" }),
+    presentation: integer("presentation").notNull(), // 1–10
+    creativity: integer("creativity").notNull(), // 1–10
+    technique: integer("technique").notNull(), // 1–10
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => ({
+    uniq_vote: uniqueIndex("competition_votes_one_vote_per_voter_participant").on(
+      t.voterId,
+      t.participantId
+    ),
+    idx_comp: index("competition_votes_comp_idx").on(t.competitionId),
+  })
+);
+
+// VIEWERS (attendance / voting eligibility heuristics)
+export const competitionViewers = pgTable(
+  "competition_viewers",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    competitionId: varchar("competition_id")
+      .notNull()
+      .references(() => competitions.id, { onDelete: "cascade" }),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow(),
+    watchSeconds: integer("watch_seconds").notNull().default(0),
+  },
+  (t) => ({
+    uniq: uniqueIndex("competition_viewers_comp_user_uniq").on(t.competitionId, t.userId),
+  })
+);
+
+// MEDIA (recordings, clips, highlights)
+export const competitionMedia = pgTable("competition_media", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  competitionId: varchar("competition_id")
+    .notNull()
+    .references(() => competitions.id, { onDelete: "cascade" }),
+  type: varchar("type", { length: 20 }).notNull().default("recording"), // recording|clip|highlight
+  url: text("url").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+// BADGES
+export const cookoffBadges = pgTable(
+  "cookoff_badges",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    slug: varchar("slug", { length: 64 }).notNull().unique(), // e.g., weekly-champion
+    name: varchar("name", { length: 100 }).notNull(),
+    description: text("description"),
+    icon: varchar("icon", { length: 64 }), // lucide icon name
+  }
+);
+
+export const userBadges = pgTable(
+  "user_badges",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    badgeId: varchar("badge_id").references(() => cookoffBadges.id).notNull(),
+    awardedAt: timestamp("awarded_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => ({
+    uniq: uniqueIndex("user_badges_user_badge_uniq").on(t.userId, t.badgeId),
+  })
+);
+
+/* =========================================================================
+   ===== INSERT SCHEMAS
+   ========================================================================= */
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   followersCount: true,
@@ -493,7 +721,54 @@ export const insertUserDrinkStatsSchema = createInsertSchema(userDrinkStats).omi
   updatedAt: true,
 });
 
-// ===== TYPES =====
+/* NEW inserts for competitions */
+export const insertCompetitionThemeSchema = createInsertSchema(competitionThemes).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertCompetitionSchema = createInsertSchema(competitions).omit({
+  id: true,
+  createdAt: true,
+  startTime: true,
+  endTime: true,
+  judgingClosesAt: true,
+  isOfficial: true,
+  winnerParticipantId: true,
+});
+export const insertCompetitionParticipantSchema = createInsertSchema(competitionParticipants).omit({
+  id: true,
+  joinAt: true,
+  presentationAvg: true,
+  creativityAvg: true,
+  techniqueAvg: true,
+  totalScore: true,
+  placement: true,
+});
+export const insertCompetitionVoteSchema = createInsertSchema(competitionVotes).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertCompetitionViewerSchema = createInsertSchema(competitionViewers).omit({
+  id: true,
+  firstSeenAt: true,
+  lastSeenAt: true,
+  watchSeconds: true,
+});
+export const insertCompetitionMediaSchema = createInsertSchema(competitionMedia).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertCookoffBadgeSchema = createInsertSchema(cookoffBadges).omit({
+  id: true,
+});
+export const insertUserBadgeSchema = createInsertSchema(userBadges).omit({
+  id: true,
+  awardedAt: true,
+});
+
+/* =========================================================================
+   ===== TYPES
+   ========================================================================= */
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Post = typeof posts.$inferSelect;
@@ -535,7 +810,27 @@ export type InsertDrinkSave = z.infer<typeof insertDrinkSaveSchema>;
 export type UserDrinkStats = typeof userDrinkStats.$inferSelect;
 export type InsertUserDrinkStats = z.infer<typeof insertUserDrinkStatsSchema>;
 
-// Extended types
+/* NEW types for competitions */
+export type CompetitionTheme = typeof competitionThemes.$inferSelect;
+export type InsertCompetitionTheme = z.infer<typeof insertCompetitionThemeSchema>;
+export type Competition = typeof competitions.$inferSelect;
+export type InsertCompetition = z.infer<typeof insertCompetitionSchema>;
+export type CompetitionParticipant = typeof competitionParticipants.$inferSelect;
+export type InsertCompetitionParticipant = z.infer<typeof insertCompetitionParticipantSchema>;
+export type CompetitionVote = typeof competitionVotes.$inferSelect;
+export type InsertCompetitionVote = z.infer<typeof insertCompetitionVoteSchema>;
+export type CompetitionViewer = typeof competitionViewers.$inferSelect;
+export type InsertCompetitionViewer = z.infer<typeof insertCompetitionViewerSchema>;
+export type CompetitionMedium = typeof competitionMedia.$inferSelect;
+export type InsertCompetitionMedium = z.infer<typeof insertCompetitionMediaSchema>;
+export type CookoffBadge = typeof cookoffBadges.$inferSelect;
+export type InsertCookoffBadge = z.infer<typeof insertCookoffBadgeSchema>;
+export type UserBadge = typeof userBadges.$inferSelect;
+export type InsertUserBadge = z.infer<typeof insertUserBadgeSchema>;
+
+/* =========================================================================
+   ===== Extended types (unchanged + new)
+   ========================================================================= */
 export type PostWithUser = Post & { user: User; recipe?: Recipe; isLiked?: boolean; isSaved?: boolean };
 export type StoryWithUser = Story & { user: User };
 export type CommentWithUser = Comment & { user: User };
@@ -545,9 +840,9 @@ export type MealPlanWithEntries = MealPlan & { entries: (MealPlanEntry & { recip
 export type ChefWithCatering = User & { availableForCatering: boolean; distance?: number };
 export type SubstitutionIngredient = typeof substitutionIngredients.$inferSelect;
 export type Substitution = typeof substitutions.$inferSelect;
-export type CustomDrinkWithUser = CustomDrink & { 
-  user: User; 
-  isLiked?: boolean; 
+export type CustomDrinkWithUser = CustomDrink & {
+  user: User;
+  isLiked?: boolean;
   isSaved?: boolean;
   photos?: DrinkPhoto[];
 };
