@@ -1,49 +1,40 @@
 import "dotenv/config";
 import { Router, Request, Response } from "express";
 
-// Make this file SAFE to import even if DATABASE_URL is missing.
-// We only set up DB stuff when a URL exists; otherwise we return 503s.
-
+// Always export ONE router
 const router = Router();
+
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
 
-// If no DB, mount stub handlers that return 503 but DO NOT throw.
+/* ---------------------------------------------
+   SAFE MODE: when DATABASE_URL is missing
+---------------------------------------------- */
 if (!DATABASE_URL) {
-  // Health-ish probe to confirm why this router is disabled
-  router.get("/substitutions/_diagnostics", (_req, res) => {
-    res.status(200).json({
-      ok: true,
-      db: false,
-      reason: "Missing DATABASE_URL. Set it in server/.env or Plesk → Node.js → Environment Variables.",
+  router.get("/", (_req, res) => {
+    res.status(503).json({
+      error: "SERVICE_UNAVAILABLE",
+      message:
+        "Substitutions database not configured (missing DATABASE_URL in server/.env or Plesk).",
     });
   });
 
-  // Generic stubs
-  router.get("/substitutions", (_req, res) => {
+  router.get("/:ingredient", (_req, res) => {
     res.status(503).json({
       error: "SERVICE_UNAVAILABLE",
-      message: "Substitutions DB is not configured (missing DATABASE_URL).",
-    });
-  });
-
-  router.get("/substitutions/:ingredient", (_req, res) => {
-    res.status(503).json({
-      error: "SERVICE_UNAVAILABLE",
-      message: "Substitutions DB is not configured (missing DATABASE_URL).",
+      message:
+        "Substitutions database not configured (missing DATABASE_URL in server/.env or Plesk).",
     });
   });
 
   export default router;
-  // Early return so we don't import DB libs at all
-  // (keeps cold starts fast and avoids any import errors)
-  // @ts-ignore
-  return;
 }
 
-// ---- DB path (only runs when we DO have a DATABASE_URL) ----
+/* ---------------------------------------------
+   NORMAL MODE: when DATABASE_URL is available
+---------------------------------------------- */
 import { Pool } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
-import { and, eq, ilike, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   substitutionIngredients,
   substitutions,
@@ -55,11 +46,14 @@ const db = drizzle(pool);
 /**
  * GET /api/substitutions
  */
-router.get("/substitutions", async (req: Request, res: Response) => {
+router.get("/", async (req: Request, res: Response) => {
   try {
     const q = (req.query.q as string | undefined)?.trim();
     const ingredientFilter = (req.query.ingredient as string | undefined)?.trim();
-    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? "20"), 10) || 20, 1), 100);
+    const limit = Math.min(
+      Math.max(parseInt(String(req.query.limit ?? "20"), 10) || 20, 1),
+      100
+    );
     const offset = Math.max(parseInt(String(req.query.offset ?? "0"), 10) || 0, 0);
 
     const where =
@@ -77,7 +71,10 @@ router.get("/substitutions", async (req: Request, res: Response) => {
     const totalRows = await db
       .select({ count: sql<number>`count(*)`.mapWith(Number) })
       .from(substitutions)
-      .innerJoin(substitutionIngredients, eq(substitutions.ingredientId, substitutionIngredients.id))
+      .innerJoin(
+        substitutionIngredients,
+        eq(substitutions.ingredientId, substitutionIngredients.id)
+      )
       .where(where as any);
 
     const total = totalRows[0]?.count ?? 0;
@@ -97,7 +94,10 @@ router.get("/substitutions", async (req: Request, res: Response) => {
         allergenFlags: substitutions.allergenFlags,
       })
       .from(substitutions)
-      .innerJoin(substitutionIngredients, eq(substitutions.ingredientId, substitutionIngredients.id))
+      .innerJoin(
+        substitutionIngredients,
+        eq(substitutions.ingredientId, substitutionIngredients.id)
+      )
       .where(where as any)
       .limit(limit)
       .offset(offset);
@@ -112,10 +112,11 @@ router.get("/substitutions", async (req: Request, res: Response) => {
 /**
  * GET /api/substitutions/:ingredient
  */
-router.get("/substitutions/:ingredient", async (req: Request, res: Response) => {
+router.get("/:ingredient", async (req: Request, res: Response) => {
   try {
     const name = (req.params.ingredient || "").trim();
-    if (!name) return res.status(400).json({ error: "ingredient path param is required" });
+    if (!name)
+      return res.status(400).json({ error: "ingredient path param is required" });
 
     const rows = await db
       .select({
@@ -132,7 +133,10 @@ router.get("/substitutions/:ingredient", async (req: Request, res: Response) => 
         allergenFlags: substitutions.allergenFlags,
       })
       .from(substitutions)
-      .innerJoin(substitutionIngredients, eq(substitutions.ingredientId, substitutionIngredients.id))
+      .innerJoin(
+        substitutionIngredients,
+        eq(substitutions.ingredientId, substitutionIngredients.id)
+      )
       .where(eq(substitutionIngredients.ingredient, name));
 
     res.json({ items: rows, total: rows.length });
