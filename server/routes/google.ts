@@ -10,7 +10,9 @@ function sendJson(res: any, code: number, body: any) {
   res.status(code).json(body);
 }
 
-// Diagnostics
+// -----------------------------------------------------
+// ✅ Diagnostics endpoint
+// -----------------------------------------------------
 googleRouter.get("/diagnostics", (_req, res) => {
   return sendJson(res, 200, {
     ok: true,
@@ -21,19 +23,22 @@ googleRouter.get("/diagnostics", (_req, res) => {
   });
 });
 
-// Endpoint to provide Google Maps API key securely
+// -----------------------------------------------------
+// ✅ Provide Google Maps API key securely
+// -----------------------------------------------------
 googleRouter.get("/maps-script", (_req, res) => {
   if (!GOOGLE_KEY) {
     return res.status(500).send("GOOGLE_MAPS_API_KEY not configured");
   }
-  
-  // Return just the API key (the client will construct the script URL)
+
   res.set("Content-Type", "text/plain");
-  res.set("Cache-Control", "private, max-age=3600"); // Cache for 1 hour
+  res.set("Cache-Control", "private, max-age=3600");
   return res.send(GOOGLE_KEY);
 });
 
-// Geocode helper
+// -----------------------------------------------------
+// ✅ Geocode helper
+// -----------------------------------------------------
 async function geocode(near: string) {
   const u = new URL("https://maps.googleapis.com/maps/api/geocode/json");
   u.searchParams.set("address", near);
@@ -43,16 +48,18 @@ async function geocode(near: string) {
   if (!r.ok) throw new Error(`geocode http ${r.status}`);
 
   const j: any = await r.json();
-  const status = j?.status || "UNKNOWN";
-  if (status !== "OK") {
-    throw new Error(`geocode api ${status}: ${j?.error_message || "no message"}`);
+  if (j.status !== "OK") {
+    throw new Error(`geocode api ${j.status}: ${j.error_message || "no message"}`);
   }
+
   const c = j?.results?.[0]?.geometry?.location;
   if (!c) throw new Error("geocode api OK but no results");
   return { lat: c.lat, lng: c.lng };
 }
 
-// Search (Nearby if ll, else Text)
+// -----------------------------------------------------
+// ✅ Search (Nearby or Text-based)
+// -----------------------------------------------------
 googleRouter.get("/search", async (req, res) => {
   try {
     if (!GOOGLE_KEY) {
@@ -111,16 +118,10 @@ googleRouter.get("/search", async (req, res) => {
     if (!r.ok) return sendJson(res, 502, { error: "google_http_error", status: r.status });
 
     const j: any = await r.json();
-    const status = j?.status || "UNKNOWN";
-    if (status !== "OK" && status !== "ZERO_RESULTS") {
-      return sendJson(res, 502, {
-        error: "google_api_error",
-        status,
-        message: j?.error_message || null,
-      });
+    if (j.status !== "OK" && j.status !== "ZERO_RESULTS") {
+      return sendJson(res, 502, { error: "google_api_error", status: j.status, message: j.error_message || null });
     }
 
-    // Attach photo reference to each result
     const results = Array.isArray(j.results)
       ? j.results.slice(0, limit).map((place: any) => ({
           ...place,
@@ -128,19 +129,19 @@ googleRouter.get("/search", async (req, res) => {
         }))
       : [];
 
-    return sendJson(res, 200, { status, results });
+    return sendJson(res, 200, { status: j.status, results });
   } catch (e: any) {
     console.error("google/search error", e);
     return sendJson(res, 500, { error: "google_search_failed", message: e?.message || String(e) });
   }
 });
 
-// Place Details
+// -----------------------------------------------------
+// ✅ Place Details
+// -----------------------------------------------------
 googleRouter.get("/:placeId/details", async (req, res) => {
   try {
-    if (!GOOGLE_KEY) {
-      return sendJson(res, 500, { error: "missing_key" });
-    }
+    if (!GOOGLE_KEY) return sendJson(res, 500, { error: "missing_key" });
 
     const placeId = req.params.placeId;
     const reviewsLimit = Math.min(10, Number(req.query.reviewsLimit) || 5);
@@ -154,17 +155,11 @@ googleRouter.get("/:placeId/details", async (req, res) => {
     );
 
     const r = await fetch(u.toString(), { headers: { "User-Agent": UA } });
-    if (!r.ok) {
-      return sendJson(res, 502, { error: "google_http_error", status: r.status });
-    }
+    if (!r.ok) return sendJson(res, 502, { error: "google_http_error", status: r.status });
 
     const j: any = await r.json();
     if (j.status !== "OK") {
-      return sendJson(res, 502, {
-        error: "google_api_error",
-        status: j.status,
-        message: j.error_message || null,
-      });
+      return sendJson(res, 502, { error: "google_api_error", status: j.status, message: j.error_message || null });
     }
 
     const result = j.result || {};
@@ -196,14 +191,13 @@ googleRouter.get("/:placeId/details", async (req, res) => {
     });
   } catch (e: any) {
     console.error("google details error", e);
-    return sendJson(res, 500, {
-      error: "google_details_failed",
-      message: e?.message || String(e),
-    });
+    return sendJson(res, 500, { error: "google_details_failed", message: e?.message || String(e) });
   }
 });
 
-// Place Photo proxy
+// -----------------------------------------------------
+// ✅ Place Photo Proxy (FIXED PARAM NAME)
+// -----------------------------------------------------
 googleRouter.get("/photo", async (req, res) => {
   try {
     if (!GOOGLE_KEY) return res.status(500).send("Missing GOOGLE_MAPS_API_KEY");
@@ -213,7 +207,7 @@ googleRouter.get("/photo", async (req, res) => {
 
     const u = new URL("https://maps.googleapis.com/maps/api/place/photo");
     u.searchParams.set("key", GOOGLE_KEY);
-    u.searchParams.set("photo_reference", ref);
+    u.searchParams.set("photoreference", ref); // ✅ Corrected here
     u.searchParams.set("maxwidth", maxWidth);
 
     const r = await fetch(u.toString(), { redirect: "follow" as any, headers: { "User-Agent": UA } });
@@ -229,7 +223,9 @@ googleRouter.get("/photo", async (req, res) => {
   }
 });
 
-// Static Map proxy
+// -----------------------------------------------------
+// ✅ Static Map Proxy
+// -----------------------------------------------------
 googleRouter.get("/staticmap", async (req, res) => {
   try {
     if (!GOOGLE_KEY) return res.status(500).send("Missing GOOGLE_MAPS_API_KEY");
