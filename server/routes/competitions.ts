@@ -6,18 +6,14 @@ import { drizzle } from "drizzle-orm/neon-serverless";
 import { and, countDistinct, desc, eq, gte, ilike, lte, sql } from "drizzle-orm";
 
 import {
-  users,
-  recipes,
-  competitionThemes,
   competitions,
   competitionParticipants,
   competitionVotes,
   competitionViewers,
   competitionMedia,
   insertCompetitionSchema,
-  insertCompetitionParticipantSchema,
   insertCompetitionVoteSchema,
-} from "../../shared/schema.js";
+} from "../../shared/schema";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -26,10 +22,8 @@ if (!DATABASE_URL) {
 const pool = new Pool({ connectionString: DATABASE_URL });
 const db = drizzle(pool);
 
-// Simple auth shim; replace with your real auth middleware
+// Temporary auth shim for dev (replace with real auth)
 function requireUser(req: Request, _res: Response, next: any) {
-  // Expect req.user to be set by your auth in production.
-  // For dev, accept x-user-id header (ONLY for development!)
   const uid = (req as any).user?.id || req.header("x-user-id");
   if (!uid) return next(new Error("Unauthorized"));
   (req as any).authUserId = String(uid);
@@ -40,23 +34,23 @@ const router = Router();
 
 /**
  * POST /api/competitions
- * Create a competition room (public or private).
  * Body: { title?, themeId?, themeName?, recipeId?, isPrivate, timeLimitMinutes (30-120), minOfficialVoters? }
  */
 router.post("/", requireUser, async (req, res, next) => {
   try {
     const creatorId = (req as any).authUserId as string;
-    const parsed = insertCompetitionSchema.pick({
-      title: true,
-      themeId: true,
-      themeName: true,
-      recipeId: true,
-      isPrivate: true,
-      timeLimitMinutes: true,
-      minOfficialVoters: true,
-    }).parse(req.body);
+    const parsed = insertCompetitionSchema
+      .pick({
+        title: true,
+        themeId: true,
+        themeName: true,
+        recipeId: true,
+        isPrivate: true,
+        timeLimitMinutes: true,
+        minOfficialVoters: true,
+      })
+      .parse(req.body);
 
-    // guard range
     const tl = Number(parsed.timeLimitMinutes);
     if (isNaN(tl) || tl < 30 || tl > 120) {
       return res.status(400).json({ error: "timeLimitMinutes must be between 30 and 120" });
@@ -91,10 +85,7 @@ router.post("/", requireUser, async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/competitions
- * Query params: status?, theme?, q? (title search), limit?, offset?
- */
+/** GET /api/competitions?status=&theme=&q=&limit=&offset= */
 router.get("/", async (req, res, next) => {
   try {
     const { status, theme, q } = req.query as Record<string, string | undefined>;
@@ -103,7 +94,7 @@ router.get("/", async (req, res, next) => {
 
     const where = [
       status ? eq(competitions.status, status) : undefined,
-      theme ? (ilike(competitions.themeName, `%${theme}%`)) : undefined,
+      theme ? ilike(competitions.themeName, `%${theme}%`) : undefined,
       q ? ilike(competitions.title, `%${q}%`) : undefined,
     ].filter(Boolean) as any[];
 
@@ -121,10 +112,7 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/competitions/:id
- * Returns competition + participants + basic tallies.
- */
+/** GET /api/competitions/:id */
 router.get("/:id", async (req, res, next) => {
   try {
     const id = req.params.id;
@@ -157,10 +145,7 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
-/**
- * POST /api/competitions/:id/join
- * Body: { role?: "competitor" | "spectator" }
- */
+/** POST /api/competitions/:id/join  Body: { role?: "competitor" | "spectator" } */
 router.post("/:id/join", requireUser, async (req, res, next) => {
   try {
     const id = req.params.id;
@@ -170,18 +155,11 @@ router.post("/:id/join", requireUser, async (req, res, next) => {
     const [comp] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!comp) return res.status(404).json({ error: "Competition not found" });
 
-    if (comp.isPrivate) {
-      // you can add invite-link verification here
-      // for now, allow if creator or already participant; spectators allowed with link verification (todo)
-    }
-
     if (role === "competitor") {
-      // Add as participant if not exists
       const existing = await db
         .select()
         .from(competitionParticipants)
         .where(and(eq(competitionParticipants.competitionId, id), eq(competitionParticipants.userId, userId)));
-
       if (existing.length === 0) {
         await db.insert(competitionParticipants).values({
           competitionId: id,
@@ -190,12 +168,10 @@ router.post("/:id/join", requireUser, async (req, res, next) => {
         });
       }
     } else {
-      // Spectator: ensure viewer record
       const existingViewer = await db
         .select()
         .from(competitionViewers)
         .where(and(eq(competitionViewers.competitionId, id), eq(competitionViewers.userId, userId)));
-
       if (existingViewer.length === 0) {
         await db.insert(competitionViewers).values({
           competitionId: id,
@@ -211,10 +187,7 @@ router.post("/:id/join", requireUser, async (req, res, next) => {
   }
 });
 
-/**
- * POST /api/competitions/:id/start
- * Sets status=live, startTime=now, and calculates expected end.
- */
+/** POST /api/competitions/:id/start */
 router.post("/:id/start", requireUser, async (req, res, next) => {
   try {
     const id = req.params.id;
@@ -240,10 +213,7 @@ router.post("/:id/start", requireUser, async (req, res, next) => {
   }
 });
 
-/**
- * POST /api/competitions/:id/end
- * Moves to judging for 24 hours (voting window).
- */
+/** POST /api/competitions/:id/end  → opens 24h judging window */
 router.post("/:id/end", requireUser, async (req, res, next) => {
   try {
     const id = req.params.id;
@@ -272,11 +242,7 @@ router.post("/:id/end", requireUser, async (req, res, next) => {
   }
 });
 
-/**
- * POST /api/competitions/:id/submit
- * Competitor final dish submission.
- * Body: { dishTitle?, dishDescription?, finalDishPhotoUrl? }
- */
+/** POST /api/competitions/:id/submit  Body: { dishTitle?, dishDescription?, finalDishPhotoUrl? } */
 router.post("/:id/submit", requireUser, async (req, res, next) => {
   try {
     const id = req.params.id;
@@ -309,27 +275,25 @@ router.post("/:id/submit", requireUser, async (req, res, next) => {
   }
 });
 
-/**
- * POST /api/competitions/:id/votes
- * Spectators only. Body: { participantId, presentation (1-10), creativity (1-10), technique (1-10) }
- */
+/** POST /api/competitions/:id/votes (spectators only) */
 router.post("/:id/votes", requireUser, async (req, res, next) => {
   try {
     const id = req.params.id;
     const voterId = (req as any).authUserId as string;
+
     const { participantId, presentation, creativity, technique } = insertCompetitionVoteSchema
       .pick({ participantId: true, presentation: true, creativity: true, technique: true })
       .parse(req.body);
 
-    // Check phase
     const [comp] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!comp) return res.status(404).json({ error: "Competition not found" });
+
     const now = new Date();
     if (comp.status !== "judging" || (comp.judgingClosesAt && now > comp.judgingClosesAt)) {
       return res.status(400).json({ error: "Voting is closed" });
     }
 
-    // Ensure voter is NOT a participant
+    // Block participants from voting
     const p = await db
       .select()
       .from(competitionParticipants)
@@ -347,7 +311,6 @@ router.post("/:id/votes", requireUser, async (req, res, next) => {
       return res.status(400).json({ error: "Invalid participant" });
     }
 
-    // Upsert-ish: unique on (voterId, participantId)
     const [created] = await db
       .insert(competitionVotes)
       .values({
@@ -371,11 +334,11 @@ router.post("/:id/votes", requireUser, async (req, res, next) => {
 });
 
 /**
- * GET /api/library
- * Search archive & completed events (status in ['judging','completed'])
+ * GET /api/competitions/library
+ * Archive search: status in ['judging','completed']
  * Query: theme?, creator?, winner?, dateFrom?, dateTo?, q?, limit?, offset?
  */
-router.get("/../library", async (req, res, next) => {
+router.get("/library", async (req, res, next) => {
   try {
     const theme = req.query.theme as string | undefined;
     const creator = req.query.creator as string | undefined;
@@ -389,7 +352,6 @@ router.get("/../library", async (req, res, next) => {
     const offset = parseInt(String(req.query.offset ?? "0"), 10) || 0;
 
     const where = [
-      // judging or completed (to allow 24h window)
       sql`${competitions.status} IN ('judging','completed')`,
       theme ? ilike(competitions.themeName, `%${theme}%`) : undefined,
       creator ? eq(competitions.creatorId, creator) : undefined,
