@@ -1,37 +1,7 @@
+// server/routes/substitutions.ts
 import "dotenv/config";
 import { Router, Request, Response } from "express";
 
-// Always export ONE router
-const router = Router();
-
-const DATABASE_URL = process.env.DATABASE_URL ?? "";
-
-/* ---------------------------------------------
-   SAFE MODE: when DATABASE_URL is missing
----------------------------------------------- */
-if (!DATABASE_URL) {
-  router.get("/", (_req, res) => {
-    res.status(503).json({
-      error: "SERVICE_UNAVAILABLE",
-      message:
-        "Substitutions database not configured (missing DATABASE_URL in server/.env or Plesk).",
-    });
-  });
-
-  router.get("/:ingredient", (_req, res) => {
-    res.status(503).json({
-      error: "SERVICE_UNAVAILABLE",
-      message:
-        "Substitutions database not configured (missing DATABASE_URL in server/.env or Plesk).",
-    });
-  });
-
-  export default router;
-}
-
-/* ---------------------------------------------
-   NORMAL MODE: when DATABASE_URL is available
----------------------------------------------- */
 import { Pool } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { and, eq, sql } from "drizzle-orm";
@@ -40,13 +10,35 @@ import {
   substitutions,
 } from "../../shared/schema.js";
 
-const pool = new Pool({ connectionString: DATABASE_URL });
-const db = drizzle(pool);
+const router = Router();
+
+const DATABASE_URL = process.env.DATABASE_URL ?? "";
+
+// Initialize DB only if configured
+let db: ReturnType<typeof drizzle> | null = null;
+if (DATABASE_URL) {
+  const pool = new Pool({ connectionString: DATABASE_URL });
+  db = drizzle(pool);
+}
 
 /**
  * GET /api/substitutions
+ *
+ * Query params:
+ *  - q: free text search (ingredient name or substitution text)
+ *  - ingredient: exact ingredient filter (e.g. "Buttermilk")
+ *  - limit: number (default 20, max 100)
+ *  - offset: number (default 0)
  */
 router.get("/", async (req: Request, res: Response) => {
+  if (!db) {
+    return res.status(503).json({
+      error: "SERVICE_UNAVAILABLE",
+      message:
+        "Substitutions DB not configured. Set DATABASE_URL in server/.env or Plesk → Node.js → Environment Variables.",
+    });
+  }
+
   try {
     const q = (req.query.q as string | undefined)?.trim();
     const ingredientFilter = (req.query.ingredient as string | undefined)?.trim();
@@ -113,6 +105,14 @@ router.get("/", async (req: Request, res: Response) => {
  * GET /api/substitutions/:ingredient
  */
 router.get("/:ingredient", async (req: Request, res: Response) => {
+  if (!db) {
+    return res.status(503).json({
+      error: "SERVICE_UNAVAILABLE",
+      message:
+        "Substitutions DB not configured. Set DATABASE_URL in server/.env or Plesk → Node.js → Environment Variables.",
+    });
+  }
+
   try {
     const name = (req.params.ingredient || "").trim();
     if (!name)
