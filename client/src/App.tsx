@@ -80,6 +80,25 @@ import WhiskeyBourbonPage from "@/pages/drinks/potent-potables/whiskey-bourbon";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole";
 
+// 🚀 NEW — Competitions pages
+import CreateCompetitionPage from "@/pages/competitions/CreateCompetitionPage";
+
+// Temporary placeholder for /competitions/:id until the live room page is built
+function CompetitionRoomPlaceholder({ params }: { params: { id: string } }) {
+  return (
+    <div className="mx-auto max-w-3xl px-4 py-6">
+      <h1 className="font-serif text-2xl">Cookoff Room</h1>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Room ID: <code className="rounded bg-muted px-2 py-0.5">{params.id}</code>
+      </p>
+      <p className="mt-4">
+        This is a placeholder page. Next, we’ll wire the live video grid, chat, countdown,
+        submissions, and the 24-hour judging view here.
+      </p>
+    </div>
+  );
+}
+
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
   React.useEffect(() => setLocation(to), [to, setLocation]);
@@ -150,7 +169,7 @@ function DrinksSection() {
       <Route path="/drinks/detoxes/water" component={DetoxWaters} />
       <Route path="/drinks/detoxes" component={DetoxesHub} />
       <Route path="/drinks/potent-potables/:rest*">
-        {(params) => <PotentPotablesSection />}
+        {() => <PotentPotablesSection />}
       </Route>
       <Route path="/drinks/potent-potables" component={PotentPotablesSection} />
       <Route path="/drinks" component={DrinksHubPage} />
@@ -161,7 +180,7 @@ function DrinksSection() {
   );
 }
 
-function Router() {
+function AppRouter() {
   return (
     <Layout>
       {shouldShowDebugConsole() && <DebugConsole />}
@@ -178,17 +197,24 @@ function Router() {
           <Redirect to="/bitemap" />
         </Route>
 
+        {/* ✅ NEW — Competitions */}
+        <Route path="/competitions/new" component={CreateCompetitionPage} />
+        <Route path="/competitions/:id">
+          {(params) => <CompetitionRoomPlaceholder params={params as any} />}
+        </Route>
+
         <Route path="/recipes/baby-food/:rest*">
-          {(params) => <RecipesSection />}
+          {() => <RecipesSection />}
         </Route>
         <Route path="/recipes/filters" component={RecipesFiltersPage} />
         <Route path="/recipes/:rest*">
-          {(params) => <RecipesSection />}
+          {() => <RecipesSection />}
         </Route>
         <Route path="/recipes" component={RecipesSection} />
         <Route path="/explore/filters">
           <Redirect to="/recipes/filters" />
         </Route>
+
         <Route path="/create" component={CreatePost} />
         <Route path="/pantry">
           <ErrorBoundary>
@@ -204,25 +230,31 @@ function Router() {
         </Route>
         <Route path="/nutrition" component={NutritionMealPlanner} />
         <Route path="/substitutions" component={SubstitutionsPage} />
+
+        {/* Drinks section branches */}
         <Route path="/drinks/smoothies/:rest*">
-          {(params) => <DrinksSection />}
+          {() => <DrinksSection />}
         </Route>
         <Route path="/drinks/protein-shakes/:rest*">
-          {(params) => <DrinksSection />}
+          {() => <DrinksSection />}
         </Route>
         <Route path="/drinks/detoxes/:rest*">
-          {(params) => <DrinksSection />}
+          {() => <DrinksSection />}
         </Route>
         <Route path="/drinks/potent-potables/:rest*">
-          {(params) => <DrinksSection />}
+          {() => <DrinksSection />}
         </Route>
         <Route path="/drinks/:rest*">
-          {(params) => <DrinksSection />}
+          {() => <DrinksSection />}
         </Route>
         <Route path="/drinks" component={DrinksSection} />
+
+        {/* Misc */}
         <Route path="/saved" component={NotFound} />
         <Route path="/following" component={NotFound} />
         <Route path="/settings" component={NotFound} />
+
+        {/* 404 fallback */}
         <Route component={NotFound} />
       </Switch>
     </Layout>
@@ -235,7 +267,7 @@ export default function App() {
       <DrinksProvider>
         <TooltipProvider>
           <Toaster />
-          <Router />
+          <AppRouter />
         </TooltipProvider>
       </DrinksProvider>
     </QueryClientProvider>
