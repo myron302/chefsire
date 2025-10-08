@@ -7,13 +7,9 @@ import {
   integer,
   boolean,
   timestamp,
-  jsonb,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-
-// If you already have a users table defined elsewhere, you can import its type/id here.
-// For FK references by string, we'll keep it simple with varchar user ids.
 
 export const competitions = pgTable(
   "competitions",
@@ -24,25 +20,21 @@ export const competitions = pgTable(
     themeName: text("theme_name"),
     recipeId: varchar("recipe_id"),
 
-    // lifecycle
     status: text("status").notNull().default("upcoming"), // upcoming | live | judging | completed | canceled
     isPrivate: boolean("is_private").notNull().default(false),
 
-    // timing
     timeLimitMinutes: integer("time_limit_minutes").notNull().default(60),
     minOfficialVoters: integer("min_official_voters").notNull().default(3),
+
     startTime: timestamp("start_time"),
     endTime: timestamp("end_time"),
     judgingClosesAt: timestamp("judging_closes_at"),
 
-    // media
     videoRecordingUrl: text("video_recording_url"),
 
-    // results
     isOfficial: boolean("is_official").notNull().default(false),
     winnerParticipantId: varchar("winner_participant_id"),
 
-    // meta
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -61,12 +53,10 @@ export const competitionParticipants = pgTable(
     userId: varchar("user_id").notNull(),
     role: text("role").notNull().default("competitor"), // competitor | host | judge
 
-    // submission
     dishTitle: text("dish_title"),
     dishDescription: text("dish_description"),
     finalDishPhotoUrl: text("final_dish_photo_url"),
 
-    // results
     totalScore: integer("total_score"),
     placement: integer("placement"),
 
@@ -85,10 +75,9 @@ export const competitionVotes = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     competitionId: varchar("competition_id").notNull(),
-    voterId: varchar("voter_id").notNull(), // must NOT be a participant in the same competition
+    voterId: varchar("voter_id").notNull(), // spectators only
     participantId: varchar("participant_id").notNull(),
 
-    // scoring 1..10 each
     presentation: integer("presentation").notNull(),
     creativity: integer("creativity").notNull(),
     technique: integer("technique").notNull(),
@@ -107,7 +96,7 @@ export const competitionVotes = pgTable(
   })
 );
 
-// A tiny helper to compute total from 3 criteria (server-side use)
+// helper
 export function scoreTotal(presentation: number, creativity: number, technique: number) {
   return presentation + creativity + technique;
 }
