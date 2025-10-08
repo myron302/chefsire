@@ -49,11 +49,7 @@ r.use("/google", googleRouter);
 // --- Competitions (Live Cookoffs) ---
 r.use("/competitions", competitionsRouter);
 
-// --- Optional future integrations ---
-// import { fsqRouter } from "./fsq";
-// r.use("/fsq", fsqRouter);
-
-// --- Debug Endpoint (visible only in dev) ---
+// --- Debug Endpoint (dev only) ---
 if (process.env.NODE_ENV !== "production") {
   r.get("/_routes", (_req, res) => {
     res.json({
