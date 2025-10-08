@@ -184,9 +184,12 @@ function AppRouter() {
         </Route>
 
         {/* ✅ NEW — Competitions */}
+        {/* Order matters: /new before /:id so 'new' isn't treated as an id */}
         <Route path="/competitions/new" component={CreateCompetitionPage} />
         <Route path="/competitions/library" component={CompetitionLibraryPage} />
         <Route path="/competitions/:id" component={CompetitionRoomPage} />
+        {/* 👇 Add the landing route for /competitions */}
+        <Route path="/competitions" component={CompetitionLibraryPage} />
 
         <Route path="/recipes/baby-food/:rest*">
           {() => <RecipesSection />}
