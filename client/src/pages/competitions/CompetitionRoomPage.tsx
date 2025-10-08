@@ -15,7 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/use-toast";
-import { Camera, Clock, Send, Users, Vote, Flame, Video, Trophy, User as UserIcon, Film } from "lucide-react";
+import { Camera, Clock, Send, Vote, Flame, Video, Trophy, User as UserIcon, Film } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -83,7 +83,6 @@ function useCompetition(id: string) {
       return res.json();
     },
     refetchInterval: (data) => {
-      // Poll faster during live/judging
       const status = data?.competition?.status;
       if (status === "live") return 2000;
       if (status === "judging") return 5000;
@@ -178,13 +177,7 @@ export default function CompetitionRoomPage() {
 
   const comp = data?.competition;
   const participants = data?.participants ?? [];
-  const tallies = React.useMemo(() => {
-    const map = new Map<string, number>();
-    (data?.voteTallies ?? []).forEach((t) => map.set(t.participantId, t.voters));
-    return map;
-  }, [data]);
 
-  // countdown clock
   const [now, setNow] = React.useState(() => Date.now());
   useInterval(() => setNow(Date.now()), comp?.status === "live" || comp?.status === "judging" ? 1000 : null);
 
@@ -193,12 +186,12 @@ export default function CompetitionRoomPage() {
     const nowD = new Date(now);
     if (comp.status === "live" && comp.endTime) {
       const end = new Date(comp.endTime);
-      if (end.getTime() > now) return `${formatDistanceToNowStrict(end, { addSuffix: false })} left`;
+      if (end.getTime() > nowD.getTime()) return `${formatDistanceToNowStrict(end, { addSuffix: false })} left`;
       return "Finishing…";
     }
     if (comp.status === "judging" && comp.judgingClosesAt) {
       const close = new Date(comp.judgingClosesAt);
-      if (close.getTime() > now) return `Voting ends in ${formatDistanceToNowStrict(close, { addSuffix: false })}`;
+      if (close.getTime() > nowD.getTime()) return `Voting ends in ${formatDistanceToNowStrict(close, { addSuffix: false })}`;
       return "Judging closing…";
     }
     return "";
@@ -242,17 +235,14 @@ export default function CompetitionRoomPage() {
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
             <div className="text-sm">
-              {isLive && <span>Cooking ends: <strong>{new Date(comp.endTime!).toLocaleTimeString()}</strong></span>}
-              {isJudging && <span>Voting closes: <strong>{new Date(comp.judgingClosesAt!).toLocaleTimeString()}</strong></span>}
-              {!isLive && !isJudging && comp.startTime && (
-                <span>Started: {new Date(comp.startTime).toLocaleString()}</span>
-              )}
+              {isLive && comp.endTime && <span>Cooking ends: <strong>{new Date(comp.endTime).toLocaleTimeString()}</strong></span>}
+              {isJudging && comp.judgingClosesAt && <span>Voting closes: <strong>{new Date(comp.judgingClosesAt).toLocaleTimeString()}</strong></span>}
+              {!isLive && !isJudging && comp.startTime && <span>Started: {new Date(comp.startTime).toLocaleString()}</span>}
             </div>
           </div>
           <div className="text-sm text-muted-foreground">{timeLeftLabel()}</div>
         </CardHeader>
         <CardContent>
-          {/* LIVE PHASE ------------------------------------------------------ */}
           {isLive && (
             <LiveGrid
               competitionId={comp.id}
@@ -262,15 +252,20 @@ export default function CompetitionRoomPage() {
             />
           )}
 
-          {/* JUDGING PHASE --------------------------------------------------- */}
-          {isJudging && <JudgingPanel competitionId={comp.id} participants={participants} closeAt={comp.judgingClosesAt!} />}
+          {isJudging && (
+            <JudgingPanel
+              competitionId={comp.id}
+              participants={participants}
+              closeAt={comp.judgingClosesAt!}
+            />
+          )}
 
-          {/* COMPLETED / ARCHIVE -------------------------------------------- */}
-          {isCompleted && <ArchivePanel competition={comp} participants={participants} />}
+          {isCompleted && (
+            <ArchivePanel competition={comp} participants={participants} />
+          )}
         </CardContent>
       </Card>
 
-      {/* Admin/creator quick controls: show start if upcoming */}
       {comp.status === "upcoming" && (
         <div className="mt-4 flex flex-wrap gap-2">
           <Button onClick={() => startMut.mutate()} disabled={startMut.isPending}>
@@ -301,11 +296,14 @@ function LiveGrid({
   const endAt = new Date(endTime).getTime();
   const [now, setNow] = React.useState(() => Date.now());
   useInterval(() => setNow(Date.now()), 1000);
-  const pct = Math.max(0, Math.min(100, 100 - ((endAt - now) / (60_000 /* ms per min */) / 60) * 100));
+
+  // simple percent countdown based on wall clock
+  const total = endAt - (new Date(endTime).getTime() - 1000 * 60 * 60); // rough baseline
+  const pct = Math.max(0, Math.min(100, ((now - (endAt - total)) / total) * 100));
 
   return (
     <div className="space-y-6">
-      <Progress value={pct} />
+      <Progress value={isFinite(pct) ? pct : 0} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {participants
           .filter((p) => p.role === "competitor" || p.role === "host")
@@ -325,7 +323,7 @@ function LiveGrid({
 
       <div className="flex items-center justify-between rounded-xl border p-3">
         <div className="text-sm text-muted-foreground">
-          Need to wrap up early? You can end the cookoff and open the 24-hour judging window.
+          Need to wrap up early? End the cookoff to open the 24-hour judging window.
         </div>
         <Button variant="secondary" onClick={onEnd}>
           <FlagIcon />
@@ -444,7 +442,6 @@ function VoteCard({
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="aspect-video w-full overflow-hidden rounded-lg bg-muted">
-          {/* photo if available */}
           {p.finalDishPhotoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={p.finalDishPhotoUrl} alt={p.dishTitle ?? "dish"} className="h-full w-full object-cover" />
