@@ -4,12 +4,11 @@ import { Pool } from "@neondatabase/serverless";
 
 /**
  * Drizzle + Neon connection (ESM friendly)
- * Make sure DATABASE_URL is set (server/.env for local, Plesk env vars in prod).
+ * Set DATABASE_URL in server/.env (dev) or Plesk Node.js env vars (prod).
  */
 const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
-  // This is a runtime warning; it won't break esbuild bundle.
   console.warn(
     "⚠️  DATABASE_URL is not set. Set it in server/.env (dev) or Plesk Node.js env vars (prod)."
   );
