@@ -1,4 +1,3 @@
-// client/src/pages/competitions/CompetitionRoomPage.tsx
 import * as React from "react";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,9 +23,9 @@ import {
   Clock,
   Share2,
   Copy,
+  Home,
 } from "lucide-react";
 
-/** Utility: parse :id from /competitions/:id */
 function useCompetitionId() {
   const [id, setId] = React.useState<string | null>(null);
   React.useEffect(() => {
@@ -36,7 +35,6 @@ function useCompetitionId() {
   return id;
 }
 
-/** Utility: simple countdown text */
 function useCountdown(target?: string | null) {
   const [text, setText] = React.useState<string>("");
   React.useEffect(() => {
@@ -61,7 +59,6 @@ function useCountdown(target?: string | null) {
   return text;
 }
 
-/** Types – mirror the API shapes we return from the server */
 type Competition = {
   id: string;
   creatorId: string;
@@ -108,10 +105,8 @@ type CompetitionDetail = {
   media: any[];
 };
 
-/** Replace this once real auth is wired */
 const DEV_USER_ID = "user-dev-1";
 
-/** Fetch helper with x-user-id header while auth is WIP */
 async function api(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers || {});
   if (!headers.has("Content-Type") && init.body) headers.set("Content-Type", "application/json");
@@ -125,7 +120,6 @@ async function api(path: string, init: RequestInit = {}) {
   return data;
 }
 
-/** Tiny confetti (no deps) */
 function burstConfetti() {
   for (let i = 0; i < 80; i++) {
     const d = document.createElement("div");
@@ -161,18 +155,15 @@ export default function CompetitionRoomPage() {
   const [detail, setDetail] = React.useState<CompetitionDetail | null>(null);
   const [roomUrl, setRoomUrl] = React.useState<string | null>(null);
 
-  // dish form (for competitors)
   const [dishTitle, setDishTitle] = React.useState("");
   const [dishDescription, setDishDescription] = React.useState("");
   const [finalDishPhotoUrl, setFinalDishPhotoUrl] = React.useState("");
 
-  // vote form (for spectators)
   const [voteParticipantId, setVoteParticipantId] = React.useState("");
   const [presentation, setPresentation] = React.useState(8);
   const [creativity, setCreativity] = React.useState(8);
   const [technique, setTechnique] = React.useState(8);
 
-  // simple, local “anti-spam” rate-limit (client-side only)
   const lastVoteRef = React.useRef<number>(0);
 
   const endCountdown = useCountdown(detail?.competition?.endTime ?? null);
@@ -327,21 +318,32 @@ export default function CompetitionRoomPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-rose-50 to-purple-50">
-      {/* HERO */}
+      {/* HERO with stronger overlay */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 -z-10 bg-gradient-to-r from-fuchsia-700 via-purple-800 to-rose-700" />
-        <div className="absolute -top-24 -right-24 w-96 h-96 bg-pink-400/20 blur-3xl rounded-full" />
-        <div className="absolute -bottom-24 -left-24 w-[32rem] h-[32rem] bg-purple-400/20 blur-3xl rounded-full" />
+        {/* Decorative glows */}
+        <div className="absolute -top-24 -right-24 w-96 h-96 bg-pink-400/25 blur-3xl rounded-full" />
+        <div className="absolute -bottom-24 -left-24 w-[32rem] h-[32rem] bg-purple-400/25 blur-3xl rounded-full" />
+        {/* Dark overlay for contrast */}
+        <div className="absolute inset-0 bg-black/55" />
 
         <div className="max-w-7xl mx-auto px-4 py-10">
-          <div className="flex items-start justify-between gap-4">
-            <div className="text-white">
-              <Link href="/explore">
-                <Button variant="ghost" className="text-white mb-3 hover:bg-white/20">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back
-                </Button>
-              </Link>
+          <div className="flex items-start justify-between gap-4 text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]">
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Link href="/">
+                  <Button variant="ghost" className="text-white hover:bg-white/15">
+                    <Home className="mr-2 h-4 w-4" />
+                    Home
+                  </Button>
+                </Link>
+                <Link href="/competitions/new">
+                  <Button variant="secondary" className="bg-white text-fuchsia-800 hover:bg-white/90">
+                    Create a Cookoff
+                  </Button>
+                </Link>
+              </div>
+
               <div className="flex items-center gap-3 mb-2">
                 <div className="p-3 bg-white/15 rounded-2xl backdrop-blur">
                   <Sword className="h-8 w-8" />
@@ -411,7 +413,7 @@ export default function CompetitionRoomPage() {
             <Card className="bg-white/10 border-white/20 text-white backdrop-blur hover:bg-white/15 transition">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-purple-100">Time Remaining</span>
+                  <span className="text-sm text-fuchsia-100">Time Remaining</span>
                   <Timer className="w-4 h-4" />
                 </div>
                 <div className="text-2xl mt-2 font-bold">
@@ -441,13 +443,13 @@ export default function CompetitionRoomPage() {
             <Card className="bg-white/10 border-white/20 text-white backdrop-blur hover:bg-white/15 transition">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-purple-100">Judging Window</span>
+                  <span className="text-sm text-fuchsia-100">Judging Window</span>
                   <Eye className="w-4 h-4" />
                 </div>
                 <div className="text-2xl mt-2 font-bold">
                   {detail?.competition?.status === "judging" ? judgingCountdown || "—" : "—"}
                 </div>
-                <p className="text-xs text-purple-100 mt-2">
+                <p className="text-xs text-fuchsia-100 mt-2">
                   Minimum voters: {detail?.competition?.minOfficialVoters ?? 3}
                 </p>
               </CardContent>
@@ -456,7 +458,7 @@ export default function CompetitionRoomPage() {
             <Card className="bg-white/10 border-white/20 text-white backdrop-blur hover:bg-white/15 transition">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-purple-100">Official Status</span>
+                  <span className="text-sm text-fuchsia-100">Official Status</span>
                   <ShieldCheck className="w-4 h-4" />
                 </div>
                 <div className="text-2xl mt-2 font-bold">
@@ -468,7 +470,7 @@ export default function CompetitionRoomPage() {
             <Card className="bg-white/10 border-white/20 text-white backdrop-blur hover:bg-white/15 transition">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-purple-100">Recording</span>
+                  <span className="text-sm text-fuchsia-100">Recording</span>
                   <Film className="w-4 h-4" />
                 </div>
                 <div className="text-2xl mt-2 font-bold">
@@ -551,10 +553,16 @@ export default function CompetitionRoomPage() {
                   <span className="font-mono">{detail.competition.winnerParticipantId}</span>
                 </div>
               )}
-              <div className="pt-2">
+              <div className="pt-2 grid gap-2">
                 <Button onClick={copyInvite} variant="outline" className="w-full">
                   <Copy className="w-4 h-4 mr-2" /> Copy Invite Link
                 </Button>
+                <Link href="/competitions/new">
+                  <Button variant="secondary" className="w-full bg-white text-fuchsia-800 hover:bg-white/90">
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Create another Cookoff
+                  </Button>
+                </Link>
               </div>
             </CardContent>
           </Card>
@@ -767,7 +775,6 @@ export default function CompetitionRoomPage() {
               </Card>
             )}
 
-            {/* Completed summary */}
             {detail?.competition?.status === "completed" && (
               <Card className="overflow-hidden">
                 <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border-b p-3 flex items-center gap-2">
@@ -818,7 +825,6 @@ export default function CompetitionRoomPage() {
         </div>
       </div>
 
-      {/* Loader */}
       {loading && <div className="fixed bottom-4 right-4 rounded bg-black/80 text-white px-3 py-2">Loading…</div>}
     </div>
   );
