@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { and, countDistinct, desc, eq, gte, ilike, lte, sql } from "drizzle-orm";
 
-import { db } from "../db/index"; // ← explicit index!
+import { db } from "../db/index"; // explicit index for esbuild resolution
 import {
   competitions,
   competitionParticipants,
@@ -11,7 +11,6 @@ import {
 
 const router = Router();
 
-// utils
 const nowUtc = () => new Date();
 function requireUserId(req: any): string {
   const uid = (req.user && req.user.id) || (req.headers["x-user-id"] as string) || "";
@@ -49,9 +48,7 @@ async function getCompetitionDetail(competitionId: string) {
   return { competition: comp, participants: parts, voteTallies: tallies, media: [] };
 }
 
-// ---------------------------------------------------------------------------
-// LIST (GET /api/competitions)
-// ---------------------------------------------------------------------------
+// LIST
 router.get("/", async (req, res, next) => {
   try {
     const { q, theme, creator, status, limit = "30", offset = "0" } = req.query as Record<string, string>;
@@ -78,9 +75,7 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// LIBRARY (GET /api/competitions/library) — define BEFORE :id
-// ---------------------------------------------------------------------------
+// LIBRARY (define before :id)
 router.get("/library", async (req, res, next) => {
   try {
     const { q, theme, creator, dateFrom, dateTo, limit = "30", offset = "0" } = req.query as Record<string, string>;
@@ -108,9 +103,7 @@ router.get("/library", async (req, res, next) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// CREATE (POST /api/competitions)
-// ---------------------------------------------------------------------------
+// CREATE
 router.post("/", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -126,7 +119,6 @@ router.post("/", async (req, res, next) => {
     if (!themeName) {
       return res.status(400).json({ error: "themeName is required" });
     }
-
     if (timeLimitMinutes < 15 || timeLimitMinutes > 120) {
       return res.status(400).json({ error: "timeLimitMinutes must be between 15 and 120" });
     }
@@ -145,7 +137,6 @@ router.post("/", async (req, res, next) => {
       })
       .returning({ id: competitions.id });
 
-    // auto-add creator as host
     await db
       .insert(competitionParticipants)
       .values({ competitionId: created.id, userId, role: "host" })
@@ -157,9 +148,7 @@ router.post("/", async (req, res, next) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// DETAIL (GET /api/competitions/:id)
-// ---------------------------------------------------------------------------
+// DETAIL
 router.get("/:id", async (req, res, next) => {
   try {
     const detail = await getCompetitionDetail(req.params.id);
@@ -170,9 +159,7 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// START (POST /api/competitions/:id/start)
-// ---------------------------------------------------------------------------
+// START
 router.post("/:id/start", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -199,9 +186,7 @@ router.post("/:id/start", async (req, res, next) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// END → JUDGING (POST /api/competitions/:id/end)
-// ---------------------------------------------------------------------------
+// END → JUDGING
 router.post("/:id/end", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -227,9 +212,7 @@ router.post("/:id/end", async (req, res, next) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// SUBMIT (POST /api/competitions/:id/submit)
-// ---------------------------------------------------------------------------
+// SUBMIT
 router.post("/:id/submit", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -269,9 +252,7 @@ router.post("/:id/submit", async (req, res, next) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// VOTE (POST /api/competitions/:id/votes)
-// ---------------------------------------------------------------------------
+// VOTE
 router.post("/:id/votes", async (req, res, next) => {
   try {
     const voterId = requireUserId(req);
@@ -284,7 +265,6 @@ router.post("/:id/votes", async (req, res, next) => {
       return res.status(400).json({ error: "Voting only allowed during live or judging." });
     }
 
-    // ensure voter is NOT a participant in this competition
     const [maybeParticipant] = await db
       .select()
       .from(competitionParticipants)
@@ -317,9 +297,7 @@ router.post("/:id/votes", async (req, res, next) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// COMPLETE (POST /api/competitions/:id/complete)
-// ---------------------------------------------------------------------------
+// COMPLETE
 router.post("/:id/complete", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -344,7 +322,6 @@ router.post("/:id/complete", async (req, res, next) => {
     const winnerParticipantId = perParticipant[0]?.participantId ?? null;
     const isOfficial = (perParticipant[0]?.voters ?? 0) >= (comp.minOfficialVoters ?? 3);
 
-    // update placements & totals
     for (let i = 0; i < perParticipant.length; i++) {
       const r = perParticipant[i];
       await db
