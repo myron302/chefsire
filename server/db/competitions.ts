@@ -11,11 +11,16 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
+/**
+ * 🎯 competitions
+ * Core table for each live or upcoming cooking battle.
+ */
 export const competitions = pgTable(
   "competitions",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     creatorId: varchar("creator_id").notNull(),
+
     title: text("title"),
     themeName: text("theme_name"),
     recipeId: varchar("recipe_id"),
@@ -31,9 +36,8 @@ export const competitions = pgTable(
     judgingClosesAt: timestamp("judging_closes_at"),
 
     videoRecordingUrl: text("video_recording_url"),
-
-    isOfficial: boolean("is_official").notNull().default(false),
     winnerParticipantId: varchar("winner_participant_id"),
+    isOfficial: boolean("is_official").notNull().default(false),
 
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -45,13 +49,17 @@ export const competitions = pgTable(
   })
 );
 
+/**
+ * 👩‍🍳 competition_participants
+ * Tracks all users in a competition (host, competitors, etc.)
+ */
 export const competitionParticipants = pgTable(
   "competition_participants",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     competitionId: varchar("competition_id").notNull(),
     userId: varchar("user_id").notNull(),
-    role: text("role").notNull().default("competitor"), // competitor | host | judge
+    role: text("role").notNull().default("competitor"), // host | competitor | judge
 
     dishTitle: text("dish_title"),
     dishDescription: text("dish_description"),
@@ -70,12 +78,16 @@ export const competitionParticipants = pgTable(
   })
 );
 
+/**
+ * 🗳️ competition_votes
+ * Records viewer votes for presentation, creativity, and technique.
+ */
 export const competitionVotes = pgTable(
   "competition_votes",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     competitionId: varchar("competition_id").notNull(),
-    voterId: varchar("voter_id").notNull(), // spectators only
+    voterId: varchar("voter_id").notNull(),
     participantId: varchar("participant_id").notNull(),
 
     presentation: integer("presentation").notNull(),
@@ -96,7 +108,13 @@ export const competitionVotes = pgTable(
   })
 );
 
-// helper
-export function scoreTotal(presentation: number, creativity: number, technique: number) {
+/**
+ * 🧮 helper function for computing total score
+ */
+export function scoreTotal(
+  presentation: number,
+  creativity: number,
+  technique: number
+) {
   return presentation + creativity + technique;
 }
