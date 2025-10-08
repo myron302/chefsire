@@ -2,32 +2,30 @@
 import { Router } from "express";
 import { and, countDistinct, desc, eq, gte, ilike, lte, sql } from "drizzle-orm";
 
-import { db } from "../db"; // your Drizzle instance
+import { db } from "../db"; // your Drizzle instance (adjust path if needed)
 import {
   competitions,
   competitionParticipants,
   competitionVotes,
-  scoreTotal,
 } from "../db/competitions";
 
 const router = Router();
 
-// ---------- Helpers ----------
-function nowUtc() {
-  return new Date();
-}
-
+// utils
+const nowUtc = () => new Date();
 function requireUserId(req: any): string {
-  const uid =
-    (req.user && req.user.id) ||
-    (req.headers["x-user-id"] as string) ||
-    "";
+  const uid = (req.user && req.user.id) || (req.headers["x-user-id"] as string) || "";
   if (!uid) {
     const err: any = new Error("Unauthorized: missing user id");
     err.status = 401;
     throw err;
   }
   return uid;
+}
+function clamp1to10(n: any) {
+  const x = Number(n);
+  if (!isFinite(x)) return 1;
+  return Math.max(1, Math.min(10, Math.round(x)));
 }
 
 async function getCompetitionDetail(competitionId: string) {
@@ -48,23 +46,10 @@ async function getCompetitionDetail(competitionId: string) {
     .where(eq(competitionVotes.competitionId, competitionId))
     .groupBy(competitionVotes.participantId);
 
-  return {
-    competition: comp,
-    participants: parts,
-    voteTallies: tallies,
-    media: [],
-  };
+  return { competition: comp, participants: parts, voteTallies: tallies, media: [] };
 }
 
-function clamp1to10(n: any) {
-  const x = Number(n);
-  if (!isFinite(x)) return 1;
-  return Math.max(1, Math.min(10, Math.round(x)));
-}
-
-// ---------- Routes ----------
-
-// Create a new competition
+// create competition
 router.post("/competitions", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -95,7 +80,6 @@ router.post("/competitions", async (req, res, next) => {
       })
       .returning({ id: competitions.id });
 
-    // auto-add creator as host
     await db
       .insert(competitionParticipants)
       .values({ competitionId: created.id, userId, role: "host" })
@@ -107,7 +91,7 @@ router.post("/competitions", async (req, res, next) => {
   }
 });
 
-// Competition detail
+// detail
 router.get("/competitions/:id", async (req, res, next) => {
   try {
     const detail = await getCompetitionDetail(req.params.id);
@@ -118,7 +102,7 @@ router.get("/competitions/:id", async (req, res, next) => {
   }
 });
 
-// Start competition (creator)
+// start
 router.post("/competitions/:id/start", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -145,7 +129,7 @@ router.post("/competitions/:id/start", async (req, res, next) => {
   }
 });
 
-// End live → open 24h judging
+// end → judging (24h)
 router.post("/competitions/:id/end", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -171,7 +155,7 @@ router.post("/competitions/:id/end", async (req, res, next) => {
   }
 });
 
-// Competitor submission
+// competitor submission
 router.post("/competitions/:id/submit", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -211,57 +195,54 @@ router.post("/competitions/:id/submit", async (req, res, next) => {
   }
 });
 
-// Viewer vote (participants cannot vote)
+// spectator vote
 router.post("/competitions/:id/votes", async (req, res, next) => {
   try {
     const voterId = requireUserId(req);
     const compId = req.params.id;
-    const { participantId, presentation, creativity, technique } = req.body || {};
+    the: {
+      const { participantId, presentation, creativity, technique } = req.body || {};
 
-    const [comp] = await db.select().from(competitions).where(eq(competitions.id, compId)).limit(1);
-    if (!comp) return res.status(404).json({ error: "Not found" });
-    if (comp.status !== "judging" && comp.status !== "live") {
-      return res.status(400).json({ error: "Voting only allowed during live or judging." });
-    }
+      const [comp] = await db.select().from(competitions).where(eq(competitions.id, compId)).limit(1);
+      if (!comp) return res.status(404).json({ error: "Not found" });
+      if (comp.status !== "judging" && comp.status !== "live") {
+        return res.status(400).json({ error: "Voting only allowed during live or judging." });
+      }
 
-    const [maybeParticipant] = await db
-      .select()
-      .from(competitionParticipants)
-      .where(and(eq(competitionParticipants.competitionId, compId), eq(competitionParticipants.userId, voterId)))
-      .limit(1);
+      const [maybeParticipant] = await db
+        .select()
+        .from(competitionParticipants)
+        .where(and(eq(competitionParticipants.competitionId, compId), eq(competitionParticipants.userId, voterId)))
+        .limit(1);
+      if (maybeParticipant) return res.status(403).json({ error: "Participants cannot vote." });
 
-    if (maybeParticipant) return res.status(403).json({ error: "Participants cannot vote." });
+      const pv = clamp1to10(presentation);
+      const cv = clamp1to10(creativity);
+      const tv = clamp1to10(technique);
 
-    const pv = clamp1to10(presentation);
-    const cv = clamp1to10(creativity);
-    const tv = clamp1to10(technique);
-
-    await db
-      .insert(competitionVotes)
-      .values({
-        competitionId: compId,
-        voterId,
-        participantId,
-        presentation: pv,
-        creativity: cv,
-        technique: tv,
-      })
-      .onConflictDoUpdate({
-        target: [competitionVotes.competitionId, competitionVotes.voterId, competitionVotes.participantId],
-        set: {
+      await db
+        .insert(competitionVotes)
+        .values({
+          competitionId: compId,
+          voterId,
+          participantId,
           presentation: pv,
           creativity: cv,
           technique: tv,
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: [competitionVotes.competitionId, competitionVotes.voterId, competitionVotes.participantId],
+          set: { presentation: pv, creativity: cv, technique: tv },
+        });
 
-    res.json({ ok: true });
+      res.json({ ok: true });
+    }
   } catch (err) {
     next(err);
   }
 });
 
-// Finalize results after judging window
+// finalize after judging
 router.post("/competitions/:id/complete", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -286,6 +267,7 @@ router.post("/competitions/:id/complete", async (req, res, next) => {
     const winnerParticipantId = perParticipant[0]?.participantId ?? null;
     const isOfficial = (perParticipant[0]?.voters ?? 0) >= (comp.minOfficialVoters ?? 3);
 
+    // update placements & totals
     for (let i = 0; i < perParticipant.length; i++) {
       const r = perParticipant[i];
       await db
@@ -294,15 +276,12 @@ router.post("/competitions/:id/complete", async (req, res, next) => {
         .where(eq(competitionParticipants.id, r.participantId));
     }
 
-    await db
-      .update(competitions)
-      .set({
-        status: "completed",
-        winnerParticipantId,
-        isOfficial,
-        updatedAt: nowUtc(),
-      })
-      .where(eq(competitions.id, compId));
+    await db.update(competitions).set({
+      status: "completed",
+      winnerParticipantId,
+      isOfficial,
+      updatedAt: nowUtc(),
+    }).where(eq(competitions.id, compId));
 
     const detail = await getCompetitionDetail(compId);
     res.json({ ok: true, winnerParticipantId, isOfficial, detail });
@@ -311,7 +290,7 @@ router.post("/competitions/:id/complete", async (req, res, next) => {
   }
 });
 
-// Library / archive & search
+// archive / search
 router.get("/competitions/library", async (req, res, next) => {
   try {
     const { q, theme, creator, dateFrom, dateTo, limit = "30", offset = "0" } = req.query as Record<string, string>;
