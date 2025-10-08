@@ -1,4 +1,3 @@
-// client/src/components/layout.tsx
 import { useEffect, useState, FormEvent } from "react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
@@ -9,7 +8,8 @@ import {
   Search, Bell, MessageCircle, User, ChevronDown, ChevronRight,
   ChefHat, Activity, ShoppingCart, Settings, LogOut,
   Home, Compass, BookOpen, GlassWater, Utensils, Heart, Wand2,
-  Apple, FlaskConical, Leaf, Wine, Sparkles, Baby, Map
+  Apple, FlaskConical, Leaf, Wine, Sparkles, Baby, Map,
+  Layers, Plus, Trophy, // ✅ new icons
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
@@ -36,10 +36,11 @@ export default function Layout({ children }: LayoutProps) {
     };
   }, []);
 
-  // ✅ BiteMap added here
+  // ✅ Include Competitions in quick tabs
   const secondaryLinks = [
     { href: "/", label: "Home" },
     { href: "/bitemap", label: "BiteMap" },
+    { href: "/competitions", label: "Competitions" }, // ✅ new
     { href: "/recipes", label: "Recipes" },
     { href: "/drinks", label: "Drinks" },
     { href: "/catering", label: "Catering" },
@@ -100,6 +101,16 @@ export default function Layout({ children }: LayoutProps) {
             </div>
 
             <div className="flex items-center space-x-4">
+              <Link href="/competitions/new">
+                <Button
+                  size="sm"
+                  className="hidden md:inline-flex bg-gradient-to-r from-fuchsia-600 to-rose-600 hover:from-fuchsia-700 hover:to-rose-700 text-white"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Create Cookoff
+                </Button>
+              </Link>
+
               <Button
                 variant="ghost"
                 size="sm"
@@ -196,6 +207,52 @@ export default function Layout({ children }: LayoutProps) {
                               <Map className="w-4 h-4 mr-3" /> BiteMap
                             </Link>
 
+                            {/* ✅ Competitions (parent with toggle) */}
+                            <div>
+                              <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <Link
+                                  href="/competitions"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center flex-1 font-semibold"
+                                >
+                                  <Layers className="w-4 h-4 mr-3" /> Competitions
+                                </Link>
+                                <button
+                                  onClick={(e) => toggleSubmenu("competitions", e)}
+                                  className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                >
+                                  <ChevronRight
+                                    className={`w-3 h-3 transition-transform ${expandedMenus.competitions ? "rotate-90" : ""}`}
+                                  />
+                                </button>
+                              </div>
+                              {expandedMenus.competitions && (
+                                <div className="ml-6 space-y-1">
+                                  <Link
+                                    href="/competitions"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Layers className="w-3 h-3 mr-2" /> Cookoff Library
+                                  </Link>
+                                  <Link
+                                    href="/competitions/new"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Plus className="w-3 h-3 mr-2" /> Create Cookoff
+                                  </Link>
+                                  <Link
+                                    href="/profile?tab=cookoffs"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Trophy className="w-3 h-3 mr-2" /> My Cookoffs
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
+
                             {/* Recipes (parent with toggle) */}
                             <div>
                               <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
@@ -207,10 +264,12 @@ export default function Layout({ children }: LayoutProps) {
                                   <BookOpen className="w-4 h-4 mr-3" /> Recipes
                                 </Link>
                                 <button
-                                  onClick={(e) => toggleSubmenu('recipes', e)}
+                                  onClick={(e) => toggleSubmenu("recipes", e)}
                                   className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
                                 >
-                                  <ChevronRight className={`w-3 h-3 transition-transform ${expandedMenus.recipes ? 'rotate-90' : ''}`} />
+                                  <ChevronRight
+                                    className={`w-3 h-3 transition-transform ${expandedMenus.recipes ? "rotate-90" : ""}`}
+                                  />
                                 </button>
                               </div>
                               {expandedMenus.recipes && (
@@ -258,10 +317,12 @@ export default function Layout({ children }: LayoutProps) {
                                   <GlassWater className="w-4 h-4 mr-3" /> Drinks
                                 </Link>
                                 <button
-                                  onClick={(e) => toggleSubmenu('drinks', e)}
+                                  onClick={(e) => toggleSubmenu("drinks", e)}
                                   className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
                                 >
-                                  <ChevronRight className={`w-3 h-3 transition-transform ${expandedMenus.drinks ? 'rotate-90' : ''}`} />
+                                  <ChevronRight
+                                    className={`w-3 h-3 transition-transform ${expandedMenus.drinks ? "rotate-90" : ""}`}
+                                  />
                                 </button>
                               </div>
                               {expandedMenus.drinks && (
@@ -292,7 +353,10 @@ export default function Layout({ children }: LayoutProps) {
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <Wine className="w-3 h-3 mr-2" /> Potent Potables <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700">21+</span>
+                                    <Wine className="w-3 h-3 mr-2" /> Potent Potables{" "}
+                                    <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700">
+                                      21+
+                                    </span>
                                   </Link>
                                 </div>
                               )}
@@ -309,10 +373,12 @@ export default function Layout({ children }: LayoutProps) {
                                   <Utensils className="w-4 h-4 mr-3" /> Catering
                                 </Link>
                                 <button
-                                  onClick={(e) => toggleSubmenu('catering', e)}
+                                  onClick={(e) => toggleSubmenu("catering", e)}
                                   className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
                                 >
-                                  <ChevronRight className={`w-3 h-3 transition-transform ${expandedMenus.catering ? 'rotate-90' : ''}`} />
+                                  <ChevronRight
+                                    className={`w-3 h-3 transition-transform ${expandedMenus.catering ? "rotate-90" : ""}`}
+                                  />
                                 </button>
                               </div>
                               {expandedMenus.catering && (
@@ -395,18 +461,18 @@ export default function Layout({ children }: LayoutProps) {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <ul className="flex flex-nowrap gap-4 overflow-x-auto no-scrollbar py-2 px-1 touch-pan-x">
                 {secondaryLinks.map((item) => {
-                  const isActive = pathname === item.href;
+                  const active = pathname === item.href;
                   return (
                     <li key={item.href} className="flex-none">
                       <Link
                         href={item.href}
                         className={[
                           "inline-block text-sm font-medium whitespace-nowrap px-2 py-1 rounded transition-colors",
-                          isActive
+                          active
                             ? "text-orange-600 underline decoration-2 underline-offset-4"
                             : "text-muted-foreground hover:text-orange-600",
                         ].join(" ")}
-                        aria-current={isActive ? "page" : undefined}
+                        aria-current={active ? "page" : undefined}
                       >
                         {item.label}
                       </Link>
