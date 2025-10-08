@@ -20,7 +20,9 @@ import {
   Wine,
   Sparkles,
   Baby,
-  Map, // ✅ added
+  Map,
+  Layers,      // ✅ new
+  Trophy,      // ✅ new
 } from "lucide-react";
 
 interface SidebarProps {
@@ -44,14 +46,27 @@ type NavItem =
     });
 
 /**
- * ✅ CLEANED UP NAV - Consistent submenu structure for all drink categories
+ * ✅ CLEANED UP NAV - Consistent submenu structure for all sections
  */
 const NAV: NavItem[] = [
   { name: "Feed", href: "/feed", icon: Home },
   { name: "Explore", href: "/explore", icon: Compass },
 
-  // ✅ BiteMap (new top-level item)
+  // ✅ BiteMap (top-level)
   { name: "BiteMap", href: "/bitemap", icon: Map },
+
+  // ✅ Competitions (Cookoffs) — new top-level
+  {
+    name: "Competitions",
+    href: "/competitions",
+    icon: Layers,
+    hasSubmenu: true,
+    submenu: [
+      { name: "Cookoff Library", href: "/competitions", icon: Layers },
+      { name: "Create Cookoff", href: "/competitions/new", icon: Plus },
+      { name: "My Cookoffs", href: "/profile?tab=cookoffs", icon: Trophy },
+    ],
+  },
 
   {
     name: "Recipes",
