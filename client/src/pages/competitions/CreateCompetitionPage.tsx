@@ -1,292 +1,233 @@
 // client/src/pages/competitions/CreateCompetitionPage.tsx
-import React, { useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import * as React from "react";
 import { useLocation } from "wouter";
 
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Loader2, Timer, Lock, Globe, ChefHat, Film, FolderSearch2 } from "lucide-react";
+/** Replace this once real auth is wired */
+const DEV_USER_ID = "user-dev-1";
 
-/** -----------------------------------------------------------------------
- *  Utilities
- *  ---------------------------------------------------------------------*/
-type CreateCompetitionPayload = {
-  title?: string | null;
-  themeId?: string | null;
-  themeName?: string | null;
-  recipeId?: string | null;
-  isPrivate: boolean;
-  timeLimitMinutes: number; // 30–120
-  minOfficialVoters?: number; // default 3
-};
-
-// Dev convenience: set a dev user id in localStorage to satisfy the server's x-user-id shim
-// localStorage.setItem("devUserId", "user-123")
-function getAuthHeaders(): HeadersInit {
-  const dev = typeof window !== "undefined" ? localStorage.getItem("devUserId") : null;
-  return dev ? { "x-user-id": dev } : {};
+/** Fetch helper with x-user-id header while auth is WIP */
+async function api(path: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers || {});
+  if (!headers.has("Content-Type") && init.body) {
+    headers.set("Content-Type", "application/json");
+  }
+  // Dev header for now:
+  if (!headers.has("x-user-id")) headers.set("x-user-id", DEV_USER_ID);
+  const resp = await fetch(path, { ...init, headers });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const msg = (data && (data.error || data.message)) || `Request failed: ${resp.status}`;
+    throw new Error(msg);
+  }
+  return data;
 }
 
-/** Example starter themes (you can replace with an API later) */
-const PRESET_THEMES = [
-  { slug: "italian-classics", name: "Italian Classics" },
-  { slug: "taco-tuesday", name: "Taco Tuesday" },
-  { slug: "asian-fusion", name: "Asian Fusion" },
-  { slug: "comfort-food", name: "Comfort Food" },
-  { slug: "fitness-healthy", name: "Fitness & Healthy" },
-  { slug: "desserts-baking", name: "Desserts & Baking" },
-  { slug: "quick-30", name: "Quick 30-Min Meals" },
-  { slug: "budget-10", name: "Budget Cooking ($10)" },
-  { slug: "leftover-remix", name: "Leftover Remix" },
-  { slug: "regional", name: "Regional Cuisine Challenge" },
+const THEME_OPTIONS = [
+  "Italian Cuisine",
+  "Taco Tuesday",
+  "Asian Fusion",
+  "Comfort Food",
+  "Healthy / Fitness",
+  "Desserts & Baking",
+  "Quick 30-Min Meals",
+  "Budget Cooking ($10 challenge)",
+  "Leftover Remix",
+  "Regional Specialties",
 ];
-
-/** Time options in minutes */
-const TIME_OPTIONS = [30, 45, 60, 75, 90, 105, 120];
 
 export default function CreateCompetitionPage() {
   const [, navigate] = useLocation();
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [successId, setSuccessId] = React.useState<string | null>(null);
 
-  // Form state
-  const [title, setTitle] = useState<string>("");
-  const [themeName, setThemeName] = useState<string>("");
-  const [customTheme, setCustomTheme] = useState<string>("");
-  const [recipeId, setRecipeId] = useState<string>("");
-  const [isPrivate, setIsPrivate] = useState<boolean>(false);
-  const [timeLimitMinutes, setTimeLimitMinutes] = useState<number>(60);
-  const [minOfficialVoters, setMinOfficialVoters] = useState<number>(3);
-  const [notes, setNotes] = useState<string>("");
+  // form state
+  const [title, setTitle] = React.useState("");
+  const [themeName, setThemeName] = React.useState(THEME_OPTIONS[0]);
+  const [customTheme, setCustomTheme] = React.useState("");
+  const [isPrivate, setIsPrivate] = React.useState(false);
+  const [timeLimitMinutes, setTimeLimitMinutes] = React.useState(60);
+  const [minOfficialVoters, setMinOfficialVoters] = React.useState(3);
+  const [recipeId, setRecipeId] = React.useState("");
 
-  const chosenTheme = useMemo(() => {
-    if (themeName === "__custom__") return customTheme.trim();
-    if (!themeName) return "";
-    const found = PRESET_THEMES.find((t) => t.slug === themeName);
-    return found ? found.name : "";
-  }, [themeName, customTheme]);
+  const finalTheme = (customTheme || themeName || "").trim();
 
-  const canSubmit =
-    timeLimitMinutes >= 30 &&
-    timeLimitMinutes <= 120 &&
-    (chosenTheme.length > 0 || title.trim().length > 0);
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
 
-  const createMutation = useMutation({
-    mutationFn: async (payload: CreateCompetitionPayload) => {
-      const res = await fetch("/api/competitions", {
+    if (!finalTheme) {
+      setError("Please choose a theme or enter a custom theme.");
+      return;
+    }
+    if (timeLimitMinutes < 15 || timeLimitMinutes > 120) {
+      setError("Time limit must be between 15 and 120 minutes.");
+      return;
+    }
+    if (minOfficialVoters < 1 || minOfficialVoters > 100) {
+      setError("Minimum official voters must be between 1 and 100.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const payload = {
+        title: title.trim() || null,
+        themeName: finalTheme,
+        recipeId: recipeId.trim() || null,
+        isPrivate,
+        timeLimitMinutes,
+        minOfficialVoters,
+      };
+      const data = await api("/api/competitions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders(),
-        },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || `Failed to create competition (${res.status})`);
-      }
-      return (await res.json()) as { id: string };
-    },
-    onSuccess: (created) => {
-      navigate(`/competitions/${created.id}`);
-    },
-  });
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canSubmit || createMutation.isPending) return;
-
-    const payload: CreateCompetitionPayload = {
-      title: title?.trim() || null,
-      themeId: null, // optional for now; you can wire to a real theme id later
-      themeName: chosenTheme || null,
-      recipeId: recipeId?.trim() || null,
-      isPrivate,
-      timeLimitMinutes,
-      minOfficialVoters: minOfficialVoters || 3,
-    };
-
-    createMutation.mutate(payload);
+      const id = data?.id;
+      if (!id) throw new Error("Missing id in response.");
+      setSuccessId(id);
+      // navigate after a short tick so UI can show success state if desired
+      setTimeout(() => {
+        navigate(`/competitions/${encodeURIComponent(id)}`);
+      }, 10);
+    } catch (e: any) {
+      setError(e?.message || "Failed to create competition.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6">
-      <div className="mb-6 flex items-center gap-3">
-        <ChefHat className="h-7 w-7" />
-        <h1 className="font-serif text-2xl">Create a Cookoff</h1>
-        <Badge variant="secondary" className="ml-auto">Beta</Badge>
-      </div>
+    <div className="container mx-auto max-w-3xl px-4 py-6">
+      <h1 className="text-2xl font-semibold mb-1">Create a Competition</h1>
+      <p className="text-sm text-gray-600 mb-6">
+        Spin up a live cookoff room. You can run it public or invite-only, set a time limit,
+        and open judging for 24 hours after it ends.
+      </p>
 
-      <Card className="shadow-sm">
-        <CardHeader className="space-y-2">
-          <CardTitle className="text-lg">Room Setup</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Set your theme, duration (30–120 min), and privacy. You’ll start live video later and judging will stay open for 24 hours.
-          </p>
-        </CardHeader>
-        <Separator />
-        <CardContent className="pt-6">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Title */}
-            <div className="grid gap-2">
-              <Label htmlFor="title">Room Title (optional)</Label>
-              <Input
-                id="title"
-                placeholder="e.g., Dessert Duel: Ultimate Brownies"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </div>
+      {error && (
+        <div className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-red-800">
+          {error}
+        </div>
+      )}
 
-            {/* Theme */}
-            <div className="grid gap-2">
-              <Label>Theme</Label>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <Select value={themeName} onValueChange={setThemeName}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Pick a theme" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {PRESET_THEMES.map((t) => (
-                        <SelectItem key={t.slug} value={t.slug}>
-                          {t.name}
-                        </SelectItem>
-                      ))}
-                      <Separator className="my-1" />
-                      <SelectItem value="__custom__">Custom theme…</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+      {successId && (
+        <div className="mb-4 rounded border border-green-300 bg-green-50 p-3 text-green-800">
+          Created! Redirecting to room…
+        </div>
+      )}
 
-                <Input
-                  placeholder="Custom theme name (if selected)"
-                  value={customTheme}
-                  onChange={(e) => setCustomTheme(e.target.value)}
-                  disabled={themeName !== "__custom__"}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Participants can free-style within the theme or you can paste a recipe ID below to anchor the challenge.
-              </p>
-            </div>
+      <form onSubmit={handleSubmit} className="rounded border p-4 grid gap-4 bg-white">
+        {/* Title */}
+        <div>
+          <label className="block text-sm mb-1">Title (optional)</label>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full border rounded px-3 py-2"
+            placeholder="e.g., ChefSire Saturday Showdown"
+          />
+        </div>
 
-            {/* Recipe (optional) */}
-            <div className="grid gap-2">
-              <Label htmlFor="recipeId">Specific Recipe ID (optional)</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="recipeId"
-                  placeholder="Paste a recipe id from ChefSire (optional)"
-                  value={recipeId}
-                  onChange={(e) => setRecipeId(e.target.value)}
-                />
-                <Button type="button" variant="outline" className="whitespace-nowrap" onClick={() => alert("Coming soon: recipe picker dialog")}>
-                  <FolderSearch2 className="mr-2 h-4 w-4" /> Browse
-                </Button>
-              </div>
-            </div>
+        {/* Theme */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm mb-1">Theme</label>
+            <select
+              value={themeName}
+              onChange={(e) => setThemeName(e.target.value)}
+              className="w-full border rounded px-3 py-2"
+            >
+              {THEME_OPTIONS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Pick a preset or enter a custom theme.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Or Custom Theme</label>
+            <input
+              value={customTheme}
+              onChange={(e) => setCustomTheme(e.target.value)}
+              className="w-full border rounded px-3 py-2"
+              placeholder="Your custom theme"
+            />
+          </div>
+        </div>
 
-            {/* Duration */}
-            <div className="grid gap-2">
-              <Label>Time Limit</Label>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {TIME_OPTIONS.map((m) => {
-                  const active = timeLimitMinutes === m;
-                  return (
-                    <Button
-                      key={m}
-                      type="button"
-                      variant={active ? "default" : "outline"}
-                      className="justify-start"
-                      onClick={() => setTimeLimitMinutes(m)}
-                    >
-                      <Timer className="mr-2 h-4 w-4" />
-                      {m} min
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
+        {/* Privacy + Recipe */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="flex items-center gap-2">
+            <input
+              id="isPrivate"
+              type="checkbox"
+              checked={isPrivate}
+              onChange={(e) => setIsPrivate(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <label htmlFor="isPrivate" className="text-sm">
+              Private (invite-only)
+            </label>
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Specific Recipe ID (optional)</label>
+            <input
+              value={recipeId}
+              onChange={(e) => setRecipeId(e.target.value)}
+              className="w-full border rounded px-3 py-2"
+              placeholder="Leave blank for open interpretation"
+            />
+          </div>
+        </div>
 
-            {/* Privacy + min voters */}
-            <div className="grid gap-2">
-              <Label>Privacy & Legitimacy</Label>
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <div className="flex items-center gap-3">
-                  {isPrivate ? <Lock className="h-4 w-4" /> : <Globe className="h-4 w-4" />}
-                  <div>
-                    <div className="font-medium">{isPrivate ? "Private (invite only)" : "Public (anyone can join)"}</div>
-                    <div className="text-xs text-muted-foreground">
-                      Private rooms require an invite link. Public rooms are discoverable.
-                    </div>
-                  </div>
-                </div>
-                <Switch checked={isPrivate} onCheckedChange={setIsPrivate} />
-              </div>
+        {/* Time + Min Voters */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm mb-1">Time Limit (minutes)</label>
+            <input
+              type="number"
+              min={15}
+              max={120}
+              value={timeLimitMinutes}
+              onChange={(e) => setTimeLimitMinutes(Number(e.target.value))}
+              className="w-full border rounded px-3 py-2"
+            />
+            <p className="text-xs text-gray-500 mt-1">Between 15 and 120 minutes.</p>
+          </div>
+          <div>
+            <label className="block text-sm mb-1">Minimum Official Voters</label>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={minOfficialVoters}
+              onChange={(e) => setMinOfficialVoters(Number(e.target.value))}
+              className="w-full border rounded px-3 py-2"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Minimum distinct viewers required for an “official” result.
+            </p>
+          </div>
+        </div>
 
-              <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-3">
-                <div className="col-span-2 sm:col-span-1">
-                  <Label htmlFor="minVoters">Minimum unique voters (official)</Label>
-                  <Input
-                    id="minVoters"
-                    type="number"
-                    min={1}
-                    max={50}
-                    value={minOfficialVoters}
-                    onChange={(e) => setMinOfficialVoters(Math.max(1, Math.min(50, parseInt(e.target.value || "0"))))}
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Events with fewer votes are marked as "Exhibition".
-                  </p>
-                </div>
+        <div className="pt-2">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="px-4 py-2 rounded bg-black text-white disabled:opacity-50"
+          >
+            {submitting ? "Creating…" : "Create Competition"}
+          </button>
+        </div>
+      </form>
 
-                <div className="col-span-2">
-                  <Label htmlFor="notes">Notes (visible to participants)</Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="Any special rules or notes (optional)"
-                    rows={3}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Submit */}
-            <div className="flex items-center gap-3 pt-2">
-              <Button type="submit" disabled={!canSubmit || createMutation.isPending} className="min-w-40">
-                {createMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating…
-                  </>
-                ) : (
-                  "Create Room"
-                )}
-              </Button>
-
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Film className="h-3.5 w-3.5" />
-                Auto-recordings and a 24-hour judging window are enabled by default.
-              </div>
-            </div>
-
-            {createMutation.isError ? (
-              <p className="text-sm text-red-600">{(createMutation.error as Error)?.message}</p>
-            ) : null}
-          </form>
-        </CardContent>
-      </Card>
-
-      <div className="mt-6 text-xs text-muted-foreground">
-        Tip: For local testing without auth, set a dev id in your browser console:
-        <code className="ml-2 rounded bg-muted px-2 py-0.5">localStorage.setItem("devUserId","user-123")</code>
+      <div className="mt-6 text-sm text-gray-500">
+        After creation, you’ll land in the room. Use “Start Competition” to begin, “End & Open
+        Judging” to start the 24-hour voting window, and “Finalize Results” to publish winners.
       </div>
     </div>
   );
