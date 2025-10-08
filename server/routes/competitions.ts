@@ -1,7 +1,6 @@
 // server/routes/competitions.ts
 import { Router } from "express";
 import { and, countDistinct, desc, eq, gte, ilike, lte, sql } from "drizzle-orm";
-
 import { db } from "../db";
 import {
   competitions,
@@ -10,15 +9,11 @@ import {
 } from "../db/competitions";
 
 const router = Router();
-
-// ---------- utils ----------
 const nowUtc = () => new Date();
+const isMissingTable = (e: any) => e && (e.code === "42P01" || /relation .* does not exist/i.test(e?.message || ""));
 
 function requireUserId(req: any): string {
-  const uid =
-    (req.user && req.user.id) ||
-    (req.headers["x-user-id"] as string) ||
-    "";
+  const uid = (req.user && req.user.id) || (req.headers["x-user-id"] as string) || "";
   if (!uid) {
     const err: any = new Error("Unauthorized: missing user id");
     err.status = 401;
@@ -26,7 +21,6 @@ function requireUserId(req: any): string {
   }
   return uid;
 }
-
 function clamp1to10(n: any) {
   const x = Number(n);
   if (!isFinite(x)) return 1;
@@ -34,36 +28,44 @@ function clamp1to10(n: any) {
 }
 
 async function getCompetitionDetail(competitionId: string) {
-  const [comp] = await db
-    .select()
-    .from(competitions)
-    .where(eq(competitions.id, competitionId))
-    .limit(1);
-  if (!comp) return null;
+  try {
+    const [comp] = await db
+      .select()
+      .from(competitions)
+      .where(eq(competitions.id, competitionId))
+      .limit(1);
 
-  const parts = await db
-    .select()
-    .from(competitionParticipants)
-    .where(eq(competitionParticipants.competitionId, competitionId));
+    if (!comp) return null;
 
-  const tallies = await db
-    .select({
-      participantId: competitionVotes.participantId,
-      voters: countDistinct(competitionVotes.voterId).as("voters"),
-    })
-    .from(competitionVotes)
-    .where(eq(competitionVotes.competitionId, competitionId))
-    .groupBy(competitionVotes.participantId);
+    const parts = await db
+      .select()
+      .from(competitionParticipants)
+      .where(eq(competitionParticipants.competitionId, competitionId));
 
-  return { competition: comp, participants: parts, voteTallies: tallies, media: [] };
+    const tallies = await db
+      .select({
+        participantId: competitionVotes.participantId,
+        voters: countDistinct(competitionVotes.voterId).as("voters"),
+      })
+      .from(competitionVotes)
+      .where(eq(competitionVotes.competitionId, competitionId))
+      .groupBy(competitionVotes.participantId);
+
+    return { competition: comp, participants: parts, voteTallies: tallies, media: [] };
+  } catch (err) {
+    if (isMissingTable(err)) {
+      // If tables aren’t created yet, safely return a minimal stub
+      return null;
+    }
+    throw err;
+  }
 }
 
-// ---------- health / smoke test ----------
 router.get("/health", (_req, res) => {
   res.json({ ok: true, scope: "competitions" });
 });
 
-// ---------- create competition ----------
+// Create competition
 router.post("/", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -77,9 +79,7 @@ router.post("/", async (req, res, next) => {
     } = req.body || {};
 
     if (timeLimitMinutes < 15 || timeLimitMinutes > 120) {
-      return res
-        .status(400)
-        .json({ error: "timeLimitMinutes must be between 15 and 120" });
+      return res.status(400).json({ error: "timeLimitMinutes must be between 15 and 120" });
     }
 
     const [created] = await db
@@ -103,290 +103,225 @@ router.post("/", async (req, res, next) => {
 
     res.json({ id: created.id });
   } catch (err) {
+    if (isMissingTable(err)) {
+      // If tables aren’t there yet, don’t block the UI – tell the client cleanly
+      return res.status(409).json({ error: "Competitions tables are not initialized. Run DB migration." });
+    }
     next(err);
   }
 });
 
-// ---------- competition detail ----------
+// Detail
 router.get("/:id", async (req, res, next) => {
   try {
     const detail = await getCompetitionDetail(req.params.id);
     if (!detail) return res.status(404).json({ error: "Not found" });
     res.json(detail);
   } catch (err) {
+    if (isMissingTable(err)) {
+      return res.status(404).json({ error: "Not found (competitions tables not created yet)" });
+    }
     next(err);
   }
 });
 
-// ---------- start (upcoming -> live) ----------
+// Start (upcoming -> live)
 router.post("/:id/start", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
     const compId = req.params.id;
 
-    const [comp] = await db
-      .select()
-      .from(competitions)
-      .where(eq(competitions.id, compId))
-      .limit(1);
+    const [comp] = await db.select().from(competitions).where(eq(competitions.id, compId)).limit(1);
     if (!comp) return res.status(404).json({ error: "Not found" });
-    if (comp.creatorId !== userId)
-      return res.status(403).json({ error: "Forbidden" });
-    if (comp.status !== "upcoming")
-      return res
-        .status(400)
-        .json({ error: `Cannot start when status=${comp.status}` });
+    if (comp.creatorId !== userId) return res.status(403).json({ error: "Forbidden" });
+    if (comp.status !== "upcoming") return res.status(400).json({ error: `Cannot start when status=${comp.status}` });
 
     const start = nowUtc();
     const end = new Date(start.getTime() + comp.timeLimitMinutes * 60_000);
 
-    await db
-      .update(competitions)
-      .set({
-        status: "live",
-        startTime: start,
-        endTime: end,
-        updatedAt: nowUtc(),
-      })
-      .where(eq(competitions.id, compId));
+    await db.update(competitions).set({
+      status: "live",
+      startTime: start,
+      endTime: end,
+      updatedAt: nowUtc(),
+    }).where(eq(competitions.id, compId));
 
     res.json({ ok: true });
   } catch (err) {
+    if (isMissingTable(err)) {
+      return res.status(409).json({ error: "Competitions tables are not initialized. Run DB migration." });
+    }
     next(err);
   }
 });
 
-// ---------- end -> judging (24h window) ----------
+// End -> judging (24h)
 router.post("/:id/end", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
     const compId = req.params.id;
 
-    const [comp] = await db
-      .select()
-      .from(competitions)
-      .where(eq(competitions.id, compId))
-      .limit(1);
+    const [comp] = await db.select().from(competitions).where(eq(competitions.id, compId)).limit(1);
     if (!comp) return res.status(404).json({ error: "Not found" });
-    if (comp.creatorId !== userId)
-      return res.status(403).json({ error: "Forbidden" });
-    if (comp.status !== "live")
-      return res
-        .status(400)
-        .json({ error: `Cannot end when status=${comp.status}` });
+    if (comp.creatorId !== userId) return res.status(403).json({ error: "Forbidden" });
+    if (comp.status !== "live") return res.status(400).json({ error: `Cannot end when status=${comp.status}` });
 
     const closeAt = new Date(nowUtc().getTime() + 24 * 60 * 60_000);
 
-    await db
-      .update(competitions)
-      .set({
-        status: "judging",
-        endTime: nowUtc(),
-        judgingClosesAt: closeAt,
-        updatedAt: nowUtc(),
-      })
-      .where(eq(competitions.id, compId));
+    await db.update(competitions).set({
+      status: "judging",
+      endTime: nowUtc(),
+      judgingClosesAt: closeAt,
+      updatedAt: nowUtc(),
+    }).where(eq(competitions.id, compId));
 
     res.json({ ok: true, judgingClosesAt: closeAt.toISOString() });
   } catch (err) {
+    if (isMissingTable(err)) {
+      return res.status(409).json({ error: "Competitions tables are not initialized. Run DB migration." });
+    }
     next(err);
   }
 });
 
-// ---------- competitor submission (during live/judging) ----------
+// Competitor submission
 router.post("/:id/submit", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
     const compId = req.params.id;
     const { dishTitle, dishDescription, finalDishPhotoUrl } = req.body || {};
 
-    const [comp] = await db
-      .select()
-      .from(competitions)
-      .where(eq(competitions.id, compId))
-      .limit(1);
+    const [comp] = await db.select().from(competitions).where(eq(competitions.id, compId)).limit(1);
     if (!comp) return res.status(404).json({ error: "Not found" });
     if (comp.status !== "live" && comp.status !== "judging") {
-      return res
-        .status(400)
-        .json({ error: "Submissions only allowed during live or judging." });
+      return res.status(400).json({ error: "Submissions only allowed during live or judging." });
     }
 
-    await db
-      .insert(competitionParticipants)
-      .values({
-        competitionId: compId,
-        userId,
+    await db.insert(competitionParticipants).values({
+      competitionId: compId,
+      userId,
+      role: "competitor",
+      dishTitle: dishTitle ?? null,
+      dishDescription: dishDescription ?? null,
+      finalDishPhotoUrl: finalDishPhotoUrl ?? null,
+    }).onConflictDoUpdate({
+      target: [competitionParticipants.competitionId, competitionParticipants.userId],
+      set: {
         role: "competitor",
         dishTitle: dishTitle ?? null,
         dishDescription: dishDescription ?? null,
         finalDishPhotoUrl: finalDishPhotoUrl ?? null,
-      })
-      .onConflictDoUpdate({
-        target: [
-          competitionParticipants.competitionId,
-          competitionParticipants.userId,
-        ],
-        set: {
-          role: "competitor",
-          dishTitle: dishTitle ?? null,
-          dishDescription: dishDescription ?? null,
-          finalDishPhotoUrl: finalDishPhotoUrl ?? null,
-          updatedAt: nowUtc(),
-        },
-      });
+        updatedAt: nowUtc(),
+      },
+    });
 
     res.json({ ok: true });
   } catch (err) {
+    if (isMissingTable(err)) {
+      return res.status(409).json({ error: "Competitions tables are not initialized. Run DB migration." });
+    }
     next(err);
   }
 });
 
-// ---------- spectator vote (participants cannot vote) ----------
+// Spectator vote (participants cannot vote)
 router.post("/:id/votes", async (req, res, next) => {
   try {
     const voterId = requireUserId(req);
     const compId = req.params.id;
-
     const { participantId, presentation, creativity, technique } = req.body || {};
 
-    const [comp] = await db
-      .select()
-      .from(competitions)
-      .where(eq(competitions.id, compId))
-      .limit(1);
+    const [comp] = await db.select().from(competitions).where(eq(competitions.id, compId)).limit(1);
     if (!comp) return res.status(404).json({ error: "Not found" });
     if (comp.status !== "judging" && comp.status !== "live") {
-      return res
-        .status(400)
-        .json({ error: "Voting only allowed during live or judging." });
+      return res.status(400).json({ error: "Voting only allowed during live or judging." });
     }
 
-    // Disallow votes from participants
     const [maybeParticipant] = await db
       .select()
       .from(competitionParticipants)
-      .where(
-        and(
-          eq(competitionParticipants.competitionId, compId),
-          eq(competitionParticipants.userId, voterId)
-        )
-      )
+      .where(and(eq(competitionParticipants.competitionId, compId), eq(competitionParticipants.userId, voterId)))
       .limit(1);
-    if (maybeParticipant)
-      return res.status(403).json({ error: "Participants cannot vote." });
+    if (maybeParticipant) return res.status(403).json({ error: "Participants cannot vote." });
 
     const pv = clamp1to10(presentation);
     const cv = clamp1to10(creativity);
     const tv = clamp1to10(technique);
 
-    await db
-      .insert(competitionVotes)
-      .values({
-        competitionId: compId,
-        voterId,
-        participantId,
-        presentation: pv,
-        creativity: cv,
-        technique: tv,
-      })
-      .onConflictDoUpdate({
-        target: [
-          competitionVotes.competitionId,
-          competitionVotes.voterId,
-          competitionVotes.participantId,
-        ],
-        set: { presentation: pv, creativity: cv, technique: tv },
-      });
+    await db.insert(competitionVotes).values({
+      competitionId: compId,
+      voterId,
+      participantId,
+      presentation: pv, creativity: cv, technique: tv,
+    }).onConflictDoUpdate({
+      target: [competitionVotes.competitionId, competitionVotes.voterId, competitionVotes.participantId],
+      set: { presentation: pv, creativity: cv, technique: tv },
+    });
 
     res.json({ ok: true });
   } catch (err) {
+    if (isMissingTable(err)) {
+      return res.status(409).json({ error: "Competitions tables are not initialized. Run DB migration." });
+    }
     next(err);
   }
 });
 
-// ---------- finalize results (after judging) ----------
+// Finalize results
 router.post("/:id/complete", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
     const compId = req.params.id;
 
-    const [comp] = await db
-      .select()
-      .from(competitions)
-      .where(eq(competitions.id, compId))
-      .limit(1);
+    const [comp] = await db.select().from(competitions).where(eq(competitions.id, compId)).limit(1);
     if (!comp) return res.status(404).json({ error: "Not found" });
-    if (comp.creatorId !== userId)
-      return res.status(403).json({ error: "Forbidden" });
-    if (comp.status !== "judging")
-      return res
-        .status(400)
-        .json({ error: `Cannot complete when status=${comp.status}` });
+    if (comp.creatorId !== userId) return res.status(403).json({ error: "Forbidden" });
+    if (comp.status !== "judging") return res.status(400).json({ error: `Cannot complete when status=${comp.status}` });
 
     const perParticipant = await db
       .select({
         participantId: competitionVotes.participantId,
-        total: sql<number>`
-          SUM(${competitionVotes.presentation} + ${competitionVotes.creativity} + ${competitionVotes.technique})
-        `,
+        total: sql<number>`SUM(${competitionVotes.presentation} + ${competitionVotes.creativity} + ${competitionVotes.technique})`,
         voters: countDistinct(competitionVotes.voterId).as("voters"),
       })
       .from(competitionVotes)
       .where(eq(competitionVotes.competitionId, compId))
       .groupBy(competitionVotes.participantId)
-      .orderBy(
-        desc(
-          sql`SUM(${competitionVotes.presentation} + ${competitionVotes.creativity} + ${competitionVotes.technique})`
-        )
-      );
+      .orderBy(desc(sql`SUM(${competitionVotes.presentation} + ${competitionVotes.creativity} + ${competitionVotes.technique})`));
 
     const winnerParticipantId = perParticipant[0]?.participantId ?? null;
-    const isOfficial =
-      (perParticipant[0]?.voters ?? 0) >= (comp.minOfficialVoters ?? 3);
+    const isOfficial = (perParticipant[0]?.voters ?? 0) >= (comp.minOfficialVoters ?? 3);
 
-    // update placements & totals
     for (let i = 0; i < perParticipant.length; i++) {
       const r = perParticipant[i];
-      await db
-        .update(competitionParticipants)
-        .set({
-          totalScore: r.total ?? null,
-          placement: i + 1,
-          updatedAt: nowUtc(),
-        })
-        .where(eq(competitionParticipants.id, r.participantId));
+      await db.update(competitionParticipants).set({
+        totalScore: r.total ?? null,
+        placement: i + 1,
+        updatedAt: nowUtc(),
+      }).where(eq(competitionParticipants.id, r.participantId));
     }
 
-    await db
-      .update(competitions)
-      .set({
-        status: "completed",
-        winnerParticipantId,
-        isOfficial,
-        updatedAt: nowUtc(),
-      })
-      .where(eq(competitions.id, compId));
+    await db.update(competitions).set({
+      status: "completed",
+      winnerParticipantId,
+      isOfficial,
+      updatedAt: nowUtc(),
+    }).where(eq(competitions.id, compId));
 
     const detail = await getCompetitionDetail(compId);
     res.json({ ok: true, winnerParticipantId, isOfficial, detail });
   } catch (err) {
+    if (isMissingTable(err)) {
+      return res.status(409).json({ error: "Competitions tables are not initialized. Run DB migration." });
+    }
     next(err);
   }
 });
 
-// ---------- library / archive search ----------
+// Library / archive
 router.get("/library", async (req, res, next) => {
   try {
-    const {
-      q,
-      theme,
-      creator,
-      dateFrom,
-      dateTo,
-      limit = "30",
-      offset = "0",
-    } = req.query as Record<string, string>;
+    const { q, theme, creator, dateFrom, dateTo, limit = "30", offset = "0" } = req.query as Record<string, string>;
     const lim = Math.max(1, Math.min(100, parseInt(limit || "30", 10)));
     const off = Math.max(0, parseInt(offset || "0", 10));
 
@@ -407,6 +342,10 @@ router.get("/library", async (req, res, next) => {
 
     res.json({ items, limit: lim, offset: off });
   } catch (err) {
+    if (isMissingTable(err)) {
+      // Return an empty library instead of 500 so UI looks fine until migration runs
+      return res.json({ items: [], limit: 30, offset: 0, note: "competitions tables not initialized yet" });
+    }
     next(err);
   }
 });
