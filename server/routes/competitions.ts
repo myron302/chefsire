@@ -48,7 +48,9 @@ async function getCompetitionDetail(competitionId: string) {
   return { competition: comp, participants: parts, voteTallies: tallies, media: [] };
 }
 
-// LIST
+// ---------------------------------------------------------------------------
+// LIST (GET /api/competitions)
+// ---------------------------------------------------------------------------
 router.get("/", async (req, res, next) => {
   try {
     const { q, theme, creator, status, limit = "30", offset = "0" } = req.query as Record<string, string>;
@@ -75,7 +77,9 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-// LIBRARY (define before :id)
+// ---------------------------------------------------------------------------
+// LIBRARY (GET /api/competitions/library) — define BEFORE :id
+// ---------------------------------------------------------------------------
 router.get("/library", async (req, res, next) => {
   try {
     const { q, theme, creator, dateFrom, dateTo, limit = "30", offset = "0" } = req.query as Record<string, string>;
@@ -103,7 +107,9 @@ router.get("/library", async (req, res, next) => {
   }
 });
 
-// CREATE
+// ---------------------------------------------------------------------------
+// CREATE (POST /api/competitions)
+// ---------------------------------------------------------------------------
 router.post("/", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -137,6 +143,7 @@ router.post("/", async (req, res, next) => {
       })
       .returning({ id: competitions.id });
 
+    // auto-add creator as host
     await db
       .insert(competitionParticipants)
       .values({ competitionId: created.id, userId, role: "host" })
@@ -148,7 +155,9 @@ router.post("/", async (req, res, next) => {
   }
 });
 
-// DETAIL
+// ---------------------------------------------------------------------------
+// DETAIL (GET /api/competitions/:id)
+// ---------------------------------------------------------------------------
 router.get("/:id", async (req, res, next) => {
   try {
     const detail = await getCompetitionDetail(req.params.id);
@@ -159,7 +168,9 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
-// START
+// ---------------------------------------------------------------------------
+// START (POST /api/competitions/:id/start)
+// ---------------------------------------------------------------------------
 router.post("/:id/start", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -186,7 +197,9 @@ router.post("/:id/start", async (req, res, next) => {
   }
 });
 
-// END → JUDGING
+// ---------------------------------------------------------------------------
+// END → JUDGING (POST /api/competitions/:id/end)
+// ---------------------------------------------------------------------------
 router.post("/:id/end", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -211,8 +224,9 @@ router.post("/:id/end", async (req, res, next) => {
     next(err);
   }
 });
-
-// SUBMIT
+// ---------------------------------------------------------------------------
+// SUBMIT (POST /api/competitions/:id/submit)
+// ---------------------------------------------------------------------------
 router.post("/:id/submit", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -252,7 +266,9 @@ router.post("/:id/submit", async (req, res, next) => {
   }
 });
 
-// VOTE
+// ---------------------------------------------------------------------------
+// VOTE (POST /api/competitions/:id/votes)
+// ---------------------------------------------------------------------------
 router.post("/:id/votes", async (req, res, next) => {
   try {
     const voterId = requireUserId(req);
@@ -265,6 +281,7 @@ router.post("/:id/votes", async (req, res, next) => {
       return res.status(400).json({ error: "Voting only allowed during live or judging." });
     }
 
+    // ensure voter is NOT a participant in this competition
     const [maybeParticipant] = await db
       .select()
       .from(competitionParticipants)
@@ -297,7 +314,9 @@ router.post("/:id/votes", async (req, res, next) => {
   }
 });
 
-// COMPLETE
+// ---------------------------------------------------------------------------
+// COMPLETE (POST /api/competitions/:id/complete)
+// ---------------------------------------------------------------------------
 router.post("/:id/complete", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
@@ -322,6 +341,7 @@ router.post("/:id/complete", async (req, res, next) => {
     const winnerParticipantId = perParticipant[0]?.participantId ?? null;
     const isOfficial = (perParticipant[0]?.voters ?? 0) >= (comp.minOfficialVoters ?? 3);
 
+    // update placements & totals
     for (let i = 0; i < perParticipant.length; i++) {
       const r = perParticipant[i];
       await db
@@ -339,6 +359,78 @@ router.post("/:id/complete", async (req, res, next) => {
 
     const detail = await getCompetitionDetail(compId);
     res.json({ ok: true, winnerParticipantId, isOfficial, detail });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// VIDEO ROOM (POST /api/competitions/:id/video-room)
+// Creates or returns a Daily.co room URL for the competition (iframe-embeddable).
+// Requires env: DAILY_API_KEY, DAILY_SUBDOMAIN
+// ---------------------------------------------------------------------------
+router.post("/:id/video-room", async (req, res, next) => {
+  try {
+    const userId = requireUserId(req);
+    const compId = req.params.id;
+
+    const DAILY_API_KEY = process.env.DAILY_API_KEY;
+    const DAILY_SUBDOMAIN = process.env.DAILY_SUBDOMAIN; // e.g., "chefsire" → chefsire.daily.co
+
+    if (!DAILY_API_KEY || !DAILY_SUBDOMAIN) {
+      return res.status(500).json({
+        error:
+          "Daily video is not configured. Set DAILY_API_KEY and DAILY_SUBDOMAIN in your environment.",
+      });
+    }
+
+    // ensure competition exists and user is the creator (host creates the room)
+    const [comp] = await db.select().from(competitions).where(eq(competitions.id, compId)).limit(1);
+    if (!comp) return res.status(404).json({ error: "Not found" });
+    if (comp.creatorId !== userId) return res.status(403).json({ error: "Forbidden" });
+
+    // idempotent room name derived from competition id (no DB migration needed)
+    const roomName = `comp-${compId}`;
+
+    // create-or-get room from Daily API
+    const roomResp = await fetch("https://api.daily.co/v1/rooms", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${DAILY_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: roomName,
+        privacy: req.body?.privacy === "private" ? "private" : "public",
+        properties: {
+          enable_screenshare: true,
+          enable_chat: true,
+          start_video_off: false,
+          start_audio_off: true,
+          eject_at_room_exp: true,
+          exp: Math.floor(Date.now() / 1000) + 48 * 60 * 60, // 48h
+        },
+      }),
+    });
+
+    // If room already exists, Daily returns 409; try GET
+    let roomOk = roomResp.ok;
+    if (!roomOk && roomResp.status === 409) {
+      const getResp = await fetch(`https://api.daily.co/v1/rooms/${encodeURIComponent(roomName)}`, {
+        headers: { Authorization: `Bearer ${DAILY_API_KEY}` },
+      });
+      roomOk = getResp.ok;
+      if (!roomOk) {
+        const txt = await getResp.text();
+        return res.status(500).json({ error: "Failed to fetch existing room", details: txt });
+      }
+    } else if (!roomOk) {
+      const txt = await roomResp.text();
+      return res.status(500).json({ error: "Failed to create room", details: txt });
+    }
+
+    const roomUrl = `https://${DAILY_SUBDOMAIN}.daily.co/${roomName}`;
+    res.json({ roomUrl });
   } catch (err) {
     next(err);
   }
