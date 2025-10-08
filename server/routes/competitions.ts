@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { and, countDistinct, desc, eq, gte, ilike, lte, sql } from "drizzle-orm";
 
-import { db } from "../db"; // your Drizzle instance
+import { db } from "../db"; // your Drizzle instance (adjust path if needed)
 import {
   competitions,
   competitionParticipants,
@@ -11,21 +11,8 @@ import {
 
 const router = Router();
 
-/**
- * IMPORTANT MOUNTING NOTE
- * -----------------------
- * In server/routes/index.ts, mount this file WITHOUT a path prefix:
- *   r.use(competitionsRouter)
- *
- * That way, the paths below (which start with "/competitions") map to:
- *   /api/competitions/...
- */
-
-// ----------------------------------------------------
-// helpers
-// ----------------------------------------------------
+// utils
 const nowUtc = () => new Date();
-
 function requireUserId(req: any): string {
   const uid = (req.user && req.user.id) || (req.headers["x-user-id"] as string) || "";
   if (!uid) {
@@ -35,7 +22,6 @@ function requireUserId(req: any): string {
   }
   return uid;
 }
-
 function clamp1to10(n: any) {
   const x = Number(n);
   if (!isFinite(x)) return 1;
@@ -63,26 +49,69 @@ async function getCompetitionDetail(competitionId: string) {
   return { competition: comp, participants: parts, voteTallies: tallies, media: [] };
 }
 
-// ----------------------------------------------------
-// routes
-// ----------------------------------------------------
-
-// LIST competitions (recent first)
-router.get("/competitions", async (_req, res, next) => {
+// ---------------------------------------------------------------------------
+// LIST (GET /api/competitions)
+// ---------------------------------------------------------------------------
+router.get("/", async (req, res, next) => {
   try {
+    const { q, theme, creator, status, limit = "30", offset = "0" } = req.query as Record<string, string>;
+    const lim = Math.max(1, Math.min(100, parseInt(limit || "30", 10)));
+    const off = Math.max(0, parseInt(offset || "0", 10));
+
+    const where = [];
+    if (q) where.push(ilike(competitions.title, `%${q}%`));
+    if (theme) where.push(eq(competitions.themeName, theme));
+    if (creator) where.push(eq(competitions.creatorId, creator));
+    if (status) where.push(eq(competitions.status, status));
+
     const items = await db
       .select()
       .from(competitions)
+      .where(where.length ? (where.length === 1 ? where[0] : and(...where)) : undefined)
       .orderBy(desc(competitions.createdAt))
-      .limit(50);
-    res.json({ items });
+      .limit(lim)
+      .offset(off);
+
+    res.json({ items, limit: lim, offset: off });
   } catch (err) {
     next(err);
   }
 });
 
-// CREATE competition
-router.post("/competitions", async (req, res, next) => {
+// ---------------------------------------------------------------------------
+// LIBRARY (GET /api/competitions/library) — define BEFORE :id
+// ---------------------------------------------------------------------------
+router.get("/library", async (req, res, next) => {
+  try {
+    const { q, theme, creator, dateFrom, dateTo, limit = "30", offset = "0" } = req.query as Record<string, string>;
+    const lim = Math.max(1, Math.min(100, parseInt(limit || "30", 10)));
+    const off = Math.max(0, parseInt(offset || "0", 10));
+
+    const where = [];
+    if (q) where.push(ilike(competitions.title, `%${q}%`));
+    if (theme) where.push(eq(competitions.themeName, theme));
+    if (creator) where.push(eq(competitions.creatorId, creator));
+    if (dateFrom) where.push(gte(competitions.createdAt, new Date(dateFrom)));
+    if (dateTo) where.push(lte(competitions.createdAt, new Date(dateTo)));
+
+    const items = await db
+      .select()
+      .from(competitions)
+      .where(where.length ? (where.length === 1 ? where[0] : and(...where)) : undefined)
+      .orderBy(desc(competitions.createdAt))
+      .limit(lim)
+      .offset(off);
+
+    res.json({ items, limit: lim, offset: off });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// CREATE (POST /api/competitions)
+// ---------------------------------------------------------------------------
+router.post("/", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
     const {
@@ -97,6 +126,7 @@ router.post("/competitions", async (req, res, next) => {
     if (!themeName) {
       return res.status(400).json({ error: "themeName is required" });
     }
+
     if (timeLimitMinutes < 15 || timeLimitMinutes > 120) {
       return res.status(400).json({ error: "timeLimitMinutes must be between 15 and 120" });
     }
@@ -127,8 +157,10 @@ router.post("/competitions", async (req, res, next) => {
   }
 });
 
-// DETAIL
-router.get("/competitions/:id", async (req, res, next) => {
+// ---------------------------------------------------------------------------
+// DETAIL (GET /api/competitions/:id)
+// ---------------------------------------------------------------------------
+router.get("/:id", async (req, res, next) => {
   try {
     const detail = await getCompetitionDetail(req.params.id);
     if (!detail) return res.status(404).json({ error: "Not found" });
@@ -138,30 +170,10 @@ router.get("/competitions/:id", async (req, res, next) => {
   }
 });
 
-// JOIN (as competitor or judge; default competitor)
-router.post("/competitions/:id/join", async (req, res, next) => {
-  try {
-    const userId = requireUserId(req);
-    const compId = req.params.id;
-    const { role = "competitor" } = req.body || {};
-
-    const [comp] = await db.select().from(competitions).where(eq(competitions.id, compId)).limit(1);
-    if (!comp) return res.status(404).json({ error: "Not found" });
-
-    const [participant] = await db
-      .insert(competitionParticipants)
-      .values({ competitionId: compId, userId, role })
-      .onConflictDoNothing()
-      .returning();
-
-    res.json({ ok: true, participant });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// START (creator only)
-router.post("/competitions/:id/start", async (req, res, next) => {
+// ---------------------------------------------------------------------------
+// START (POST /api/competitions/:id/start)
+// ---------------------------------------------------------------------------
+router.post("/:id/start", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
     const compId = req.params.id;
@@ -174,15 +186,12 @@ router.post("/competitions/:id/start", async (req, res, next) => {
     const start = nowUtc();
     const end = new Date(start.getTime() + comp.timeLimitMinutes * 60_000);
 
-    await db
-      .update(competitions)
-      .set({
-        status: "live",
-        startTime: start,
-        endTime: end,
-        updatedAt: nowUtc(),
-      })
-      .where(eq(competitions.id, compId));
+    await db.update(competitions).set({
+      status: "live",
+      startTime: start,
+      endTime: end,
+      updatedAt: nowUtc(),
+    }).where(eq(competitions.id, compId));
 
     res.json({ ok: true });
   } catch (err) {
@@ -190,8 +199,10 @@ router.post("/competitions/:id/start", async (req, res, next) => {
   }
 });
 
-// END live → open 24h JUDGING (creator only)
-router.post("/competitions/:id/end", async (req, res, next) => {
+// ---------------------------------------------------------------------------
+// END → JUDGING (POST /api/competitions/:id/end)
+// ---------------------------------------------------------------------------
+router.post("/:id/end", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
     const compId = req.params.id;
@@ -203,15 +214,12 @@ router.post("/competitions/:id/end", async (req, res, next) => {
 
     const closeAt = new Date(nowUtc().getTime() + 24 * 60 * 60_000);
 
-    await db
-      .update(competitions)
-      .set({
-        status: "judging",
-        endTime: nowUtc(),
-        judgingClosesAt: closeAt,
-        updatedAt: nowUtc(),
-      })
-      .where(eq(competitions.id, compId));
+    await db.update(competitions).set({
+      status: "judging",
+      endTime: nowUtc(),
+      judgingClosesAt: closeAt,
+      updatedAt: nowUtc(),
+    }).where(eq(competitions.id, compId));
 
     res.json({ ok: true, judgingClosesAt: closeAt.toISOString() });
   } catch (err) {
@@ -219,8 +227,10 @@ router.post("/competitions/:id/end", async (req, res, next) => {
   }
 });
 
-// SUBMIT final dish (competitor)
-router.post("/competitions/:id/submit", async (req, res, next) => {
+// ---------------------------------------------------------------------------
+// SUBMIT (POST /api/competitions/:id/submit)
+// ---------------------------------------------------------------------------
+router.post("/:id/submit", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
     const compId = req.params.id;
@@ -259,8 +269,10 @@ router.post("/competitions/:id/submit", async (req, res, next) => {
   }
 });
 
-// VOTE (spectators only; participants cannot vote)
-router.post("/competitions/:id/votes", async (req, res, next) => {
+// ---------------------------------------------------------------------------
+// VOTE (POST /api/competitions/:id/votes)
+// ---------------------------------------------------------------------------
+router.post("/:id/votes", async (req, res, next) => {
   try {
     const voterId = requireUserId(req);
     const compId = req.params.id;
@@ -272,13 +284,12 @@ router.post("/competitions/:id/votes", async (req, res, next) => {
       return res.status(400).json({ error: "Voting only allowed during live or judging." });
     }
 
-    // ensure voter is not a participant in the same competition
+    // ensure voter is NOT a participant in this competition
     const [maybeParticipant] = await db
       .select()
       .from(competitionParticipants)
       .where(and(eq(competitionParticipants.competitionId, compId), eq(competitionParticipants.userId, voterId)))
       .limit(1);
-
     if (maybeParticipant) return res.status(403).json({ error: "Participants cannot vote." });
 
     const pv = clamp1to10(presentation);
@@ -306,8 +317,10 @@ router.post("/competitions/:id/votes", async (req, res, next) => {
   }
 });
 
-// COMPLETE (after judging; creator only)
-router.post("/competitions/:id/complete", async (req, res, next) => {
+// ---------------------------------------------------------------------------
+// COMPLETE (POST /api/competitions/:id/complete)
+// ---------------------------------------------------------------------------
+router.post("/:id/complete", async (req, res, next) => {
   try {
     const userId = requireUserId(req);
     const compId = req.params.id;
@@ -340,46 +353,15 @@ router.post("/competitions/:id/complete", async (req, res, next) => {
         .where(eq(competitionParticipants.id, r.participantId));
     }
 
-    await db
-      .update(competitions)
-      .set({
-        status: "completed",
-        winnerParticipantId,
-        isOfficial,
-        updatedAt: nowUtc(),
-      })
-      .where(eq(competitions.id, compId));
+    await db.update(competitions).set({
+      status: "completed",
+      winnerParticipantId,
+      isOfficial,
+      updatedAt: nowUtc(),
+    }).where(eq(competitions.id, compId));
 
     const detail = await getCompetitionDetail(compId);
     res.json({ ok: true, winnerParticipantId, isOfficial, detail });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// ARCHIVE / SEARCH
-router.get("/competitions/library", async (req, res, next) => {
-  try {
-    const { q, theme, creator, dateFrom, dateTo, limit = "30", offset = "0" } = req.query as Record<string, string>;
-    const lim = Math.max(1, Math.min(100, parseInt(limit || "30", 10)));
-    const off = Math.max(0, parseInt(offset || "0", 10));
-
-    const where = [];
-    if (q) where.push(ilike(competitions.title, `%${q}%`));
-    if (theme) where.push(eq(competitions.themeName, theme));
-    if (creator) where.push(eq(competitions.creatorId, creator));
-    if (dateFrom) where.push(gte(competitions.createdAt, new Date(dateFrom)));
-    if (dateTo) where.push(lte(competitions.createdAt, new Date(dateTo)));
-
-    const items = await db
-      .select()
-      .from(competitions)
-      .where(where.length ? (where.length === 1 ? where[0] : and(...where)) : undefined)
-      .orderBy(desc(competitions.createdAt))
-      .limit(lim)
-      .offset(off);
-
-    res.json({ items, limit: lim, offset: off });
   } catch (err) {
     next(err);
   }
