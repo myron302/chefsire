@@ -1,3 +1,4 @@
+// client/src/pages/competitions/CompetitionLibraryPage.tsx
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -53,7 +54,6 @@ function useLibraryQuery(params: URLSearchParams) {
 }
 
 export default function CompetitionLibraryPage() {
-  // local filters
   const [q, setQ] = React.useState("");
   const [theme, setTheme] = React.useState<string>("");
   const [creator, setCreator] = React.useState("");
