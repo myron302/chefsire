@@ -1,7 +1,7 @@
 // server/routes/index.ts
 import { Router } from "express";
 
-// ===== EXISTING FEATURE ROUTERS =====
+// --- Existing feature routers ---
 import recipesRouter from "./recipes";
 import bitesRouter from "./bites";
 import usersRouter from "./users";
@@ -11,25 +11,26 @@ import marketplaceRouter from "./marketplace";
 import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
 
-// ===== ADDITIONAL EXISTING ROUTERS =====
+// --- New integrations ---
 import lookupRouter from "./lookup";
 import exportRouter from "./exportList";
-
-// ✅ Google Places proxy
 import { googleRouter } from "./google";
-// If/when Foursquare is ready, uncomment:
-// import { fsqRouter } from "./fsq";
 
-// ===== NEW FEATURE ROUTERS =====
+// --- ✅ NEW: Competitions (Cookoff Feature) ---
 import competitionsRouter from "./competitions";
-import videoRouter from "./video";
 
-// ===== SETUP ROUTER =====
 const r = Router();
 
-// NOTE: This file is mounted under /api in app.ts (app.use("/api", r))
+/**
+ * 🧠 NOTE:
+ * This router is mounted at /api in app.ts
+ * so routes defined here should NOT repeat the /api prefix.
+ * e.g.  app.use("/api", r)
+ *       -> GET /api/recipes
+ *       -> GET /api/competitions
+ */
 
-// Core features
+// --- Core routes ---
 r.use(recipesRouter);
 r.use(bitesRouter);
 r.use(usersRouter);
@@ -39,17 +40,37 @@ r.use(marketplaceRouter);
 r.use(substitutionsRouter);
 r.use(drinksRouter);
 
-// Utility endpoints
+// --- Integrations ---
 r.use("/lookup", lookupRouter);
 r.use("/export", exportRouter);
-
-// Third-party integrations
 r.use("/google", googleRouter);
-// r.use("/fsq", fsqRouter); // when available
 
-// ✅ NEW: Competitions + Video streaming
+// --- Competitions ---
 r.use("/competitions", competitionsRouter);
-r.use("/video", videoRouter);
 
-// ===== EXPORT =====
+// --- Optional future integrations ---
+// import { fsqRouter } from "./fsq";
+// r.use("/fsq", fsqRouter);
+
+// --- Debug healthcheck for routing tree ---
+r.get("/_routes", (_req, res) => {
+  res.json({
+    ok: true,
+    routes: [
+      "/recipes",
+      "/bites",
+      "/users",
+      "/posts",
+      "/pantry",
+      "/marketplace",
+      "/substitutions",
+      "/drinks",
+      "/lookup",
+      "/export",
+      "/google",
+      "/competitions",
+    ],
+  });
+});
+
 export default r;
