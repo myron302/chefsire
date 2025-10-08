@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { and, countDistinct, desc, eq, gte, ilike, lte, sql } from "drizzle-orm";
 
-import { db } from "../db"; // your Drizzle instance (adjust path if needed)
+import { db } from "../db/index"; // ← explicit index!
 import {
   competitions,
   competitionParticipants,
