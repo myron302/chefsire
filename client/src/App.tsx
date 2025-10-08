@@ -83,6 +83,7 @@ import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole"
 // 🚀 NEW — Competitions pages
 import CreateCompetitionPage from "@/pages/competitions/CreateCompetitionPage";
 import CompetitionRoomPage from "@/pages/competitions/CompetitionRoomPage";
+import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage";
 
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
@@ -184,6 +185,7 @@ function AppRouter() {
 
         {/* ✅ NEW — Competitions */}
         <Route path="/competitions/new" component={CreateCompetitionPage} />
+        <Route path="/competitions/library" component={CompetitionLibraryPage} />
         <Route path="/competitions/:id" component={CompetitionRoomPage} />
 
         <Route path="/recipes/baby-food/:rest*">
