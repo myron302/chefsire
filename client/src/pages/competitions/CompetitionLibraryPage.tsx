@@ -1,396 +1,362 @@
-// client/src/pages/competitions/CompetitionLibraryPage.tsx
-import * as React from "react";
-import { Link } from "wouter";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input"; // if you don't have this, replace with a native input
-import {
-  Search,
-  Sparkles,
-  Filter,
-  Timer,
-  Users,
-  Trophy,
-  Flame,
-  Calendar,
-  Video,
-  Eye,
-  Plus,
-  Layers,
-  Home,
-} from "lucide-react";
+import React, { useState, useEffect } from 'react';
+import { Search, Sparkles, Filter, Timer, Users, Trophy, Flame, Calendar, Video, Eye, Plus, Layers, Home, Play, TrendingUp, Crown, Medal, Zap, Clock } from 'lucide-react';
 
-type Competition = {
-  id: string;
-  title: string | null;
-  themeName: string | null;
-  status: "upcoming" | "live" | "judging" | "completed" | "canceled";
-  isPrivate: boolean;
-  timeLimitMinutes: number;
-  createdAt?: string;
-  startTime?: string | null;
-  endTime?: string | null;
-  judgingClosesAt?: string | null;
-};
-
-type LibraryResponse = {
-  items: Competition[];
-  limit: number;
-  offset: number;
-};
-
-const DEV_USER_ID = "user-dev-1";
-
-async function api(path: string, init: RequestInit = {}) {
-  const headers = new Headers(init.headers || {});
-  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  if (!headers.has("x-user-id")) headers.set("x-user-id", DEV_USER_ID);
-  const res = await fetch(path, { ...init, headers });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data?.error || data?.message || `Request failed: ${res.status}`);
-  }
-  return data;
-}
-
-const STATUS_OPTIONS = [
-  { id: "all", label: "All" },
-  { id: "live", label: "Live" },
-  { id: "upcoming", label: "Upcoming" },
-  { id: "judging", label: "Judging" },
-  { id: "completed", label: "Completed" },
+const THEMES = [
+  { id: 'italian', name: 'Italian Night', icon: '🇮🇹', gradient: 'from-green-500 via-white to-red-500' },
+  { id: 'taco', name: 'Taco Tuesday', icon: '🌮', gradient: 'from-yellow-400 to-orange-500' },
+  { id: 'asian-fusion', name: 'Asian Fusion', icon: '🥢', gradient: 'from-red-500 to-yellow-400' },
+  { id: 'comfort', name: 'Comfort Food', icon: '🍲', gradient: 'from-amber-600 to-orange-500' },
+  { id: 'healthy', name: 'Healthy / Fitness', icon: '🥗', gradient: 'from-green-400 to-emerald-500' },
+  { id: 'desserts', name: 'Desserts & Baking', icon: '🍰', gradient: 'from-pink-400 to-rose-500' },
+  { id: 'quick', name: 'Quick 30-Min', icon: '⏱️', gradient: 'from-blue-400 to-cyan-500' },
+  { id: 'budget', name: 'Budget ($10)', icon: '💰', gradient: 'from-green-600 to-teal-500' },
+  { id: 'leftover', name: 'Leftover Remix', icon: '♻️', gradient: 'from-emerald-500 to-green-600' },
+  { id: 'regional', name: 'Regional Specialties', icon: '🚐', gradient: 'from-purple-500 to-pink-500' },
 ];
 
-const THEME_PRESETS = [
-  "Italian Night",
-  "Taco Tuesday",
-  "Asian Fusion",
-  "Comfort Food",
-  "Healthy / Fitness",
-  "Desserts & Baking",
-  "Quick 30-Min",
-  "Budget ($10)",
-  "Leftover Remix",
-  "Regional Specialties",
+const STATUS_OPTIONS = [
+  { id: 'all', label: 'All Battles', icon: Layers },
+  { id: 'live', label: 'Live Now', icon: Zap },
+  { id: 'upcoming', label: 'Starting Soon', icon: Clock },
+  { id: 'judging', label: 'Judging', icon: Trophy },
+  { id: 'completed', label: 'Hall of Fame', icon: Crown },
 ];
 
 export default function CompetitionLibraryPage() {
-  const [q, setQ] = React.useState("");
-  const [status, setStatus] = React.useState<string>("all");
-  const [theme, setTheme] = React.useState<string>("");
+  const [q, setQ] = useState('');
+  const [status, setStatus] = useState('all');
+  const [theme, setTheme] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [hoveredCard, setHoveredCard] = useState(null);
+  const [floatingParticles, setFloatingParticles] = useState([]);
 
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-  const [items, setItems] = React.useState<Competition[]>([]);
-
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams();
-      if (q.trim()) params.set("q", q.trim());
-      if (theme.trim()) params.set("theme", theme.trim());
-      // status filtering is done client-side here (optional: you can add a server param)
-      const data: LibraryResponse = await api(`/api/competitions/library?${params.toString()}`);
-      let comps = data.items || [];
-      if (status !== "all") {
-        comps = comps.filter((c) => c.status === status);
-      }
-      setItems(comps);
-    } catch (e: any) {
-      setError(e?.message || "Failed to load competitions");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  React.useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Generate floating particles for ambient animation
+  useEffect(() => {
+    const particles = Array.from({ length: 20 }, (_, i) => ({
+      id: i,
+      left: Math.random() * 100,
+      delay: Math.random() * 5,
+      duration: 10 + Math.random() * 10,
+      size: 4 + Math.random() * 8
+    }));
+    setFloatingParticles(particles);
   }, []);
 
-  function applyFilters(e?: React.FormEvent) {
-    e?.preventDefault();
-    load();
-  }
+  // Mock data - replace with real API call
+  const competitions = [
+    { id: '1', title: 'Friday Night Pasta Battle', themeName: 'Italian Night', status: 'live', isPrivate: false, timeLimitMinutes: 90, createdAt: new Date().toISOString(), participants: 8, viewers: 234 },
+    { id: '2', title: 'Taco Showdown Supreme', themeName: 'Taco Tuesday', status: 'judging', isPrivate: false, timeLimitMinutes: 60, createdAt: new Date().toISOString(), participants: 6, viewers: 156 },
+    { id: '3', title: 'Dessert Duel Championship', themeName: 'Desserts & Baking', status: 'completed', isPrivate: false, timeLimitMinutes: 120, createdAt: new Date().toISOString(), participants: 10, viewers: 892, winner: 'ChefMaster99' },
+    { id: '4', title: '30-Min Express Challenge', themeName: 'Quick 30-Min', status: 'upcoming', isPrivate: true, timeLimitMinutes: 30, createdAt: new Date().toISOString(), participants: 4, viewers: 0 },
+    { id: '5', title: 'Budget Warrior Battle', themeName: 'Budget ($10)', status: 'live', isPrivate: false, timeLimitMinutes: 75, createdAt: new Date().toISOString(), participants: 7, viewers: 178 },
+    { id: '6', title: 'Comfort Food Classic', themeName: 'Comfort Food', status: 'completed', isPrivate: false, timeLimitMinutes: 90, createdAt: new Date().toISOString(), participants: 9, viewers: 456, winner: 'FoodieQueen' },
+  ];
 
-  const statusBadge = (s: Competition["status"]) => {
-    const map: Record<string, string> = {
-      live: "bg-green-600",
-      judging: "bg-amber-500",
-      completed: "bg-blue-600",
-      upcoming: "bg-neutral-600",
-      canceled: "bg-red-600",
+  const statusBadge = (s) => {
+    const colors = {
+      live: 'bg-gradient-to-r from-green-500 to-emerald-600 animate-pulse',
+      judging: 'bg-gradient-to-r from-amber-500 to-orange-600',
+      completed: 'bg-gradient-to-r from-blue-600 to-cyan-600',
+      upcoming: 'bg-gradient-to-r from-purple-600 to-pink-600',
     };
-    return <Badge className={`${map[s] || "bg-neutral-600"} text-white`}>{s}</Badge>;
+    return (
+      <span className={`${colors[s] || 'bg-gray-600'} text-white text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wide shadow-lg`}>
+        {s === 'live' && <span className="inline-block w-2 h-2 bg-white rounded-full mr-1 animate-ping" />}
+        {s}
+      </span>
+    );
   };
 
+  const filteredComps = competitions.filter(c => 
+    (status === 'all' || c.status === status) &&
+    (!theme || c.themeName === theme) &&
+    (!q || c.title.toLowerCase().includes(q.toLowerCase()))
+  );
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-fuchsia-50 to-purple-50">
-      {/* HERO — high-contrast overlay */}
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 -z-10 bg-gradient-to-r from-fuchsia-700 via-purple-800 to-rose-700" />
-        <div className="absolute -top-24 -right-24 w-[26rem] h-[26rem] bg-pink-400/25 blur-3xl rounded-full" />
-        <div className="absolute -bottom-24 -left-24 w-[34rem] h-[34rem] bg-purple-400/25 blur-3xl rounded-full" />
-        <div className="absolute inset-0 bg-black/55" />
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative overflow-hidden">
+      {/* Animated Background Particles */}
+      {floatingParticles.map(particle => (
+        <div
+          key={particle.id}
+          className="absolute rounded-full bg-white/5 backdrop-blur-sm"
+          style={{
+            left: `${particle.left}%`,
+            width: `${particle.size}px`,
+            height: `${particle.size}px`,
+            animation: `float ${particle.duration}s ease-in-out infinite`,
+            animationDelay: `${particle.delay}s`,
+          }}
+        />
+      ))}
 
-        <div className="max-w-7xl mx-auto px-4 py-10">
-          <div className="text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]">
-            <div className="flex items-center justify-between">
-              <Link href="/">
-                <Button variant="ghost" className="text-white hover:bg-white/15">
-                  <Home className="mr-2 h-4 w-4" />
-                  Home
-                </Button>
-              </Link>
-              <Link href="/competitions/new">
-                <Button variant="secondary" className="bg-white text-fuchsia-800 hover:bg-white/90">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Competition
-                </Button>
-              </Link>
-            </div>
+      <style>{`
+        @keyframes float {
+          0%, 100% { transform: translateY(0) translateX(0); opacity: 0.3; }
+          50% { transform: translateY(-100vh) translateX(20px); opacity: 0.6; }
+        }
+        @keyframes glow {
+          0%, 100% { box-shadow: 0 0 20px rgba(236, 72, 153, 0.5); }
+          50% { box-shadow: 0 0 40px rgba(236, 72, 153, 0.8), 0 0 60px rgba(147, 51, 234, 0.6); }
+        }
+        .hover-glow:hover {
+          animation: glow 2s ease-in-out infinite;
+        }
+      `}</style>
 
-            <div className="mt-6 flex items-start gap-3">
-              <div className="p-3 bg-white/15 rounded-2xl backdrop-blur">
-                <Layers className="h-10 w-10" />
+      {/* Hero Section */}
+      <div className="relative">
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-slate-900/50" />
+        <div className="max-w-7xl mx-auto px-4 py-16 relative z-10">
+          <div className="flex items-center justify-between mb-8">
+            <button className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 backdrop-blur-lg rounded-full transition-all hover:scale-105">
+              <Home className="w-4 h-4 text-white" />
+              <span className="text-white font-medium">Home</span>
+            </button>
+            <button className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 rounded-full shadow-lg transition-all hover:scale-105 hover:shadow-pink-500/50">
+              <Plus className="w-5 h-5 text-white" />
+              <span className="text-white font-bold">Create Epic Battle</span>
+            </button>
+          </div>
+
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-3 mb-6">
+              <div className="p-4 bg-gradient-to-br from-pink-500 to-purple-600 rounded-3xl shadow-2xl hover:scale-110 transition-transform hover-glow">
+                <Trophy className="w-12 h-12 text-white" />
               </div>
-              <div>
-                <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
-                  Cookoff Library & Replays
-                </h1>
-                <p className="text-fuchsia-100 text-lg">
-                  Search live, upcoming, and past competitions. Watch replays and join rooms.
-                </p>
-              </div>
             </div>
+            <h1 className="text-6xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-400 to-cyan-400 mb-4 animate-pulse">
+              Battle Arena
+            </h1>
+            <p className="text-xl text-purple-200 max-w-2xl mx-auto">
+              Watch live culinary showdowns, vote for champions, and relive epic cooking battles
+            </p>
+          </div>
 
-            {/* Stats Row */}
-            <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card className="bg-white/10 border-white/20 text-white backdrop-blur hover:bg-white/15 transition">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 text-sm text-fuchsia-100">
-                    <Sparkles className="w-4 h-4" />
-                    Themes
+          {/* Live Stats Dashboard */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            {[
+              { icon: Zap, label: 'Live Battles', value: '3', color: 'from-green-400 to-emerald-600' },
+              { icon: Users, label: 'Active Viewers', value: '568', color: 'from-blue-400 to-cyan-600' },
+              { icon: Trophy, label: 'Champions', value: '127', color: 'from-yellow-400 to-orange-600' },
+              { icon: Video, label: 'Total Battles', value: '1.2K', color: 'from-pink-400 to-rose-600' },
+            ].map((stat, i) => (
+              <div key={i} className="bg-white/5 backdrop-blur-lg rounded-2xl p-4 border border-white/10 hover:bg-white/10 transition-all hover:scale-105 cursor-pointer">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className={`p-2 bg-gradient-to-br ${stat.color} rounded-lg`}>
+                    <stat.icon className="w-5 h-5 text-white" />
                   </div>
-                  <div className="text-2xl font-bold mt-2">{THEME_PRESETS.length}</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-white/10 border-white/20 text-white backdrop-blur hover:bg-white/15 transition">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 text-sm text-fuchsia-100">
-                    <Timer className="w-4 h-4" />
-                    Time Limits
-                  </div>
-                  <div className="text-2xl font-bold mt-2">15–120m</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-white/10 border-white/20 text-white backdrop-blur hover:bg-white/15 transition">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 text-sm text-fuchsia-100">
-                    <Users className="w-4 h-4" />
-                    Community
-                  </div>
-                  <div className="text-2xl font-bold mt-2">Open</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-white/10 border-white/20 text-white backdrop-blur hover:bg-white/15 transition">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 text-sm text-fuchsia-100">
-                    <Video className="w-4 h-4" />
-                    Replays
-                  </div>
-                  <div className="text-2xl font-bold mt-2">Yes</div>
-                </CardContent>
-              </Card>
-            </div>
+                  <span className="text-sm text-purple-300">{stat.label}</span>
+                </div>
+                <div className="text-3xl font-bold text-white">{stat.value}</div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        {error && (
-          <div className="rounded border border-red-300 bg-red-50 p-3 text-red-800 mb-4">{error}</div>
-        )}
-
-        <form onSubmit={applyFilters} className="grid lg:grid-cols-4 gap-4 items-start">
-          <Card className="lg:col-span-2">
-            <CardContent className="p-3">
-              <div className="flex items-center gap-2">
-                <Search className="w-5 h-5 text-gray-500" />
-                <input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search by title…"
-                  className="w-full border rounded px-3 py-2"
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-3">
-              <div className="flex items-center gap-2 mb-2 text-sm font-medium">
-                <Filter className="w-4 h-4 text-gray-600" />
-                Status
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {STATUS_OPTIONS.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setStatus(s.id)}
-                    className={`text-xs rounded px-2 py-1 border ${
-                      status === s.id ? "bg-rose-600 text-white border-rose-600" : "bg-white hover:bg-gray-50"
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-3">
-              <div className="flex items-center gap-2 mb-2 text-sm font-medium">
-                <Sparkles className="w-4 h-4 text-gray-600" />
-                Theme
-              </div>
-              <select
-                value={theme}
-                onChange={(e) => setTheme(e.target.value)}
-                className="w-full border rounded px-3 py-2"
-              >
-                <option value="">All themes</option>
-                {THEME_PRESETS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </CardContent>
-          </Card>
-
-          <div className="lg:col-span-4 flex items-center justify-between">
-            <div className="text-xs text-gray-500">
-              Tip: Use status tabs and theme to refine. Click a card to join or view details.
+      {/* Filters Section */}
+      <div className="max-w-7xl mx-auto px-4 mb-8">
+        {/* Search Bar */}
+        <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10 mb-6">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-purple-400" />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search epic battles..."
+                className="w-full bg-white/10 border border-white/20 rounded-xl pl-12 pr-4 py-3 text-white placeholder-purple-400 focus:outline-none focus:ring-2 focus:ring-pink-500"
+              />
             </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => { setQ(""); setStatus("all"); setTheme(""); }}>
-                Reset
-              </Button>
-              <Button type="submit" className="bg-rose-600 hover:bg-rose-700 text-white">
-                Apply
-              </Button>
-            </div>
+            <button className="px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 rounded-xl font-bold text-white hover:scale-105 transition-transform">
+              Search
+            </button>
           </div>
-        </form>
-      </div>
 
-      {/* Results */}
-      <div className="max-w-7xl mx-auto px-4 pb-12">
-        {/* Tabs-like header (client filter) */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          {STATUS_OPTIONS.map((s) => (
+          {/* Status Filter Pills */}
+          <div className="flex flex-wrap gap-3">
+            {STATUS_OPTIONS.map((s) => {
+              const Icon = s.icon;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setStatus(s.id)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all hover:scale-105 ${
+                    status === s.id
+                      ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-lg'
+                      : 'bg-white/10 text-purple-300 hover:bg-white/20'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Theme Filter */}
+        <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10 mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <Sparkles className="w-5 h-5 text-yellow-400" />
+            <h3 className="text-lg font-bold text-white">Filter by Theme</h3>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <button
-              key={s.id}
-              type="button"
-              onClick={() => { setStatus(s.id); applyFilters(); }}
-              className={`text-sm rounded-full px-3 py-1 border ${
-                status === s.id ? "bg-purple-600 text-white border-purple-600" : "bg-white hover:bg-gray-50"
+              onClick={() => setTheme('')}
+              className={`p-3 rounded-xl font-medium transition-all hover:scale-105 ${
+                !theme ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white' : 'bg-white/10 text-purple-300 hover:bg-white/20'
               }`}
             >
-              {s.label}
+              All Themes
             </button>
+            {THEMES.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTheme(t.name)}
+                className={`p-3 rounded-xl font-medium transition-all hover:scale-105 ${
+                  theme === t.name ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white' : 'bg-white/10 text-purple-300 hover:bg-white/20'
+                }`}
+              >
+                <div className="text-2xl mb-1">{t.icon}</div>
+                <div className="text-xs">{t.name}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Competition Grid */}
+      <div className="max-w-7xl mx-auto px-4 pb-16">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredComps.map((comp) => (
+            <div
+              key={comp.id}
+              onMouseEnter={() => setHoveredCard(comp.id)}
+              onMouseLeave={() => setHoveredCard(null)}
+              className="group relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-lg rounded-2xl overflow-hidden border border-white/20 hover:border-pink-500/50 transition-all hover:scale-105 hover:shadow-2xl hover:shadow-pink-500/20 cursor-pointer"
+            >
+              {/* Animated gradient overlay */}
+              <div className="absolute inset-0 bg-gradient-to-br from-pink-500/0 via-purple-500/0 to-cyan-500/0 group-hover:from-pink-500/10 group-hover:via-purple-500/10 group-hover:to-cyan-500/10 transition-all duration-500" />
+              
+              {/* Header Banner */}
+              <div className="relative h-32 bg-gradient-to-r from-pink-600 via-purple-600 to-cyan-600 overflow-hidden">
+                <div className="absolute inset-0 bg-black/20" />
+                {comp.status === 'live' && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                )}
+                <style>{`
+                  @keyframes shimmer {
+                    0% { background-position: -200% 0; }
+                    100% { background-position: 200% 0; }
+                  }
+                  .animate-shimmer { animation: shimmer 3s infinite; }
+                `}</style>
+                
+                <div className="absolute top-3 left-3 flex gap-2">
+                  {statusBadge(comp.status)}
+                  {comp.isPrivate && (
+                    <span className="bg-black/40 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full font-bold">
+                      🔒 PRIVATE
+                    </span>
+                  )}
+                </div>
+
+                <div className="absolute bottom-3 left-3 flex items-center gap-2">
+                  <Flame className="w-5 h-5 text-orange-400" />
+                  <span className="text-white font-bold text-sm">{comp.timeLimitMinutes}min Battle</span>
+                </div>
+
+                {comp.status === 'live' && (
+                  <div className="absolute bottom-3 right-3 flex items-center gap-2 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-full">
+                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                    <Eye className="w-4 h-4 text-white" />
+                    <span className="text-white font-bold text-xs">{comp.viewers}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Content */}
+              <div className="relative p-5">
+                <h3 className="text-xl font-bold text-white mb-2 line-clamp-1">{comp.title}</h3>
+                <div className="flex items-center gap-2 mb-4">
+                  <Sparkles className="w-4 h-4 text-yellow-400" />
+                  <span className="text-purple-300 text-sm">{comp.themeName}</span>
+                </div>
+
+                {/* Stats Row */}
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  <div className="bg-white/5 rounded-lg p-2 text-center">
+                    <Users className="w-4 h-4 text-cyan-400 mx-auto mb-1" />
+                    <div className="text-white font-bold text-sm">{comp.participants}</div>
+                    <div className="text-purple-400 text-xs">Chefs</div>
+                  </div>
+                  <div className="bg-white/5 rounded-lg p-2 text-center">
+                    <Calendar className="w-4 h-4 text-pink-400 mx-auto mb-1" />
+                    <div className="text-white font-bold text-sm">Today</div>
+                    <div className="text-purple-400 text-xs">Date</div>
+                  </div>
+                  <div className="bg-white/5 rounded-lg p-2 text-center">
+                    <Trophy className="w-4 h-4 text-yellow-400 mx-auto mb-1" />
+                    <div className="text-white font-bold text-sm">{comp.status === 'completed' ? '👑' : '—'}</div>
+                    <div className="text-purple-400 text-xs">Winner</div>
+                  </div>
+                </div>
+
+                {comp.winner && (
+                  <div className="bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-lg p-3 mb-4 border border-yellow-500/30">
+                    <div className="flex items-center gap-2">
+                      <Crown className="w-5 h-5 text-yellow-400" />
+                      <div>
+                        <div className="text-xs text-yellow-300">Champion</div>
+                        <div className="text-white font-bold">{comp.winner}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Button */}
+                <button className="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 rounded-xl font-bold text-white transition-all hover:scale-105 flex items-center justify-center gap-2 shadow-lg">
+                  {comp.status === 'live' ? (
+                    <><Play className="w-5 h-5" /> Join Live</>
+                  ) : comp.status === 'completed' ? (
+                    <><Video className="w-5 h-5" /> Watch Replay</>
+                  ) : (
+                    <><Eye className="w-5 h-5" /> View Details</>
+                  )}
+                </button>
+              </div>
+
+              {/* Hover Effect Border */}
+              {hoveredCard === comp.id && (
+                <div className="absolute inset-0 border-2 border-pink-500 rounded-2xl pointer-events-none animate-pulse" />
+              )}
+            </div>
           ))}
         </div>
 
-        {loading ? (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Card key={i} className="h-48 animate-pulse bg-gray-100" />
-            ))}
-          </div>
-        ) : items.length === 0 ? (
-          <Card className="border-dashed">
-            <CardContent className="p-6 text-center text-gray-600">
-              No competitions found. Try widening your filters or{" "}
-              <Link href="/competitions/new">
-                <span className="text-rose-600 underline cursor-pointer">create one</span>
-              </Link>
-              .
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {items.map((c) => (
-              <Link key={c.id} href={`/competitions/${encodeURIComponent(c.id)}`}>
-                <Card className="group cursor-pointer hover:shadow-xl transition-all hover:-translate-y-[2px] overflow-hidden">
-                  {/* Banner */}
-                  <div className="relative h-24 bg-gradient-to-r from-rose-500 via-fuchsia-500 to-purple-600">
-                    <div className="absolute inset-0 bg-black/15" />
-                    <div className="absolute top-2 left-2 flex items-center gap-2">
-                      {statusBadge(c.status)}
-                      {c.isPrivate && <Badge variant="outline" className="border-white/60 text-white/90">Private</Badge>}
-                    </div>
-                    <div className="absolute bottom-2 left-2 flex items-center gap-2 text-white">
-                      <Flame className="w-4 h-4" />
-                      <span className="text-xs">{c.timeLimitMinutes} min</span>
-                    </div>
-                  </div>
-
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold line-clamp-1">{c.title || "ChefSire Cookoff"}</h3>
-                      <Eye className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-                    </div>
-                    <div className="mt-1 text-sm text-gray-600 line-clamp-1">
-                      Theme: {c.themeName || "—"}
-                    </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                      <div className="flex items-center gap-1 text-gray-600">
-                        <Calendar className="w-3 h-3" />
-                        {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "—"}
-                      </div>
-                      <div className="flex items-center gap-1 text-gray-600">
-                        <Timer className="w-3 h-3" />
-                        {c.startTime ? "Started" : c.status === "upcoming" ? "Not started" : "—"}
-                      </div>
-                      <div className="flex items-center gap-1 text-gray-600">
-                        <Trophy className="w-3 h-3" />
-                        {c.status === "completed" ? "Results" : "—"}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
+        {/* Empty State */}
+        {filteredComps.length === 0 && (
+          <div className="text-center py-16">
+            <div className="inline-block p-6 bg-white/5 backdrop-blur-lg rounded-3xl mb-4">
+              <Trophy className="w-16 h-16 text-purple-400" />
+            </div>
+            <h3 className="text-2xl font-bold text-white mb-2">No battles found</h3>
+            <p className="text-purple-300 mb-6">Try adjusting your filters or create a new epic showdown!</p>
+            <button className="px-8 py-4 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full font-bold text-white hover:scale-105 transition-transform shadow-lg">
+              <Plus className="inline w-5 h-5 mr-2" />
+              Create Your First Battle
+            </button>
           </div>
         )}
+      </div>
 
-        {/* Footer CTA */}
-        <div className="mt-10 bg-gradient-to-r from-purple-600 to-rose-600 text-white rounded-xl">
-          <div className="px-6 py-6 flex flex-col md:flex-row items-center justify-between gap-4">
-            <div>
-              <div className="text-lg font-semibold flex items-center gap-2">
-                <Sparkles className="w-5 h-5" />
-                Ready to host a showdown?
-              </div>
-              <p className="text-purple-200 text-sm">
-                Create a room, invite friends or the community, and go live.
-              </p>
-            </div>
-            <Link href="/competitions/new">
-              <Button variant="secondary" className="bg-white text-purple-700 hover:bg-white/90">
-                <Plus className="mr-2 h-4 w-4" />
-                Create Competition
-              </Button>
-            </Link>
-          </div>
-        </div>
+      {/* Floating CTA */}
+      <div className="fixed bottom-8 right-8 z-50">
+        <button className="p-4 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full shadow-2xl hover:scale-110 transition-transform hover-glow">
+          <Plus className="w-8 h-8 text-white" />
+        </button>
       </div>
     </div>
   );
