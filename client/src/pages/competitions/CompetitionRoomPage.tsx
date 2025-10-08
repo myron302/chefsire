@@ -2,548 +2,424 @@
 import * as React from "react";
 import { useParams } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNowStrict } from "date-fns";
-
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Progress } from "@/components/ui/progress";
-import { Skeleton } from "@/components/ui/skeleton";
-import { toast } from "@/components/ui/use-toast";
-import { Camera, Clock, Send, Vote, Flame, Video, Trophy, User as UserIcon, Film } from "lucide-react";
-
-// ---------------------------------------------------------------------------
-// Utilities
-// ---------------------------------------------------------------------------
-function getAuthHeaders(): HeadersInit {
-  const dev = typeof window !== "undefined" ? localStorage.getItem("devUserId") : null;
-  return dev ? { "x-user-id": dev } : {};
-}
-function useInterval(callback: () => void, delay: number | null) {
-  const saved = React.useRef(callback);
-  React.useEffect(() => { saved.current = callback; }, [callback]);
-  React.useEffect(() => {
-    if (delay === null) return;
-    const id = setInterval(() => saved.current(), delay);
-    return () => clearInterval(id);
-  }, [delay]);
-}
-
-type Competition = {
-  id: string;
-  title: string | null;
-  status: "upcoming" | "live" | "judging" | "completed" | "canceled";
-  themeName: string | null;
-  isPrivate: boolean;
-  startTime: string | null;
-  endTime: string | null;
-  judgingClosesAt: string | null;
-  timeLimitMinutes: number;
-  minOfficialVoters: number;
-  videoRecordingUrl: string | null;
-  isOfficial: boolean;
-  winnerParticipantId: string | null;
-};
 
 type Participant = {
   id: string;
   competitionId: string;
   userId: string;
-  role: "competitor" | "host" | "judge";
-  dishTitle: string | null;
-  dishDescription: string | null;
-  finalDishPhotoUrl: string | null;
-  totalScore: number | null;
-  placement: number | null;
+  role: "host" | "competitor" | "judge";
+  dishTitle?: string | null;
+  dishDescription?: string | null;
+  finalDishPhotoUrl?: string | null;
+  totalScore?: number | null;
+  placement?: number | null;
 };
 
-type VoteTally = { participantId: string; voters: number };
+type Vote = {
+  id: string;
+  competitionId: string;
+  voterId: string;
+  participantId: string;
+  presentation: number;
+  creativity: number;
+  technique: number;
+  createdAt: string;
+};
 
 type CompetitionDetail = {
-  competition: Competition;
+  competition: {
+    id: string;
+    creatorId: string;
+    title?: string | null;
+    themeName?: string | null;
+    status: "upcoming" | "live" | "judging" | "completed" | "canceled";
+    isPrivate: boolean;
+    timeLimitMinutes: number;
+    minOfficialVoters: number;
+    startTime?: string | null;
+    endTime?: string | null;
+    judgingClosesAt?: string | null;
+    videoRecordingUrl?: string | null;
+    isOfficial: boolean;
+    winnerParticipantId?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
   participants: Participant[];
-  voteTallies: VoteTally[];
-  media: { id: string; type: "recording" | "clip" | "highlight"; url: string }[];
+  voteTallies: { participantId: string; voters: number }[];
+  media: any[];
 };
 
-// ---------------------------------------------------------------------------
-// Data hooks
-// ---------------------------------------------------------------------------
-function useCompetition(id: string) {
-  return useQuery({
-    queryKey: ["competition", id],
-    queryFn: async (): Promise<CompetitionDetail> => {
-      const res = await fetch(`/api/competitions/${id}`, { headers: getAuthHeaders() });
-      if (!res.ok) throw new Error("Failed to load competition");
-      return res.json();
-    },
-    refetchInterval: (data) => {
-      const status = data?.competition?.status;
-      if (status === "live") return 2000;
-      if (status === "judging") return 5000;
-      return 30_000;
-    },
-  });
+function getDevUserId() {
+  let id = localStorage.getItem("devUserId");
+  if (!id) {
+    id = `user-${Math.random().toString(36).slice(2, 9)}`;
+    localStorage.setItem("devUserId", id);
+  }
+  return id;
 }
 
-function useStart(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/competitions/${id}/start`, { method: "POST", headers: getAuthHeaders() });
-      if (!res.ok) throw new Error("Unable to start competition");
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Cookoff started!" });
-      qc.invalidateQueries({ queryKey: ["competition", id] });
-    },
-  });
+async function fetchCompetition(id: string): Promise<CompetitionDetail> {
+  const res = await fetch(`/api/competitions/${id}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error || `Failed to load competition (HTTP ${res.status})`);
+  }
+  return await res.json();
 }
 
-function useEnd(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/competitions/${id}/end`, { method: "POST", headers: getAuthHeaders() });
-      if (!res.ok) throw new Error("Unable to end competition");
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Judging opened for 24 hours" });
-      qc.invalidateQueries({ queryKey: ["competition", id] });
-    },
+async function postJSON(path: string, body?: any) {
+  const userId = getDevUserId();
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-user-id": userId },
+    body: body ? JSON.stringify(body) : undefined,
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error || `Request failed: ${path} (HTTP ${res.status})`);
+  }
+  return await res.json();
 }
 
-function useSubmitDish(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (payload: { dishTitle?: string; dishDescription?: string; finalDishPhotoUrl?: string }) => {
-      const res = await fetch(`/api/competitions/${id}/submit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
-        throw new Error(e?.error || "Submit failed");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Dish submitted!" });
-      qc.invalidateQueries({ queryKey: ["competition", id] });
-    },
-  });
+function StatusBadge({ status }: { status: CompetitionDetail["competition"]["status"] }) {
+  const color =
+    status === "live" ? "bg-green-600" :
+    status === "judging" ? "bg-amber-600" :
+    status === "completed" ? "bg-gray-700" :
+    status === "upcoming" ? "bg-blue-600" :
+    "bg-gray-500";
+  return (
+    <span className={`inline-block rounded px-2 py-0.5 text-xs text-white ${color}`}>
+      {status.toUpperCase()}
+    </span>
+  );
 }
 
-function useVote(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (payload: { participantId: string; presentation: number; creativity: number; technique: number }) => {
-      const res = await fetch(`/api/competitions/${id}/votes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
-        throw new Error(e?.error || "Voting failed");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Vote submitted" });
-      qc.invalidateQueries({ queryKey: ["competition", id] });
-    },
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
 export default function CompetitionRoomPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id!;
-  const { data, isLoading, isError } = useCompetition(id);
-  const startMut = useStart(id);
-  const endMut = useEnd(id);
+  const qc = useQueryClient();
 
-  const comp = data?.competition;
-  const participants = data?.participants ?? [];
+  const devUserId = getDevUserId();
 
-  const [now, setNow] = React.useState(() => Date.now());
-  useInterval(() => setNow(Date.now()), comp?.status === "live" || comp?.status === "judging" ? 1000 : null);
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["competition", id],
+    queryFn: () => fetchCompetition(id),
+    refetchOnWindowFocus: false,
+  });
 
-  function timeLeftLabel() {
-    if (!comp) return "";
-    const nowD = new Date(now);
-    if (comp.status === "live" && comp.endTime) {
-      const end = new Date(comp.endTime);
-      if (end.getTime() > nowD.getTime()) return `${formatDistanceToNowStrict(end, { addSuffix: false })} left`;
-      return "Finishing…";
-    }
-    if (comp.status === "judging" && comp.judgingClosesAt) {
-      const close = new Date(comp.judgingClosesAt);
-      if (close.getTime() > nowD.getTime()) return `Voting ends in ${formatDistanceToNowStrict(close, { addSuffix: false })}`;
-      return "Judging closing…";
-    }
-    return "";
-  }
+  const startMutation = useMutation({
+    mutationFn: () => postJSON(`/api/competitions/${id}/start`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["competition", id] }),
+  });
+  const endMutation = useMutation({
+    mutationFn: () => postJSON(`/api/competitions/${id}/end`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["competition", id] }),
+  });
+  const completeMutation = useMutation({
+    mutationFn: () => postJSON(`/api/competitions/${id}/complete`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["competition", id] }),
+  });
+  const submitMutation = useMutation({
+    mutationFn: (payload: { dishTitle?: string; dishDescription?: string; finalDishPhotoUrl?: string }) =>
+      postJSON(`/api/competitions/${id}/submit`, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["competition", id] });
+      setDishTitle("");
+      setDishDescription("");
+      setFinalDishPhotoUrl("");
+    },
+  });
+  const voteMutation = useMutation({
+    mutationFn: (payload: { participantId: string; presentation: number; creativity: number; technique: number }) =>
+      postJSON(`/api/competitions/${id}/votes`, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["competition", id] }),
+  });
+
+  const [dishTitle, setDishTitle] = React.useState("");
+  const [dishDescription, setDishDescription] = React.useState("");
+  const [finalDishPhotoUrl, setFinalDishPhotoUrl] = React.useState("");
 
   if (isLoading) {
-    return (
-      <div className="mx-auto max-w-5xl px-4 py-6">
-        <Skeleton className="h-8 w-64" />
-        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
-        </div>
-      </div>
-    );
+    return <div className="p-6">Loading room…</div>;
   }
-  if (isError || !comp) {
+  if (error || !data) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-6">
-        <p className="text-red-600">Failed to load cookoff.</p>
+      <div className="p-6 text-red-600">
+        {(error as any)?.message || "Failed to load room"}
       </div>
     );
   }
 
-  const isLive = comp.status === "live";
-  const isJudging = comp.status === "judging";
-  const isCompleted = comp.status === "completed";
+  const { competition, participants, voteTallies } = data;
+  const myParticipant = participants.find((p) => p.userId === devUserId);
+  const isCreator = competition.creatorId === devUserId;
+
+  const votersByPid = new Map(voteTallies.map((v) => [v.participantId, v.voters]));
+  const sortedParticipants = [...participants].sort((a, b) => (b.totalScore ?? 0) - (a.totalScore ?? 0));
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6">
-      <header className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-3">
-          <Video className="h-6 w-6" />
-          <h1 className="font-serif text-2xl">{comp.title || "Cookoff Room"}</h1>
-        </div>
-        <Badge variant="secondary" className="ml-0 sm:ml-2">{comp.themeName || "Freestyle"}</Badge>
-        <Badge className="ml-auto capitalize">{comp.status}</Badge>
-      </header>
-
-      <Card>
-        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            <div className="text-sm">
-              {isLive && comp.endTime && <span>Cooking ends: <strong>{new Date(comp.endTime).toLocaleTimeString()}</strong></span>}
-              {isJudging && comp.judgingClosesAt && <span>Voting closes: <strong>{new Date(comp.judgingClosesAt).toLocaleTimeString()}</strong></span>}
-              {!isLive && !isJudging && comp.startTime && <span>Started: {new Date(comp.startTime).toLocaleString()}</span>}
-            </div>
+    <div className="mx-auto max-w-5xl px-4 py-6">
+      <header className="mb-6 flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">
+            {competition.title || `${competition.themeName || "Cookoff"}`}
+          </h1>
+          <div className="mt-1 flex items-center gap-2 text-sm text-gray-600">
+            <StatusBadge status={competition.status} />
+            <span>Theme: <strong>{competition.themeName || "—"}</strong></span>
+            <span>•</span>
+            <span>Time limit: {competition.timeLimitMinutes}m</span>
+            <span>•</span>
+            <span>Min voters: {competition.minOfficialVoters}</span>
           </div>
-          <div className="text-sm text-muted-foreground">{timeLeftLabel()}</div>
-        </CardHeader>
-        <CardContent>
-          {isLive && (
-            <LiveGrid
-              competitionId={comp.id}
-              participants={participants}
-              endTime={comp.endTime!}
-              onEnd={() => endMut.mutate()}
-            />
-          )}
-
-          {isJudging && (
-            <JudgingPanel
-              competitionId={comp.id}
-              participants={participants}
-              closeAt={comp.judgingClosesAt!}
-            />
-          )}
-
-          {isCompleted && (
-            <ArchivePanel competition={comp} participants={participants} />
-          )}
-        </CardContent>
-      </Card>
-
-      {comp.status === "upcoming" && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button onClick={() => startMut.mutate()} disabled={startMut.isPending}>
-            <Camera className="mr-2 h-4 w-4" />
-            Start Cookoff
-          </Button>
-          <div className="text-xs text-muted-foreground">Time limit: {comp.timeLimitMinutes} minutes</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Live grid (placeholder video tiles) + submit modal
-// ---------------------------------------------------------------------------
-function LiveGrid({
-  competitionId,
-  participants,
-  endTime,
-  onEnd,
-}: {
-  competitionId: string;
-  participants: Participant[];
-  endTime: string;
-  onEnd: () => void;
-}) {
-  const endAt = new Date(endTime).getTime();
-  const [now, setNow] = React.useState(() => Date.now());
-  useInterval(() => setNow(Date.now()), 1000);
-
-  // simple percent countdown based on wall clock
-  const total = endAt - (new Date(endTime).getTime() - 1000 * 60 * 60); // rough baseline
-  const pct = Math.max(0, Math.min(100, ((now - (endAt - total)) / total) * 100));
-
-  return (
-    <div className="space-y-6">
-      <Progress value={isFinite(pct) ? pct : 0} />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {participants
-          .filter((p) => p.role === "competitor" || p.role === "host")
-          .map((p) => (
-            <div key={p.id} className="relative rounded-2xl border bg-black/5 p-3">
-              {/* Video placeholder tile */}
-              <div className="flex h-48 items-center justify-center rounded-xl bg-muted">
-                <UserIcon className="h-10 w-10 opacity-70" />
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <div className="text-sm font-medium truncate">User {p.userId.slice(0, 6)}</div>
-                <SubmitDishDialog competitionId={competitionId} />
-              </div>
-            </div>
-          ))}
-      </div>
-
-      <div className="flex items-center justify-between rounded-xl border p-3">
-        <div className="text-sm text-muted-foreground">
-          Need to wrap up early? End the cookoff to open the 24-hour judging window.
-        </div>
-        <Button variant="secondary" onClick={onEnd}>
-          <FlagIcon />
-          End & Open Judging
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function SubmitDishDialog({ competitionId }: { competitionId: string }) {
-  const submitMut = useSubmitDish(competitionId);
-  const [open, setOpen] = React.useState(false);
-  const [title, setTitle] = React.useState("");
-  const [desc, setDesc] = React.useState("");
-  const [photoUrl, setPhotoUrl] = React.useState("");
-
-  const onSubmit = () => {
-    submitMut.mutate(
-      { dishTitle: title || undefined, dishDescription: desc || undefined, finalDishPhotoUrl: photoUrl || undefined },
-      { onSuccess: () => { setOpen(false); setTitle(""); setDesc(""); setPhotoUrl(""); } }
-    );
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="outline">
-          <Send className="mr-2 h-3.5 w-3.5" />
-          Submit Dish
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Submit Final Dish</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-3">
-          <div className="grid gap-1.5">
-            <Label htmlFor="dtitle">Dish Title</Label>
-            <Input id="dtitle" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., Citrus Basque Cheesecake" />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="ddesc">Description</Label>
-            <Textarea id="ddesc" value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} placeholder="Key techniques, flavors, plating notes…" />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="durl">Photo URL</Label>
-            <Input id="durl" value={photoUrl} onChange={(e) => setPhotoUrl(e.target.value)} placeholder="https://…" />
-          </div>
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={onSubmit} disabled={submitMut.isPending}>
-              {submitMut.isPending ? "Submitting…" : "Submit"}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Judging panel (24h window) – spectator voting only
-// ---------------------------------------------------------------------------
-function JudgingPanel({
-  competitionId,
-  participants,
-  closeAt,
-}: {
-  competitionId: string;
-  participants: Participant[];
-  closeAt: string;
-}) {
-  const voteMut = useVote(competitionId);
-  const [now, setNow] = React.useState(() => Date.now());
-  useInterval(() => setNow(Date.now()), 1000);
-
-  const closes = new Date(closeAt);
-  const endsIn = closes.getTime() > now ? formatDistanceToNowStrict(closes, { addSuffix: false }) : "Closing…";
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 text-sm">
-        <Vote className="h-4 w-4" />
-        Voting ends in <strong className="ml-1">{endsIn}</strong>
-      </div>
-      <Separator />
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {participants
-          .filter((p) => p.role === "competitor" || p.role === "host")
-          .map((p) => <VoteCard key={p.id} p={p} onVote={(scores) => voteMut.mutate({ participantId: p.id, ...scores })} />)}
-      </div>
-    </div>
-  );
-}
-
-function VoteCard({
-  p,
-  onVote,
-}: {
-  p: Participant;
-  onVote: (scores: { presentation: number; creativity: number; technique: number }) => void;
-}) {
-  const [presentation, setPresentation] = React.useState(7);
-  const [creativity, setCreativity] = React.useState(7);
-  const [technique, setTechnique] = React.useState(7);
-
-  return (
-    <Card className="overflow-hidden">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base flex items-center gap-2">
-          <UserIcon className="h-4 w-4" />
-          {p.dishTitle || `Chef ${p.userId.slice(0, 6)}`}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="aspect-video w-full overflow-hidden rounded-lg bg-muted">
-          {p.finalDishPhotoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={p.finalDishPhotoUrl} alt={p.dishTitle ?? "dish"} className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No photo</div>
-          )}
-        </div>
-        {p.dishDescription && <p className="text-sm text-muted-foreground line-clamp-3">{p.dishDescription}</p>}
-
-        <div className="grid grid-cols-3 gap-3 text-sm">
-          <div>
-            <Label>Presentation</Label>
-            <Input type="number" min={1} max={10} value={presentation} onChange={(e) => setPresentation(clamp1to10(e.target.value))} />
-          </div>
-          <div>
-            <Label>Creativity</Label>
-            <Input type="number" min={1} max={10} value={creativity} onChange={(e) => setCreativity(clamp1to10(e.target.value))} />
-          </div>
-          <div>
-            <Label>Technique</Label>
-            <Input type="number" min={1} max={10} value={technique} onChange={(e) => setTechnique(clamp1to10(e.target.value))} />
+          <div className="mt-1 text-xs text-gray-500">
+            You are <span className="font-mono bg-gray-100 px-1 py-0.5 rounded">{devUserId}</span>
+            {isCreator ? " (creator)" : myParticipant ? ` (participant: ${myParticipant.role})` : " (spectator)"}
           </div>
         </div>
 
-        <Button className="w-full" onClick={() => onVote({ presentation, creativity, technique })}>
-          <Flame className="mr-2 h-4 w-4" /> Submit Vote
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-function clamp1to10(v: string) {
-  const n = parseInt(v || "0", 10);
-  return Math.max(1, Math.min(10, isNaN(n) ? 1 : n));
-}
-
-// ---------------------------------------------------------------------------
-// Archive / results
-// ---------------------------------------------------------------------------
-function ArchivePanel({ competition, participants }: { competition: Competition; participants: Participant[] }) {
-  const winner = participants.find((p) => p.id === competition.winnerParticipantId);
-  return (
-    <div className="space-y-4">
-      {competition.videoRecordingUrl ? (
-        <a href={competition.videoRecordingUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm underline">
-          <Film className="h-4 w-4" />
-          Watch recording
-        </a>
-      ) : (
-        <div className="text-sm text-muted-foreground">Recording will appear here when available.</div>
-      )}
-
-      <div className="rounded-xl border p-3">
-        <div className="flex items-center gap-2">
-          <Trophy className="h-5 w-5 text-yellow-500" />
-          <div className="text-sm">
-            {winner ? (
-              <>
-                Winner: <strong>{winner.dishTitle || `Chef ${winner.userId.slice(0, 6)}`}</strong>{" "}
-                {competition.isOfficial ? <Badge className="ml-2">Official</Badge> : <Badge variant="secondary" className="ml-2">Exhibition</Badge>}
-              </>
-            ) : (
-              "Results pending."
+        {isCreator && (
+          <div className="flex gap-2">
+            {competition.status === "upcoming" && (
+              <button
+                onClick={() => startMutation.mutate()}
+                disabled={startMutation.isPending}
+                className="rounded bg-green-600 px-3 py-2 text-white disabled:opacity-50"
+              >
+                {startMutation.isPending ? "Starting…" : "Start"}
+              </button>
+            )}
+            {competition.status === "live" && (
+              <button
+                onClick={() => endMutation.mutate()}
+                disabled={endMutation.isPending}
+                className="rounded bg-amber-600 px-3 py-2 text-white disabled:opacity-50"
+              >
+                {endMutation.isPending ? "Ending…" : "End → Judging"}
+              </button>
+            )}
+            {competition.status === "judging" && (
+              <button
+                onClick={() => completeMutation.mutate()}
+                disabled={completeMutation.isPending}
+                className="rounded bg-gray-800 px-3 py-2 text-white disabled:opacity-50"
+              >
+                {completeMutation.isPending ? "Finalizing…" : "Finalize Results"}
+              </button>
             )}
           </div>
-        </div>
-        <Separator className="my-3" />
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {participants
-            .filter((p) => p.role === "competitor" || p.role === "host")
-            .sort((a, b) => (a.placement ?? 99) - (b.placement ?? 99))
-            .map((p) => (
-              <div key={p.id} className="rounded-lg border p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="text-sm font-medium">{p.dishTitle || `Chef ${p.userId.slice(0, 6)}`}</div>
-                  {p.placement && <Badge>#{p.placement}</Badge>}
+        )}
+      </header>
+
+      {/* Participants */}
+      <section className="mb-8">
+        <h2 className="mb-3 text-lg font-semibold">Participants</h2>
+        <div className="grid gap-4 md:grid-cols-2">
+          {sortedParticipants.map((p) => (
+            <article key={p.id} className="rounded border p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-sm text-gray-600">user: {p.userId}</div>
+                  <div className="font-semibold">{p.dishTitle || <span className="text-gray-400">No submission yet</span>}</div>
+                  {p.dishDescription ? (
+                    <p className="mt-1 text-sm text-gray-700">{p.dishDescription}</p>
+                  ) : null}
                 </div>
-                <div className="aspect-video w-full overflow-hidden rounded bg-muted">
-                  {p.finalDishPhotoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.finalDishPhotoUrl} alt={p.dishTitle ?? "dish"} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No photo</div>
+                <div className="text-right">
+                  {typeof p.totalScore === "number" && (
+                    <div className="text-xl font-bold">{p.totalScore}</div>
                   )}
+                  {typeof p.placement === "number" && (
+                    <div className="text-xs text-gray-500">place: {p.placement}</div>
+                  )}
+                  <div className="text-xs text-gray-500">
+                    voters: {votersByPid.get(p.id) ?? 0}
+                  </div>
                 </div>
-                {typeof p.totalScore === "number" && (
-                  <div className="mt-2 text-xs text-muted-foreground">Total score: {p.totalScore}</div>
-                )}
               </div>
-            ))}
+              {p.finalDishPhotoUrl && (
+                <img
+                  src={p.finalDishPhotoUrl}
+                  alt={p.dishTitle || "dish image"}
+                  className="mt-3 h-40 w-full rounded object-cover"
+                />
+              )}
+
+              {/* Voting form for spectators during live/judging */}
+              {(competition.status === "live" || competition.status === "judging") && !isCreator && (!myParticipant) && (
+                <VoteForm
+                  onVote={(vals) =>
+                    voteMutation.mutate({
+                      participantId: p.id,
+                      presentation: vals.presentation,
+                      creativity: vals.creativity,
+                      technique: vals.technique,
+                    })
+                  }
+                  isPending={voteMutation.isPending}
+                />
+              )}
+            </article>
+          ))}
         </div>
-      </div>
+      </section>
+
+      {/* Submit block for competitors (during live/judging) */}
+      {(competition.status === "live" || competition.status === "judging") && (
+        <section className="mb-10">
+          <h2 className="mb-3 text-lg font-semibold">Submit Your Dish</h2>
+          <div className="rounded border p-4">
+            {myParticipant ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  submitMutation.mutate({
+                    dishTitle: dishTitle || undefined,
+                    dishDescription: dishDescription || undefined,
+                    finalDishPhotoUrl: finalDishPhotoUrl || undefined,
+                  });
+                }}
+                className="grid gap-3"
+              >
+                <div>
+                  <label className="block text-sm font-medium">Dish Title</label>
+                  <input
+                    value={dishTitle}
+                    onChange={(e) => setDishTitle(e.target.value)}
+                    className="mt-1 w-full rounded border px-3 py-2"
+                    placeholder="e.g. Nonna’s Carbonara"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium">Description</label>
+                  <textarea
+                    value={dishDescription}
+                    onChange={(e) => setDishDescription(e.target.value)}
+                    className="mt-1 w-full rounded border px-3 py-2"
+                    rows={3}
+                    placeholder="What makes it special? Any twists?"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium">Final Dish Photo URL</label>
+                  <input
+                    value={finalDishPhotoUrl}
+                    onChange={(e) => setFinalDishPhotoUrl(e.target.value)}
+                    className="mt-1 w-full rounded border px-3 py-2"
+                    placeholder="https://…"
+                  />
+                </div>
+                {submitMutation.error ? (
+                  <div className="rounded bg-red-50 p-2 text-sm text-red-700">
+                    {(submitMutation.error as any).message || "Submit failed"}
+                  </div>
+                ) : null}
+                <div>
+                  <button
+                    disabled={submitMutation.isPending}
+                    className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
+                  >
+                    {submitMutation.isPending ? "Saving…" : "Save Submission"}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="text-sm text-gray-600">
+                You’re a spectator. To submit a dish, join this competition as a participant (backend or future UI).
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Completed summary */}
+      {competition.status === "completed" && (
+        <section className="rounded border p-4">
+          <h2 className="mb-2 text-lg font-semibold">Results</h2>
+          {competition.winnerParticipantId ? (
+            <div className="text-sm">
+              Winner:{" "}
+              <span className="font-mono bg-green-100 px-1 py-0.5 rounded">
+                {competition.winnerParticipantId}
+              </span>
+              {sortedParticipants.find((p) => p.id === competition.winnerParticipantId)?.dishTitle
+                ? ` — ${(sortedParticipants.find((p) => p.id === competition.winnerParticipantId) as any).dishTitle}`
+                : ""}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-600">No winner recorded.</div>
+          )}
+          <div className="mt-3 text-xs text-gray-500">
+            Official: {competition.isOfficial ? "Yes" : "No"}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
 
-// tiny icon
-function FlagIcon() {
+function VoteForm({
+  onVote,
+  isPending,
+}: {
+  onVote: (vals: { presentation: number; creativity: number; technique: number }) => void;
+  isPending: boolean;
+}) {
+  const [presentation, setPresentation] = React.useState(8);
+  const [creativity, setCreativity] = React.useState(8);
+  const [technique, setTechnique] = React.useState(8);
+
   return (
-    <svg viewBox="0 0 24 24" className="mr-2 h-4 w-4" fill="currentColor" aria-hidden>
-      <path d="M6 3a1 1 0 0 0-1 1v16.5a1.5 1.5 0 1 0 2 0V14h6.382l1.447 1.341A2 2 0 0 0 17.764 16H21a1 1 0 1 0 0-2h-3.236l-2.211-2.05a2 2 0 0 0-1.353-.53H7V4a1 1 0 0 0-1-1Z" />
-    </svg>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onVote({ presentation, creativity, technique });
+      }}
+      className="mt-4 grid grid-cols-3 items-end gap-3"
+    >
+      <div>
+        <label className="block text-xs font-medium">Presentation</label>
+        <input
+          type="number"
+          min={1}
+          max={10}
+          value={presentation}
+          onChange={(e) => setPresentation(parseInt(e.target.value || "1", 10))}
+          className="mt-1 w-full rounded border px-2 py-1"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium">Creativity</label>
+        <input
+          type="number"
+          min={1}
+          max={10}
+          value={creativity}
+          onChange={(e) => setCreativity(parseInt(e.target.value || "1", 10))}
+          className="mt-1 w-full rounded border px-2 py-1"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium">Technique</label>
+        <input
+          type="number"
+          min={1}
+          max={10}
+          value={technique}
+          onChange={(e) => setTechnique(parseInt(e.target.value || "1", 10))}
+          className="mt-1 w-full rounded border px-2 py-1"
+        />
+      </div>
+      <div className="col-span-3">
+        <button
+          disabled={isPending}
+          className="w-full rounded bg-indigo-600 px-3 py-2 text-white disabled:opacity-50"
+        >
+          {isPending ? "Submitting…" : "Submit Vote"}
+        </button>
+      </div>
+    </form>
   );
 }
