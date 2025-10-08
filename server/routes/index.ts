@@ -16,22 +16,17 @@ import lookupRouter from "./lookup";
 import exportRouter from "./exportList";
 import { googleRouter } from "./google";
 
-// --- ✅ Competitions (Cook-Off Feature) ---
+// --- Competitions (Cook-Off Feature) ---
 import competitionsRouter from "./competitions";
 
 const r = Router();
 
 /**
- * NOTE:
- * This router is mounted under `/api` inside `app.ts`.
- * Do NOT prefix `/api` again here.
- * Example:
- *   app.use("/api", r)
- *   ➜ GET /api/recipes
- *   ➜ GET /api/competitions
+ * Mounted under `/api` in app.ts.
+ * Do NOT prefix `/api` here.
  */
 
-// --- Primary Feature Mounts ---
+// Primary mounts
 r.use(recipesRouter);
 r.use(bitesRouter);
 r.use(usersRouter);
@@ -41,15 +36,15 @@ r.use(marketplaceRouter);
 r.use(substitutionsRouter);
 r.use(drinksRouter);
 
-// --- External Integrations ---
+// Integrations
 r.use("/lookup", lookupRouter);
 r.use("/export", exportRouter);
 r.use("/google", googleRouter);
 
-// --- Competitions (Live Cookoffs) ---
+// Competitions
 r.use("/competitions", competitionsRouter);
 
-// --- Debug Endpoint (dev only) ---
+// Debug (dev only)
 if (process.env.NODE_ENV !== "production") {
   r.get("/_routes", (_req, res) => {
     res.json({
