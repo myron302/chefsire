@@ -1,14 +1,51 @@
-// server/index.ts
-import { app } from "./app";
+// server/routes/index.ts
+import { Router } from "express";
 
-const envPort = process.env.PORT;
-const port = Number.isInteger(Number(envPort)) ? Number(envPort) : 3000;
+// Feature routers (existing in your project)
+import recipesRouter from "./recipes";
+import bitesRouter from "./bites";
+import usersRouter from "./users";
+import postsRouter from "./posts";
+import pantryRouter from "./pantry";
+import marketplaceRouter from "./marketplace";
+import substitutionsRouter from "./substitutions";
+import drinksRouter from "./drinks";
 
-app.listen(port, "0.0.0.0", () => {
-  const env = process.env.NODE_ENV || "development";
-  if (envPort) {
-    console.log(`✅ Server running on port ${port} (from process.env.PORT) — NODE_ENV=${env}`);
-  } else {
-    console.log(`✅ Server running on fallback port ${port} (no process.env.PORT set) — NODE_ENV=${env}`);
-  }
-});
+// New: barcode lookup + export
+import lookupRouter from "./lookup";
+import exportRouter from "./exportList";
+
+// ✅ Google Places proxy
+import { googleRouter } from "./google";
+// If/when Foursquare is ready, uncomment:
+// import { fsqRouter } from "./fsq";
+
+// ✅ Competitions (new)
+import competitionsRouter from "./competitions";
+
+const r = Router();
+
+// NOTE: This file is mounted under /api in app.ts (app.use("/api", r))
+
+// Core feature namespaces (each router defines its own subpaths)
+r.use(recipesRouter);
+r.use(bitesRouter);
+r.use(usersRouter);
+r.use(postsRouter);
+r.use(pantryRouter);
+r.use(marketplaceRouter);
+r.use(substitutionsRouter);
+r.use(drinksRouter);
+
+// Utility namespaces
+r.use("/lookup", lookupRouter);
+r.use("/export", exportRouter);
+
+// External provider proxies
+r.use("/google", googleRouter);
+// r.use("/fsq", fsqRouter); // when available
+
+// Competitions namespace (/competitions, /competitions/:id, etc.)
+r.use(competitionsRouter);
+
+export default r;
