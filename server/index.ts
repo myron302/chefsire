@@ -1,51 +1,56 @@
-// server/routes/index.ts
-import { Router } from "express";
+// server/index.ts
+import { app } from "./app";
 
-// Feature routers (existing in your project)
-import recipesRouter from "./recipes";
-import bitesRouter from "./bites";
-import usersRouter from "./users";
-import postsRouter from "./posts";
-import pantryRouter from "./pantry";
-import marketplaceRouter from "./marketplace";
-import substitutionsRouter from "./substitutions";
-import drinksRouter from "./drinks";
+const env = process.env.NODE_ENV || "development";
+const envPort = process.env.PORT;
 
-// New: barcode lookup + export
-import lookupRouter from "./lookup";
-import exportRouter from "./exportList";
+// In production (e.g., Plesk), we MUST use the provided PORT. No fallback.
+if (env === "production") {
+  if (!envPort) {
+    console.error(
+      "❌ FATAL: No PORT provided in environment. In Plesk, set PORT in the Node.js app settings."
+    );
+    process.exit(1);
+  }
+}
 
-// ✅ Google Places proxy
-import { googleRouter } from "./google";
-// If/when Foursquare is ready, uncomment:
-// import { fsqRouter } from "./fsq";
+const parsePort = (p: string | undefined): number | null => {
+  if (!p) return null;
+  const n = Number(p);
+  if (!Number.isInteger(n) || n <= 0 || n > 65535) return null;
+  return n;
+};
 
-// ✅ Competitions (new)
-import competitionsRouter from "./competitions";
+const port = parsePort(envPort) ?? (env === "development" ? 3000 : null);
 
-const r = Router();
+if (port == null) {
+  console.error(
+    "❌ FATAL: Invalid or missing PORT. " +
+      (env === "development"
+        ? "Dev mode defaults to 3000—this should never happen."
+        : "In Plesk production, set a valid integer PORT in the Node.js app settings.")
+  );
+  process.exit(1);
+}
 
-// NOTE: This file is mounted under /api in app.ts (app.use("/api", r))
+const host = "0.0.0.0";
 
-// Core feature namespaces (each router defines its own subpaths)
-r.use(recipesRouter);
-r.use(bitesRouter);
-r.use(usersRouter);
-r.use(postsRouter);
-r.use(pantryRouter);
-r.use(marketplaceRouter);
-r.use(substitutionsRouter);
-r.use(drinksRouter);
+const server = app.listen(port, host, () => {
+  const from = envPort ? "process.env.PORT" : "dev default";
+  console.log(
+    `✅ Server listening on http://${host}:${port} — NODE_ENV=${env} (source: ${from})`
+  );
+});
 
-// Utility namespaces
-r.use("/lookup", lookupRouter);
-r.use("/export", exportRouter);
-
-// External provider proxies
-r.use("/google", googleRouter);
-// r.use("/fsq", fsqRouter); // when available
-
-// Competitions namespace (/competitions, /competitions/:id, etc.)
-r.use(competitionsRouter);
-
-export default r;
+server.on("error", (err: any) => {
+  if (err?.code === "EADDRINUSE") {
+    console.error(
+      `❌ Port ${port} is already in use.\n` +
+        `• On Plesk: open the Node.js app page and change the PORT to a free one (or click "Generate port"), then click "Restart".\n` +
+        `• Make sure you don't have another app/site using the same PORT.`
+    );
+  } else {
+    console.error("❌ Server error:", err);
+  }
+  process.exit(1);
+});
