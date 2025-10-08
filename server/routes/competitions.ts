@@ -1,378 +1,367 @@
 // server/routes/competitions.ts
-import "dotenv/config";
-import { Router, Request, Response } from "express";
-import { Pool } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { and, countDistinct, desc, eq, gte, ilike, lte, sql } from "drizzle-orm";
+import { Router } from "express";
+import { and, countDistinct, desc, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
 
+import { db } from "../db"; // <-- your existing Drizzle instance (adjust path if different)
 import {
   competitions,
   competitionParticipants,
   competitionVotes,
-  competitionViewers,
-  competitionMedia,
-  insertCompetitionSchema,
-  insertCompetitionVoteSchema,
-} from "../../shared/schema";
-
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  throw new Error("DATABASE_URL is missing. Set it in server/.env");
-}
-const pool = new Pool({ connectionString: DATABASE_URL });
-const db = drizzle(pool);
-
-// Temporary auth shim for dev (replace with real auth)
-function requireUser(req: Request, _res: Response, next: any) {
-  const uid = (req as any).user?.id || req.header("x-user-id");
-  if (!uid) return next(new Error("Unauthorized"));
-  (req as any).authUserId = String(uid);
-  next();
-}
+  scoreTotal,
+} from "../db/competitions";
 
 const router = Router();
 
-/**
- * POST /api/competitions
- * Body: { title?, themeId?, themeName?, recipeId?, isPrivate, timeLimitMinutes (30-120), minOfficialVoters? }
- */
-router.post("/", requireUser, async (req, res, next) => {
-  try {
-    const creatorId = (req as any).authUserId as string;
-    const parsed = insertCompetitionSchema
-      .pick({
-        title: true,
-        themeId: true,
-        themeName: true,
-        recipeId: true,
-        isPrivate: true,
-        timeLimitMinutes: true,
-        minOfficialVoters: true,
-      })
-      .parse(req.body);
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function nowUtc() {
+  return new Date();
+}
 
-    const tl = Number(parsed.timeLimitMinutes);
-    if (isNaN(tl) || tl < 30 || tl > 120) {
-      return res.status(400).json({ error: "timeLimitMinutes must be between 30 and 120" });
+function requireUserId(req: any): string {
+  // Your real auth likely sets req.user. For dev/local, we use X-User-Id header.
+  const uid =
+    (req.user && req.user.id) ||
+    (req.headers["x-user-id"] as string) ||
+    "";
+  if (!uid) {
+    const err: any = new Error("Unauthorized: missing user id");
+    err.status = 401;
+    throw err;
+  }
+  return uid;
+}
+
+// Fetch competition with participants + tally
+async function getCompetitionDetail(competitionId: string) {
+  const [comp] = await db.select().from(competitions).where(eq(competitions.id, competitionId)).limit(1);
+  if (!comp) return null;
+
+  const parts = await db
+    .select()
+    .from(competitionParticipants)
+    .where(eq(competitionParticipants.competitionId, competitionId));
+
+  const tallies = await db
+    .select({
+      participantId: competitionVotes.participantId,
+      voters: countDistinct(competitionVotes.voterId).as("voters"),
+    })
+    .from(competitionVotes)
+    .where(eq(competitionVotes.competitionId, competitionId))
+    .groupBy(competitionVotes.participantId);
+
+  // You could also include media rows if you add a table later.
+  return {
+    competition: comp,
+    participants: parts,
+    voteTallies: tallies,
+    media: [],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
+// POST /api/competitions  (create a new room)
+router.post("/competitions", async (req, res, next) => {
+  try {
+    const userId = requireUserId(req);
+    const {
+      title = null,
+      themeName = null,
+      themeId = null, // ignored for now
+      recipeId = null,
+      isPrivate = false,
+      timeLimitMinutes = 60,
+      minOfficialVoters = 3,
+    } = req.body || {};
+
+    if (timeLimitMinutes < 15 || timeLimitMinutes > 120) {
+      return res.status(400).json({ error: "timeLimitMinutes must be between 15 and 120" });
     }
 
     const [created] = await db
       .insert(competitions)
       .values({
-        creatorId,
-        title: parsed.title ?? null,
-        themeId: parsed.themeId ?? null,
-        themeName: parsed.themeName ?? null,
-        recipeId: parsed.recipeId ?? null,
-        isPrivate: !!parsed.isPrivate,
-        timeLimitMinutes: tl,
-        minOfficialVoters: parsed.minOfficialVoters ?? 3,
+        creatorId: userId,
+        title,
+        themeName,
+        recipeId,
+        isPrivate: !!isPrivate,
+        timeLimitMinutes,
+        minOfficialVoters,
         status: "upcoming",
-        videoProvider: "daily",
       })
-      .returning();
+      .returning({ id: competitions.id });
 
-    // auto-enroll creator as host
-    await db.insert(competitionParticipants).values({
-      competitionId: created.id,
-      userId: creatorId,
-      role: "host",
-    });
-
-    res.json(created);
-  } catch (err) {
-    next(err);
-  }
-});
-
-/** GET /api/competitions?status=&theme=&q=&limit=&offset= */
-router.get("/", async (req, res, next) => {
-  try {
-    const { status, theme, q } = req.query as Record<string, string | undefined>;
-    const limit = Math.min(parseInt(String(req.query.limit ?? "20"), 10) || 20, 100);
-    const offset = parseInt(String(req.query.offset ?? "0"), 10) || 0;
-
-    const where = [
-      status ? eq(competitions.status, status) : undefined,
-      theme ? ilike(competitions.themeName, `%${theme}%`) : undefined,
-      q ? ilike(competitions.title, `%${q}%`) : undefined,
-    ].filter(Boolean) as any[];
-
-    const rows = await db
-      .select()
-      .from(competitions)
-      .where(where.length ? and(...where) : undefined)
-      .orderBy(desc(competitions.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    res.json({ items: rows, limit, offset });
-  } catch (err) {
-    next(err);
-  }
-});
-
-/** GET /api/competitions/:id */
-router.get("/:id", async (req, res, next) => {
-  try {
-    const id = req.params.id;
-
-    const [comp] = await db.select().from(competitions).where(eq(competitions.id, id));
-    if (!comp) return res.status(404).json({ error: "Not found" });
-
-    const parts = await db
-      .select()
-      .from(competitionParticipants)
-      .where(eq(competitionParticipants.competitionId, id));
-
-    const votesByParticipant = await db
-      .select({
-        participantId: competitionVotes.participantId,
-        voters: countDistinct(competitionVotes.voterId).as("voters"),
+    // auto-add creator as host participant
+    await db
+      .insert(competitionParticipants)
+      .values({
+        competitionId: created.id,
+        userId,
+        role: "host",
       })
-      .from(competitionVotes)
-      .where(eq(competitionVotes.competitionId, id))
-      .groupBy(competitionVotes.participantId);
+      .onConflictDoNothing();
 
-    const media = await db
-      .select()
-      .from(competitionMedia)
-      .where(eq(competitionMedia.competitionId, id));
-
-    res.json({ competition: comp, participants: parts, voteTallies: votesByParticipant, media });
+    return res.json({ id: created.id });
   } catch (err) {
     next(err);
   }
 });
 
-/** POST /api/competitions/:id/join  Body: { role?: "competitor" | "spectator" } */
-router.post("/:id/join", requireUser, async (req, res, next) => {
+// GET /api/competitions/:id  (detail)
+router.get("/competitions/:id", async (req, res, next) => {
   try {
-    const id = req.params.id;
-    const userId = (req as any).authUserId as string;
-    const role = (req.body?.role === "competitor") ? "competitor" : "spectator";
-
-    const [comp] = await db.select().from(competitions).where(eq(competitions.id, id));
-    if (!comp) return res.status(404).json({ error: "Competition not found" });
-
-    if (role === "competitor") {
-      const existing = await db
-        .select()
-        .from(competitionParticipants)
-        .where(and(eq(competitionParticipants.competitionId, id), eq(competitionParticipants.userId, userId)));
-      if (existing.length === 0) {
-        await db.insert(competitionParticipants).values({
-          competitionId: id,
-          userId,
-          role: "competitor",
-        });
-      }
-    } else {
-      const existingViewer = await db
-        .select()
-        .from(competitionViewers)
-        .where(and(eq(competitionViewers.competitionId, id), eq(competitionViewers.userId, userId)));
-      if (existingViewer.length === 0) {
-        await db.insert(competitionViewers).values({
-          competitionId: id,
-          userId,
-          watchSeconds: 0,
-        });
-      }
-    }
-
-    res.json({ ok: true, role });
+    const detail = await getCompetitionDetail(req.params.id);
+    if (!detail) return res.status(404).json({ error: "Not found" });
+    return res.json(detail);
   } catch (err) {
     next(err);
   }
 });
 
-/** POST /api/competitions/:id/start */
-router.post("/:id/start", requireUser, async (req, res, next) => {
+// POST /api/competitions/:id/start  (start live phase)
+router.post("/competitions/:id/start", async (req, res, next) => {
   try {
-    const id = req.params.id;
-    const userId = (req as any).authUserId as string;
+    const userId = requireUserId(req);
+    const compId = req.params.id;
 
-    const [comp] = await db.select().from(competitions).where(eq(competitions.id, id));
+    // ensure creator/host only (simple check: created by user or user is host)
+    const [comp] = await db.select().from(competitions).where(eq(competitions.id, compId)).limit(1);
     if (!comp) return res.status(404).json({ error: "Not found" });
-    if (comp.creatorId !== userId) return res.status(403).json({ error: "Only creator can start" });
-    if (comp.status !== "upcoming") return res.status(400).json({ error: "Already started or closed" });
+    if (comp.creatorId !== userId) return res.status(403).json({ error: "Forbidden" });
 
-    const now = new Date();
-    const end = new Date(now.getTime() + comp.timeLimitMinutes * 60_000);
+    if (comp.status !== "upcoming") return res.status(400).json({ error: `Cannot start when status=${comp.status}` });
 
-    const [updated] = await db
+    const start = nowUtc();
+    const end = new Date(start.getTime() + comp.timeLimitMinutes * 60_000);
+
+    await db
       .update(competitions)
-      .set({ status: "live", startTime: now, endTime: end })
-      .where(eq(competitions.id, id))
-      .returning();
+      .set({ status: "live", startTime: start, endTime: end, updatedAt: nowUtc() })
+      .where(eq(competitions.id, compId));
 
-    res.json(updated);
+    return res.json({ ok: true });
   } catch (err) {
     next(err);
   }
 });
 
-/** POST /api/competitions/:id/end  → opens 24h judging window */
-router.post("/:id/end", requireUser, async (req, res, next) => {
+// POST /api/competitions/:id/end  (end live → open judging for 24h)
+router.post("/competitions/:id/end", async (req, res, next) => {
   try {
-    const id = req.params.id;
-    const userId = (req as any).authUserId as string;
+    const userId = requireUserId(req);
+    const compId = req.params.id;
 
-    const [comp] = await db.select().from(competitions).where(eq(competitions.id, id));
+    const [comp] = await db.select().from(competitions).where(eq(competitions.id, compId)).limit(1);
     if (!comp) return res.status(404).json({ error: "Not found" });
-    if (comp.creatorId !== userId) return res.status(403).json({ error: "Only creator can end" });
+    if (comp.creatorId !== userId) return res.status(403).json({ error: "Forbidden" });
 
-    const now = new Date();
-    const judgingClosesAt = new Date(now.getTime() + 24 * 60 * 60_000);
+    if (comp.status !== "live") return res.status(400).json({ error: `Cannot end when status=${comp.status}` });
 
-    const [updated] = await db
+    const closeAt = new Date(nowUtc().getTime() + 24 * 60 * 60_000);
+
+    await db
       .update(competitions)
       .set({
         status: "judging",
-        endTime: comp.endTime ?? now,
-        judgingClosesAt,
+        endTime: nowUtc(),
+        judgingClosesAt: closeAt,
+        updatedAt: nowUtc(),
       })
-      .where(eq(competitions.id, id))
-      .returning();
+      .where(eq(competitions.id, compId));
 
-    res.json(updated);
+    return res.json({ ok: true, judgingClosesAt: closeAt.toISOString() });
   } catch (err) {
     next(err);
   }
 });
 
-/** POST /api/competitions/:id/submit  Body: { dishTitle?, dishDescription?, finalDishPhotoUrl? } */
-router.post("/:id/submit", requireUser, async (req, res, next) => {
+// POST /api/competitions/:id/submit  (competitor submits final dish)
+router.post("/competitions/:id/submit", async (req, res, next) => {
   try {
-    const id = req.params.id;
-    const userId = (req as any).authUserId as string;
+    const userId = requireUserId(req);
+    const compId = req.params.id;
+    const { dishTitle, dishDescription, finalDishPhotoUrl } = req.body || {};
 
-    const part = await db
-      .select()
-      .from(competitionParticipants)
-      .where(and(eq(competitionParticipants.competitionId, id), eq(competitionParticipants.userId, userId)));
-
-    if (part.length === 0 || (part[0].role !== "competitor" && part[0].role !== "host")) {
-      return res.status(403).json({ error: "Only competitors can submit" });
+    const [comp] = await db.select().from(competitions).where(eq(competitions.id, compId)).limit(1);
+    if (!comp) return res.status(404).json({ error: "Not found" });
+    if (comp.status !== "live" && comp.status !== "judging") {
+      return res.status(400).json({ error: "Submissions only allowed during live or judging." });
     }
 
-    const { dishTitle, dishDescription, finalDishPhotoUrl } = req.body ?? {};
-
-    const [updated] = await db
-      .update(competitionParticipants)
-      .set({
+    // Upsert participant row (competitor role)
+    await db
+      .insert(competitionParticipants)
+      .values({
+        competitionId: compId,
+        userId,
+        role: "competitor",
         dishTitle: dishTitle ?? null,
         dishDescription: dishDescription ?? null,
         finalDishPhotoUrl: finalDishPhotoUrl ?? null,
       })
-      .where(eq(competitionParticipants.id, part[0].id))
-      .returning();
+      .onConflictDoUpdate({
+        target: [competitionParticipants.competitionId, competitionParticipants.userId],
+        set: {
+          role: "competitor",
+          dishTitle: dishTitle ?? null,
+          dishDescription: dishDescription ?? null,
+          finalDishPhotoUrl: finalDishPhotoUrl ?? null,
+          updatedAt: nowUtc(),
+        },
+      });
 
-    res.json(updated);
+    return res.json({ ok: true });
   } catch (err) {
     next(err);
   }
 });
 
-/** POST /api/competitions/:id/votes (spectators only) */
-router.post("/:id/votes", requireUser, async (req, res, next) => {
+// POST /api/competitions/:id/votes  (viewer votes; participants cannot vote)
+router.post("/competitions/:id/votes", async (req, res, next) => {
   try {
-    const id = req.params.id;
-    const voterId = (req as any).authUserId as string;
+    const voterId = requireUserId(req);
+    const compId = req.params.id;
+    const { participantId, presentation, creativity, technique } = req.body || {};
 
-    const { participantId, presentation, creativity, technique } = insertCompetitionVoteSchema
-      .pick({ participantId: true, presentation: true, creativity: true, technique: true })
-      .parse(req.body);
-
-    const [comp] = await db.select().from(competitions).where(eq(competitions.id, id));
-    if (!comp) return res.status(404).json({ error: "Competition not found" });
-
-    const now = new Date();
-    if (comp.status !== "judging" || (comp.judgingClosesAt && now > comp.judgingClosesAt)) {
-      return res.status(400).json({ error: "Voting is closed" });
+    const [comp] = await db.select().from(competitions).where(eq(competitions.id, compId)).limit(1);
+    if (!comp) return res.status(404).json({ error: "Not found" });
+    if (comp.status !== "judging" && comp.status !== "live") {
+      return res.status(400).json({ error: "Voting only allowed during live or judging." });
     }
 
-    // Block participants from voting
-    const p = await db
+    // ensure voter is NOT a participant in this competition
+    const [maybeParticipant] = await db
       .select()
       .from(competitionParticipants)
-      .where(and(eq(competitionParticipants.competitionId, id), eq(competitionParticipants.userId, voterId)));
-    if (p.length > 0) {
-      return res.status(403).json({ error: "Participants cannot vote" });
-    }
+      .where(and(eq(competitionParticipants.competitionId, compId), eq(competitionParticipants.userId, voterId)))
+      .limit(1);
 
-    // Validate participant belongs to this competition
-    const target = await db
-      .select({ competitionId: competitionParticipants.competitionId })
-      .from(competitionParticipants)
-      .where(eq(competitionParticipants.id, participantId));
-    if (target.length === 0 || target[0].competitionId !== id) {
-      return res.status(400).json({ error: "Invalid participant" });
-    }
+    if (maybeParticipant) return res.status(403).json({ error: "Participants cannot vote." });
 
-    const [created] = await db
+    // Simple bounds check
+    const pv = clamp1to10(presentation);
+    const cv = clamp1to10(creativity);
+    const tv = clamp1to10(technique);
+
+    // Save / upsert the vote (unique by competition+voter+participant)
+    await db
       .insert(competitionVotes)
       .values({
-        competitionId: id,
+        competitionId: compId,
         voterId,
         participantId,
-        presentation,
-        creativity,
-        technique,
+        presentation: pv,
+        creativity: cv,
+        technique: tv,
       })
       .onConflictDoUpdate({
-        target: [competitionVotes.voterId, competitionVotes.participantId],
-        set: { presentation, creativity, technique },
-      })
-      .returning();
+        target: [competitionVotes.competitionId, competitionVotes.voterId, competitionVotes.participantId],
+        set: {
+          presentation: pv,
+          creativity: cv,
+          technique: tv,
+        },
+      });
 
-    res.json(created);
+    return res.json({ ok: true });
   } catch (err) {
     next(err);
   }
 });
 
-/**
- * GET /api/competitions/library
- * Archive search: status in ['judging','completed']
- * Query: theme?, creator?, winner?, dateFrom?, dateTo?, q?, limit?, offset?
- */
-router.get("/library", async (req, res, next) => {
+// POST /api/competitions/:id/complete  (finalize results, set winner & official flag)
+// This can be called by the creator after the 24h judging window, or by a scheduler.
+router.post("/competitions/:id/complete", async (req, res, next) => {
   try {
-    const theme = req.query.theme as string | undefined;
-    const creator = req.query.creator as string | undefined;
-    const winner = req.query.winner as string | undefined;
-    const q = req.query.q as string | undefined;
+    const userId = requireUserId(req);
+    const compId = req.params.id;
 
-    const dateFrom = req.query.dateFrom ? new Date(String(req.query.dateFrom)) : undefined;
-    const dateTo = req.query.dateTo ? new Date(String(req.query.dateTo)) : undefined;
+    const [comp] = await db.select().from(competitions).where(eq(competitions.id, compId)).limit(1);
+    if (!comp) return res.status(404).json({ error: "Not found" });
+    if (comp.creatorId !== userId) return res.status(403).json({ error: "Forbidden" });
+    if (comp.status !== "judging") return res.status(400).json({ error: `Cannot complete when status=${comp.status}` });
 
-    const limit = Math.min(parseInt(String(req.query.limit ?? "20"), 10) || 20, 100);
-    const offset = parseInt(String(req.query.offset ?? "0"), 10) || 0;
+    // Aggregate total scores per participant (sum of each ballot's total)
+    const perParticipant = await db
+      .select({
+        participantId: competitionVotes.participantId,
+        // total score across all ballots
+        total: sql<number>`SUM(${competitionVotes.presentation} + ${competitionVotes.creativity} + ${competitionVotes.technique})`,
+        voters: countDistinct(competitionVotes.voterId).as("voters"),
+      })
+      .from(competitionVotes)
+      .where(eq(competitionVotes.competitionId, compId))
+      .groupBy(competitionVotes.participantId)
+      .orderBy(desc(sql`SUM(${competitionVotes.presentation} + ${competitionVotes.creativity} + ${competitionVotes.technique})`));
 
-    const where = [
-      sql`${competitions.status} IN ('judging','completed')`,
-      theme ? ilike(competitions.themeName, `%${theme}%`) : undefined,
-      creator ? eq(competitions.creatorId, creator) : undefined,
-      winner ? eq(competitions.winnerParticipantId, winner) : undefined,
-      q ? ilike(competitions.title, `%${q}%`) : undefined,
-      dateFrom ? gte(competitions.startTime, dateFrom) : undefined,
-      dateTo ? lte(competitions.endTime, dateTo) : undefined,
-    ].filter(Boolean) as any[];
+    const winnerParticipantId = perParticipant[0]?.participantId ?? null;
+    const uniqueVoters = perParticipant.reduce((acc, r) => acc + (r.voters ?? 0), 0); // rough proxy
+    const isOfficial = (perParticipant[0]?.voters ?? 0) >= (comp.minOfficialVoters ?? 3);
 
-    const rows = await db
+    // Update placements & totals on participants
+    for (let i = 0; i < perParticipant.length; i++) {
+      const r = perParticipant[i];
+      await db
+        .update(competitionParticipants)
+        .set({ totalScore: r.total ?? null, placement: i + 1, updatedAt: nowUtc() })
+        .where(eq(competitionParticipants.id, r.participantId));
+    }
+
+    await db
+      .update(competitions)
+      .set({
+        status: "completed",
+        winnerParticipantId,
+        isOfficial,
+        updatedAt: nowUtc(),
+      })
+      .where(eq(competitions.id, compId));
+
+    const detail = await getCompetitionDetail(compId);
+    return res.json({ ok: true, winnerParticipantId, isOfficial, detail });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/competitions/library  (archive & search)
+router.get("/competitions/library", async (req, res, next) => {
+  try {
+    const { q, theme, creator, dateFrom, dateTo, limit = "30", offset = "0" } = req.query as Record<string, string>;
+    const lim = Math.max(1, Math.min(100, parseInt(limit || "30", 10)));
+    const off = Math.max(0, parseInt(offset || "0", 10));
+
+    const where = [];
+    if (q) where.push(ilike(competitions.title, `%${q}%`));
+    if (theme) where.push(eq(competitions.themeName, theme));
+    if (creator) where.push(eq(competitions.creatorId, creator));
+    if (dateFrom) where.push(gte(competitions.createdAt, new Date(dateFrom)));
+    if (dateTo) where.push(lte(competitions.createdAt, new Date(dateTo)));
+
+    const items = await db
       .select()
       .from(competitions)
-      .where(where.length ? and(...where) : undefined)
-      .orderBy(desc(competitions.endTime))
-      .limit(limit)
-      .offset(offset);
+      .where(where.length ? (where.length === 1 ? where[0] : and(...where)) : undefined)
+      .orderBy(desc(competitions.createdAt))
+      .limit(lim)
+      .offset(off);
 
-    res.json({ items: rows, limit, offset });
+    return res.json({ items, limit: lim, offset: off });
   } catch (err) {
     next(err);
   }
 });
+
+function clamp1to10(n: any) {
+  const x = Number(n);
+  if (!isFinite(x)) return 1;
+  return Math.max(1, Math.min(10, Math.round(x)));
+}
 
 export default router;
