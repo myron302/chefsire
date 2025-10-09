@@ -51,7 +51,7 @@ const NAV: NavItem[] = [
   { name: "Explore", href: "/explore", icon: Compass },
   { name: "BiteMap", href: "/bitemap", icon: Map },
 
-  // ✅ Competitions - MORE PROMINENT with better submenu
+  // ✅ Competitions - with colored icons
   {
     name: "Cookoff Arena",
     href: "/competitions",
@@ -215,7 +215,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
                 style={{ paddingLeft: `${depth * 0.5}rem` }}
                 aria-current={isActive(item.href) ? "page" : undefined}
               >
-                <item.icon className={depth > 0 ? "w-4 h-4 mr-2" : "w-5 h-5 mr-2"} />
+                <item.icon className={depth > 0 ? "w-4 h-4 mr-2 text-purple-600" : "w-5 h-5 mr-2 text-orange-600"} />
                 <span>{item.name}</span>
               </div>
             </Link>
@@ -252,6 +252,15 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
       }
     };
 
+    // Special icon colors based on item name
+    const getIconColor = () => {
+      if (item.name.includes('Live Battles')) return 'text-red-600';
+      if (item.name.includes('Create')) return 'text-green-600';
+      if (item.name.includes('My Competition')) return 'text-yellow-600';
+      if (depth > 0) return 'text-purple-600';
+      return 'text-orange-600';
+    };
+
     return (
       <Link href={item.href}>
         <div
@@ -264,7 +273,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
           style={{ paddingLeft: `${depth * 0.75}rem` }}
           aria-current={isActive(item.href) ? "page" : undefined}
         >
-          <item.icon className={depth > 0 ? "w-4 h-4 mr-2" : "w-5 h-5 mr-2"} />
+          <item.icon className={`${depth > 0 ? "w-4 h-4" : "w-5 h-5"} mr-2 ${getIconColor()}`} />
           <span>{item.name}</span>
           {"isPremium" in item && item.isPremium && (
             <span className="ml-2 px-2 py-0.5 bg-yellow-300 text-xs rounded">Premium</span>
