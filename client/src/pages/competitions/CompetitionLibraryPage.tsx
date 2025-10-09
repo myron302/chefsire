@@ -31,6 +31,15 @@ export default function EnhancedLibraryPage() {
   const [hoveredCard, setHoveredCard] = useState(null);
   const [stats, setStats] = useState({ total: 156, live: 8, upcoming: 24, judging: 12 });
 
+  // Read status from URL query parameter
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const statusParam = urlParams.get('status');
+    if (statusParam && STATUS_OPTIONS.find(opt => opt.id === statusParam)) {
+      setStatus(statusParam);
+    }
+  }, []);
+
   // Animated counter
   const [counter, setCounter] = useState(0);
   useEffect(() => {
@@ -111,11 +120,14 @@ export default function EnhancedLibraryPage() {
       <div className="relative z-10">
         <div className="max-w-7xl mx-auto px-4 py-12">
           <div className="flex items-center justify-between mb-8">
-            <button className="flex items-center gap-2 px-4 py-2 bg-white/90 hover:bg-white backdrop-blur-xl rounded-full transition-all duration-300 hover:scale-105 text-gray-700 border border-gray-200 shadow-md">
+            <button className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 backdrop-blur-xl rounded-full transition-all duration-300 hover:scale-105 text-gray-900 font-semibold border border-gray-300 shadow-lg">
               <Home className="w-4 h-4" />
               <span>Home</span>
             </button>
-            <button className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 rounded-full transition-all duration-300 hover:scale-105 text-white font-semibold shadow-lg">
+            <button 
+              onClick={() => window.location.href = '/competitions/new'}
+              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 rounded-full transition-all duration-300 hover:scale-105 text-white font-semibold shadow-lg"
+            >
               <Plus className="w-5 h-5" />
               Create Competition
             </button>
@@ -129,10 +141,10 @@ export default function EnhancedLibraryPage() {
                 <Layers className="w-16 h-16 text-white" />
               </div>
             </div>
-            <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 mb-4 tracking-tight">
+            <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-900 via-purple-900 to-pink-900 mb-4 tracking-tight drop-shadow-sm">
               Cookoff Arena
             </h1>
-            <p className="text-xl text-gray-700 max-w-2xl mx-auto font-medium">
+            <p className="text-xl text-gray-900 max-w-2xl mx-auto font-semibold drop-shadow-sm">
               Join live battles, watch epic replays, and become a culinary legend
             </p>
           </div>
@@ -166,15 +178,15 @@ export default function EnhancedLibraryPage() {
 
       {/* Filters Section */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 mb-8">
-        <div className="bg-white/80 backdrop-blur-xl border border-gray-200 rounded-3xl p-6 shadow-xl">
+        <div className="bg-white/90 backdrop-blur-xl border-2 border-gray-300 rounded-3xl p-6 shadow-2xl">
           <div className="flex items-center gap-4 mb-6">
             <div className="flex-1 relative group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-hover:text-gray-600 transition-colors" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-600 group-hover:text-gray-900 transition-colors" />
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Search epic battles..."
-                className="w-full pl-12 pr-4 py-4 bg-white border border-gray-200 rounded-2xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent transition-all shadow-sm"
+                className="w-full pl-12 pr-4 py-4 bg-white border-2 border-gray-300 rounded-2xl text-gray-900 placeholder-gray-500 font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all shadow-sm"
               />
             </div>
             <button className="px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-2xl text-white font-semibold transition-all duration-300 hover:scale-105 shadow-lg">
@@ -190,10 +202,10 @@ export default function EnhancedLibraryPage() {
                 <button
                   key={opt.id}
                   onClick={() => setStatus(opt.id)}
-                  className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium transition-all duration-300 hover:scale-105 shadow-md ${
+                  className={`flex items-center gap-2 px-6 py-3 rounded-full font-semibold transition-all duration-300 hover:scale-105 shadow-md ${
                     status === opt.id
-                      ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
-                      : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                      ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg scale-105'
+                      : 'bg-white text-gray-900 hover:bg-gray-50 border-2 border-gray-300'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -205,15 +217,15 @@ export default function EnhancedLibraryPage() {
 
           {/* Theme Filter */}
           <div>
-            <div className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-purple-500" />
+            <div className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-purple-600" />
               Filter by Theme
             </div>
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setTheme('')}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-sm ${
-                  theme === '' ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm ${
+                  theme === '' ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg scale-105' : 'bg-white text-gray-900 hover:bg-gray-50 border-2 border-gray-300'
                 }`}
               >
                 All Themes
@@ -222,10 +234,10 @@ export default function EnhancedLibraryPage() {
                 <button
                   key={t.id}
                   onClick={() => setTheme(t.id)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all hover:scale-105 shadow-sm ${
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:scale-105 shadow-sm ${
                     theme === t.id
-                      ? `bg-gradient-to-r ${t.gradient} text-white shadow-lg`
-                      : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                      ? `bg-gradient-to-r ${t.gradient} text-white shadow-lg border-2 border-white`
+                      : 'bg-white text-gray-900 hover:bg-gray-50 border-2 border-gray-300'
                   }`}
                 >
                   <span className="mr-1">{t.icon}</span>
@@ -250,7 +262,7 @@ export default function EnhancedLibraryPage() {
             >
               <div className={`absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-3xl blur-xl opacity-0 group-hover:opacity-50 transition-all duration-500`}></div>
               
-              <div className="relative bg-white/90 backdrop-blur-xl border border-gray-200 rounded-3xl overflow-hidden hover:bg-white transition-all duration-300 hover:scale-105 hover:shadow-2xl">
+              <div className="relative bg-white backdrop-blur-xl border-2 border-gray-300 rounded-3xl overflow-hidden hover:border-purple-400 transition-all duration-300 hover:scale-105 hover:shadow-2xl">
                 {/* Card Header */}
                 <div className={`relative h-32 bg-gradient-to-r ${THEMES.find(t => t.name === item.themeName)?.gradient || 'from-purple-400 to-pink-400'} overflow-hidden`}>
                   {item.status === 'live' && (
@@ -284,13 +296,13 @@ export default function EnhancedLibraryPage() {
 
                 {/* Card Body */}
                 <div className="p-5 bg-white">
-                  <h3 className="text-xl font-bold text-gray-800 mb-2 group-hover:text-purple-600 transition-colors">
+                  <h3 className="text-xl font-bold text-gray-900 mb-2 group-hover:text-purple-700 transition-colors">
                     {item.title}
                   </h3>
-                  <p className="text-gray-600 text-sm mb-4">Theme: {item.themeName}</p>
+                  <p className="text-gray-700 font-medium text-sm mb-4">Theme: {item.themeName}</p>
                   
                   <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2 text-gray-500">
+                    <div className="flex items-center gap-2 text-gray-700 font-medium">
                       <Calendar className="w-4 h-4" />
                       {new Date(item.createdAt).toLocaleDateString()}
                     </div>
@@ -317,7 +329,10 @@ export default function EnhancedLibraryPage() {
                 </h3>
                 <p className="text-purple-100">Create your own cookoff and challenge the community!</p>
               </div>
-              <button className="px-8 py-4 bg-white text-purple-600 hover:bg-purple-50 rounded-full font-bold text-lg transition-all duration-300 hover:scale-105 shadow-2xl whitespace-nowrap">
+              <button 
+                onClick={() => window.location.href = '/competitions/new'}
+                className="px-8 py-4 bg-white text-purple-600 hover:bg-purple-50 rounded-full font-bold text-lg transition-all duration-300 hover:scale-105 shadow-2xl whitespace-nowrap"
+              >
                 <Plus className="w-5 h-5 inline mr-2" />
                 Create Competition
               </button>
