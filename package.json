@@ -19,6 +19,7 @@
     "db:seed:subs": "dotenv -e server/.env -- tsx server/seed-substitutions.ts",
     "db:seed:subs:full": "dotenv -e server/.env -- node --import tsx server/scripts/build-and-seed-substitutions.ts",
     "db:seed:competitions": "dotenv -e server/.env -- tsx server/scripts/seed-competitions.ts",
+    "db:seed:signup": "dotenv -e server/.env -- tsx server/seed-signup.ts",
     "db:export:neon": "dotenv -e server/.env -- tsx server/scripts/export-table.ts playing_with_neon",
     "postinstall": "npx update-browserslist-db@latest || true",
     "check:imports": "node tools/check-imports.js",
