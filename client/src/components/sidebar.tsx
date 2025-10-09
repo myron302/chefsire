@@ -21,8 +21,9 @@ import {
   Sparkles,
   Baby,
   Map,
-  Layers,      // ✅ new
-  Trophy,      // ✅ new
+  Layers,
+  Trophy,
+  Swords, // ✅ for live battles
 } from "lucide-react";
 
 interface SidebarProps {
@@ -45,26 +46,22 @@ type NavItem =
       submenu: NavItem[];
     });
 
-/**
- * ✅ CLEANED UP NAV - Consistent submenu structure for all sections
- */
 const NAV: NavItem[] = [
   { name: "Feed", href: "/feed", icon: Home },
   { name: "Explore", href: "/explore", icon: Compass },
-
-  // ✅ BiteMap (top-level)
   { name: "BiteMap", href: "/bitemap", icon: Map },
 
-  // ✅ Competitions (Cookoffs) — new top-level
+  // ✅ Competitions - MORE PROMINENT with better submenu
   {
-    name: "Competitions",
+    name: "Cookoff Arena",
     href: "/competitions",
-    icon: Layers,
+    icon: Trophy,
     hasSubmenu: true,
     submenu: [
-      { name: "Cookoff Library", href: "/competitions", icon: Layers },
+      { name: "Browse All Cookoffs", href: "/competitions", icon: Layers },
+      { name: "Live Battles", href: "/competitions?status=live", icon: Swords },
       { name: "Create Cookoff", href: "/competitions/new", icon: Plus },
-      { name: "My Cookoffs", href: "/profile?tab=cookoffs", icon: Trophy },
+      { name: "My Competitions", href: "/profile?tab=cookoffs", icon: Trophy },
     ],
   },
 
@@ -81,7 +78,6 @@ const NAV: NavItem[] = [
     ],
   },
 
-  // ✅ DRINKS - Consistent submenu structure
   {
     name: "Drinks",
     href: "/drinks",
@@ -89,8 +85,6 @@ const NAV: NavItem[] = [
     hasSubmenu: true,
     submenu: [
       { name: "Drinks Hub", href: "/drinks", icon: GlassWater },
-
-      // Smoothies with sub-items
       {
         name: "Smoothies & Bowls",
         href: "/drinks/smoothies",
@@ -104,8 +98,6 @@ const NAV: NavItem[] = [
           { name: "Workout", href: "/drinks/smoothies/workout", icon: Activity },
         ],
       },
-
-      // Protein Shakes with sub-items
       {
         name: "Protein Shakes",
         href: "/drinks/protein-shakes",
@@ -118,8 +110,6 @@ const NAV: NavItem[] = [
           { name: "Collagen", href: "/drinks/protein-shakes/collagen", icon: Sparkles },
         ],
       },
-
-      // Detoxes with sub-items
       {
         name: "Detoxes & Cleanses",
         href: "/drinks/detoxes",
@@ -131,8 +121,6 @@ const NAV: NavItem[] = [
           { name: "Infused Waters", href: "/drinks/detoxes/water", icon: GlassWater },
         ],
       },
-
-      // Potent Potables with sub-items
       {
         name: "Potent Potables (21+)",
         href: "/drinks/potent-potables",
@@ -256,7 +244,6 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
       );
     }
 
-    // leaf item
     return (
       <Link href={item.href}>
         <div
