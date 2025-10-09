@@ -1,527 +1,510 @@
-import { useQuery } from "@tanstack/react-query";
-import { useParams } from "wouter";
+import { useEffect, useState, FormEvent } from "react";
+import type { ReactNode } from "react";
+import { Link, useLocation } from "wouter";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
-import PostCard from "@/components/post-card";
-import { Grid, Heart, Bookmark, Users, MapPin, Link as LinkIcon, Calendar, GlassWater, Flame, Trophy, Award, TrendingUp, Apple } from "lucide-react";
-import type { User, PostWithUser } from "@shared/schema";
+import {
+  Search, Bell, MessageCircle, User, ChevronDown, ChevronRight,
+  Settings, LogOut, Plus,
+} from "lucide-react";
+import Sidebar from "@/components/sidebar";
+import MobileNav from "@/components/mobile-nav";
+import chefLogo from "../asset/logo.jpg";
 
-export default function Profile() {
-  const { userId } = useParams<{ userId?: string }>();
-  const currentUserId = "user-123"; // In a real app, this would come from authentication
-  const profileUserId = userId || currentUserId;
+interface LayoutProps {
+  children: ReactNode;
+}
 
-  const { data: user, isLoading: userLoading } = useQuery<User>({
-    queryKey: ["/api/users", profileUserId],
-  });
+export default function Layout({ children }: LayoutProps) {
+  const [pathname, setLocation] = useLocation();
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
 
-  const { data: posts, isLoading: postsLoading } = useQuery<PostWithUser[]>({
-    queryKey: ["/api/posts/user", profileUserId],
-  });
+  useEffect(() => {
+    const link = document.createElement("link");
+    link.href =
+      "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&display=swap";
+    link.rel = "stylesheet";
+    document.head.appendChild(link);
+    return () => {
+      document.head.removeChild(link);
+    };
+  }, []);
 
-  // NEW: Fetch user's custom drinks
-  const { data: drinksData, isLoading: drinksLoading } = useQuery({
-    queryKey: ["/api/custom-drinks/user", profileUserId],
-    queryFn: async () => {
-      const response = await fetch(`/api/custom-drinks/user/${profileUserId}`);
-      if (!response.ok) throw new Error("Failed to fetch drinks");
-      return response.json();
-    },
-  });
+  const secondaryLinks = [
+    { href: "/", label: "Home" },
+    { href: "/bitemap", label: "BiteMap" },
+    { href: "/competitions", label: "Competitions" },
+    { href: "/recipes", label: "Recipes" },
+    { href: "/drinks", label: "Drinks" },
+    { href: "/catering", label: "Catering" },
+    { href: "/store", label: "Store" },
+  ];
 
-  // NEW: Fetch user drink stats
-  const { data: statsData, isLoading: statsLoading } = useQuery({
-    queryKey: ["/api/user-drink-stats", profileUserId],
-    queryFn: async () => {
-      const response = await fetch(`/api/user-drink-stats/${profileUserId}`);
-      if (!response.ok) throw new Error("Failed to fetch stats");
-      return response.json();
-    },
-  });
+  const handleCreatePost = () => {
+    console.log("Create post clicked");
+  };
 
-  // NEW: Fetch saved drinks
-  const { data: savedDrinksData, isLoading: savedDrinksLoading } = useQuery({
-    queryKey: ["/api/custom-drinks/saved", profileUserId],
-    queryFn: async () => {
-      const response = await fetch(`/api/custom-drinks/saved/${profileUserId}`);
-      if (!response.ok) throw new Error("Failed to fetch saved drinks");
-      return response.json();
-    },
-  });
+  const onSearchSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    const q = searchText.trim();
+    setIsDropdownOpen(false);
+    if (q) setLocation(`/recipes?q=${encodeURIComponent(q)}`);
+    else setLocation("/recipes");
+  };
 
-  const isOwnProfile = profileUserId === currentUserId;
-
-  if (userLoading) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        <div className="animate-pulse">
-          <div className="flex flex-col md:flex-row items-start space-y-4 md:space-y-0 md:space-x-8 mb-8">
-            <div className="w-32 h-32 bg-muted rounded-full" />
-            <div className="flex-1 space-y-4">
-              <div className="space-y-2">
-                <div className="w-48 h-6 bg-muted rounded" />
-                <div className="w-32 h-4 bg-muted rounded" />
-              </div>
-              <div className="w-full h-20 bg-muted rounded" />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-6 text-center">
-        <h1 className="text-2xl font-bold mb-4">User not found</h1>
-        <p className="text-muted-foreground">The profile you're looking for doesn't exist.</p>
-      </div>
-    );
-  }
-
-  const userPosts = posts?.filter(post => !post.isRecipe) || [];
-  const userRecipes = posts?.filter(post => post.isRecipe) || [];
-  const customDrinks = drinksData?.drinks || [];
-  const savedDrinks = savedDrinksData?.drinks || [];
-  const drinkStats = statsData?.stats;
+  const toggleSubmenu = (key: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setExpandedMenus(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6">
-      {/* Profile Header */}
-      <div className="flex flex-col md:flex-row items-start space-y-4 md:space-y-0 md:space-x-8 mb-8">
-        <Avatar className="w-32 h-32">
-          <AvatarImage src={user.avatar || ""} alt={user.displayName} />
-          <AvatarFallback className="text-2xl">{user.displayName[0]}</AvatarFallback>
-        </Avatar>
-
-        <div className="flex-1">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
-            <div>
-              <h1 className="text-2xl font-bold" data-testid={`text-profile-name-${user.id}`}>
-                {user.displayName}
-              </h1>
-              <p className="text-muted-foreground">@{user.username}</p>
-            </div>
-            
-            {isOwnProfile ? (
-              <Button variant="outline" data-testid="button-edit-profile">
-                Edit Profile
-              </Button>
-            ) : (
-              <Button className="bg-primary text-primary-foreground" data-testid={`button-follow-user-${user.id}`}>
-                Follow
-              </Button>
-            )}
-          </div>
-
-          {/* Stats */}
-          <div className="flex space-x-6 mb-4 text-sm">
-            <div className="text-center">
-              <span className="font-semibold block" data-testid={`text-posts-count-${user.id}`}>
-                {user.postsCount}
-              </span>
-              <span className="text-muted-foreground">Posts</span>
-            </div>
-            <div className="text-center">
-              <span className="font-semibold block" data-testid={`text-followers-count-${user.id}`}>
-                {user.followersCount}
-              </span>
-              <span className="text-muted-foreground">Followers</span>
-            </div>
-            <div className="text-center">
-              <span className="font-semibold block" data-testid={`text-following-count-${user.id}`}>
-                {user.followingCount}
-              </span>
-              <span className="text-muted-foreground">Following</span>
-            </div>
-            {drinkStats && (
-              <div className="text-center">
-                <span className="font-semibold block">
-                  {drinkStats.totalDrinksMade}
-                </span>
-                <span className="text-muted-foreground">Drinks</span>
+    <div className="flex flex-col min-h-screen bg-background">
+      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <Link href="/" className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-full overflow-hidden shadow-lg flex items-center justify-center bg-white">
+                <img
+                  src={chefLogo}
+                  alt="ChefSire Logo"
+                  className="object-cover w-full h-full"
+                />
               </div>
-            )}
+              <h1
+                className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent"
+                style={{ fontFamily: "'Playfair Display', serif" }}
+              >
+                ChefSire
+              </h1>
+            </Link>
+
+            <div className="hidden md:flex flex-1 max-w-lg mx-8">
+              <form className="relative w-full" onSubmit={onSearchSubmit}>
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <Input
+                  type="text"
+                  placeholder="Search recipes, chefs, or ingredients..."
+                  className="w-full pl-10 bg-muted border-border rounded-full"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  aria-label="Search site"
+                />
+              </form>
+            </div>
+
+            <div className="flex items-center space-x-4">
+              <Link href="/competitions/new">
+                <Button
+                  size="sm"
+                  className="hidden md:inline-flex bg-gradient-to-r from-fuchsia-600 to-rose-600 hover:from-fuchsia-700 hover:to-rose-700 text-white"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Create Cookoff
+                </Button>
+              </Link>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                className="p-2 hover:bg-muted rounded-full"
+                aria-label="Notifications"
+              >
+                <Bell className="h-5 w-5 text-muted-foreground" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="p-2 hover:bg-muted rounded-full"
+                aria-label="Messages"
+              >
+                <MessageCircle className="h-5 w-5 text-muted-foreground" />
+              </Button>
+
+              <div
+                className="relative"
+                onMouseLeave={() => {
+                  setIsDropdownOpen(false);
+                  setExpandedMenus({});
+                }}
+              >
+                <button
+                  onClick={() => setIsDropdownOpen((v) => !v)}
+                  className="flex items-center space-x-2 hover:bg-muted rounded-full p-1 transition-colors"
+                  aria-haspopup="menu"
+                  aria-expanded={isDropdownOpen}
+                  aria-label="User menu"
+                >
+                  <Avatar className="w-8 h-8">
+                    <AvatarImage src="https://images.unsplash.com/photo-1566554273541-37a9ca77b91f" />
+                    <AvatarFallback>CA</AvatarFallback>
+                  </Avatar>
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                </button>
+
+                {isDropdownOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => {
+                        setIsDropdownOpen(false);
+                        setExpandedMenus({});
+                      }}
+                    />
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-20 overflow-hidden max-h-[calc(100vh-5rem)] overflow-y-auto">
+                      <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-b px-4 py-3">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-7 h-7 rounded-full overflow-hidden bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-md">
+                            <img src={chefLogo} alt="ChefSire Logo" />
+                          </div>
+                          <div>
+                            <span className="font-bold text-orange-900 dark:text-orange-100 text-base">
+                              Chef's Corner
+                            </span>
+                            <div className="text-xs text-orange-700 dark:text-orange-300">
+                              Your culinary kingdom awaits
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="py-2">
+                        <div className="px-4 py-2">
+                          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
+                            Navigation
+                          </div>
+
+                          <div className="space-y-1 ml-2">
+                            <Link
+                              href="/feed"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                            >
+                              🏠 Feed
+                            </Link>
+
+                            <Link
+                              href="/explore"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                            >
+                              🧭 Explore
+                            </Link>
+
+                            <Link
+                              href="/bitemap"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                            >
+                              🗺️ BiteMap
+                            </Link>
+
+                            {/* Competitions with submenu */}
+                            <div>
+                              <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <Link
+                                  href="/competitions"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center flex-1 font-semibold"
+                                >
+                                  🏆 Competitions
+                                </Link>
+                                <button
+                                  onClick={(e) => toggleSubmenu("competitions", e)}
+                                  className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                >
+                                  <ChevronRight
+                                    className={`w-3 h-3 transition-transform ${expandedMenus.competitions ? "rotate-90" : ""}`}
+                                  />
+                                </button>
+                              </div>
+                              {expandedMenus.competitions && (
+                                <div className="ml-6 space-y-1">
+                                  <Link
+                                    href="/competitions"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    📚 Cookoff Library
+                                  </Link>
+                                  <Link
+                                    href="/competitions/live"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    🔥 Live Battles
+                                  </Link>
+                                  <Link
+                                    href="/competitions/new"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    ➕ Create Cookoff
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Recipes with submenu */}
+                            <div>
+                              <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <Link
+                                  href="/recipes"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center flex-1 font-semibold"
+                                >
+                                  📖 Recipes
+                                </Link>
+                                <button
+                                  onClick={(e) => toggleSubmenu("recipes", e)}
+                                  className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                >
+                                  <ChevronRight
+                                    className={`w-3 h-3 transition-transform ${expandedMenus.recipes ? "rotate-90" : ""}`}
+                                  />
+                                </button>
+                              </div>
+                              {expandedMenus.recipes && (
+                                <div className="ml-6 space-y-1">
+                                  <Link
+                                    href="/recipes"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    📚 Browse Recipes
+                                  </Link>
+                                  <Link
+                                    href="/recipes/baby-food"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    👶 Baby Food
+                                  </Link>
+                                  <Link
+                                    href="/pantry"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    🥘 My Pantry
+                                  </Link>
+                                  <Link
+                                    href="/substitutions"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    🪄 Substitutions
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Drinks with submenu */}
+                            <div>
+                              <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <Link
+                                  href="/drinks"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center flex-1 font-semibold"
+                                >
+                                  🥤 Drinks
+                                </Link>
+                                <button
+                                  onClick={(e) => toggleSubmenu("drinks", e)}
+                                  className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                >
+                                  <ChevronRight
+                                    className={`w-3 h-3 transition-transform ${expandedMenus.drinks ? "rotate-90" : ""}`}
+                                  />
+                                </button>
+                              </div>
+                              {expandedMenus.drinks && (
+                                <div className="ml-6 space-y-1">
+                                  <Link
+                                    href="/drinks/smoothies"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    🍎 Smoothies
+                                  </Link>
+                                  <Link
+                                    href="/drinks/protein-shakes"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    🧪 Protein Shakes
+                                  </Link>
+                                  <Link
+                                    href="/drinks/detoxes"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    🍃 Detoxes
+                                  </Link>
+                                  <Link
+                                    href="/drinks/potent-potables"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    🍷 Potent Potables{" "}
+                                    <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700">
+                                      21+
+                                    </span>
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Catering with submenu */}
+                            <div>
+                              <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <Link
+                                  href="/catering"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center flex-1 font-semibold"
+                                >
+                                  🍽️ Catering
+                                </Link>
+                                <button
+                                  onClick={(e) => toggleSubmenu("catering", e)}
+                                  className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                >
+                                  <ChevronRight
+                                    className={`w-3 h-3 transition-transform ${expandedMenus.catering ? "rotate-90" : ""}`}
+                                  />
+                                </button>
+                              </div>
+                              {expandedMenus.catering && (
+                                <div className="ml-6 space-y-1">
+                                  <Link
+                                    href="/catering"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    👨‍🍳 Browse Caterers
+                                  </Link>
+                                  <Link
+                                    href="/catering/wedding-planning"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    💒 Wedding Planning
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Marketplace */}
+                            <Link
+                              href="/marketplace"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                            >
+                              🛒 Marketplace
+                            </Link>
+
+                            {/* Nutrition */}
+                            <Link
+                              href="/nutrition"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                            >
+                              💪 Nutrition
+                            </Link>
+                          </div>
+                        </div>
+
+                        <div className="border-t my-2" />
+
+                        <Link
+                          href="/profile"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                        >
+                          <User className="w-5 h-5 mr-3" /> My Profile
+                        </Link>
+
+                        <Link
+                          href="/settings"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                        >
+                          <Settings className="w-5 h-5 mr-3" /> Settings
+                        </Link>
+
+                        <button
+                          onClick={() => {
+                            setIsDropdownOpen(false);
+                            console.log("Logging out...");
+                          }}
+                          className="flex items-center w-full px-4 py-3 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 text-left"
+                        >
+                          <LogOut className="w-5 h-5 mr-3" />
+                          Sign Out
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Bio */}
-          {user.bio && (
-            <p className="text-sm mb-4" data-testid={`text-bio-${user.id}`}>
-              {user.bio}
-            </p>
-          )}
-
-          {/* Chef Badge & Specialty */}
-          <div className="flex flex-wrap gap-2 mb-4">
-            {user.isChef && (
-              <Badge variant="secondary" className="bg-accent text-accent-foreground">
-                Chef
-              </Badge>
-            )}
-            {user.specialty && (
-              <Badge variant="outline">{user.specialty}</Badge>
-            )}
-            {drinkStats && drinkStats.level > 1 && (
-              <Badge variant="secondary" className="bg-purple-100 text-purple-800">
-                Level {drinkStats.level} Mixologist
-              </Badge>
-            )}
-          </div>
+          <nav className="border-t border-border bg-background">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <ul className="flex flex-nowrap gap-4 overflow-x-auto no-scrollbar py-2 px-1 touch-pan-x">
+                {secondaryLinks.map((item) => {
+                  const active = pathname === item.href;
+                  return (
+                    <li key={item.href} className="flex-none">
+                      <Link
+                        href={item.href}
+                        className={[
+                          "inline-block text-sm font-medium whitespace-nowrap px-2 py-1 rounded transition-colors",
+                          active
+                            ? "text-orange-600 underline decoration-2 underline-offset-4"
+                            : "text-muted-foreground hover:text-orange-600",
+                        ].join(" ")}
+                        aria-current={active ? "page" : undefined}
+                      >
+                        {item.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </nav>
         </div>
+      </header>
+
+      <div className="flex flex-1">
+        <Sidebar onCreatePost={handleCreatePost} />
+        <main className="flex-1 lg:ml-64 pb-16 lg:pb-0">{children}</main>
       </div>
 
-      {/* Content Tabs */}
-      <Tabs defaultValue="posts" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="posts" className="flex items-center space-x-2" data-testid="tab-posts">
-            <Grid className="h-4 w-4" />
-            <span className="hidden sm:inline">Posts</span>
-          </TabsTrigger>
-          <TabsTrigger value="recipes" className="flex items-center space-x-2" data-testid="tab-recipes">
-            <Heart className="h-4 w-4" />
-            <span className="hidden sm:inline">Recipes</span>
-          </TabsTrigger>
-          <TabsTrigger value="drinks" className="flex items-center space-x-2" data-testid="tab-drinks">
-            <GlassWater className="h-4 w-4" />
-            <span className="hidden sm:inline">Drinks</span>
-          </TabsTrigger>
-          <TabsTrigger value="saved" className="flex items-center space-x-2" data-testid="tab-saved">
-            <Bookmark className="h-4 w-4" />
-            <span className="hidden sm:inline">Saved</span>
-          </TabsTrigger>
-        </TabsList>
+      <div className="md:hidden px-4 py-2 bg-background border-t border-border">
+        <form onSubmit={onSearchSubmit} className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
+            <Input
+              type="text"
+              placeholder="Search recipes..."
+              className="w-full pl-10 bg-muted border-border rounded-full"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              aria-label="Search site (mobile)"
+            />
+          </div>
+          <Button type="submit" size="sm" className="shrink-0 rounded-full px-3">
+            Go
+          </Button>
+        </form>
+      </div>
 
-        <TabsContent value="posts" className="mt-6">
-          {postsLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="aspect-square bg-muted rounded-lg animate-pulse" />
-              ))}
-            </div>
-          ) : userPosts.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {userPosts.map((post) => (
-                <Card key={post.id} className="group cursor-pointer hover:shadow-lg transition-shadow">
-                  <div className="relative overflow-hidden aspect-square">
-                    <img
-                      src={post.imageUrl}
-                      alt="Post"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      data-testid={`img-user-post-${post.id}`}
-                    />
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
-                      <div className="flex items-center space-x-4 text-white">
-                        <span className="flex items-center space-x-1">
-                          <Heart className="h-5 w-5" />
-                          <span>{post.likesCount}</span>
-                        </span>
-                        <span className="flex items-center space-x-1">
-                          <Users className="h-5 w-5" />
-                          <span>{post.commentsCount}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <h3 className="text-lg font-semibold mb-2">No posts yet</h3>
-              <p className="text-muted-foreground">
-                {isOwnProfile ? "Start sharing your culinary creations!" : "No posts to show."}
-              </p>
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="recipes" className="mt-6">
-          {postsLoading ? (
-            <div className="space-y-8">
-              {[...Array(3)].map((_, i) => (
-                <Card key={i} className="animate-pulse">
-                  <div className="w-full h-96 bg-muted" />
-                  <CardContent className="p-4">
-                    <div className="space-y-2">
-                      <div className="w-3/4 h-6 bg-muted rounded" />
-                      <div className="w-full h-20 bg-muted rounded" />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : userRecipes.length > 0 ? (
-            <div className="space-y-8">
-              {userRecipes.map((post) => (
-                <Card key={post.id} className="overflow-hidden">
-                  <div className="relative">
-                    {post.imageUrl ? (
-                      <img
-                        src={post.imageUrl}
-                        alt={post.caption || "Recipe"}
-                        className="w-full h-64 object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-64 bg-gray-200 flex items-center justify-center">
-                        <Heart className="w-8 h-8 text-gray-400" />
-                      </div>
-                    )}
-                  </div>
-                  <CardContent className="p-6">
-                    <h3 className="text-xl font-semibold mb-2">{post.caption || "Recipe"}</h3>
-                    <div className="flex items-center justify-between text-sm text-gray-500">
-                      <span className="flex items-center space-x-1">
-                        <Heart className="w-4 h-4" />
-                        <span>{post.likesCount} likes</span>
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <h3 className="text-lg font-semibold mb-2">No recipes yet</h3>
-              <p className="text-muted-foreground">
-                {isOwnProfile ? "Share your favorite recipes with the community!" : "No recipes to show."}
-              </p>
-            </div>
-          )}
-        </TabsContent>
-
-        {/* NEW DRINKS TAB */}
-        <TabsContent value="drinks" className="mt-6">
-          {drinksLoading ? (
-            <div className="space-y-6">
-              <div className="animate-pulse">
-                <div className="w-full h-32 bg-muted rounded-lg mb-6" />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {[...Array(4)].map((_, i) => (
-                    <div key={i} className="h-48 bg-muted rounded-lg" />
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Drink Stats Card */}
-              {drinkStats && (
-                <Card className="bg-gradient-to-r from-purple-50 to-pink-50">
-                  <CardContent className="p-6">
-                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                      <Trophy className="w-5 h-5 text-purple-600" />
-                      Mixology Stats
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-purple-600">
-                          {drinkStats.totalDrinksMade}
-                        </div>
-                        <div className="text-sm text-gray-600">Drinks Made</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-orange-600">
-                          Level {drinkStats.level}
-                        </div>
-                        <div className="text-sm text-gray-600">{drinkStats.totalPoints} XP</div>
-                        <Progress 
-                          value={(drinkStats.totalPoints % 1000) / 10} 
-                          className="mt-2 h-2" 
-                        />
-                      </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-blue-600">
-                          {drinkStats.currentStreak}
-                        </div>
-                        <div className="text-sm text-gray-600">Day Streak</div>
-                        <div className="flex justify-center gap-1 mt-2">
-                          {[...Array(7)].map((_, i) => (
-                            <div
-                              key={i}
-                              className={`w-4 h-4 rounded ${
-                                i < drinkStats.currentStreak
-                                  ? 'bg-orange-400'
-                                  : 'bg-gray-200'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-green-600">
-                          {drinkStats.badges?.length || 0}
-                        </div>
-                        <div className="text-sm text-gray-600">Badges Earned</div>
-                      </div>
-                    </div>
-                    
-                    {/* Category Breakdown */}
-                    <div className="mt-6 pt-6 border-t">
-                      <h4 className="font-semibold mb-3 text-sm">Drinks by Category</h4>
-                      <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                        <div>
-                          <Apple className="w-4 h-4 mx-auto mb-1 text-green-500" />
-                          <div className="font-semibold">{drinkStats.smoothiesMade}</div>
-                          <div className="text-gray-500">Smoothies</div>
-                        </div>
-                        <div>
-                          <Flame className="w-4 h-4 mx-auto mb-1 text-blue-500" />
-                          <div className="font-semibold">{drinkStats.proteinShakesMade}</div>
-                          <div className="text-gray-500">Protein</div>
-                        </div>
-                        <div>
-                          <TrendingUp className="w-4 h-4 mx-auto mb-1 text-teal-500" />
-                          <div className="font-semibold">{drinkStats.detoxesMade}</div>
-                          <div className="text-gray-500">Detoxes</div>
-                        </div>
-                        <div>
-                          <GlassWater className="w-4 h-4 mx-auto mb-1 text-purple-500" />
-                          <div className="font-semibold">{drinkStats.cocktailsMade}</div>
-                          <div className="text-gray-500">Cocktails</div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Custom Drinks Grid */}
-              {customDrinks.length > 0 ? (
-                <div>
-                  <h3 className="text-lg font-bold mb-4">Custom Drinks ({customDrinks.length})</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {customDrinks.map((drink: any) => (
-                      <Card key={drink.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                        {drink.imageUrl && (
-                          <div className="relative h-48">
-                            <img
-                              src={drink.imageUrl}
-                              alt={drink.name}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        )}
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between mb-2">
-                            <h4 className="font-semibold text-lg">{drink.name}</h4>
-                            <Badge variant="outline" className="text-xs">
-                              {drink.category}
-                            </Badge>
-                          </div>
-                          {drink.description && (
-                            <p className="text-sm text-gray-600 mb-3">{drink.description}</p>
-                          )}
-                          <div className="grid grid-cols-3 gap-2 text-xs text-center py-2 bg-gray-50 rounded">
-                            <div>
-                              <div className="font-semibold text-orange-600">{drink.calories}</div>
-                              <div className="text-gray-500">cal</div>
-                            </div>
-                            <div>
-                              <div className="font-semibold text-blue-600">{drink.protein}g</div>
-                              <div className="text-gray-500">protein</div>
-                            </div>
-                            <div>
-                              <div className="font-semibold text-green-600">{drink.fiber}g</div>
-                              <div className="text-gray-500">fiber</div>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between mt-3 text-sm text-gray-500">
-                            <span className="flex items-center gap-1">
-                              <Heart className="w-4 h-4" />
-                              {drink.likesCount}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Bookmark className="w-4 h-4" />
-                              {drink.savesCount}
-                            </span>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <GlassWater className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                  <h3 className="text-lg font-semibold mb-2">No custom drinks yet</h3>
-                  <p className="text-muted-foreground mb-4">
-                    {isOwnProfile ? "Start creating your signature drinks!" : "No drinks to show."}
-                  </p>
-                  {isOwnProfile && (
-                    <Button onClick={() => window.location.href = '/drinks/smoothies'}>
-                      Create Your First Drink
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="saved" className="mt-6">
-          {savedDrinksLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="h-48 bg-muted rounded-lg animate-pulse" />
-              ))}
-            </div>
-          ) : savedDrinks.length > 0 ? (
-            <div>
-              <h3 className="text-lg font-bold mb-4">Saved Drinks ({savedDrinks.length})</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {savedDrinks.map((drink: any) => (
-                  <Card key={drink.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                    {drink.imageUrl && (
-                      <div className="relative h-48">
-                        <img
-                          src={drink.imageUrl}
-                          alt={drink.name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    )}
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <h4 className="font-semibold text-lg">{drink.name}</h4>
-                        <Badge variant="outline" className="text-xs">
-                          {drink.category}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-500 mb-2">by @{drink.user?.username}</p>
-                      <div className="grid grid-cols-3 gap-2 text-xs text-center py-2 bg-gray-50 rounded">
-                        <div>
-                          <div className="font-semibold text-orange-600">{drink.calories}</div>
-                          <div className="text-gray-500">cal</div>
-                        </div>
-                        <div>
-                          <div className="font-semibold text-blue-600">{drink.protein}g</div>
-                          <div className="text-gray-500">protein</div>
-                        </div>
-                        <div>
-                          <div className="font-semibold text-green-600">{drink.fiber}g</div>
-                          <div className="text-gray-500">fiber</div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <Bookmark className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-semibold mb-2">No saved items yet</h3>
-              <p className="text-muted-foreground">
-                {isOwnProfile ? "Your saved posts and drinks will appear here." : "This section is private."}
-              </p>
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+      <MobileNav onCreatePost={handleCreatePost} />
     </div>
   );
 }
