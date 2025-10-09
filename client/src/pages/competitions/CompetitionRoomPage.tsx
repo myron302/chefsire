@@ -1,4 +1,3 @@
-// client/src/pages/competitions/CompetitionRoomPage.tsx
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'wouter';
 import { Video, Users, Timer, Trophy, Star, Flame, Zap, Camera, Send, Heart, Share2, Crown, Award, Target } from 'lucide-react';
@@ -112,19 +111,19 @@ export default function CompetitionRoomPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-200 via-purple-200 to-pink-200 relative overflow-hidden">
-      {/* Background effects */}
+      {/* REDUCED Background effects - only 6 elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {[...Array(15)].map((_, i) => (
+        {[...Array(6)].map((_, i) => (
           <div
             key={i}
             className="absolute rounded-full opacity-10"
             style={{
-              background: `radial-gradient(circle, ${['#fbbf24', '#ec4899', '#a78bfa', '#06b6d4', '#f97316'][i % 5]} 0%, transparent 70%)`,
-              width: Math.random() * 300 + 100 + 'px',
-              height: Math.random() * 300 + 100 + 'px',
+              background: `radial-gradient(circle, ${['#a78bfa', '#ec4899', '#06b6d4'][i % 3]} 0%, transparent 70%)`,
+              width: Math.random() * 250 + 120 + 'px',
+              height: Math.random() * 250 + 120 + 'px',
               left: Math.random() * 100 + '%',
               top: Math.random() * 100 + '%',
-              animation: `float ${Math.random() * 20 + 10}s ease-in-out infinite`,
+              animation: `gentle-float ${Math.random() * 30 + 20}s ease-in-out infinite`,
               animationDelay: `${Math.random() * 5}s`
             }}
           />
@@ -166,10 +165,9 @@ export default function CompetitionRoomPage() {
       ))}
 
       <style>{`
-        @keyframes float {
-          0%, 100% { transform: translate(0, 0) rotate(0deg); }
-          33% { transform: translate(20px, -20px) rotate(120deg); }
-          66% { transform: translate(-20px, 20px) rotate(240deg); }
+        @keyframes gentle-float {
+          0%, 100% { transform: translate(0, 0); }
+          50% { transform: translate(15px, -15px); }
         }
         @keyframes float-up {
           0% { opacity: 1; transform: translateY(0); }
@@ -263,7 +261,7 @@ export default function CompetitionRoomPage() {
               </div>
             </div>
 
-            {/* Participants Grid - keeping rest of the existing code... */}
+            {/* Participants Grid */}
             <div className="grid sm:grid-cols-2 gap-4">
               {mockParticipants.map((p, i) => (
                 <div
@@ -313,7 +311,7 @@ export default function CompetitionRoomPage() {
             </div>
           </div>
 
-          {/* Right sidebar with voting - keeping your existing code structure */}
+          {/* Right sidebar */}
           <div className="space-y-6">
             {/* Competition Info Card */}
             <div className="relative group">
