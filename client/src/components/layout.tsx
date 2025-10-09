@@ -33,10 +33,11 @@ export default function Layout({ children }: LayoutProps) {
     };
   }, []);
 
+  // 🔧 make the top rail go to the Library explicitly
   const secondaryLinks = [
     { href: "/", label: "Home" },
     { href: "/bitemap", label: "BiteMap" },
-    { href: "/competitions", label: "Competitions" },
+    { href: "/competitions/library", label: "Competitions" },
     { href: "/recipes", label: "Recipes" },
     { href: "/drinks", label: "Drinks" },
     { href: "/catering", label: "Catering" },
@@ -97,6 +98,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
 
             <div className="flex items-center space-x-4">
+              {/* 🔧 Create button stays on /competitions/new */}
               <Link href="/competitions/new">
                 <Button
                   size="sm"
@@ -202,11 +204,11 @@ export default function Layout({ children }: LayoutProps) {
                               🗺️ BiteMap
                             </Link>
 
-                            {/* Competitions with submenu */}
+                            {/* 🔧 Competitions with submenu */}
                             <div>
                               <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                                 <Link
-                                  href="/competitions"
+                                  href="/competitions/library"
                                   onClick={() => setIsDropdownOpen(false)}
                                   className="flex items-center flex-1 font-semibold"
                                 >
@@ -224,7 +226,7 @@ export default function Layout({ children }: LayoutProps) {
                               {expandedMenus.competitions && (
                                 <div className="ml-6 space-y-1">
                                   <Link
-                                    href="/competitions"
+                                    href="/competitions/library"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
