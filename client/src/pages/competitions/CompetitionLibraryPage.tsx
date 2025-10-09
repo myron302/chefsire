@@ -40,15 +40,6 @@ export default function EnhancedLibraryPage() {
     }
   }, []);
 
-  // Animated counter
-  const [counter, setCounter] = useState(0);
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCounter(prev => (prev + 1) % 100);
-    }, 50);
-    return () => clearInterval(interval);
-  }, []);
-
   // Mock data for demo
   const mockItems = [
     { id: '1', title: 'Midnight Pasta Showdown', themeName: 'Italian Night', status: 'live', isPrivate: false, timeLimitMinutes: 60, createdAt: new Date().toISOString(), participants: 6 },
@@ -75,19 +66,19 @@ export default function EnhancedLibraryPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-200 via-purple-200 to-pink-200 relative overflow-hidden">
-      {/* Background effects */}
+      {/* REDUCED background effects - only 6 elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {[...Array(20)].map((_, i) => (
+        {[...Array(6)].map((_, i) => (
           <div
             key={i}
-            className="absolute rounded-full opacity-20"
+            className="absolute rounded-full opacity-10"
             style={{
-              background: `radial-gradient(circle, ${['#fbbf24', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316'][i % 5]} 0%, transparent 70%)`,
-              width: Math.random() * 400 + 100 + 'px',
-              height: Math.random() * 400 + 100 + 'px',
+              background: `radial-gradient(circle, ${['#a78bfa', '#ec4899', '#06b6d4'][i % 3]} 0%, transparent 70%)`,
+              width: Math.random() * 300 + 150 + 'px',
+              height: Math.random() * 300 + 150 + 'px',
               left: Math.random() * 100 + '%',
               top: Math.random() * 100 + '%',
-              animation: `float ${Math.random() * 20 + 10}s ease-in-out infinite`,
+              animation: `gentle-float ${Math.random() * 30 + 20}s ease-in-out infinite`,
               animationDelay: `${Math.random() * 5}s`
             }}
           />
@@ -95,11 +86,9 @@ export default function EnhancedLibraryPage() {
       </div>
 
       <style>{`
-        @keyframes float {
-          0%, 100% { transform: translate(0, 0) rotate(0deg); }
-          25% { transform: translate(20px, -20px) rotate(90deg); }
-          50% { transform: translate(-20px, 20px) rotate(180deg); }
-          75% { transform: translate(20px, 20px) rotate(270deg); }
+        @keyframes gentle-float {
+          0%, 100% { transform: translate(0, 0); }
+          50% { transform: translate(15px, -15px); }
         }
         @keyframes shimmer {
           0% { background-position: -1000px 0; }
