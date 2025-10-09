@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link, useLocation } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,22 @@ import {
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
+
+// Protein subcategories data (for sister nav)
+const proteinSubcategories = [
+  { name: 'Whey Protein', route: '/drinks/protein-shakes/whey', icon: Zap },
+  { name: 'Plant-Based', route: '/drinks/protein-shakes/plant-based', icon: Leaf },
+  { name: 'Casein', route: '/drinks/protein-shakes/casein', icon: Calendar },
+  { name: 'Collagen', route: '/drinks/protein-shakes/collagen', icon: Sparkles },
+  { name: 'Egg Protein', route: '/drinks/protein-shakes/egg', icon: Target }
+];
+
+// Other drink hubs (for cross-hub nav)
+const otherDrinkHubs = [
+  { name: 'Smoothies', route: '/drinks/smoothies', icon: Apple },
+  { name: 'Detoxes', route: '/drinks/detoxes', icon: Droplets },
+  { name: 'Potent Potables (21+)', route: '/drinks/potent-potables', icon: Wine }
+];
 
 // Collagen protein shake data
 const collagenShakes = [
@@ -364,6 +381,7 @@ export default function CollagenProteinPage() {
     addPoints,
     incrementDrinksMade
   } = useDrinks();
+  const [location] = useLocation(); // For active nav state
 
   const [activeTab, setActiveTab] = useState('browse');
   const [selectedCollagenType, setSelectedCollagenType] = useState('');
@@ -440,10 +458,12 @@ export default function CollagenProteinPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" className="text-gray-500">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Protein Shakes
-              </Button>
+              <Link href="/drinks">
+                <Button variant="ghost" size="sm" className="text-gray-500">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Drinks Hub
+                </Button>
+              </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
                 <Sparkles className="h-6 w-6 text-pink-600" />
@@ -1021,75 +1041,4 @@ export default function CollagenProteinPage() {
                     <div className="text-sm text-gray-700 space-y-1">
                       {shake.ingredients.map((ingredient, index) => (
                         <div key={index} className="flex items-center gap-2">
-                          <Sparkles className="h-3 w-3 text-pink-500" />
-                          {ingredient}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Action buttons */}
-                  <div className="flex gap-3">
-                    <Button 
-                      className="flex-1 bg-pink-600 hover:bg-pink-700"
-                      onClick={() => handleMakeShake(shake)}
-                    >
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      Make This Shake
-                    </Button>
-                    <Button variant="outline">
-                      <Share2 className="h-4 w-4 mr-2" />
-                      Share
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Floating Action Button */}
-      <div className="fixed bottom-6 right-6 z-50">
-        <Button 
-          size="lg" 
-          className="rounded-full w-14 h-14 bg-pink-600 hover:bg-pink-700 shadow-lg"
-          onClick={() => setActiveTab('browse')}
-        >
-          <Plus className="h-6 w-6" />
-        </Button>
-      </div>
-
-      {/* Bottom Stats Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-6 text-sm">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-pink-600" />
-              <span className="text-gray-600">Collagen Products Found:</span>
-              <span className="font-bold text-pink-600">{filteredShakes.length}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Star className="h-4 w-4 text-yellow-500" />
-              <span className="text-gray-600">Your Level:</span>
-              <span className="font-bold text-yellow-600">{userProgress.level}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-green-500" />
-              <span className="text-gray-600">XP:</span>
-              <span className="font-bold text-green-600">{userProgress.totalPoints}</span>
-            </div>
-          </div>
-          
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          >
-            Back to Top
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
+                          <Sparkles className="h-3
