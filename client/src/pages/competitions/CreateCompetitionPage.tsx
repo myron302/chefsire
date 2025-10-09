@@ -1,4 +1,21 @@
-import React, { useState } from 'react';
+{/* Animated background */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {[...Array(30)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute rounded-full opacity-15"
+            style={{
+              background: `radial-gradient(circle, ${['#fbbf24', '#ec4899', '#a78bfa', '#06b6d4', '#f97316'][i % 5]} 0%, transparent 70%)`,
+              width: Math.random() * 400 + 100 + 'px',
+              height: Math.random() * 400 + 100 + 'px',
+              left: Math.random() * 100 + '%',
+              top: Math.random() * 100 + '%',
+              animation: `float ${Math.random() * 25 + 15}s ease-in-out infinite`,
+              animationDelay: `${Math.random() * 5}s`
+            }}
+          />
+        ))}
+      </div>import React, { useState } from 'react';
 import { ChefHat, Sparkles, Timer, Users, Lock, Globe, Zap, Star, Trophy, Flame, ArrowRight, Wand2 } from 'lucide-react';
 
 const THEMES = [
@@ -33,7 +50,7 @@ export default function EnhancedCreatePage() {
   const progress = (step / totalSteps) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-200 via-purple-200 to-rose-200 relative overflow-hidden">
       {/* Animated background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[...Array(30)].map((_, i) => (
@@ -77,21 +94,21 @@ export default function EnhancedCreatePage() {
         {/* Header with animated chef icon */}
         <div className="text-center mb-12">
           <div className="inline-flex items-center justify-center mb-6 relative group">
-            <div className="absolute inset-0 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-full blur-3xl opacity-60 animate-pulse"></div>
+            <div className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-400 to-cyan-400 rounded-full blur-3xl opacity-40 animate-pulse"></div>
             <div 
-              className="relative p-8 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full shadow-2xl transition-transform duration-500 group-hover:scale-110 group-hover:rotate-12"
+              className="relative p-8 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full shadow-2xl transition-transform duration-500 group-hover:scale-110 group-hover:rotate-12"
               style={{ animation: 'pulse-glow 3s ease-in-out infinite' }}
             >
               <ChefHat className="w-20 h-20 text-white" />
             </div>
-            <div className="absolute -top-2 -right-2 p-2 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full animate-bounce">
+            <div className="absolute -top-2 -right-2 p-2 bg-gradient-to-r from-yellow-400 to-orange-400 rounded-full animate-bounce shadow-lg">
               <Sparkles className="w-6 h-6 text-white" />
             </div>
           </div>
-          <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-400 to-cyan-400 mb-4 tracking-tight">
+          <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 mb-4 tracking-tight">
             Create Your Cookoff
           </h1>
-          <p className="text-xl text-purple-200">Design an epic culinary battle in 3 simple steps</p>
+          <p className="text-xl text-gray-700 font-medium">Design an epic culinary battle in 3 simple steps</p>
         </div>
 
         {/* Progress Bar */}
@@ -102,22 +119,22 @@ export default function EnhancedCreatePage() {
                 key={s}
                 className={`flex items-center gap-3 transition-all duration-500 ${step >= s ? 'opacity-100' : 'opacity-40'}`}
               >
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-500 ${
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-500 shadow-lg ${
                   step >= s
-                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white scale-110 shadow-lg'
-                    : 'bg-white/10 text-purple-300'
+                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white scale-110'
+                    : 'bg-white/70 text-gray-400 border border-gray-200'
                 }`}>
                   {step > s ? '✓' : s}
                 </div>
-                <span className="text-white font-semibold">
+                <span className="text-gray-800 font-semibold">
                   {s === 1 ? 'Theme' : s === 2 ? 'Details' : 'Settings'}
                 </span>
               </div>
             ))}
           </div>
-          <div className="h-3 bg-white/10 rounded-full overflow-hidden backdrop-blur-xl">
+          <div className="h-3 bg-white/70 rounded-full overflow-hidden backdrop-blur-xl border border-gray-200 shadow-inner">
             <div 
-              className="h-full bg-gradient-to-r from-purple-500 via-pink-500 to-cyan-500 transition-all duration-500 rounded-full shimmer-effect"
+              className="h-full bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400 transition-all duration-500 rounded-full shimmer-effect"
               style={{ width: `${progress}%` }}
             ></div>
           </div>
@@ -127,11 +144,11 @@ export default function EnhancedCreatePage() {
         {step === 1 && (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="text-center mb-8">
-              <h2 className="text-4xl font-bold text-white mb-3 flex items-center justify-center gap-3">
-                <Wand2 className="w-8 h-8 text-purple-400" />
+              <h2 className="text-4xl font-bold text-gray-800 mb-3 flex items-center justify-center gap-3">
+                <Wand2 className="w-8 h-8 text-purple-500" />
                 Choose Your Theme
               </h2>
-              <p className="text-purple-200">Pick the culinary style that defines your battle</p>
+              <p className="text-gray-600 text-lg">Pick the culinary style that defines your battle</p>
             </div>
 
             <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -145,22 +162,22 @@ export default function EnhancedCreatePage() {
                   style={{ animationDelay: `${i * 50}ms` }}
                 >
                   {selectedTheme?.id === theme.id && (
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl blur-xl animate-pulse"></div>
+                    <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-400 rounded-2xl blur-xl animate-pulse opacity-50"></div>
                   )}
                   
-                  <div className={`relative bg-white/10 backdrop-blur-xl border-2 rounded-2xl p-6 transition-all duration-300 hover:scale-110 hover:-translate-y-2 ${
+                  <div className={`relative bg-white/80 backdrop-blur-xl border-2 rounded-2xl p-6 transition-all duration-300 hover:scale-110 hover:-translate-y-2 shadow-lg ${
                     selectedTheme?.id === theme.id
-                      ? 'border-purple-400 bg-white/20 shadow-2xl'
-                      : 'border-white/20 hover:border-white/40'
+                      ? 'border-purple-500 bg-white shadow-2xl'
+                      : 'border-gray-200 hover:border-purple-300'
                   }`}>
                     <div className="text-5xl mb-3 transition-transform duration-300 group-hover:scale-125 group-hover:rotate-12">
                       {theme.icon}
                     </div>
-                    <div className="text-white font-bold text-sm mb-1">{theme.name}</div>
-                    <div className="text-purple-200 text-xs">{theme.blurb}</div>
+                    <div className="text-gray-800 font-bold text-sm mb-1">{theme.name}</div>
+                    <div className="text-gray-600 text-xs">{theme.blurb}</div>
                     
                     {selectedTheme?.id === theme.id && (
-                      <div className="absolute top-2 right-2 p-1 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full">
+                      <div className="absolute top-2 right-2 p-1 bg-gradient-to-r from-yellow-400 to-orange-400 rounded-full shadow-lg">
                         <Star className="w-4 h-4 text-white" />
                       </div>
                     )}
