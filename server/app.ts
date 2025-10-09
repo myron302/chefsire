@@ -1,15 +1,18 @@
-// server/app.ts
 import express from "express";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import apiRouter from "./routes";
+import authRouter from "./routes/auth";  // NEW: Import auth routes
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const app = express();
 app.use(express.json());
+
+// NEW: Mount auth routes under /api/auth
+app.use("/api/auth", authRouter);
 
 // Find a built SPA (works with root /dist or /client/dist)
 const candidates = [
