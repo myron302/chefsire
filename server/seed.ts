@@ -1,7 +1,7 @@
-// server/seed.ts
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool } from "@neondatabase/serverless";
+import bcrypt from "bcryptjs";
 import {
   users,
   posts,
@@ -36,12 +36,15 @@ async function seedDatabase() {
     await db.delete(users);
 
     console.log("Creating sample users...");
+    const plainPassword = "password123";
+    const hashedPassword = await bcrypt.hash(plainPassword, 12); // NEW: Hash password
+
     const sampleUsers = [
       {
         id: "user-1",
         username: "chef_alexandra",
         email: "alexandra@chefsire.com",
-        password: "password123",
+        password: hashedPassword, // NEW: Use hashed
         displayName: "Chef Alexandra",
         bio: "Passionate about Italian cuisine and fresh ingredients",
         avatar:
@@ -65,7 +68,7 @@ async function seedDatabase() {
         id: "user-2",
         username: "chef_marcus",
         email: "marcus@chefsire.com",
-        password: "password123",
+        password: hashedPassword, // NEW: Use hashed
         displayName: "Chef Marcus",
         bio: "Seafood specialist | Sustainable cooking advocate",
         avatar:
@@ -89,7 +92,7 @@ async function seedDatabase() {
         id: "user-3",
         username: "chef_isabella",
         email: "isabella@chefsire.com",
-        password: "password123",
+        password: hashedPassword, // NEW: Use hashed
         displayName: "Chef Isabella",
         bio: "Dessert artisan creating sweet masterpieces",
         avatar:
@@ -108,7 +111,7 @@ async function seedDatabase() {
         id: "user-4",
         username: "chefmaria",
         email: "maria@chefsire.com",
-        password: "password123",
+        password: hashedPassword, // NEW: Use hashed
         displayName: "Chef Maria",
         bio: "Fresh pasta and authentic Italian recipes",
         avatar:
@@ -132,7 +135,7 @@ async function seedDatabase() {
         id: "user-5",
         username: "bakerben",
         email: "ben@chefsire.com",
-        password: "password123",
+        password: hashedPassword, // NEW: Use hashed
         displayName: "Baker Ben",
         bio: "Artisan breads and morning pastries",
         avatar:
@@ -151,7 +154,7 @@ async function seedDatabase() {
         id: "user-6",
         username: "veggievibes",
         email: "veggie@chefsire.com",
-        password: "password123",
+        password: hashedPassword, // NEW: Use hashed
         displayName: "Veggie Vibes",
         bio: "Plant-based nutrition and colorful meals",
         avatar:
@@ -175,7 +178,7 @@ async function seedDatabase() {
         id: "user-7",
         username: "dessertqueen",
         email: "dessert@chefsire.com",
-        password: "password123",
+        password: hashedPassword, // NEW: Use hashed
         displayName: "Dessert Queen",
         bio: "Decadent desserts and sweet creations",
         avatar:
@@ -452,6 +455,7 @@ async function seedDatabase() {
     console.log("- 5 active stories (matching BitesRow structure)");
     console.log("- 10 likes");
     console.log("- 12 follow relationships");
+    console.log("Test login: email=alexandra@chefsire.com, password=password123");
   } catch (error) {
     console.error("Error seeding database:", (error as Error).message);
     throw error;
