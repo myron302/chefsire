@@ -186,7 +186,7 @@ export default function Layout({ children }: LayoutProps) {
                               onClick={() => setIsDropdownOpen(false)}
                               className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                             >
-                              <Home className="w-4 h-4 mr-3" /> Feed
+                              <Home className="w-4 h-4 mr-3 text-blue-600" /> Feed
                             </Link>
 
                             <Link
@@ -194,7 +194,7 @@ export default function Layout({ children }: LayoutProps) {
                               onClick={() => setIsDropdownOpen(false)}
                               className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                             >
-                              <Compass className="w-4 h-4 mr-3" /> Explore
+                              <Compass className="w-4 h-4 mr-3 text-purple-600" /> Explore
                             </Link>
 
                             <Link
@@ -202,7 +202,7 @@ export default function Layout({ children }: LayoutProps) {
                               onClick={() => setIsDropdownOpen(false)}
                               className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                             >
-                              <Map className="w-4 h-4 mr-3" /> BiteMap
+                              <Map className="w-4 h-4 mr-3 text-green-600" /> BiteMap
                             </Link>
 
                             {/* ✅ Competitions with submenu */}
