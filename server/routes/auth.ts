@@ -4,6 +4,7 @@ import { storage } from "../storage";
 
 const router = express.Router();
 
+// Signup route (existing)
 router.post("/signup", async (req, res) => {
   const { name, email, password } = req.body;
 
@@ -35,6 +36,33 @@ router.post("/signup", async (req, res) => {
     res.status(201).json({ user: safeUser });
   } catch (error) {
     console.error("Signup error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// NEW: Login route
+router.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: "Missing email or password" });
+  }
+
+  try {
+    const user = await storage.getUserByEmail(email);
+    if (!user || !user.password) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const { password: _, ...safeUser } = user;
+    res.status(200).json({ user: safeUser });
+  } catch (error) {
+    console.error("Login error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
