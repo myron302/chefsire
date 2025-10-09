@@ -330,10 +330,9 @@ export const customDrinks = pgTable(
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     userId: varchar("user_id").references(() => users.id).notNull(),
     name: text("name").notNull(),
-    category: text("category").notNull(), // smoothies, protein-shakes, detoxes, potent-potables
-    drinkType: text("drink_type"), // pre-workout, green, juice-detox, etc.
+    category: text("category").notNull(),
+    drinkType: text("drink_type"),
 
-    // Ingredients as JSON
     ingredients: jsonb("ingredients").$type<
       Array<{
         name: string;
@@ -346,14 +345,12 @@ export const customDrinks = pgTable(
       }>
     >().notNull(),
 
-    // Nutrition totals
     calories: integer("calories").notNull(),
     protein: decimal("protein", { precision: 5, scale: 2 }).notNull(),
     carbs: decimal("carbs", { precision: 5, scale: 2 }).notNull(),
     fiber: decimal("fiber", { precision: 5, scale: 2 }).notNull(),
     fat: decimal("fat", { precision: 5, scale: 2 }).notNull(),
 
-    // Optional
     description: text("description"),
     imageUrl: text("image_url"),
     fitnessGoal: text("fitness_goal"),
@@ -361,7 +358,6 @@ export const customDrinks = pgTable(
     prepTime: integer("prep_time"),
     rating: integer("rating").default(5),
 
-    // Social
     isPublic: boolean("is_public").default(false),
     likesCount: integer("likes_count").default(0),
     savesCount: integer("saves_count").default(0),
@@ -443,169 +439,6 @@ export const userDrinkStats = pgTable("user_drink_stats", {
   >().default(sql`'[]'::jsonb`),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
-
-/* =========================================================================
-   ===== NEW: COMPETITIONS / COOKOFFS
-   ========================================================================= */
-
-// THEMES
-export const competitionThemes = pgTable(
-  "competition_themes",
-  {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    slug: varchar("slug", { length: 64 }).notNull().unique(),
-    name: varchar("name", { length: 100 }).notNull(),
-    description: text("description"),
-    createdAt: timestamp("created_at").defaultNow(),
-  }
-);
-
-// COMPETITIONS (ROOMS)
-export const competitions = pgTable(
-  "competitions",
-  {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    creatorId: varchar("creator_id").references(() => users.id).notNull(),
-    themeId: varchar("theme_id").references(() => competitionThemes.id),
-    themeName: varchar("theme_name", { length: 100 }), // denormalized for search
-    recipeId: varchar("recipe_id", { length: 64 }), // optional
-    title: varchar("title", { length: 140 }),
-    isPrivate: boolean("is_private").notNull().default(false),
-    timeLimitMinutes: integer("time_limit_minutes").notNull(), // 30–120
-    minOfficialVoters: integer("min_official_voters").notNull().default(3),
-
-    status: varchar("status", { length: 20 }).notNull().default("upcoming"), // upcoming|live|judging|completed|canceled
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-    startTime: timestamp("start_time", { withTimezone: true }),
-    endTime: timestamp("end_time", { withTimezone: true }),
-    judgingClosesAt: timestamp("judging_closes_at", { withTimezone: true }),
-
-    videoProvider: varchar("video_provider", { length: 20 }).notNull().default("daily"),
-    videoRoomId: varchar("video_room_id", { length: 128 }),
-    videoRecordingUrl: text("video_recording_url"),
-    isOfficial: boolean("is_official").notNull().default(false),
-
-    // winnerParticipantId is kept as varchar for simplicity (no FK cycle)
-    winnerParticipantId: varchar("winner_participant_id"),
-  },
-  (t) => ({
-    idx_status: index("competitions_status_idx").on(t.status),
-    idx_theme: index("competitions_theme_idx").on(t.themeId, t.themeName),
-    idx_times: index("competitions_times_idx").on(t.startTime, t.endTime, t.judgingClosesAt),
-  })
-);
-
-// PARTICIPANTS
-export const competitionParticipants = pgTable(
-  "competition_participants",
-  {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    competitionId: varchar("competition_id")
-      .notNull()
-      .references(() => competitions.id, { onDelete: "cascade" }),
-    userId: varchar("user_id").references(() => users.id).notNull(),
-    role: varchar("role", { length: 20 }).notNull().default("competitor"), // competitor|host|judge
-    joinAt: timestamp("join_at", { withTimezone: true }).defaultNow(),
-
-    // Final submission
-    finalDishPhotoUrl: text("final_dish_photo_url"),
-    dishTitle: varchar("dish_title", { length: 140 }),
-    dishDescription: text("dish_description"),
-
-    // Aggregates computed at finalize
-    presentationAvg: integer("presentation_avg"),
-    creativityAvg: integer("creativity_avg"),
-    techniqueAvg: integer("technique_avg"),
-    totalScore: integer("total_score"),
-    placement: integer("placement"), // 1,2,3...
-  },
-  (t) => ({
-    uniq: uniqueIndex("competition_participants_competition_user_uniq").on(
-      t.competitionId,
-      t.userId
-    ),
-  })
-);
-
-// VOTES (spectators only; participants cannot vote → enforce in service)
-export const competitionVotes = pgTable(
-  "competition_votes",
-  {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    competitionId: varchar("competition_id")
-      .notNull()
-      .references(() => competitions.id, { onDelete: "cascade" }),
-    voterId: varchar("voter_id").references(() => users.id).notNull(),
-    participantId: varchar("participant_id")
-      .notNull()
-      .references(() => competitionParticipants.id, { onDelete: "cascade" }),
-    presentation: integer("presentation").notNull(), // 1–10
-    creativity: integer("creativity").notNull(), // 1–10
-    technique: integer("technique").notNull(), // 1–10
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-  },
-  (t) => ({
-    uniq_vote: uniqueIndex("competition_votes_one_vote_per_voter_participant").on(
-      t.voterId,
-      t.participantId
-    ),
-    idx_comp: index("competition_votes_comp_idx").on(t.competitionId),
-  })
-);
-
-// VIEWERS (attendance / voting eligibility heuristics)
-export const competitionViewers = pgTable(
-  "competition_viewers",
-  {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    competitionId: varchar("competition_id")
-      .notNull()
-      .references(() => competitions.id, { onDelete: "cascade" }),
-    userId: varchar("user_id").references(() => users.id).notNull(),
-    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow(),
-    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow(),
-    watchSeconds: integer("watch_seconds").notNull().default(0),
-  },
-  (t) => ({
-    uniq: uniqueIndex("competition_viewers_comp_user_uniq").on(t.competitionId, t.userId),
-  })
-);
-
-// MEDIA (recordings, clips, highlights)
-export const competitionMedia = pgTable("competition_media", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  competitionId: varchar("competition_id")
-    .notNull()
-    .references(() => competitions.id, { onDelete: "cascade" }),
-  type: varchar("type", { length: 20 }).notNull().default("recording"), // recording|clip|highlight
-  url: text("url").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-});
-
-// BADGES
-export const cookoffBadges = pgTable(
-  "cookoff_badges",
-  {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    slug: varchar("slug", { length: 64 }).notNull().unique(), // e.g., weekly-champion
-    name: varchar("name", { length: 100 }).notNull(),
-    description: text("description"),
-    icon: varchar("icon", { length: 64 }), // lucide icon name
-  }
-);
-
-export const userBadges = pgTable(
-  "user_badges",
-  {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    userId: varchar("user_id").references(() => users.id).notNull(),
-    badgeId: varchar("badge_id").references(() => cookoffBadges.id).notNull(),
-    awardedAt: timestamp("awarded_at", { withTimezone: true }).defaultNow(),
-  },
-  (t) => ({
-    uniq: uniqueIndex("user_badges_user_badge_uniq").on(t.userId, t.badgeId),
-  })
-);
 
 /* =========================================================================
    ===== INSERT SCHEMAS
@@ -721,51 +554,6 @@ export const insertUserDrinkStatsSchema = createInsertSchema(userDrinkStats).omi
   updatedAt: true,
 });
 
-/* NEW inserts for competitions */
-export const insertCompetitionThemeSchema = createInsertSchema(competitionThemes).omit({
-  id: true,
-  createdAt: true,
-});
-export const insertCompetitionSchema = createInsertSchema(competitions).omit({
-  id: true,
-  createdAt: true,
-  startTime: true,
-  endTime: true,
-  judgingClosesAt: true,
-  isOfficial: true,
-  winnerParticipantId: true,
-});
-export const insertCompetitionParticipantSchema = createInsertSchema(competitionParticipants).omit({
-  id: true,
-  joinAt: true,
-  presentationAvg: true,
-  creativityAvg: true,
-  techniqueAvg: true,
-  totalScore: true,
-  placement: true,
-});
-export const insertCompetitionVoteSchema = createInsertSchema(competitionVotes).omit({
-  id: true,
-  createdAt: true,
-});
-export const insertCompetitionViewerSchema = createInsertSchema(competitionViewers).omit({
-  id: true,
-  firstSeenAt: true,
-  lastSeenAt: true,
-  watchSeconds: true,
-});
-export const insertCompetitionMediaSchema = createInsertSchema(competitionMedia).omit({
-  id: true,
-  createdAt: true,
-});
-export const insertCookoffBadgeSchema = createInsertSchema(cookoffBadges).omit({
-  id: true,
-});
-export const insertUserBadgeSchema = createInsertSchema(userBadges).omit({
-  id: true,
-  awardedAt: true,
-});
-
 /* =========================================================================
    ===== TYPES
    ========================================================================= */
@@ -810,26 +598,8 @@ export type InsertDrinkSave = z.infer<typeof insertDrinkSaveSchema>;
 export type UserDrinkStats = typeof userDrinkStats.$inferSelect;
 export type InsertUserDrinkStats = z.infer<typeof insertUserDrinkStatsSchema>;
 
-/* NEW types for competitions */
-export type CompetitionTheme = typeof competitionThemes.$inferSelect;
-export type InsertCompetitionTheme = z.infer<typeof insertCompetitionThemeSchema>;
-export type Competition = typeof competitions.$inferSelect;
-export type InsertCompetition = z.infer<typeof insertCompetitionSchema>;
-export type CompetitionParticipant = typeof competitionParticipants.$inferSelect;
-export type InsertCompetitionParticipant = z.infer<typeof insertCompetitionParticipantSchema>;
-export type CompetitionVote = typeof competitionVotes.$inferSelect;
-export type InsertCompetitionVote = z.infer<typeof insertCompetitionVoteSchema>;
-export type CompetitionViewer = typeof competitionViewers.$inferSelect;
-export type InsertCompetitionViewer = z.infer<typeof insertCompetitionViewerSchema>;
-export type CompetitionMedium = typeof competitionMedia.$inferSelect;
-export type InsertCompetitionMedium = z.infer<typeof insertCompetitionMediaSchema>;
-export type CookoffBadge = typeof cookoffBadges.$inferSelect;
-export type InsertCookoffBadge = z.infer<typeof insertCookoffBadgeSchema>;
-export type UserBadge = typeof userBadges.$inferSelect;
-export type InsertUserBadge = z.infer<typeof insertUserBadgeSchema>;
-
 /* =========================================================================
-   ===== Extended types (unchanged + new)
+   ===== Extended types
    ========================================================================= */
 export type PostWithUser = Post & { user: User; recipe?: Recipe; isLiked?: boolean; isSaved?: boolean };
 export type StoryWithUser = Story & { user: User };
