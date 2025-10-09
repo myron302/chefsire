@@ -34,19 +34,19 @@ export default function CreateCompetitionPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-200 via-purple-200 to-rose-200 relative overflow-hidden">
-      {/* Animated background */}
+      {/* REDUCED Animated background - only 6 elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {[...Array(30)].map((_, i) => (
+        {[...Array(6)].map((_, i) => (
           <div
             key={i}
-            className="absolute rounded-full opacity-15"
+            className="absolute rounded-full opacity-10"
             style={{
-              background: `radial-gradient(circle, ${['#fbbf24', '#ec4899', '#a78bfa', '#06b6d4', '#f97316'][i % 5]} 0%, transparent 70%)`,
-              width: Math.random() * 400 + 100 + 'px',
-              height: Math.random() * 400 + 100 + 'px',
+              background: `radial-gradient(circle, ${['#a78bfa', '#ec4899', '#06b6d4'][i % 3]} 0%, transparent 70%)`,
+              width: Math.random() * 300 + 150 + 'px',
+              height: Math.random() * 300 + 150 + 'px',
               left: Math.random() * 100 + '%',
               top: Math.random() * 100 + '%',
-              animation: `float ${Math.random() * 25 + 15}s ease-in-out infinite`,
+              animation: `gentle-float ${Math.random() * 35 + 25}s ease-in-out infinite`,
               animationDelay: `${Math.random() * 5}s`
             }}
           />
@@ -54,10 +54,9 @@ export default function CreateCompetitionPage() {
       </div>
 
       <style>{`
-        @keyframes float {
-          0%, 100% { transform: translate(0, 0) rotate(0deg) scale(1); }
-          33% { transform: translate(30px, -30px) rotate(120deg) scale(1.1); }
-          66% { transform: translate(-30px, 30px) rotate(240deg) scale(0.9); }
+        @keyframes gentle-float {
+          0%, 100% { transform: translate(0, 0); }
+          50% { transform: translate(15px, -15px); }
         }
         @keyframes pulse-glow {
           0%, 100% { box-shadow: 0 0 20px rgba(168, 85, 247, 0.5); }
