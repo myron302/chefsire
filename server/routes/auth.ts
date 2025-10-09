@@ -40,26 +40,36 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-// NEW: Login route
+// Login route (with debug logs)
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
+  console.log("Login attempt:", { email }); // DEBUG: See in Plesk logs
+
   if (!email || !password) {
+    console.log("Login fail: Missing fields"); // DEBUG
     return res.status(400).json({ error: "Missing email or password" });
   }
 
   try {
     const user = await storage.getUserByEmail(email);
+    console.log("User found:", !!user ? "yes" : "no"); // DEBUG
+
     if (!user || !user.password) {
+      console.log("Login fail: No user or password"); // DEBUG
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
+    console.log("Password match:", isPasswordValid); // DEBUG
+
     if (!isPasswordValid) {
+      console.log("Login fail: Password mismatch"); // DEBUG
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
     const { password: _, ...safeUser } = user;
+    console.log("Login success for:", safeUser.email); // DEBUG
     res.status(200).json({ user: safeUser });
   } catch (error) {
     console.error("Login error:", error);
