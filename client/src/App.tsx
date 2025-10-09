@@ -27,8 +27,9 @@ import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 
-// NEW: Signup page
+// NEW: Signup and Login pages
 import Signup from "@/pages/signup";
+import Login from "@/pages/login";
 
 // ✅ BiteMap page — IMPORTANT: point to the file, not the folder
 import BiteMapPage from "@/pages/bitemap/index.tsx";
@@ -174,8 +175,9 @@ function AppRouter() {
       {shouldShowDebugConsole() && <DebugConsole />}
 
       <Switch>
-        {/* NEW: Signup route */}
+        {/* NEW: Signup and Login routes */}
         <Route path="/signup" component={Signup} />
+        <Route path="/login" component={Login} />
 
         <Route path="/profile/:userId?" component={Profile} />
         <Route path="/" component={Feed} />
