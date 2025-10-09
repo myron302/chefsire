@@ -1,4 +1,3 @@
-// client/src/App.tsx
 import * as React from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -27,6 +26,9 @@ import CateringMarketplace from "@/pages/catering";
 import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
+
+// NEW: Signup page
+import Signup from "@/pages/signup";
 
 // ✅ BiteMap page — IMPORTANT: point to the file, not the folder
 import BiteMapPage from "@/pages/bitemap/index.tsx";
@@ -172,6 +174,9 @@ function AppRouter() {
       {shouldShowDebugConsole() && <DebugConsole />}
 
       <Switch>
+        {/* NEW: Signup route */}
+        <Route path="/signup" component={Signup} />
+
         <Route path="/profile/:userId?" component={Profile} />
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
