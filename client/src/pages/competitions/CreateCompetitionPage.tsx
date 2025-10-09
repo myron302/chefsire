@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ChefHat, Sparkles, Timer, Users, Lock, Globe, Zap, Star, Trophy, Flame, ArrowRight, Wand2 } from 'lucide-react';
 
 const THEMES = [
+  { id: 'freestyle', name: 'Freestyle', icon: '🎨', blurb: 'Anything goes!', gradient: 'from-purple-500 via-pink-500 to-orange-500', glow: 'purple' },
   { id: 'italian', name: 'Italian Night', icon: '🇮🇹', blurb: 'Pasta perfection', gradient: 'from-green-500 via-white to-red-500', glow: 'green' },
   { id: 'taco', name: 'Taco Tuesday', icon: '🌮', blurb: 'Fiesta flavors', gradient: 'from-yellow-400 to-orange-500', glow: 'orange' },
   { id: 'asian', name: 'Asian Fusion', icon: '🥢', blurb: 'Bold & balanced', gradient: 'from-red-500 to-yellow-400', glow: 'red' },
@@ -11,7 +12,26 @@ const THEMES = [
   { id: 'quick', name: '30-Min Sprint', icon: '⏱️', blurb: 'Speed cooking', gradient: 'from-blue-400 to-cyan-500', glow: 'cyan' },
   { id: 'budget', name: '$10 Challenge', icon: '💰', blurb: 'Thrifty genius', gradient: 'from-green-600 to-teal-500', glow: 'teal' },
   { id: 'leftover', name: 'Leftover Remix', icon: '♻️', blurb: 'Zero waste hero', gradient: 'from-emerald-500 to-green-600', glow: 'green' },
-  { id: 'regional', name: 'Regional', icon: '🌍', blurb: 'Local legends', gradient: 'from-purple-500 to-pink-500', glow: 'purple' }
+  { id: 'regional', name: 'Regional', icon: '🌍', blurb: 'Local legends', gradient: 'from-purple-500 to-pink-500', glow: 'purple' },
+  { id: 'bbq', name: 'BBQ & Grilling', icon: '🔥', blurb: 'Smoky & charred', gradient: 'from-red-600 to-orange-600', glow: 'red' },
+  { id: 'breakfast', name: 'Breakfast', icon: '🥞', blurb: 'Morning fuel', gradient: 'from-yellow-300 to-orange-400', glow: 'yellow' },
+  { id: 'seafood', name: 'Seafood', icon: '🦞', blurb: 'Ocean\'s bounty', gradient: 'from-blue-500 to-cyan-400', glow: 'cyan' },
+  { id: 'vegan', name: 'Vegan/Veggie', icon: '🌱', blurb: 'Plant power', gradient: 'from-green-500 to-lime-400', glow: 'lime' },
+  { id: 'street-food', name: 'Street Food', icon: '🍢', blurb: 'Global street eats', gradient: 'from-orange-500 to-red-500', glow: 'orange' },
+  { id: 'holiday', name: 'Holiday', icon: '🎄', blurb: 'Festive feasts', gradient: 'from-red-500 to-green-500', glow: 'red' },
+  { id: 'fusion', name: 'Wild Fusion', icon: '🌪️', blurb: 'Creative chaos', gradient: 'from-indigo-500 to-purple-500', glow: 'purple' },
+  { id: 'one-pot', name: 'One-Pot', icon: '🍯', blurb: 'Simple & hearty', gradient: 'from-amber-500 to-yellow-500', glow: 'amber' },
+  { id: 'appetizers', name: 'Appetizers', icon: '🥟', blurb: 'Small bites', gradient: 'from-orange-400 to-pink-400', glow: 'orange' },
+  { id: 'soups', name: 'Soups & Stews', icon: '🥘', blurb: 'Warming bowls', gradient: 'from-orange-600 to-red-600', glow: 'orange' },
+  { id: 'pizza', name: 'Pizza', icon: '🍕', blurb: 'Dough mastery', gradient: 'from-red-500 to-yellow-500', glow: 'red' },
+  { id: 'burgers', name: 'Burgers', icon: '🍔', blurb: 'Stacked high', gradient: 'from-yellow-500 to-red-500', glow: 'yellow' },
+  { id: 'spicy', name: 'Spicy Heat', icon: '🌶️', blurb: 'Fire & flavor', gradient: 'from-red-600 to-orange-700', glow: 'red' },
+  { id: 'kid-friendly', name: 'Kid-Friendly', icon: '👶', blurb: 'Family fun', gradient: 'from-blue-300 to-pink-300', glow: 'blue' },
+  { id: 'farm-table', name: 'Farm-to-Table', icon: '🌾', blurb: 'Fresh & local', gradient: 'from-green-600 to-yellow-600', glow: 'green' },
+  { id: 'french', name: 'French', icon: '🇫🇷', blurb: 'Elegant & refined', gradient: 'from-blue-500 to-red-500', glow: 'blue' },
+  { id: 'mexican', name: 'Mexican', icon: '🇲🇽', blurb: 'Bold & vibrant', gradient: 'from-green-500 to-red-500', glow: 'green' },
+  { id: 'japanese', name: 'Japanese', icon: '🇯🇵', blurb: 'Precision & art', gradient: 'from-red-500 to-white', glow: 'red' },
+  { id: 'indian', name: 'Indian Curry', icon: '🇮🇳', blurb: 'Spice symphony', gradient: 'from-orange-500 to-green-500', glow: 'orange' }
 ];
 
 const DURATIONS = [30, 45, 60, 90, 120];
@@ -27,6 +47,8 @@ export default function CreateCompetitionPage() {
 
   const handleCreate = () => {
     console.log('Creating competition:', { title, theme: selectedTheme, duration, isPrivate, minVoters });
+    // TODO: Call API to create competition
+    alert('Competition created! (API integration needed)');
   };
 
   const totalSteps = 3;
@@ -131,10 +153,10 @@ export default function CreateCompetitionPage() {
                 <Wand2 className="w-8 h-8 text-purple-600" />
                 Choose Your Theme
               </h2>
-              <p className="text-gray-800 text-lg font-medium">Pick the culinary style that defines your battle</p>
+              <p className="text-gray-800 text-lg font-medium">Pick the culinary style that defines your battle ({THEMES.length} themes available)</p>
             </div>
 
-            <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 max-h-[600px] overflow-y-auto pr-2">
               {THEMES.map((theme, i) => (
                 <div
                   key={theme.id}
@@ -142,7 +164,7 @@ export default function CreateCompetitionPage() {
                   onClick={() => setSelectedTheme(theme)}
                   onMouseEnter={() => setHoveredTheme(theme.id)}
                   onMouseLeave={() => setHoveredTheme(null)}
-                  style={{ animationDelay: `${i * 50}ms` }}
+                  style={{ animationDelay: `${i * 30}ms` }}
                 >
                   {selectedTheme?.id === theme.id && (
                     <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-400 rounded-2xl blur-xl animate-pulse opacity-50"></div>
