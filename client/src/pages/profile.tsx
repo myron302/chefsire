@@ -12,7 +12,7 @@ import type { User, PostWithUser } from "@shared/schema";
 
 export default function Profile() {
   const { userId } = useParams<{ userId?: string }>();
-  const currentUserId = "user-123"; // In a real app, this would come from authentication
+  const currentUserId = "user-1"; // In a real app, this would come from authentication
   const profileUserId = userId || currentUserId;
 
   const { data: user, isLoading: userLoading } = useQuery<User>({
