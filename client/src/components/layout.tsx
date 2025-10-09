@@ -9,7 +9,7 @@ import {
   ChefHat, Activity, ShoppingCart, Settings, LogOut,
   Home, Compass, BookOpen, GlassWater, Utensils, Heart, Wand2,
   Apple, FlaskConical, Leaf, Wine, Sparkles, Baby, Map,
-  Layers, Plus, Trophy, // ✅ new icons
+  Layers, Plus, Trophy, Flame, // ✅ Added Flame icon
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
@@ -36,11 +36,10 @@ export default function Layout({ children }: LayoutProps) {
     };
   }, []);
 
-  // ✅ Include Competitions in quick tabs
   const secondaryLinks = [
     { href: "/", label: "Home" },
     { href: "/bitemap", label: "BiteMap" },
-    { href: "/competitions", label: "Competitions" }, // ✅ new
+    { href: "/competitions", label: "Competitions" },
     { href: "/recipes", label: "Recipes" },
     { href: "/drinks", label: "Drinks" },
     { href: "/catering", label: "Catering" },
@@ -198,7 +197,6 @@ export default function Layout({ children }: LayoutProps) {
                               <Compass className="w-4 h-4 mr-3" /> Explore
                             </Link>
 
-                            {/* ✅ BiteMap direct link in dropdown */}
                             <Link
                               href="/bitemap"
                               onClick={() => setIsDropdownOpen(false)}
@@ -207,7 +205,7 @@ export default function Layout({ children }: LayoutProps) {
                               <Map className="w-4 h-4 mr-3" /> BiteMap
                             </Link>
 
-                            {/* ✅ Competitions (parent with toggle) */}
+                            {/* ✅ Competitions with submenu */}
                             <div>
                               <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                                 <Link
@@ -235,6 +233,18 @@ export default function Layout({ children }: LayoutProps) {
                                   >
                                     <Layers className="w-3 h-3 mr-2" /> Cookoff Library
                                   </Link>
+                                  {/* ✅ Live Battles with query param */}
+                                  <a
+                                    href="/competitions?status=live"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      setIsDropdownOpen(false);
+                                      window.location.href = "/competitions?status=live";
+                                    }}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm cursor-pointer"
+                                  >
+                                    <Flame className="w-3 h-3 mr-2" /> Live Battles
+                                  </a>
                                   <Link
                                     href="/competitions/new"
                                     onClick={() => setIsDropdownOpen(false)}
@@ -253,7 +263,7 @@ export default function Layout({ children }: LayoutProps) {
                               )}
                             </div>
 
-                            {/* Recipes (parent with toggle) */}
+                            {/* Recipes with submenu */}
                             <div>
                               <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                                 <Link
@@ -306,7 +316,7 @@ export default function Layout({ children }: LayoutProps) {
                               )}
                             </div>
 
-                            {/* Drinks (parent with toggle) */}
+                            {/* Drinks with submenu */}
                             <div>
                               <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                                 <Link
@@ -362,7 +372,7 @@ export default function Layout({ children }: LayoutProps) {
                               )}
                             </div>
 
-                            {/* Catering (parent with toggle) */}
+                            {/* Catering with submenu */}
                             <div>
                               <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                                 <Link
