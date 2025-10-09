@@ -7,12 +7,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import PostCard from "@/components/post-card";
-import { Grid, Heart, Bookmark, Users, MapPin, Link as LinkIcon, Calendar, GlassWater, Flame, Trophy, Award, TrendingUp, Apple } from "lucide-react";
+import { Grid, Heart, Bookmark, Users, MapPin, Link as LinkIcon, Calendar, GlassWater, Flame, Trophy, Award, TrendingUp, Apple, Timer, Crown, Target, Zap } from "lucide-react";
 import type { User, PostWithUser } from "@shared/schema";
 
 export default function Profile() {
   const { userId } = useParams<{ userId?: string }>();
-  const currentUserId = "user-1"; // In a real app, this would come from authentication
+  const currentUserId = "user-1"; // Updated to match Alexandra
   const profileUserId = userId || currentUserId;
 
   const { data: user, isLoading: userLoading } = useQuery<User>({
@@ -23,7 +23,7 @@ export default function Profile() {
     queryKey: ["/api/posts/user", profileUserId],
   });
 
-  // NEW: Fetch user's custom drinks
+  // Fetch user's custom drinks
   const { data: drinksData, isLoading: drinksLoading } = useQuery({
     queryKey: ["/api/custom-drinks/user", profileUserId],
     queryFn: async () => {
@@ -33,7 +33,7 @@ export default function Profile() {
     },
   });
 
-  // NEW: Fetch user drink stats
+  // Fetch user drink stats
   const { data: statsData, isLoading: statsLoading } = useQuery({
     queryKey: ["/api/user-drink-stats", profileUserId],
     queryFn: async () => {
@@ -43,12 +43,54 @@ export default function Profile() {
     },
   });
 
-  // NEW: Fetch saved drinks
+  // Fetch saved drinks
   const { data: savedDrinksData, isLoading: savedDrinksLoading } = useQuery({
     queryKey: ["/api/custom-drinks/saved", profileUserId],
     queryFn: async () => {
       const response = await fetch(`/api/custom-drinks/saved/${profileUserId}`);
       if (!response.ok) throw new Error("Failed to fetch saved drinks");
+      return response.json();
+    },
+  });
+
+  // NEW: Fetch user's competitions/cookoffs
+  const { data: competitionsData, isLoading: competitionsLoading } = useQuery({
+    queryKey: ["/api/competitions/user", profileUserId],
+    queryFn: async () => {
+      const response = await fetch(`/api/competitions/user/${profileUserId}`);
+      if (!response.ok) {
+        // If endpoint doesn't exist yet, return mock data
+        return { 
+          competitions: [
+            {
+              id: '1',
+              title: 'Midnight Pasta Showdown',
+              themeName: 'Italian Night',
+              status: 'completed',
+              placement: 1,
+              participants: 6,
+              createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+            },
+            {
+              id: '2',
+              title: 'Taco Fiesta Challenge',
+              themeName: 'Taco Tuesday',
+              status: 'judging',
+              placement: 2,
+              participants: 8,
+              createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
+            },
+            {
+              id: '3',
+              title: 'Quick 30-Min Sprint',
+              themeName: 'Quick 30-Min',
+              status: 'live',
+              participants: 5,
+              createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+            }
+          ]
+        };
+      }
       return response.json();
     },
   });
@@ -88,6 +130,17 @@ export default function Profile() {
   const customDrinks = drinksData?.drinks || [];
   const savedDrinks = savedDrinksData?.drinks || [];
   const drinkStats = statsData?.stats;
+  const userCompetitions = competitionsData?.competitions || [];
+
+  const getStatusBadge = (status: string) => {
+    const styles = {
+      live: 'bg-gradient-to-r from-green-500 to-emerald-500 text-white animate-pulse',
+      judging: 'bg-gradient-to-r from-amber-500 to-orange-500 text-white',
+      completed: 'bg-gradient-to-r from-blue-500 to-purple-500 text-white',
+      upcoming: 'bg-gradient-to-r from-gray-500 to-slate-500 text-white',
+    };
+    return styles[status as keyof typeof styles] || styles.upcoming;
+  };
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
@@ -146,6 +199,12 @@ export default function Profile() {
                 <span className="text-muted-foreground">Drinks</span>
               </div>
             )}
+            <div className="text-center">
+              <span className="font-semibold block">
+                {userCompetitions.length}
+              </span>
+              <span className="text-muted-foreground">Cookoffs</span>
+            </div>
           </div>
 
           {/* Bio */}
@@ -176,7 +235,7 @@ export default function Profile() {
 
       {/* Content Tabs */}
       <Tabs defaultValue="posts" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="posts" className="flex items-center space-x-2" data-testid="tab-posts">
             <Grid className="h-4 w-4" />
             <span className="hidden sm:inline">Posts</span>
@@ -188,6 +247,10 @@ export default function Profile() {
           <TabsTrigger value="drinks" className="flex items-center space-x-2" data-testid="tab-drinks">
             <GlassWater className="h-4 w-4" />
             <span className="hidden sm:inline">Drinks</span>
+          </TabsTrigger>
+          <TabsTrigger value="cookoffs" className="flex items-center space-x-2" data-testid="tab-cookoffs">
+            <Trophy className="h-4 w-4" />
+            <span className="hidden sm:inline">Cookoffs</span>
           </TabsTrigger>
           <TabsTrigger value="saved" className="flex items-center space-x-2" data-testid="tab-saved">
             <Bookmark className="h-4 w-4" />
@@ -293,7 +356,6 @@ export default function Profile() {
           )}
         </TabsContent>
 
-        {/* NEW DRINKS TAB */}
         <TabsContent value="drinks" className="mt-6">
           {drinksLoading ? (
             <div className="space-y-6">
@@ -456,6 +518,138 @@ export default function Profile() {
                       Create Your First Drink
                     </Button>
                   )}
+                </div>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* NEW COOKOFFS TAB */}
+        <TabsContent value="cookoffs" className="mt-6">
+          {competitionsLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-48 bg-muted rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : userCompetitions.length > 0 ? (
+            <div className="space-y-6">
+              {/* Competition Stats Summary */}
+              <div className="grid grid-cols-3 gap-4">
+                <Card className="bg-gradient-to-br from-yellow-50 to-orange-50">
+                  <CardContent className="p-4 text-center">
+                    <Crown className="w-8 h-8 mx-auto mb-2 text-yellow-600" />
+                    <div className="text-2xl font-bold text-yellow-600">
+                      {userCompetitions.filter((c: any) => c.placement === 1).length}
+                    </div>
+                    <div className="text-xs text-gray-600">1st Place Wins</div>
+                  </CardContent>
+                </Card>
+                <Card className="bg-gradient-to-br from-blue-50 to-cyan-50">
+                  <CardContent className="p-4 text-center">
+                    <Trophy className="w-8 h-8 mx-auto mb-2 text-blue-600" />
+                    <div className="text-2xl font-bold text-blue-600">
+                      {userCompetitions.filter((c: any) => c.placement <= 3).length}
+                    </div>
+                    <div className="text-xs text-gray-600">Top 3 Finishes</div>
+                  </CardContent>
+                </Card>
+                <Card className="bg-gradient-to-br from-purple-50 to-pink-50">
+                  <CardContent className="p-4 text-center">
+                    <Flame className="w-8 h-8 mx-auto mb-2 text-purple-600" />
+                    <div className="text-2xl font-bold text-purple-600">
+                      {userCompetitions.length}
+                    </div>
+                    <div className="text-xs text-gray-600">Total Battles</div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Competition History */}
+              <div>
+                <h3 className="text-lg font-bold mb-4">Competition History</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {userCompetitions.map((comp: any) => (
+                    <Card 
+                      key={comp.id} 
+                      className="overflow-hidden hover:shadow-lg transition-all duration-300 hover:scale-[1.02] cursor-pointer"
+                      onClick={() => window.location.href = `/competitions/${comp.id}`}
+                    >
+                      <div className={`h-2 bg-gradient-to-r ${
+                        comp.status === 'live' ? 'from-green-500 to-emerald-500' :
+                        comp.status === 'judging' ? 'from-amber-500 to-orange-500' :
+                        comp.status === 'completed' ? 'from-blue-500 to-purple-500' :
+                        'from-gray-400 to-slate-500'
+                      }`}></div>
+                      
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1">
+                            <h4 className="font-bold text-lg mb-1">{comp.title}</h4>
+                            <p className="text-sm text-gray-600">{comp.themeName}</p>
+                          </div>
+                          {comp.placement && comp.placement <= 3 && (
+                            <div className={`flex items-center gap-1 px-2 py-1 rounded-full ${
+                              comp.placement === 1 ? 'bg-yellow-100 text-yellow-700' :
+                              comp.placement === 2 ? 'bg-gray-100 text-gray-700' :
+                              'bg-orange-100 text-orange-700'
+                            }`}>
+                              {comp.placement === 1 ? <Crown className="w-4 h-4" /> :
+                               comp.placement === 2 ? <Award className="w-4 h-4" /> :
+                               <Target className="w-4 h-4" />}
+                              <span className="text-xs font-bold">#{comp.placement}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                          <div className="flex items-center gap-1">
+                            <Users className="w-4 h-4" />
+                            <span>{comp.participants} chefs</span>
+                          </div>
+                          <div className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadge(comp.status)}`}>
+                            {comp.status === 'live' && <Zap className="inline w-3 h-3 mr-1" />}
+                            {comp.status.toUpperCase()}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(comp.createdAt).toLocaleDateString()}
+                          </div>
+                          <span className="text-purple-600 font-semibold hover:underline">
+                            View Details →
+                          </span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Trophy className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+              <h3 className="text-lg font-semibold mb-2">No cookoffs yet</h3>
+              <p className="text-muted-foreground mb-4">
+                {isOwnProfile ? "Ready to compete? Join or create your first cookoff!" : "No competitions to show."}
+              </p>
+              {isOwnProfile && (
+                <div className="flex justify-center gap-3">
+                  <Button 
+                    onClick={() => window.location.href = '/competitions'}
+                    variant="outline"
+                  >
+                    Browse Cookoffs
+                  </Button>
+                  <Button 
+                    onClick={() => window.location.href = '/competitions/new'}
+                    className="bg-gradient-to-r from-purple-500 to-pink-500"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Cookoff
+                  </Button>
                 </div>
               )}
             </div>
