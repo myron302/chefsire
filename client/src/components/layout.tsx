@@ -230,30 +230,19 @@ export default function Layout({ children }: LayoutProps) {
                                   >
                                     📚 Cookoff Library
                                   </Link>
-                                  <a
-                                    href="/competitions?status=live"
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      setIsDropdownOpen(false);
-                                      window.location.href = "/competitions?status=live";
-                                    }}
-                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm cursor-pointer"
+                                  <Link
+                                    href="/competitions/live"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
                                     🔥 Live Battles
-                                  </a>
+                                  </Link>
                                   <Link
                                     href="/competitions/new"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
                                     ➕ Create Cookoff
-                                  </Link>
-                                  <Link
-                                    href="/profile?tab=cookoffs"
-                                    onClick={() => setIsDropdownOpen(false)}
-                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                  >
-                                    🏅 My Cookoffs
                                   </Link>
                                 </div>
                               )}
