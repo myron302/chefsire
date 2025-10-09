@@ -1,21 +1,4 @@
-{/* Animated background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {[...Array(30)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute rounded-full opacity-15"
-            style={{
-              background: `radial-gradient(circle, ${['#fbbf24', '#ec4899', '#a78bfa', '#06b6d4', '#f97316'][i % 5]} 0%, transparent 70%)`,
-              width: Math.random() * 400 + 100 + 'px',
-              height: Math.random() * 400 + 100 + 'px',
-              left: Math.random() * 100 + '%',
-              top: Math.random() * 100 + '%',
-              animation: `float ${Math.random() * 25 + 15}s ease-in-out infinite`,
-              animationDelay: `${Math.random() * 5}s`
-            }}
-          />
-        ))}
-      </div>import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { ChefHat, Sparkles, Timer, Users, Lock, Globe, Zap, Star, Trophy, Flame, ArrowRight, Wand2 } from 'lucide-react';
 
 const THEMES = [
@@ -33,7 +16,7 @@ const THEMES = [
 
 const DURATIONS = [30, 45, 60, 90, 120];
 
-export default function EnhancedCreatePage() {
+export default function CreateCompetitionPage() {
   const [title, setTitle] = useState('');
   const [selectedTheme, setSelectedTheme] = useState(null);
   const [duration, setDuration] = useState(60);
@@ -56,8 +39,9 @@ export default function EnhancedCreatePage() {
         {[...Array(30)].map((_, i) => (
           <div
             key={i}
-            className="absolute rounded-full bg-white opacity-5"
+            className="absolute rounded-full opacity-15"
             style={{
+              background: `radial-gradient(circle, ${['#fbbf24', '#ec4899', '#a78bfa', '#06b6d4', '#f97316'][i % 5]} 0%, transparent 70%)`,
               width: Math.random() * 400 + 100 + 'px',
               height: Math.random() * 400 + 100 + 'px',
               left: Math.random() * 100 + '%',
@@ -105,10 +89,10 @@ export default function EnhancedCreatePage() {
               <Sparkles className="w-6 h-6 text-white" />
             </div>
           </div>
-          <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 mb-4 tracking-tight">
+          <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-900 via-purple-900 to-pink-900 mb-4 tracking-tight drop-shadow-sm">
             Create Your Cookoff
           </h1>
-          <p className="text-xl text-gray-700 font-medium">Design an epic culinary battle in 3 simple steps</p>
+          <p className="text-xl text-gray-900 font-semibold drop-shadow-sm">Design an epic culinary battle in 3 simple steps</p>
         </div>
 
         {/* Progress Bar */}
@@ -144,11 +128,11 @@ export default function EnhancedCreatePage() {
         {step === 1 && (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="text-center mb-8">
-              <h2 className="text-4xl font-bold text-gray-800 mb-3 flex items-center justify-center gap-3">
-                <Wand2 className="w-8 h-8 text-purple-500" />
+              <h2 className="text-4xl font-bold text-gray-900 mb-3 flex items-center justify-center gap-3 drop-shadow-sm">
+                <Wand2 className="w-8 h-8 text-purple-600" />
                 Choose Your Theme
               </h2>
-              <p className="text-gray-600 text-lg">Pick the culinary style that defines your battle</p>
+              <p className="text-gray-800 text-lg font-medium">Pick the culinary style that defines your battle</p>
             </div>
 
             <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -165,16 +149,16 @@ export default function EnhancedCreatePage() {
                     <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-400 rounded-2xl blur-xl animate-pulse opacity-50"></div>
                   )}
                   
-                  <div className={`relative bg-white/80 backdrop-blur-xl border-2 rounded-2xl p-6 transition-all duration-300 hover:scale-110 hover:-translate-y-2 shadow-lg ${
+                  <div className={`relative bg-white backdrop-blur-xl border-2 rounded-2xl p-6 transition-all duration-300 hover:scale-110 hover:-translate-y-2 shadow-lg ${
                     selectedTheme?.id === theme.id
-                      ? 'border-purple-500 bg-white shadow-2xl'
-                      : 'border-gray-200 hover:border-purple-300'
+                      ? 'border-purple-600 bg-white shadow-2xl scale-105'
+                      : 'border-gray-300 hover:border-purple-400'
                   }`}>
                     <div className="text-5xl mb-3 transition-transform duration-300 group-hover:scale-125 group-hover:rotate-12">
                       {theme.icon}
                     </div>
-                    <div className="text-gray-800 font-bold text-sm mb-1">{theme.name}</div>
-                    <div className="text-gray-600 text-xs">{theme.blurb}</div>
+                    <div className="text-gray-900 font-bold text-sm mb-1">{theme.name}</div>
+                    <div className="text-gray-700 text-xs font-medium">{theme.blurb}</div>
                     
                     {selectedTheme?.id === theme.id && (
                       <div className="absolute top-2 right-2 p-1 bg-gradient-to-r from-yellow-400 to-orange-400 rounded-full shadow-lg">
@@ -203,33 +187,33 @@ export default function EnhancedCreatePage() {
         {step === 2 && (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="text-center mb-8">
-              <h2 className="text-4xl font-bold text-white mb-3 flex items-center justify-center gap-3">
-                <Flame className="w-8 h-8 text-orange-400" />
+              <h2 className="text-4xl font-bold text-gray-900 mb-3 flex items-center justify-center gap-3 drop-shadow-sm">
+                <Flame className="w-8 h-8 text-orange-500" />
                 Competition Details
               </h2>
-              <p className="text-purple-200">Name your battle and set the duration</p>
+              <p className="text-gray-800 text-lg font-medium">Name your battle and set the duration</p>
             </div>
 
             <div className="max-w-2xl mx-auto space-y-6">
               {/* Title Input */}
               <div className="relative group">
-                <label className="block text-purple-200 font-semibold mb-3 text-lg">Battle Title</label>
+                <label className="block text-gray-900 font-bold mb-3 text-lg">Battle Title</label>
                 <div className="relative">
                   <input
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="e.g., Epic Pasta Showdown"
-                    className="w-full px-6 py-5 bg-white/10 backdrop-blur-xl border-2 border-white/20 rounded-2xl text-white placeholder-purple-300 focus:outline-none focus:border-purple-400 focus:bg-white/15 transition-all text-lg"
+                    className="w-full px-6 py-5 bg-white backdrop-blur-xl border-2 border-gray-300 rounded-2xl text-gray-900 placeholder-gray-500 font-medium focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all text-lg shadow-sm"
                   />
                   <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                    <Trophy className="w-6 h-6 text-purple-400" />
+                    <Trophy className="w-6 h-6 text-purple-500" />
                   </div>
                 </div>
               </div>
 
               {/* Duration Selector */}
               <div>
-                <label className="block text-purple-200 font-semibold mb-3 text-lg flex items-center gap-2">
+                <label className="block text-gray-900 font-bold mb-3 text-lg flex items-center gap-2">
                   <Timer className="w-5 h-5" />
                   Time Limit
                 </label>
@@ -237,11 +221,12 @@ export default function EnhancedCreatePage() {
                   {DURATIONS.map((d) => (
                     <button
                       key={d}
+                      type="button"
                       onClick={() => setDuration(d)}
-                      className={`p-4 rounded-2xl font-bold text-lg transition-all duration-300 hover:scale-110 ${
+                      className={`p-4 rounded-2xl font-bold text-lg transition-all duration-300 hover:scale-110 shadow-md ${
                         duration === d
                           ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-2xl scale-110'
-                          : 'bg-white/10 text-purple-200 hover:bg-white/20 border border-white/20'
+                          : 'bg-white text-gray-800 hover:bg-gray-50 border-2 border-gray-300'
                       }`}
                     >
                       {d}m
@@ -253,18 +238,19 @@ export default function EnhancedCreatePage() {
               {/* Selected Theme Display */}
               {selectedTheme && (
                 <div className="relative group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-2xl blur-xl"></div>
-                  <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+                  <div className="absolute inset-0 bg-gradient-to-r from-purple-400/20 to-pink-400/20 rounded-2xl blur-xl"></div>
+                  <div className="relative bg-white backdrop-blur-xl border-2 border-gray-300 rounded-2xl p-6 shadow-lg">
                     <div className="flex items-center gap-4">
                       <div className="text-6xl">{selectedTheme.icon}</div>
                       <div className="flex-1">
-                        <div className="text-sm text-purple-300 mb-1">Selected Theme</div>
-                        <div className="text-2xl font-bold text-white">{selectedTheme.name}</div>
-                        <div className="text-purple-200 text-sm">{selectedTheme.blurb}</div>
+                        <div className="text-sm text-gray-600 mb-1 font-medium">Selected Theme</div>
+                        <div className="text-2xl font-bold text-gray-900">{selectedTheme.name}</div>
+                        <div className="text-gray-700 text-sm font-medium">{selectedTheme.blurb}</div>
                       </div>
                       <button
+                        type="button"
                         onClick={() => setStep(1)}
-                        className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-purple-200 text-sm transition-all"
+                        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-gray-700 font-medium text-sm transition-all"
                       >
                         Change
                       </button>
@@ -276,12 +262,14 @@ export default function EnhancedCreatePage() {
 
             <div className="flex justify-center gap-4 mt-8">
               <button
+                type="button"
                 onClick={() => setStep(1)}
-                className="flex items-center gap-2 px-8 py-4 bg-white/10 hover:bg-white/20 rounded-full text-white font-semibold transition-all duration-300 hover:scale-105"
+                className="flex items-center gap-2 px-8 py-4 bg-white hover:bg-gray-50 rounded-full text-gray-900 font-semibold border-2 border-gray-300 transition-all duration-300 hover:scale-105 shadow-md"
               >
                 Back
               </button>
               <button
+                type="button"
                 onClick={() => title && setStep(3)}
                 disabled={!title}
                 className="flex items-center gap-3 px-10 py-5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-full text-white font-bold text-lg transition-all duration-300 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed shadow-2xl disabled:hover:scale-100"
@@ -297,33 +285,34 @@ export default function EnhancedCreatePage() {
         {step === 3 && (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="text-center mb-8">
-              <h2 className="text-4xl font-bold text-white mb-3 flex items-center justify-center gap-3">
-                <Zap className="w-8 h-8 text-yellow-400" />
+              <h2 className="text-4xl font-bold text-gray-900 mb-3 flex items-center justify-center gap-3 drop-shadow-sm">
+                <Zap className="w-8 h-8 text-yellow-500" />
                 Final Settings
               </h2>
-              <p className="text-purple-200">Configure privacy and voting requirements</p>
+              <p className="text-gray-800 text-lg font-medium">Configure privacy and voting requirements</p>
             </div>
 
             <div className="max-w-2xl mx-auto space-y-6">
               {/* Privacy Toggle */}
               <div className="relative group">
-                <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-2xl blur-xl"></div>
-                <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-400/10 to-pink-400/10 rounded-2xl blur-xl"></div>
+                <div className="relative bg-white backdrop-blur-xl border-2 border-gray-300 rounded-2xl p-6 shadow-lg">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className={`p-4 rounded-2xl ${isPrivate ? 'bg-orange-500/20' : 'bg-green-500/20'}`}>
-                        {isPrivate ? <Lock className="w-8 h-8 text-orange-400" /> : <Globe className="w-8 h-8 text-green-400" />}
+                      <div className={`p-4 rounded-2xl ${isPrivate ? 'bg-orange-100' : 'bg-green-100'}`}>
+                        {isPrivate ? <Lock className="w-8 h-8 text-orange-600" /> : <Globe className="w-8 h-8 text-green-600" />}
                       </div>
                       <div>
-                        <div className="text-xl font-bold text-white mb-1">
+                        <div className="text-xl font-bold text-gray-900 mb-1">
                           {isPrivate ? 'Private Competition' : 'Public Competition'}
                         </div>
-                        <div className="text-purple-200 text-sm">
+                        <div className="text-gray-700 text-sm font-medium">
                           {isPrivate ? 'Only people with invite link can join' : 'Anyone can discover and join'}
                         </div>
                       </div>
                     </div>
                     <button
+                      type="button"
                       onClick={() => setIsPrivate(!isPrivate)}
                       className={`relative w-20 h-10 rounded-full transition-all duration-300 ${
                         isPrivate ? 'bg-orange-500' : 'bg-green-500'
@@ -341,9 +330,9 @@ export default function EnhancedCreatePage() {
 
               {/* Min Voters */}
               <div className="relative group">
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-2xl blur-xl"></div>
-                <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-                  <label className="block text-purple-200 font-semibold mb-4 text-lg flex items-center gap-2">
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-400/10 to-cyan-400/10 rounded-2xl blur-xl"></div>
+                <div className="relative bg-white backdrop-blur-xl border-2 border-gray-300 rounded-2xl p-6 shadow-lg">
+                  <label className="block text-gray-900 font-bold mb-4 text-lg flex items-center gap-2">
                     <Users className="w-5 h-5" />
                     Minimum Voters for Official Status
                   </label>
@@ -354,13 +343,13 @@ export default function EnhancedCreatePage() {
                       max="20"
                       value={minVoters}
                       onChange={(e) => setMinVoters(Number(e.target.value))}
-                      className="flex-1 h-3 bg-white/20 rounded-full appearance-none cursor-pointer"
+                      className="flex-1 h-3 bg-gray-200 rounded-full appearance-none cursor-pointer accent-purple-500"
                     />
-                    <div className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 w-20 text-center">
+                    <div className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-pink-500 w-20 text-center">
                       {minVoters}
                     </div>
                   </div>
-                  <p className="text-purple-300 text-sm mt-2">
+                  <p className="text-gray-700 text-sm mt-2 font-medium">
                     Competition needs {minVoters} viewer votes to become "official"
                   </p>
                 </div>
@@ -368,34 +357,34 @@ export default function EnhancedCreatePage() {
 
               {/* Summary Card */}
               <div className="relative group">
-                <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl blur-2xl opacity-30 animate-pulse"></div>
-                <div className="relative bg-gradient-to-r from-purple-600/40 to-pink-600/40 backdrop-blur-xl border-2 border-purple-400 rounded-2xl p-6">
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl blur-2xl opacity-20 animate-pulse"></div>
+                <div className="relative bg-gradient-to-r from-purple-100 to-pink-100 backdrop-blur-xl border-2 border-purple-300 rounded-2xl p-6 shadow-xl">
                   <div className="flex items-center gap-3 mb-4">
-                    <Sparkles className="w-6 h-6 text-yellow-400" />
-                    <h3 className="text-2xl font-bold text-white">Competition Summary</h3>
+                    <Sparkles className="w-6 h-6 text-purple-600" />
+                    <h3 className="text-2xl font-bold text-gray-900">Competition Summary</h3>
                   </div>
-                  <div className="space-y-3 text-white">
-                    <div className="flex items-center justify-between py-2 border-b border-white/20">
-                      <span className="text-purple-200">Title:</span>
+                  <div className="space-y-3 text-gray-900">
+                    <div className="flex items-center justify-between py-2 border-b border-purple-200">
+                      <span className="text-gray-700 font-medium">Title:</span>
                       <span className="font-bold">{title || 'Untitled'}</span>
                     </div>
-                    <div className="flex items-center justify-between py-2 border-b border-white/20">
-                      <span className="text-purple-200">Theme:</span>
+                    <div className="flex items-center justify-between py-2 border-b border-purple-200">
+                      <span className="text-gray-700 font-medium">Theme:</span>
                       <span className="font-bold flex items-center gap-2">
                         <span>{selectedTheme?.icon}</span>
                         {selectedTheme?.name}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between py-2 border-b border-white/20">
-                      <span className="text-purple-200">Duration:</span>
+                    <div className="flex items-center justify-between py-2 border-b border-purple-200">
+                      <span className="text-gray-700 font-medium">Duration:</span>
                       <span className="font-bold">{duration} minutes</span>
                     </div>
-                    <div className="flex items-center justify-between py-2 border-b border-white/20">
-                      <span className="text-purple-200">Privacy:</span>
+                    <div className="flex items-center justify-between py-2 border-b border-purple-200">
+                      <span className="text-gray-700 font-medium">Privacy:</span>
                       <span className="font-bold">{isPrivate ? '🔒 Private' : '🌍 Public'}</span>
                     </div>
                     <div className="flex items-center justify-between py-2">
-                      <span className="text-purple-200">Min Voters:</span>
+                      <span className="text-gray-700 font-medium">Min Voters:</span>
                       <span className="font-bold">{minVoters} people</span>
                     </div>
                   </div>
@@ -405,12 +394,14 @@ export default function EnhancedCreatePage() {
 
             <div className="flex justify-center gap-4 mt-8">
               <button
+                type="button"
                 onClick={() => setStep(2)}
-                className="flex items-center gap-2 px-8 py-4 bg-white/10 hover:bg-white/20 rounded-full text-white font-semibold transition-all duration-300 hover:scale-105"
+                className="flex items-center gap-2 px-8 py-4 bg-white hover:bg-gray-50 rounded-full text-gray-900 font-semibold border-2 border-gray-300 transition-all duration-300 hover:scale-105 shadow-md"
               >
                 Back
               </button>
               <button
+                type="button"
                 onClick={handleCreate}
                 className="relative group flex items-center gap-3 px-12 py-6 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-full text-white font-bold text-xl transition-all duration-300 hover:scale-110 shadow-2xl overflow-hidden"
               >
