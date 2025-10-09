@@ -1,293 +1,409 @@
-import * as React from "react";
-import { Link, useLocation } from "wouter";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  ChefHat,
-  Sparkles,
-  ShieldCheck,
-  Timer,
-  Users,
-  ArrowLeft,
-  ArrowRight,
-  ListChecks,
-  Video,
-} from "lucide-react";
+import React, { useState } from 'react';
+import { ChefHat, Sparkles, Timer, Users, Lock, Globe, Zap, Star, Trophy, Flame, ArrowRight, Wand2 } from 'lucide-react';
 
-type ThemeOption = { id: string; name: string; blurb: string };
-
-const THEMES: ThemeOption[] = [
-  { id: "italian", name: "Italian Night", blurb: "Pasta, risotto, and rustic sauces." },
-  { id: "taco", name: "Taco Tuesday", blurb: "Tacos, salsas, and fiesta sides." },
-  { id: "asian-fusion", name: "Asian Fusion", blurb: "Bold flavors across Asia." },
-  { id: "comfort", name: "Comfort Food", blurb: "Nostalgic classics that hug the soul." },
-  { id: "healthy", name: "Healthy / Fitness", blurb: "Lean, clean, and flavorful." },
-  { id: "desserts", name: "Desserts & Baking", blurb: "Sweet showstoppers and bakes." },
-  { id: "quick", name: "Quick 30-Min", blurb: "Speed runs from pantry to plate." },
-  { id: "budget", name: "Budget ($10)", blurb: "Delicious on a dime." },
-  { id: "leftover", name: "Leftover Remix", blurb: "Transform yesterday into wow." },
-  { id: "regional", name: "Regional Specialties", blurb: "Spotlight on local legends." },
+const THEMES = [
+  { id: 'italian', name: 'Italian Night', icon: '🇮🇹', blurb: 'Pasta perfection', gradient: 'from-green-500 via-white to-red-500', glow: 'green' },
+  { id: 'taco', name: 'Taco Tuesday', icon: '🌮', blurb: 'Fiesta flavors', gradient: 'from-yellow-400 to-orange-500', glow: 'orange' },
+  { id: 'asian', name: 'Asian Fusion', icon: '🥢', blurb: 'Bold & balanced', gradient: 'from-red-500 to-yellow-400', glow: 'red' },
+  { id: 'comfort', name: 'Comfort Food', icon: '🍲', blurb: 'Soul-warming', gradient: 'from-amber-600 to-orange-400', glow: 'amber' },
+  { id: 'healthy', name: 'Healthy Fit', icon: '🥗', blurb: 'Lean & clean', gradient: 'from-green-400 to-emerald-500', glow: 'emerald' },
+  { id: 'desserts', name: 'Desserts', icon: '🍰', blurb: 'Sweet victories', gradient: 'from-pink-400 to-rose-500', glow: 'pink' },
+  { id: 'quick', name: '30-Min Sprint', icon: '⏱️', blurb: 'Speed cooking', gradient: 'from-blue-400 to-cyan-500', glow: 'cyan' },
+  { id: 'budget', name: '$10 Challenge', icon: '💰', blurb: 'Thrifty genius', gradient: 'from-green-600 to-teal-500', glow: 'teal' },
+  { id: 'leftover', name: 'Leftover Remix', icon: '♻️', blurb: 'Zero waste hero', gradient: 'from-emerald-500 to-green-600', glow: 'green' },
+  { id: 'regional', name: 'Regional', icon: '🌍', blurb: 'Local legends', gradient: 'from-purple-500 to-pink-500', glow: 'purple' }
 ];
 
 const DURATIONS = [30, 45, 60, 90, 120];
 
-const DEV_USER_ID = "user-dev-1";
+export default function EnhancedCreatePage() {
+  const [title, setTitle] = useState('');
+  const [selectedTheme, setSelectedTheme] = useState(null);
+  const [duration, setDuration] = useState(60);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [minVoters, setMinVoters] = useState(3);
+  const [step, setStep] = useState(1);
+  const [hoveredTheme, setHoveredTheme] = useState(null);
 
-async function api(path: string, init: RequestInit = {}) {
-  const headers = new Headers(init.headers || {});
-  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  if (!headers.has("x-user-id")) headers.set("x-user-id", DEV_USER_ID);
-  const res = await fetch(path, { ...init, headers });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error || data?.message || `Request failed: ${res.status}`);
-  return data;
-}
+  const handleCreate = () => {
+    console.log('Creating competition:', { title, theme: selectedTheme, duration, isPrivate, minVoters });
+  };
 
-export default function CreateCompetitionPage() {
-  const [, navigate] = useLocation();
-
-  const [title, setTitle] = React.useState("");
-  const [theme, setTheme] = React.useState<ThemeOption | null>(THEMES[0]);
-  const [recipeId, setRecipeId] = React.useState("");
-  const [duration, setDuration] = React.useState<number>(60);
-  const [isPrivate, setIsPrivate] = React.useState(false);
-  const [minVoters, setMinVoters] = React.useState<number>(3);
-  const [submitting, setSubmitting] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      const payload = {
-        title: title || null,
-        themeName: theme?.name ?? null,
-        recipeId: recipeId || null,
-        isPrivate,
-        timeLimitMinutes: duration,
-        minOfficialVoters: minVoters,
-      };
-      const result = await api("/api/competitions", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-      navigate(`/competitions/${encodeURIComponent(result.id)}`);
-    } catch (e: any) {
-      setError(e?.message || "Failed to create competition.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  const totalSteps = 3;
+  const progress = (step / totalSteps) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-fuchsia-50 to-purple-50">
-      {/* HERO with stronger overlay */}
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 -z-10 bg-gradient-to-r from-rose-700 via-fuchsia-700 to-purple-800" />
-        {/* Decorative glows */}
-        <div className="absolute -top-24 -right-24 w-[26rem] h-[26rem] bg-pink-400/25 blur-3xl rounded-full" />
-        <div className="absolute -bottom-24 -left-24 w-[34rem] h-[34rem] bg-purple-400/25 blur-3xl rounded-full" />
-        {/* Dark overlay for contrast */}
-        <div className="absolute inset-0 bg-black/55" />
-
-        <div className="max-w-7xl mx-auto px-4 py-10 relative">
-          <div className="text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]">
-            <div className="flex items-center justify-between">
-              <Link href="/">
-                <Button variant="ghost" className="text-white hover:bg-white/15">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Home
-                </Button>
-              </Link>
-              <Badge className="bg-white/20 border-white/20 text-white">Cookoff Creator</Badge>
-            </div>
-
-            <div className="mt-6 flex items-start gap-3">
-              <div className="p-3 bg-white/15 rounded-2xl backdrop-blur">
-                <ChefHat className="h-10 w-10" />
-              </div>
-              <div>
-                <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
-                  Create a Cookoff
-                </h1>
-                <p className="text-fuchsia-100 text-lg">
-                  Pick a theme, set a timer, and fire up the live room.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card className="bg-white/10 border-white/20 text-white backdrop-blur hover:bg-white/15 transition">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 text-sm text-fuchsia-100">
-                    <Sparkles className="w-4 h-4" />
-                    Themes
-                  </div>
-                  <div className="text-2xl font-bold mt-2">{THEMES.length}</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-white/10 border-white/20 text-white backdrop-blur hover:bg-white/15 transition">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 text-sm text-fuchsia-100">
-                    <Timer className="w-4 h-4" />
-                    Time Limit
-                  </div>
-                  <div className="text-2xl font-bold mt-2">15–120m</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-white/10 border-white/20 text-white backdrop-blur hover:bg-white/15 transition">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 text-sm text-fuchsia-100">
-                    <Users className="w-4 h-4" />
-                    Viewers Judge
-                  </div>
-                  <div className="text-2xl font-bold mt-2">24h</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-white/10 border-white/20 text-white backdrop-blur hover:bg-white/15 transition">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 text-sm text-fuchsia-100">
-                    <Video className="w-4 h-4" />
-                    Live Room
-                  </div>
-                  <div className="text-2xl font-bold mt-2">Instant</div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative overflow-hidden">
+      {/* Animated background */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {[...Array(30)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute rounded-full bg-white opacity-5"
+            style={{
+              width: Math.random() * 400 + 100 + 'px',
+              height: Math.random() * 400 + 100 + 'px',
+              left: Math.random() * 100 + '%',
+              top: Math.random() * 100 + '%',
+              animation: `float ${Math.random() * 25 + 15}s ease-in-out infinite`,
+              animationDelay: `${Math.random() * 5}s`
+            }}
+          />
+        ))}
       </div>
 
-      {/* FORM */}
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {error && (
-          <div className="rounded border border-red-300 bg-red-50 p-3 text-red-800 mb-4">{error}</div>
+      <style>{`
+        @keyframes float {
+          0%, 100% { transform: translate(0, 0) rotate(0deg) scale(1); }
+          33% { transform: translate(30px, -30px) rotate(120deg) scale(1.1); }
+          66% { transform: translate(-30px, 30px) rotate(240deg) scale(0.9); }
+        }
+        @keyframes pulse-glow {
+          0%, 100% { box-shadow: 0 0 20px rgba(168, 85, 247, 0.5); }
+          50% { box-shadow: 0 0 60px rgba(168, 85, 247, 0.8), 0 0 100px rgba(236, 72, 153, 0.5); }
+        }
+        @keyframes shimmer {
+          0% { background-position: -1000px 0; }
+          100% { background-position: 1000px 0; }
+        }
+        .shimmer-effect {
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+          background-size: 1000px 100%;
+          animation: shimmer 2.5s infinite;
+        }
+      `}</style>
+
+      <div className="relative z-10 max-w-6xl mx-auto px-4 py-12">
+        {/* Header with animated chef icon */}
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center justify-center mb-6 relative group">
+            <div className="absolute inset-0 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-full blur-3xl opacity-60 animate-pulse"></div>
+            <div 
+              className="relative p-8 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full shadow-2xl transition-transform duration-500 group-hover:scale-110 group-hover:rotate-12"
+              style={{ animation: 'pulse-glow 3s ease-in-out infinite' }}
+            >
+              <ChefHat className="w-20 h-20 text-white" />
+            </div>
+            <div className="absolute -top-2 -right-2 p-2 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full animate-bounce">
+              <Sparkles className="w-6 h-6 text-white" />
+            </div>
+          </div>
+          <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-400 to-cyan-400 mb-4 tracking-tight">
+            Create Your Cookoff
+          </h1>
+          <p className="text-xl text-purple-200">Design an epic culinary battle in 3 simple steps</p>
+        </div>
+
+        {/* Progress Bar */}
+        <div className="mb-12">
+          <div className="flex items-center justify-between mb-3">
+            {[1, 2, 3].map((s) => (
+              <div
+                key={s}
+                className={`flex items-center gap-3 transition-all duration-500 ${step >= s ? 'opacity-100' : 'opacity-40'}`}
+              >
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-500 ${
+                  step >= s
+                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white scale-110 shadow-lg'
+                    : 'bg-white/10 text-purple-300'
+                }`}>
+                  {step > s ? '✓' : s}
+                </div>
+                <span className="text-white font-semibold">
+                  {s === 1 ? 'Theme' : s === 2 ? 'Details' : 'Settings'}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="h-3 bg-white/10 rounded-full overflow-hidden backdrop-blur-xl">
+            <div 
+              className="h-full bg-gradient-to-r from-purple-500 via-pink-500 to-cyan-500 transition-all duration-500 rounded-full shimmer-effect"
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+        </div>
+
+        {/* Step 1: Theme Selection */}
+        {step === 1 && (
+          <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="text-center mb-8">
+              <h2 className="text-4xl font-bold text-white mb-3 flex items-center justify-center gap-3">
+                <Wand2 className="w-8 h-8 text-purple-400" />
+                Choose Your Theme
+              </h2>
+              <p className="text-purple-200">Pick the culinary style that defines your battle</p>
+            </div>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {THEMES.map((theme, i) => (
+                <div
+                  key={theme.id}
+                  className="relative group cursor-pointer"
+                  onClick={() => setSelectedTheme(theme)}
+                  onMouseEnter={() => setHoveredTheme(theme.id)}
+                  onMouseLeave={() => setHoveredTheme(null)}
+                  style={{ animationDelay: `${i * 50}ms` }}
+                >
+                  {selectedTheme?.id === theme.id && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl blur-xl animate-pulse"></div>
+                  )}
+                  
+                  <div className={`relative bg-white/10 backdrop-blur-xl border-2 rounded-2xl p-6 transition-all duration-300 hover:scale-110 hover:-translate-y-2 ${
+                    selectedTheme?.id === theme.id
+                      ? 'border-purple-400 bg-white/20 shadow-2xl'
+                      : 'border-white/20 hover:border-white/40'
+                  }`}>
+                    <div className="text-5xl mb-3 transition-transform duration-300 group-hover:scale-125 group-hover:rotate-12">
+                      {theme.icon}
+                    </div>
+                    <div className="text-white font-bold text-sm mb-1">{theme.name}</div>
+                    <div className="text-purple-200 text-xs">{theme.blurb}</div>
+                    
+                    {selectedTheme?.id === theme.id && (
+                      <div className="absolute top-2 right-2 p-1 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full">
+                        <Star className="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-center mt-8">
+              <button
+                onClick={() => selectedTheme && setStep(2)}
+                disabled={!selectedTheme}
+                className="flex items-center gap-3 px-10 py-5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-full text-white font-bold text-lg transition-all duration-300 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed shadow-2xl disabled:hover:scale-100"
+              >
+                Continue
+                <ArrowRight className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
         )}
 
-        <form onSubmit={handleCreate} className="grid lg:grid-cols-3 gap-6">
-          {/* Column 1: Basics */}
-          <Card className="lg:col-span-2 overflow-hidden hover:shadow-xl transition">
-            <div className="bg-gradient-to-r from-rose-50 to-fuchsia-50 border-b p-3 flex items-center gap-2">
-              <ListChecks className="w-4 h-4 text-rose-700" />
-              <span className="text-sm font-medium">Competition Details</span>
+        {/* Step 2: Details */}
+        {step === 2 && (
+          <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="text-center mb-8">
+              <h2 className="text-4xl font-bold text-white mb-3 flex items-center justify-center gap-3">
+                <Flame className="w-8 h-8 text-orange-400" />
+                Competition Details
+              </h2>
+              <p className="text-purple-200">Name your battle and set the duration</p>
             </div>
-            <CardContent className="p-4 grid gap-4">
-              <div>
-                <label className="block text-sm mb-1">Title</label>
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full border rounded px-3 py-2"
-                  placeholder="e.g., Pasta Showdown"
-                />
+
+            <div className="max-w-2xl mx-auto space-y-6">
+              {/* Title Input */}
+              <div className="relative group">
+                <label className="block text-purple-200 font-semibold mb-3 text-lg">Battle Title</label>
+                <div className="relative">
+                  <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="e.g., Epic Pasta Showdown"
+                    className="w-full px-6 py-5 bg-white/10 backdrop-blur-xl border-2 border-white/20 rounded-2xl text-white placeholder-purple-300 focus:outline-none focus:border-purple-400 focus:bg-white/15 transition-all text-lg"
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                    <Trophy className="w-6 h-6 text-purple-400" />
+                  </div>
+                </div>
               </div>
 
+              {/* Duration Selector */}
               <div>
-                <label className="block text-sm mb-1">Theme</label>
-                <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  {THEMES.map((t) => (
+                <label className="block text-purple-200 font-semibold mb-3 text-lg flex items-center gap-2">
+                  <Timer className="w-5 h-5" />
+                  Time Limit
+                </label>
+                <div className="grid grid-cols-5 gap-3">
+                  {DURATIONS.map((d) => (
                     <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setTheme(t)}
-                      className={`text-left rounded border p-3 hover:shadow-sm transition ${
-                        theme?.id === t.id
-                          ? "border-rose-500 bg-rose-50"
-                          : "border-gray-200 bg-white"
+                      key={d}
+                      onClick={() => setDuration(d)}
+                      className={`p-4 rounded-2xl font-bold text-lg transition-all duration-300 hover:scale-110 ${
+                        duration === d
+                          ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-2xl scale-110'
+                          : 'bg-white/10 text-purple-200 hover:bg-white/20 border border-white/20'
                       }`}
                     >
-                      <div className="font-medium">{t.name}</div>
-                      <div className="text-xs text-gray-600">{t.blurb}</div>
+                      {d}m
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="grid md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-sm mb-1">Time Limit</label>
-                  <select
-                    value={duration}
-                    onChange={(e) => setDuration(Number(e.target.value))}
-                    className="w-full border rounded px-3 py-2"
-                  >
-                    {DURATIONS.map((m) => (
-                      <option key={m} value={m}>
-                        {m} minutes
-                      </option>
-                    ))}
-                  </select>
+              {/* Selected Theme Display */}
+              {selectedTheme && (
+                <div className="relative group">
+                  <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-2xl blur-xl"></div>
+                  <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+                    <div className="flex items-center gap-4">
+                      <div className="text-6xl">{selectedTheme.icon}</div>
+                      <div className="flex-1">
+                        <div className="text-sm text-purple-300 mb-1">Selected Theme</div>
+                        <div className="text-2xl font-bold text-white">{selectedTheme.name}</div>
+                        <div className="text-purple-200 text-sm">{selectedTheme.blurb}</div>
+                      </div>
+                      <button
+                        onClick={() => setStep(1)}
+                        className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-purple-200 text-sm transition-all"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm mb-1">Min “Official” Voters</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={minVoters}
-                    onChange={(e) => setMinVoters(Math.max(1, Number(e.target.value)))}
-                    className="w-full border rounded px-3 py-2"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm mb-1">Recipe ID (optional)</label>
-                  <input
-                    value={recipeId}
-                    onChange={(e) => setRecipeId(e.target.value)}
-                    className="w-full border rounded px-3 py-2"
-                    placeholder="Attach an existing recipe"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Column 2: Privacy & Actions */}
-          <Card className="overflow-hidden hover:shadow-xl transition">
-            <div className="bg-gradient-to-r from-purple-50 to-rose-50 border-b p-3 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-purple-700" />
-              <span className="text-sm font-medium">Privacy & Actions</span>
+              )}
             </div>
-            <CardContent className="p-4 grid gap-4">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={isPrivate}
-                  onChange={(e) => setIsPrivate(e.target.checked)}
-                />
-                Private (invite-only)
-              </label>
 
-              <div className="grid gap-2">
-                <Button
-                  type="submit"
-                  className="bg-rose-600 hover:bg-rose-700 text-white"
-                  disabled={submitting}
-                >
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  {submitting ? "Creating…" : "Create Competition"}
-                </Button>
-                <Link href="/">
-                  <Button variant="secondary" className="bg-white text-rose-700 hover:bg-white/90">
-                    <ArrowLeft className="w-4 h-4 mr-2" />
-                    Back to Home
-                  </Button>
-                </Link>
-                <Link href="/explore">
-                  <Button variant="outline">
-                    Explore ChefSire
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </Link>
+            <div className="flex justify-center gap-4 mt-8">
+              <button
+                onClick={() => setStep(1)}
+                className="flex items-center gap-2 px-8 py-4 bg-white/10 hover:bg-white/20 rounded-full text-white font-semibold transition-all duration-300 hover:scale-105"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => title && setStep(3)}
+                disabled={!title}
+                className="flex items-center gap-3 px-10 py-5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-full text-white font-bold text-lg transition-all duration-300 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed shadow-2xl disabled:hover:scale-100"
+              >
+                Continue
+                <ArrowRight className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Settings */}
+        {step === 3 && (
+          <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="text-center mb-8">
+              <h2 className="text-4xl font-bold text-white mb-3 flex items-center justify-center gap-3">
+                <Zap className="w-8 h-8 text-yellow-400" />
+                Final Settings
+              </h2>
+              <p className="text-purple-200">Configure privacy and voting requirements</p>
+            </div>
+
+            <div className="max-w-2xl mx-auto space-y-6">
+              {/* Privacy Toggle */}
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-2xl blur-xl"></div>
+                <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className={`p-4 rounded-2xl ${isPrivate ? 'bg-orange-500/20' : 'bg-green-500/20'}`}>
+                        {isPrivate ? <Lock className="w-8 h-8 text-orange-400" /> : <Globe className="w-8 h-8 text-green-400" />}
+                      </div>
+                      <div>
+                        <div className="text-xl font-bold text-white mb-1">
+                          {isPrivate ? 'Private Competition' : 'Public Competition'}
+                        </div>
+                        <div className="text-purple-200 text-sm">
+                          {isPrivate ? 'Only people with invite link can join' : 'Anyone can discover and join'}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setIsPrivate(!isPrivate)}
+                      className={`relative w-20 h-10 rounded-full transition-all duration-300 ${
+                        isPrivate ? 'bg-orange-500' : 'bg-green-500'
+                      }`}
+                    >
+                      <div
+                        className={`absolute top-1 w-8 h-8 bg-white rounded-full shadow-lg transition-all duration-300 ${
+                          isPrivate ? 'right-1' : 'left-1'
+                        }`}
+                      ></div>
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              <div className="text-xs text-gray-600">
-                After you create the room, you can start the timer, join live video, and share the invite link for spectators to vote.
+              {/* Min Voters */}
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-2xl blur-xl"></div>
+                <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+                  <label className="block text-purple-200 font-semibold mb-4 text-lg flex items-center gap-2">
+                    <Users className="w-5 h-5" />
+                    Minimum Voters for Official Status
+                  </label>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="range"
+                      min="1"
+                      max="20"
+                      value={minVoters}
+                      onChange={(e) => setMinVoters(Number(e.target.value))}
+                      className="flex-1 h-3 bg-white/20 rounded-full appearance-none cursor-pointer"
+                    />
+                    <div className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 w-20 text-center">
+                      {minVoters}
+                    </div>
+                  </div>
+                  <p className="text-purple-300 text-sm mt-2">
+                    Competition needs {minVoters} viewer votes to become "official"
+                  </p>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        </form>
+
+              {/* Summary Card */}
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl blur-2xl opacity-30 animate-pulse"></div>
+                <div className="relative bg-gradient-to-r from-purple-600/40 to-pink-600/40 backdrop-blur-xl border-2 border-purple-400 rounded-2xl p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <Sparkles className="w-6 h-6 text-yellow-400" />
+                    <h3 className="text-2xl font-bold text-white">Competition Summary</h3>
+                  </div>
+                  <div className="space-y-3 text-white">
+                    <div className="flex items-center justify-between py-2 border-b border-white/20">
+                      <span className="text-purple-200">Title:</span>
+                      <span className="font-bold">{title || 'Untitled'}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 border-b border-white/20">
+                      <span className="text-purple-200">Theme:</span>
+                      <span className="font-bold flex items-center gap-2">
+                        <span>{selectedTheme?.icon}</span>
+                        {selectedTheme?.name}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 border-b border-white/20">
+                      <span className="text-purple-200">Duration:</span>
+                      <span className="font-bold">{duration} minutes</span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 border-b border-white/20">
+                      <span className="text-purple-200">Privacy:</span>
+                      <span className="font-bold">{isPrivate ? '🔒 Private' : '🌍 Public'}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-2">
+                      <span className="text-purple-200">Min Voters:</span>
+                      <span className="font-bold">{minVoters} people</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-center gap-4 mt-8">
+              <button
+                onClick={() => setStep(2)}
+                className="flex items-center gap-2 px-8 py-4 bg-white/10 hover:bg-white/20 rounded-full text-white font-semibold transition-all duration-300 hover:scale-105"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleCreate}
+                className="relative group flex items-center gap-3 px-12 py-6 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-full text-white font-bold text-xl transition-all duration-300 hover:scale-110 shadow-2xl overflow-hidden"
+              >
+                <div className="absolute inset-0 shimmer-effect"></div>
+                <Trophy className="w-7 h-7 relative z-10" />
+                <span className="relative z-10">Launch Competition!</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
