@@ -32,9 +32,8 @@ const NAV: NavItem[] = [
     hasSubmenu: true,
     submenu: [
       { name: "📚 Browse All Cookoffs", href: "/competitions" },
-      { name: "⚔️ Live Battles", href: "/competitions?status=live" },
+      { name: "🔥 Live Battles", href: "/competitions/live" },
       { name: "➕ Create Cookoff", href: "/competitions/new" },
-      { name: "🏅 My Competitions", href: "/profile?tab=cookoffs" },
     ],
   },
 
