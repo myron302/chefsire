@@ -28,12 +28,12 @@ const NAV: NavItem[] = [
 
   {
     name: "🏆 Cookoff Arena",
-    href: "/competitions",
+    href: "/competitions/library", // 🔧 point parent to Library
     hasSubmenu: true,
     submenu: [
-      { name: "📚 Browse All Cookoffs", href: "/competitions" },
+      { name: "📚 Browse All Cookoffs", href: "/competitions/library" }, // 🔧 library
       { name: "🔥 Live Battles", href: "/competitions/live" },
-      { name: "➕ Create Cookoff", href: "/competitions/new" },
+      { name: "➕ Create Cookoff", href: "/competitions/new" }, // 🔧 create
     ],
   },
 
@@ -211,7 +211,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
     const handleClick = (e: React.MouseEvent) => {
       if (item.href.includes('?')) {
         e.preventDefault();
-        window.location.href = item.href;
+        (window as any).location.href = item.href;
       }
     };
 
