@@ -186,7 +186,7 @@ export default function Layout({ children }: LayoutProps) {
                               onClick={() => setIsDropdownOpen(false)}
                               className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                             >
-                              <Home className="w-4 h-4 mr-3 text-blue-600" /> Feed
+                              <Home className="w-4 h-4 mr-3 text-blue-600" /> 🏠 Feed
                             </Link>
 
                             <Link
@@ -194,7 +194,7 @@ export default function Layout({ children }: LayoutProps) {
                               onClick={() => setIsDropdownOpen(false)}
                               className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                             >
-                              <Compass className="w-4 h-4 mr-3 text-purple-600" /> Explore
+                              <Compass className="w-4 h-4 mr-3 text-purple-600" /> 🧭 Explore
                             </Link>
 
                             <Link
@@ -202,7 +202,7 @@ export default function Layout({ children }: LayoutProps) {
                               onClick={() => setIsDropdownOpen(false)}
                               className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                             >
-                              <Map className="w-4 h-4 mr-3 text-green-600" /> BiteMap
+                              <Map className="w-4 h-4 mr-3 text-green-600" /> 🗺️ BiteMap
                             </Link>
 
                             {/* ✅ Competitions with submenu */}
@@ -213,7 +213,7 @@ export default function Layout({ children }: LayoutProps) {
                                   onClick={() => setIsDropdownOpen(false)}
                                   className="flex items-center flex-1 font-semibold"
                                 >
-                                  <Layers className="w-4 h-4 mr-3" /> Competitions
+                                  <Layers className="w-4 h-4 mr-3 text-orange-600" /> 🏆 Competitions
                                 </Link>
                                 <button
                                   onClick={(e) => toggleSubmenu("competitions", e)}
@@ -231,7 +231,7 @@ export default function Layout({ children }: LayoutProps) {
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <Layers className="w-3 h-3 mr-2" /> Cookoff Library
+                                    <Layers className="w-3 h-3 mr-2 text-purple-600" /> 📚 Cookoff Library
                                   </Link>
                                   {/* ✅ Live Battles with query param */}
                                   <a
@@ -243,21 +243,21 @@ export default function Layout({ children }: LayoutProps) {
                                     }}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm cursor-pointer"
                                   >
-                                    <Flame className="w-3 h-3 mr-2" /> Live Battles
+                                    <Flame className="w-3 h-3 mr-2 text-red-600" /> 🔥 Live Battles
                                   </a>
                                   <Link
                                     href="/competitions/new"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <Plus className="w-3 h-3 mr-2" /> Create Cookoff
+                                    <Plus className="w-3 h-3 mr-2 text-green-600" /> ➕ Create Cookoff
                                   </Link>
                                   <Link
                                     href="/profile?tab=cookoffs"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <Trophy className="w-3 h-3 mr-2" /> My Cookoffs
+                                    <Trophy className="w-3 h-3 mr-2 text-yellow-600" /> 🏅 My Cookoffs
                                   </Link>
                                 </div>
                               )}
@@ -271,11 +271,164 @@ export default function Layout({ children }: LayoutProps) {
                                   onClick={() => setIsDropdownOpen(false)}
                                   className="flex items-center flex-1 font-semibold"
                                 >
-                                  <BookOpen className="w-4 h-4 mr-3" /> Recipes
+                                  <BookOpen className="w-4 h-4 mr-3" /> 📖 Recipes
                                 </Link>
                                 <button
                                   onClick={(e) => toggleSubmenu("recipes", e)}
                                   className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                >
+                                  <ChevronRight
+                                    className={`w-3 h-3 transition-transform ${expandedMenus.recipes ? "rotate-90" : ""}`}
+                                  />
+                                </button>
+                              </div>
+                              {expandedMenus.recipes && (
+                                <div className="ml-6 space-y-1">
+                                  <Link
+                                    href="/recipes"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <BookOpen className="w-3 h-3 mr-2" /> 📚 Browse Recipes
+                                  </Link>
+                                  <Link
+                                    href="/recipes/baby-food"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Baby className="w-3 h-3 mr-2" /> 👶 Baby Food
+                                  </Link>
+                                  <Link
+                                    href="/pantry"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <ChefHat className="w-3 h-3 mr-2" /> 🥘 My Pantry
+                                  </Link>
+                                  <Link
+                                    href="/substitutions"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Wand2 className="w-3 h-3 mr-2" /> 🪄 Substitutions
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Drinks with submenu */}
+                            <div>
+                              <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <Link
+                                  href="/drinks"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center flex-1 font-semibold"
+                                >
+                                  <GlassWater className="w-4 h-4 mr-3" /> 🥤 Drinks
+                                </Link>
+                                <button
+                                  onClick={(e) => toggleSubmenu("drinks", e)}
+                                  className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                >
+                                  <ChevronRight
+                                    className={`w-3 h-3 transition-transform ${expandedMenus.drinks ? "rotate-90" : ""}`}
+                                  />
+                                </button>
+                              </div>
+                              {expandedMenus.drinks && (
+                                <div className="ml-6 space-y-1">
+                                  <Link
+                                    href="/drinks/smoothies"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Apple className="w-3 h-3 mr-2" /> 🍎 Smoothies
+                                  </Link>
+                                  <Link
+                                    href="/drinks/protein-shakes"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <FlaskConical className="w-3 h-3 mr-2" /> 🧪 Protein Shakes
+                                  </Link>
+                                  <Link
+                                    href="/drinks/detoxes"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Leaf className="w-3 h-3 mr-2" /> 🍃 Detoxes
+                                  </Link>
+                                  <Link
+                                    href="/drinks/potent-potables"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Wine className="w-3 h-3 mr-2" /> 🍷 Potent Potables{" "}
+                                    <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700">
+                                      21+
+                                    </span>
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Catering with submenu */}
+                            <div>
+                              <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                <Link
+                                  href="/catering"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center flex-1 font-semibold"
+                                >
+                                  <Utensils className="w-4 h-4 mr-3" /> 🍽️ Catering
+                                </Link>
+                                <button
+                                  onClick={(e) => toggleSubmenu("catering", e)}
+                                  className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                >
+                                  <ChevronRight
+                                    className={`w-3 h-3 transition-transform ${expandedMenus.catering ? "rotate-90" : ""}`}
+                                  />
+                                </button>
+                              </div>
+                              {expandedMenus.catering && (
+                                <div className="ml-6 space-y-1">
+                                  <Link
+                                    href="/catering"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Utensils className="w-3 h-3 mr-2" /> 👨‍🍳 Browse Caterers
+                                  </Link>
+                                  <Link
+                                    href="/catering/wedding-planning"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    <Heart className="w-3 h-3 mr-2" /> 💒 Wedding Planning
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Marketplace */}
+                            <Link
+                              href="/marketplace"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                            >
+                              <ShoppingCart className="w-4 h-4 mr-3" /> 🛒 Marketplace
+                            </Link>
+
+                            {/* Nutrition */}
+                            <Link
+                              href="/nutrition"
+                              onClick={() => setIsDropdownOpen(false)}
+                              className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                            >
+                              <Activity className="w-4 h-4 mr-3" /> 💪 Nutrition
+                            </Link>
+                          </div>dark:hover:bg-gray-600 rounded"
                                 >
                                   <ChevronRight
                                     className={`w-3 h-3 transition-transform ${expandedMenus.recipes ? "rotate-90" : ""}`}
