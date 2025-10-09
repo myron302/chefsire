@@ -6,10 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Search, Bell, MessageCircle, User, ChevronDown, ChevronRight,
-  ChefHat, Activity, ShoppingCart, Settings, LogOut,
-  Home, Compass, BookOpen, GlassWater, Utensils, Heart, Wand2,
-  Apple, FlaskConical, Leaf, Wine, Sparkles, Baby, Map,
-  Layers, Plus, Trophy, Flame,
+  Settings, LogOut, Plus,
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
@@ -186,7 +183,7 @@ export default function Layout({ children }: LayoutProps) {
                               onClick={() => setIsDropdownOpen(false)}
                               className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                             >
-                              <Home className="w-4 h-4 mr-3 text-blue-600" /> 🏠 Feed
+                              🏠 Feed
                             </Link>
 
                             <Link
@@ -194,7 +191,7 @@ export default function Layout({ children }: LayoutProps) {
                               onClick={() => setIsDropdownOpen(false)}
                               className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                             >
-                              <Compass className="w-4 h-4 mr-3 text-purple-600" /> 🧭 Explore
+                              🧭 Explore
                             </Link>
 
                             <Link
@@ -202,7 +199,7 @@ export default function Layout({ children }: LayoutProps) {
                               onClick={() => setIsDropdownOpen(false)}
                               className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                             >
-                              <Map className="w-4 h-4 mr-3 text-green-600" /> 🗺️ BiteMap
+                              🗺️ BiteMap
                             </Link>
 
                             {/* Competitions with submenu */}
@@ -213,7 +210,7 @@ export default function Layout({ children }: LayoutProps) {
                                   onClick={() => setIsDropdownOpen(false)}
                                   className="flex items-center flex-1 font-semibold"
                                 >
-                                  <Layers className="w-4 h-4 mr-3 text-orange-600" /> 🏆 Competitions
+                                  🏆 Competitions
                                 </Link>
                                 <button
                                   onClick={(e) => toggleSubmenu("competitions", e)}
@@ -231,7 +228,7 @@ export default function Layout({ children }: LayoutProps) {
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <Layers className="w-3 h-3 mr-2 text-purple-600" /> 📚 Cookoff Library
+                                    📚 Cookoff Library
                                   </Link>
                                   <a
                                     href="/competitions?status=live"
@@ -242,21 +239,21 @@ export default function Layout({ children }: LayoutProps) {
                                     }}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm cursor-pointer"
                                   >
-                                    <Flame className="w-3 h-3 mr-2 text-red-600" /> 🔥 Live Battles
+                                    🔥 Live Battles
                                   </a>
                                   <Link
                                     href="/competitions/new"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <Plus className="w-3 h-3 mr-2 text-green-600" /> ➕ Create Cookoff
+                                    ➕ Create Cookoff
                                   </Link>
                                   <Link
                                     href="/profile?tab=cookoffs"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <Trophy className="w-3 h-3 mr-2 text-yellow-600" /> 🏅 My Cookoffs
+                                    🏅 My Cookoffs
                                   </Link>
                                 </div>
                               )}
@@ -270,7 +267,7 @@ export default function Layout({ children }: LayoutProps) {
                                   onClick={() => setIsDropdownOpen(false)}
                                   className="flex items-center flex-1 font-semibold"
                                 >
-                                  <BookOpen className="w-4 h-4 mr-3" /> 📖 Recipes
+                                  📖 Recipes
                                 </Link>
                                 <button
                                   onClick={(e) => toggleSubmenu("recipes", e)}
@@ -288,28 +285,28 @@ export default function Layout({ children }: LayoutProps) {
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <BookOpen className="w-3 h-3 mr-2" /> 📚 Browse Recipes
+                                    📚 Browse Recipes
                                   </Link>
                                   <Link
                                     href="/recipes/baby-food"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <Baby className="w-3 h-3 mr-2" /> 👶 Baby Food
+                                    👶 Baby Food
                                   </Link>
                                   <Link
                                     href="/pantry"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <ChefHat className="w-3 h-3 mr-2" /> 🥘 My Pantry
+                                    🥘 My Pantry
                                   </Link>
                                   <Link
                                     href="/substitutions"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <Wand2 className="w-3 h-3 mr-2" /> 🪄 Substitutions
+                                    🪄 Substitutions
                                   </Link>
                                 </div>
                               )}
@@ -323,7 +320,7 @@ export default function Layout({ children }: LayoutProps) {
                                   onClick={() => setIsDropdownOpen(false)}
                                   className="flex items-center flex-1 font-semibold"
                                 >
-                                  <GlassWater className="w-4 h-4 mr-3" /> 🥤 Drinks
+                                  🥤 Drinks
                                 </Link>
                                 <button
                                   onClick={(e) => toggleSubmenu("drinks", e)}
@@ -341,28 +338,28 @@ export default function Layout({ children }: LayoutProps) {
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <Apple className="w-3 h-3 mr-2" /> 🍎 Smoothies
+                                    🍎 Smoothies
                                   </Link>
                                   <Link
                                     href="/drinks/protein-shakes"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <FlaskConical className="w-3 h-3 mr-2" /> 🧪 Protein Shakes
+                                    🧪 Protein Shakes
                                   </Link>
                                   <Link
                                     href="/drinks/detoxes"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <Leaf className="w-3 h-3 mr-2" /> 🍃 Detoxes
+                                    🍃 Detoxes
                                   </Link>
                                   <Link
                                     href="/drinks/potent-potables"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <Wine className="w-3 h-3 mr-2" /> 🍷 Potent Potables{" "}
+                                    🍷 Potent Potables{" "}
                                     <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700">
                                       21+
                                     </span>
@@ -379,7 +376,7 @@ export default function Layout({ children }: LayoutProps) {
                                   onClick={() => setIsDropdownOpen(false)}
                                   className="flex items-center flex-1 font-semibold"
                                 >
-                                  <Utensils className="w-4 h-4 mr-3" /> 🍽️ Catering
+                                  🍽️ Catering
                                 </Link>
                                 <button
                                   onClick={(e) => toggleSubmenu("catering", e)}
@@ -397,14 +394,14 @@ export default function Layout({ children }: LayoutProps) {
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <Utensils className="w-3 h-3 mr-2" /> 👨‍🍳 Browse Caterers
+                                    👨‍🍳 Browse Caterers
                                   </Link>
                                   <Link
                                     href="/catering/wedding-planning"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    <Heart className="w-3 h-3 mr-2" /> 💒 Wedding Planning
+                                    💒 Wedding Planning
                                   </Link>
                                 </div>
                               )}
@@ -416,7 +413,7 @@ export default function Layout({ children }: LayoutProps) {
                               onClick={() => setIsDropdownOpen(false)}
                               className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                             >
-                              <ShoppingCart className="w-4 h-4 mr-3" /> 🛒 Marketplace
+                              🛒 Marketplace
                             </Link>
 
                             {/* Nutrition */}
@@ -425,7 +422,7 @@ export default function Layout({ children }: LayoutProps) {
                               onClick={() => setIsDropdownOpen(false)}
                               className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                             >
-                              <Activity className="w-4 h-4 mr-3" /> 💪 Nutrition
+                              💪 Nutrition
                             </Link>
                           </div>
                         </div>
