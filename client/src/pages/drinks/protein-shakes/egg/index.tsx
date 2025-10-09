@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,27 @@ import {
   Target, Heart, Star, Zap, Award, TrendingUp, Clock,
   Leaf, Apple, Wine, Home, Sparkles, Calendar, ChefHat,
   FlaskConical, Dumbbell, Shield, Plus, Share2, Filter,
-  ArrowRight, BookOpen, Flame, Droplets
+  ArrowRight, BookOpen, Flame, Droplets, ArrowLeft
 } from 'lucide-react';
 
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
+
+// Protein subcategories data (for sister nav)
+const proteinSubcategories = [
+  { name: 'Whey Protein', route: '/drinks/protein-shakes/whey', icon: Zap },
+  { name: 'Plant-Based', route: '/drinks/protein-shakes/plant-based', icon: Leaf },
+  { name: 'Casein', route: '/drinks/protein-shakes/casein', icon: Calendar },
+  { name: 'Collagen', route: '/drinks/protein-shakes/collagen', icon: Sparkles },
+  { name: 'Egg Protein', route: '/drinks/protein-shakes/egg', icon: Target }
+];
+
+// Other drink hubs (for cross-hub nav)
+const otherDrinkHubs = [
+  { name: 'Smoothies', route: '/drinks/smoothies', icon: Apple },
+  { name: 'Detoxes', route: '/drinks/detoxes', icon: Droplets },
+  { name: 'Potent Potables (21+)', route: '/drinks/potent-potables', icon: Wine }
+];
 
 const eggProteinRecipes = [
   {
@@ -140,13 +156,6 @@ const eggProteinBenefits = [
   }
 ];
 
-const sisterProteinPages = [
-  { name: 'Whey Protein', route: '/drinks/protein-shakes/whey', icon: Zap },
-  { name: 'Plant-Based', route: '/drinks/protein-shakes/plant-based', icon: Leaf },
-  { name: 'Casein', route: '/drinks/protein-shakes/casein', icon: Calendar },
-  { name: 'Collagen', route: '/drinks/protein-shakes/collagen', icon: Sparkles }
-];
-
 export default function EggProteinPage() {
   const { 
     userProgress, 
@@ -156,6 +165,7 @@ export default function EggProteinPage() {
     isFavorite,
     addToRecentlyViewed
   } = useDrinks();
+  const [location] = useLocation(); // For active nav state
 
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [filterTag, setFilterTag] = useState('All');
@@ -200,43 +210,48 @@ export default function EggProteinPage() {
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
       {/* Cross-Hub Navigation */}
+      <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
+        <CardContent className="p-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {otherDrinkHubs.map((hub) => {
+              const Icon = hub.icon;
+              return (
+                <Link key={hub.route} href={hub.route}>
+                  <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
+                    <Icon className="h-4 w-4 mr-2 text-blue-600" />
+                    <span>{hub.name}</span>
+                    <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                  </Button>
+                </Link>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Sister Subpages Navigation */}
       <Card className="bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
         <CardContent className="p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Home className="w-4 h-4 text-gray-600" />
-            <span className="text-sm text-gray-600">Explore Other Categories</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/drinks">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Sparkles className="w-4 h-4" />
-                All Drinks
-              </Button>
-            </Link>
-            <Link href="/drinks/smoothies">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Apple className="w-4 h-4" />
-                Smoothies
-              </Button>
-            </Link>
-            <Link href="/drinks/protein-shakes">
-              <Button variant="outline" size="sm" className="gap-2">
-                <FlaskConical className="w-4 h-4" />
-                Protein Shakes Hub
-              </Button>
-            </Link>
-            <Link href="/drinks/detoxes">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Leaf className="w-4 h-4" />
-                Detoxes
-              </Button>
-            </Link>
-            <Link href="/drinks/potent-potables">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Wine className="w-4 h-4" />
-                Potent Potables (21+)
-              </Button>
-            </Link>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Protein Shake Types</h3>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            {proteinSubcategories.map((page) => {
+              const Icon = page.icon;
+              const isActive = location.pathname === page.route;
+              return (
+                <Link key={page.route} href={page.route}>
+                  <Button 
+                    variant={isActive ? "default" : "outline"} 
+                    className={`w-full justify-start ${isActive ? 'bg-amber-500 text-white hover:bg-amber-600' : 'hover:bg-amber-50 hover:border-amber-300'}`}
+                    size="sm"
+                  >
+                    <Icon className="h-4 w-4 mr-2 text-amber-600" />
+                    <span>{page.name}</span>
+                    <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                  </Button>
+                </Link>
+              );
+            })}
           </div>
         </CardContent>
       </Card>
@@ -244,6 +259,12 @@ export default function EggProteinPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
+          <Link href="/drinks">
+            <Button variant="ghost" size="sm" className="text-gray-500 mb-4">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Drinks Hub
+            </Button>
+          </Link>
           <h1 className="text-3xl md:text-4xl font-bold flex items-center gap-3">
             <Target className="h-10 w-10 text-amber-500" />
             Egg Protein Shakes
@@ -260,37 +281,8 @@ export default function EggProteinPage() {
         </div>
       </div>
 
-      {/* Universal Search */}
-      <div className="max-w-2xl mx-auto">
-        <UniversalSearch 
-          onSelectDrink={handleDrinkSelection}
-          placeholder="Search egg protein recipes or all drinks..."
-          className="w-full"
-        />
-      </div>
-
-      {/* Sister Protein Pages Navigation */}
-      <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
-        <CardContent className="p-4">
-          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <FlaskConical className="w-4 h-4" />
-            Other Protein Types
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {sisterProteinPages.map((page) => {
-              const Icon = page.icon;
-              return (
-                <Link key={page.route} href={page.route}>
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <Icon className="w-4 h-4" />
-                    {page.name}
-                  </Button>
-                </Link>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Universal Search Popup */}
+      <UniversalSearch onDrinkSelect={handleDrinkSelection} />
 
       {/* Success Notification */}
       {selectedRecipe && (
