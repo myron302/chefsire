@@ -244,9 +244,18 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
       );
     }
 
+    // leaf item - handle query params properly
+    const handleClick = (e: React.MouseEvent) => {
+      if (item.href.includes('?')) {
+        e.preventDefault();
+        window.location.href = item.href;
+      }
+    };
+
     return (
       <Link href={item.href}>
         <div
+          onClick={handleClick}
           className={[
             "flex items-center py-2 hover:bg-muted rounded px-2 cursor-pointer",
             isActive(item.href) ? "bg-muted" : "",
