@@ -1,6 +1,3 @@
-I’ll provide the complete component with the updated filtering (including Multi-Type), robust source matching, improved “Collagen Types” explore behavior, and the featured image fallback. I also ensured the type dropdown includes “Multi-Type”.
-
-```tsx
 import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
