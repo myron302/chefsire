@@ -209,7 +209,7 @@ export default function EggProteinPage() {
     } catch {
       try {
         await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
-        alert('Unable to share on this device.');
+        alert('Link copied to clipboard!');
       } catch {
         alert('Unable to share on this device.');
       }
@@ -230,7 +230,7 @@ export default function EggProteinPage() {
     } catch {
       try {
         await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
-        alert('Unable to share on this device.');
+        alert('Recipe copied to clipboard!');
       } catch {
         alert('Unable to share on this device.');
       }
@@ -286,9 +286,9 @@ export default function EggProteinPage() {
                   ))}
                 </ul>
               </div>
-              <div className="grid grid-cols-3 gap-2 p-3 bg-amber-50 rounded-lg">
+              <div className="grid grid-cols-3 gap-2 p-3 bg-yellow-50 rounded-lg">
                 <div className="text-center">
-                  <div className="font-bold text-amber-600">{selectedRecipe.protein}g</div>
+                  <div className="font-bold text-yellow-500">{selectedRecipe.protein}g</div>
                   <div className="text-xs text-gray-600">Protein</div>
                 </div>
                 <div className="text-center">
@@ -302,7 +302,7 @@ export default function EggProteinPage() {
               </div>
               <div className="flex gap-4 pt-4">
                 <Button 
-                  className="flex-1 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600"
+                  className="flex-1 bg-gradient-to-r from-yellow-300 to-yellow-400 hover:from-yellow-400 hover:to-yellow-500"
                   onClick={handleCompleteRecipe}
                 >
                   Complete Recipe (+100 XP)
@@ -326,9 +326,9 @@ export default function EggProteinPage() {
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
-                <Target className="h-6 w-6 text-amber-500" />
+                <Target className="h-6 w-6 text-yellow-400" />
                 <h1 className="text-2xl font-bold text-gray-900">Egg Protein Shakes</h1>
-                <Badge className="bg-amber-100 text-amber-800">BV Score: 100</Badge>
+                <Badge className="bg-yellow-100 text-yellow-800">BV Score: 100</Badge>
               </div>
             </div>
             
@@ -343,7 +343,7 @@ export default function EggProteinPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-yellow-500 hover:bg-yellow-600" onClick={handleSharePage}>
+              <Button size="sm" className="bg-yellow-400 hover:bg-yellow-500" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Recipes
               </Button>
@@ -377,7 +377,7 @@ export default function EggProteinPage() {
       </Card>
 
       {/* Sister Protein Pages Navigation */}
-      <Card className="bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
+      <Card className="bg-gradient-to-r from-yellow-50 to-yellow-100 border-yellow-200">
         <CardContent className="p-4">
           <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
             <FlaskConical className="w-4 h-4" />
@@ -388,8 +388,8 @@ export default function EggProteinPage() {
               const Icon = subcategory.icon;
               return (
                 <Link key={subcategory.id} href={subcategory.path}>
-                  <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
-                    <Icon className="h-4 w-4 mr-2 text-amber-600" />
+                  <Button variant="outline" className="w-full justify-start hover:bg-yellow-50 hover:border-yellow-300">
+                    <Icon className="h-4 w-4 mr-2 text-yellow-500" />
                     <div className="text-left flex-1">
                       <div className="font-medium text-sm">{subcategory.name}</div>
                       <div className="text-xs text-gray-500">{subcategory.description}</div>
@@ -407,7 +407,7 @@ export default function EggProteinPage() {
       <Card>
         <CardContent className="p-6">
           <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-            <Star className="h-6 w-6 text-amber-500" />
+            <Star className="h-6 w-6 text-yellow-400" />
             Why Egg Protein?
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -524,7 +524,7 @@ export default function EggProteinPage() {
 
               <div className="flex gap-2">
                 <Button 
-                  className="flex-1 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600"
+                  className="flex-1 bg-gradient-to-r from-yellow-300 to-yellow-400 hover:from-yellow-400 hover:to-yellow-500"
                   onClick={() => makeRecipe(recipe)}
                 >
                   <Plus className="h-4 w-4 mr-2" />
