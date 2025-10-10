@@ -11,7 +11,7 @@ import {
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Dumbbell, Activity, BarChart3, Shuffle, Camera, Share2,
   FlaskConical, Weight, Gauge, Triangle, Waves, Shield,
-  Search, ArrowRight, Wine, Home, ArrowLeft
+  Search, ArrowRight, Wine, Home, ArrowLeft, Moon
 } from 'lucide-react';
 
 import UniversalSearch from '@/components/UniversalSearch';
@@ -116,11 +116,12 @@ const popularRecipes = [
 ];
 
 const proteinSubcategories = [
-  { id: 'whey', name: 'Whey Protein', icon: Zap, count: 6, route: '/drinks/protein-shakes/whey' },
-  { id: 'plant', name: 'Plant Protein', icon: Leaf, count: 4, route: '/drinks/protein-shakes/plant-based' },
-  { id: 'casein', name: 'Casein', icon: Calendar, count: 3, route: '/drinks/protein-shakes/casein' },
-  { id: 'collagen', name: 'Collagen', icon: Sparkles, count: 2, route: '/drinks/protein-shakes/collagen' },
-  { id: 'egg', name: 'Egg Protein', icon: Target, count: 2, route: '/drinks/protein-shakes/egg' }
+  { id: 'whey', name: 'Whey Protein', icon: Zap, count: 6, route: '/drinks/protein-shakes/whey', description: 'Fast absorption, post-workout' },
+  { id: 'plant', name: 'Plant-Based', icon: Leaf, count: 6, route: '/drinks/protein-shakes/plant-based', description: 'Vegan, allergen-friendly' },
+  { id: 'casein', name: 'Casein', icon: Moon, count: 6, route: '/drinks/protein-shakes/casein', description: 'Slow release, nighttime' },
+  { id: 'collagen', name: 'Collagen', icon: Sparkles, count: 6, route: '/drinks/protein-shakes/collagen', description: 'Beauty & joint support' },
+  { id: 'egg', name: 'Egg Protein', icon: Target, count: 6, route: '/drinks/protein-shakes/egg', description: 'Complete amino, lactose-free' },
+  { id: 'beef', name: 'Beef Protein', icon: Flame, count: 6, route: '/drinks/protein-shakes/beef', description: 'Natural creatine, carnivore' }
 ];
 
 export default function ProteinShakesPage({ params }: Params) {
@@ -327,7 +328,7 @@ export default function ProteinShakesPage({ params }: Params) {
             <FlaskConical className="w-5 h-5 text-blue-500" />
             Explore Protein Types
           </h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
             {proteinSubcategories.map((subcategory) => {
               const Icon = subcategory.icon;
               return (
