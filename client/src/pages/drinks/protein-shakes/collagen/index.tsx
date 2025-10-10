@@ -1,4 +1,7 @@
-import React, { useState, useEffect } from 'react';
+I’ll provide the complete component with the updated filtering (including Multi-Type), robust source matching, improved “Collagen Types” explore behavior, and the featured image fallback. I also ensured the type dropdown includes “Multi-Type”.
+
+```tsx
+import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -370,6 +373,18 @@ const beautyGoals = [
   }
 ];
 
+const idToExactType = (id: string) => {
+  switch (id) {
+    case 'type-i': return 'Type I';
+    case 'type-ii': return 'Type II';
+    case 'type-iii': return 'Type III';
+    case 'multi-type': return 'Multi';
+    default: return '';
+  }
+};
+
+const normalize = (v: string) => (v || '').toLowerCase().replace(/[^a-z]/g, '');
+
 export default function CollagenProteinPage() {
   const { 
     addToFavorites, 
@@ -387,29 +402,47 @@ export default function CollagenProteinPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  const [selectedShake, setSelectedShake] = useState(null);
+  const [selectedShake, setSelectedShake] = useState<any>(null);
   const [showModal, setShowModal] = useState(false);
 
   // Filter and sort shakes
   const getFilteredShakes = () => {
+    const q = searchQuery.trim().toLowerCase();
+
     let filtered = collagenShakes.filter(shake => {
-      const matchesSearch = shake.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           shake.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesType = !selectedCollagenType || shake.collagenTypes.some(type => 
-        type.toLowerCase().includes(selectedCollagenType.toLowerCase()));
-      const matchesSource = !selectedSource || shake.source.toLowerCase().includes(selectedSource.toLowerCase());
-      const matchesGoal = !selectedGoal || shake.primaryBenefit.toLowerCase().includes(selectedGoal.toLowerCase());
-      
+      const matchesSearch =
+        !q ||
+        shake.name.toLowerCase().includes(q) ||
+        shake.description.toLowerCase().includes(q);
+
+      const matchesType =
+        !selectedCollagenType
+          ? true
+          : selectedCollagenType === 'Multi'
+            ? (shake.collagenTypes?.length || 0) > 1
+            : shake.collagenTypes?.some(
+                t => t.toLowerCase() === selectedCollagenType.toLowerCase()
+              );
+
+      const matchesSource =
+        !selectedSource
+          ? true
+          : (shake.source || '').toLowerCase().includes(selectedSource.toLowerCase());
+
+      const matchesGoal =
+        !selectedGoal
+          ? true
+          : (shake.primaryBenefit || '').toLowerCase().includes(selectedGoal.toLowerCase());
+
       return matchesSearch && matchesType && matchesSource && matchesGoal;
     });
 
-    // Sort results
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'rating': return (b.rating || 0) - (a.rating || 0);
         case 'bioavailability': return (b.bioavailability || 0) - (a.bioavailability || 0);
         case 'price': return (a.price || 0) - (b.price || 0);
-        case 'collagen': return (b.nutrition.collagen || 0) - (a.nutrition.collagen || 0);
+        case 'collagen': return (b.nutrition?.collagen || 0) - (a.nutrition?.collagen || 0);
         default: return 0;
       }
     });
@@ -421,7 +454,7 @@ export default function CollagenProteinPage() {
   const featuredShakes = collagenShakes.filter(shake => shake.featured);
   const trendingShakes = collagenShakes.filter(shake => shake.trending);
 
-  const handleMakeShake = (shake) => {
+  const handleMakeShake = (shake: any) => {
     setSelectedShake(shake);
     setShowModal(true);
   };
@@ -491,7 +524,7 @@ export default function CollagenProteinPage() {
               <div>
                 <h3 className="font-semibold mb-2">Collagen Types:</h3>
                 <div className="flex flex-wrap gap-1">
-                  {selectedShake.collagenTypes.map((type, idx) => (
+                  {selectedShake.collagenTypes.map((type: string, idx: number) => (
                     <Badge key={idx} className="bg-purple-100 text-purple-800 text-xs">
                       {type}
                     </Badge>
@@ -501,7 +534,7 @@ export default function CollagenProteinPage() {
               <div>
                 <h3 className="font-semibold mb-2">Ingredients:</h3>
                 <ul className="space-y-2">
-                  {selectedShake.ingredients.map((ing, idx) => (
+                  {selectedShake.ingredients.map((ing: string, idx: number) => (
                     <li key={idx} className="flex items-center gap-2">
                       <Check className="h-4 w-4 text-green-600" />
                       <span className="text-sm">{ing}</span>
@@ -512,7 +545,7 @@ export default function CollagenProteinPage() {
               <div>
                 <h3 className="font-semibold mb-2">Benefits:</h3>
                 <div className="flex flex-wrap gap-1">
-                  {selectedShake.benefits.map((benefit, idx) => (
+                  {selectedShake.benefits.map((benefit: string, idx: number) => (
                     <Badge key={idx} variant="outline" className="text-xs">
                       {benefit}
                     </Badge>
@@ -706,6 +739,7 @@ export default function CollagenProteinPage() {
               </div>
               
               <div className="flex gap-2">
+                {/* Collagen Type Dropdown (includes Multi-Type) */}
                 <select 
                   className="px-3 py-2 border border-gray-300 rounded-md text-sm"
                   value={selectedCollagenType}
@@ -876,9 +910,13 @@ export default function CollagenProteinPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {collagenTypes.map(type => {
               const Icon = type.icon;
-              const typeShakes = collagenShakes.filter(shake => 
-                shake.collagenTypes.some(shakeType => shakeType.toLowerCase().includes(type.id.replace('type-', '').replace('-', ' ')))
-              );
+              const typeExact = idToExactType(type.id);
+              const typeShakes =
+                type.id === 'multi-type'
+                  ? collagenShakes.filter(s => (s.collagenTypes?.length || 0) > 1)
+                  : collagenShakes.filter(s =>
+                      s.collagenTypes?.some(t => t.toLowerCase() === typeExact.toLowerCase())
+                    );
               
               return (
                 <Card key={type.id} className="hover:shadow-lg transition-shadow">
@@ -922,7 +960,7 @@ export default function CollagenProteinPage() {
                       <Button 
                         className="w-full"
                         onClick={() => {
-                          setSelectedCollagenType(type.name.replace('Type ', '').replace(' Collagen', ''));
+                          setSelectedCollagenType(typeExact);
                           setActiveTab('browse');
                         }}
                       >
@@ -941,8 +979,9 @@ export default function CollagenProteinPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {collagenSources.map(source => {
               const Icon = source.icon;
+              const sourceKey = normalize(source.name.split(' ')[0]);
               const sourceShakes = collagenShakes.filter(shake => 
-                shake.source.toLowerCase().includes(source.id.replace('-', ' '))
+                normalize(shake.source).includes(sourceKey)
               );
               
               return (
@@ -1073,11 +1112,11 @@ export default function CollagenProteinPage() {
               <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="relative">
                   <img 
-                    src={shake.image} 
+                    src={shake.image || 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=400&h=300&fit=crop'}
                     alt={shake.name}
                     className="w-full h-48 object-cover"
                     onError={(e) => {
-                      e.currentTarget.src = 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=400&h=300&fit=crop';
+                      (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=400&h=300&fit=crop';
                     }}
                   />
                   <div className="absolute top-4 left-4">
