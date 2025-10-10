@@ -4,11 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import { 
-  Sparkles, Heart, Star, Leaf, Apple, Gem,
-  Zap, Plus, Search, Camera, Share2, ArrowLeft,
-  Crown, Eye, Bone, Moon, Wine, ArrowRight, X, Check
+  Sparkles, Clock, Users, Trophy, Heart, Star, Calendar, 
+  CheckCircle, Target, Flame, Droplets, Leaf, Apple, Gem,
+  Timer, Award, TrendingUp, ChefHat, Zap, Gift,
+  Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
+  Activity, BarChart3, Crown, Dumbbell, Eye, Bone, Moon, Wine, ArrowRight, X, Check
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -25,8 +26,8 @@ const proteinSubcategories = [
   { id: 'whey', name: 'Whey Protein', icon: Zap, path: '/drinks/protein-shakes/whey', description: 'Fast absorption' },
   { id: 'plant', name: 'Plant-Based', icon: Leaf, path: '/drinks/protein-shakes/plant-based', description: 'Vegan friendly' },
   { id: 'casein', name: 'Casein', icon: Moon, path: '/drinks/protein-shakes/casein', description: 'Slow release' },
-  { id: 'egg', name: 'Egg Protein', icon: Crown, path: '/drinks/protein-shakes/egg', description: 'Complete amino' },
-  { id: 'beef', name: 'Beef Protein', icon: Zap, path: '/drinks/protein-shakes/beef', description: 'Natural creatine' }
+  { id: 'egg', name: 'Egg Protein', icon: Target, path: '/drinks/protein-shakes/egg', description: 'Complete amino' },
+  { id: 'beef', name: 'Beef Protein', icon: Flame, path: '/drinks/protein-shakes/beef', description: 'Natural creatine' }
 ];
 
 // Collagen protein shake data
@@ -40,7 +41,15 @@ const collagenShakes = [
     source: 'Grass-Fed Bovine',
     flavor: 'Mixed Berry',
     servingSize: '20g',
-    nutrition: { calories: 70, protein: 18, carbs: 0, fat: 0, collagen: 18, vitamin_c: 60, biotin: 30 },
+    nutrition: {
+      calories: 70,
+      protein: 18,
+      carbs: 0,
+      fat: 0,
+      collagen: 18,
+      vitamin_c: 60,
+      biotin: 30
+    },
     ingredients: ['Hydrolyzed Collagen Peptides', 'Natural Berry Flavors', 'Vitamin C', 'Biotin', 'Hyaluronic Acid'],
     benefits: ['Skin Elasticity', 'Hair Growth', 'Nail Strength', 'Anti-Aging'],
     absorption: 'Fast',
@@ -65,7 +74,15 @@ const collagenShakes = [
     source: 'Chicken Sternum',
     flavor: 'Vanilla Cream',
     servingSize: '15g',
-    nutrition: { calories: 50, protein: 12, carbs: 1, fat: 0, collagen: 12, glucosamine: 500, chondroitin: 400 },
+    nutrition: {
+      calories: 50,
+      protein: 12,
+      carbs: 1,
+      fat: 0,
+      collagen: 12,
+      glucosamine: 500,
+      chondroitin: 400
+    },
     ingredients: ['Type II Collagen', 'Glucosamine Sulfate', 'Chondroitin Sulfate', 'MSM', 'Natural Vanilla'],
     benefits: ['Joint Health', 'Cartilage Support', 'Mobility', 'Flexibility'],
     absorption: 'Moderate',
@@ -90,7 +107,15 @@ const collagenShakes = [
     source: 'Wild-Caught Fish',
     flavor: 'Tropical Mango',
     servingSize: '12g',
-    nutrition: { calories: 45, protein: 11, carbs: 0, fat: 0, collagen: 11, omega_3: 200, selenium: 15 },
+    nutrition: {
+      calories: 45,
+      protein: 11,
+      carbs: 0,
+      fat: 0,
+      collagen: 11,
+      omega_3: 200,
+      selenium: 15
+    },
     ingredients: ['Marine Collagen Peptides', 'Mango Extract', 'Omega-3 Fatty Acids', 'Selenium', 'Coconut Water Powder'],
     benefits: ['Premium Absorption', 'Skin Hydration', 'Antioxidants', 'Sustainable'],
     absorption: 'Very Fast',
@@ -115,7 +140,15 @@ const collagenShakes = [
     source: 'Multi-Source Blend',
     flavor: 'Unflavored',
     servingSize: '22g',
-    nutrition: { calories: 80, protein: 20, carbs: 0, fat: 0, collagen: 20, glycine: 3.2, proline: 2.8 },
+    nutrition: {
+      calories: 80,
+      protein: 20,
+      carbs: 0,
+      fat: 0,
+      collagen: 20,
+      glycine: 3.2,
+      proline: 2.8
+    },
     ingredients: ['Bovine Collagen', 'Chicken Collagen', 'Fish Collagen', 'Eggshell Membrane', 'Bone Broth Powder'],
     benefits: ['Complete Spectrum', 'Versatile Use', 'Maximum Coverage', 'All-in-One'],
     absorption: 'Fast',
@@ -140,7 +173,15 @@ const collagenShakes = [
     source: 'Plant-Based',
     flavor: 'Cucumber Mint',
     servingSize: '25g',
-    nutrition: { calories: 90, protein: 15, carbs: 8, fat: 0, vitamin_c: 80, silica: 50, lysine: 2.1 },
+    nutrition: {
+      calories: 90,
+      protein: 15,
+      carbs: 8,
+      fat: 0,
+      vitamin_c: 80,
+      silica: 50,
+      lysine: 2.1
+    },
     ingredients: ['Pea Protein', 'Vitamin C', 'Silica from Bamboo', 'L-Lysine', 'L-Proline', 'Cucumber Extract'],
     benefits: ['Vegan-Friendly', 'Collagen Support', 'Amino Precursors', 'Plant-Based'],
     absorption: 'Moderate',
@@ -165,7 +206,15 @@ const collagenShakes = [
     source: 'Grass-Fed Bovine',
     flavor: 'Golden Turmeric',
     servingSize: '25g',
-    nutrition: { calories: 85, protein: 20, carbs: 2, fat: 0, collagen: 20, curcumin: 500, resveratrol: 100 },
+    nutrition: {
+      calories: 85,
+      protein: 20,
+      carbs: 2,
+      fat: 0,
+      collagen: 20,
+      curcumin: 500,
+      resveratrol: 100
+    },
     ingredients: ['Hydrolyzed Collagen', 'Turmeric Extract', 'Resveratrol', 'CoQ10', 'Gold Leaf Extract'],
     benefits: ['Anti-Inflammatory', 'Antioxidant Rich', 'Premium Quality', 'Luxury Formula'],
     absorption: 'Fast',
@@ -185,24 +234,140 @@ const collagenShakes = [
 ];
 
 const collagenTypes = [
-  { id: 'type-i', name: 'Type I Collagen', description: 'Most abundant, supports skin, hair, nails', icon: Sparkles, color: 'text-pink-600', benefits: ['Skin Elasticity', 'Hair Strength', 'Nail Growth', 'Wound Healing'], sources: ['Marine', 'Bovine'], percentage: '90%', primaryUse: 'Beauty & Skin Health' },
-  { id: 'type-ii', name: 'Type II Collagen', description: 'Cartilage support for joints', icon: Bone, color: 'text-blue-600', benefits: ['Joint Health', 'Cartilage Support', 'Mobility', 'Flexibility'], sources: ['Chicken Sternum'], percentage: '5%', primaryUse: 'Joint & Cartilage Health' },
-  { id: 'type-iii', name: 'Type III Collagen', description: 'Blood vessels, organs, skin structure', icon: Heart, color: 'text-red-600', benefits: ['Cardiovascular', 'Organ Support', 'Skin Structure', 'Muscle Health'], sources: ['Bovine', 'Marine'], percentage: '3%', primaryUse: 'Internal Structure Support' },
-  { id: 'multi-type', name: 'Multi-Type Blend', description: 'Comprehensive collagen support', icon: Crown, color: 'text-purple-600', benefits: ['Complete Coverage', 'Synergistic Effects', 'Versatile', 'Maximum Benefits'], sources: ['Multiple Sources'], percentage: '100%', primaryUse: 'Complete Body Support' }
+  {
+    id: 'type-i',
+    name: 'Type I Collagen',
+    description: 'Most abundant, supports skin, hair, nails',
+    icon: Sparkles,
+    color: 'text-pink-600',
+    benefits: ['Skin Elasticity', 'Hair Strength', 'Nail Growth', 'Wound Healing'],
+    sources: ['Marine', 'Bovine'],
+    percentage: '90%',
+    primaryUse: 'Beauty & Skin Health'
+  },
+  {
+    id: 'type-ii',
+    name: 'Type II Collagen',
+    description: 'Cartilage support for joints',
+    icon: Bone,
+    color: 'text-blue-600',
+    benefits: ['Joint Health', 'Cartilage Support', 'Mobility', 'Flexibility'],
+    sources: ['Chicken Sternum'],
+    percentage: '5%',
+    primaryUse: 'Joint & Cartilage Health'
+  },
+  {
+    id: 'type-iii',
+    name: 'Type III Collagen',
+    description: 'Blood vessels, organs, skin structure',
+    icon: Heart,
+    color: 'text-red-600',
+    benefits: ['Cardiovascular', 'Organ Support', 'Skin Structure', 'Muscle Health'],
+    sources: ['Bovine', 'Marine'],
+    percentage: '3%',
+    primaryUse: 'Internal Structure Support'
+  },
+  {
+    id: 'multi-type',
+    name: 'Multi-Type Blend',
+    description: 'Comprehensive collagen support',
+    icon: Crown,
+    color: 'text-purple-600',
+    benefits: ['Complete Coverage', 'Synergistic Effects', 'Versatile', 'Maximum Benefits'],
+    sources: ['Multiple Sources'],
+    percentage: '100%',
+    primaryUse: 'Complete Body Support'
+  }
 ];
 
 const collagenSources = [
-  { id: 'marine', name: 'Marine Collagen', description: 'From wild-caught fish, highest bioavailability', icon: Droplets, color: 'bg-blue-500', bioavailability: '98%', absorption: 'Very Fast', benefits: ['Premium Absorption', 'Sustainable', 'Type I Rich', 'Clean Source'], bestFor: 'Skin & Beauty' },
-  { id: 'bovine', name: 'Bovine Collagen', description: 'From grass-fed cattle, types I & III', icon: Apple, color: 'bg-green-500', bioavailability: '95%', absorption: 'Fast', benefits: ['Complete Amino Profile', 'Cost Effective', 'Versatile', 'Well Researched'], bestFor: 'General Health' },
-  { id: 'chicken', name: 'Chicken Collagen', description: 'From chicken sternum, type II rich', icon: Bone, color: 'bg-amber-500', bioavailability: '87%', absorption: 'Moderate', benefits: ['Joint Specific', 'Type II Rich', 'Cartilage Support', 'Mobility'], bestFor: 'Joint Health' },
-  { id: 'plant-based', name: 'Plant-Based Support', description: 'Amino acid precursors for collagen synthesis', icon: Leaf, color: 'bg-emerald-500', bioavailability: '78%', absorption: 'Moderate', benefits: ['Vegan Friendly', 'Precursor Support', 'Sustainable', 'Ethical'], bestFor: 'Vegan Lifestyle' }
+  {
+    id: 'marine',
+    name: 'Marine Collagen',
+    description: 'From wild-caught fish, highest bioavailability',
+    icon: Droplets,
+    color: 'bg-blue-500',
+    bioavailability: '98%',
+    absorption: 'Very Fast',
+    benefits: ['Premium Absorption', 'Sustainable', 'Type I Rich', 'Clean Source'],
+    bestFor: 'Skin & Beauty'
+  },
+  {
+    id: 'bovine',
+    name: 'Bovine Collagen',
+    description: 'From grass-fed cattle, types I & III',
+    icon: Apple,
+    color: 'bg-green-500',
+    bioavailability: '95%',
+    absorption: 'Fast',
+    benefits: ['Complete Amino Profile', 'Cost Effective', 'Versatile', 'Well Researched'],
+    bestFor: 'General Health'
+  },
+  {
+    id: 'chicken',
+    name: 'Chicken Collagen',
+    description: 'From chicken sternum, type II rich',
+    icon: Bone,
+    color: 'bg-amber-500',
+    bioavailability: '87%',
+    absorption: 'Moderate',
+    benefits: ['Joint Specific', 'Type II Rich', 'Cartilage Support', 'Mobility'],
+    bestFor: 'Joint Health'
+  },
+  {
+    id: 'plant-based',
+    name: 'Plant-Based Support',
+    description: 'Amino acid precursors for collagen synthesis',
+    icon: Leaf,
+    color: 'bg-emerald-500',
+    bioavailability: '78%',
+    absorption: 'Moderate',
+    benefits: ['Vegan Friendly', 'Precursor Support', 'Sustainable', 'Ethical'],
+    bestFor: 'Vegan Lifestyle'
+  }
 ];
 
 const beautyGoals = [
-  { id: 'skin-health', name: 'Skin Health', description: 'Radiant, youthful skin', icon: Sparkles, color: 'bg-pink-500', recommendedTypes: ['Type I', 'Type III'], recommendedDosage: '10-15g daily', timeline: '4-8 weeks for visible results' },
-  { id: 'joint-health', name: 'Joint Health', description: 'Mobility and flexibility support', icon: Bone, color: 'bg-blue-500', recommendedTypes: ['Type II'], recommendedDosage: '8-12g daily', timeline: '6-12 weeks for improvements' },
-  { id: 'anti-aging', name: 'Anti-Aging', description: 'Comprehensive age-defying support', icon: Crown, color: 'bg-purple-500', recommendedTypes: ['Multi-Type'], recommendedDosage: '15-25g daily', timeline: '8-16 weeks for optimal results' },
-  { id: 'hair-nails', name: 'Hair & Nails', description: 'Strength and growth support', icon: Gem, color: 'bg-amber-500', recommendedTypes: ['Type I'], recommendedDosage: '12-18g daily', timeline: '6-10 weeks for stronger growth' }
+  {
+    id: 'skin-health',
+    name: 'Skin Health',
+    description: 'Radiant, youthful skin',
+    icon: Sparkles,
+    color: 'bg-pink-500',
+    recommendedTypes: ['Type I', 'Type III'],
+    recommendedDosage: '10-15g daily',
+    timeline: '4-8 weeks for visible results'
+  },
+  {
+    id: 'joint-health',
+    name: 'Joint Health',
+    description: 'Mobility and flexibility support',
+    icon: Bone,
+    color: 'bg-blue-500',
+    recommendedTypes: ['Type II'],
+    recommendedDosage: '8-12g daily',
+    timeline: '6-12 weeks for improvements'
+  },
+  {
+    id: 'anti-aging',
+    name: 'Anti-Aging',
+    description: 'Comprehensive age-defying support',
+    icon: Crown,
+    color: 'bg-purple-500',
+    recommendedTypes: ['Multi-Type'],
+    recommendedDosage: '15-25g daily',
+    timeline: '8-16 weeks for optimal results'
+  },
+  {
+    id: 'hair-nails',
+    name: 'Hair & Nails',
+    description: 'Strength and growth support',
+    icon: Gem,
+    color: 'bg-amber-500',
+    recommendedTypes: ['Type I'],
+    recommendedDosage: '12-18g daily',
+    timeline: '6-10 weeks for stronger growth'
+  }
 ];
 
 const idToExactType = (id: string) => {
@@ -264,7 +429,11 @@ export default function CollagenProteinPage() {
   const handleShareShake = async (shake: any) => {
     const url = typeof window !== 'undefined' ? window.location.href : '';
     const text = `${shake.name} • ${shake.primaryBenefit} • ${shake.source}\n${shake.description}`;
-    const shareData = { title: shake.name, text, url };
+    const shareData = {
+      title: shake.name,
+      text,
+      url
+    };
     try {
       if (navigator.share) {
         await navigator.share(shareData);
@@ -372,7 +541,11 @@ export default function CollagenProteinPage() {
           >
             <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
               <h2 className="text-lg font-semibold">Search All Drinks</h2>
-              <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowUniversalSearch(false)}
+              >
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -398,7 +571,9 @@ export default function CollagenProteinPage() {
                 <h3 className="font-semibold mb-2">Collagen Types:</h3>
                 <div className="flex flex-wrap gap-1">
                   {selectedShake.collagenTypes.map((type: string, idx: number) => (
-                    <Badge key={idx} className="bg-purple-100 text-purple-800 text-xs">{type}</Badge>
+                    <Badge key={idx} className="bg-purple-100 text-purple-800 text-xs">
+                      {type}
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -417,7 +592,9 @@ export default function CollagenProteinPage() {
                 <h3 className="font-semibold mb-2">Benefits:</h3>
                 <div className="flex flex-wrap gap-1">
                   {selectedShake.benefits.map((benefit: string, idx: number) => (
-                    <Badge key={idx} variant="outline" className="text-xs">{benefit}</Badge>
+                    <Badge key={idx} variant="outline" className="text-xs">
+                      {benefit}
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -436,7 +613,10 @@ export default function CollagenProteinPage() {
                 </div>
               </div>
               <div className="flex gap-4 pt-4">
-                <Button className="flex-1 bg-pink-600 hover:bg-pink-700" onClick={handleCompleteShake}>
+                <Button 
+                  className="flex-1 bg-pink-600 hover:bg-pink-700"
+                  onClick={handleCompleteShake}
+                >
                   Complete Shake (+35 XP)
                 </Button>
               </div>
@@ -463,8 +643,13 @@ export default function CollagenProteinPage() {
                 <Badge className="bg-pink-100 text-pink-800">Beauty</Badge>
               </div>
             </div>
+            
             <div className="flex items-center gap-4">
-              <Button variant="outline" size="sm" onClick={() => setShowUniversalSearch(true)}>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowUniversalSearch(true)}
+              >
                 <Search className="h-4 w-4 mr-2" />
                 Universal Search
               </Button>
@@ -483,8 +668,8 @@ export default function CollagenProteinPage() {
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Main content with extra bottom padding to clear the fixed footer */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-28">
         {/* Cross-Hub Navigation */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
           <CardContent className="p-4">
@@ -535,10 +720,30 @@ export default function CollagenProteinPage() {
 
         {/* Quick Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-pink-600">94%</div><div className="text-sm text-gray-600">Avg Bioavailability</div></CardContent></Card>
-          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-blue-600">16g</div><div className="text-sm text-gray-600">Avg Collagen</div></CardContent></Card>
-          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-purple-600">5</div><div className="text-sm text-gray-600">Collagen Types</div></CardContent></Card>
-          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-amber-600">6</div><div className="text-sm text-gray-600">Premium Formulas</div></CardContent></Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-pink-600">94%</div>
+              <div className="text-sm text-gray-600">Avg Bioavailability</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-blue-600">16g</div>
+              <div className="text-sm text-gray-600">Avg Collagen</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-purple-600">5</div>
+              <div className="text-sm text-gray-600">Collagen Types</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-amber-600">6</div>
+              <div className="text-sm text-gray-600">Premium Formulas</div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Navigation Tabs */}
@@ -579,29 +784,50 @@ export default function CollagenProteinPage() {
                   className="pl-10"
                 />
               </div>
+              
               <div className="flex gap-2">
-                <select className="px-3 py-2 border border-gray-300 rounded-md text-sm" value={selectedCollagenType} onChange={(e) => setSelectedCollagenType(e.target.value)}>
+                {/* Collagen Type Dropdown (includes Multi-Type) */}
+                <select 
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={selectedCollagenType}
+                  onChange={(e) => setSelectedCollagenType(e.target.value)}
+                >
                   <option value="">All Collagen Types</option>
                   <option value="Type I">Type I</option>
                   <option value="Type II">Type II</option>
                   <option value="Type III">Type III</option>
                   <option value="Multi">Multi-Type</option>
                 </select>
-                <select className="px-3 py-2 border border-gray-300 rounded-md text-sm" value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)}>
+                
+                <select 
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={selectedSource}
+                  onChange={(e) => setSelectedSource(e.target.value)}
+                >
                   <option value="">All Sources</option>
                   <option value="Marine">Marine</option>
                   <option value="Bovine">Bovine</option>
                   <option value="Chicken">Chicken</option>
                   <option value="Plant">Plant-Based</option>
                 </select>
-                <select className="px-3 py-2 border border-gray-300 rounded-md text-sm" value={selectedGoal} onChange={(e) => setSelectedGoal(e.target.value)}>
+                
+                <select 
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={selectedGoal}
+                  onChange={(e) => setSelectedGoal(e.target.value)}
+                >
                   <option value="">All Benefits</option>
                   <option value="Skin">Skin Health</option>
                   <option value="Joint">Joint Health</option>
                   <option value="Anti-Aging">Anti-Aging</option>
                   <option value="Beauty">Beauty</option>
                 </select>
-                <select className="px-3 py-2 border border-gray-300 rounded-md text-sm" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                
+                <select 
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                >
                   <option value="rating">Sort by Rating</option>
                   <option value="bioavailability">Sort by Bioavailability</option>
                   <option value="price">Sort by Price</option>
@@ -641,41 +867,77 @@ export default function CollagenProteinPage() {
                         <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
                       </Button>
                     </div>
+                    
                     <div className="flex items-center gap-2 mb-2">
                       <Badge className="bg-pink-100 text-pink-800">{shake.source}</Badge>
                       <Badge variant="outline">{shake.flavor}</Badge>
                       {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                     </div>
                   </CardHeader>
+                  
                   <CardContent>
+                    {/* Collagen Types */}
                     <div className="mb-4">
                       <div className="text-sm font-medium text-gray-700 mb-2">Collagen Types:</div>
                       <div className="flex flex-wrap gap-1">
                         {shake.collagenTypes.map((type, index) => (
-                          <Badge key={index} className="bg-purple-100 text-purple-800 text-xs">{type}</Badge>
+                          <Badge key={index} className="bg-purple-100 text-purple-800 text-xs">
+                            {type}
+                          </Badge>
                         ))}
                       </div>
                     </div>
+
+                    {/* Nutrition Grid */}
                     <div className="grid grid-cols-4 gap-2 mb-4 text-center text-sm">
-                      <div><div className="text-xl font-bold text-pink-600">{shake.nutrition.collagen}g</div><div className="text-gray-500">Collagen</div></div>
-                      <div><div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div><div className="text-gray-500">Cal</div></div>
-                      <div><div className="text-xl font-bold text-purple-600">{shake.bioavailability}%</div><div className="text-gray-500">Bio</div></div>
-                      <div><div className="text-xl font-bold text-amber-600">${shake.price}</div><div className="text-gray-500">Price</div></div>
+                      <div>
+                        <div className="text-xl font-bold text-pink-600">{shake.nutrition.collagen}g</div>
+                        <div className="text-gray-500">Collagen</div>
+                      </div>
+                      <div>
+                        <div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div>
+                        <div className="text-gray-500">Cal</div>
+                      </div>
+                      <div>
+                        <div className="text-xl font-bold text-purple-600">{shake.bioavailability}%</div>
+                        <div className="text-gray-500">Bio</div>
+                      </div>
+                      <div>
+                        <div className="text-xl font-bold text-amber-600">${shake.price}</div>
+                        <div className="text-gray-500">Price</div>
+                      </div>
                     </div>
+
+                    {/* Key Details */}
                     <div className="space-y-2 mb-4 text-sm">
-                      <div className="flex justify-between"><span className="text-gray-600">Best Time:</span><span className="font-medium">{shake.bestTime}</span></div>
-                      <div className="flex justify-between"><span className="text-gray-600">Absorption:</span><span className="font-medium">{shake.absorption}</span></div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Best Time:</span>
+                        <span className="font-medium">{shake.bestTime}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Absorption:</span>
+                        <span className="font-medium">{shake.absorption}</span>
+                      </div>
                     </div>
+
+                    {/* Rating */}
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-1">
                         <Star className="h-4 w-4 text-yellow-400 fill-current" />
                         <span className="font-medium">{shake.rating}</span>
                         <span className="text-gray-500 text-sm">({shake.reviews})</span>
                       </div>
-                      <Badge variant="outline" className="text-xs">{shake.primaryBenefit}</Badge>
+                      <Badge variant="outline" className="text-xs">
+                        {shake.primaryBenefit}
+                      </Badge>
                     </div>
+
+                    {/* Actions */}
                     <div className="flex gap-2">
-                      <Button className="flex-1 bg-pink-600 hover:bg-pink-700" onClick={() => handleMakeShake(shake)}>
+                      <Button 
+                        className="flex-1 bg-pink-600 hover:bg-pink-700"
+                        onClick={() => handleMakeShake(shake)}
+                      >
                         <Sparkles className="h-4 w-4 mr-2" />
                         Make Shake
                       </Button>
@@ -702,6 +964,7 @@ export default function CollagenProteinPage() {
                   : collagenShakes.filter(s =>
                       s.collagenTypes?.some(t => t.toLowerCase() === typeExact.toLowerCase())
                     );
+              
               return (
                 <Card key={type.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
@@ -711,33 +974,47 @@ export default function CollagenProteinPage() {
                       <p className="text-sm text-gray-600">{type.description}</p>
                     </div>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3 mb-4">
-                      <div className="text-center bg-gray-50 p-3 rounded-lg">
-                        <div className="text-sm font-medium text-gray-700 mb-1">Body Percentage</div>
-                        <div className="text-2xl font-bold text-pink-600">{type.percentage}</div>
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-sm mb-2">Benefits:</h4>
-                        <div className="flex flex-wrap gap-1">
-                          {type.benefits.map((benefit, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">{benefit}</Badge>
-                          ))}
+                  
+                    <CardContent>
+                      <div className="space-y-3 mb-4">
+                        <div className="text-center bg-gray-50 p-3 rounded-lg">
+                          <div className="text-sm font-medium text-gray-700 mb-1">Body Percentage</div>
+                          <div className="text-2xl font-bold text-pink-600">{type.percentage}</div>
+                        </div>
+                        
+                        <div>
+                          <h4 className="font-semibold text-sm mb-2">Benefits:</h4>
+                          <div className="flex flex-wrap gap-1">
+                            {type.benefits.map((benefit, index) => (
+                              <Badge key={index} variant="outline" className="text-xs">
+                                {benefit}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div className="bg-blue-50 p-3 rounded-lg">
+                          <div className="text-sm font-medium text-gray-700 mb-1">Primary Use:</div>
+                          <div className="text-sm text-blue-800">{type.primaryUse}</div>
                         </div>
                       </div>
-                      <div className="bg-blue-50 p-3 rounded-lg">
-                        <div className="text-sm font-medium text-gray-700 mb-1">Primary Use:</div>
-                        <div className="text-sm text-blue-800">{type.primaryUse}</div>
+                      
+                      <div className="text-center">
+                        <div className={`text-2xl font-bold ${type.color} mb-1`}>
+                          {typeShakes.length}
+                        </div>
+                        <div className="text-sm text-gray-600 mb-3">Available Options</div>
+                        <Button 
+                          className="w-full"
+                          onClick={() => {
+                            setSelectedCollagenType(typeExact);
+                            setActiveTab('browse');
+                          }}
+                        >
+                          Explore {type.name}
+                        </Button>
                       </div>
-                    </div>
-                    <div className="text-center">
-                      <div className={`text-2xl font-bold ${type.color} mb-1`}>{typeShakes.length}</div>
-                      <div className="text-sm text-gray-600 mb-3">Available Options</div>
-                      <Button className="w-full" onClick={() => { setSelectedCollagenType(typeExact); setActiveTab('browse'); }}>
-                        Explore {type.name}
-                      </Button>
-                    </div>
-                  </CardContent>
+                    </CardContent>
                 </Card>
               );
             })}
@@ -750,7 +1027,10 @@ export default function CollagenProteinPage() {
             {collagenSources.map(source => {
               const Icon = source.icon;
               const sourceKey = normalize(source.name.split(' ')[0]);
-              const sourceShakes = collagenShakes.filter(shake => normalize(shake.source).includes(sourceKey));
+              const sourceShakes = collagenShakes.filter(shake => 
+                normalize(shake.source).includes(sourceKey)
+              );
+              
               return (
                 <Card key={source.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
@@ -764,6 +1044,7 @@ export default function CollagenProteinPage() {
                       </div>
                     </div>
                   </CardHeader>
+                  
                   <CardContent>
                     <div className="space-y-3 mb-4">
                       <div className="grid grid-cols-2 gap-2">
@@ -776,19 +1057,31 @@ export default function CollagenProteinPage() {
                           <div className="text-sm font-semibold text-blue-600">{source.absorption}</div>
                         </div>
                       </div>
+                      
                       <div>
                         <h4 className="font-semibold text-sm mb-2">Benefits:</h4>
                         <div className="flex flex-wrap gap-1">
                           {source.benefits.map((benefit, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">{benefit}</Badge>
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {benefit}
+                            </Badge>
                           ))}
                         </div>
                       </div>
                     </div>
+                    
                     <div className="text-center">
-                      <div className={`text-2xl font-bold ${source.color.replace('bg-', 'text-')} mb-1`}>{sourceShakes.length}</div>
+                      <div className={`text-2xl font-bold ${source.color.replace('bg-', 'text-')} mb-1`}>
+                        {sourceShakes.length}
+                      </div>
                       <div className="text-sm text-gray-600 mb-3">Available Products</div>
-                      <Button className="w-full" onClick={() => { setSelectedSource(source.name.split(' ')[0]); setActiveTab('browse'); }}>
+                      <Button 
+                        className="w-full"
+                        onClick={() => {
+                          setSelectedSource(source.name.split(' ')[0]);
+                          setActiveTab('browse');
+                        }}
+                      >
                         View {source.name}
                       </Button>
                     </div>
@@ -804,6 +1097,7 @@ export default function CollagenProteinPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {beautyGoals.map(goal => {
               const Icon = goal.icon;
+              
               return (
                 <Card key={goal.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
@@ -817,26 +1111,38 @@ export default function CollagenProteinPage() {
                       </div>
                     </div>
                   </CardHeader>
+                  
                   <CardContent>
                     <div className="space-y-3 mb-4">
                       <div className="bg-gray-50 p-3 rounded-lg">
                         <div className="text-sm font-medium text-gray-700 mb-1">Recommended Types:</div>
                         <div className="flex flex-wrap gap-1">
                           {goal.recommendedTypes.map((type, index) => (
-                            <Badge key={index} className="bg-pink-100 text-pink-800 text-xs">{type}</Badge>
+                            <Badge key={index} className="bg-pink-100 text-pink-800 text-xs">
+                              {type}
+                            </Badge>
                           ))}
                         </div>
                       </div>
+                      
                       <div className="bg-blue-50 p-3 rounded-lg">
                         <div className="text-sm font-medium text-gray-700 mb-1">Daily Dosage:</div>
                         <div className="text-sm text-blue-800">{goal.recommendedDosage}</div>
                       </div>
+                      
                       <div className="bg-green-50 p-3 rounded-lg">
                         <div className="text-sm font-medium text-gray-700 mb-1">Expected Timeline:</div>
                         <div className="text-sm text-green-800">{goal.timeline}</div>
                       </div>
                     </div>
-                    <Button className="w-full" onClick={() => { setSelectedGoal(goal.name.split(' ')[0]); setActiveTab('browse'); }}>
+                    
+                    <Button 
+                      className="w-full"
+                      onClick={() => {
+                        setSelectedGoal(goal.name.split(' ')[0]);
+                        setActiveTab('browse');
+                      }}
+                    >
                       View {goal.name} Options
                     </Button>
                   </CardContent>
@@ -856,7 +1162,9 @@ export default function CollagenProteinPage() {
                     src={shake.image || 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=400&h=300&fit=crop'}
                     alt={shake.name}
                     className="w-full h-48 object-cover"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=400&h=300&fit=crop'; }}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=400&h=300&fit=crop';
+                    }}
                   />
                   <div className="absolute top-4 left-4">
                     <Badge className="bg-pink-500 text-white">Featured Collagen</Badge>
@@ -865,9 +1173,11 @@ export default function CollagenProteinPage() {
                     <Badge className="bg-white text-pink-800">{shake.bioavailability}% Bio</Badge>
                   </div>
                 </div>
+                
                 <CardHeader>
                   <CardTitle className="text-xl">{shake.name}</CardTitle>
                   <p className="text-gray-600">{shake.description}</p>
+                  
                   <div className="flex items-center gap-2 mt-2">
                     <Badge className="bg-pink-100 text-pink-800">{shake.source}</Badge>
                     <Badge variant="outline">{shake.flavor}</Badge>
@@ -878,35 +1188,67 @@ export default function CollagenProteinPage() {
                     </div>
                   </div>
                 </CardHeader>
+                
                 <CardContent>
+                  {/* Collagen Types Display */}
                   <div className="mb-4">
                     <h4 className="font-medium text-gray-900 mb-2">Collagen Types:</h4>
                     <div className="flex flex-wrap gap-2">
                       {shake.collagenTypes.map((type, index) => (
-                        <Badge key={index} className="bg-purple-100 text-purple-800">{type}</Badge>
+                        <Badge key={index} className="bg-purple-100 text-purple-800">
+                          {type}
+                        </Badge>
                       ))}
                     </div>
                   </div>
+
+                  {/* Enhanced nutrition display */}
                   <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-pink-50 rounded-lg">
-                    <div className="text-center"><div className="text-xl font-bold text-pink-600">{shake.nutrition.collagen}g</div><div className="text-xs text-gray-600">Collagen</div></div>
-                    <div className="text-center"><div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div><div className="text-xs text-gray-600">Calories</div></div>
-                    <div className="text-center"><div className="text-xl font-bold text-purple-600">{shake.bioavailability}%</div><div className="text-xs text-gray-600">Bio-Availability</div></div>
-                    <div className="text-center"><div className="text-xl font-bold text-amber-600">${shake.price}</div><div className="text-xs text-gray-600">Price</div></div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-pink-600">{shake.nutrition.collagen}g</div>
+                      <div className="text-xs text-gray-600">Collagen</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div>
+                      <div className="text-xs text-gray-600">Calories</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-purple-600">{shake.bioavailability}%</div>
+                      <div className="text-xs text-gray-600">Bio-Availability</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-amber-600">${shake.price}</div>
+                      <div className="text-xs text-gray-600">Price</div>
+                    </div>
                   </div>
+
+                  {/* Benefits */}
                   <div className="mb-4">
                     <h4 className="font-medium text-gray-900 mb-2">Key Benefits:</h4>
                     <div className="flex flex-wrap gap-1">
                       {shake.benefits.map((benefit, index) => (
-                        <Badge key={index} variant="outline" className="text-xs">{benefit}</Badge>
+                        <Badge key={index} variant="outline" className="text-xs">
+                          {benefit}
+                        </Badge>
                       ))}
                     </div>
                   </div>
+
+                  {/* Usage Info */}
                   <div className="mb-4 bg-gray-50 p-4 rounded-lg">
                     <div className="grid grid-cols-2 gap-4">
-                      <div><div className="text-sm font-medium text-gray-700 mb-1">Best Time:</div><div className="text-pink-600 font-semibold">{shake.bestTime}</div></div>
-                      <div><div className="text-sm font-medium text-gray-700 mb-1">Absorption:</div><div className="text-blue-600 font-semibold">{shake.absorption}</div></div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-1">Best Time:</div>
+                        <div className="text-pink-600 font-semibold">{shake.bestTime}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-1">Absorption:</div>
+                        <div className="text-blue-600 font-semibold">{shake.absorption}</div>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Ingredients */}
                   <div className="mb-6">
                     <h4 className="font-medium text-gray-900 mb-2">Ingredients:</h4>
                     <div className="text-sm text-gray-700 space-y-1">
@@ -918,8 +1260,13 @@ export default function CollagenProteinPage() {
                       ))}
                     </div>
                   </div>
+
+                  {/* Action buttons */}
                   <div className="flex gap-3">
-                    <Button className="flex-1 bg-pink-600 hover:bg-pink-700" onClick={() => handleMakeShake(shake)}>
+                    <Button 
+                      className="flex-1 bg-pink-600 hover:bg-pink-700"
+                      onClick={() => handleMakeShake(shake)}
+                    >
                       <Sparkles className="h-4 w-4 mr-2" />
                       Make This Shake
                     </Button>
@@ -933,29 +1280,41 @@ export default function CollagenProteinPage() {
             ))}
           </div>
         )}
-
-        {/* In-Content Progress (clean, consistent) */}
-        <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mt-8">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold mb-2">Your Progress</h3>
-                <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="text-purple-600">Level {userProgress.level}</Badge>
-                  <Badge variant="outline" className="text-blue-600">{userProgress.totalPoints} XP</Badge>
-                  <Badge variant="outline" className="text-green-600">{userProgress.totalDrinksMade} Drinks Made</Badge>
-                </div>
-              </div>
-              <div className="text-center">
-                <Progress value={userProgress.dailyGoalProgress} className="w-32 mb-2" />
-                <div className="text-xs text-gray-500">Daily Goal Progress</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
-      {/* Floating Action Button removed; no fixed footer */}
+      {/* Spacer to ensure content clears the fixed footer on all screens */}
+      <div aria-hidden className="h-24 sm:h-28" />
+
+      {/* Bottom Stats Bar with safe-area padding */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 pb-[env(safe-area-inset-bottom)] z-40">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-pink-600" />
+              <span className="text-gray-600">Collagen Products Found:</span>
+              <span className="font-bold text-pink-600">{filteredShakes.length}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Star className="h-4 w-4 text-yellow-500" />
+              <span className="text-gray-600">Your Level:</span>
+              <span className="font-bold text-yellow-600">{userProgress.level}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-green-500" />
+              <span className="text-gray-600">XP:</span>
+              <span className="font-bold text-green-600">{userProgress.totalPoints}</span>
+            </div>
+          </div>
+          
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          >
+            Back to Top
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
