@@ -402,6 +402,56 @@ export default function CollagenProteinPage() {
   const [selectedShake, setSelectedShake] = useState<any>(null);
   const [showModal, setShowModal] = useState(false);
 
+  // Share handlers
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Collagen Protein',
+      text: 'Explore collagen protein options, types, sources, and benefits.',
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      // ignore cancellations; fallback if copy fails
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const handleShareShake = async (shake: any) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const text = `${shake.name} • ${shake.primaryBenefit} • ${shake.source}\n${shake.description}`;
+    const shareData = {
+      title: shake.name,
+      text,
+      url
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shake.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shake.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
   // Filter and sort shakes
   const getFilteredShakes = () => {
     const q = searchQuery.trim().toLowerCase();
@@ -610,7 +660,7 @@ export default function CollagenProteinPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-pink-600 hover:bg-pink-700">
+              <Button size="sm" className="bg-pink-600 hover:bg-pink-700" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Recipe
               </Button>
@@ -891,7 +941,7 @@ export default function CollagenProteinPage() {
                         <Sparkles className="h-4 w-4 mr-2" />
                         Make Shake
                       </Button>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" onClick={() => handleShareShake(shake)}>
                         <Share2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -1220,7 +1270,7 @@ export default function CollagenProteinPage() {
                       <Sparkles className="h-4 w-4 mr-2" />
                       Make This Shake
                     </Button>
-                    <Button variant="outline">
+                    <Button variant="outline" onClick={() => handleShareShake(shake)}>
                       <Share2 className="h-4 w-4 mr-2" />
                       Share
                     </Button>
@@ -1232,16 +1282,7 @@ export default function CollagenProteinPage() {
         )}
       </div>
 
-      {/* Floating Action Button */}
-      <div className="fixed bottom-6 right-6 z-50">
-        <Button 
-          size="lg" 
-          className="rounded-full w-14 h-14 bg-pink-600 hover:bg-pink-700 shadow-lg"
-          onClick={() => setActiveTab('browse')}
-        >
-          <Plus className="h-6 w-6" />
-        </Button>
-      </div>
+      {/* Floating Action Button removed */}
 
       {/* Bottom Stats Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
