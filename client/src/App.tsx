@@ -60,6 +60,9 @@ import CaseinProtein from "@/pages/drinks/protein-shakes/casein";
 import CollagenProtein from "@/pages/drinks/protein-shakes/collagen";
 import PlantBasedProtein from "@/pages/drinks/protein-shakes/plant-based";
 import WheyProtein from "@/pages/drinks/protein-shakes/whey";
+// 👇 Add these
+import EggProtein from "@/pages/drinks/protein-shakes/egg";
+import BeefProtein from "@/pages/drinks/protein-shakes/beef";
 
 // ========== DETOXES SUBCATEGORY PAGES ==========
 import DetoxJuices from "@/pages/drinks/detoxes/juice";
@@ -148,19 +151,28 @@ function DrinksSection() {
       <Route path="/drinks/smoothies/protein" component={ProteinSmoothies} />
       <Route path="/drinks/smoothies/workout" component={WorkoutSmoothies} />
       <Route path="/drinks/smoothies" component={SmoothiesHub} />
+
       <Route path="/drinks/protein-shakes/casein" component={CaseinProtein} />
       <Route path="/drinks/protein-shakes/collagen" component={CollagenProtein} />
       <Route path="/drinks/protein-shakes/plant-based" component={PlantBasedProtein} />
       <Route path="/drinks/protein-shakes/whey" component={WheyProtein} />
+
+      {/* 👇 Added missing protein pages */}
+      <Route path="/drinks/protein-shakes/egg" component={EggProtein} />
+      <Route path="/drinks/protein-shakes/beef" component={BeefProtein} />
+
       <Route path="/drinks/protein-shakes" component={ProteinShakesHub} />
+
       <Route path="/drinks/detoxes/juice" component={DetoxJuices} />
       <Route path="/drinks/detoxes/tea" component={DetoxTeas} />
       <Route path="/drinks/detoxes/water" component={DetoxWaters} />
       <Route path="/drinks/detoxes" component={DetoxesHub} />
+
       <Route path="/drinks/potent-potables/:rest*">
         {() => <PotentPotablesSection />}
       </Route>
       <Route path="/drinks/potent-potables" component={PotentPotablesSection} />
+
       <Route path="/drinks" component={DrinksHubPage} />
       <Route>
         <Redirect to="/drinks" />
