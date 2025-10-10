@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { 
   Sparkles, Clock, Users, Trophy, Heart, Star, Calendar, 
   CheckCircle, Target, Flame, Droplets, Leaf, Apple, Gem,
-  Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
+  Timer, Award, TrendingUp, ChefHat, Zap, Gift,
   Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
   Activity, BarChart3, Crown, Dumbbell, Eye, Bone, Moon, Wine, ArrowRight, X, Check
 } from 'lucide-react';
@@ -417,7 +417,6 @@ export default function CollagenProteinPage() {
         alert('Link copied to clipboard!');
       }
     } catch {
-      // ignore cancellations; fallback if copy fails
       try {
         await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
         alert('Link copied to clipboard!');
@@ -669,7 +668,8 @@ export default function CollagenProteinPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Main content with extra bottom padding to clear the fixed footer */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-28">
         {/* Cross-Hub Navigation */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
           <CardContent className="p-4">
@@ -975,46 +975,46 @@ export default function CollagenProteinPage() {
                     </div>
                   </CardHeader>
                   
-                  <CardContent>
-                    <div className="space-y-3 mb-4">
-                      <div className="text-center bg-gray-50 p-3 rounded-lg">
-                        <div className="text-sm font-medium text-gray-700 mb-1">Body Percentage</div>
-                        <div className="text-2xl font-bold text-pink-600">{type.percentage}</div>
-                      </div>
-                      
-                      <div>
-                        <h4 className="font-semibold text-sm mb-2">Benefits:</h4>
-                        <div className="flex flex-wrap gap-1">
-                          {type.benefits.map((benefit, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
-                              {benefit}
-                            </Badge>
-                          ))}
+                    <CardContent>
+                      <div className="space-y-3 mb-4">
+                        <div className="text-center bg-gray-50 p-3 rounded-lg">
+                          <div className="text-sm font-medium text-gray-700 mb-1">Body Percentage</div>
+                          <div className="text-2xl font-bold text-pink-600">{type.percentage}</div>
+                        </div>
+                        
+                        <div>
+                          <h4 className="font-semibold text-sm mb-2">Benefits:</h4>
+                          <div className="flex flex-wrap gap-1">
+                            {type.benefits.map((benefit, index) => (
+                              <Badge key={index} variant="outline" className="text-xs">
+                                {benefit}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div className="bg-blue-50 p-3 rounded-lg">
+                          <div className="text-sm font-medium text-gray-700 mb-1">Primary Use:</div>
+                          <div className="text-sm text-blue-800">{type.primaryUse}</div>
                         </div>
                       </div>
                       
-                      <div className="bg-blue-50 p-3 rounded-lg">
-                        <div className="text-sm font-medium text-gray-700 mb-1">Primary Use:</div>
-                        <div className="text-sm text-blue-800">{type.primaryUse}</div>
+                      <div className="text-center">
+                        <div className={`text-2xl font-bold ${type.color} mb-1`}>
+                          {typeShakes.length}
+                        </div>
+                        <div className="text-sm text-gray-600 mb-3">Available Options</div>
+                        <Button 
+                          className="w-full"
+                          onClick={() => {
+                            setSelectedCollagenType(typeExact);
+                            setActiveTab('browse');
+                          }}
+                        >
+                          Explore {type.name}
+                        </Button>
                       </div>
-                    </div>
-                    
-                    <div className="text-center">
-                      <div className={`text-2xl font-bold ${type.color} mb-1`}>
-                        {typeShakes.length}
-                      </div>
-                      <div className="text-sm text-gray-600 mb-3">Available Options</div>
-                      <Button 
-                        className="w-full"
-                        onClick={() => {
-                          setSelectedCollagenType(typeExact);
-                          setActiveTab('browse');
-                        }}
-                      >
-                        Explore {type.name}
-                      </Button>
-                    </div>
-                  </CardContent>
+                    </CardContent>
                 </Card>
               );
             })}
@@ -1282,10 +1282,11 @@ export default function CollagenProteinPage() {
         )}
       </div>
 
-      {/* Floating Action Button removed */}
+      {/* Spacer to ensure content clears the fixed footer on all screens */}
+      <div aria-hidden className="h-24 sm:h-28" />
 
-      {/* Bottom Stats Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
+      {/* Bottom Stats Bar with safe-area padding */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 pb-[env(safe-area-inset-bottom)] z-40">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-6 text-sm">
             <div className="flex items-center gap-2">
