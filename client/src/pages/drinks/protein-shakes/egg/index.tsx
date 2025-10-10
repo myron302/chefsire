@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'wouter';
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -8,7 +8,7 @@ import {
   Target, Heart, Star, Zap, Award, TrendingUp, Clock,
   Leaf, Apple, Wine, Home, Sparkles, Calendar, ChefHat,
   FlaskConical, Dumbbell, Shield, Plus, Share2, Filter,
-  ArrowRight, BookOpen, Flame, Droplets, Search, ArrowLeft, Moon, X
+  ArrowRight, BookOpen, Flame, Droplets, Search, ArrowLeft, Moon, X, Check
 } from 'lucide-react';
 
 import UniversalSearch from '@/components/UniversalSearch';
@@ -176,6 +176,7 @@ export default function EggProteinPage() {
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [filterTag, setFilterTag] = useState('All');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
   const allTags = ['All', ...new Set(eggProteinRecipes.flatMap(r => r.tags))];
 
@@ -184,30 +185,37 @@ export default function EggProteinPage() {
     : eggProteinRecipes.filter(r => r.tags.includes(filterTag));
 
   const makeRecipe = (recipe) => {
-    const drinkData = {
-      id: recipe.id,
-      name: recipe.name,
-      category: 'protein-shakes' as const,
-      description: `Egg protein shake with ${recipe.ingredients.join(', ')}`,
-      ingredients: recipe.ingredients,
-      nutrition: {
-        calories: recipe.calories,
-        protein: recipe.protein,
-        carbs: recipe.carbs,
-        fat: 5
-      },
-      difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
-      prepTime: recipe.prepTime,
-      rating: recipe.rating,
-      tags: recipe.tags
-    };
-
-    addToRecentlyViewed(drinkData);
-    incrementDrinksMade();
-    addPoints(100);
-    
     setSelectedRecipe(recipe);
-    setTimeout(() => setSelectedRecipe(null), 3000);
+    setShowModal(true);
+  };
+
+  const handleCompleteRecipe = () => {
+    if (selectedRecipe) {
+      const drinkData = {
+        id: selectedRecipe.id,
+        name: selectedRecipe.name,
+        category: 'protein-shakes' as const,
+        description: `Egg protein shake with ${selectedRecipe.ingredients.join(', ')}`,
+        ingredients: selectedRecipe.ingredients,
+        nutrition: {
+          calories: selectedRecipe.calories,
+          protein: selectedRecipe.protein,
+          carbs: selectedRecipe.carbs,
+          fat: 5
+        },
+        difficulty: selectedRecipe.difficulty as 'Easy' | 'Medium' | 'Hard',
+        prepTime: selectedRecipe.prepTime,
+        rating: selectedRecipe.rating,
+        tags: selectedRecipe.tags
+      };
+
+      addToRecentlyViewed(drinkData);
+      incrementDrinksMade();
+      addPoints(100);
+    }
+    
+    setShowModal(false);
+    setSelectedRecipe(null);
   };
 
   const handleDrinkSelection = (drink) => {
@@ -228,6 +236,63 @@ export default function EggProteinPage() {
             </div>
             <div className="p-4">
               <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Make Recipe Modal */}
+      {showModal && selectedRecipe && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
+          <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-2xl font-bold">{selectedRecipe.name}</h2>
+              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold mb-2">Ingredients:</h3>
+                <ul className="space-y-2">
+                  {selectedRecipe.ingredients.map((ing, idx) => (
+                    <li key={idx} className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-green-600" />
+                      <span>{ing}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-2">Benefits:</h3>
+                <ul className="text-sm text-gray-700 space-y-1">
+                  {selectedRecipe.benefits.map((benefit, idx) => (
+                    <li key={idx}>• {benefit}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="grid grid-cols-3 gap-2 p-3 bg-amber-50 rounded-lg">
+                <div className="text-center">
+                  <div className="font-bold text-amber-600">{selectedRecipe.protein}g</div>
+                  <div className="text-xs text-gray-600">Protein</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-bold text-blue-600">{selectedRecipe.calories}</div>
+                  <div className="text-xs text-gray-600">Calories</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-bold text-purple-600">{selectedRecipe.prepTime}min</div>
+                  <div className="text-xs text-gray-600">Prep</div>
+                </div>
+              </div>
+              <div className="flex gap-4 pt-4">
+                <Button 
+                  className="flex-1 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600"
+                  onClick={handleCompleteRecipe}
+                >
+                  Complete Recipe (+100 XP)
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -318,25 +383,6 @@ export default function EggProteinPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Success Notification */}
-      {selectedRecipe && (
-        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 animate-in fade-in slide-in-from-top">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="bg-green-500 rounded-full p-2">
-                <Zap className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h4 className="font-semibold text-green-900">
-                  Made {selectedRecipe.name}!
-                </h4>
-                <p className="text-sm text-green-700">+100 XP • {selectedRecipe.protein}g protein</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Egg Protein Benefits */}
       <Card>
