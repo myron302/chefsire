@@ -8,7 +8,7 @@ import {
   Target, Heart, Star, Zap, Award, TrendingUp, Clock,
   Leaf, Apple, Wine, Home, Sparkles, Calendar, ChefHat,
   FlaskConical, Dumbbell, Shield, Plus, Share2, Filter,
-  ArrowRight, BookOpen, Flame, Droplets, Search, ArrowLeft, Moon, X, Check
+  ArrowRight, BookOpen, Flame, Droplets, Search, ArrowLeft, Moon, X, Check, Camera
 } from 'lucide-react';
 
 import UniversalSearch from '@/components/UniversalSearch';
@@ -118,42 +118,12 @@ const eggProteinRecipes = [
 ];
 
 const eggProteinBenefits = [
-  {
-    icon: Target,
-    title: 'Complete Protein',
-    description: 'All 9 essential amino acids in optimal ratios',
-    color: 'text-blue-600'
-  },
-  {
-    icon: Shield,
-    title: 'Lactose-Free',
-    description: 'Perfect for those with dairy sensitivities',
-    color: 'text-green-600'
-  },
-  {
-    icon: Zap,
-    title: 'Medium Absorption',
-    description: 'Steady protein release for sustained recovery',
-    color: 'text-orange-600'
-  },
-  {
-    icon: Heart,
-    title: 'Heart Healthy',
-    description: 'Low in saturated fat and cholesterol',
-    color: 'text-red-600'
-  },
-  {
-    icon: Dumbbell,
-    title: 'Muscle Building',
-    description: 'High biological value (BV 100)',
-    color: 'text-purple-600'
-  },
-  {
-    icon: Droplets,
-    title: 'Easy Digestion',
-    description: 'Gentle on the stomach, minimal bloating',
-    color: 'text-cyan-600'
-  }
+  { icon: Target, title: 'Complete Protein', description: 'All 9 essential amino acids in optimal ratios', color: 'text-blue-600' },
+  { icon: Shield, title: 'Lactose-Free', description: 'Perfect for those with dairy sensitivities', color: 'text-green-600' },
+  { icon: Zap, title: 'Medium Absorption', description: 'Steady protein release for sustained recovery', color: 'text-orange-600' },
+  { icon: Heart, title: 'Heart Healthy', description: 'Low in saturated fat and cholesterol', color: 'text-red-600' },
+  { icon: Dumbbell, title: 'Muscle Building', description: 'High biological value (BV 100)', color: 'text-purple-600' },
+  { icon: Droplets, title: 'Easy Digestion', description: 'Gentle on the stomach, minimal bloating', color: 'text-cyan-600' }
 ];
 
 const sisterProteinPages = [
@@ -220,6 +190,51 @@ export default function EggProteinPage() {
 
   const handleDrinkSelection = (drink) => {
     console.log('Selected drink:', drink);
+  };
+
+  // Share handlers
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Egg Protein Shakes',
+      text: 'Browse egg protein shake recipes and benefits.',
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const handleShareRecipe = async (recipe) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const text = `${recipe.name} • ${recipe.protein}g protein • ${recipe.calories} cal\n${recipe.ingredients.join(', ')}`;
+    const shareData = { title: recipe.name, text, url };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
   };
 
   return (
@@ -328,6 +343,10 @@ export default function EggProteinPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
+              <Button size="sm" className="bg-amber-600 hover:bg-amber-700" onClick={handleSharePage}>
+                <Camera className="h-4 w-4 mr-2" />
+                Share Recipes
+              </Button>
             </div>
           </div>
         </div>
@@ -511,7 +530,7 @@ export default function EggProteinPage() {
                   <Plus className="h-4 w-4 mr-2" />
                   Make (+100 XP)
                 </Button>
-                <Button variant="outline" size="icon">
+                <Button variant="outline" size="icon" onClick={() => handleShareRecipe(recipe)}>
                   <Share2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -520,7 +539,7 @@ export default function EggProteinPage() {
         ))}
       </div>
 
-      {/* User Progress Footer */}
+      {/* Your Progress (in-content) */}
       <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
         <CardContent className="p-6">
           <div className="flex items-center justify-between">
