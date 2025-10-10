@@ -11,7 +11,7 @@ import {
   CheckCircle, Target, Flame, Droplets, Bed, Timer,
   Award, TrendingUp, ChefHat, Zap, Gift, Plus, Search,
   Filter, Shuffle, Camera, Share2, ArrowLeft, Activity,
-  BarChart3, Sparkles, Crown, Dumbbell, Leaf, Apple, Wine, ArrowRight, X
+  BarChart3, Sparkles, Crown, Dumbbell, Leaf, Apple, Wine, ArrowRight, X, Check
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -318,6 +318,8 @@ export default function CaseinProteinPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
+  const [selectedShake, setSelectedShake] = useState(null);
+  const [showModal, setShowModal] = useState(false);
 
   // Filter and sort shakes
   const getFilteredShakes = () => {
@@ -350,23 +352,30 @@ export default function CaseinProteinPage() {
   const trendingShakes = caseinShakes.filter(shake => shake.trending);
 
   const handleMakeShake = (shake) => {
-    addToRecentlyViewed({
-      id: shake.id,
-      name: shake.name,
-      category: 'protein-shakes',
-      description: shake.description,
-      ingredients: shake.ingredients,
-      nutrition: shake.nutrition,
-      difficulty: shake.difficulty,
-      prepTime: shake.prepTime,
-      rating: shake.rating,
-      fitnessGoal: shake.fitnessGoal,
-      bestTime: shake.bestTime
-    });
-    incrementDrinksMade();
-    addPoints(30);
-    
-    console.log(`Made ${shake.name}! +30 XP`);
+    setSelectedShake(shake);
+    setShowModal(true);
+  };
+
+  const handleCompleteShake = () => {
+    if (selectedShake) {
+      addToRecentlyViewed({
+        id: selectedShake.id,
+        name: selectedShake.name,
+        category: 'protein-shakes',
+        description: selectedShake.description,
+        ingredients: selectedShake.ingredients,
+        nutrition: selectedShake.nutrition,
+        difficulty: selectedShake.difficulty,
+        prepTime: selectedShake.prepTime,
+        rating: selectedShake.rating,
+        fitnessGoal: selectedShake.fitnessGoal,
+        bestTime: selectedShake.bestTime
+      });
+      incrementDrinksMade();
+      addPoints(30);
+    }
+    setShowModal(false);
+    setSelectedShake(null);
   };
 
   return (
@@ -383,6 +392,65 @@ export default function CaseinProteinPage() {
             </div>
             <div className="p-4">
               <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Make Shake Modal */}
+      {showModal && selectedShake && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
+          <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-2xl font-bold">{selectedShake.name}</h2>
+              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold mb-2">Ingredients:</h3>
+                <ul className="space-y-2">
+                  {selectedShake.ingredients.map((ing, idx) => (
+                    <li key={idx} className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-green-600" />
+                      <span>{ing}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-2">Benefits:</h3>
+                <div className="flex flex-wrap gap-1">
+                  {selectedShake.benefits.map((benefit, idx) => (
+                    <Badge key={idx} className="bg-purple-100 text-purple-800 text-xs">
+                      {benefit}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 p-3 bg-purple-50 rounded-lg">
+                <div className="text-center">
+                  <div className="font-bold text-purple-600">{selectedShake.nutrition.protein}g</div>
+                  <div className="text-xs text-gray-600">Protein</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-bold text-blue-600">{selectedShake.nutrition.calories}</div>
+                  <div className="text-xs text-gray-600">Calories</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-bold text-green-600">{selectedShake.releaseTime}</div>
+                  <div className="text-xs text-gray-600">Release</div>
+                </div>
+              </div>
+              <div className="flex gap-4 pt-4">
+                <Button 
+                  className="flex-1 bg-purple-600 hover:bg-purple-700"
+                  onClick={handleCompleteShake}
+                >
+                  Complete Shake (+30 XP)
+                </Button>
+              </div>
             </div>
           </div>
         </div>
