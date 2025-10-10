@@ -14,7 +14,7 @@ import {
 import { useDrinks } from "@/contexts/DrinksContext";
 import UniversalSearch from '@/components/UniversalSearch';
 
-// Navigation data
+// Navigation data - FIXED PATHS
 const otherDrinkHubs = [
   { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
   { id: 'detoxes', name: 'Detox Drinks', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing & wellness' },
@@ -23,11 +23,11 @@ const otherDrinkHubs = [
 ];
 
 const proteinSubcategories = [
-  { id: 'plant', name: 'Plant-Based', icon: Leaf, path: '/drinks/protein-shakes/plant-based', description: 'Vegan friendly' },
-  { id: 'casein', name: 'Casein', icon: Moon, path: '/drinks/protein-shakes/casein', description: 'Slow release' },
-  { id: 'collagen', name: 'Collagen', icon: Sparkles, path: '/drinks/protein-shakes/collagen', description: 'Beauty support' },
-  { id: 'egg', name: 'Egg Protein', icon: Target, path: '/drinks/protein-shakes/egg', description: 'Complete amino' },
-  { id: 'beef', name: 'Beef Protein', icon: Flame, path: '/drinks/protein-shakes/beef', description: 'Natural creatine' }
+  { id: 'plant', name: 'Plant-Based', icon: Leaf, route: '/drinks/protein-shakes/plant-based', description: 'Vegan friendly' },
+  { id: 'casein', name: 'Casein', icon: Moon, route: '/drinks/protein-shakes/casein', description: 'Slow release' },
+  { id: 'collagen', name: 'Collagen', icon: Sparkles, route: '/drinks/protein-shakes/collagen', description: 'Beauty support' },
+  { id: 'egg', name: 'Egg Protein', icon: Target, route: '/drinks/protein-shakes/egg', description: 'Complete amino' },
+  { id: 'beef', name: 'Beef Protein', icon: Flame, route: '/drinks/protein-shakes/beef', description: 'Natural creatine' }
 ];
 
 // Whey-specific data
@@ -256,7 +256,7 @@ export default function WheyProteinShakesPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* Universal Search Modal */}
+      {/* FIXED Universal Search Modal */}
       {showUniversalSearch && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -337,7 +337,7 @@ export default function WheyProteinShakesPage() {
           </CardContent>
         </Card>
 
-        {/* Sister Subpages Navigation */}
+        {/* Sister Subpages Navigation - FIXED ROUTES */}
         <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 mb-6">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Protein Types</h3>
@@ -345,7 +345,7 @@ export default function WheyProteinShakesPage() {
               {proteinSubcategories.map((subcategory) => {
                 const Icon = subcategory.icon;
                 return (
-                  <Link key={subcategory.id} href={subcategory.path}>
+                  <Link key={subcategory.id} href={subcategory.route}>
                     <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
                       <Icon className="h-4 w-4 mr-2 text-blue-600" />
                       <div className="text-left flex-1">
