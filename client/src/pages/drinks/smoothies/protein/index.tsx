@@ -1,14 +1,15 @@
+// client/src/pages/drinks/smoothies/protein/index.tsx
 import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
+import { Progress } from "@/components/ui/progress";
 import { 
-  Apple, Clock, Heart, Star, Search, Share2, ArrowLeft,
-  Plus, Camera, Zap, Trophy, Milk, Sparkles, Target, Leaf,
-  Crown, Dumbbell
+  Apple, Heart, Star, Search, Share2, ArrowLeft,
+  Camera, Zap, Target, Leaf, FlaskConical, GlassWater,
+  Coffee, IceCream, Dumbbell, X, Check
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -34,10 +35,13 @@ export default function HighProteinSmoothiesPage() {
   const [selectedProteinSource, setSelectedProteinSource] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedAllergen, setSelectedAllergen] = useState('');
+  const [maxCalories, setMaxCalories] = useState(500);
   const [onlyNaturalProtein, setOnlyNaturalProtein] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedSmoothie, setSelectedSmoothie] = useState<any>(null);
 
   const getFilteredSmoothies = () => {
     let filtered = proteinSmoothies.filter(smoothie => {
@@ -48,8 +52,9 @@ export default function HighProteinSmoothiesPage() {
       const matchesCategory = !selectedCategory || smoothie.category.toLowerCase().includes(selectedCategory.toLowerCase());
       const matchesAllergen = !selectedAllergen || !smoothie.allergens.includes(selectedAllergen);
       const matchesNatural = !onlyNaturalProtein || smoothie.naturalProtein;
+      const matchesCalories = smoothie.nutrition.calories <= maxCalories;
       
-      return matchesSearch && matchesProteinSource && matchesCategory && matchesAllergen && matchesNatural;
+      return matchesSearch && matchesProteinSource && matchesCategory && matchesAllergen && matchesNatural && matchesCalories;
     });
 
     filtered.sort((a, b) => {
@@ -69,33 +74,109 @@ export default function HighProteinSmoothiesPage() {
   const featuredSmoothies = proteinSmoothies.filter(smoothie => smoothie.featured);
 
   const handleMakeSmoothie = (smoothie: any) => {
-    addToRecentlyViewed({
-      id: smoothie.id,
-      name: smoothie.name,
-      category: 'smoothies',
-      description: smoothie.description,
-      ingredients: smoothie.ingredients,
-      nutrition: smoothie.nutrition,
-      difficulty: smoothie.difficulty,
-      prepTime: smoothie.prepTime,
-      rating: smoothie.rating,
-      fitnessGoal: smoothie.fitnessGoal,
-      bestTime: smoothie.bestTime
-    });
-    incrementDrinksMade();
-    addPoints(20);
+    setSelectedSmoothie(smoothie);
+    setShowModal(true);
+  };
+
+  const handleCompleteSmoothie = () => {
+    if (selectedSmoothie) {
+      addToRecentlyViewed({
+        id: selectedSmoothie.id,
+        name: selectedSmoothie.name,
+        category: 'smoothies',
+        description: selectedSmoothie.description,
+        ingredients: selectedSmoothie.ingredients,
+        nutrition: selectedSmoothie.nutrition,
+        difficulty: selectedSmoothie.difficulty,
+        prepTime: selectedSmoothie.prepTime,
+        rating: selectedSmoothie.rating,
+        fitnessGoal: selectedSmoothie.fitnessGoal,
+        bestTime: selectedSmoothie.bestTime
+      });
+      incrementDrinksMade();
+      addPoints(20);
+    }
+    setShowModal(false);
+    setSelectedSmoothie(null);
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-yellow-50">
+      {/* Universal Search Modal */}
       {showUniversalSearch && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4">
-            <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
+              <h2 className="text-lg font-semibold">Search All Drinks</h2>
+              <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-4">
+              <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+            </div>
           </div>
         </div>
       )}
 
+      {/* Make Smoothie Modal */}
+      {showModal && selectedSmoothie && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
+          <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-2xl font-bold">{selectedSmoothie.name}</h2>
+              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold mb-2">Ingredients:</h3>
+                <ul className="space-y-2">
+                  {selectedSmoothie.ingredients.map((ing, idx) => (
+                    <li key={idx} className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-orange-600" />
+                      <span>{ing}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-2">Benefits:</h3>
+                <ul className="text-sm text-gray-700 space-y-1">
+                  {selectedSmoothie.benefits.map((benefit, idx) => (
+                    <li key={idx}>• {benefit}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="grid grid-cols-3 gap-2 p-3 bg-orange-50 rounded-lg">
+                <div className="text-center">
+                  <div className="font-bold text-orange-600">{selectedSmoothie.nutrition.protein}g</div>
+                  <div className="text-xs text-gray-600">Protein</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-bold text-blue-600">{selectedSmoothie.nutrition.calories}</div>
+                  <div className="text-xs text-gray-600">Calories</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-bold text-green-600">{selectedSmoothie.prepTime}min</div>
+                  <div className="text-xs text-gray-600">Prep</div>
+                </div>
+              </div>
+              <div className="flex gap-4 pt-4">
+                <Button 
+                  className="flex-1 bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600"
+                  onClick={handleCompleteSmoothie}
+                >
+                  Complete Smoothie (+20 XP)
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -138,10 +219,10 @@ export default function HighProteinSmoothiesPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         
         {/* CROSS-HUB NAVIGATION */}
-        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
+        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -151,7 +232,10 @@ export default function HighProteinSmoothiesPage() {
                   <Link key={hub.id} href={hub.route}>
                     <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
                       <Icon className="h-4 w-4 mr-2 text-blue-600" />
-                      <span>{hub.name}</span>
+                      <div className="text-left flex-1">
+                        <div className="font-medium text-sm">{hub.name}</div>
+                        <div className="text-xs text-gray-500">{hub.description}</div>
+                      </div>
                       <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
                     </Button>
                   </Link>
@@ -162,7 +246,7 @@ export default function HighProteinSmoothiesPage() {
         </Card>
 
         {/* SISTER SUBPAGES NAVIGATION */}
-        <Card className="bg-gradient-to-r from-orange-50 to-amber-50 border-orange-200 mb-6">
+        <Card className="bg-gradient-to-r from-orange-50 to-amber-50 border-orange-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Smoothie Types</h3>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -172,7 +256,10 @@ export default function HighProteinSmoothiesPage() {
                   <Link key={subcategory.id} href={subcategory.path}>
                     <Button variant="outline" className="w-full justify-start hover:bg-orange-50 hover:border-orange-300">
                       <Icon className="h-4 w-4 mr-2 text-orange-600" />
-                      <span>{subcategory.name}</span>
+                      <div className="text-left flex-1">
+                        <div className="font-medium text-sm">{subcategory.name}</div>
+                        <div className="text-xs text-gray-500">{subcategory.description}</div>
+                      </div>
                       <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
                     </Button>
                   </Link>
@@ -182,7 +269,8 @@ export default function HighProteinSmoothiesPage() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-orange-600">23g</div>
@@ -209,7 +297,8 @@ export default function HighProteinSmoothiesPage() {
           </Card>
         </div>
 
-        <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
+        {/* Tabs */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
             { id: 'protein-sources', label: 'Protein Sources', icon: Apple },
@@ -232,77 +321,96 @@ export default function HighProteinSmoothiesPage() {
         </div>
 
         {activeTab === 'browse' && (
-          <div>
-            <div className="flex flex-col md:flex-row gap-4 mb-6">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  placeholder="Search protein smoothies..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              
-              <div className="flex gap-2">
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={selectedProteinSource}
-                  onChange={(e) => setSelectedProteinSource(e.target.value)}
-                >
-                  <option value="">All Protein Sources</option>
-                  <option value="Greek Yogurt">Greek Yogurt</option>
-                  <option value="Nut Butter">Nut Butters</option>
-                  <option value="Cottage Cheese">Cottage Cheese</option>
-                  <option value="Seeds">Seeds & Nuts</option>
-                </select>
-                
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                >
-                  <option value="">All Categories</option>
-                  <option value="Breakfast">Breakfast</option>
-                  <option value="Recovery">Recovery</option>
-                  <option value="Green">Green</option>
-                  <option value="Chocolate">Chocolate</option>
-                  <option value="Tropical">Tropical</option>
-                </select>
-                
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={selectedAllergen}
-                  onChange={(e) => setSelectedAllergen(e.target.value)}
-                >
-                  <option value="">Include All</option>
-                  <option value="Dairy">Dairy-Free</option>
-                  <option value="Nuts">Nut-Free</option>
-                </select>
-                
-                <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
-                  <input
-                    type="checkbox"
-                    checked={onlyNaturalProtein}
-                    onChange={(e) => setOnlyNaturalProtein(e.target.checked)}
-                    className="rounded"
-                  />
-                  Natural Only
-                </label>
-                
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                >
-                  <option value="rating">Sort by Rating</option>
-                  <option value="protein">Sort by Protein</option>
-                  <option value="cost">Sort by Cost</option>
-                  <option value="calories">Sort by Calories</option>
-                </select>
-              </div>
-            </div>
+          <div className="space-y-6">
+            {/* Search and Filters */}
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      placeholder="Search protein smoothies..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <select 
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      value={selectedProteinSource}
+                      onChange={(e) => setSelectedProteinSource(e.target.value)}
+                    >
+                      <option value="">All Protein Sources</option>
+                      <option value="Greek Yogurt">Greek Yogurt</option>
+                      <option value="Nut Butter">Nut Butters</option>
+                      <option value="Cottage Cheese">Cottage Cheese</option>
+                      <option value="Seeds">Seeds & Nuts</option>
+                    </select>
+                    
+                    <select 
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value)}
+                    >
+                      <option value="">All Categories</option>
+                      <option value="Breakfast">Breakfast</option>
+                      <option value="Recovery">Recovery</option>
+                      <option value="Green">Green</option>
+                      <option value="Chocolate">Chocolate</option>
+                      <option value="Tropical">Tropical</option>
+                    </select>
+                    
+                    <select 
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      value={selectedAllergen}
+                      onChange={(e) => setSelectedAllergen(e.target.value)}
+                    >
+                      <option value="">Include All</option>
+                      <option value="Dairy">Dairy-Free</option>
+                      <option value="Nuts">Nut-Free</option>
+                    </select>
 
+                    <select 
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      value={maxCalories}
+                      onChange={(e) => setMaxCalories(Number(e.target.value))}
+                    >
+                      <option value={500}>All Calories</option>
+                      <option value={250}>Under 250 cal</option>
+                      <option value={300}>Under 300 cal</option>
+                      <option value={350}>Under 350 cal</option>
+                      <option value={400}>Under 400 cal</option>
+                      <option value={450}>Under 450 cal</option>
+                    </select>
+                    
+                    <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
+                      <input
+                        type="checkbox"
+                        checked={onlyNaturalProtein}
+                        onChange={(e) => setOnlyNaturalProtein(e.target.checked)}
+                        className="rounded"
+                      />
+                      Natural Only
+                    </label>
+                    
+                    <select 
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                    >
+                      <option value="rating">Sort by Rating</option>
+                      <option value="protein">Sort by Protein</option>
+                      <option value="cost">Sort by Cost</option>
+                      <option value="calories">Sort by Calories</option>
+                    </select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Smoothie Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredSmoothies.map(smoothie => (
                 <Card key={smoothie.id} className="hover:shadow-lg transition-shadow">
@@ -663,46 +771,32 @@ export default function HighProteinSmoothiesPage() {
             ))}
           </div>
         )}
-      </div>
 
-      <div className="fixed bottom-6 right-6 z-50">
-        <Button 
-          size="lg" 
-          className="rounded-full w-14 h-14 bg-orange-600 hover:bg-orange-700 shadow-lg"
-          onClick={() => setActiveTab('browse')}
-        >
-          <Plus className="h-6 w-6" />
-        </Button>
-      </div>
-
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-6 text-sm">
-            <div className="flex items-center gap-2">
-              <Apple className="h-4 w-4 text-orange-600" />
-              <span className="text-gray-600">Protein Smoothies Found:</span>
-              <span className="font-bold text-orange-600">{filteredSmoothies.length}</span>
+        {/* Your Progress (in-content) */}
+        <Card className="bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-200">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold mb-2">Your Progress</h3>
+                <div className="flex items-center gap-4">
+                  <Badge variant="outline" className="text-orange-600">
+                    Level {userProgress.level}
+                  </Badge>
+                  <Badge variant="outline" className="text-yellow-600">
+                    {userProgress.totalPoints} XP
+                  </Badge>
+                  <Badge variant="outline" className="text-blue-600">
+                    {userProgress.totalDrinksMade} Drinks Made
+                  </Badge>
+                </div>
+              </div>
+              <div className="text-center">
+                <Progress value={userProgress.dailyGoalProgress} className="w-32 mb-2" />
+                <div className="text-xs text-gray-500">Daily Goal Progress</div>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Star className="h-4 w-4 text-yellow-500" />
-              <span className="text-gray-600">Your Level:</span>
-              <span className="font-bold text-yellow-600">{userProgress.level}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-green-500" />
-              <span className="text-gray-600">XP:</span>
-              <span className="font-bold text-green-600">{userProgress.totalPoints}</span>
-            </div>
-          </div>
-          
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          >
-            Back to Top
-          </Button>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
