@@ -209,7 +209,7 @@ export default function EggProteinPage() {
     } catch {
       try {
         await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
-        alert('Link copied to clipboard!');
+        alert('Unable to share on this device.');
       } catch {
         alert('Unable to share on this device.');
       }
@@ -230,7 +230,7 @@ export default function EggProteinPage() {
     } catch {
       try {
         await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
-        alert('Recipe copied to clipboard!');
+        alert('Unable to share on this device.');
       } catch {
         alert('Unable to share on this device.');
       }
@@ -302,7 +302,7 @@ export default function EggProteinPage() {
               </div>
               <div className="flex gap-4 pt-4">
                 <Button 
-                  className="flex-1 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600"
+                  className="flex-1 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600"
                   onClick={handleCompleteRecipe}
                 >
                   Complete Recipe (+100 XP)
@@ -343,7 +343,7 @@ export default function EggProteinPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-amber-600 hover:bg-amber-700" onClick={handleSharePage}>
+              <Button size="sm" className="bg-yellow-500 hover:bg-yellow-600" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Recipes
               </Button>
@@ -524,7 +524,7 @@ export default function EggProteinPage() {
 
               <div className="flex gap-2">
                 <Button 
-                  className="flex-1 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600"
+                  className="flex-1 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600"
                   onClick={() => makeRecipe(recipe)}
                 >
                   <Plus className="h-4 w-4 mr-2" />
