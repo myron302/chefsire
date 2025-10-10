@@ -1000,14 +1000,6 @@ export default function PlantBasedProteinPage() {
     </div>
   );
 }
-  Leaf, Clock, Users, Trophy, Heart, Star, Calendar, 
-  CheckCircle, Target, Flame, Droplets, Apple, Sprout,
-  Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
-  Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
-  Activity, BarChart3, Sparkles, Crown, Dumbbell
-} from 'lucide-react';
-import { useDrinks } from '@/contexts/DrinksContext';
-import UniversalSearch from '@/components/UniversalSearch';
 
 // Plant-based protein shake data
 const plantBasedShakes = [
