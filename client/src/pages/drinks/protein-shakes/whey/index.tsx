@@ -9,7 +9,7 @@ import {
   CheckCircle, Target, Flame, Droplets, Leaf, Apple,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
-  Beaker, Activity, BarChart3, Sparkles, Moon, Wine, ArrowRight, X
+  Beaker, Activity, BarChart3, Sparkles, Moon, Wine, ArrowRight, X, Check
 } from 'lucide-react';
 import { useDrinks } from "@/contexts/DrinksContext";
 import UniversalSearch from '@/components/UniversalSearch';
@@ -217,6 +217,8 @@ export default function WheyProteinShakesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
+  const [selectedShake, setSelectedShake] = useState(null);
+  const [showModal, setShowModal] = useState(false);
 
   // Filter and sort shakes
   const getFilteredShakes = () => {
@@ -248,15 +250,23 @@ export default function WheyProteinShakesPage() {
   const trendingShakes = wheyProteinShakes.filter(shake => shake.trending);
 
   const handleMakeShake = (shake) => {
-    addToRecentlyViewed(shake);
-    incrementDrinksMade();
-    addPoints(25);
-    console.log(`Made ${shake.name}! +25 XP`);
+    setSelectedShake(shake);
+    setShowModal(true);
+  };
+
+  const handleCompleteShake = () => {
+    if (selectedShake) {
+      addToRecentlyViewed(selectedShake);
+      incrementDrinksMade();
+      addPoints(25);
+    }
+    setShowModal(false);
+    setSelectedShake(null);
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* FIXED Universal Search Modal */}
+      {/* Universal Search Modal */}
       {showUniversalSearch && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -268,6 +278,59 @@ export default function WheyProteinShakesPage() {
             </div>
             <div className="p-4">
               <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Make Shake Modal */}
+      {showModal && selectedShake && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
+          <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-2xl font-bold">{selectedShake.name}</h2>
+              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold mb-2">Ingredients:</h3>
+                <ul className="space-y-2">
+                  {selectedShake.ingredients.map((ing, idx) => (
+                    <li key={idx} className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-green-600" />
+                      <span>{ing}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-2">Instructions:</h3>
+                <p className="text-sm text-gray-600">{selectedShake.instructions}</p>
+              </div>
+              <div className="grid grid-cols-3 gap-2 p-3 bg-blue-50 rounded-lg">
+                <div className="text-center">
+                  <div className="font-bold text-blue-600">{selectedShake.nutrition.protein}g</div>
+                  <div className="text-xs text-gray-600">Protein</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-bold text-green-600">{selectedShake.nutrition.calories}</div>
+                  <div className="text-xs text-gray-600">Calories</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-bold text-purple-600">{selectedShake.prepTime}min</div>
+                  <div className="text-xs text-gray-600">Prep</div>
+                </div>
+              </div>
+              <div className="flex gap-4 pt-4">
+                <Button 
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  onClick={handleCompleteShake}
+                >
+                  Complete Shake (+25 XP)
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -337,7 +400,7 @@ export default function WheyProteinShakesPage() {
           </CardContent>
         </Card>
 
-        {/* Sister Subpages Navigation - FIXED ROUTES */}
+        {/* Sister Subpages Navigation */}
         <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 mb-6">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Protein Types</h3>
