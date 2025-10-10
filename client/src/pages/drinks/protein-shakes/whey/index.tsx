@@ -3,11 +3,12 @@ import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { 
   Dumbbell, Clock, Users, Trophy, Heart, Star, Calendar, 
   CheckCircle, Target, Flame, Droplets, Leaf, Apple,
-  Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
+  Timer, Award, TrendingUp, ChefHat, Zap, Gift,
   Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
   Beaker, Activity, BarChart3, Sparkles, Moon, Wine, ArrowRight, X, Check
 } from 'lucide-react';
@@ -220,6 +221,55 @@ export default function WheyProteinShakesPage() {
   const [selectedShake, setSelectedShake] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
+  // Share handlers
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Whey Protein Shakes',
+      text: 'Explore whey protein shake recipes and benefits.',
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const handleShareShake = async (shake) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const text = `${shake.name} • ${shake.fitnessGoal} • ${shake.wheyType}\n${shake.description}`;
+    const shareData = {
+      title: shake.name,
+      text,
+      url
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shake.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shake.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
   // Filter and sort shakes
   const getFilteredShakes = () => {
     let filtered = wheyProteinShakes.filter(shake => {
@@ -366,7 +416,7 @@ export default function WheyProteinShakesPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+              <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Recipe
               </Button>
@@ -607,7 +657,7 @@ export default function WheyProteinShakesPage() {
                         <Zap className="h-4 w-4 mr-2" />
                         Make Shake
                       </Button>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" onClick={() => handleShareShake(shake)}>
                         <Share2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -841,7 +891,7 @@ export default function WheyProteinShakesPage() {
                         <Zap className="h-4 w-4 mr-2" />
                         Make This Shake
                       </Button>
-                      <Button variant="outline">
+                      <Button variant="outline" onClick={() => handleShareShake(shake)}>
                         <Share2 className="h-4 w-4 mr-2" />
                         Share
                       </Button>
@@ -852,48 +902,32 @@ export default function WheyProteinShakesPage() {
             </div>
           </div>
         )}
-      </div>
 
-      {/* Floating Action Button */}
-      <div className="fixed bottom-6 right-6 z-50">
-        <Button 
-          size="lg" 
-          className="rounded-full w-14 h-14 bg-blue-600 hover:bg-blue-700 shadow-lg"
-          onClick={() => setActiveTab('browse')}
-        >
-          <Plus className="h-6 w-6" />
-        </Button>
-      </div>
-
-      {/* Bottom Stats Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-6 text-sm">
-            <div className="flex items-center gap-2">
-              <Dumbbell className="h-4 w-4 text-blue-600" />
-              <span className="text-gray-600">Shakes Found:</span>
-              <span className="font-bold text-blue-600">{filteredShakes.length}</span>
+        {/* Your Progress (in-content) */}
+        <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mt-8">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold mb-2">Your Progress</h3>
+                <div className="flex items-center gap-4">
+                  <Badge variant="outline" className="text-purple-600">
+                    Level {userProgress.level}
+                  </Badge>
+                  <Badge variant="outline" className="text-blue-600">
+                    {userProgress.totalPoints} XP
+                  </Badge>
+                  <Badge variant="outline" className="text-green-600">
+                    {userProgress.totalDrinksMade} Drinks Made
+                  </Badge>
+                </div>
+              </div>
+              <div className="text-center">
+                <Progress value={userProgress.dailyGoalProgress} className="w-32 mb-2" />
+                <div className="text-xs text-gray-500">Daily Goal Progress</div>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Star className="h-4 w-4 text-yellow-500" />
-              <span className="text-gray-600">Your Level:</span>
-              <span className="font-bold text-yellow-600">{userProgress.level}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-green-500" />
-              <span className="text-gray-600">XP:</span>
-              <span className="font-bold text-green-600">{userProgress.totalPoints}</span>
-            </div>
-          </div>
-          
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          >
-            Back to Top
-          </Button>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
