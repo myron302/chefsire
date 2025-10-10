@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'wouter';
+import { Link } from 'wouter';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,26 +8,26 @@ import {
   Target, Heart, Star, Zap, Award, TrendingUp, Clock,
   Leaf, Apple, Wine, Home, Sparkles, Calendar, ChefHat,
   FlaskConical, Dumbbell, Shield, Plus, Share2, Filter,
-  ArrowRight, BookOpen, Flame, Droplets, ArrowLeft
+  ArrowRight, BookOpen, Flame, Droplets, Search, ArrowLeft, Moon, X
 } from 'lucide-react';
 
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
 
-// Protein subcategories data (for sister nav)
-const proteinSubcategories = [
-  { name: 'Whey Protein', route: '/drinks/protein-shakes/whey', icon: Zap },
-  { name: 'Plant-Based', route: '/drinks/protein-shakes/plant-based', icon: Leaf },
-  { name: 'Casein', route: '/drinks/protein-shakes/casein', icon: Calendar },
-  { name: 'Collagen', route: '/drinks/protein-shakes/collagen', icon: Sparkles },
-  { name: 'Egg Protein', route: '/drinks/protein-shakes/egg', icon: Target }
+// Navigation data
+const otherDrinkHubs = [
+  { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
+  { id: 'detoxes', name: 'Detox Drinks', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing & wellness' },
+  { id: 'potables', name: 'Potent Potables', icon: Wine, route: '/drinks/potent-potables', description: 'Cocktails (21+)' },
+  { id: 'all-drinks', name: 'All Drinks', icon: Sparkles, route: '/drinks', description: 'Browse everything' }
 ];
 
-// Other drink hubs (for cross-hub nav)
-const otherDrinkHubs = [
-  { name: 'Smoothies', route: '/drinks/smoothies', icon: Apple },
-  { name: 'Detoxes', route: '/drinks/detoxes', icon: Droplets },
-  { name: 'Potent Potables (21+)', route: '/drinks/potent-potables', icon: Wine }
+const proteinSubcategories = [
+  { id: 'whey', name: 'Whey Protein', icon: Zap, path: '/drinks/protein-shakes/whey', description: 'Fast absorption' },
+  { id: 'plant', name: 'Plant-Based', icon: Leaf, path: '/drinks/protein-shakes/plant-based', description: 'Vegan friendly' },
+  { id: 'casein', name: 'Casein', icon: Moon, path: '/drinks/protein-shakes/casein', description: 'Slow release' },
+  { id: 'collagen', name: 'Collagen', icon: Sparkles, path: '/drinks/protein-shakes/collagen', description: 'Beauty support' },
+  { id: 'beef', name: 'Beef Protein', icon: Flame, path: '/drinks/protein-shakes/beef', description: 'Natural creatine' }
 ];
 
 const eggProteinRecipes = [
@@ -156,6 +156,13 @@ const eggProteinBenefits = [
   }
 ];
 
+const sisterProteinPages = [
+  { name: 'Whey Protein', route: '/drinks/protein-shakes/whey', icon: Zap },
+  { name: 'Plant-Based', route: '/drinks/protein-shakes/plant-based', icon: Leaf },
+  { name: 'Casein', route: '/drinks/protein-shakes/casein', icon: Calendar },
+  { name: 'Collagen', route: '/drinks/protein-shakes/collagen', icon: Sparkles }
+];
+
 export default function EggProteinPage() {
   const { 
     userProgress, 
@@ -165,10 +172,10 @@ export default function EggProteinPage() {
     isFavorite,
     addToRecentlyViewed
   } = useDrinks();
-  const [location] = useLocation(); // For active nav state
 
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [filterTag, setFilterTag] = useState('All');
+  const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
   const allTags = ['All', ...new Set(eggProteinRecipes.flatMap(r => r.tags))];
 
@@ -209,19 +216,74 @@ export default function EggProteinPage() {
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+      {/* Universal Search Modal */}
+      {showUniversalSearch && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
+              <h2 className="text-lg font-semibold">Search All Drinks</h2>
+              <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-4">
+              <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40 -mx-4 -mt-6 px-4 md:-mx-6 md:px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4">
+              <Link href="/drinks/protein-shakes">
+                <Button variant="ghost" size="sm" className="text-gray-500">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Protein Shakes
+                </Button>
+              </Link>
+              <div className="h-6 w-px bg-gray-300" />
+              <div className="flex items-center gap-2">
+                <Target className="h-6 w-6 text-amber-500" />
+                <h1 className="text-2xl font-bold text-gray-900">Egg Protein Shakes</h1>
+                <Badge className="bg-amber-100 text-amber-800">BV Score: 100</Badge>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <Button variant="outline" size="sm" onClick={() => setShowUniversalSearch(true)}>
+                <Search className="h-4 w-4 mr-2" />
+                Universal Search
+              </Button>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Star className="h-4 w-4 text-yellow-500" />
+                <span>Level {userProgress.level}</span>
+                <div className="w-px h-4 bg-gray-300" />
+                <span>{userProgress.totalPoints} XP</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Cross-Hub Navigation */}
       <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
         <CardContent className="p-4">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             {otherDrinkHubs.map((hub) => {
               const Icon = hub.icon;
               return (
-                <Link key={hub.route} href={hub.route}>
+                <Link key={hub.id} href={hub.route}>
                   <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
                     <Icon className="h-4 w-4 mr-2 text-blue-600" />
-                    <span>{hub.name}</span>
-                    <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                    <div className="text-left flex-1">
+                      <div className="font-medium text-sm">{hub.name}</div>
+                      <div className="text-xs text-gray-500">{hub.description}</div>
+                    </div>
+                    <ArrowRight className="h-3 w-3 ml-auto" />
                   </Button>
                 </Link>
               );
@@ -230,24 +292,25 @@ export default function EggProteinPage() {
         </CardContent>
       </Card>
 
-      {/* Sister Subpages Navigation */}
+      {/* Sister Protein Pages Navigation */}
       <Card className="bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
         <CardContent className="p-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Protein Shake Types</h3>
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <FlaskConical className="w-4 h-4" />
+            Other Protein Types
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            {proteinSubcategories.map((page) => {
-              const Icon = page.icon;
-              const isActive = location.pathname === page.route;
+            {proteinSubcategories.map((subcategory) => {
+              const Icon = subcategory.icon;
               return (
-                <Link key={page.route} href={page.route}>
-                  <Button 
-                    variant={isActive ? "default" : "outline"} 
-                    className={`w-full justify-start ${isActive ? 'bg-amber-500 text-white hover:bg-amber-600' : 'hover:bg-amber-50 hover:border-amber-300'}`}
-                    size="sm"
-                  >
+                <Link key={subcategory.id} href={subcategory.path}>
+                  <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
                     <Icon className="h-4 w-4 mr-2 text-amber-600" />
-                    <span>{page.name}</span>
-                    <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                    <div className="text-left flex-1">
+                      <div className="font-medium text-sm">{subcategory.name}</div>
+                      <div className="text-xs text-gray-500">{subcategory.description}</div>
+                    </div>
+                    <ArrowRight className="h-3 w-3 ml-auto" />
                   </Button>
                 </Link>
               );
@@ -255,34 +318,6 @@ export default function EggProteinPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <Link href="/drinks">
-            <Button variant="ghost" size="sm" className="text-gray-500 mb-4">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Drinks Hub
-            </Button>
-          </Link>
-          <h1 className="text-3xl md:text-4xl font-bold flex items-center gap-3">
-            <Target className="h-10 w-10 text-amber-500" />
-            Egg Protein Shakes
-          </h1>
-          <p className="text-lg text-muted-foreground mt-2">
-            Complete amino acid profile • Lactose-free • Easy digestion
-          </p>
-        </div>
-        <div className="text-right">
-          <Badge className="bg-amber-500 text-white">
-            <Award className="h-4 w-4 mr-1" />
-            BV Score: 100
-          </Badge>
-        </div>
-      </div>
-
-      {/* Universal Search Popup */}
-      <UniversalSearch onDrinkSelect={handleDrinkSelection} />
 
       {/* Success Notification */}
       {selectedRecipe && (
