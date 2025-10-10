@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { 
   Sparkles, Clock, Users, Trophy, Heart, Star, Calendar, 
   CheckCircle, Target, Flame, Droplets, Leaf, Apple, Gem,
@@ -668,8 +669,8 @@ export default function CollagenProteinPage() {
         </div>
       </div>
 
-      {/* Main content with extra bottom padding to clear the fixed footer */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-28">
+      {/* Main content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Cross-Hub Navigation */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
           <CardContent className="p-4">
@@ -1280,40 +1281,32 @@ export default function CollagenProteinPage() {
             ))}
           </div>
         )}
-      </div>
 
-      {/* Spacer to ensure content clears the fixed footer on all screens */}
-      <div aria-hidden className="h-24 sm:h-28" />
-
-      {/* Bottom Stats Bar with safe-area padding */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 pb-[env(safe-area-inset-bottom)] z-40">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-6 text-sm">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-pink-600" />
-              <span className="text-gray-600">Collagen Products Found:</span>
-              <span className="font-bold text-pink-600">{filteredShakes.length}</span>
+        {/* Your Progress (in-content) */}
+        <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mt-8">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold mb-2">Your Progress</h3>
+                <div className="flex items-center gap-4">
+                  <Badge variant="outline" className="text-purple-600">
+                    Level {userProgress.level}
+                  </Badge>
+                  <Badge variant="outline" className="text-blue-600">
+                    {userProgress.totalPoints} XP
+                  </Badge>
+                  <Badge variant="outline" className="text-green-600">
+                    {userProgress.totalDrinksMade} Drinks Made
+                  </Badge>
+                </div>
+              </div>
+              <div className="text-center">
+                <Progress value={userProgress.dailyGoalProgress} className="w-32 mb-2" />
+                <div className="text-xs text-gray-500">Daily Goal Progress</div>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Star className="h-4 w-4 text-yellow-500" />
-              <span className="text-gray-600">Your Level:</span>
-              <span className="font-bold text-yellow-600">{userProgress.level}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-green-500" />
-              <span className="text-gray-600">XP:</span>
-              <span className="font-bold text-green-600">{userProgress.totalPoints}</span>
-            </div>
-          </div>
-          
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          >
-            Back to Top
-          </Button>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
