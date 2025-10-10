@@ -5,11 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
+import { Progress } from "@/components/ui/progress";
 import { 
   Coffee, Clock, Heart, Star, Target, Flame, Leaf, Sparkles,
-  Search, Share2, ArrowLeft, Plus, Zap, Activity, Camera, Droplets,
-  Apple, FlaskConical, GlassWater, Waves
+  Search, Share2, ArrowLeft, Zap, Camera, Droplets,
+  Apple, FlaskConical, GlassWater, Waves, X, Check
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -33,6 +33,8 @@ export default function DetoxTeasPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedTea, setSelectedTea] = useState<DetoxRecipe | null>(null);
 
   const getFilteredTeas = () => {
     let filtered = detoxTeas.filter(tea => {
@@ -63,32 +65,120 @@ export default function DetoxTeasPage() {
   const featuredTeas = detoxTeas.filter(tea => tea.featured);
 
   const handleMakeTea = (tea: DetoxRecipe) => {
-    addToRecentlyViewed({
-      id: tea.id,
-      name: tea.name,
-      category: 'detoxes',
-      description: tea.description,
-      ingredients: tea.ingredients,
-      nutrition: tea.nutrition,
-      difficulty: tea.difficulty,
-      prepTime: tea.prepTime,
-      rating: tea.rating,
-      bestTime: tea.bestTime
-    });
-    incrementDrinksMade();
-    addPoints(20);
+    setSelectedTea(tea);
+    setShowModal(true);
+  };
+
+  const handleCompleteTea = () => {
+    if (selectedTea) {
+      addToRecentlyViewed({
+        id: selectedTea.id,
+        name: selectedTea.name,
+        category: 'detoxes',
+        description: selectedTea.description,
+        ingredients: selectedTea.ingredients,
+        nutrition: selectedTea.nutrition,
+        difficulty: selectedTea.difficulty,
+        prepTime: selectedTea.prepTime,
+        rating: selectedTea.rating,
+        bestTime: selectedTea.bestTime
+      });
+      incrementDrinksMade();
+      addPoints(20);
+    }
+    setShowModal(false);
+    setSelectedTea(null);
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-orange-50">
+      {/* Universal Search Modal */}
       {showUniversalSearch && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4">
-            <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
+              <h2 className="text-lg font-semibold">Search All Drinks</h2>
+              <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-4">
+              <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+            </div>
           </div>
         </div>
       )}
 
+      {/* Make Tea Modal */}
+      {showModal && selectedTea && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
+          <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-2xl font-bold">{selectedTea.name}</h2>
+              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold mb-2">Ingredients:</h3>
+                <ul className="space-y-2">
+                  {selectedTea.ingredients.map((ing, idx) => (
+                    <li key={idx} className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-amber-600" />
+                      <span>{ing}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-2">Benefits:</h3>
+                <ul className="text-sm text-gray-700 space-y-1">
+                  {selectedTea.benefits.map((benefit, idx) => (
+                    <li key={idx}>• {benefit}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="bg-amber-50 p-3 rounded-lg">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-gray-600">Brew Temp:</span>
+                    <div className="font-medium">{selectedTea.brewTemp}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Steep Time:</span>
+                    <div className="font-medium">{selectedTea.steepTime}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 p-3 bg-amber-100 rounded-lg">
+                <div className="text-center">
+                  <div className="font-bold text-amber-600">{selectedTea.nutrition.calories}</div>
+                  <div className="text-xs text-gray-600">Calories</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-bold text-green-600">{selectedTea.nutrition.caffeine}mg</div>
+                  <div className="text-xs text-gray-600">Caffeine</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-bold text-orange-600">{selectedTea.prepTime}min</div>
+                  <div className="text-xs text-gray-600">Prep</div>
+                </div>
+              </div>
+              <div className="flex gap-4 pt-4">
+                <Button 
+                  className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
+                  onClick={handleCompleteTea}
+                >
+                  Complete Tea (+20 XP)
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -131,38 +221,50 @@ export default function DetoxTeasPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         
         {/* CROSS-HUB NAVIGATION */}
-        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
+        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <Link href="/drinks/smoothies">
                 <Button variant="outline" className="w-full justify-start hover:bg-green-50 hover:border-green-300">
                   <Apple className="h-4 w-4 mr-2 text-green-600" />
-                  <span>Smoothies</span>
+                  <div className="text-left flex-1">
+                    <div className="font-medium text-sm">Smoothies</div>
+                    <div className="text-xs text-gray-500">Nutrient-packed blends</div>
+                  </div>
                   <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
                 </Button>
               </Link>
               <Link href="/drinks/protein-shakes">
                 <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
                   <FlaskConical className="h-4 w-4 mr-2 text-blue-600" />
-                  <span>Protein Shakes</span>
+                  <div className="text-left flex-1">
+                    <div className="font-medium text-sm">Protein Shakes</div>
+                    <div className="text-xs text-gray-500">Fitness-focused nutrition</div>
+                  </div>
                   <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
                 </Button>
               </Link>
               <Link href="/drinks/detoxes">
                 <Button variant="outline" className="w-full justify-start hover:bg-teal-50 hover:border-teal-300 border-teal-400">
                   <Leaf className="h-4 w-4 mr-2 text-teal-600" />
-                  <span className="font-semibold">Detoxes Hub</span>
+                  <div className="text-left flex-1">
+                    <div className="font-medium text-sm">Detoxes Hub</div>
+                    <div className="text-xs text-gray-500">Cleanse & wellness</div>
+                  </div>
                   <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
                 </Button>
               </Link>
               <Link href="/drinks/potent-potables">
                 <Button variant="outline" className="w-full justify-start hover:bg-purple-50 hover:border-purple-300">
                   <GlassWater className="h-4 w-4 mr-2 text-purple-600" />
-                  <span>Potent Potables</span>
+                  <div className="text-left flex-1">
+                    <div className="font-medium text-sm">Potent Potables</div>
+                    <div className="text-xs text-gray-500">Cocktails & beverages</div>
+                  </div>
                   <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
                 </Button>
               </Link>
@@ -171,21 +273,27 @@ export default function DetoxTeasPage() {
         </Card>
 
         {/* SISTER SUBPAGES NAVIGATION */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 mb-6">
+        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Detox Types</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Link href="/drinks/detoxes/juice">
                 <Button variant="outline" className="w-full justify-start hover:bg-green-50 hover:border-green-300">
                   <Droplets className="h-4 w-4 mr-2 text-green-600" />
-                  <span>Detox Juices</span>
+                  <div className="text-left flex-1">
+                    <div className="font-medium text-sm">Detox Juices</div>
+                    <div className="text-xs text-gray-500">Cold-pressed cleansing</div>
+                  </div>
                   <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
                 </Button>
               </Link>
               <Link href="/drinks/detoxes/water">
                 <Button variant="outline" className="w-full justify-start hover:bg-cyan-50 hover:border-cyan-300">
                   <Waves className="h-4 w-4 mr-2 text-cyan-600" />
-                  <span>Infused Waters</span>
+                  <div className="text-left flex-1">
+                    <div className="font-medium text-sm">Infused Waters</div>
+                    <div className="text-xs text-gray-500">Fruit & herb hydration</div>
+                  </div>
                   <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
                 </Button>
               </Link>
@@ -193,7 +301,8 @@ export default function DetoxTeasPage() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-amber-600">4</div>
@@ -220,7 +329,8 @@ export default function DetoxTeasPage() {
           </Card>
         </div>
 
-        <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
+        {/* Tabs */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
             { id: 'tea-types', label: 'Tea Types', icon: Coffee },
@@ -242,65 +352,71 @@ export default function DetoxTeasPage() {
         </div>
 
         {activeTab === 'browse' && (
-          <div>
-            <div className="flex flex-col md:flex-row gap-4 mb-6">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  placeholder="Search detox teas..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              
-              <div className="flex gap-2">
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={selectedTeaType}
-                  onChange={(e) => setSelectedTeaType(e.target.value)}
-                >
-                  <option value="">All Tea Types</option>
-                  <option value="Green">Green Tea</option>
-                  <option value="Herbal">Herbal</option>
-                  <option value="White">White Tea</option>
-                  <option value="Oolong">Oolong</option>
-                </select>
-                
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={selectedFocus}
-                  onChange={(e) => setSelectedFocus(e.target.value)}
-                >
-                  <option value="">All Focus Areas</option>
-                  <option value="Metabolic">Metabolic</option>
-                  <option value="Digestive">Digestive</option>
-                  <option value="Liver">Liver Support</option>
-                  <option value="Anti-inflammatory">Anti-inflammatory</option>
-                </select>
-                
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={caffeineLevel[0]}
-                  onChange={(e) => setCaffeineLevel([e.target.value])}
-                >
-                  <option value="Any">Any Caffeine Level</option>
-                  <option value="Caffeinated">Caffeinated</option>
-                  <option value="Caffeine-Free">Caffeine-Free</option>
-                </select>
-                
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                >
-                  <option value="rating">Sort by Rating</option>
-                  <option value="prepTime">Sort by Prep Time</option>
-                  <option value="cost">Sort by Cost</option>
-                </select>
-              </div>
-            </div>
+          <div className="space-y-6">
+            {/* Search and Filters */}
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      placeholder="Search detox teas..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <select 
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      value={selectedTeaType}
+                      onChange={(e) => setSelectedTeaType(e.target.value)}
+                    >
+                      <option value="">All Tea Types</option>
+                      <option value="Green">Green Tea</option>
+                      <option value="Herbal">Herbal</option>
+                      <option value="White">White Tea</option>
+                      <option value="Oolong">Oolong</option>
+                    </select>
+                    
+                    <select 
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      value={selectedFocus}
+                      onChange={(e) => setSelectedFocus(e.target.value)}
+                    >
+                      <option value="">All Focus Areas</option>
+                      <option value="Metabolic">Metabolic</option>
+                      <option value="Digestive">Digestive</option>
+                      <option value="Liver">Liver Support</option>
+                      <option value="Anti-inflammatory">Anti-inflammatory</option>
+                    </select>
+                    
+                    <select 
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      value={caffeineLevel[0]}
+                      onChange={(e) => setCaffeineLevel([e.target.value])}
+                    >
+                      <option value="Any">Any Caffeine Level</option>
+                      <option value="Caffeinated">Caffeinated</option>
+                      <option value="Caffeine-Free">Caffeine-Free</option>
+                    </select>
+                    
+                    <select 
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                    >
+                      <option value="rating">Sort by Rating</option>
+                      <option value="prepTime">Sort by Prep Time</option>
+                      <option value="cost">Sort by Cost</option>
+                    </select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
+            {/* Tea Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredTeas.map(tea => (
                 <Card key={tea.id} className="hover:shadow-lg transition-shadow">
@@ -603,46 +719,32 @@ export default function DetoxTeasPage() {
             ))}
           </div>
         )}
-      </div>
 
-      <div className="fixed bottom-6 right-6 z-50">
-        <Button 
-          size="lg" 
-          className="rounded-full w-14 h-14 bg-amber-600 hover:bg-amber-700 shadow-lg"
-          onClick={() => setActiveTab('browse')}
-        >
-          <Plus className="h-6 w-6" />
-        </Button>
-      </div>
-
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-6 text-sm">
-            <div className="flex items-center gap-2">
-              <Coffee className="h-4 w-4 text-amber-600" />
-              <span className="text-gray-600">Detox Teas Found:</span>
-              <span className="font-bold text-amber-600">{filteredTeas.length}</span>
+        {/* Your Progress (in-content) */}
+        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold mb-2">Your Progress</h3>
+                <div className="flex items-center gap-4">
+                  <Badge variant="outline" className="text-amber-600">
+                    Level {userProgress.level}
+                  </Badge>
+                  <Badge variant="outline" className="text-orange-600">
+                    {userProgress.totalPoints} XP
+                  </Badge>
+                  <Badge variant="outline" className="text-blue-600">
+                    {userProgress.totalDrinksMade} Drinks Made
+                  </Badge>
+                </div>
+              </div>
+              <div className="text-center">
+                <Progress value={userProgress.dailyGoalProgress} className="w-32 mb-2" />
+                <div className="text-xs text-gray-500">Daily Goal Progress</div>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Star className="h-4 w-4 text-yellow-500" />
-              <span className="text-gray-600">Your Level:</span>
-              <span className="font-bold text-yellow-600">{userProgress.level}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-amber-500" />
-              <span className="text-gray-600">XP:</span>
-              <span className="font-bold text-amber-600">{userProgress.totalPoints}</span>
-            </div>
-          </div>
-          
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          >
-            Back to Top
-          </Button>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
