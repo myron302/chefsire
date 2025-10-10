@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
 import { 
   Target, Heart, Star, Zap, Award, TrendingUp, Clock,
   Leaf, Apple, Wine, Home, Sparkles, Calendar, ChefHat,
@@ -145,14 +146,38 @@ export default function EggProteinPage() {
 
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [filterTag, setFilterTag] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
   const allTags = ['All', ...new Set(eggProteinRecipes.flatMap(r => r.tags))];
 
-  const filteredRecipes = filterTag === 'All' 
-    ? eggProteinRecipes 
-    : eggProteinRecipes.filter(r => r.tags.includes(filterTag));
+  // Filter and sort recipes
+  const getFilteredRecipes = () => {
+    let filtered = eggProteinRecipes.filter(recipe => {
+      const matchesSearch = recipe.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           recipe.ingredients.some(ing => ing.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesTag = filterTag === 'All' || recipe.tags.includes(filterTag);
+      
+      return matchesSearch && matchesTag;
+    });
+
+    // Sort results
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'protein': return (b.protein || 0) - (a.protein || 0);
+        case 'calories': return (a.calories || 0) - (b.calories || 0);
+        case 'prepTime': return (a.prepTime || 0) - (b.prepTime || 0);
+        default: return 0;
+      }
+    });
+
+    return filtered;
+  };
+
+  const filteredRecipes = getFilteredRecipes();
 
   const makeRecipe = (recipe) => {
     setSelectedRecipe(recipe);
@@ -424,22 +449,43 @@ export default function EggProteinPage() {
         </CardContent>
       </Card>
 
-      {/* Filter Tags */}
+      {/* Search and Filters */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Filter className="h-4 w-4 text-gray-500" />
-            <span className="text-sm font-medium">Filter:</span>
-            {allTags.map(tag => (
-              <Button
-                key={tag}
-                variant={filterTag === tag ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFilterTag(tag)}
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Input
+                placeholder="Search egg protein recipes..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            
+            <div className="flex gap-2">
+              <select 
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                value={filterTag}
+                onChange={(e) => setFilterTag(e.target.value)}
               >
-                {tag}
-              </Button>
-            ))}
+                <option value="All">All Tags</option>
+                {allTags.filter(tag => tag !== 'All').map(tag => (
+                  <option key={tag} value={tag}>{tag}</option>
+                ))}
+              </select>
+              
+              <select 
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+              >
+                <option value="rating">Sort by Rating</option>
+                <option value="protein">Sort by Protein</option>
+                <option value="calories">Sort by Calories</option>
+                <option value="prepTime">Sort by Prep Time</option>
+              </select>
+            </div>
           </div>
         </CardContent>
       </Card>
