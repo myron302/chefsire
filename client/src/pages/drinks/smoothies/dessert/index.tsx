@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { 
-  IceCream, Clock, Heart, Star, Search, Share2, ArrowLeft,
-  Camera, Sparkles, Cookie, Cake, ChefHat, X, Check
+  IceCream, Heart, Star, Search, Share2, ArrowLeft,
+  Camera, Cookie, ChefHat, X, Check
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -35,8 +35,8 @@ export default function DessertSmoothiesPage() {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [maxCalories, setMaxCalories] = useState(450);
   const [onlyNaturalSweetener, setOnlyNaturalSweetener] = useState(false);
-  const [sortBy, setSortBy] = useState('rating');
-  const [activeTab, setActiveTab] = useState('browse');
+  const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'cost' | 'calories'>('rating');
+  const [activeTab, setActiveTab] = useState<'browse'|'dessert-types'|'categories'|'featured'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [selectedSmoothie, setSelectedSmoothie] = useState<any>(null);
@@ -46,10 +46,11 @@ export default function DessertSmoothiesPage() {
       const matchesSearch = smoothie.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            smoothie.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType = !selectedDessertType || smoothie.dessertType === selectedDessertType;
-      const matchesCategory = !selectedCategory || smoothie.category.includes(selectedCategory);
+      const matchesCategory = !selectedCategory || (Array.isArray(smoothie.category)
+        ? smoothie.category.includes(selectedCategory)
+        : smoothie.category === selectedCategory);
       const matchesCalories = smoothie.nutrition.calories <= maxCalories;
       const matchesSweetener = !onlyNaturalSweetener || smoothie.nutrition.added_sugar === 0;
-      
       return matchesSearch && matchesType && matchesCategory && matchesCalories && matchesSweetener;
     });
 
@@ -96,6 +97,51 @@ export default function DessertSmoothiesPage() {
     setSelectedSmoothie(null);
   };
 
+  // === Share handlers (page + per-smoothie) ===
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Dessert Smoothies',
+      text: 'Browse dessert smoothies on ChefSire.',
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const handleShareSmoothie = async (smoothie: any) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const text = `${smoothie.name} • ${smoothie.nutrition.protein}g protein • ${smoothie.nutrition.calories} cal\n${smoothie.ingredients.join(', ')}`;
+    const shareData = { title: smoothie.name, text, url };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${smoothie.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${smoothie.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50">
       {/* Universal Search Modal */}
@@ -129,7 +175,7 @@ export default function DessertSmoothiesPage() {
               <div>
                 <h3 className="font-semibold mb-2">Ingredients:</h3>
                 <ul className="space-y-2">
-                  {selectedSmoothie.ingredients.map((ing, idx) => (
+                  {selectedSmoothie.ingredients.map((ing: string, idx: number) => (
                     <li key={idx} className="flex items-center gap-2">
                       <Check className="h-4 w-4 text-pink-600" />
                       <span>{ing}</span>
@@ -140,7 +186,7 @@ export default function DessertSmoothiesPage() {
               <div>
                 <h3 className="font-semibold mb-2">Benefits:</h3>
                 <ul className="text-sm text-gray-700 space-y-1">
-                  {selectedSmoothie.benefits?.map((benefit, idx) => (
+                  {selectedSmoothie.benefits?.map((benefit: string, idx: number) => (
                     <li key={idx}>• {benefit}</li>
                   ))}
                 </ul>
@@ -206,7 +252,7 @@ export default function DessertSmoothiesPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-pink-600 hover:bg-pink-700">
+              <Button size="sm" className="bg-pink-600 hover:bg-pink-700" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Recipe
               </Button>
@@ -270,15 +316,15 @@ export default function DessertSmoothiesPage() {
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
             { id: 'dessert-types', label: 'Dessert Types', icon: Cookie },
-            { id: 'categories', label: 'Categories', icon: Sparkles },
+            { id: 'categories', label: 'Categories', icon: Cookie }, // visually similar
             { id: 'featured', label: 'Featured', icon: Star }
           ].map(tab => {
-            const Icon = tab.icon;
+            const Icon = tab.icon as any;
             return (
               <Button
                 key={tab.id}
                 variant={activeTab === tab.id ? "default" : "ghost"}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => setActiveTab(tab.id as any)}
                 className={`flex-1 ${activeTab === tab.id ? 'bg-white shadow-sm' : ''}`}
               >
                 <Icon className="h-4 w-4 mr-2" />
@@ -304,20 +350,32 @@ export default function DessertSmoothiesPage() {
                     />
                   </div>
                   
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                       value={selectedDessertType}
                       onChange={(e) => setSelectedDessertType(e.target.value)}
                     >
                       <option value="">All Types</option>
-                      <option value="Chocolate">Chocolate</option>
-                      <option value="Cheesecake">Cheesecake</option>
-                      <option value="Ice Cream">Ice Cream</option>
+                      {/* Use canonical names from your data if they differ */}
+                      {Array.from(new Set(dessertTypes.map(t => t.name))).map(name => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+
+                    <select 
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value)}
+                    >
+                      <option value="">All Categories</option>
+                      {dessertCategories.map(c => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
                     </select>
                     
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                       value={maxCalories}
                       onChange={(e) => setMaxCalories(Number(e.target.value))}
                     >
@@ -339,9 +397,9 @@ export default function DessertSmoothiesPage() {
                     </label>
 
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                       value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value)}
+                      onChange={(e) => setSortBy(e.target.value as any)}
                     >
                       <option value="rating">Sort by Rating</option>
                       <option value="protein">Sort by Protein</option>
@@ -429,7 +487,7 @@ export default function DessertSmoothiesPage() {
                         <ChefHat className="h-4 w-4 mr-2" />
                         Make It
                       </Button>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" onClick={() => handleShareSmoothie(smoothie)}>
                         <Share2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -443,7 +501,7 @@ export default function DessertSmoothiesPage() {
         {activeTab === 'dessert-types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {dessertTypes.map(type => {
-              const Icon = type.icon;
+              const Icon = type.icon as any;
               return (
                 <Card key={type.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
@@ -463,7 +521,7 @@ export default function DessertSmoothiesPage() {
                       <div>
                         <h4 className="font-semibold text-sm mb-2">Healthy Ingredients:</h4>
                         <div className="flex flex-wrap gap-1">
-                          {type.healthyIngredients.map((ingredient, index) => (
+                          {type.healthyIngredients.map((ingredient: string, index: number) => (
                             <Badge key={index} variant="outline" className="text-xs">
                               {ingredient}
                             </Badge>
@@ -485,12 +543,12 @@ export default function DessertSmoothiesPage() {
         {activeTab === 'categories' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {dessertCategories.map(category => {
-              const Icon = category.icon;
+              const Icon = category.icon as any;
               return (
                 <Card key={category.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="flex items-center gap-3">
-                      <div className={`p-2 ${category.color.replace('bg-', 'bg-').replace('-500', '-100')} rounded-lg`}>
+                      <div className={`p-2 ${category.color.replace('-500', '-100')} rounded-lg`}>
                         <Icon className={`h-6 w-6 ${category.color.replace('bg-', 'text-')}`} />
                       </div>
                       <div>
@@ -549,7 +607,7 @@ export default function DessertSmoothiesPage() {
           </div>
         )}
 
-        {/* Your Progress (in-content) */}
+        {/* Your Progress (in-content) — replaces footer */}
         <Card className="bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
