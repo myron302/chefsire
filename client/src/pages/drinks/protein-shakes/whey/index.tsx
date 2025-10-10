@@ -1,17 +1,34 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { 
   Dumbbell, Clock, Users, Trophy, Heart, Star, Calendar, 
   CheckCircle, Target, Flame, Droplets, Leaf, Apple,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
-  Beaker, Activity, BarChart3, Sparkles
+  Beaker, Activity, BarChart3, Sparkles, Moon, Wine, ArrowRight, X
 } from 'lucide-react';
 import { useDrinks } from "@/contexts/DrinksContext";
+import UniversalSearch from '@/components/UniversalSearch';
+
+// Navigation data
+const otherDrinkHubs = [
+  { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
+  { id: 'detoxes', name: 'Detox Drinks', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing & wellness' },
+  { id: 'potables', name: 'Potent Potables', icon: Wine, route: '/drinks/potent-potables', description: 'Cocktails (21+)' },
+  { id: 'all-drinks', name: 'All Drinks', icon: Sparkles, route: '/drinks', description: 'Browse everything' }
+];
+
+const proteinSubcategories = [
+  { id: 'plant', name: 'Plant-Based', icon: Leaf, path: '/drinks/protein-shakes/plant-based', description: 'Vegan friendly' },
+  { id: 'casein', name: 'Casein', icon: Moon, path: '/drinks/protein-shakes/casein', description: 'Slow release' },
+  { id: 'collagen', name: 'Collagen', icon: Sparkles, path: '/drinks/protein-shakes/collagen', description: 'Beauty support' },
+  { id: 'egg', name: 'Egg Protein', icon: Target, path: '/drinks/protein-shakes/egg', description: 'Complete amino' },
+  { id: 'beef', name: 'Beef Protein', icon: Flame, path: '/drinks/protein-shakes/beef', description: 'Natural creatine' }
+];
 
 // Whey-specific data
 const wheyProteinShakes = [
@@ -199,6 +216,7 @@ export default function WheyProteinShakesPage() {
   const [selectedWheyType, setSelectedWheyType] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
+  const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
   // Filter and sort shakes
   const getFilteredShakes = () => {
@@ -229,26 +247,43 @@ export default function WheyProteinShakesPage() {
   const featuredShakes = wheyProteinShakes.filter(shake => shake.featured);
   const trendingShakes = wheyProteinShakes.filter(shake => shake.trending);
 
-  const handleMakeShake = (shake: any) => {
+  const handleMakeShake = (shake) => {
     addToRecentlyViewed(shake);
     incrementDrinksMade();
     addPoints(25);
-    
-    // Show success animation or toast here
     console.log(`Made ${shake.name}! +25 XP`);
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      {/* Universal Search Modal */}
+      {showUniversalSearch && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
+              <h2 className="text-lg font-semibold">Search All Drinks</h2>
+              <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-4">
+              <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" className="text-gray-500">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Protein Shakes
-              </Button>
+              <Link href="/drinks/protein-shakes">
+                <Button variant="ghost" size="sm" className="text-gray-500">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Protein Shakes
+                </Button>
+              </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
                 <Dumbbell className="h-6 w-6 text-blue-600" />
@@ -258,6 +293,10 @@ export default function WheyProteinShakesPage() {
             </div>
             
             <div className="flex items-center gap-4">
+              <Button variant="outline" size="sm" onClick={() => setShowUniversalSearch(true)}>
+                <Search className="h-4 w-4 mr-2" />
+                Universal Search
+              </Button>
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Star className="h-4 w-4 text-yellow-500" />
                 <span>Level {userProgress.level}</span>
@@ -274,6 +313,54 @@ export default function WheyProteinShakesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Cross-Hub Navigation */}
+        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              {otherDrinkHubs.map((hub) => {
+                const Icon = hub.icon;
+                return (
+                  <Link key={hub.id} href={hub.route}>
+                    <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
+                      <Icon className="h-4 w-4 mr-2 text-blue-600" />
+                      <div className="text-left flex-1">
+                        <div className="font-medium text-sm">{hub.name}</div>
+                        <div className="text-xs text-gray-500">{hub.description}</div>
+                      </div>
+                      <ArrowRight className="h-3 w-3 ml-auto" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Sister Subpages Navigation */}
+        <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Protein Types</h3>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              {proteinSubcategories.map((subcategory) => {
+                const Icon = subcategory.icon;
+                return (
+                  <Link key={subcategory.id} href={subcategory.path}>
+                    <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
+                      <Icon className="h-4 w-4 mr-2 text-blue-600" />
+                      <div className="text-left flex-1">
+                        <div className="font-medium text-sm">{subcategory.name}</div>
+                        <div className="text-xs text-gray-500">{subcategory.description}</div>
+                      </div>
+                      <ArrowRight className="h-3 w-3 ml-auto" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Quick Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card>
