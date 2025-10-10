@@ -1,4 +1,4 @@
-// client/src/pages/drinks/detoxes/juice/index.tsx
+// client/src/pages/drinks/detoxes/water/index.tsx
 import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,16 +8,16 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
 import { 
-  Droplets, Clock, Heart, Star, Target, Flame, Leaf, Sparkles,
-  Search, Share2, ArrowLeft, Zap, Apple, Camera,
-  FlaskConical, GlassWater, Coffee, Waves, X, Check
+  Waves, Clock, Heart, Star, Target, Sparkles,
+  Search, Share2, ArrowLeft, Zap, Camera, Droplets, Leaf,
+  Apple, FlaskConical, GlassWater, Coffee, X, Check, Sun, Snowflake
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
-import { otherDrinkHubs, detoxJuices, detoxTypes } from '../../data/detoxes';
+import { otherDrinkHubs, infusedWaters, waterTypes } from '../../data/detoxes';
 import { DetoxRecipe } from '../../types/detox';
 
-export default function DetoxJuicesPage() {
+export default function DetoxWatersPage() {
   const { 
     addToFavorites, 
     isFavorite, 
@@ -28,35 +28,31 @@ export default function DetoxJuicesPage() {
   } = useDrinks();
 
   const [activeTab, setActiveTab] = useState('browse');
-  const [selectedDetoxType, setSelectedDetoxType] = useState('');
+  const [selectedWaterType, setSelectedWaterType] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [detoxIntensity, setDetoxIntensity] = useState(['Any']);
-  const [maxCalories, setMaxCalories] = useState([200]);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [selectedJuice, setSelectedJuice] = useState<DetoxRecipe | null>(null);
+  const [selectedWater, setSelectedWater] = useState<DetoxRecipe | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedWater, setSelectedWater] = useState<DetoxRecipe | null>(null);
 
-  const getFilteredJuices = () => {
-    let filtered = detoxJuices.filter(juice => {
-      const matchesSearch = juice.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           juice.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesType = !selectedDetoxType || juice.detoxType?.toLowerCase().includes(selectedDetoxType.toLowerCase());
-      const matchesCategory = !selectedCategory || juice.category?.toLowerCase().includes(selectedCategory.toLowerCase());
-      const matchesIntensity = detoxIntensity[0] === 'Any' || juice.detoxLevel === detoxIntensity[0];
-      const matchesCalories = juice.nutrition.calories <= maxCalories[0];
+  const getFilteredWaters = () => {
+    let filtered = infusedWaters.filter(water => {
+      const matchesSearch = water.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           water.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesType = !selectedWaterType || water.waterType?.toLowerCase().includes(selectedWaterType.toLowerCase());
+      const matchesCategory = !selectedCategory || water.category?.toLowerCase().includes(selectedCategory.toLowerCase());
       
-      return matchesSearch && matchesType && matchesCategory && matchesIntensity && matchesCalories;
+      return matchesSearch && matchesType && matchesCategory;
     });
 
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'rating': return (b.rating || 0) - (a.rating || 0);
         case 'calories': return (a.nutrition.calories || 0) - (b.nutrition.calories || 0);
-        case 'intensity':
-          const intensityOrder = { 'Intense': 3, 'Moderate': 2, 'Gentle': 1 };
-          return (intensityOrder[b.detoxLevel || ''] || 0) - (intensityOrder[a.detoxLevel || ''] || 0);
+        case 'prepTime': return (a.prepTime || 0) - (b.prepTime || 0);
         default: return 0;
       }
     });
@@ -64,37 +60,37 @@ export default function DetoxJuicesPage() {
     return filtered;
   };
 
-  const filteredJuices = getFilteredJuices();
-  const featuredJuices = detoxJuices.filter(juice => juice.featured);
+  const filteredWaters = getFilteredWaters();
+  const featuredWaters = infusedWaters.filter(water => water.featured);
 
-  const handleMakeJuice = (juice: DetoxRecipe) => {
-    setSelectedJuice(juice);
+  const handleMakeWater = (water: DetoxRecipe) => {
+    setSelectedWater(water);
     setShowModal(true);
   };
 
-  const handleCompleteJuice = () => {
-    if (selectedJuice) {
+  const handleCompleteWater = () => {
+    if (selectedWater) {
       addToRecentlyViewed({
-        id: selectedJuice.id,
-        name: selectedJuice.name,
+        id: selectedWater.id,
+        name: selectedWater.name,
         category: 'detoxes',
-        description: selectedJuice.description,
-        ingredients: selectedJuice.ingredients,
-        nutrition: selectedJuice.nutrition,
-        difficulty: selectedJuice.difficulty,
-        prepTime: selectedJuice.prepTime,
-        rating: selectedJuice.rating,
-        bestTime: selectedJuice.bestTime
+        description: selectedWater.description,
+        ingredients: selectedWater.ingredients,
+        nutrition: selectedWater.nutrition,
+        difficulty: selectedWater.difficulty,
+        prepTime: selectedWater.prepTime,
+        rating: selectedWater.rating,
+        bestTime: selectedWater.bestTime
       });
       incrementDrinksMade();
-      addPoints(25);
+      addPoints(15);
     }
     setShowModal(false);
-    setSelectedJuice(null);
+    setSelectedWater(null);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50">
+    <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-white to-blue-50">
       {/* Universal Search Modal */}
       {showUniversalSearch && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
@@ -112,12 +108,12 @@ export default function DetoxJuicesPage() {
         </div>
       )}
 
-      {/* Make Juice Modal */}
-      {showModal && selectedJuice && (
+      {/* Make Water Modal */}
+      {showModal && selectedWater && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
           <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-start mb-4">
-              <h2 className="text-2xl font-bold">{selectedJuice.name}</h2>
+              <h2 className="text-2xl font-bold">{selectedWater.name}</h2>
               <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
                 <X className="h-6 w-6" />
               </button>
@@ -126,9 +122,9 @@ export default function DetoxJuicesPage() {
               <div>
                 <h3 className="font-semibold mb-2">Ingredients:</h3>
                 <ul className="space-y-2">
-                  {selectedJuice.ingredients.map((ing, idx) => (
+                  {selectedWater.ingredients.map((ing, idx) => (
                     <li key={idx} className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-green-600" />
+                      <Check className="h-4 w-4 text-cyan-600" />
                       <span>{ing}</span>
                     </li>
                   ))}
@@ -137,31 +133,43 @@ export default function DetoxJuicesPage() {
               <div>
                 <h3 className="font-semibold mb-2">Benefits:</h3>
                 <ul className="text-sm text-gray-700 space-y-1">
-                  {selectedJuice.benefits.map((benefit, idx) => (
+                  {selectedWater.benefits.map((benefit, idx) => (
                     <li key={idx}>• {benefit}</li>
                   ))}
                 </ul>
               </div>
-              <div className="grid grid-cols-3 gap-2 p-3 bg-green-50 rounded-lg">
+              <div className="bg-cyan-50 p-3 rounded-lg">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-gray-600">Infusion Time:</span>
+                    <div className="font-medium">{selectedWater.infusionTime}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Temperature:</span>
+                    <div className="font-medium">{selectedWater.temperature}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 p-3 bg-blue-100 rounded-lg">
                 <div className="text-center">
-                  <div className="font-bold text-green-600">{selectedJuice.nutrition.calories}</div>
+                  <div className="font-bold text-cyan-600">{selectedWater.nutrition.calories}</div>
                   <div className="text-xs text-gray-600">Calories</div>
                 </div>
                 <div className="text-center">
-                  <div className="font-bold text-blue-600">{selectedJuice.nutrition.fiber}g</div>
-                  <div className="text-xs text-gray-600">Fiber</div>
+                  <div className="font-bold text-blue-600">{selectedWater.nutrition.sugar}g</div>
+                  <div className="text-xs text-gray-600">Sugar</div>
                 </div>
                 <div className="text-center">
-                  <div className="font-bold text-orange-600">{selectedJuice.prepTime}min</div>
+                  <div className="font-bold text-green-600">{selectedWater.prepTime}min</div>
                   <div className="text-xs text-gray-600">Prep</div>
                 </div>
               </div>
               <div className="flex gap-4 pt-4">
                 <Button 
-                  className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
-                  onClick={handleCompleteJuice}
+                  className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600"
+                  onClick={handleCompleteWater}
                 >
-                  Complete Juice (+25 XP)
+                  Complete Water (+15 XP)
                 </Button>
               </div>
             </div>
@@ -182,9 +190,9 @@ export default function DetoxJuicesPage() {
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
-                <Droplets className="h-6 w-6 text-green-600" />
-                <h1 className="text-2xl font-bold text-gray-900">Detox Juices</h1>
-                <Badge className="bg-green-100 text-green-800">Cleansing</Badge>
+                <Waves className="h-6 w-6 text-cyan-600" />
+                <h1 className="text-2xl font-bold text-gray-900">Detox Infused Waters</h1>
+                <Badge className="bg-cyan-100 text-cyan-800">Hydrating</Badge>
               </div>
             </div>
             
@@ -203,7 +211,7 @@ export default function DetoxJuicesPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-green-600 hover:bg-green-700">
+              <Button size="sm" className="bg-cyan-600 hover:bg-cyan-700">
                 <Camera className="h-4 w-4 mr-2" />
                 Share Recipe
               </Button>
@@ -264,26 +272,26 @@ export default function DetoxJuicesPage() {
         </Card>
 
         {/* SISTER SUBPAGES NAVIGATION */}
-        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
+        <Card className="bg-gradient-to-r from-cyan-50 to-blue-50 border-cyan-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Detox Types</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Link href="/drinks/detoxes/juice">
+                <Button variant="outline" className="w-full justify-start hover:bg-green-50 hover:border-green-300">
+                  <Droplets className="h-4 w-4 mr-2 text-green-600" />
+                  <div className="text-left flex-1">
+                    <div className="font-medium text-sm">Detox Juices</div>
+                    <div className="text-xs text-gray-500">Cold-pressed cleansing</div>
+                  </div>
+                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                </Button>
+              </Link>
               <Link href="/drinks/detoxes/tea">
                 <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
                   <Coffee className="h-4 w-4 mr-2 text-amber-600" />
                   <div className="text-left flex-1">
                     <div className="font-medium text-sm">Detox Teas</div>
                     <div className="text-xs text-gray-500">Herbal infusions</div>
-                  </div>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
-                </Button>
-              </Link>
-              <Link href="/drinks/detoxes/water">
-                <Button variant="outline" className="w-full justify-start hover:bg-cyan-50 hover:border-cyan-300">
-                  <Waves className="h-4 w-4 mr-2 text-cyan-600" />
-                  <div className="text-left flex-1">
-                    <div className="font-medium text-sm">Infused Waters</div>
-                    <div className="text-xs text-gray-500">Fruit & herb hydration</div>
                   </div>
                   <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
                 </Button>
@@ -296,25 +304,25 @@ export default function DetoxJuicesPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">105</div>
+              <div className="text-2xl font-bold text-cyan-600">10</div>
               <div className="text-sm text-gray-600">Avg Calories</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">4.2g</div>
-              <div className="text-sm text-gray-600">Avg Fiber</div>
+              <div className="text-2xl font-bold text-blue-600">0g</div>
+              <div className="text-sm text-gray-600">Fat</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-orange-600">100%</div>
+              <div className="text-2xl font-bold text-green-600">100%</div>
               <div className="text-sm text-gray-600">Natural</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-emerald-600">8</div>
+              <div className="text-2xl font-bold text-purple-600">10</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -324,7 +332,7 @@ export default function DetoxJuicesPage() {
         <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
-            { id: 'detox-types', label: 'Detox Types', icon: Target },
+            { id: 'water-types', label: 'Water Types', icon: Waves },
             { id: 'featured', label: 'Featured', icon: Star }
           ].map(tab => {
             const Icon = tab.icon;
@@ -351,7 +359,7 @@ export default function DetoxJuicesPage() {
                   <div className="flex-1 relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
                     <Input
-                      placeholder="Search detox juices..."
+                      placeholder="Search infused waters..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-10"
@@ -361,14 +369,15 @@ export default function DetoxJuicesPage() {
                   <div className="flex gap-2">
                     <select 
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                      value={selectedDetoxType}
-                      onChange={(e) => setSelectedDetoxType(e.target.value)}
+                      value={selectedWaterType}
+                      onChange={(e) => setSelectedWaterType(e.target.value)}
                     >
-                      <option value="">All Detox Types</option>
-                      <option value="Deep Cleanse">Deep Cleanse</option>
-                      <option value="Liver">Liver Support</option>
-                      <option value="Digestive">Digestive</option>
-                      <option value="Immune">Immune Support</option>
+                      <option value="">All Water Types</option>
+                      <option value="Hydrating">Hydrating</option>
+                      <option value="Antioxidant">Antioxidant</option>
+                      <option value="Metabolic">Metabolic</option>
+                      <option value="Energizing">Energizing</option>
+                      <option value="Calming">Calming</option>
                     </select>
                     
                     <select 
@@ -377,35 +386,12 @@ export default function DetoxJuicesPage() {
                       onChange={(e) => setSelectedCategory(e.target.value)}
                     >
                       <option value="">All Categories</option>
-                      <option value="Green">Green Juices</option>
-                      <option value="Root">Root Juices</option>
-                      <option value="Citrus">Citrus Juices</option>
-                      <option value="Red">Red Juices</option>
+                      <option value="Classic">Classic Infusions</option>
+                      <option value="Fruity">Fruity Infusions</option>
+                      <option value="Citrus">Citrus Infusions</option>
+                      <option value="Herbal">Herbal Infusions</option>
+                      <option value="Tropical">Tropical Infusions</option>
                     </select>
-                    
-                    <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                      value={detoxIntensity[0]}
-                      onChange={(e) => setDetoxIntensity([e.target.value])}
-                    >
-                      <option value="Any">Any Intensity</option>
-                      <option value="Intense">Intense</option>
-                      <option value="Moderate">Moderate</option>
-                      <option value="Gentle">Gentle</option>
-                    </select>
-                    
-                    <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white min-w-[120px]">
-                      <span>Max Cal:</span>
-                      <Slider
-                        value={maxCalories}
-                        onValueChange={setMaxCalories}
-                        max={200}
-                        min={50}
-                        step={10}
-                        className="flex-1"
-                      />
-                      <span className="text-xs text-gray-500">{maxCalories[0]}</span>
-                    </div>
                     
                     <select 
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm"
@@ -414,71 +400,84 @@ export default function DetoxJuicesPage() {
                     >
                       <option value="rating">Sort by Rating</option>
                       <option value="calories">Sort by Calories</option>
-                      <option value="intensity">Sort by Intensity</option>
+                      <option value="prepTime">Sort by Prep Time</option>
                     </select>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Recipe Grid */}
+            {/* Water Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredJuices.map(juice => (
-                <Card key={juice.id} className="hover:shadow-lg transition-shadow">
+              {filteredWaters.map(water => (
+                <Card key={water.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader className="pb-2">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <CardTitle className="text-lg mb-1">{juice.name}</CardTitle>
-                        <p className="text-sm text-gray-600 mb-2">{juice.description}</p>
+                        <CardTitle className="text-lg mb-1">{water.name}</CardTitle>
+                        <p className="text-sm text-gray-600 mb-2">{water.description}</p>
                       </div>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => addToFavorites({
-                          id: juice.id,
-                          name: juice.name,
+                          id: water.id,
+                          name: water.name,
                           category: 'detoxes',
-                          description: juice.description,
-                          ingredients: juice.ingredients,
-                          nutrition: juice.nutrition,
-                          difficulty: juice.difficulty,
-                          prepTime: juice.prepTime,
-                          rating: juice.rating,
-                          bestTime: juice.bestTime
+                          description: water.description,
+                          ingredients: water.ingredients,
+                          nutrition: water.nutrition,
+                          difficulty: water.difficulty,
+                          prepTime: water.prepTime,
+                          rating: water.rating,
+                          bestTime: water.bestTime
                         })}
                         className="text-gray-400 hover:text-red-500"
                       >
-                        <Heart className={`h-4 w-4 ${isFavorite(juice.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                        <Heart className={`h-4 w-4 ${isFavorite(water.id) ? 'fill-red-500 text-red-500' : ''}`} />
                       </Button>
                     </div>
                     
                     <div className="flex items-center gap-2 mb-2">
-                      <Badge className="bg-green-100 text-green-800">{juice.detoxType}</Badge>
-                      <Badge variant="outline">{juice.detoxLevel}</Badge>
-                      {juice.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                      <Badge className="bg-cyan-100 text-cyan-800">{water.waterType}</Badge>
+                      <Badge variant="outline">{water.flavorProfile}</Badge>
+                      {water.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                     </div>
                   </CardHeader>
                   
                   <CardContent>
                     <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                       <div>
-                        <div className="text-xl font-bold text-green-600">{juice.nutrition.calories}</div>
+                        <div className="text-xl font-bold text-cyan-600">{water.nutrition.calories}</div>
                         <div className="text-gray-500">Cal</div>
                       </div>
                       <div>
-                        <div className="text-xl font-bold text-blue-600">{juice.nutrition.fiber}g</div>
-                        <div className="text-gray-500">Fiber</div>
+                        <div className="text-xl font-bold text-blue-600">{water.nutrition.sugar}g</div>
+                        <div className="text-gray-500">Sugar</div>
                       </div>
                       <div>
-                        <div className="text-xl font-bold text-orange-600">{juice.prepTime}m</div>
+                        <div className="text-xl font-bold text-green-600">{water.prepTime}m</div>
                         <div className="text-gray-500">Prep</div>
+                      </div>
+                    </div>
+
+                    <div className="mb-4 bg-cyan-50 p-3 rounded-lg">
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-gray-600">Infusion:</span>
+                          <span className="font-medium ml-1">{water.infusionTime}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Temp:</span>
+                          <span className="font-medium ml-1">{water.temperature}</span>
+                        </div>
                       </div>
                     </div>
 
                     <div className="mb-4">
                       <h4 className="font-medium text-sm text-gray-700 mb-2">Benefits:</h4>
                       <div className="flex flex-wrap gap-1">
-                        {juice.benefits.slice(0, 3).map((benefit, index) => (
+                        {water.benefits.slice(0, 3).map((benefit, index) => (
                           <Badge key={index} variant="outline" className="text-xs">
                             {benefit}
                           </Badge>
@@ -489,32 +488,32 @@ export default function DetoxJuicesPage() {
                     <div className="space-y-2 mb-4 text-sm">
                       <div className="flex justify-between">
                         <span className="text-gray-600">Best Time:</span>
-                        <span className="font-medium">{juice.bestTime}</span>
+                        <span className="font-medium">{water.bestTime}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Duration:</span>
-                        <span className="font-medium">{juice.duration}</span>
+                        <span className="font-medium">{water.duration}</span>
                       </div>
                     </div>
 
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-1">
                         <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="font-medium">{juice.rating}</span>
-                        <span className="text-gray-500 text-sm">({juice.reviews})</span>
+                        <span className="font-medium">{water.rating}</span>
+                        <span className="text-gray-500 text-sm">({water.reviews})</span>
                       </div>
                       <Badge variant="outline" className="text-xs">
-                        {juice.difficulty}
+                        {water.difficulty}
                       </Badge>
                     </div>
 
                     <div className="flex gap-2">
                       <Button 
-                        className="flex-1 bg-green-600 hover:bg-green-700"
-                        onClick={() => handleMakeJuice(juice)}
+                        className="flex-1 bg-cyan-600 hover:bg-cyan-700"
+                        onClick={() => handleMakeWater(water)}
                       >
-                        <Droplets className="h-4 w-4 mr-2" />
-                        Make Juice
+                        <Waves className="h-4 w-4 mr-2" />
+                        Make Water
                       </Button>
                       <Button variant="outline" size="sm">
                         <Share2 className="h-4 w-4" />
@@ -527,13 +526,12 @@ export default function DetoxJuicesPage() {
           </div>
         )}
 
-        {activeTab === 'detox-types' && (
+        {activeTab === 'water-types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {detoxTypes.map(type => {
+            {waterTypes.map(type => {
               const Icon = type.icon;
-              const typeJuices = detoxJuices.filter(juice => 
-                juice.detoxLevel === type.intensity ||
-                juice.detoxType?.toLowerCase().includes(type.name.toLowerCase())
+              const typeWaters = infusedWaters.filter(water => 
+                water.waterType?.toLowerCase().includes(type.name.toLowerCase())
               );
               
               return (
@@ -548,16 +546,6 @@ export default function DetoxJuicesPage() {
                   
                   <CardContent>
                     <div className="space-y-3 mb-4">
-                      <div className="text-center bg-gray-50 p-3 rounded-lg">
-                        <div className="text-sm font-medium text-gray-700 mb-1">Intensity</div>
-                        <div className="text-lg font-bold text-green-600">{type.intensity}</div>
-                      </div>
-                      
-                      <div className="text-center bg-blue-50 p-3 rounded-lg">
-                        <div className="text-sm font-medium text-gray-700 mb-1">Duration</div>
-                        <div className="text-sm text-blue-800">{type.duration}</div>
-                      </div>
-                      
                       <div>
                         <h4 className="font-semibold text-sm mb-2">Benefits:</h4>
                         <div className="flex flex-wrap gap-1">
@@ -568,17 +556,22 @@ export default function DetoxJuicesPage() {
                           ))}
                         </div>
                       </div>
+                      
+                      <div className="bg-blue-50 p-3 rounded-lg">
+                        <div className="text-sm font-medium text-gray-700 mb-1">Best For:</div>
+                        <div className="text-sm text-blue-800">{type.bestFor}</div>
+                      </div>
                     </div>
                     
                     <div className="text-center">
                       <div className={`text-2xl font-bold ${type.color} mb-1`}>
-                        {typeJuices.length}
+                        {typeWaters.length}
                       </div>
                       <div className="text-sm text-gray-600 mb-3">Available Recipes</div>
                       <Button 
                         className="w-full"
                         onClick={() => {
-                          setDetoxIntensity([type.intensity]);
+                          setSelectedWaterType(type.name.split(' ')[0]);
                           setActiveTab('browse');
                         }}
                       >
@@ -594,58 +587,72 @@ export default function DetoxJuicesPage() {
 
         {activeTab === 'featured' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {featuredJuices.map(juice => (
-              <Card key={juice.id} className="overflow-hidden hover:shadow-xl transition-shadow">
-                <div className="relative bg-gradient-to-br from-green-100 to-emerald-100 h-48 flex items-center justify-center">
-                  <Droplets className="h-24 w-24 text-green-600 opacity-20" />
+            {featuredWaters.map(water => (
+              <Card key={water.id} className="overflow-hidden hover:shadow-xl transition-shadow">
+                <div className="relative bg-gradient-to-br from-cyan-100 to-blue-100 h-48 flex items-center justify-center">
+                  <Waves className="h-24 w-24 text-cyan-600 opacity-20" />
                   <div className="absolute top-4 left-4">
-                    <Badge className="bg-green-500 text-white">Featured Cleanse</Badge>
+                    <Badge className="bg-cyan-500 text-white">Featured Water</Badge>
                   </div>
                   <div className="absolute top-4 right-4">
-                    <Badge className="bg-white text-green-800">{juice.nutrition.calories} Cal</Badge>
+                    <Badge className="bg-white text-cyan-800">{water.nutrition.calories} Cal</Badge>
                   </div>
                 </div>
                 
                 <CardHeader>
-                  <CardTitle className="text-xl">{juice.name}</CardTitle>
-                  <p className="text-gray-600">{juice.description}</p>
+                  <CardTitle className="text-xl">{water.name}</CardTitle>
+                  <p className="text-gray-600">{water.description}</p>
                   
                   <div className="flex items-center gap-2 mt-2">
-                    <Badge className="bg-green-100 text-green-800">{juice.detoxType}</Badge>
-                    <Badge variant="outline">{juice.detoxLevel}</Badge>
+                    <Badge className="bg-cyan-100 text-cyan-800">{water.waterType}</Badge>
+                    <Badge variant="outline">{water.flavorProfile}</Badge>
                     <div className="flex items-center gap-1 ml-auto">
                       <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium">{juice.rating}</span>
-                      <span className="text-gray-500 text-sm">({juice.reviews})</span>
+                      <span className="font-medium">{water.rating}</span>
+                      <span className="text-gray-500 text-sm">({water.reviews})</span>
                     </div>
                   </div>
                 </CardHeader>
                 
                 <CardContent>
-                  <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-green-50 rounded-lg">
+                  <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-cyan-50 rounded-lg">
                     <div className="text-center">
-                      <div className="text-xl font-bold text-green-600">{juice.nutrition.calories}</div>
+                      <div className="text-xl font-bold text-cyan-600">{water.nutrition.calories}</div>
                       <div className="text-xs text-gray-600">Calories</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-xl font-bold text-blue-600">{juice.nutrition.fiber}g</div>
-                      <div className="text-xs text-gray-600">Fiber</div>
+                      <div className="text-xl font-bold text-blue-600">{water.nutrition.sugar}g</div>
+                      <div className="text-xs text-gray-600">Sugar</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-xl font-bold text-orange-600">{juice.prepTime}m</div>
+                      <div className="text-xl font-bold text-green-600">{water.prepTime}m</div>
                       <div className="text-xs text-gray-600">Prep Time</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-xl font-bold text-emerald-600">${juice.estimatedCost}</div>
+                      <div className="text-xl font-bold text-purple-600">${water.estimatedCost}</div>
                       <div className="text-xs text-gray-600">Cost</div>
                     </div>
                   </div>
 
+                  <div className="mb-4 bg-blue-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-900 mb-2">Infusion Details:</h4>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className="text-gray-600">Infusion Time:</span>
+                        <div className="font-semibold text-cyan-600">{water.infusionTime}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Temperature:</span>
+                        <div className="font-semibold text-cyan-600">{water.temperature}</div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="mb-4">
-                    <h4 className="font-medium text-gray-900 mb-2">Detox Benefits:</h4>
+                    <h4 className="font-medium text-gray-900 mb-2">Health Benefits:</h4>
                     <div className="flex flex-wrap gap-1">
-                      {juice.benefits.map((benefit, index) => (
-                        <Badge key={index} className="bg-green-100 text-green-800 text-xs">
+                      {water.benefits.map((benefit, index) => (
+                        <Badge key={index} className="bg-cyan-100 text-cyan-800 text-xs">
                           {benefit}
                         </Badge>
                       ))}
@@ -656,11 +663,11 @@ export default function DetoxJuicesPage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <div className="text-sm font-medium text-gray-700 mb-1">Best Time:</div>
-                        <div className="text-green-600 font-semibold">{juice.bestTime}</div>
+                        <div className="text-cyan-600 font-semibold">{water.bestTime}</div>
                       </div>
                       <div>
                         <div className="text-sm font-medium text-gray-700 mb-1">Duration:</div>
-                        <div className="text-blue-600 font-semibold">{juice.duration}</div>
+                        <div className="text-blue-600 font-semibold">{water.duration}</div>
                       </div>
                     </div>
                   </div>
@@ -668,9 +675,9 @@ export default function DetoxJuicesPage() {
                   <div className="mb-6">
                     <h4 className="font-medium text-gray-900 mb-2">Ingredients:</h4>
                     <div className="text-sm text-gray-700 space-y-1">
-                      {juice.ingredients.map((ingredient, index) => (
+                      {water.ingredients.map((ingredient, index) => (
                         <div key={index} className="flex items-center gap-2">
-                          <Leaf className="h-3 w-3 text-green-500" />
+                          <Leaf className="h-3 w-3 text-cyan-500" />
                           {ingredient}
                         </div>
                       ))}
@@ -679,11 +686,11 @@ export default function DetoxJuicesPage() {
 
                   <div className="flex gap-3">
                     <Button 
-                      className="flex-1 bg-green-600 hover:bg-green-700"
-                      onClick={() => handleMakeJuice(juice)}
+                      className="flex-1 bg-cyan-600 hover:bg-cyan-700"
+                      onClick={() => handleMakeWater(water)}
                     >
-                      <Droplets className="h-4 w-4 mr-2" />
-                      Start Cleanse
+                      <Waves className="h-4 w-4 mr-2" />
+                      Infuse This Water
                     </Button>
                     <Button variant="outline">
                       <Share2 className="h-4 w-4 mr-2" />
@@ -697,19 +704,19 @@ export default function DetoxJuicesPage() {
         )}
 
         {/* Your Progress (in-content) */}
-        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
+        <Card className="bg-gradient-to-r from-cyan-50 to-blue-50 border-cyan-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold mb-2">Your Progress</h3>
                 <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="text-green-600">
+                  <Badge variant="outline" className="text-cyan-600">
                     Level {userProgress.level}
                   </Badge>
-                  <Badge variant="outline" className="text-emerald-600">
+                  <Badge variant="outline" className="text-blue-600">
                     {userProgress.totalPoints} XP
                   </Badge>
-                  <Badge variant="outline" className="text-blue-600">
+                  <Badge variant="outline" className="text-green-600">
                     {userProgress.totalDrinksMade} Drinks Made
                   </Badge>
                 </div>
