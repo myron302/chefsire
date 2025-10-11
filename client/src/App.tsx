@@ -54,6 +54,9 @@ import DessertSmoothies from "@/pages/drinks/smoothies/dessert";
 import GreenSmoothies from "@/pages/drinks/smoothies/green";
 import ProteinSmoothies from "@/pages/drinks/smoothies/protein";
 import WorkoutSmoothies from "@/pages/drinks/smoothies/workout";
+import TropicalSmoothies from "@/pages/drinks/smoothies/tropical";
+import BerrySmoothies from "@/pages/drinks/smoothies/berry";
+import DetoxSmoothies from "@/pages/drinks/smoothies/detox";
 
 // ========== PROTEIN SHAKES SUBCATEGORY PAGES ==========
 import CaseinProtein from "@/pages/drinks/protein-shakes/casein";
@@ -150,6 +153,9 @@ function DrinksSection() {
       <Route path="/drinks/smoothies/green" component={GreenSmoothies} />
       <Route path="/drinks/smoothies/protein" component={ProteinSmoothies} />
       <Route path="/drinks/smoothies/workout" component={WorkoutSmoothies} />
+      <Route path="/drinks/smoothies/tropical" component={TropicalSmoothies} />
+      <Route path="/drinks/smoothies/berry" component={BerrySmoothies} />
+      <Route path="/drinks/smoothies/detox" component={DetoxSmoothies} />
       <Route path="/drinks/smoothies" component={SmoothiesHub} />
 
       <Route path="/drinks/protein-shakes/casein" component={CaseinProtein} />
