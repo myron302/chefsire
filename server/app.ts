@@ -2,24 +2,65 @@ import express from "express";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import apiRouter from "./routes/index.js";
-import authRouter from "./routes/auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const app = express();
-
 app.use(express.json());
 
-// Auth + API routes
-app.use("/api/auth", authRouter);
-app.use("/api", apiRouter);
+// Log early errors
+process.on("uncaughtException", (e) => {
+  console.error("uncaughtException:", e);
+});
+process.on("unhandledRejection", (e) => {
+  console.error("unhandledRejection:", e);
+});
 
-// Find built frontend
+// Request log (helps verify ordering)
+app.use((req, _res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
+
+// ---- Load routers *dynamically* and guard failures ----
+let apiRouter: any = null;
+let authRouter: any = null;
+
+try {
+  // in the built app (server/dist/app.js), these files exist as .js
+  const routes = await import("./routes/index.js");
+  apiRouter = routes.default;
+  console.log("✅ API routes loaded");
+} catch (err) {
+  console.error("❌ Failed to load API routes:", err);
+}
+
+try {
+  const auth = await import("./routes/auth.js");
+  authRouter = auth.default;
+  console.log("✅ Auth routes loaded");
+} catch (err) {
+  console.error("❌ Failed to load auth routes:", err);
+}
+
+// Mount API before static/SPA
+if (authRouter) app.use("/api/auth", authRouter);
+if (apiRouter) app.use("/api", apiRouter);
+
+// Health endpoint always available
+app.get("/api/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    routes: { api: Boolean(apiRouter), auth: Boolean(authRouter) },
+  });
+});
+
+// ---- Static files (Vite build into server/dist/public) ----
 const candidates = [
-  path.resolve(__dirname, "../../dist"),
-  path.resolve(__dirname, "../dist"),
+  path.resolve(__dirname, "public"),
+  path.resolve(__dirname, "../dist/public"),
+  path.resolve(__dirname, "../../dist/public"),
   path.resolve(__dirname, "../../client/dist"),
 ];
 
@@ -45,33 +86,19 @@ if (staticDir) {
   );
   console.log(`🗂️  Serving static frontend from: ${staticDir}`);
 } else {
-  console.warn("⚠️  No built frontend found in candidates. Build the client to create dist/index.html.");
+  console.warn("⚠️  No built frontend found.");
 }
 
-// Health check
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", staticDir, tested: candidates, found: Boolean(staticDir) });
-});
-
-// SPA fallback (skip real assets)
-app.get(
-  /^(?!\/api\/)(?!.*\.(?:js|css|map|png|jpe?g|gif|svg|ico|txt|json|webmanifest|woff2?|ttf|otf))$/i,
-  (_req, res) => {
-    if (!staticDir) {
-      return res.status(501).type("text/plain").send("Frontend not built. Build to create dist/index.html.");
-    }
-    res.sendFile(path.join(staticDir, "index.html"), (err) => {
-      if (err) {
-        console.error("❌ Error sending index.html:", err);
-        res.status(500).type("text/plain").send("Failed to serve index.html");
-      }
-    });
+// SPA fallback (after API & static)
+app.get("*", (req, res) => {
+  if (req.path.startsWith("/api/")) {
+    return res.status(404).json({ error: "API endpoint not found", path: req.path });
   }
-);
-
-// 404 + Error handlers
-app.use((_req, res) => res.status(404).json({ error: "Not found" }));
-app.use((err: any, _req: any, res: any, _next: any) => {
-  console.error("❌ Unexpected server error:", err);
-  res.status(500).json({ error: "Internal Server Error", details: err?.message });
+  if (!staticDir) return res.status(501).send("Frontend not built");
+  res.sendFile(path.join(staticDir, "index.html"), (err) => {
+    if (err) {
+      console.error("❌ Error sending index.html:", err);
+      res.status(500).send("Failed to serve index.html");
+    }
+  });
 });
