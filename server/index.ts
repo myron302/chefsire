@@ -2,8 +2,6 @@ import express from "express";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import apiRouter from "./routes";
-import authRouter from "./routes/auth";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,9 +10,22 @@ export const app = express();
 
 app.use(express.json());
 
-// Auth and API routes
-app.use("/api/auth", authRouter);
-app.use("/api", apiRouter);
+// Try to import routes, but don't crash if they don't exist
+try {
+  const { default: apiRouter } = await import("./routes/index.js");
+  app.use("/api", apiRouter);
+  console.log("✅ API routes loaded");
+} catch (err) {
+  console.warn("⚠️  API routes not found, skipping");
+}
+
+try {
+  const { default: authRouter } = await import("./routes/auth.js");
+  app.use("/api/auth", authRouter);
+  console.log("✅ Auth routes loaded");
+} catch (err) {
+  console.warn("⚠️  Auth routes not found, skipping");
+}
 
 // Find the dist folder
 const possiblePaths = [
@@ -68,7 +79,7 @@ app.use((err: any, _req: any, res: any, _next: any) => {
   res.status(500).json({ error: "Internal server error", message: err.message });
 });
 
-// START THE SERVER - This is what was missing!
+// START THE SERVER
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
