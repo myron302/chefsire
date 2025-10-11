@@ -3,65 +3,38 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
+// ESM __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export const app = express();
+import apiRouter from "./routes/index"; // <-- static import
+import authRouter from "./routes/auth"; // signup routes
 
-// Enable JSON parsing
+export const app = express();
 app.use(express.json());
 
-// IMPORTANT: Log all requests to debug routing issues
-app.use((req, res, next) => {
+// (optional) request log to debug routing
+app.use((req, _res, next) => {
   console.log(`${req.method} ${req.path}`);
   next();
 });
 
-// Import routes - try/catch to handle missing routes gracefully
-let apiRouter: any = null;
-let authRouter: any = null;
+// --- Mount API FIRST ---
+app.use("/api/auth", authRouter);
+app.use("/api", apiRouter);
 
-try {
-  const routes = await import("./routes/index.js");
-  apiRouter = routes.default;
-  console.log("✅ API routes loaded");
-} catch (err) {
-  console.error("❌ Failed to load API routes:", err);
-}
-
-try {
-  const auth = await import("./routes/auth.js");
-  authRouter = auth.default;
-  console.log("✅ Auth routes loaded");
-} catch (err) {
-  console.error("❌ Failed to load auth routes:", err);
-}
-
-// Mount routes BEFORE static files
-if (authRouter) {
-  app.use("/api/auth", authRouter);
-}
-
-if (apiRouter) {
-  app.use("/api", apiRouter);
-}
-
-// Health check endpoint
+// Health
 app.get("/api/health", (_req, res) => {
-  res.json({ 
-    status: "ok", 
-    routes: {
-      auth: !!authRouter,
-      api: !!apiRouter
-    }
-  });
+  res.json({ status: "ok" });
 });
 
-// Find built frontend
+// --- Static files (Vite build) ---
+// When this code runs from server/dist, the built client is at server/dist/public
 const candidates = [
-  path.resolve(__dirname, "../../dist"),
-  path.resolve(__dirname, "../dist"),
-  path.resolve(__dirname, "../../client/dist"),
+  path.resolve(__dirname, "public"),              // vite outDir when bundled
+  path.resolve(__dirname, "../dist/public"),      // safety
+  path.resolve(__dirname, "../../dist/public"),   // safety
+  path.resolve(__dirname, "../../client/dist"),   // legacy
 ];
 
 let staticDir: string | null = null;
@@ -86,35 +59,21 @@ if (staticDir) {
   );
   console.log(`🗂️  Serving static frontend from: ${staticDir}`);
 } else {
-  console.warn("⚠️  No built frontend found in candidates.");
+  console.warn("⚠️  No built frontend found. Build the client to create dist/public/index.html.");
 }
 
-// SPA fallback - serve index.html for client-side routes
-// This MUST come after API routes and static files
+// --- SPA fallback (AFTER API & static) ---
 app.get("*", (req, res) => {
-  // Don't serve HTML for API requests that got here by mistake
+  // never serve index.html to /api/*
   if (req.path.startsWith("/api/")) {
     return res.status(404).json({ error: "API endpoint not found", path: req.path });
   }
-
-  if (!staticDir) {
-    return res.status(501).send("Frontend not built");
-  }
+  if (!staticDir) return res.status(501).send("Frontend not built");
 
   res.sendFile(path.join(staticDir, "index.html"), (err) => {
     if (err) {
       console.error("❌ Error sending index.html:", err);
       res.status(500).send("Failed to serve index.html");
     }
-  });
-});
-
-// Error handler
-app.use((err: any, req: any, res: any, _next: any) => {
-  console.error("❌ Server error:", err);
-  res.status(500).json({ 
-    error: "Internal Server Error", 
-    message: err?.message,
-    path: req.path
   });
 });
