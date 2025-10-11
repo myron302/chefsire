@@ -6,148 +6,133 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { 
-  Droplets, Leaf, Heart, Star, Search, Share2, ArrowLeft,
-  Camera, Zap, Sparkles, X, Check, Apple, Sun, Palmtree
+  Palmtree, Sun, Heart, Star, Search, Share2, ArrowLeft,
+  Camera, Zap, Waves, Droplets, X, Check, Apple, Leaf, Sparkles
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 
-// Detox smoothies data
-const detoxSmoothies = [
+// Tropical smoothies data
+const tropicalSmoothies = [
   {
-    id: 'detox-1',
-    name: 'Green Goddess Cleanse',
-    description: 'Ultimate detox with kale, spinach, and cucumber',
-    ingredients: ['2 cups kale', '1 cup spinach', '1/2 cucumber', '1 green apple', '1/2 lemon juice', '1 cup coconut water'],
-    benefits: ['Liver detox', 'Alkalizing', 'Anti-inflammatory', 'Hydrating'],
-    nutrition: { calories: 140, protein: 4, carbs: 28, fiber: 6, sugar: 14 },
+    id: 'tropical-1',
+    name: 'Island Paradise',
+    description: 'Mango, pineapple, and coconut blend',
+    ingredients: ['1 cup mango chunks', '1/2 cup pineapple', '1/4 cup coconut milk', '1/2 banana', 'Ice'],
+    benefits: ['Vitamin C boost', 'Immune support', 'Tropical energy', 'Hydrating'],
+    nutrition: { calories: 280, protein: 4, carbs: 58, fiber: 5, sugar: 45 },
     difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.7,
-    reviews: 412,
-    detoxType: 'Green Detox',
+    prepTime: 3,
+    rating: 4.8,
+    reviews: 342,
+    flavor: 'Sweet & Tropical',
     featured: true,
     trending: true,
-    bestTime: 'Morning',
-    image: 'https://images.unsplash.com/photo-1610970881699-44a5587cabec?w=400&h=300&fit=crop'
+    bestTime: 'Morning/Afternoon',
+    image: 'https://images.unsplash.com/photo-1546548970-71785318a17b?w=400&h=300&fit=crop'
   },
   {
-    id: 'detox-2',
-    name: 'Ginger Turmeric Reset',
-    description: 'Anti-inflammatory powerhouse blend',
-    ingredients: ['1 inch ginger', '1 inch turmeric', '1 orange', '1/2 pineapple', '1/4 tsp black pepper', 'Coconut water'],
-    benefits: ['Anti-inflammatory', 'Immune boost', 'Digestion', 'Pain relief'],
-    nutrition: { calories: 180, protein: 3, carbs: 40, fiber: 5, sugar: 28 },
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.8,
-    reviews: 356,
-    detoxType: 'Spice Detox',
-    featured: true,
-    bestTime: 'Morning',
-    image: 'https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop'
-  },
-  {
-    id: 'detox-3',
-    name: 'Celery Cucumber Refresh',
-    description: 'Hydrating and cleansing green juice',
-    ingredients: ['3 celery stalks', '1 cucumber', '1/2 lemon', '1 green apple', 'Handful parsley', 'Water'],
-    benefits: ['Hydration', 'Kidney cleanse', 'Digestive health', 'Bloat reducer'],
-    nutrition: { calories: 100, protein: 2, carbs: 22, fiber: 5, sugar: 12 },
+    id: 'tropical-2',
+    name: 'Piña Colada Dream',
+    description: 'Classic tropical vacation in a glass',
+    ingredients: ['1 cup pineapple chunks', '1/2 cup coconut cream', '1/4 cup Greek yogurt', '1 tbsp honey', 'Ice'],
+    benefits: ['Digestive enzymes', 'Creamy satisfaction', 'Energy boost', 'Tropical flavor'],
+    nutrition: { calories: 320, protein: 8, carbs: 52, fiber: 4, sugar: 42 },
     difficulty: 'Easy',
     prepTime: 4,
-    rating: 4.6,
+    rating: 4.9,
+    reviews: 445,
+    flavor: 'Creamy Coconut',
+    featured: true,
+    bestTime: 'Afternoon',
+    image: 'https://images.unsplash.com/photo-1534353473418-4cfa6c56fd38?w=400&h=300&fit=crop'
+  },
+  {
+    id: 'tropical-3',
+    name: 'Mango Madness',
+    description: 'Pure mango bliss with tropical twist',
+    ingredients: ['1.5 cups mango', '1/2 orange juice', '1/4 cup passion fruit', '1 tbsp lime juice', 'Ice'],
+    benefits: ['Antioxidant rich', 'Vitamin A', 'Eye health', 'Skin glow'],
+    nutrition: { calories: 240, protein: 3, carbs: 56, fiber: 6, sugar: 48 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.7,
     reviews: 298,
-    detoxType: 'Juice Cleanse',
+    flavor: 'Sweet Mango',
+    bestTime: 'Morning',
+    image: 'https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=400&h=300&fit=crop'
+  },
+  {
+    id: 'tropical-4',
+    name: 'Passionfruit Paradise',
+    description: 'Exotic passionfruit with pineapple',
+    ingredients: ['3 passionfruit', '1 cup pineapple', '1/2 banana', '1/2 cup coconut water', 'Ice'],
+    benefits: ['Exotic flavor', 'Vitamin C', 'Hydration', 'Digestive support'],
+    nutrition: { calories: 260, protein: 4, carbs: 60, fiber: 8, sugar: 44 },
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.6,
+    reviews: 187,
+    flavor: 'Tangy Tropical',
+    trending: true,
+    bestTime: 'Afternoon'
+  },
+  {
+    id: 'tropical-5',
+    name: 'Hawaiian Sunrise',
+    description: 'Papaya, guava, and citrus sunshine',
+    ingredients: ['1 cup papaya', '1/2 cup guava juice', '1/2 orange', '1 tbsp honey', 'Ice'],
+    benefits: ['Digestive enzymes', 'Immune boost', 'Morning energy', 'Tropical vibes'],
+    nutrition: { calories: 220, protein: 3, carbs: 52, fiber: 5, sugar: 40 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.5,
+    reviews: 156,
+    flavor: 'Citrus Tropical',
+    bestTime: 'Morning'
+  },
+  {
+    id: 'tropical-6',
+    name: 'Coconut Beach Bliss',
+    description: 'Creamy coconut with tropical fruits',
+    ingredients: ['1/2 cup coconut milk', '1 cup mixed tropical fruit', '1/2 banana', '1 tbsp coconut flakes', 'Ice'],
+    benefits: ['Healthy fats', 'Sustained energy', 'Creamy texture', 'Tropical escape'],
+    nutrition: { calories: 340, protein: 5, carbs: 48, fiber: 6, sugar: 38 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.8,
+    reviews: 234,
+    flavor: 'Creamy Coconut',
+    featured: true,
+    bestTime: 'Afternoon'
+  },
+  {
+    id: 'tropical-7',
+    name: 'Dragon Fruit Delight',
+    description: 'Vibrant pink dragon fruit blend',
+    ingredients: ['1 dragon fruit', '1/2 cup pineapple', '1/2 banana', '1/2 cup coconut water', 'Ice'],
+    benefits: ['Antioxidants', 'Instagram-worthy', 'Vitamin C', 'Exotic taste'],
+    nutrition: { calories: 200, protein: 3, carbs: 48, fiber: 7, sugar: 35 },
+    difficulty: 'Medium',
+    prepTime: 5,
+    rating: 4.9,
+    reviews: 389,
+    flavor: 'Mild Sweet',
     trending: true,
     bestTime: 'Morning/Afternoon'
   },
   {
-    id: 'detox-4',
-    name: 'Beet Berry Detox',
-    description: 'Liver-loving beet and berry blend',
-    ingredients: ['1 small beet', '1 cup mixed berries', '1/2 lemon', '1 inch ginger', '1 cup water'],
-    benefits: ['Liver support', 'Blood purifier', 'Antioxidants', 'Nitric oxide boost'],
-    nutrition: { calories: 160, protein: 4, carbs: 35, fiber: 8, sugar: 22 },
-    difficulty: 'Medium',
-    prepTime: 6,
-    rating: 4.5,
-    reviews: 234,
-    detoxType: 'Liver Cleanse',
-    bestTime: 'Morning'
-  },
-  {
-    id: 'detox-5',
-    name: 'Lemon Ginger Zinger',
-    description: 'Classic detox with cayenne kick',
-    ingredients: ['2 lemons juiced', '2 inch ginger', '1 tbsp honey', 'Pinch cayenne', '2 cups water'],
-    benefits: ['Metabolism boost', 'Immune support', 'Digestive aid', 'Vitamin C'],
-    nutrition: { calories: 90, protein: 1, carbs: 24, fiber: 2, sugar: 18 },
+    id: 'tropical-8',
+    name: 'Tropical Green Fusion',
+    description: 'Spinach meets tropical paradise',
+    ingredients: ['1 cup spinach', '1 cup mango', '1/2 pineapple', '1/2 cup coconut water', 'Ice'],
+    benefits: ['Green nutrition', 'Tropical taste', 'Vitamin boost', 'Hidden veggies'],
+    nutrition: { calories: 210, protein: 4, carbs: 50, fiber: 6, sugar: 38 },
     difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.7,
-    reviews: 567,
-    detoxType: 'Citrus Cleanse',
-    trending: true,
-    bestTime: 'Morning'
-  },
-  {
-    id: 'detox-6',
-    name: 'Activated Charcoal Detox',
-    description: 'Deep cleanse with activated charcoal',
-    ingredients: ['1 tsp activated charcoal', '1 banana', '1 cup coconut milk', '1 tbsp almond butter', 'Ice'],
-    benefits: ['Toxin removal', 'Digestive cleanse', 'Bloat relief', 'Black magic'],
-    nutrition: { calories: 280, protein: 6, carbs: 38, fiber: 7, sugar: 18 },
-    difficulty: 'Medium',
     prepTime: 4,
-    rating: 4.4,
-    reviews: 189,
-    detoxType: 'Deep Cleanse',
-    featured: true,
-    bestTime: 'Evening'
-  },
-  {
-    id: 'detox-7',
-    name: 'Cilantro Chlorella Cleanse',
-    description: 'Heavy metal detox superfood blend',
-    ingredients: ['1 cup cilantro', '1 tsp chlorella', '1 green apple', '1/2 cucumber', '1/2 lime', 'Coconut water'],
-    benefits: ['Heavy metal removal', 'Chlorophyll rich', 'Liver support', 'Alkalizing'],
-    nutrition: { calories: 120, protein: 5, carbs: 24, fiber: 6, sugar: 14 },
-    difficulty: 'Medium',
-    prepTime: 5,
-    rating: 4.3,
-    reviews: 145,
-    detoxType: 'Superfood Detox',
-    bestTime: 'Morning'
-  },
-  {
-    id: 'detox-8',
-    name: 'Pineapple Mint Refresh',
-    description: 'Digestive enzyme-rich tropical cleanse',
-    ingredients: ['1.5 cups pineapple', 'Handful mint', '1/2 cucumber', '1/2 lime juice', 'Coconut water'],
-    benefits: ['Digestive enzymes', 'Anti-bloating', 'Refreshing', 'Metabolism boost'],
-    nutrition: { calories: 150, protein: 2, carbs: 36, fiber: 4, sugar: 26 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.8,
-    reviews: 423,
-    detoxType: 'Digestive Cleanse',
-    bestTime: 'Afternoon'
-  },
-  {
-    id: 'detox-9',
-    name: 'Matcha Green Detox',
-    description: 'Antioxidant-rich matcha cleanse',
-    ingredients: ['1 tsp matcha powder', '1 cup spinach', '1 banana', '1 cup almond milk', '1 tsp honey'],
-    benefits: ['Antioxidants', 'Gentle caffeine', 'Metabolism', 'Calm energy'],
-    nutrition: { calories: 190, protein: 5, carbs: 38, fiber: 6, sugar: 20 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.9,
-    reviews: 512,
-    detoxType: 'Green Tea Detox',
-    featured: true,
-    trending: true,
+    rating: 4.6,
+    reviews: 267,
+    flavor: 'Tropical Green',
     bestTime: 'Morning'
   }
 ];
@@ -157,8 +142,8 @@ const smoothieSubcategories = [
   { id: 'breakfast', name: 'Breakfast', path: '/drinks/smoothies/breakfast', icon: Sun, description: 'Morning fuel' },
   { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Zap, description: 'Performance boost' },
   { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Leafy greens' },
-  { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Palmtree, description: 'Island flavors' },
   { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
+  { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Droplets, description: 'Cleansing blends' },
   { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: Sparkles, description: 'Sweet treats' }
 ];
 
@@ -169,7 +154,7 @@ const otherDrinkHubs = [
   { id: 'protein-shakes', name: 'Protein Shakes', route: '/drinks/protein-shakes', icon: Apple, description: 'Muscle fuel' }
 ];
 
-export default function DetoxSmoothiesPage() {
+export default function TropicalSmoothiesPage() {
   const { 
     addToFavorites, 
     isFavorite, 
@@ -181,25 +166,24 @@ export default function DetoxSmoothiesPage() {
 
   const [activeTab, setActiveTab] = useState('browse');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDetoxType, setSelectedDetoxType] = useState('');
+  const [selectedFlavor, setSelectedFlavor] = useState('');
   const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [selectedSmoothie, setSelectedSmoothie] = useState<any>(null);
 
   const getFilteredSmoothies = () => {
-    let filtered = detoxSmoothies.filter(smoothie => {
+    let filtered = tropicalSmoothies.filter(smoothie => {
       const matchesSearch = smoothie.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            smoothie.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesDetoxType = !selectedDetoxType || smoothie.detoxType.toLowerCase().includes(selectedDetoxType.toLowerCase());
+      const matchesFlavor = !selectedFlavor || smoothie.flavor.toLowerCase().includes(selectedFlavor.toLowerCase());
       
-      return matchesSearch && matchesDetoxType;
+      return matchesSearch && matchesFlavor;
     });
 
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'rating': return (b.rating || 0) - (a.rating || 0);
-        case 'fiber': return (b.nutrition.fiber || 0) - (a.nutrition.fiber || 0);
         case 'calories': return (a.nutrition.calories || 0) - (b.nutrition.calories || 0);
         case 'time': return (a.prepTime || 0) - (b.prepTime || 0);
         default: return 0;
@@ -210,8 +194,8 @@ export default function DetoxSmoothiesPage() {
   };
 
   const filteredSmoothies = getFilteredSmoothies();
-  const featuredSmoothies = detoxSmoothies.filter(s => s.featured);
-  const trendingSmoothies = detoxSmoothies.filter(s => s.trending);
+  const featuredSmoothies = tropicalSmoothies.filter(s => s.featured);
+  const trendingSmoothies = tropicalSmoothies.filter(s => s.trending);
 
   const handleMakeSmoothie = (smoothie: any) => {
     setSelectedSmoothie(smoothie);
@@ -230,18 +214,18 @@ export default function DetoxSmoothiesPage() {
         difficulty: selectedSmoothie.difficulty,
         prepTime: selectedSmoothie.prepTime,
         rating: selectedSmoothie.rating,
-        fitnessGoal: 'Detox & Cleanse',
+        fitnessGoal: 'Tropical Energy',
         bestTime: selectedSmoothie.bestTime
       });
       incrementDrinksMade();
-      addPoints(30);
+      addPoints(25);
     }
     setShowModal(false);
     setSelectedSmoothie(null);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-pink-50">
       {/* Universal Search Modal */}
       {showUniversalSearch && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
@@ -275,40 +259,40 @@ export default function DetoxSmoothiesPage() {
                 <ul className="space-y-2">
                   {selectedSmoothie.ingredients.map((ing, idx) => (
                     <li key={idx} className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-green-600" />
+                      <Check className="h-4 w-4 text-orange-600" />
                       <span>{ing}</span>
                     </li>
                   ))}
                 </ul>
               </div>
               <div>
-                <h3 className="font-semibold mb-2">Detox Benefits:</h3>
+                <h3 className="font-semibold mb-2">Tropical Benefits:</h3>
                 <ul className="text-sm text-gray-700 space-y-1">
                   {selectedSmoothie.benefits.map((benefit, idx) => (
                     <li key={idx}>• {benefit}</li>
                   ))}
                 </ul>
               </div>
-              <div className="grid grid-cols-3 gap-2 p-3 bg-green-50 rounded-lg">
+              <div className="grid grid-cols-3 gap-2 p-3 bg-orange-50 rounded-lg">
                 <div className="text-center">
-                  <div className="font-bold text-green-600">{selectedSmoothie.nutrition.calories}</div>
+                  <div className="font-bold text-orange-600">{selectedSmoothie.nutrition.calories}</div>
                   <div className="text-xs text-gray-600">Calories</div>
                 </div>
                 <div className="text-center">
-                  <div className="font-bold text-emerald-600">{selectedSmoothie.nutrition.fiber}g</div>
+                  <div className="font-bold text-blue-600">{selectedSmoothie.nutrition.fiber}g</div>
                   <div className="text-xs text-gray-600">Fiber</div>
                 </div>
                 <div className="text-center">
-                  <div className="font-bold text-teal-600">{selectedSmoothie.prepTime}min</div>
+                  <div className="font-bold text-green-600">{selectedSmoothie.prepTime}min</div>
                   <div className="text-xs text-gray-600">Prep</div>
                 </div>
               </div>
               <div className="flex gap-4 pt-4">
                 <Button 
-                  className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+                  className="flex-1 bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600"
                   onClick={handleCompleteSmoothie}
                 >
-                  Complete Smoothie (+30 XP)
+                  Complete Smoothie (+25 XP)
                 </Button>
               </div>
             </div>
@@ -329,9 +313,9 @@ export default function DetoxSmoothiesPage() {
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
-                <Droplets className="h-6 w-6 text-green-600" />
-                <h1 className="text-2xl font-bold text-gray-900">Detox Smoothies</h1>
-                <Badge className="bg-green-100 text-green-800">Cleansing</Badge>
+                <Palmtree className="h-6 w-6 text-orange-600" />
+                <h1 className="text-2xl font-bold text-gray-900">Tropical Smoothies</h1>
+                <Badge className="bg-orange-100 text-orange-800">Island Vibes</Badge>
               </div>
             </div>
             
@@ -350,7 +334,7 @@ export default function DetoxSmoothiesPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-green-600 hover:bg-green-700">
+              <Button size="sm" className="bg-orange-600 hover:bg-orange-700">
                 <Camera className="h-4 w-4 mr-2" />
                 Share Recipe
               </Button>
@@ -386,7 +370,7 @@ export default function DetoxSmoothiesPage() {
         </Card>
 
         {/* SISTER SUBPAGES NAVIGATION */}
-        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
+        <Card className="bg-gradient-to-r from-orange-50 to-pink-50 border-orange-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Smoothie Types</h3>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -394,8 +378,8 @@ export default function DetoxSmoothiesPage() {
                 const Icon = subcategory.icon;
                 return (
                   <Link key={subcategory.id} href={subcategory.path}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-green-50 hover:border-green-300">
-                      <Icon className="h-4 w-4 mr-2 text-green-600" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-orange-50 hover:border-orange-300">
+                      <Icon className="h-4 w-4 mr-2 text-orange-600" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{subcategory.name}</div>
                         <div className="text-xs text-gray-500">{subcategory.description}</div>
@@ -413,25 +397,25 @@ export default function DetoxSmoothiesPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">150</div>
+              <div className="text-2xl font-bold text-orange-600">250</div>
               <div className="text-sm text-gray-600">Avg Calories</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-emerald-600">5.5g</div>
-              <div className="text-sm text-gray-600">Avg Fiber</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-teal-600">4.6★</div>
+              <div className="text-2xl font-bold text-green-600">4.7★</div>
               <div className="text-sm text-gray-600">Avg Rating</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">{detoxSmoothies.length}</div>
+              <div className="text-2xl font-bold text-blue-600">4 min</div>
+              <div className="text-sm text-gray-600">Avg Prep</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-purple-600">{tropicalSmoothies.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -468,7 +452,7 @@ export default function DetoxSmoothiesPage() {
                   <div className="flex-1 relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
                     <Input
-                      placeholder="Search detox smoothies..."
+                      placeholder="Search tropical smoothies..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-10"
@@ -478,16 +462,14 @@ export default function DetoxSmoothiesPage() {
                   <div className="flex gap-2">
                     <select 
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                      value={selectedDetoxType}
-                      onChange={(e) => setSelectedDetoxType(e.target.value)}
+                      value={selectedFlavor}
+                      onChange={(e) => setSelectedFlavor(e.target.value)}
                     >
-                      <option value="">All Detox Types</option>
-                      <option value="Green">Green Detox</option>
-                      <option value="Spice">Spice Detox</option>
-                      <option value="Juice">Juice Cleanse</option>
-                      <option value="Liver">Liver Cleanse</option>
-                      <option value="Citrus">Citrus Cleanse</option>
-                      <option value="Deep">Deep Cleanse</option>
+                      <option value="">All Flavors</option>
+                      <option value="Sweet">Sweet & Tropical</option>
+                      <option value="Creamy">Creamy Coconut</option>
+                      <option value="Tangy">Tangy Tropical</option>
+                      <option value="Citrus">Citrus Tropical</option>
                     </select>
                     
                     <select 
@@ -496,7 +478,6 @@ export default function DetoxSmoothiesPage() {
                       onChange={(e) => setSortBy(e.target.value)}
                     >
                       <option value="rating">Sort by Rating</option>
-                      <option value="fiber">Sort by Fiber</option>
                       <option value="calories">Sort by Calories</option>
                       <option value="time">Sort by Prep Time</option>
                     </select>
@@ -528,7 +509,7 @@ export default function DetoxSmoothiesPage() {
                           difficulty: smoothie.difficulty,
                           prepTime: smoothie.prepTime,
                           rating: smoothie.rating,
-                          fitnessGoal: 'Detox & Cleanse',
+                          fitnessGoal: 'Tropical Energy',
                           bestTime: smoothie.bestTime
                         })}
                         className="text-gray-400 hover:text-red-500"
@@ -538,7 +519,7 @@ export default function DetoxSmoothiesPage() {
                     </div>
                     
                     <div className="flex items-center gap-2 mb-2">
-                      <Badge className="bg-green-100 text-green-800">{smoothie.detoxType}</Badge>
+                      <Badge className="bg-orange-100 text-orange-800">{smoothie.flavor}</Badge>
                       {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                     </div>
                   </CardHeader>
@@ -546,11 +527,11 @@ export default function DetoxSmoothiesPage() {
                   <CardContent>
                     <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                       <div>
-                        <div className="text-xl font-bold text-green-600">{smoothie.nutrition.calories}</div>
+                        <div className="text-xl font-bold text-orange-600">{smoothie.nutrition.calories}</div>
                         <div className="text-gray-500">Cal</div>
                       </div>
                       <div>
-                        <div className="text-xl font-bold text-emerald-600">{smoothie.nutrition.fiber}g</div>
+                        <div className="text-xl font-bold text-green-600">{smoothie.nutrition.fiber}g</div>
                         <div className="text-gray-500">Fiber</div>
                       </div>
                       <div>
@@ -572,10 +553,10 @@ export default function DetoxSmoothiesPage() {
 
                     <div className="flex gap-2">
                       <Button 
-                        className="flex-1 bg-green-600 hover:bg-green-700"
+                        className="flex-1 bg-orange-600 hover:bg-orange-700"
                         onClick={() => handleMakeSmoothie(smoothie)}
                       >
-                        <Leaf className="h-4 w-4 mr-2" />
+                        <Palmtree className="h-4 w-4 mr-2" />
                         Make Smoothie
                       </Button>
                       <Button variant="outline" size="sm">
@@ -600,7 +581,7 @@ export default function DetoxSmoothiesPage() {
                     className="w-full h-48 object-cover"
                   />
                   <div className="absolute top-4 left-4">
-                    <Badge className="bg-green-500 text-white">Featured Detox</Badge>
+                    <Badge className="bg-orange-500 text-white">Featured Tropical</Badge>
                   </div>
                 </div>
                 
@@ -609,7 +590,7 @@ export default function DetoxSmoothiesPage() {
                   <p className="text-gray-600">{smoothie.description}</p>
                   
                   <div className="flex items-center gap-2 mt-2">
-                    <Badge className="bg-green-100 text-green-800">{smoothie.detoxType}</Badge>
+                    <Badge className="bg-orange-100 text-orange-800">{smoothie.flavor}</Badge>
                     <div className="flex items-center gap-1 ml-auto">
                       <Star className="h-4 w-4 text-yellow-400 fill-current" />
                       <span className="font-medium">{smoothie.rating}</span>
@@ -621,10 +602,10 @@ export default function DetoxSmoothiesPage() {
                 <CardContent>
                   <div className="flex gap-3">
                     <Button 
-                      className="flex-1 bg-green-600 hover:bg-green-700"
+                      className="flex-1 bg-orange-600 hover:bg-orange-700"
                       onClick={() => handleMakeSmoothie(smoothie)}
                     >
-                      <Leaf className="h-4 w-4 mr-2" />
+                      <Palmtree className="h-4 w-4 mr-2" />
                       Make This Smoothie
                     </Button>
                     <Button variant="outline">
@@ -641,7 +622,7 @@ export default function DetoxSmoothiesPage() {
         {activeTab === 'trending' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {trendingSmoothies.map(smoothie => (
-              <Card key={smoothie.id} className="hover:shadow-lg transition-shadow border-2 border-green-200">
+              <Card key={smoothie.id} className="hover:shadow-lg transition-shadow border-2 border-orange-200">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -654,10 +635,10 @@ export default function DetoxSmoothiesPage() {
                 
                 <CardContent>
                   <Button 
-                    className="w-full bg-green-600 hover:bg-green-700"
+                    className="w-full bg-orange-600 hover:bg-orange-700"
                     onClick={() => handleMakeSmoothie(smoothie)}
                   >
-                    <Leaf className="h-4 w-4 mr-2" />
+                    <Palmtree className="h-4 w-4 mr-2" />
                     Try This Trend
                   </Button>
                 </CardContent>
@@ -667,16 +648,16 @@ export default function DetoxSmoothiesPage() {
         )}
 
         {/* Your Progress (in-content) */}
-        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
+        <Card className="bg-gradient-to-r from-orange-50 to-pink-50 border-orange-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold mb-2">Your Progress</h3>
                 <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="text-green-600">
+                  <Badge variant="outline" className="text-orange-600">
                     Level {userProgress.level}
                   </Badge>
-                  <Badge variant="outline" className="text-emerald-600">
+                  <Badge variant="outline" className="text-yellow-600">
                     {userProgress.totalPoints} XP
                   </Badge>
                   <Badge variant="outline" className="text-blue-600">
