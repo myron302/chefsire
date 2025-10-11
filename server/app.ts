@@ -2,24 +2,25 @@ import express from "express";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import apiRouter from "./routes";
-import authRouter from "./routes/auth";
+import apiRouter from "./routes/index.js";
+import authRouter from "./routes/auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const app = express();
+
 app.use(express.json());
 
-// --- Auth + API (unchanged) ---
+// Auth + API routes
 app.use("/api/auth", authRouter);
 app.use("/api", apiRouter);
 
-// --- Find built frontend in either old or new location ---
+// Find built frontend
 const candidates = [
-  path.resolve(__dirname, "../../client/dist"),
   path.resolve(__dirname, "../../dist"),
   path.resolve(__dirname, "../dist"),
+  path.resolve(__dirname, "../../client/dist"),
 ];
 
 let staticDir: string | null = null;
@@ -47,7 +48,7 @@ if (staticDir) {
   console.warn("⚠️  No built frontend found in candidates. Build the client to create dist/index.html.");
 }
 
-// Health
+// Health check
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", staticDir, tested: candidates, found: Boolean(staticDir) });
 });
@@ -68,7 +69,7 @@ app.get(
   }
 );
 
-// 404 + Error
+// 404 + Error handlers
 app.use((_req, res) => res.status(404).json({ error: "Not found" }));
 app.use((err: any, _req: any, res: any, _next: any) => {
   console.error("❌ Unexpected server error:", err);
