@@ -1,79 +1,85 @@
-import express from "express";
-import path from "node:path";
-import fs from "node:fs";
-import { fileURLToPath } from "node:url";
+import express, { NextFunction, Request, Response } from "express";
+import path from "path";
+import morgan from "morgan";
+import compression from "compression";
+import helmet from "helmet";
+import session from "express-session";
+import MemoryStore from "memorystore";
+import routes from "./routes/index.js";
 
-// ESM __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-import apiRouter from "./routes/index"; // <-- static import
-import authRouter from "./routes/auth"; // signup routes
-
+// --- App ---
 export const app = express();
-app.use(express.json());
 
-// (optional) request log to debug routing
-app.use((req, _res, next) => {
-  console.log(`${req.method} ${req.path}`);
-  next();
-});
+// Trust proxy (Plesk / reverse proxy)
+app.set("trust proxy", 1);
 
-// --- Mount API FIRST ---
-app.use("/api/auth", authRouter);
-app.use("/api", apiRouter);
+// Basic hardening
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // keep simple; your client bundle handles this
+  })
+);
 
-// Health
+// Logging (dev-friendly)
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+
+// Parsers
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+// Optional session (safe defaults; only if you use req.session elsewhere)
+const MemStore = MemoryStore(session);
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "change-me",
+    resave: false,
+    saveUninitialized: false,
+    store: new MemStore({ checkPeriod: 1000 * 60 * 60 }), // prune each hour
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: false, // set true if you terminate TLS before Node and trust proxy is configured
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+    },
+  })
+);
+
+// Simple health
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
+  res.json({
+    ok: true,
+    env: process.env.NODE_ENV || "development",
+    hasServerKey: Boolean(process.env.GOOGLE_MAPS_API_KEY),
+    hasBrowserKey: Boolean(process.env.GOOGLE_MAPS_JS_BROWSER_KEY),
+  });
 });
 
-// --- Static files (Vite build) ---
-// When this code runs from server/dist, the built client is at server/dist/public
-const candidates = [
-  path.resolve(__dirname, "public"),              // vite outDir when bundled
-  path.resolve(__dirname, "../dist/public"),      // safety
-  path.resolve(__dirname, "../../dist/public"),   // safety
-  path.resolve(__dirname, "../../client/dist"),   // legacy
-];
+// Mount all API routes (your routes/index.ts already mounts /google etc.)
+app.use("/api", routes);
 
-let staticDir: string | null = null;
-for (const p of candidates) {
-  try {
-    if (fs.existsSync(path.join(p, "index.html"))) {
-      staticDir = p;
-      break;
-    }
-  } catch {}
-}
+// ---------- Static frontend ----------
+// Adjust to where Vite outputs your built client
+const publicDir = path.resolve(process.cwd(), "dist", "public");
+app.use(express.static(publicDir, { maxAge: "1h", index: false }));
 
-if (staticDir) {
-  app.use(
-    express.static(staticDir, {
-      setHeaders: (res, file) => {
-        if (file.endsWith(".webmanifest")) {
-          res.setHeader("Content-Type", "application/manifest+json");
-        }
-      },
-    })
-  );
-  console.log(`🗂️  Serving static frontend from: ${staticDir}`);
-} else {
-  console.warn("⚠️  No built frontend found. Build the client to create dist/public/index.html.");
-}
+// SPA fallback (serves index.html for non-/api routes)
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api")) return next();
+  res.sendFile(path.join(publicDir, "index.html"), (err) => {
+    if (err) next(err);
+  });
+});
 
-// --- SPA fallback (AFTER API & static) ---
-app.get("*", (req, res) => {
-  // never serve index.html to /api/*
-  if (req.path.startsWith("/api/")) {
-    return res.status(404).json({ error: "API endpoint not found", path: req.path });
-  }
-  if (!staticDir) return res.status(501).send("Frontend not built");
+// ---------- Error handling ----------
+app.use((req, res) => {
+  res.status(404).json({ error: "not_found" });
+});
 
-  res.sendFile(path.join(staticDir, "index.html"), (err) => {
-    if (err) {
-      console.error("❌ Error sending index.html:", err);
-      res.status(500).send("Failed to serve index.html");
-    }
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  console.error("Unhandled error:", err);
+  const code = typeof err?.status === "number" ? err.status : 500;
+  res.status(code).json({
+    error: "server_error",
+    message: err?.message || "Unexpected error",
   });
 });
