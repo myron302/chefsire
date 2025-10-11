@@ -18,10 +18,13 @@ import { useDrinks } from '@/contexts/DrinksContext';
 
 const smoothieSubcategories = [
   { id: 'protein', name: 'High-Protein', icon: Zap, count: 24, route: '/drinks/smoothies/protein', description: 'Natural protein for muscle building' },
-  { id: 'green', name: 'Green Superfood', icon: Leaf, count: 28, route: '/drinks/smoothies/green', description: 'Nutrient-dense greens and superfoods' },
-  { id: 'dessert', name: 'Dessert', icon: IceCream, count: 32, route: '/drinks/smoothies/dessert', description: 'Guilt-free indulgent flavors' },
   { id: 'breakfast', name: 'Breakfast', icon: Coffee, count: 26, route: '/drinks/smoothies/breakfast', description: 'Morning fuel with balanced nutrition' },
-  { id: 'workout', name: 'Workout', icon: Dumbbell, count: 22, route: '/drinks/smoothies/workout', description: 'Pre and post-workout energy' }
+  { id: 'workout', name: 'Workout', icon: Dumbbell, count: 22, route: '/drinks/smoothies/workout', description: 'Pre and post-workout energy' },
+  { id: 'green', name: 'Green Superfood', icon: Leaf, count: 28, route: '/drinks/smoothies/green', description: 'Nutrient-dense greens and superfoods' },
+  { id: 'tropical', name: 'Tropical', icon: Sparkles, count: 18, route: '/drinks/smoothies/tropical', description: 'Island flavors and exotic fruits' },
+  { id: 'berry', name: 'Berry', icon: Heart, count: 20, route: '/drinks/smoothies/berry', description: 'Antioxidant-rich berry blends' },
+  { id: 'detox', name: 'Detox', icon: GlassWater, count: 16, route: '/drinks/smoothies/detox', description: 'Cleansing and detoxifying blends' },
+  { id: 'dessert', name: 'Dessert', icon: IceCream, count: 32, route: '/drinks/smoothies/dessert', description: 'Guilt-free indulgent flavors' }
 ];
 
 const ingredients = {
@@ -391,7 +394,7 @@ export default function SmoothiesPage() {
               <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
                 <CardContent className="p-4 text-center">
                   <Apple className="h-8 w-8 mx-auto mb-2 text-pink-300" />
-                  <div className="text-2xl font-bold">132</div>
+                  <div className="text-2xl font-bold">182</div>
                   <div className="text-sm text-purple-100">Total Recipes</div>
                 </CardContent>
               </Card>
@@ -462,14 +465,14 @@ export default function SmoothiesPage() {
           />
         </div>
 
-        {/* Smoothie Subcategories */}
+        {/* Smoothie Subcategories - ALL 8 */}
         <Card className="bg-gradient-to-r from-green-50 to-purple-50 border-green-200">
           <CardContent className="p-6">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
               <Apple className="w-5 h-5 text-green-500" />
               Explore Smoothie Types
             </h3>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {smoothieSubcategories.map((subcategory) => {
                 const Icon = subcategory.icon;
                 return (
