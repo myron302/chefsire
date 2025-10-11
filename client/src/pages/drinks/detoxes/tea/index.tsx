@@ -1,275 +1,284 @@
-// client/src/pages/drinks/detoxes/tea/index.tsx
 import React, { useState } from 'react';
-import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
+import { Slider } from "@/components/ui/slider";
 import { 
   Coffee, Clock, Heart, Star, Target, Flame, Leaf, Sparkles,
-  Search, Share2, ArrowLeft, Zap, Camera, Droplets,
-  Apple, FlaskConical, GlassWater, Waves, X, Check
+  Search, Share2, ArrowLeft, Plus, Zap, Activity, Camera, Droplets
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
-import { DetoxRecipe } from '../../types/detox';
 
-const detoxTeas: DetoxRecipe[] = [
+const detoxTeas = [
   {
-    id: 'tea-1',
-    name: 'Green Tea Ginger Detox',
-    description: 'Metabolic boosting blend with fresh ginger',
-    ingredients: [
-      '1 tsp loose green tea leaves',
-      '1 inch fresh ginger, thinly sliced',
-      'Juice of 1/2 lemon',
-      '8 oz hot water (175°F)'
-    ],
-    benefits: ['Boosts metabolism', 'Aids digestion', 'Antioxidant rich'],
-    nutrition: { calories: 5, caffeine: 30 },
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.8,
-    reviews: 234,
-    teaType: 'Green',
+    id: 'detox-tea-1',
+    name: 'Morning Metabolism Boost',
+    description: 'Green tea with ginger and lemon to kickstart your day',
+    teaType: 'Green Tea',
     detoxFocus: 'Metabolic',
     brewTemp: '175°F',
-    steepTime: '3 minutes',
-    bestTime: 'Morning',
-    duration: 'All day',
-    estimatedCost: 0.50,
+    steepTime: '2-3 min',
+    nutrition: {
+      calories: 5,
+      caffeine: 25,
+      antioxidants: 'Very High',
+      catechins: 'High'
+    },
+    ingredients: ['Green Tea', 'Fresh Ginger', 'Lemon Peel', 'Mint Leaves', 'Cayenne (optional)'],
+    benefits: ['Metabolism Boost', 'Fat Oxidation', 'Energy', 'Thermogenic'],
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.7,
+    reviews: 1234,
+    trending: true,
     featured: true,
-    trending: false
+    estimatedCost: 1.50,
+    bestTime: 'Morning',
+    duration: 'Daily',
+    allergens: [],
+    category: 'Metabolic Teas'
   },
   {
-    id: 'tea-2',
-    name: 'Dandelion Root Cleanse',
-    description: 'Liver support with herbal roots',
-    ingredients: [
-      '1 tsp dandelion root',
-      '1/2 tsp burdock root',
-      '1 cinnamon stick',
-      '8 oz hot water (212°F)'
-    ],
-    benefits: ['Liver detox', 'Blood purification', 'Anti-inflammatory'],
-    nutrition: { calories: 2, caffeine: 0 },
+    id: 'detox-tea-2',
+    name: 'Gentle Evening Cleanse',
+    description: 'Herbal blend with dandelion and chamomile for overnight detox',
+    teaType: 'Herbal',
+    detoxFocus: 'Digestive',
+    brewTemp: '212°F',
+    steepTime: '5-7 min',
+    nutrition: {
+      calories: 2,
+      caffeine: 0,
+      antioxidants: 'High',
+      soothing: 'Very High'
+    },
+    ingredients: ['Dandelion Root', 'Chamomile', 'Fennel Seeds', 'Peppermint', 'Licorice Root'],
+    benefits: ['Digestive Support', 'Liver Cleanse', 'Sleep Quality', 'Relaxation'],
     difficulty: 'Easy',
     prepTime: 7,
-    rating: 4.7,
-    reviews: 189,
-    teaType: 'Herbal',
-    detoxFocus: 'Liver Support',
-    brewTemp: '212°F',
-    steepTime: '5 minutes',
-    bestTime: 'Evening',
-    duration: 'Overnight',
-    estimatedCost: 0.75,
-    featured: false,
-    trending: true
-  },
-  {
-    id: 'tea-3',
-    name: 'Peppermint Digestive Aid',
-    description: 'Soothing herbal for gut health',
-    ingredients: [
-      '1 tbsp fresh peppermint leaves',
-      '1/2 tsp fennel seeds',
-      '8 oz hot water (212°F)'
-    ],
-    benefits: ['Relieves bloating', 'Improves digestion', 'Calms stomach'],
-    nutrition: { calories: 3, caffeine: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.9,
-    reviews: 456,
-    teaType: 'Herbal',
-    detoxFocus: 'Digestive',
-    brewTemp: '212°F',
-    steepTime: '4 minutes',
-    bestTime: 'After meals',
-    duration: '1 hour',
-    estimatedCost: 0.40,
+    rating: 4.8,
+    reviews: 987,
+    trending: false,
     featured: true,
-    trending: false
+    estimatedCost: 2.25,
+    bestTime: 'Evening',
+    duration: 'Daily',
+    allergens: [],
+    category: 'Evening Teas'
   },
   {
-    id: 'tea-4',
-    name: 'Turmeric Golden Milk Tea',
-    description: 'Anti-inflammatory golden blend',
-    ingredients: [
-      '1 tsp turmeric powder',
-      '1/2 tsp black pepper',
-      '1/2 cup almond milk',
-      '1 tsp honey',
-      '8 oz hot water (212°F)'
-    ],
-    benefits: ['Reduces inflammation', 'Supports immunity', 'Joint health'],
-    nutrition: { calories: 45, caffeine: 0 },
+    id: 'detox-tea-3',
+    name: 'Turmeric Golden Glow',
+    description: 'Anti-inflammatory turmeric with black pepper for absorption',
+    teaType: 'Herbal',
+    detoxFocus: 'Anti-inflammatory',
+    brewTemp: '200°F',
+    steepTime: '10 min',
+    nutrition: {
+      calories: 8,
+      caffeine: 0,
+      curcumin: 'High',
+      antioxidants: 'Very High'
+    },
+    ingredients: ['Fresh Turmeric', 'Black Pepper', 'Ginger', 'Cinnamon', 'Honey (optional)', 'Coconut Milk'],
+    benefits: ['Anti-inflammatory', 'Joint Health', 'Skin Glow', 'Immune Support'],
     difficulty: 'Medium',
-    prepTime: 8,
+    prepTime: 12,
     rating: 4.6,
-    reviews: 312,
-    teaType: 'Herbal',
-    detoxFocus: 'Anti-inflammatory',
-    brewTemp: '212°F',
-    steepTime: '5 minutes',
-    bestTime: 'Evening',
-    duration: 'All night',
-    estimatedCost: 0.60,
+    reviews: 756,
+    trending: true,
     featured: false,
-    trending: true
-  },
-  {
-    id: 'tea-5',
-    name: 'White Tea Skin Glow',
-    description: 'Gentle white tea for radiant skin',
-    ingredients: [
-      '1 tsp white tea leaves',
-      '1/2 tsp rose petals',
-      '8 oz hot water (185°F)'
-    ],
-    benefits: ['Antioxidant protection', 'Skin hydration', 'Anti-aging'],
-    nutrition: { calories: 2, caffeine: 15 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.7,
-    reviews: 167,
-    teaType: 'White',
-    detoxFocus: 'Anti-inflammatory',
-    brewTemp: '185°F',
-    steepTime: '2 minutes',
-    bestTime: 'Morning',
-    duration: 'Daytime',
-    estimatedCost: 0.80,
-    featured: true,
-    trending: false
-  },
-  {
-    id: 'tea-6',
-    name: 'Oolong Fat Burner',
-    description: 'Oolong for metabolic support',
-    ingredients: [
-      '1 tsp oolong tea leaves',
-      '1/2 lemon peel',
-      '8 oz hot water (195°F)'
-    ],
-    benefits: ['Fat metabolism', 'Weight management', 'Energy boost'],
-    nutrition: { calories: 4, caffeine: 40 },
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.5,
-    reviews: 278,
-    teaType: 'Oolong',
-    detoxFocus: 'Metabolic',
-    brewTemp: '195°F',
-    steepTime: '3 minutes',
+    estimatedCost: 2.75,
     bestTime: 'Afternoon',
-    duration: '3 hours',
-    estimatedCost: 0.55,
-    featured: false,
-    trending: true
+    duration: 'Daily',
+    allergens: [],
+    category: 'Golden Teas'
   },
   {
-    id: 'tea-7',
-    name: 'Chamomile Calm Detox',
-    description: 'Relaxing herbal for stress detox',
-    ingredients: [
-      '1 tbsp chamomile flowers',
-      '1/2 tsp lavender buds',
-      '8 oz hot water (212°F)'
-    ],
-    benefits: ['Stress reduction', 'Liver gentle cleanse', 'Sleep support'],
-    nutrition: { calories: 1, caffeine: 0 },
+    id: 'detox-tea-4',
+    name: 'Liver Love Blend',
+    description: 'Milk thistle and artichoke for liver support and detoxification',
+    teaType: 'Herbal',
+    detoxFocus: 'Liver',
+    brewTemp: '212°F',
+    steepTime: '7-10 min',
+    nutrition: {
+      calories: 3,
+      caffeine: 0,
+      silymarin: 'High',
+      bitter_compounds: 'Present'
+    },
+    ingredients: ['Milk Thistle', 'Artichoke Leaf', 'Dandelion Root', 'Burdock Root', 'Lemon Peel'],
+    benefits: ['Liver Support', 'Detoxification', 'Bile Production', 'Cellular Health'],
+    difficulty: 'Easy',
+    prepTime: 10,
+    rating: 4.5,
+    reviews: 645,
+    trending: false,
+    featured: true,
+    estimatedCost: 3.25,
+    bestTime: 'Midday',
+    duration: '2-4 weeks',
+    allergens: [],
+    category: 'Liver Support Teas'
+  },
+  {
+    id: 'detox-tea-5',
+    name: 'White Tea Antioxidant',
+    description: 'Delicate white tea with elderflower for gentle cleansing',
+    teaType: 'White Tea',
+    detoxFocus: 'Antioxidant',
+    brewTemp: '170°F',
+    steepTime: '4-5 min',
+    nutrition: {
+      calories: 2,
+      caffeine: 15,
+      antioxidants: 'Very High',
+      polyphenols: 'Highest'
+    },
+    ingredients: ['White Tea', 'Elderflower', 'Rose Petals', 'Jasmine', 'Lemon Verbena'],
+    benefits: ['Highest Antioxidants', 'Skin Health', 'Anti-aging', 'Gentle Energy'],
     difficulty: 'Easy',
     prepTime: 6,
-    rating: 4.8,
-    reviews: 389,
-    teaType: 'Herbal',
-    detoxFocus: 'Liver Support',
-    brewTemp: '212°F',
-    steepTime: '5 minutes',
-    bestTime: 'Evening',
-    duration: 'Overnight',
-    estimatedCost: 0.45,
-    featured: true,
-    trending: false
+    rating: 4.7,
+    reviews: 534,
+    trending: false,
+    featured: false,
+    estimatedCost: 4.50,
+    bestTime: 'Morning or Afternoon',
+    duration: 'Daily',
+    allergens: [],
+    category: 'White Teas'
   },
   {
-    id: 'tea-8',
-    name: 'Sencha Green Cleanse',
-    description: 'Pure green tea for full body detox',
-    ingredients: [
-      '1 tsp sencha green tea',
-      '1/2 tsp matcha powder',
-      '8 oz hot water (175°F)'
-    ],
-    benefits: ['Full body cleanse', 'Detox enzymes', 'Immune boost'],
-    nutrition: { calories: 6, caffeine: 35 },
+    id: 'detox-tea-6',
+    name: 'Spicy Digestion Aid',
+    description: 'Warming spices to support digestive fire and bloating relief',
+    teaType: 'Herbal',
+    detoxFocus: 'Digestive',
+    brewTemp: '212°F',
+    steepTime: '5 min',
+    nutrition: {
+      calories: 6,
+      caffeine: 0,
+      digestive_enzymes: 'Present',
+      warming_properties: 'High'
+    },
+    ingredients: ['Ginger Root', 'Fennel Seeds', 'Cardamom', 'Coriander', 'Black Pepper', 'Cinnamon'],
+    benefits: ['Digestive Support', 'Bloating Relief', 'Metabolism', 'Warming'],
+    difficulty: 'Easy',
+    prepTime: 6,
+    rating: 4.6,
+    reviews: 892,
+    trending: true,
+    featured: true,
+    estimatedCost: 1.75,
+    bestTime: 'After Meals',
+    duration: 'As needed',
+    allergens: [],
+    category: 'Digestive Teas'
+  },
+  {
+    id: 'detox-tea-7',
+    name: 'Oolong Metabolism Enhancer',
+    description: 'Semi-oxidized oolong for sustained energy and fat burning',
+    teaType: 'Oolong Tea',
+    detoxFocus: 'Metabolic',
+    brewTemp: '195°F',
+    steepTime: '3-4 min',
+    nutrition: {
+      calories: 2,
+      caffeine: 35,
+      antioxidants: 'High',
+      polyphenols: 'Very High'
+    },
+    ingredients: ['Oolong Tea', 'Cinnamon Stick', 'Star Anise', 'Orange Peel', 'Cloves'],
+    benefits: ['Fat Metabolism', 'Sustained Energy', 'Mental Focus', 'Weight Management'],
     difficulty: 'Medium',
     prepTime: 5,
-    rating: 4.9,
-    reviews: 521,
-    teaType: 'Green',
-    detoxFocus: 'Digestive',
-    brewTemp: '175°F',
-    steepTime: '2 minutes',
-    bestTime: 'Morning',
-    duration: 'All day',
-    estimatedCost: 0.70,
+    rating: 4.5,
+    reviews: 678,
+    trending: false,
     featured: false,
-    trending: true
+    estimatedCost: 3.75,
+    bestTime: 'Mid-morning',
+    duration: 'Daily',
+    allergens: [],
+    category: 'Oolong Teas'
+  },
+  {
+    id: 'detox-tea-8',
+    name: 'Peppermint Clarity Cooler',
+    description: 'Refreshing peppermint for mental clarity and digestive ease',
+    teaType: 'Herbal',
+    detoxFocus: 'Digestive',
+    brewTemp: '212°F',
+    steepTime: '5-7 min',
+    nutrition: {
+      calories: 1,
+      caffeine: 0,
+      menthol: 'High',
+      soothing: 'Very High'
+    },
+    ingredients: ['Peppermint Leaves', 'Spearmint', 'Lemon Balm', 'Nettle Leaf', 'Stevia (optional)'],
+    benefits: ['Digestive Relief', 'Mental Clarity', 'Cooling', 'IBS Support'],
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.8,
+    reviews: 1123,
+    trending: true,
+    featured: true,
+    estimatedCost: 1.25,
+    bestTime: 'Anytime',
+    duration: 'Daily',
+    allergens: [],
+    category: 'Mint Teas'
   }
 ];
 
 const teaTypes = [
   {
-    id: 'green',
-    name: 'Green Tea',
-    description: 'Lightly oxidized for maximum antioxidants',
+    id: 'green-tea',
+    name: 'Green Tea Blends',
+    description: 'Catechin-rich teas for metabolism and antioxidants',
     icon: Leaf,
-    color: 'text-green-500',
-    caffeine: 'Low (20-45mg)',
-    benefits: ['Metabolic boost', 'Antioxidants', 'Heart health'],
-    bestFor: 'Morning cleanse'
+    color: 'text-green-600',
+    caffeine: 'Low-Moderate',
+    benefits: ['Metabolism', 'Antioxidants', 'Fat Burning'],
+    bestFor: 'Morning energy and weight support'
   },
   {
     id: 'herbal',
-    name: 'Herbal Tea',
-    description: 'Caffeine-free blends from herbs and spices',
+    name: 'Herbal Infusions',
+    description: 'Caffeine-free botanical blends for targeted support',
     icon: Sparkles,
-    color: 'text-purple-500',
+    color: 'text-purple-600',
     caffeine: 'None',
-    benefits: ['Digestion', 'Relaxation', 'Immune support'],
-    bestFor: 'Evening wind-down'
+    benefits: ['Caffeine-Free', 'Therapeutic', 'Relaxing'],
+    bestFor: 'Evening and sensitive individuals'
   },
   {
-    id: 'white',
-    name: 'White Tea',
-    description: 'Delicate and least processed tea',
+    id: 'white-oolong',
+    name: 'White & Oolong',
+    description: 'Delicate oxidation for highest antioxidant content',
     icon: Droplets,
-    color: 'text-blue-500',
-    caffeine: 'Very Low (15-30mg)',
-    benefits: ['Skin health', 'Gentle detox', 'Anti-aging'],
-    bestFor: 'Daily maintenance'
+    color: 'text-blue-600',
+    caffeine: 'Very Low-Moderate',
+    benefits: ['Highest Antioxidants', 'Gentle', 'Complex'],
+    bestFor: 'All-day sipping and anti-aging'
   },
   {
-    id: 'oolong',
-    name: 'Oolong Tea',
-    description: 'Partially oxidized for balanced flavor',
+    id: 'spiced',
+    name: 'Spiced Detox',
+    description: 'Warming spices for circulation and digestion',
     icon: Flame,
-    color: 'text-orange-500',
-    caffeine: 'Medium (30-50mg)',
-    benefits: ['Weight management', 'Cholesterol control', 'Energy'],
-    bestFor: 'Afternoon pick-me-up'
+    color: 'text-orange-600',
+    caffeine: 'Varies',
+    benefits: ['Warming', 'Digestive', 'Circulation'],
+    bestFor: 'Cold weather and after meals'
   }
-];
-
-const otherDrinkHubs = [
-  { id: 'smoothies', name: 'Smoothies', route: '/drinks/smoothies', icon: Apple, description: 'Nutrient-packed blends' },
-  { id: 'protein-shakes', name: 'Protein Shakes', route: '/drinks/protein-shakes', icon: FlaskConical, description: 'Fitness-focused nutrition' },
-  { id: 'detoxes', name: 'Detoxes Hub', route: '/drinks/detoxes', icon: Leaf, description: 'Cleanse & wellness' },
-  { id: 'potent-potables', name: 'Potent Potables', route: '/drinks/potent-potables', icon: GlassWater, description: 'Cocktails & beverages' }
 ];
 
 export default function DetoxTeasPage() {
@@ -289,18 +298,16 @@ export default function DetoxTeasPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [selectedTea, setSelectedTea] = useState<DetoxRecipe | null>(null);
 
   const getFilteredTeas = () => {
     let filtered = detoxTeas.filter(tea => {
       const matchesSearch = tea.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            tea.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesType = !selectedTeaType || tea.teaType?.toLowerCase().includes(selectedTeaType.toLowerCase());
-      const matchesFocus = !selectedFocus || tea.detoxFocus?.toLowerCase().includes(selectedFocus.toLowerCase());
+      const matchesType = !selectedTeaType || tea.teaType.toLowerCase().includes(selectedTeaType.toLowerCase());
+      const matchesFocus = !selectedFocus || tea.detoxFocus.toLowerCase().includes(selectedFocus.toLowerCase());
       const matchesCaffeine = caffeineLevel[0] === 'Any' || 
-        (caffeineLevel[0] === 'Caffeinated' && (tea.nutrition.caffeine || 0) > 0) ||
-        (caffeineLevel[0] === 'Caffeine-Free' && (tea.nutrition.caffeine || 0) === 0);
+        (caffeineLevel[0] === 'Caffeinated' && tea.nutrition.caffeine > 0) ||
+        (caffeineLevel[0] === 'Caffeine-Free' && tea.nutrition.caffeine === 0);
       
       return matchesSearch && matchesType && matchesFocus && matchesCaffeine;
     });
@@ -320,131 +327,41 @@ export default function DetoxTeasPage() {
   const filteredTeas = getFilteredTeas();
   const featuredTeas = detoxTeas.filter(tea => tea.featured);
 
-  const handleMakeTea = (tea: DetoxRecipe) => {
-    setSelectedTea(tea);
-    setShowModal(true);
-  };
-
-  const handleCompleteTea = () => {
-    if (selectedTea) {
-      addToRecentlyViewed({
-        id: selectedTea.id,
-        name: selectedTea.name,
-        category: 'detoxes',
-        description: selectedTea.description,
-        ingredients: selectedTea.ingredients,
-        nutrition: selectedTea.nutrition,
-        difficulty: selectedTea.difficulty,
-        prepTime: selectedTea.prepTime,
-        rating: selectedTea.rating,
-        bestTime: selectedTea.bestTime
-      });
-      incrementDrinksMade();
-      addPoints(20);
-    }
-    setShowModal(false);
-    setSelectedTea(null);
+  const handleMakeTea = (tea: any) => {
+    addToRecentlyViewed({
+      id: tea.id,
+      name: tea.name,
+      category: 'detoxes',
+      description: tea.description,
+      ingredients: tea.ingredients,
+      nutrition: tea.nutrition,
+      difficulty: tea.difficulty,
+      prepTime: tea.prepTime,
+      rating: tea.rating,
+      bestTime: tea.bestTime
+    });
+    incrementDrinksMade();
+    addPoints(20);
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-orange-50">
-      {/* Universal Search Modal */}
       {showUniversalSearch && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
-              <h2 className="text-lg font-semibold">Search All Drinks</h2>
-              <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="p-4">
-              <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
-            </div>
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4">
+            <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
           </div>
         </div>
       )}
 
-      {/* Make Tea Modal */}
-      {showModal && selectedTea && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-start mb-4">
-              <h2 className="text-2xl font-bold">{selectedTea.name}</h2>
-              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold mb-2">Ingredients:</h3>
-                <ul className="space-y-2">
-                  {selectedTea.ingredients.map((ing, idx) => (
-                    <li key={idx} className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-amber-600" />
-                      <span>{ing}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h3 className="font-semibold mb-2">Benefits:</h3>
-                <ul className="text-sm text-gray-700 space-y-1">
-                  {selectedTea.benefits.map((benefit, idx) => (
-                    <li key={idx}>• {benefit}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className="bg-amber-50 p-3 rounded-lg">
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span className="text-gray-600">Brew Temp:</span>
-                    <div className="font-medium">{selectedTea.brewTemp}</div>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Steep Time:</span>
-                    <div className="font-medium">{selectedTea.steepTime}</div>
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 p-3 bg-amber-100 rounded-lg">
-                <div className="text-center">
-                  <div className="font-bold text-amber-600">{selectedTea.nutrition.calories}</div>
-                  <div className="text-xs text-gray-600">Calories</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-green-600">{selectedTea.nutrition.caffeine}mg</div>
-                  <div className="text-xs text-gray-600">Caffeine</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-orange-600">{selectedTea.prepTime}min</div>
-                  <div className="text-xs text-gray-600">Prep</div>
-                </div>
-              </div>
-              <div className="flex gap-4 pt-4">
-                <Button 
-                  className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
-                  onClick={handleCompleteTea}
-                >
-                  Complete Tea (+20 XP)
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
-              <Link href="/drinks/detoxes">
-                <Button variant="ghost" size="sm" className="text-gray-500">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Detoxes
-                </Button>
-              </Link>
+              <Button variant="ghost" size="sm" className="text-gray-500">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Detoxes
+              </Button>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
                 <Coffee className="h-6 w-6 text-amber-600" />
@@ -477,88 +394,8 @@ export default function DetoxTeasPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        
-        {/* CROSS-HUB NAVIGATION */}
-        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
-          <CardContent className="p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <Link href="/drinks/smoothies">
-                <Button variant="outline" className="w-full justify-start hover:bg-green-50 hover:border-green-300">
-                  <Apple className="h-4 w-4 mr-2 text-green-600" />
-                  <div className="text-left flex-1">
-                    <div className="font-medium text-sm">Smoothies</div>
-                    <div className="text-xs text-gray-500">Nutrient-packed blends</div>
-                  </div>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
-                </Button>
-              </Link>
-              <Link href="/drinks/protein-shakes">
-                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
-                  <FlaskConical className="h-4 w-4 mr-2 text-blue-600" />
-                  <div className="text-left flex-1">
-                    <div className="font-medium text-sm">Protein Shakes</div>
-                    <div className="text-xs text-gray-500">Fitness-focused nutrition</div>
-                  </div>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
-                </Button>
-              </Link>
-              <Link href="/drinks/detoxes">
-                <Button variant="outline" className="w-full justify-start hover:bg-teal-50 hover:border-teal-300 border-teal-400">
-                  <Leaf className="h-4 w-4 mr-2 text-teal-600" />
-                  <div className="text-left flex-1">
-                    <div className="font-medium text-sm">Detoxes Hub</div>
-                    <div className="text-xs text-gray-500">Cleanse & wellness</div>
-                  </div>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
-                </Button>
-              </Link>
-              <Link href="/drinks/potent-potables">
-                <Button variant="outline" className="w-full justify-start hover:bg-purple-50 hover:border-purple-300">
-                  <GlassWater className="h-4 w-4 mr-2 text-purple-600" />
-                  <div className="text-left flex-1">
-                    <div className="font-medium text-sm">Potent Potables</div>
-                    <div className="text-xs text-gray-500">Cocktails & beverages</div>
-                  </div>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* SISTER SUBPAGES NAVIGATION */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
-          <CardContent className="p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Detox Types</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Link href="/drinks/detoxes/juice">
-                <Button variant="outline" className="w-full justify-start hover:bg-green-50 hover:border-green-300">
-                  <Droplets className="h-4 w-4 mr-2 text-green-600" />
-                  <div className="text-left flex-1">
-                    <div className="font-medium text-sm">Detox Juices</div>
-                    <div className="text-xs text-gray-500">Cold-pressed cleansing</div>
-                  </div>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
-                </Button>
-              </Link>
-              <Link href="/drinks/detoxes/water">
-                <Button variant="outline" className="w-full justify-start hover:bg-cyan-50 hover:border-cyan-300">
-                  <Waves className="h-4 w-4 mr-2 text-cyan-600" />
-                  <div className="text-left flex-1">
-                    <div className="font-medium text-sm">Infused Waters</div>
-                    <div className="text-xs text-gray-500">Fruit & herb hydration</div>
-                  </div>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-amber-600">4</div>
@@ -579,14 +416,13 @@ export default function DetoxTeasPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">{detoxTeas.length}</div>
+              <div className="text-2xl font-bold text-purple-600">8</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Tabs */}
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+        <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
             { id: 'tea-types', label: 'Tea Types', icon: Coffee },
@@ -608,71 +444,65 @@ export default function DetoxTeasPage() {
         </div>
 
         {activeTab === 'browse' && (
-          <div className="space-y-6">
-            {/* Search and Filters */}
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex flex-col md:flex-row gap-4">
-                  <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-                    <Input
-                      placeholder="Search detox teas..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm min-w-[120px]"
-                      value={selectedTeaType}
-                      onChange={(e) => setSelectedTeaType(e.target.value)}
-                    >
-                      <option value="">All Tea Types</option>
-                      <option value="Green">Green Tea</option>
-                      <option value="Herbal">Herbal</option>
-                      <option value="White">White Tea</option>
-                      <option value="Oolong">Oolong</option>
-                    </select>
-                    
-                    <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm min-w-[140px]"
-                      value={selectedFocus}
-                      onChange={(e) => setSelectedFocus(e.target.value)}
-                    >
-                      <option value="">All Focus Areas</option>
-                      <option value="Metabolic">Metabolic</option>
-                      <option value="Digestive">Digestive</option>
-                      <option value="Liver">Liver Support</option>
-                      <option value="Anti-inflammatory">Anti-inflammatory</option>
-                    </select>
-                    
-                    <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm min-w-[130px]"
-                      value={caffeineLevel[0]}
-                      onChange={(e) => setCaffeineLevel([e.target.value])}
-                    >
-                      <option value="Any">Any Caffeine</option>
-                      <option value="Caffeinated">Caffeinated</option>
-                      <option value="Caffeine-Free">Caffeine-Free</option>
-                    </select>
-                    
-                    <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm min-w-[120px]"
-                      value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value)}
-                    >
-                      <option value="rating">Sort by Rating</option>
-                      <option value="prepTime">Sort by Prep Time</option>
-                      <option value="cost">Sort by Cost</option>
-                    </select>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          <div>
+            <div className="flex flex-col md:flex-row gap-4 mb-6">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search detox teas..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              
+              <div className="flex gap-2">
+                <select 
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={selectedTeaType}
+                  onChange={(e) => setSelectedTeaType(e.target.value)}
+                >
+                  <option value="">All Tea Types</option>
+                  <option value="Green">Green Tea</option>
+                  <option value="Herbal">Herbal</option>
+                  <option value="White">White Tea</option>
+                  <option value="Oolong">Oolong</option>
+                </select>
+                
+                <select 
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={selectedFocus}
+                  onChange={(e) => setSelectedFocus(e.target.value)}
+                >
+                  <option value="">All Focus Areas</option>
+                  <option value="Metabolic">Metabolic</option>
+                  <option value="Digestive">Digestive</option>
+                  <option value="Liver">Liver Support</option>
+                  <option value="Anti-inflammatory">Anti-inflammatory</option>
+                </select>
+                
+                <select 
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={caffeineLevel[0]}
+                  onChange={(e) => setCaffeineLevel([e.target.value])}
+                >
+                  <option value="Any">Any Caffeine Level</option>
+                  <option value="Caffeinated">Caffeinated</option>
+                  <option value="Caffeine-Free">Caffeine-Free</option>
+                </select>
+                
+                <select 
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                >
+                  <option value="rating">Sort by Rating</option>
+                  <option value="prepTime">Sort by Prep Time</option>
+                  <option value="cost">Sort by Cost</option>
+                </select>
+              </div>
+            </div>
 
-            {/* Tea Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredTeas.map(tea => (
                 <Card key={tea.id} className="hover:shadow-lg transition-shadow">
@@ -797,8 +627,8 @@ export default function DetoxTeasPage() {
             {teaTypes.map(type => {
               const Icon = type.icon;
               const typeTeas = detoxTeas.filter(tea => 
-                tea.teaType?.toLowerCase().includes(type.name.toLowerCase()) ||
-                tea.category?.toLowerCase().includes(type.name.toLowerCase())
+                tea.teaType.toLowerCase().includes(type.name.toLowerCase()) ||
+                tea.category.toLowerCase().includes(type.name.toLowerCase())
               );
               
               return (
@@ -975,32 +805,46 @@ export default function DetoxTeasPage() {
             ))}
           </div>
         )}
+      </div>
 
-        {/* Your Progress (in-content) */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold mb-2">Your Progress</h3>
-                <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="text-amber-600">
-                    Level {userProgress.level}
-                  </Badge>
-                  <Badge variant="outline" className="text-orange-600">
-                    {userProgress.totalPoints} XP
-                  </Badge>
-                  <Badge variant="outline" className="text-blue-600">
-                    {userProgress.totalDrinksMade} Drinks Made
-                  </Badge>
-                </div>
-              </div>
-              <div className="text-center">
-                <Progress value={userProgress.dailyGoalProgress} className="w-32 mb-2" />
-                <div className="text-xs text-gray-500">Daily Goal Progress</div>
-              </div>
+      <div className="fixed bottom-6 right-6 z-50">
+        <Button 
+          size="lg" 
+          className="rounded-full w-14 h-14 bg-amber-600 hover:bg-amber-700 shadow-lg"
+          onClick={() => setActiveTab('browse')}
+        >
+          <Plus className="h-6 w-6" />
+        </Button>
+      </div>
+
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <Coffee className="h-4 w-4 text-amber-600" />
+              <span className="text-gray-600">Detox Teas Found:</span>
+              <span className="font-bold text-amber-600">{filteredTeas.length}</span>
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex items-center gap-2">
+              <Star className="h-4 w-4 text-yellow-500" />
+              <span className="text-gray-600">Your Level:</span>
+              <span className="font-bold text-yellow-600">{userProgress.level}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-amber-500" />
+              <span className="text-gray-600">XP:</span>
+              <span className="font-bold text-amber-600">{userProgress.totalPoints}</span>
+            </div>
+          </div>
+          
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          >
+            Back to Top
+          </Button>
+        </div>
       </div>
     </div>
   );
