@@ -12,13 +12,318 @@ import {
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
-import { 
-  breakfastSmoothies, 
-  breakfastTypes,
-  breakfastCategories,
-  smoothieSubcategories,
-  otherDrinkHubs 
-} from '../../data/smoothies';
+
+// Breakfast smoothies data with measurements in ingredients
+const breakfastSmoothies = [
+  {
+    id: 'breakfast-1',
+    name: 'Tropical Sunrise',
+    description: 'Energizing blend of tropical fruits and greens',
+    ingredients: [
+      '1 cup fresh pineapple chunks',
+      '1 ripe banana',
+      '1 cup fresh spinach',
+      '1 cup coconut water',
+      '1 tbsp chia seeds'
+    ],
+    morningBenefits: ['Boosts metabolism', 'Provides sustained energy', 'Rich in vitamins'],
+    nutrition: { calories: 280, protein: 5, fiber: 7, caffeine: 0 },
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.8,
+    reviews: 245,
+    breakfastType: 'Energizing',
+    energyLevel: 'High',
+    energyDuration: '4 hours',
+    bestTime: 'Morning',
+    satietyLevel: 'Medium',
+    trending: true,
+    image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3133?w=400&h=300&fit=crop'
+  },
+  {
+    id: 'breakfast-2',
+    name: 'Berry Protein Power',
+    description: 'High-protein start with mixed berries and yogurt',
+    ingredients: [
+      '1 cup mixed berries',
+      '1 scoop vanilla protein powder',
+      '1 cup Greek yogurt',
+      '1/2 cup almond milk',
+      '1 tbsp almond butter'
+    ],
+    morningBenefits: ['Builds muscle', 'Antioxidant boost', 'Keeps you full'],
+    nutrition: { calories: 350, protein: 25, fiber: 6, caffeine: 0 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.7,
+    reviews: 312,
+    breakfastType: 'Complete Meal',
+    energyLevel: 'Medium',
+    energyDuration: '5 hours',
+    bestTime: 'Morning',
+    satietyLevel: 'High',
+    image: 'https://images.unsplash.com/photo-1542838132-92e7304d3a21?w=400&h=300&fit=crop'
+  },
+  {
+    id: 'breakfast-3',
+    name: 'Green Detox Kickstart',
+    description: 'Light and refreshing green smoothie for cleansing',
+    ingredients: [
+      '2 cups kale leaves',
+      '1 green apple, cored',
+      '1/2 cucumber',
+      '1/2 lemon, juiced',
+      '1 cup water'
+    ],
+    morningBenefits: ['Detoxifies body', 'Hydrates', 'Improves digestion'],
+    nutrition: { calories: 150, protein: 4, fiber: 8, caffeine: 0 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.6,
+    reviews: 189,
+    breakfastType: 'Light & Fresh',
+    energyLevel: 'Medium',
+    energyDuration: '3 hours',
+    bestTime: 'Morning',
+    satietyLevel: 'Low',
+    image: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=400&h=300&fit=crop'
+  },
+  {
+    id: 'breakfast-4',
+    name: 'Mocha Oat Energizer',
+    description: 'Coffee-infused smoothie with oats for steady energy',
+    ingredients: [
+      '1/2 cup brewed coffee, cooled',
+      '1/2 cup rolled oats',
+      '1 banana',
+      '1 cup almond milk',
+      '1 tbsp cocoa powder'
+    ],
+    morningBenefits: ['Steady caffeine release', 'Fiber for fullness', 'Mood booster'],
+    nutrition: { calories: 320, protein: 8, fiber: 9, caffeine: 95 },
+    difficulty: 'Medium',
+    prepTime: 6,
+    rating: 4.9,
+    reviews: 456,
+    breakfastType: 'Energizing',
+    energyLevel: 'Very High',
+    energyDuration: '4 hours',
+    bestTime: 'Morning',
+    satietyLevel: 'Medium',
+    trending: true,
+    image: 'https://images.unsplash.com/photo-1512568400610-3f3f73e9e1a5?w=400&h=300&fit=crop'
+  },
+  {
+    id: 'breakfast-5',
+    name: 'Peanut Butter Banana Bliss',
+    description: 'Classic combo for athletic mornings',
+    ingredients: [
+      '2 tbsp peanut butter',
+      '1 large banana',
+      '1 cup oat milk',
+      '1/2 cup Greek yogurt',
+      '1 tsp honey'
+    ],
+    morningBenefits: ['Quick carbs', 'Healthy fats', 'Protein for recovery'],
+    nutrition: { calories: 420, protein: 18, fiber: 5, caffeine: 0 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.5,
+    reviews: 278,
+    breakfastType: 'Athletic',
+    energyLevel: 'High',
+    energyDuration: '4 hours',
+    bestTime: 'Pre-workout',
+    satietyLevel: 'High',
+    image: 'https://images.unsplash.com/photo-1578659194159-1f1c955db791?w=400&h=300&fit=crop'
+  },
+  {
+    id: 'breakfast-6',
+    name: 'Citrus Ginger Zest',
+    description: 'Refreshing citrus with a ginger kick',
+    ingredients: [
+      '1 orange, peeled',
+      '1/2 grapefruit, peeled',
+      '1 inch fresh ginger',
+      '1 cup yogurt',
+      '1/2 cup ice'
+    ],
+    morningBenefits: ['Immune support', 'Anti-inflammatory', 'Vitamin C boost'],
+    nutrition: { calories: 220, protein: 10, fiber: 4, caffeine: 0 },
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.7,
+    reviews: 334,
+    breakfastType: 'Light & Fresh',
+    energyLevel: 'Medium',
+    energyDuration: '3 hours',
+    bestTime: 'Morning',
+    satietyLevel: 'Medium',
+    image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=400&h=300&fit=crop'
+  },
+  {
+    id: 'breakfast-7',
+    name: 'Chocolate Avocado Dream',
+    description: 'Creamy chocolate smoothie for indulgence',
+    ingredients: [
+      '1/2 ripe avocado',
+      '1 tbsp cocoa powder',
+      '1 cup almond milk',
+      '1 banana',
+      '1 tsp vanilla extract'
+    ],
+    morningBenefits: ['Healthy fats', 'Mood enhancer', 'Sustained release'],
+    nutrition: { calories: 380, protein: 6, fiber: 10, caffeine: 0 },
+    difficulty: 'Medium',
+    prepTime: 5,
+    rating: 4.8,
+    reviews: 401,
+    breakfastType: 'Complete Meal',
+    energyLevel: 'High',
+    energyDuration: '5 hours',
+    bestTime: 'Morning',
+    satietyLevel: 'High',
+    image: 'https://images.unsplash.com/photo-1541781774459-26b31891e2f6?w=400&h=300&fit=crop'
+  },
+  {
+    id: 'breakfast-8',
+    name: 'Matcha Mango Fusion',
+    description: 'Green tea powered tropical delight',
+    ingredients: [
+      '1 tsp matcha powder',
+      '1 cup frozen mango',
+      '1 cup coconut yogurt',
+      '1/2 cup orange juice',
+      '1 tbsp flaxseeds'
+    ],
+    morningBenefits: ['Antioxidants', 'Calm energy', 'Gut health'],
+    nutrition: { calories: 290, protein: 7, fiber: 6, caffeine: 70 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.6,
+    reviews: 267,
+    breakfastType: 'Energizing',
+    energyLevel: 'Medium',
+    energyDuration: '4 hours',
+    bestTime: 'Morning',
+    satietyLevel: 'Medium',
+    image: 'https://images.unsplash.com/photo-1572493840216-4a0e6c0e507b?w=400&h=300&fit=crop'
+  },
+  {
+    id: 'breakfast-9',
+    name: 'Oatmeal Cookie Smoothie',
+    description: 'Tastes like breakfast cookie in a glass',
+    ingredients: [
+      '1/2 cup rolled oats',
+      '1 cup milk',
+      '1 banana',
+      '1 tsp cinnamon',
+      '1 tbsp raisins'
+    ],
+    morningBenefits: ['Fiber rich', 'Blood sugar stable', 'Comforting'],
+    nutrition: { calories: 360, protein: 12, fiber: 8, caffeine: 0 },
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.9,
+    reviews: 523,
+    breakfastType: 'Complete Meal',
+    energyLevel: 'Medium',
+    energyDuration: '5 hours',
+    bestTime: 'Morning',
+    satietyLevel: 'High',
+    trending: true,
+    image: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400&h=300&fit=crop'
+  }
+];
+
+const breakfastTypes = [
+  {
+    id: 'complete-meal',
+    name: 'Complete Meal',
+    description: 'Balanced nutrition to start your day right',
+    icon: Crown,
+    color: 'text-amber-500',
+    energyProfile: 'Sustained',
+    keyNutrients: ['Protein', 'Fiber', 'Carbs'],
+    idealFor: 'Busy mornings',
+    satietyDuration: '4-5 hours',
+    avgCalories: '350-450'
+  },
+  {
+    id: 'energizing',
+    name: 'Energizing',
+    description: 'Quick boost for active days',
+    icon: Zap,
+    color: 'text-green-500',
+    energyProfile: 'Rapid',
+    keyNutrients: ['Caffeine', 'B Vitamins', 'Natural sugars'],
+    idealFor: 'Pre-workout',
+    satietyDuration: '3-4 hours',
+    avgCalories: '250-350'
+  },
+  {
+    id: 'light-fresh',
+    name: 'Light & Fresh',
+    description: 'Hydrating and low-cal options',
+    icon: Sun,
+    color: 'text-blue-500',
+    energyProfile: 'Gentle',
+    keyNutrients: ['Hydration', 'Vitamins', 'Electrolytes'],
+    idealFor: 'Hot days',
+    satietyDuration: '2-3 hours',
+    avgCalories: '150-250'
+  },
+  {
+    id: 'athletic',
+    name: 'Athletic',
+    description: 'Fuel for fitness enthusiasts',
+    icon: Activity,
+    color: 'text-purple-500',
+    energyProfile: 'Performance',
+    keyNutrients: ['Protein', 'Electrolytes', 'Carbs'],
+    idealFor: 'Athletes',
+    satietyDuration: '4 hours',
+    avgCalories: '300-400'
+  }
+];
+
+const breakfastCategories = [
+  {
+    id: 'sustained-energy',
+    name: 'Sustained Energy',
+    description: 'Long-lasting fuel without crashes',
+    icon: Clock,
+    color: 'bg-amber-500',
+    energyDuration: '4-5 hours',
+    macroFocus: 'Balanced macros'
+  },
+  {
+    id: 'quick-boost',
+    name: 'Quick Boost',
+    description: 'Fast energy for immediate needs',
+    icon: Zap,
+    color: 'bg-green-500',
+    energyDuration: '2-3 hours',
+    macroFocus: 'Carb-focused'
+  }
+];
+
+const smoothieSubcategories = [
+  { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Zap, description: 'High-protein blends' },
+  { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Activity, description: 'Pre & post workout' },
+  { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Superfood greens' },
+  { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Sun, description: 'Exotic fruits' },
+  { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
+  { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Trophy, description: 'Cleansing blends' },
+  { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: IceCream, description: 'Healthy treats' }
+];
+
+const otherDrinkHubs = [
+  { id: 'juices', name: 'Fresh Juices', route: '/drinks/juices', icon: Plus, description: 'Cold-pressed nutrition' },
+  { id: 'teas', name: 'Specialty Teas', route: '/drinks/teas', icon: Leaf, description: 'Hot & iced teas' },
+  { id: 'coffee', name: 'Coffee Drinks', route: '/drinks/coffee', icon: Crown, description: 'Artisan coffee' },
+  { id: 'protein-shakes', name: 'Protein Shakes', route: '/drinks/protein-shakes', icon: Activity, description: 'Muscle fuel' }
+];
 
 export default function BreakfastSmoothiesPage() {
   const { 
