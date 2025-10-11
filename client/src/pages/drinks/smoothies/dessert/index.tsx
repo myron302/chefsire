@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { 
   IceCream, Heart, Star, Search, Share2, ArrowLeft,
-  Camera, Cookie, ChefHat, X, Check
+  Camera, Cookie, ChefHat, X, Check, Zap, Activity, Sun, Sparkles, Trophy, Crown, Leaf
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -141,6 +141,17 @@ export default function DessertSmoothiesPage() {
       }
     }
   };
+
+  // Sister smoothie categories with all 7
+  const allSmoothieSubcategories = [
+    { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Zap, description: 'High-protein blends' },
+    { id: 'breakfast', name: 'Breakfast', path: '/drinks/smoothies/breakfast', icon: Crown, description: 'Morning fuel' },
+    { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Activity, description: 'Pre & post workout' },
+    { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Superfood greens' },
+    { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Sun, description: 'Exotic fruits' },
+    { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
+    { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Trophy, description: 'Cleansing blends' }
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50">
@@ -287,12 +298,12 @@ export default function DessertSmoothiesPage() {
           </CardContent>
         </Card>
 
-        {/* SISTER SUBPAGES NAVIGATION */}
+        {/* SISTER SUBPAGES NAVIGATION - ALL 7 SMOOTHIE TYPES */}
         <Card className="bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Smoothie Types</h3>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-              {smoothieSubcategories.map((subcategory) => {
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              {allSmoothieSubcategories.map((subcategory) => {
                 const Icon = subcategory.icon;
                 return (
                   <Link key={subcategory.id} href={subcategory.path}>
@@ -316,7 +327,7 @@ export default function DessertSmoothiesPage() {
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
             { id: 'dessert-types', label: 'Dessert Types', icon: Cookie },
-            { id: 'categories', label: 'Categories', icon: Cookie }, // visually similar
+            { id: 'categories', label: 'Categories', icon: Cookie },
             { id: 'featured', label: 'Featured', icon: Star }
           ].map(tab => {
             const Icon = tab.icon as any;
@@ -357,7 +368,6 @@ export default function DessertSmoothiesPage() {
                       onChange={(e) => setSelectedDessertType(e.target.value)}
                     >
                       <option value="">All Types</option>
-                      {/* Use canonical names from your data if they differ */}
                       {Array.from(new Set(dessertTypes.map(t => t.name))).map(name => (
                         <option key={name} value={name}>{name}</option>
                       ))}
@@ -607,7 +617,7 @@ export default function DessertSmoothiesPage() {
           </div>
         )}
 
-        {/* Your Progress (in-content) — replaces footer */}
+        {/* Your Progress (in-content) */}
         <Card className="bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
