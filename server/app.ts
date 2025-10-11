@@ -2,19 +2,60 @@ import express from "express";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import apiRouter from "./routes/index.js";
-import authRouter from "./routes/auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const app = express();
 
+// Enable JSON parsing
 app.use(express.json());
 
-// CRITICAL: API routes MUST come before static files
-app.use("/api/auth", authRouter);
-app.use("/api", apiRouter);
+// IMPORTANT: Log all requests to debug routing issues
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
+
+// Import routes - try/catch to handle missing routes gracefully
+let apiRouter: any = null;
+let authRouter: any = null;
+
+try {
+  const routes = await import("./routes/index.js");
+  apiRouter = routes.default;
+  console.log("✅ API routes loaded");
+} catch (err) {
+  console.error("❌ Failed to load API routes:", err);
+}
+
+try {
+  const auth = await import("./routes/auth.js");
+  authRouter = auth.default;
+  console.log("✅ Auth routes loaded");
+} catch (err) {
+  console.error("❌ Failed to load auth routes:", err);
+}
+
+// Mount routes BEFORE static files
+if (authRouter) {
+  app.use("/api/auth", authRouter);
+}
+
+if (apiRouter) {
+  app.use("/api", apiRouter);
+}
+
+// Health check endpoint
+app.get("/api/health", (_req, res) => {
+  res.json({ 
+    status: "ok", 
+    routes: {
+      auth: !!authRouter,
+      api: !!apiRouter
+    }
+  });
+});
 
 // Find built frontend
 const candidates = [
@@ -45,51 +86,35 @@ if (staticDir) {
   );
   console.log(`🗂️  Serving static frontend from: ${staticDir}`);
 } else {
-  console.warn("⚠️  No built frontend found in candidates. Build the client to create dist/index.html.");
+  console.warn("⚠️  No built frontend found in candidates.");
 }
 
-// Health check
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", staticDir, tested: candidates, found: Boolean(staticDir) });
-});
-
-// SPA fallback - ONLY for non-API, non-asset routes
-// This must come AFTER all API routes and static files
-app.get("*", (req, res, next) => {
-  // Skip if it's an API route that somehow got here
+// SPA fallback - serve index.html for client-side routes
+// This MUST come after API routes and static files
+app.get("*", (req, res) => {
+  // Don't serve HTML for API requests that got here by mistake
   if (req.path.startsWith("/api/")) {
-    return next();
+    return res.status(404).json({ error: "API endpoint not found", path: req.path });
   }
 
-  // Skip if it looks like a file with extension
-  if (/\.[a-zA-Z0-9]+$/.test(req.path)) {
-    return next();
-  }
-
-  // Serve index.html for client-side routing
   if (!staticDir) {
-    return res.status(501).type("text/plain").send("Frontend not built. Build to create dist/index.html.");
+    return res.status(501).send("Frontend not built");
   }
 
   res.sendFile(path.join(staticDir, "index.html"), (err) => {
     if (err) {
       console.error("❌ Error sending index.html:", err);
-      res.status(500).type("text/plain").send("Failed to serve index.html");
+      res.status(500).send("Failed to serve index.html");
     }
   });
 });
 
-// 404 for anything that fell through
-app.use((req, res) => {
-  res.status(404).json({ error: "Not found", path: req.path });
-});
-
 // Error handler
 app.use((err: any, req: any, res: any, _next: any) => {
-  console.error("❌ Unexpected server error:", err);
+  console.error("❌ Server error:", err);
   res.status(500).json({ 
     error: "Internal Server Error", 
-    details: err?.message,
-    path: req.path 
+    message: err?.message,
+    path: req.path
   });
 });
