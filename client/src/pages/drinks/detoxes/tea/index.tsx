@@ -13,8 +13,264 @@ import {
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
-import { otherDrinkHubs, detoxTeas, teaTypes } from '../../data/detoxes';
 import { DetoxRecipe } from '../../types/detox';
+
+const detoxTeas: DetoxRecipe[] = [
+  {
+    id: 'tea-1',
+    name: 'Green Tea Ginger Detox',
+    description: 'Metabolic boosting blend with fresh ginger',
+    ingredients: [
+      '1 tsp loose green tea leaves',
+      '1 inch fresh ginger, thinly sliced',
+      'Juice of 1/2 lemon',
+      '8 oz hot water (175°F)'
+    ],
+    benefits: ['Boosts metabolism', 'Aids digestion', 'Antioxidant rich'],
+    nutrition: { calories: 5, caffeine: 30 },
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.8,
+    reviews: 234,
+    teaType: 'Green',
+    detoxFocus: 'Metabolic',
+    brewTemp: '175°F',
+    steepTime: '3 minutes',
+    bestTime: 'Morning',
+    duration: 'All day',
+    estimatedCost: 0.50,
+    featured: true,
+    trending: false
+  },
+  {
+    id: 'tea-2',
+    name: 'Dandelion Root Cleanse',
+    description: 'Liver support with herbal roots',
+    ingredients: [
+      '1 tsp dandelion root',
+      '1/2 tsp burdock root',
+      '1 cinnamon stick',
+      '8 oz hot water (212°F)'
+    ],
+    benefits: ['Liver detox', 'Blood purification', 'Anti-inflammatory'],
+    nutrition: { calories: 2, caffeine: 0 },
+    difficulty: 'Easy',
+    prepTime: 7,
+    rating: 4.7,
+    reviews: 189,
+    teaType: 'Herbal',
+    detoxFocus: 'Liver Support',
+    brewTemp: '212°F',
+    steepTime: '5 minutes',
+    bestTime: 'Evening',
+    duration: 'Overnight',
+    estimatedCost: 0.75,
+    featured: false,
+    trending: true
+  },
+  {
+    id: 'tea-3',
+    name: 'Peppermint Digestive Aid',
+    description: 'Soothing herbal for gut health',
+    ingredients: [
+      '1 tbsp fresh peppermint leaves',
+      '1/2 tsp fennel seeds',
+      '8 oz hot water (212°F)'
+    ],
+    benefits: ['Relieves bloating', 'Improves digestion', 'Calms stomach'],
+    nutrition: { calories: 3, caffeine: 0 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.9,
+    reviews: 456,
+    teaType: 'Herbal',
+    detoxFocus: 'Digestive',
+    brewTemp: '212°F',
+    steepTime: '4 minutes',
+    bestTime: 'After meals',
+    duration: '1 hour',
+    estimatedCost: 0.40,
+    featured: true,
+    trending: false
+  },
+  {
+    id: 'tea-4',
+    name: 'Turmeric Golden Milk Tea',
+    description: 'Anti-inflammatory golden blend',
+    ingredients: [
+      '1 tsp turmeric powder',
+      '1/2 tsp black pepper',
+      '1/2 cup almond milk',
+      '1 tsp honey',
+      '8 oz hot water (212°F)'
+    ],
+    benefits: ['Reduces inflammation', 'Supports immunity', 'Joint health'],
+    nutrition: { calories: 45, caffeine: 0 },
+    difficulty: 'Medium',
+    prepTime: 8,
+    rating: 4.6,
+    reviews: 312,
+    teaType: 'Herbal',
+    detoxFocus: 'Anti-inflammatory',
+    brewTemp: '212°F',
+    steepTime: '5 minutes',
+    bestTime: 'Evening',
+    duration: 'All night',
+    estimatedCost: 0.60,
+    featured: false,
+    trending: true
+  },
+  {
+    id: 'tea-5',
+    name: 'White Tea Skin Glow',
+    description: 'Gentle white tea for radiant skin',
+    ingredients: [
+      '1 tsp white tea leaves',
+      '1/2 tsp rose petals',
+      '8 oz hot water (185°F)'
+    ],
+    benefits: ['Antioxidant protection', 'Skin hydration', 'Anti-aging'],
+    nutrition: { calories: 2, caffeine: 15 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.7,
+    reviews: 167,
+    teaType: 'White',
+    detoxFocus: 'Anti-inflammatory',
+    brewTemp: '185°F',
+    steepTime: '2 minutes',
+    bestTime: 'Morning',
+    duration: 'Daytime',
+    estimatedCost: 0.80,
+    featured: true,
+    trending: false
+  },
+  {
+    id: 'tea-6',
+    name: 'Oolong Fat Burner',
+    description: 'Oolong for metabolic support',
+    ingredients: [
+      '1 tsp oolong tea leaves',
+      '1/2 lemon peel',
+      '8 oz hot water (195°F)'
+    ],
+    benefits: ['Fat metabolism', 'Weight management', 'Energy boost'],
+    nutrition: { calories: 4, caffeine: 40 },
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.5,
+    reviews: 278,
+    teaType: 'Oolong',
+    detoxFocus: 'Metabolic',
+    brewTemp: '195°F',
+    steepTime: '3 minutes',
+    bestTime: 'Afternoon',
+    duration: '3 hours',
+    estimatedCost: 0.55,
+    featured: false,
+    trending: true
+  },
+  {
+    id: 'tea-7',
+    name: 'Chamomile Calm Detox',
+    description: 'Relaxing herbal for stress detox',
+    ingredients: [
+      '1 tbsp chamomile flowers',
+      '1/2 tsp lavender buds',
+      '8 oz hot water (212°F)'
+    ],
+    benefits: ['Stress reduction', 'Liver gentle cleanse', 'Sleep support'],
+    nutrition: { calories: 1, caffeine: 0 },
+    difficulty: 'Easy',
+    prepTime: 6,
+    rating: 4.8,
+    reviews: 389,
+    teaType: 'Herbal',
+    detoxFocus: 'Liver Support',
+    brewTemp: '212°F',
+    steepTime: '5 minutes',
+    bestTime: 'Evening',
+    duration: 'Overnight',
+    estimatedCost: 0.45,
+    featured: true,
+    trending: false
+  },
+  {
+    id: 'tea-8',
+    name: 'Sencha Green Cleanse',
+    description: 'Pure green tea for full body detox',
+    ingredients: [
+      '1 tsp sencha green tea',
+      '1/2 tsp matcha powder',
+      '8 oz hot water (175°F)'
+    ],
+    benefits: ['Full body cleanse', 'Detox enzymes', 'Immune boost'],
+    nutrition: { calories: 6, caffeine: 35 },
+    difficulty: 'Medium',
+    prepTime: 5,
+    rating: 4.9,
+    reviews: 521,
+    teaType: 'Green',
+    detoxFocus: 'Digestive',
+    brewTemp: '175°F',
+    steepTime: '2 minutes',
+    bestTime: 'Morning',
+    duration: 'All day',
+    estimatedCost: 0.70,
+    featured: false,
+    trending: true
+  }
+];
+
+const teaTypes = [
+  {
+    id: 'green',
+    name: 'Green Tea',
+    description: 'Lightly oxidized for maximum antioxidants',
+    icon: Leaf,
+    color: 'text-green-500',
+    caffeine: 'Low (20-45mg)',
+    benefits: ['Metabolic boost', 'Antioxidants', 'Heart health'],
+    bestFor: 'Morning cleanse'
+  },
+  {
+    id: 'herbal',
+    name: 'Herbal Tea',
+    description: 'Caffeine-free blends from herbs and spices',
+    icon: Sparkles,
+    color: 'text-purple-500',
+    caffeine: 'None',
+    benefits: ['Digestion', 'Relaxation', 'Immune support'],
+    bestFor: 'Evening wind-down'
+  },
+  {
+    id: 'white',
+    name: 'White Tea',
+    description: 'Delicate and least processed tea',
+    icon: Droplets,
+    color: 'text-blue-500',
+    caffeine: 'Very Low (15-30mg)',
+    benefits: ['Skin health', 'Gentle detox', 'Anti-aging'],
+    bestFor: 'Daily maintenance'
+  },
+  {
+    id: 'oolong',
+    name: 'Oolong Tea',
+    description: 'Partially oxidized for balanced flavor',
+    icon: Flame,
+    color: 'text-orange-500',
+    caffeine: 'Medium (30-50mg)',
+    benefits: ['Weight management', 'Cholesterol control', 'Energy'],
+    bestFor: 'Afternoon pick-me-up'
+  }
+];
+
+const otherDrinkHubs = [
+  { id: 'smoothies', name: 'Smoothies', route: '/drinks/smoothies', icon: Apple, description: 'Nutrient-packed blends' },
+  { id: 'protein-shakes', name: 'Protein Shakes', route: '/drinks/protein-shakes', icon: FlaskConical, description: 'Fitness-focused nutrition' },
+  { id: 'detoxes', name: 'Detoxes Hub', route: '/drinks/detoxes', icon: Leaf, description: 'Cleanse & wellness' },
+  { id: 'potent-potables', name: 'Potent Potables', route: '/drinks/potent-potables', icon: GlassWater, description: 'Cocktails & beverages' }
+];
 
 export default function DetoxTeasPage() {
   const { 
@@ -323,7 +579,7 @@ export default function DetoxTeasPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">8</div>
+              <div className="text-2xl font-bold text-purple-600">{detoxTeas.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -367,9 +623,9 @@ export default function DetoxTeasPage() {
                     />
                   </div>
                   
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 items-center">
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm min-w-[120px]"
                       value={selectedTeaType}
                       onChange={(e) => setSelectedTeaType(e.target.value)}
                     >
@@ -381,7 +637,7 @@ export default function DetoxTeasPage() {
                     </select>
                     
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm min-w-[140px]"
                       value={selectedFocus}
                       onChange={(e) => setSelectedFocus(e.target.value)}
                     >
@@ -393,17 +649,17 @@ export default function DetoxTeasPage() {
                     </select>
                     
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm min-w-[130px]"
                       value={caffeineLevel[0]}
                       onChange={(e) => setCaffeineLevel([e.target.value])}
                     >
-                      <option value="Any">Any Caffeine Level</option>
+                      <option value="Any">Any Caffeine</option>
                       <option value="Caffeinated">Caffeinated</option>
                       <option value="Caffeine-Free">Caffeine-Free</option>
                     </select>
                     
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm min-w-[120px]"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value)}
                     >
