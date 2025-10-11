@@ -1,6 +1,5 @@
 import express from "express";
 import path from "node:path";
-import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import apiRouter from "./routes";
 import authRouter from "./routes/auth";
@@ -17,14 +16,7 @@ app.use("/api/auth", authRouter);
 app.use("/api", apiRouter);
 
 // Serve static files from client/dist
-const clientDistPath = path.resolve(__dirname, "../../client/dist");
-
-if (fs.existsSync(clientDistPath)) {
-  app.use(express.static(clientDistPath));
-  console.log(`🗂️  Serving static files from: ${clientDistPath}`);
-} else {
-  console.warn("⚠️  Client dist folder not found. Run 'npm run build:client' first.");
-}
+app.use(express.static(path.resolve(__dirname, "../client/dist")));
 
 // Health check endpoint
 app.get("/api/health", (_req, res) => {
@@ -33,18 +25,7 @@ app.get("/api/health", (_req, res) => {
 
 // SPA fallback - serve index.html for all non-API routes
 app.get("*", (_req, res) => {
-  const indexPath = path.join(clientDistPath, "index.html");
-  
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    res.status(404).send("Frontend not built. Please run 'npm run build:client'.");
-  }
-});
-
-// 404 handler
-app.use((_req, res) => {
-  res.status(404).json({ error: "Not found" });
+  res.sendFile(path.resolve(__dirname, "../client/dist/index.html"));
 });
 
 // Error handler
