@@ -156,8 +156,10 @@ const smoothieSubcategories = [
   { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Apple, description: 'High protein blends' },
   { id: 'breakfast', name: 'Breakfast', path: '/drinks/smoothies/breakfast', icon: Sun, description: 'Morning fuel' },
   { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Zap, description: 'Performance boost' },
-  { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Sparkles, description: 'Island flavors' },
-  { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' }
+  { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Leafy greens' },
+  { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Palmtree, description: 'Island flavors' },
+  { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
+  { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: Sparkles, description: 'Sweet treats' }
 ];
 
 const otherDrinkHubs = [
