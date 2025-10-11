@@ -8,16 +8,189 @@ import { Progress } from "@/components/ui/progress";
 import { 
   Dumbbell, Clock, Users, Trophy, Heart, Star, 
   Search, Filter, Share2, ArrowLeft, Activity,
-  BarChart3, Sparkles, Plus, Camera, Zap, X, Check
+  BarChart3, Sparkles, Plus, Camera, Zap, X, Check,
+  Apple, Sun, Leaf, Palmtree, Droplets
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
-import { 
-  workoutSmoothies, 
-  workoutTypes,
-  smoothieSubcategories,
-  otherDrinkHubs 
-} from '../../data/smoothies';
+
+// Workout smoothies data
+const workoutSmoothies = [
+  {
+    id: 'workout-1',
+    name: 'Pre-Workout Power Blend',
+    description: 'Energy-boosting smoothie for intense workouts',
+    ingredients: ['1 banana', '1/2 cup oats', '1 tbsp peanut butter', '1 cup almond milk', '1 tsp honey', 'Ice'],
+    benefits: ['Sustained energy', 'Complex carbs', 'Healthy fats', 'Pre-workout fuel'],
+    nutrition: { calories: 350, protein: 12, carbs: 48, fiber: 7 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.8,
+    reviews: 523,
+    workoutType: 'Pre-Workout',
+    energyLevel: 'High',
+    featured: true,
+    trending: true,
+    bestTime: '30-60 min before workout',
+    image: 'https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop'
+  },
+  {
+    id: 'workout-2',
+    name: 'Post-Workout Recovery',
+    description: 'Protein-packed recovery smoothie',
+    ingredients: ['1 cup mixed berries', '1 scoop protein powder', '1 banana', '1 cup coconut water', '1 tbsp chia seeds', 'Ice'],
+    benefits: ['Muscle recovery', 'Protein synthesis', 'Rehydration', 'Antioxidants'],
+    nutrition: { calories: 320, protein: 25, carbs: 42, fiber: 8 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.9,
+    reviews: 687,
+    workoutType: 'Post-Workout',
+    energyLevel: 'Recovery',
+    featured: true,
+    bestTime: 'Within 30 min after workout'
+  },
+  {
+    id: 'workout-3',
+    name: 'HIIT Energy Booster',
+    description: 'Quick energy for high-intensity training',
+    ingredients: ['1/2 cup pineapple', '1/2 banana', '1 cup spinach', '1/2 cup coconut water', '1 tbsp honey', 'Ice'],
+    benefits: ['Quick energy', 'Electrolytes', 'Natural sugars', 'Hydration'],
+    nutrition: { calories: 180, protein: 3, carbs: 42, fiber: 4 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.7,
+    reviews: 412,
+    workoutType: 'Pre-Workout',
+    energyLevel: 'Very High',
+    trending: true,
+    bestTime: '15-30 min before workout'
+  },
+  {
+    id: 'workout-4',
+    name: 'Endurance Builder',
+    description: 'Sustained energy for long workouts',
+    ingredients: ['1/2 cup oats', '1 banana', '2 tbsp almond butter', '1 cup milk', '1 tsp cinnamon', 'Ice'],
+    benefits: ['Long-lasting energy', 'Slow-release carbs', 'Healthy fats', 'Stamina boost'],
+    nutrition: { calories: 420, protein: 15, carbs: 52, fiber: 9 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.6,
+    reviews: 298,
+    workoutType: 'Endurance',
+    energyLevel: 'Sustained',
+    bestTime: '1 hour before workout'
+  },
+  {
+    id: 'workout-5',
+    name: 'Strength Training Fuel',
+    description: 'Muscle-building pre-workout blend',
+    ingredients: ['1 cup Greek yogurt', '1/2 cup oats', '1 banana', '2 tbsp peanut butter', '1/2 cup milk', 'Ice'],
+    benefits: ['Muscle fuel', 'Protein rich', 'Energy boost', 'Strength support'],
+    nutrition: { calories: 480, protein: 28, carbs: 58, fiber: 7 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.8,
+    reviews: 534,
+    workoutType: 'Strength',
+    energyLevel: 'High',
+    featured: true,
+    bestTime: '45 min before workout'
+  },
+  {
+    id: 'workout-6',
+    name: 'Cardio Crush',
+    description: 'Light and energizing for cardio sessions',
+    ingredients: ['1 cup watermelon', '1/2 cup strawberries', '1/2 banana', '1 cup coconut water', '1 tbsp lime juice', 'Ice'],
+    benefits: ['Hydration', 'Natural electrolytes', 'Light energy', 'Fat burning support'],
+    nutrition: { calories: 160, protein: 3, carbs: 38, fiber: 4 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.5,
+    reviews: 367,
+    workoutType: 'Cardio',
+    energyLevel: 'Medium',
+    bestTime: '30 min before cardio'
+  },
+  {
+    id: 'workout-7',
+    name: 'Recovery Greens',
+    description: 'Anti-inflammatory post-workout blend',
+    ingredients: ['2 cups spinach', '1/2 avocado', '1/2 banana', '1 cup coconut water', '1 tbsp ginger', '1 tsp honey', 'Ice'],
+    benefits: ['Reduces inflammation', 'Aids recovery', 'Nutrient dense', 'Alkalizing'],
+    nutrition: { calories: 240, protein: 5, carbs: 32, fiber: 10 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.7,
+    reviews: 445,
+    workoutType: 'Recovery',
+    energyLevel: 'Recovery',
+    bestTime: 'After workout'
+  },
+  {
+    id: 'workout-8',
+    name: 'Yoga Flow Blend',
+    description: 'Light and energizing for yoga practice',
+    ingredients: ['1 cup mango', '1/2 cup pineapple', '1/2 cup spinach', '1 cup coconut water', '1 tsp matcha powder', 'Ice'],
+    benefits: ['Gentle energy', 'Mindful fuel', 'Antioxidants', 'Calm focus'],
+    nutrition: { calories: 200, protein: 4, carbs: 44, fiber: 5 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.8,
+    reviews: 389,
+    workoutType: 'Yoga',
+    energyLevel: 'Gentle',
+    trending: true,
+    bestTime: '30-60 min before practice'
+  }
+];
+
+const workoutTypes = [
+  {
+    id: 'pre-workout',
+    name: 'Pre-Workout',
+    icon: Zap,
+    description: 'Energy boost before training',
+    color: 'bg-orange-500',
+    timing: '30-60 min before',
+    focus: 'Energy & Performance'
+  },
+  {
+    id: 'post-workout',
+    name: 'Post-Workout',
+    icon: Trophy,
+    description: 'Recovery and muscle repair',
+    color: 'bg-blue-500',
+    timing: 'Within 30 min after',
+    focus: 'Recovery & Protein'
+  },
+  {
+    id: 'endurance',
+    name: 'Endurance',
+    icon: Activity,
+    description: 'Sustained energy for long sessions',
+    color: 'bg-green-500',
+    timing: '1 hour before',
+    focus: 'Stamina & Endurance'
+  }
+];
+
+const smoothieSubcategories = [
+  { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Apple, description: 'High protein blends' },
+  { id: 'breakfast', name: 'Breakfast', path: '/drinks/smoothies/breakfast', icon: Sun, description: 'Morning fuel' },
+  { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Leafy greens' },
+  { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Palmtree, description: 'Island flavors' },
+  { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
+  { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Droplets, description: 'Cleansing blends' },
+  { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: Sparkles, description: 'Sweet treats' }
+];
+
+const otherDrinkHubs = [
+  { id: 'juices', name: 'Fresh Juices', route: '/drinks/juices', icon: Droplets, description: 'Cold-pressed nutrition' },
+  { id: 'teas', name: 'Specialty Teas', route: '/drinks/teas', icon: Sun, description: 'Hot & iced teas' },
+  { id: 'coffee', name: 'Coffee Drinks', route: '/drinks/coffee', icon: Zap, description: 'Artisan coffee' },
+  { id: 'protein-shakes', name: 'Protein Shakes', route: '/drinks/protein-shakes', icon: Apple, description: 'Muscle fuel' }
+];
 
 export default function WorkoutSmoothiesPage() {
   const { 
@@ -135,7 +308,7 @@ export default function WorkoutSmoothiesPage() {
               </div>
               {selectedSmoothie.benefits && (
                 <div>
-                  <h3 className="font-semibold mb-2">Benefits:</h3>
+                  <h3 className="font-semibold mb-2">Workout Benefits:</h3>
                   <ul className="text-sm text-gray-700 space-y-1">
                     {selectedSmoothie.benefits.map((benefit, idx) => (
                       <li key={idx}>• {benefit}</li>
