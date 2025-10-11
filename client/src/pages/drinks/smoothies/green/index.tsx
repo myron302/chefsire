@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { 
   Leaf, Heart, Star, Search, Share2, ArrowLeft,
-  Camera, Sparkles, Target, X, Check
+  Camera, Sparkles, Target, X, Check, Zap, Activity, Sun, Trophy, Crown, IceCream
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -96,6 +96,17 @@ export default function GreenSmoothiesPage() {
     setShowModal(false);
     setSelectedSmoothie(null);
   };
+
+  // Sister smoothie categories with all 7
+  const allSmoothieSubcategories = [
+    { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Zap, description: 'High-protein blends' },
+    { id: 'breakfast', name: 'Breakfast', path: '/drinks/smoothies/breakfast', icon: Crown, description: 'Morning fuel' },
+    { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Activity, description: 'Pre & post workout' },
+    { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Sun, description: 'Exotic fruits' },
+    { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
+    { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Trophy, description: 'Cleansing blends' },
+    { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: IceCream, description: 'Healthy treats' }
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50">
@@ -242,12 +253,12 @@ export default function GreenSmoothiesPage() {
           </CardContent>
         </Card>
 
-        {/* SISTER SUBPAGES NAVIGATION */}
+        {/* SISTER SUBPAGES NAVIGATION - ALL 7 SMOOTHIE TYPES */}
         <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Smoothie Types</h3>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-              {smoothieSubcategories.map((subcategory) => {
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              {allSmoothieSubcategories.map((subcategory) => {
                 const Icon = subcategory.icon;
                 return (
                   <Link key={subcategory.id} href={subcategory.path}>
