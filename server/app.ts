@@ -1,9 +1,10 @@
+// server/app.ts
 import express from "express";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import apiRouter from "./routes";
-import authRouter from "./routes/auth";  // NEW: Import auth routes
+import authRouter from "./routes/auth";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,80 +12,77 @@ const __dirname = path.dirname(__filename);
 export const app = express();
 app.use(express.json());
 
-// NEW: Mount auth routes under /api/auth
+// Auth routes
 app.use("/api/auth", authRouter);
 
-// Find a built SPA (works with root /dist or /client/dist)
-const candidates = [
-  // server-relative
-  path.join(__dirname, "../dist"),
-  path.join(__dirname, "../dist/public"),
-  path.join(__dirname, "../client/dist"),
-  path.join(__dirname, "../client/dist/public"),
-  // root-relative (your current Vite output)
-  path.join(__dirname, "../../dist"),
-  path.join(__dirname, "../../dist/public"),
-  path.join(__dirname, "../../client/dist"),
-  path.join(__dirname, "../../client/dist/public"),
-];
+// -------------------- Static client (deterministic) --------------------
+// At runtime, __dirname === /httpdocs/server/dist
+// The built client lives at /httpdocs/client/dist
+const clientDist = path.resolve(__dirname, "../../client/dist");
+const hasClient = fs.existsSync(path.join(clientDist, "index.html"));
 
-let staticDir: string | null = null;
-for (const p of candidates) {
-  try {
-    if (fs.existsSync(p) && fs.existsSync(path.join(p, "index.html"))) {
-      staticDir = p;
-      break;
-    }
-  } catch {}
-}
-
-if (staticDir) {
-  app.use(express.static(staticDir));
-  console.log(`🗂️  Serving static frontend from: ${staticDir}`);
+if (hasClient) {
+  app.use(
+    express.static(clientDist, {
+      setHeaders: (res, file) => {
+        // Ensure correct MIME for PWA manifest
+        if (file.endsWith(".webmanifest")) {
+          res.setHeader("Content-Type", "application/manifest+json");
+        }
+      },
+      // Optional: add caching for static assets (tune as you like)
+      // maxAge: "1h",
+      // etag: true,
+    })
+  );
+  console.log(`🗂️  Serving static frontend from: ${clientDist}`);
 } else {
-  console.warn("⚠️  No built frontend found. The API will run; build the client to serve the SPA.");
+  console.warn("⚠️  No built frontend found. Run `npm run build:client` to create client/dist.");
 }
 
-// Always-on healthcheck (no DB needed)
+// Healthcheck (always on)
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-// Mount all API routes under /api
+// Mount API routes
 app.use("/api", apiRouter);
 
-// ---------- NEW: centralized error handler (shows real errors) ----------
+// -------------------- Centralized error handler --------------------
 app.use((err: any, _req: any, res: any, _next: any) => {
-  const status = err.status || err.code === "42P01" ? 200 : 500; // keep UI alive if table missing
   const env = process.env.NODE_ENV || "development";
+  const status =
+    typeof err?.status === "number"
+      ? err.status
+      : err?.code === "42P01" // missing table, keep UI alive
+      ? 200
+      : 500;
 
-  // Always log full error on server
   console.error("❌ API Error:", err);
 
-  // In prod, don’t leak stack; in dev, show detail
   if (env === "production") {
-    return res.status(err.status || 500).json({
-      error: err.message || "Internal Server Error",
-      code: err.code,
+    return res.status(status).json({
+      error: err?.message || "Internal Server Error",
+      code: err?.code,
     });
   }
 
   return res.status(status).json({
-    error: err.message || "Internal Server Error",
-    code: err.code,
-    stack: err.stack,
+    error: err?.message || "Internal Server Error",
+    code: err?.code,
+    stack: err?.stack,
   });
 });
 
-// SPA fallback for client-side routing
-app.get("*", (req, res, next) => {
-  const wantsHtml = (req.headers.accept || "").includes("text/html");
-  const isApi = req.path.startsWith("/api/");
-  const looksLikeAsset = req.path.includes(".");
-
-  if (!wantsHtml || req.method !== "GET" || isApi || looksLikeAsset) return next();
-  if (!staticDir) {
-    return res.status(501).send("Frontend not built. Run `npm run build` to create dist/public/index.html.");
+// -------------------- SPA fallback (skip real assets) --------------------
+app.get(
+  /^(?!\/api\/)(?!.*\.(?:js|css|map|png|jpe?g|gif|svg|ico|txt|json|webmanifest|woff2?|ttf|otf))$/i,
+  (_req, res) => {
+    if (!hasClient) {
+      return res
+        .status(501)
+        .send("Frontend not built. Run `npm run build:client` to create client/dist/index.html.");
+    }
+    res.sendFile(path.join(clientDist, "index.html"));
   }
-  res.sendFile(path.join(staticDir, "index.html"));
-});
+);
