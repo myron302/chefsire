@@ -67,3 +67,10 @@ app.use((err: any, _req: any, res: any, _next: any) => {
   console.error("Server error:", err);
   res.status(500).json({ error: "Internal server error", message: err.message });
 });
+
+// START THE SERVER - This is what was missing!
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📁 Serving from: ${distPath || 'NOT FOUND'}`);
+});
