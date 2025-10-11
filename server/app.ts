@@ -1,85 +1,77 @@
-import express, { NextFunction, Request, Response } from "express";
-import path from "path";
-import morgan from "morgan";
-import compression from "compression";
-import helmet from "helmet";
-import session from "express-session";
-import MemoryStore from "memorystore";
-import routes from "./routes/index.js";
+import express from "express";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+import apiRouter from "./routes/index.js";
+import authRouter from "./routes/auth.js";
 
-// --- App ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 export const app = express();
 
-// Trust proxy (Plesk / reverse proxy)
-app.set("trust proxy", 1);
+app.use(express.json());
 
-// Basic hardening
-app.use(
-  helmet({
-    contentSecurityPolicy: false, // keep simple; your client bundle handles this
-  })
-);
+// Auth + API routes
+app.use("/api/auth", authRouter);
+app.use("/api", apiRouter);
 
-// Logging (dev-friendly)
-app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+// Find built frontend
+const candidates = [
+  path.resolve(__dirname, "../../dist"),
+  path.resolve(__dirname, "../dist"),
+  path.resolve(__dirname, "../../client/dist"),
+];
 
-// Parsers
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true }));
+let staticDir: string | null = null;
+for (const p of candidates) {
+  try {
+    if (fs.existsSync(path.join(p, "index.html"))) {
+      staticDir = p;
+      break;
+    }
+  } catch {}
+}
 
-// Optional session (safe defaults; only if you use req.session elsewhere)
-const MemStore = MemoryStore(session);
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || "change-me",
-    resave: false,
-    saveUninitialized: false,
-    store: new MemStore({ checkPeriod: 1000 * 60 * 60 }), // prune each hour
-    cookie: {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: false, // set true if you terminate TLS before Node and trust proxy is configured
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-    },
-  })
-);
+if (staticDir) {
+  app.use(
+    express.static(staticDir, {
+      setHeaders: (res, file) => {
+        if (file.endsWith(".webmanifest")) {
+          res.setHeader("Content-Type", "application/manifest+json");
+        }
+      },
+    })
+  );
+  console.log(`🗂️  Serving static frontend from: ${staticDir}`);
+} else {
+  console.warn("⚠️  No built frontend found in candidates. Build the client to create dist/index.html.");
+}
 
-// Simple health
+// Health check
 app.get("/api/health", (_req, res) => {
-  res.json({
-    ok: true,
-    env: process.env.NODE_ENV || "development",
-    hasServerKey: Boolean(process.env.GOOGLE_MAPS_API_KEY),
-    hasBrowserKey: Boolean(process.env.GOOGLE_MAPS_JS_BROWSER_KEY),
-  });
+  res.json({ status: "ok", staticDir, tested: candidates, found: Boolean(staticDir) });
 });
 
-// Mount all API routes (your routes/index.ts already mounts /google etc.)
-app.use("/api", routes);
+// SPA fallback (skip real assets)
+app.get(
+  /^(?!\/api\/)(?!.*\.(?:js|css|map|png|jpe?g|gif|svg|ico|txt|json|webmanifest|woff2?|ttf|otf))$/i,
+  (_req, res) => {
+    if (!staticDir) {
+      return res.status(501).type("text/plain").send("Frontend not built. Build to create dist/index.html.");
+    }
+    res.sendFile(path.join(staticDir, "index.html"), (err) => {
+      if (err) {
+        console.error("❌ Error sending index.html:", err);
+        res.status(500).type("text/plain").send("Failed to serve index.html");
+      }
+    });
+  }
+);
 
-// ---------- Static frontend ----------
-// Adjust to where Vite outputs your built client
-const publicDir = path.resolve(process.cwd(), "dist", "public");
-app.use(express.static(publicDir, { maxAge: "1h", index: false }));
-
-// SPA fallback (serves index.html for non-/api routes)
-app.get("*", (req, res, next) => {
-  if (req.path.startsWith("/api")) return next();
-  res.sendFile(path.join(publicDir, "index.html"), (err) => {
-    if (err) next(err);
-  });
-});
-
-// ---------- Error handling ----------
-app.use((req, res) => {
-  res.status(404).json({ error: "not_found" });
-});
-
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  console.error("Unhandled error:", err);
-  const code = typeof err?.status === "number" ? err.status : 500;
-  res.status(code).json({
-    error: "server_error",
-    message: err?.message || "Unexpected error",
-  });
+// 404 + Error handlers
+app.use((_req, res) => res.status(404).json({ error: "Not found" }));
+app.use((err: any, _req: any, res: any, _next: any) => {
+  console.error("❌ Unexpected server error:", err);
+  res.status(500).json({ error: "Internal Server Error", details: err?.message });
 });
