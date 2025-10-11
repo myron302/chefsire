@@ -1,4 +1,3 @@
-// vite.config.ts
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "url";
@@ -17,12 +16,15 @@ export default defineConfig({
     },
   },
   build: {
-    // ⬇️ Put the built SPA exactly where server/dist/index.js serves from
-    outDir: resolve(__dirname, "server", "dist", "public"),
-    // ⬇️ Keep this false so Vite doesn’t delete server/dist/index.js when cleaning
-    emptyOutDir: false,
+    outDir: resolve(__dirname, "client", "dist"),
+    emptyOutDir: true,
   },
   server: {
-    fs: { strict: true, deny: ["**/.*"] },
+    proxy: {
+      "/api": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+      },
+    },
   },
 });
