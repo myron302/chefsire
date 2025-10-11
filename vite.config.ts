@@ -8,7 +8,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
-  // Your React app lives in /client
   root: resolve(__dirname, "client"),
   resolve: {
     alias: {
@@ -18,9 +17,10 @@ export default defineConfig({
     },
   },
   build: {
-    // ⬇️ This matches what your server expects
-    outDir: resolve(__dirname, "dist/public"),
-    emptyOutDir: true,
+    // ⬇️ Put the built SPA exactly where server/dist/index.js serves from
+    outDir: resolve(__dirname, "server", "dist", "public"),
+    // ⬇️ Keep this false so Vite doesn’t delete server/dist/index.js when cleaning
+    emptyOutDir: false,
   },
   server: {
     fs: { strict: true, deny: ["**/.*"] },
