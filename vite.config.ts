@@ -1,30 +1,35 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import { fileURLToPath } from "url";
-import { dirname, resolve } from "path";
+import express from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import apiRouter from "./routes";
+import authRouter from "./routes/auth";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-export default defineConfig({
-  plugins: [react()],
-  root: resolve(__dirname, "client"),
-  resolve: {
-    alias: {
-      "@": resolve(__dirname, "client", "src"),
-      "@shared": resolve(__dirname, "shared"),
-      "@assets": resolve(__dirname, "attached_assets"),
-    },
-  },
-  build: {
-    outDir: resolve(__dirname, "client", "dist"),
-    emptyOutDir: true,
-  },
-  server: {
-    proxy: {
-      "/api": {
-        target: "http://localhost:3001",
-        changeOrigin: true,
-      },
-    },
-  },
+export const app = express();
+
+app.use(express.json());
+
+// Auth and API routes
+app.use("/api/auth", authRouter);
+app.use("/api", apiRouter);
+
+// Serve static files from dist folder
+app.use(express.static(path.resolve(__dirname, "../../dist")));
+
+// Health check endpoint
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
+
+// SPA fallback - serve index.html for all non-API routes
+app.get("*", (_req, res) => {
+  res.sendFile(path.resolve(__dirname, "../../dist/index.html"));
+});
+
+// Error handler
+app.use((err: any, _req: any, res: any, _next: any) => {
+  console.error("Server error:", err);
+  res.status(500).json({ error: "Internal server error" });
 });
