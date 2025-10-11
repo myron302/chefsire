@@ -2,6 +2,8 @@ import express from "express";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import apiRouter from "./routes";
+import authRouter from "./routes/auth";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,47 +11,55 @@ const __dirname = path.dirname(__filename);
 export const app = express();
 app.use(express.json());
 
-// ---------- STATIC FRONTEND ----------
-/**
- * Runtime __dirname will be: /httpdocs/server/dist
- * Built client is at:        /httpdocs/client/dist
- */
-const clientDist = path.resolve(__dirname, "../../client/dist");
-const indexHtml = path.join(clientDist, "index.html");
-const hasClient = fs.existsSync(indexHtml);
+// --- Auth + API (unchanged) ---
+app.use("/api/auth", authRouter);
+app.use("/api", apiRouter);
 
-if (hasClient) {
+// --- Find built frontend in either old or new location ---
+const candidates = [
+  path.resolve(__dirname, "../../client/dist"),
+  path.resolve(__dirname, "../../dist"),
+  path.resolve(__dirname, "../dist"),
+];
+
+let staticDir: string | null = null;
+for (const p of candidates) {
+  try {
+    if (fs.existsSync(path.join(p, "index.html"))) {
+      staticDir = p;
+      break;
+    }
+  } catch {}
+}
+
+if (staticDir) {
   app.use(
-    express.static(clientDist, {
+    express.static(staticDir, {
       setHeaders: (res, file) => {
-        // Serve correct MIME for PWA manifests, if present
         if (file.endsWith(".webmanifest")) {
           res.setHeader("Content-Type", "application/manifest+json");
         }
       },
     })
   );
-  console.log(`🗂️  Serving static frontend from: ${clientDist}`);
+  console.log(`🗂️  Serving static frontend from: ${staticDir}`);
 } else {
-  console.warn("⚠️  client/dist not found. Run `npm run build:client`.");
+  console.warn("⚠️  No built frontend found in candidates. Build the client to create dist/index.html.");
 }
 
-// ---------- HEALTH ----------
+// Health
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", mode: "static", hasClient, clientDist });
+  res.json({ status: "ok", staticDir, tested: candidates, found: Boolean(staticDir) });
 });
 
-// ---------- SPA FALLBACK (skip real assets) ----------
+// SPA fallback (skip real assets)
 app.get(
   /^(?!\/api\/)(?!.*\.(?:js|css|map|png|jpe?g|gif|svg|ico|txt|json|webmanifest|woff2?|ttf|otf))$/i,
   (_req, res) => {
-    if (!hasClient) {
-      return res
-        .status(501)
-        .type("text/plain")
-        .send("Frontend not built. Run `npm run build:client` first.");
+    if (!staticDir) {
+      return res.status(501).type("text/plain").send("Frontend not built. Build to create dist/index.html.");
     }
-    res.sendFile(indexHtml, (err) => {
+    res.sendFile(path.join(staticDir, "index.html"), (err) => {
       if (err) {
         console.error("❌ Error sending index.html:", err);
         res.status(500).type("text/plain").send("Failed to serve index.html");
@@ -58,11 +68,8 @@ app.get(
   }
 );
 
-// ---------- 404 + ERROR HANDLERS ----------
-app.use((_req, res) => {
-  res.status(404).json({ error: "Not found" });
-});
-
+// 404 + Error
+app.use((_req, res) => res.status(404).json({ error: "Not found" }));
 app.use((err: any, _req: any, res: any, _next: any) => {
   console.error("❌ Unexpected server error:", err);
   res.status(500).json({ error: "Internal Server Error", details: err?.message });
