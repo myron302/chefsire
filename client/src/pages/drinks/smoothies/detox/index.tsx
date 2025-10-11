@@ -1,4 +1,3 @@
-// client/src/pages/drinks/smoothies/detox/index.tsx
 import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { 
   Droplets, Leaf, Heart, Star, Search, Share2, ArrowLeft,
-  Camera, Zap, Sparkles, X, Check, Apple, Sun, Crown, Activity, Trophy, IceCream
+  Camera, Zap, Sparkles, X, Check, Apple, Sun
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -153,14 +152,12 @@ const detoxSmoothies = [
   }
 ];
 
-const allSmoothieSubcategories = [
-  { id: 'breakfast', name: 'Breakfast', path: '/drinks/smoothies/breakfast', icon: Crown, description: 'Morning fuel' },
-  { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Activity, description: 'Pre & post workout' },
-  { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Superfood greens' },
-  { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Sun, description: 'Exotic fruits' },
-  { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
-  { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Trophy, description: 'Cleansing blends' },
-  { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: IceCream, description: 'Healthy treats' }
+const smoothieSubcategories = [
+  { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Apple, description: 'High protein blends' },
+  { id: 'breakfast', name: 'Breakfast', path: '/drinks/smoothies/breakfast', icon: Sun, description: 'Morning fuel' },
+  { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Zap, description: 'Performance boost' },
+  { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Sparkles, description: 'Island flavors' },
+  { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' }
 ];
 
 const otherDrinkHubs = [
@@ -386,12 +383,12 @@ export default function DetoxSmoothiesPage() {
           </CardContent>
         </Card>
 
-        {/* SISTER SUBPAGES NAVIGATION - ALL 7 SMOOTHIE TYPES */}
+        {/* SISTER SUBPAGES NAVIGATION */}
         <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Smoothie Types</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-              {allSmoothieSubcategories.map((subcategory) => {
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              {smoothieSubcategories.map((subcategory) => {
                 const Icon = subcategory.icon;
                 return (
                   <Link key={subcategory.id} href={subcategory.path}>
