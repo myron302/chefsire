@@ -10,6 +10,20 @@ import {
   stories,
   likes,
   follows,
+  comments,
+  cateringInquiries,
+  products,
+  orders,
+  subscriptionHistory,
+  mealPlans,
+  mealPlanEntries,
+  pantryItems,
+  nutritionLogs,
+  customDrinks,
+  drinkPhotos,
+  drinkLikes,
+  drinkSaves,
+  userDrinkStats,
 } from "../shared/schema.js";
 
 function reqEnv(name: string): string {
@@ -29,23 +43,48 @@ async function seedDatabase() {
 
   try {
     console.log("Clearing existing data...");
-    await db.delete(likes);
+    
+    // DELETE IN CORRECT ORDER: Children first, parents last!
+    // Delete drink-related child tables first
+    await db.delete(drinkSaves);
+    await db.delete(drinkLikes);
+    await db.delete(drinkPhotos);
+    await db.delete(customDrinks);
+    await db.delete(userDrinkStats);
+    
+    // Delete other user-related child tables
+    await db.delete(nutritionLogs);
+    await db.delete(pantryItems);
+    await db.delete(mealPlanEntries);
+    await db.delete(mealPlans);
+    await db.delete(subscriptionHistory);
+    await db.delete(orders);
+    await db.delete(cateringInquiries);
     await db.delete(follows);
+    await db.delete(comments);
+    await db.delete(likes);
+    
+    // Delete posts and related
     await db.delete(recipes);
     await db.delete(stories);
     await db.delete(posts);
+    
+    // Delete products
+    await db.delete(products);
+    
+    // Finally delete users (LAST!)
     await db.delete(users);
 
     console.log("Creating sample users...");
     const plainPassword = "password123";
-    const hashedPassword = await bcrypt.hash(plainPassword, 12); // NEW: Hash password
+    const hashedPassword = await bcrypt.hash(plainPassword, 12);
 
     const sampleUsers = [
       {
         id: "user-1",
         username: "chef_alexandra",
         email: "alexandra@chefsire.com",
-        password: hashedPassword, // NEW: Use hashed
+        password: hashedPassword,
         displayName: "Chef Alexandra",
         bio: "Passionate about Italian cuisine and fresh ingredients",
         avatar:
@@ -69,7 +108,7 @@ async function seedDatabase() {
         id: "user-2",
         username: "chef_marcus",
         email: "marcus@chefsire.com",
-        password: hashedPassword, // NEW: Use hashed
+        password: hashedPassword,
         displayName: "Chef Marcus",
         bio: "Seafood specialist | Sustainable cooking advocate",
         avatar:
@@ -93,7 +132,7 @@ async function seedDatabase() {
         id: "user-3",
         username: "chef_isabella",
         email: "isabella@chefsire.com",
-        password: hashedPassword, // NEW: Use hashed
+        password: hashedPassword,
         displayName: "Chef Isabella",
         bio: "Dessert artisan creating sweet masterpieces",
         avatar:
@@ -112,7 +151,7 @@ async function seedDatabase() {
         id: "user-4",
         username: "chefmaria",
         email: "maria@chefsire.com",
-        password: hashedPassword, // NEW: Use hashed
+        password: hashedPassword,
         displayName: "Chef Maria",
         bio: "Fresh pasta and authentic Italian recipes",
         avatar:
@@ -136,7 +175,7 @@ async function seedDatabase() {
         id: "user-5",
         username: "bakerben",
         email: "ben@chefsire.com",
-        password: hashedPassword, // NEW: Use hashed
+        password: hashedPassword,
         displayName: "Baker Ben",
         bio: "Artisan breads and morning pastries",
         avatar:
@@ -155,7 +194,7 @@ async function seedDatabase() {
         id: "user-6",
         username: "veggievibes",
         email: "veggie@chefsire.com",
-        password: hashedPassword, // NEW: Use hashed
+        password: hashedPassword,
         displayName: "Veggie Vibes",
         bio: "Plant-based nutrition and colorful meals",
         avatar:
@@ -179,7 +218,7 @@ async function seedDatabase() {
         id: "user-7",
         username: "dessertqueen",
         email: "dessert@chefsire.com",
-        password: hashedPassword, // NEW: Use hashed
+        password: hashedPassword,
         displayName: "Dessert Queen",
         bio: "Decadent desserts and sweet creations",
         avatar:
@@ -450,13 +489,13 @@ async function seedDatabase() {
 
     console.log("Database seeding completed successfully!");
     console.log("Sample data created:");
-    console.log("- 7 chef users (matching BitesRow users)");
+    console.log("- 7 chef users");
     console.log("- 5 posts (2 with recipes)");
     console.log("- 2 detailed recipes");
-    console.log("- 5 active stories (matching BitesRow structure)");
+    console.log("- 5 active stories");
     console.log("- 10 likes");
     console.log("- 12 follow relationships");
-    console.log("Test login: email=alexandra@chefsire.com, password=password123");
+    console.log("\n✅ Test login: email=alexandra@chefsire.com, password=password123");
   } catch (error) {
     console.error("Error seeding database:", (error as Error).message);
     throw error;
@@ -469,5 +508,3 @@ seedDatabase().catch((e) => {
   console.error(e);
   process.exit(1);
 });
-
-
