@@ -5,6 +5,7 @@ import cors from "cors";
 import compression from "compression";
 import morgan from "morgan";
 import path from "node:path";
+import fs from "node:fs";
 import routes from "./routes";
 
 const app = express();
@@ -31,7 +32,7 @@ app.get("/healthz", (_req: Request, res: Response) => {
 // ---- API FIRST (mounted under /api) ----
 app.use("/api", routes);
 
-// Helpful API root info (not at "/")
+// Helpful API root info
 app.get("/api", (_req, res) => {
   res.json({
     name: "ChefSire API",
@@ -45,20 +46,33 @@ app.use("/api", (_req: Request, res: Response) => {
   res.status(404).json({ error: "Not Found" });
 });
 
-// ---- Serve built client (Vite output at /dist/public) ----
-const clientDir = path.resolve(process.cwd(), "dist/public");
-app.use(express.static(clientDir, {
-  // Optional: strong caching for hashed assets
-  setHeaders: (res, filePath) => {
-    if (filePath.includes("/assets/")) {
-      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+// ---- Serve built client (Vite output at /httpdocs/dist/public) ----
+// NOTE: App root is /httpdocs/server, so UI is one level up:
+const clientDir = path.resolve(process.cwd(), "../dist/public");
+const hasClient = fs.existsSync(clientDir);
+
+// Only mount static if it exists (avoid 500s)
+if (hasClient) {
+  app.use(express.static(clientDir, {
+    setHeaders: (res, filePath) => {
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      }
     }
-  }
-}));
+  }));
+}
 
 // ---- SPA fallback for all non-API routes ----
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api")) return next();
+
+  if (!hasClient) {
+    // Friendly fallback instead of a 500 if the client bundle isn't present
+    return res
+      .status(200)
+      .send("Client bundle not found. Build the UI with `npm run build` to populate /httpdocs/dist/public.");
+  }
+
   res.sendFile(path.join(clientDir, "index.html"));
 });
 
