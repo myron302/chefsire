@@ -763,7 +763,7 @@ export default function PlantBasedProteinPage() {
                             <span className="text-green-700 font-semibold">
                               {ing.amountScaled} {ing.unit}
                             </span>{" "}
-                            {ig.item ?? ing.item}
+                            {ing.item ?? ing.item}
                             {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
                           </span>
                         </li>
