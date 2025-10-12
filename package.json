@@ -7,10 +7,14 @@
     "dev": "NODE_ENV=development tsx server/index.ts",
     "dev:4001": "PORT=4001 NODE_ENV=development tsx server/index.ts",
     "dev:4002": "PORT=4002 NODE_ENV=development tsx server/index.ts",
+
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
-    "build:server": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=server/dist",
+
+    "build:server": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --target=node22 --outfile=server/dist/index.js",
+
     "start": "NODE_ENV=production node server/dist/index.js",
+
     "check": "tsc",
     "db:ping": "dotenv -e server/.env -- tsx server/scripts/db-ping.ts",
     "db:push": "dotenv -e server/.env -- drizzle-kit push",
@@ -59,6 +63,7 @@
     "@tailwindcss/forms": "^0.5.7",
     "@tanstack/react-query": "^5.60.5",
     "@zxing/library": "^0.20.0",
+    "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -69,6 +74,9 @@
     "embla-carousel-react": "^8.6.0",
     "express": "^4.21.2",
     "express-session": "^1.18.1",
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "morgan": "^1.10.0",
     "framer-motion": "^11.13.1",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.453.0",
@@ -92,7 +100,8 @@
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
     "zod": "^3.24.2",
-    "zod-validation-error": "^3.4.0"
+    "zod-validation-error": "^3.4.0",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@replit/vite-plugin-cartographer": "^0.3.0",
