@@ -4,6 +4,7 @@
 //
 // Exports the given Postgres table to CSV at server/tmp/<table>-<timestamp>.csv
 
+import "./lib/load-env";
 import pg from "pg"; // <-- CommonJS default import, then destructure
 const { Client } = pg;
 
