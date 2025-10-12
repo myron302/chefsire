@@ -1,4 +1,3 @@
-// server/routes/recipes.ts
 import { Router } from "express";
 import { searchRecipes } from "../services/recipes-service";
 
@@ -22,15 +21,9 @@ function parseList(input: unknown): string[] {
 
 /**
  * GET /api/recipes/search
- * Query params:
- *   q?: string
- *   cuisines?: "a,b,c" or repeated &cuisines=a&cuisines=b
- *   diets?: "a,b,c"
- *   mealTypes?: "a,b,c"
- *   pageSize?: number  (default 24)
- *   offset?: number    (default 0)
+ * (Mounted at /recipes in routes/index.ts → path here is just "/search")
  */
-router.get("/recipes/search", async (req, res) => {
+router.get("/search", async (req, res) => {
   try {
     const q = typeof req.query.q === "string" ? req.query.q : undefined;
     const cuisines = parseList(req.query.cuisines);
@@ -73,8 +66,11 @@ router.get("/recipes/search", async (req, res) => {
   }
 });
 
-/** GET /api/recipes/random -> array of random meals (uses searchRecipes with q="") */
-router.get("/recipes/random", async (_req, res) => {
+/**
+ * GET /api/recipes/random
+ * (Mounted at /recipes → path is "/random")
+ */
+router.get("/random", async (_req, res) => {
   try {
     const out = await searchRecipes({ q: "" });
     res.json({ ok: true, items: out.results, total: out.total, source: out.source });
@@ -83,5 +79,4 @@ router.get("/recipes/random", async (_req, res) => {
   }
 });
 
-export const recipesRouter = router;   // named export
-export default router;                  // default export (so either import style works)
+export default router;
