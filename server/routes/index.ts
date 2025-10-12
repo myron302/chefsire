@@ -1,7 +1,7 @@
 // server/routes/index.ts
 import { Router } from "express";
 
-// Core feature routers (each file already includes its own base path like "/recipes", "/posts", etc.)
+// Core feature routers
 import recipesRouter from "./recipes";
 import bitesRouter from "./bites";
 import usersRouter from "./users";
@@ -25,10 +25,14 @@ const r = Router();
  * Mounted under `/api` by app.ts:
  *   app.use("/api", routes)
  *
- * These routers already declare their own paths inside (e.g. "/recipes/search"),
- * so mount them here with NO extra base prefix.
+ * Recipes routes are UNPREFXED inside the file ("/search", "/random"),
+ * so we mount them here at "/recipes" to produce:
+ *   /api/recipes/search
+ *   /api/recipes/random
  */
-r.use(recipesRouter);
+r.use("/recipes", recipesRouter);
+
+// Other routers already include their own path segments internally
 r.use(bitesRouter);
 r.use(usersRouter);
 r.use(postsRouter);
@@ -37,7 +41,7 @@ r.use(marketplaceRouter);
 r.use(substitutionsRouter);
 r.use(drinksRouter);
 
-// Integrations with explicit prefixes (their files expect these bases)
+// Integrations with explicit prefixes
 r.use("/lookup", lookupRouter);
 r.use("/export", exportRouter);
 r.use("/google", googleRouter);
