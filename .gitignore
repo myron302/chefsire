@@ -1,6 +1,14 @@
+# existing
 node_modules
 dist
 .DS_Store
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# secrets (DO NOT COMMIT)
+server/.env
+.env
+*.env
+!.env.example
+!server/.env.example
