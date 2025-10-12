@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
 import { 
   Leaf, Clock, Users, Trophy, Heart, Star, Calendar, 
   CheckCircle, Target, Flame, Droplets, Apple, Sprout,
@@ -32,7 +31,10 @@ const proteinSubcategories = [
   { id: 'beef', name: 'Beef Protein', icon: Flame, path: '/drinks/protein-shakes/beef', description: 'Natural creatine' }
 ];
 
-// Plant-based protein shake data
+// ---------- Helpers (types kept implicit to match your current file style) ----------
+const m = (amount, unit, item, note='') => ({ amount, unit, item, note });
+
+// Plant-based protein shake data (now with measured recipes)
 const plantBasedShakes = [
   {
     id: 'plant-1',
@@ -43,16 +45,26 @@ const plantBasedShakes = [
     proteinType: 'pea',
     flavor: 'Vanilla Mint',
     servingSize: '30g',
-    nutrition: {
-      calories: 120,
-      protein: 25,
-      carbs: 3,
-      fat: 1,
-      fiber: 2,
-      iron: 4.5,
-      bcaa: 5.2
-    },
+    nutrition: { calories: 120, protein: 25, carbs: 3, fat: 1, fiber: 2, iron: 4.5, bcaa: 5.2 },
     ingredients: ['Organic Pea Protein Isolate', 'Natural Vanilla', 'Stevia', 'Mint Extract', 'MCT Oil'],
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'pea protein isolate'),
+        m(1, 'cup', 'unsweetened almond milk'),
+        m(1, 'cup', 'spinach, loosely packed'),
+        m(1/2, 'frozen banana', 'banana'),
+        m(1/2, 'tsp', 'pure vanilla extract'),
+        m(2, 'leaves', 'fresh mint', 'or 1–2 drops mint extract'),
+        m(1, 'tsp', 'MCT oil', 'optional'),
+        m(4, 'ice cubes', 'ice')
+      ],
+      directions: [
+        'Add liquids first, then powders, then solids.',
+        'Blend 40–60 seconds until silky; add ice to thicken.',
+        'Taste and adjust mint/vanilla; serve cold.'
+      ]
+    },
     benefits: ['Complete Amino Profile', 'Easy Digestion', 'Allergen-Free', 'Sustainable'],
     certifications: ['Organic', 'Non-GMO', 'Vegan', 'Gluten-Free'],
     difficulty: 'Easy',
@@ -75,16 +87,24 @@ const plantBasedShakes = [
     proteinType: 'hemp',
     flavor: 'Natural Nutty',
     servingSize: '30g',
-    nutrition: {
-      calories: 110,
-      protein: 20,
-      carbs: 4,
-      fat: 3,
-      fiber: 8,
-      omega3: 2.5,
-      magnesium: 180
-    },
+    nutrition: { calories: 110, protein: 20, carbs: 4, fat: 3, fiber: 8, omega3: 2.5, magnesium: 180 },
     ingredients: ['Organic Hemp Protein', 'Natural Flavors', 'Coconut MCT', 'Chia Seeds'],
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'hemp protein'),
+        m(1, 'cup', 'oat milk'),
+        m(1, 'tbsp', 'chia seeds'),
+        m(1, 'tsp', 'maple syrup', 'optional'),
+        m(1/4, 'tsp', 'cinnamon'),
+        m(4, 'ice cubes', 'ice')
+      ],
+      directions: [
+        'Soak chia in oat milk for 5 minutes (optional thicker body).',
+        'Blend with hemp protein, cinnamon, sweetener, and ice.',
+        'Pulse to desired texture.'
+      ]
+    },
     benefits: ['Omega 3 & 6', 'High Fiber', 'Complete Protein', 'Heart Health'],
     certifications: ['Organic', 'Raw', 'Vegan', 'Non-GMO'],
     difficulty: 'Easy',
@@ -107,16 +127,24 @@ const plantBasedShakes = [
     proteinType: 'rice-quinoa',
     flavor: 'Chocolate Cacao',
     servingSize: '32g',
-    nutrition: {
-      calories: 125,
-      protein: 24,
-      carbs: 5,
-      fat: 1,
-      fiber: 3,
-      iron: 3.2,
-      lysine: 1.8
-    },
+    nutrition: { calories: 125, protein: 24, carbs: 5, fat: 1, fiber: 3, iron: 3.2, lysine: 1.8 },
     ingredients: ['Brown Rice Protein', 'Quinoa Protein', 'Raw Cacao', 'Coconut Sugar', 'Vanilla'],
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (32g)', 'rice–quinoa protein'),
+        m(1, 'cup', 'unsweetened almond milk'),
+        m(1, 'tbsp', 'raw cacao powder'),
+        m(1, 'tsp', 'coconut sugar', 'or monk fruit to taste'),
+        m(1/2, 'tsp', 'vanilla extract'),
+        m(1, 'pinch', 'sea salt'),
+        m(5, 'ice cubes', 'ice')
+      ],
+      directions: [
+        'Combine all; blend until creamy.',
+        'Add extra cacao or sweetener to taste.'
+      ]
+    },
     benefits: ['Hypoallergenic', 'Complete Amino', 'Ancient Grains', 'Antioxidants'],
     certifications: ['Organic', 'Fair Trade', 'Vegan', 'Sprouted'],
     difficulty: 'Easy',
@@ -139,16 +167,23 @@ const plantBasedShakes = [
     proteinType: 'soy',
     flavor: 'Strawberry Vanilla',
     servingSize: '28g',
-    nutrition: {
-      calories: 105,
-      protein: 25,
-      carbs: 2,
-      fat: 0.5,
-      fiber: 1,
-      isoflavones: 25,
-      leucine: 2.1
-    },
+    nutrition: { calories: 105, protein: 25, carbs: 2, fat: 0.5, fiber: 1, isoflavones: 25, leucine: 2.1 },
     ingredients: ['Non-GMO Soy Protein Isolate', 'Natural Strawberry', 'Vanilla Extract', 'Stevia'],
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (28g)', 'soy protein isolate'),
+        m(1, 'cup', 'soy milk or almond milk'),
+        m(1/2, 'cup', 'frozen strawberries'),
+        m(1/2, 'tsp', 'vanilla extract'),
+        m(1, 'tsp', 'honey or stevia to taste'),
+        m(4, 'ice cubes', 'ice')
+      ],
+      directions: [
+        'Blend milk + protein first 10 seconds.',
+        'Add strawberries, vanilla, sweetener; blend smooth.'
+      ]
+    },
     benefits: ['Complete Protein', 'Fast Absorption', 'Isoflavones', 'Muscle Recovery'],
     certifications: ['Non-GMO', 'Vegan', 'Organic'],
     difficulty: 'Easy',
@@ -171,16 +206,23 @@ const plantBasedShakes = [
     proteinType: 'seed',
     flavor: 'Cinnamon Spice',
     servingSize: '30g',
-    nutrition: {
-      calories: 115,
-      protein: 18,
-      carbs: 6,
-      fat: 2,
-      fiber: 4,
-      zinc: 2.3,
-      magnesium: 160
-    },
+    nutrition: { calories: 115, protein: 18, carbs: 6, fat: 2, fiber: 4, zinc: 2.3, magnesium: 160 },
     ingredients: ['Organic Pumpkin Seed Protein', 'Ceylon Cinnamon', 'Nutmeg', 'Monk Fruit'],
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'pumpkin seed protein'),
+        m(1, 'cup', 'cashew milk or water'),
+        m(1/2, 'tsp', 'Ceylon cinnamon'),
+        m(1/8, 'tsp', 'fresh nutmeg', 'optional'),
+        m(1, 'tsp', 'monk fruit or maple syrup'),
+        m(4, 'ice cubes', 'ice')
+      ],
+      directions: [
+        'Blend all until frothy; spice to taste.',
+        'Great warm: gently heat milk first, then blend briefly.'
+      ]
+    },
     benefits: ['Mineral Rich', 'Prostate Health', 'Immune Support', 'Seasonal Flavor'],
     certifications: ['Organic', 'Raw', 'Vegan', 'Sprouted'],
     difficulty: 'Easy',
@@ -203,16 +245,23 @@ const plantBasedShakes = [
     proteinType: 'algae',
     flavor: 'Tropical Green',
     servingSize: '25g',
-    nutrition: {
-      calories: 95,
-      protein: 16,
-      carbs: 8,
-      fat: 1,
-      fiber: 2,
-      chlorophyll: 150,
-      b12: 2.4
-    },
+    nutrition: { calories: 95, protein: 16, carbs: 8, fat: 1, fiber: 2, chlorophyll: 150, b12: 2.4 },
     ingredients: ['Organic Spirulina', 'Chlorella', 'Pineapple Extract', 'Coconut Water Powder'],
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(2, 'tbsp (~25g)', 'algae protein blend (spirulina/chlorella)'),
+        m(3/4, 'cup', 'coconut water'),
+        m(1/4, 'cup', 'frozen pineapple'),
+        m(1/2, 'banana', 'ripe'),
+        m(1, 'tsp', 'lime juice'),
+        m(5, 'ice cubes', 'ice')
+      ],
+      directions: [
+        'Blend until bright green and smooth.',
+        'Add extra pineapple if you prefer sweeter.'
+      ]
+    },
     benefits: ['Detoxification', 'B-Vitamins', 'Antioxidants', 'Alkalizing'],
     certifications: ['Organic', 'Raw', 'Vegan', 'Superfood'],
     difficulty: 'Medium',
@@ -226,93 +275,181 @@ const plantBasedShakes = [
     sustainability: 'Ocean Positive',
     fitnessGoal: 'Detox',
     bestTime: 'Morning'
+  },
+
+  // -------- New additions --------
+  {
+    id: 'plant-7',
+    name: 'Matcha Pea Energizer',
+    description: 'Clean caffeine + pea protein for focused energy',
+    proteinSource: 'Pea Protein Isolate',
+    proteinType: 'pea',
+    flavor: 'Matcha Vanilla',
+    servingSize: '30g',
+    nutrition: { calories: 140, protein: 26, carbs: 6, fat: 2, fiber: 2 },
+    ingredients: ['Pea Protein', 'Ceremonial Matcha', 'Vanilla', 'Dates'],
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'pea protein'),
+        m(1, 'tsp', 'matcha powder'),
+        m(1, 'cup', 'unsweetened almond milk'),
+        m(1, 'whole', 'Medjool date', 'pitted (or 1 tsp honey)'),
+        m(1/2, 'tsp', 'vanilla extract'),
+        m(4, 'ice cubes', 'ice')
+      ],
+      directions: [
+        'Blend milk + matcha first to fully disperse.',
+        'Add remaining, blend until smooth.'
+      ]
+    },
+    benefits: ['Steady Energy', 'Complete Protein', 'Antioxidants'],
+    certifications: ['Vegan', 'Non-GMO', 'Gluten-Free'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.7,
+    reviews: 512,
+    trending: true,
+    featured: true,
+    price: 33.99,
+    allergenFree: ['Dairy', 'Soy', 'Gluten', 'Nuts'],
+    sustainability: 'Carbon Neutral',
+    fitnessGoal: 'General Wellness',
+    bestTime: 'Morning'
+  },
+  {
+    id: 'plant-8',
+    name: 'PB Oat Recovery',
+    description: 'Comfort classic with oats and peanut butter',
+    proteinSource: 'Oat + Peanut',
+    proteinType: 'seed',
+    flavor: 'Peanut Butter',
+    servingSize: '35g',
+    nutrition: { calories: 260, protein: 24, carbs: 20, fat: 9, fiber: 5 },
+    ingredients: ['Oat Milk', 'Peanut Butter', 'Banana', 'Vanilla'],
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30–35g)', 'plant protein (neutral)'),
+        m(1, 'cup', 'oat milk'),
+        m(1, 'tbsp', 'natural peanut butter'),
+        m(1/2, 'banana', 'ripe, frozen preferred'),
+        m(1/2, 'tsp', 'vanilla extract'),
+        m(1, 'pinch', 'sea salt'),
+        m(4, 'ice cubes', 'ice')
+      ],
+      directions: [
+        'Blend until creamy; add splash of milk if too thick.',
+        'Top with oat crumble or cacao nibs (optional).'
+      ]
+    },
+    benefits: ['Recovery', 'Satiety', 'Comfort Flavor'],
+    certifications: ['Vegan', 'Non-GMO'],
+    difficulty: 'Easy',
+    prepTime: 2,
+    rating: 4.6,
+    reviews: 389,
+    trending: false,
+    featured: false,
+    price: 27.99,
+    allergenFree: ['Dairy', 'Soy', 'Gluten'],
+    sustainability: 'Low Water',
+    fitnessGoal: 'Muscle Building',
+    bestTime: 'Post-Workout'
+  },
+  {
+    id: 'plant-9',
+    name: 'Berry Antioxidant Blend',
+    description: 'Polyphenol-rich berries with rice–quinoa protein',
+    proteinSource: 'Rice + Quinoa',
+    proteinType: 'rice-quinoa',
+    flavor: 'Mixed Berry',
+    servingSize: '32g',
+    nutrition: { calories: 180, protein: 24, carbs: 22, fat: 2, fiber: 6 },
+    ingredients: ['Rice–Quinoa Protein', 'Mixed Berries', 'Flaxseed'],
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (32g)', 'rice–quinoa protein'),
+        m(3/4, 'cup', 'almond milk'),
+        m(3/4, 'cup', 'frozen mixed berries'),
+        m(1, 'tbsp', 'ground flaxseed'),
+        m(1, 'tsp', 'honey or agave', 'optional'),
+        m(4, 'ice cubes', 'ice')
+      ],
+      directions: [
+        'Blend milk + protein first; add berries + flax.',
+        'Pulse to keep berry texture or blend fully smooth.'
+      ]
+    },
+    benefits: ['Antioxidants', 'Omega-3 (ALA)', 'Hypoallergenic'],
+    certifications: ['Vegan', 'Gluten-Free'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.5,
+    reviews: 271,
+    trending: true,
+    featured: false,
+    price: 31.99,
+    allergenFree: ['Dairy', 'Soy', 'Nuts* (if using almond milk, swap if needed)'],
+    sustainability: 'Water Efficient',
+    fitnessGoal: 'Weight Management',
+    bestTime: 'Snack'
+  },
+  {
+    id: 'plant-10',
+    name: 'Golden Turmeric Hemp',
+    description: 'Anti-inflammatory golden milk meets hemp protein',
+    proteinSource: 'Hemp Protein',
+    proteinType: 'hemp',
+    flavor: 'Golden Spice',
+    servingSize: '30g',
+    nutrition: { calories: 170, protein: 21, carbs: 12, fat: 5, fiber: 7 },
+    ingredients: ['Hemp Protein', 'Turmeric', 'Ginger', 'Black Pepper'],
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'hemp protein'),
+        m(1, 'cup', 'coconut milk (light)'),
+        m(1/2, 'tsp', 'ground turmeric'),
+        m(1/4, 'tsp', 'ground ginger'),
+        m(1, 'pinch', 'black pepper', 'bioavailability'),
+        m(1, 'tsp', 'maple syrup', 'to taste'),
+        m(4, 'ice cubes', 'ice')
+      ],
+      directions: [
+        'Blend all; for latte vibe, warm milk first and blend briefly.',
+        'Adjust sweetness/spice to taste.'
+      ]
+    },
+    benefits: ['Anti-Inflammatory', 'Fiber', 'Omega 3&6'],
+    certifications: ['Vegan', 'Non-GMO', 'Gluten-Free'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.4,
+    reviews: 198,
+    trending: false,
+    featured: true,
+    price: 30.99,
+    allergenFree: ['Dairy', 'Soy', 'Gluten', 'Nuts'],
+    sustainability: 'Regenerative',
+    fitnessGoal: 'General Wellness',
+    bestTime: 'Evening'
   }
 ];
 
 const proteinTypes = [
-  {
-    id: 'pea',
-    name: 'Pea Protein',
-    description: 'Complete amino acid profile, easy digestion',
-    icon: Sprout,
-    color: 'text-green-600',
-    benefits: ['Complete Protein', 'BCAA Rich', 'Iron Source', 'Allergen-Free'],
-    digestibility: 98,
-    sustainability: 'High',
-    commonUses: ['Post-Workout', 'Meal Replacement']
-  },
-  {
-    id: 'hemp',
-    name: 'Hemp Protein',
-    description: 'Omega fatty acids with complete nutrition',
-    icon: Leaf,
-    color: 'text-emerald-600',
-    benefits: ['Omega 3&6', 'High Fiber', 'Magnesium', 'Heart Health'],
-    digestibility: 87,
-    sustainability: 'Very High',
-    commonUses: ['Morning Smoothie', 'General Wellness']
-  },
-  {
-    id: 'rice-quinoa',
-    name: 'Rice & Quinoa',
-    description: 'Hypoallergenic ancient grain blend',
-    icon: Apple,
-    color: 'text-amber-600',
-    benefits: ['Hypoallergenic', 'Ancient Grains', 'Complete Amino', 'Gentle'],
-    digestibility: 94,
-    sustainability: 'Medium',
-    commonUses: ['Sensitive Stomachs', 'Clean Eating']
-  },
-  {
-    id: 'soy',
-    name: 'Soy Protein',
-    description: 'Traditional complete protein powerhouse',
-    icon: Target,
-    color: 'text-blue-600',
-    benefits: ['Complete Protein', 'Fast Absorption', 'Isoflavones', 'Proven'],
-    digestibility: 100,
-    sustainability: 'Medium',
-    commonUses: ['Muscle Building', 'Athletic Performance']
-  }
+  { id: 'pea', name: 'Pea Protein', description: 'Complete amino acid profile, easy digestion', icon: Sprout, color: 'text-green-600', benefits: ['Complete Protein', 'BCAA Rich', 'Iron Source', 'Allergen-Free'], digestibility: 98, sustainability: 'High', commonUses: ['Post-Workout', 'Meal Replacement'] },
+  { id: 'hemp', name: 'Hemp Protein', description: 'Omega fatty acids with complete nutrition', icon: Leaf, color: 'text-emerald-600', benefits: ['Omega 3&6', 'High Fiber', 'Magnesium', 'Heart Health'], digestibility: 87, sustainability: 'Very High', commonUses: ['Morning Smoothie', 'General Wellness'] },
+  { id: 'rice-quinoa', name: 'Rice & Quinoa', description: 'Hypoallergenic ancient grain blend', icon: Apple, color: 'text-amber-600', benefits: ['Hypoallergenic', 'Ancient Grains', 'Complete Amino', 'Gentle'], digestibility: 94, sustainability: 'Medium', commonUses: ['Sensitive Stomachs', 'Clean Eating'] },
+  { id: 'soy', name: 'Soy Protein', description: 'Traditional complete protein powerhouse', icon: Target, color: 'text-blue-600', benefits: ['Complete Protein', 'Fast Absorption', 'Isoflavones', 'Proven'], digestibility: 100, sustainability: 'Medium', commonUses: ['Muscle Building', 'Athletic Performance'] }
 ];
 
 const fitnessGoals = [
-  {
-    id: 'muscle-building',
-    name: 'Muscle Building',
-    description: 'High protein for lean mass gains',
-    icon: Dumbbell,
-    color: 'bg-red-500',
-    recommendedIntake: '25-30g protein',
-    timing: 'Post-workout within 30 minutes'
-  },
-  {
-    id: 'weight-management',
-    name: 'Weight Management',
-    description: 'Balanced nutrition for healthy weight',
-    icon: Target,
-    color: 'bg-blue-500',
-    recommendedIntake: '20-25g protein',
-    timing: 'Between meals or meal replacement'
-  },
-  {
-    id: 'general-wellness',
-    name: 'General Wellness',
-    description: 'Daily nutrition and vitality',
-    icon: Heart,
-    color: 'bg-green-500',
-    recommendedIntake: '15-20g protein',
-    timing: 'Morning or afternoon'
-  },
-  {
-    id: 'detox',
-    name: 'Detox & Cleanse',
-    description: 'Cleansing and alkalizing support',
-    icon: Sparkles,
-    color: 'bg-purple-500',
-    recommendedIntake: '10-15g protein',
-    timing: 'Morning on empty stomach'
-  }
+  { id: 'muscle-building', name: 'Muscle Building', description: 'High protein for lean mass gains', icon: Dumbbell, color: 'bg-red-500', recommendedIntake: '25-30g protein', timing: 'Post-workout within 30 minutes' },
+  { id: 'weight-management', name: 'Weight Management', description: 'Balanced nutrition for healthy weight', icon: Target, color: 'bg-blue-500', recommendedIntake: '20-25g protein', timing: 'Between meals or meal replacement' },
+  { id: 'general-wellness', name: 'General Wellness', description: 'Daily nutrition and vitality', icon: Heart, color: 'bg-green-500', recommendedIntake: '15-20g protein', timing: 'Morning or afternoon' },
+  { id: 'detox', name: 'Detox & Cleanse', description: 'Cleansing and alkalizing support', icon: Sparkles, color: 'bg-purple-500', recommendedIntake: '10-15g protein', timing: 'Morning on empty stomach' }
 ];
 
 export default function PlantBasedProteinPage() {
@@ -335,7 +472,6 @@ export default function PlantBasedProteinPage() {
   const [selectedShake, setSelectedShake] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
-  // Share handlers
   const handleSharePage = async () => {
     const shareData = {
       title: 'Plant-Based Protein',
@@ -361,12 +497,9 @@ export default function PlantBasedProteinPage() {
 
   const handleShareShake = async (shake) => {
     const url = typeof window !== 'undefined' ? window.location.href : '';
-    const text = `${shake.name} • ${shake.fitnessGoal} • ${shake.proteinSource}\n${shake.description}`;
-    const shareData = {
-      title: shake.name,
-      text,
-      url
-    };
+    const measured = shake?.recipe?.measurements?.slice(0,4).map(r => `${r.amount} ${r.unit} ${r.item}`).join(' · ');
+    const text = `${shake.name} • ${shake.fitnessGoal} • ${shake.proteinSource}\n${shake.description}\nRecipe: ${measured || 'see page'}`;
+    const shareData = { title: shake.name, text, url };
     try {
       if (navigator.share) {
         await navigator.share(shareData);
@@ -384,19 +517,16 @@ export default function PlantBasedProteinPage() {
     }
   };
 
-  // Filter and sort shakes
   const getFilteredShakes = () => {
     let filtered = plantBasedShakes.filter(shake => {
       const matchesSearch = shake.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            shake.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType = !selectedProteinType || shake.proteinType === selectedProteinType;
       const matchesGoal = !selectedGoal || shake.fitnessGoal.toLowerCase().includes(selectedGoal.toLowerCase());
-      const matchesAllergen = !selectedAllergen || shake.allergenFree.includes(selectedAllergen);
-      
+      const matchesAllergen = !selectedAllergen || shake.allergenFree.some(a => (a || '').toLowerCase().includes(selectedAllergen.toLowerCase()));
       return matchesSearch && matchesType && matchesGoal && matchesAllergen;
     });
 
-    // Sort results
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'rating': return (b.rating || 0) - (a.rating || 0);
@@ -455,11 +585,7 @@ export default function PlantBasedProteinPage() {
           >
             <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
               <h2 className="text-lg font-semibold">Search All Drinks</h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowUniversalSearch(false)}
-              >
+              <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -470,7 +596,7 @@ export default function PlantBasedProteinPage() {
         </div>
       )}
 
-      {/* Make Shake Modal */}
+      {/* Make Shake Modal (now shows measured recipe) */}
       {showModal && selectedShake && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
           <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
@@ -480,28 +606,8 @@ export default function PlantBasedProteinPage() {
                 <X className="h-6 w-6" />
               </button>
             </div>
+
             <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold mb-2">Ingredients:</h3>
-                <ul className="space-y-2">
-                  {selectedShake.ingredients.map((ing, idx) => (
-                    <li key={idx} className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-green-600" />
-                      <span>{ing}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h3 className="font-semibold mb-2">Certifications:</h3>
-                <div className="flex flex-wrap gap-1">
-                  {selectedShake.certifications.map((cert, idx) => (
-                    <Badge key={idx} variant="outline" className="text-xs">
-                      {cert}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
               <div className="grid grid-cols-3 gap-2 p-3 bg-green-50 rounded-lg">
                 <div className="text-center">
                   <div className="font-bold text-green-600">{selectedShake.nutrition.protein}g</div>
@@ -516,12 +622,37 @@ export default function PlantBasedProteinPage() {
                   <div className="text-xs text-gray-600">Prep</div>
                 </div>
               </div>
-              <div className="flex gap-4 pt-4">
-                <Button 
-                  className="flex-1 bg-green-600 hover:bg-green-700"
-                  onClick={handleCompleteShake}
-                >
+
+              <div>
+                <h3 className="font-semibold mb-2">Recipe • {selectedShake?.recipe?.servings || 1} serving</h3>
+                <ul className="space-y-2">
+                  {selectedShake.recipe?.measurements?.map((ing, idx) => (
+                    <li key={idx} className="flex items-start gap-2 text-sm">
+                      <Check className="h-4 w-4 text-green-600 mt-0.5" />
+                      <span>
+                        <span className="font-semibold">{ing.amount} {ing.unit}</span> {ing.item}
+                        {ing.note ? <span className="text-gray-500"> — {ing.note}</span> : null}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {Array.isArray(selectedShake.recipe?.directions) && (
+                <div>
+                  <h3 className="font-semibold mb-2">Directions</h3>
+                  <ol className="list-decimal list-inside text-sm space-y-1 text-gray-700">
+                    {selectedShake.recipe.directions.map((step, i) => <li key={i}>{step}</li>)}
+                  </ol>
+                </div>
+              )}
+
+              <div className="flex gap-4 pt-2">
+                <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={handleCompleteShake}>
                   Complete Shake (+25 XP)
+                </Button>
+                <Button variant="outline" onClick={() => handleShareShake(selectedShake)}>
+                  <Share2 className="h-4 w-4 mr-2" /> Share
                 </Button>
               </div>
             </div>
@@ -549,11 +680,7 @@ export default function PlantBasedProteinPage() {
             </div>
             
             <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => setShowUniversalSearch(true)}
-              >
+              <Button variant="outline" size="sm" onClick={() => setShowUniversalSearch(true)}>
                 <Search className="h-4 w-4 mr-2" />
                 Universal Search
               </Button>
@@ -565,7 +692,7 @@ export default function PlantBasedProteinPage() {
               </div>
               <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
-                Share Recipe
+                Share Page
               </Button>
             </div>
           </div>
@@ -623,30 +750,10 @@ export default function PlantBasedProteinPage() {
 
         {/* Quick Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">21g</div>
-              <div className="text-sm text-gray-600">Avg Protein</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">0mg</div>
-              <div className="text-sm text-gray-600">Cholesterol</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">100%</div>
-              <div className="text-sm text-gray-600">Plant-Based</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-emerald-600">6</div>
-              <div className="text-sm text-gray-600">Protein Sources</div>
-            </CardContent>
-          </Card>
+          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-green-600">21g</div><div className="text-sm text-gray-600">Avg Protein</div></CardContent></Card>
+          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-blue-600">0mg</div><div className="text-sm text-gray-600">Cholesterol</div></CardContent></Card>
+          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-purple-600">100%</div><div className="text-sm text-gray-600">Plant-Based</div></CardContent></Card>
+          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-emerald-600">{plantBasedShakes.length}</div><div className="text-sm text-gray-600">Protein Options</div></CardContent></Card>
         </div>
 
         {/* Navigation Tabs */}
@@ -688,45 +795,22 @@ export default function PlantBasedProteinPage() {
               </div>
               
               <div className="flex gap-2">
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={selectedProteinType}
-                  onChange={(e) => setSelectedProteinType(e.target.value)}
-                >
+                <select className="px-3 py-2 border border-gray-300 rounded-md text-sm" value={selectedProteinType} onChange={(e) => setSelectedProteinType(e.target.value)}>
                   <option value="">All Protein Types</option>
-                  {proteinTypes.map(type => (
-                    <option key={type.id} value={type.id}>{type.name}</option>
-                  ))}
+                  {proteinTypes.map(type => (<option key={type.id} value={type.id}>{type.name}</option>))}
                 </select>
-                
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={selectedGoal}
-                  onChange={(e) => setSelectedGoal(e.target.value)}
-                >
+                <select className="px-3 py-2 border border-gray-300 rounded-md text-sm" value={selectedGoal} onChange={(e) => setSelectedGoal(e.target.value)}>
                   <option value="">All Goals</option>
-                  {fitnessGoals.map(goal => (
-                    <option key={goal.id} value={goal.name}>{goal.name}</option>
-                  ))}
+                  {fitnessGoals.map(goal => (<option key={goal.id} value={goal.name}>{goal.name}</option>))}
                 </select>
-                
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={selectedAllergen}
-                  onChange={(e) => setSelectedAllergen(e.target.value)}
-                >
+                <select className="px-3 py-2 border border-gray-300 rounded-md text-sm" value={selectedAllergen} onChange={(e) => setSelectedAllergen(e.target.value)}>
                   <option value="">All Allergen-Free</option>
                   <option value="Dairy">Dairy-Free</option>
                   <option value="Soy">Soy-Free</option>
                   <option value="Gluten">Gluten-Free</option>
                   <option value="Nuts">Nut-Free</option>
                 </select>
-                
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                >
+                <select className="px-3 py-2 border border-gray-300 rounded-md text-sm" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
                   <option value="rating">Sort by Rating</option>
                   <option value="protein">Sort by Protein</option>
                   <option value="price">Sort by Price</option>
@@ -777,34 +861,40 @@ export default function PlantBasedProteinPage() {
                   <CardContent>
                     {/* Nutrition Grid */}
                     <div className="grid grid-cols-4 gap-2 mb-4 text-center text-sm">
-                      <div>
-                        <div className="text-xl font-bold text-green-600">{shake.nutrition.protein}g</div>
-                        <div className="text-gray-500">Protein</div>
-                      </div>
-                      <div>
-                        <div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div>
-                        <div className="text-gray-500">Cal</div>
-                      </div>
-                      <div>
-                        <div className="text-xl font-bold text-purple-600">{shake.nutrition.fiber}g</div>
-                        <div className="text-gray-500">Fiber</div>
-                      </div>
-                      <div>
-                        <div className="text-xl font-bold text-amber-600">${shake.price}</div>
-                        <div className="text-gray-500">Price</div>
-                      </div>
+                      <div><div className="text-xl font-bold text-green-600">{shake.nutrition.protein}g</div><div className="text-gray-500">Protein</div></div>
+                      <div><div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div><div className="text-gray-500">Cal</div></div>
+                      <div><div className="text-xl font-bold text-purple-600">{shake.nutrition.fiber ?? '—'}{shake.nutrition.fiber ? 'g':''}</div><div className="text-gray-500">Fiber</div></div>
+                      <div><div className="text-xl font-bold text-amber-600">${shake.price}</div><div className="text-gray-500">Price</div></div>
                     </div>
 
                     {/* Certifications */}
                     <div className="flex flex-wrap gap-1 mb-4">
                       {shake.certifications.map((cert, index) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {cert}
-                        </Badge>
+                        <Badge key={index} variant="outline" className="text-xs">{cert}</Badge>
                       ))}
                     </div>
 
-                    {/* Rating */}
+                    {/* NEW: Compact measured recipe preview */}
+                    {shake.recipe?.measurements && (
+                      <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <div className="text-xs font-semibold text-gray-800 mb-2">
+                          Recipe (serves {shake.recipe.servings || 1})
+                        </div>
+                        <ul className="text-xs text-gray-700 space-y-1">
+                          {shake.recipe.measurements.slice(0,4).map((ing, i) => (
+                            <li key={i} className="flex items-start gap-2">
+                              <Check className="h-3 w-3 text-green-600 mt-0.5" />
+                              <span><span className="font-semibold">{ing.amount} {ing.unit}</span> {ing.item}{ing.note ? ` — ${ing.note}`:''}</span>
+                            </li>
+                          ))}
+                          {shake.recipe.measurements.length > 4 && (
+                            <li className="text-[11px] text-gray-500">…plus {shake.recipe.measurements.length - 4} more</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Rating + difficulty */}
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-1">
                         <Star className="h-4 w-4 text-yellow-400 fill-current" />
@@ -818,10 +908,7 @@ export default function PlantBasedProteinPage() {
 
                     {/* Actions */}
                     <div className="flex gap-2">
-                      <Button 
-                        className="flex-1 bg-green-600 hover:bg-green-700"
-                        onClick={() => handleMakeShake(shake)}
-                      >
+                      <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={() => handleMakeShake(shake)}>
                         <Dumbbell className="h-4 w-4 mr-2" />
                         Make Shake
                       </Button>
@@ -842,7 +929,6 @@ export default function PlantBasedProteinPage() {
             {proteinTypes.map(type => {
               const Icon = type.icon;
               const typeShakes = plantBasedShakes.filter(shake => shake.proteinType === type.id);
-              
               return (
                 <Card key={type.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
@@ -852,38 +938,25 @@ export default function PlantBasedProteinPage() {
                       <p className="text-sm text-gray-600">{type.description}</p>
                     </div>
                   </CardHeader>
-                  
                   <CardContent>
                     <div className="space-y-3 mb-4">
                       <div className="text-center">
                         <div className="text-sm font-medium text-gray-700 mb-1">Digestibility</div>
                         <div className="text-2xl font-bold text-green-600">{type.digestibility}%</div>
                       </div>
-                      
                       <div>
                         <h4 className="font-semibold text-sm mb-2">Key Benefits:</h4>
                         <div className="flex flex-wrap gap-1">
                           {type.benefits.map((benefit, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
-                              {benefit}
-                            </Badge>
+                            <Badge key={index} variant="outline" className="text-xs">{benefit}</Badge>
                           ))}
                         </div>
                       </div>
                     </div>
-                    
                     <div className="text-center">
-                      <div className={`text-2xl font-bold ${type.color} mb-1`}>
-                        {typeShakes.length}
-                      </div>
+                      <div className={`text-2xl font-bold ${type.color} mb-1`}>{typeShakes.length}</div>
                       <div className="text-sm text-gray-600 mb-3">Available Options</div>
-                      <Button 
-                        className="w-full"
-                        onClick={() => {
-                          setSelectedProteinType(type.id);
-                          setActiveTab('browse');
-                        }}
-                      >
+                      <Button className="w-full" onClick={() => { setSelectedProteinType(type.id); setActiveTab('browse'); }}>
                         Explore {type.name}
                       </Button>
                     </div>
@@ -902,7 +975,6 @@ export default function PlantBasedProteinPage() {
               const goalShakes = plantBasedShakes.filter(shake => 
                 shake.fitnessGoal.toLowerCase().includes(goal.name.toLowerCase())
               );
-              
               return (
                 <Card key={goal.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
@@ -916,32 +988,21 @@ export default function PlantBasedProteinPage() {
                       </div>
                     </div>
                   </CardHeader>
-                  
                   <CardContent>
                     <div className="space-y-3 mb-4">
                       <div className="bg-gray-50 p-3 rounded-lg">
                         <div className="text-sm font-medium text-gray-700 mb-1">Recommended Intake:</div>
                         <div className="text-lg font-bold text-green-600">{goal.recommendedIntake}</div>
                       </div>
-                      
                       <div className="bg-blue-50 p-3 rounded-lg">
                         <div className="text-sm font-medium text-gray-700 mb-1">Best Timing:</div>
                         <div className="text-sm text-blue-800">{goal.timing}</div>
                       </div>
                     </div>
-                    
                     <div className="text-center">
-                      <div className={`text-2xl font-bold ${goal.color.replace('bg-', 'text-')} mb-1`}>
-                        {goalShakes.length}
-                      </div>
+                      <div className={`text-2xl font-bold ${goal.color.replace('bg-', 'text-')} mb-1`}>{goalShakes.length}</div>
                       <div className="text-sm text-gray-600 mb-3">Perfect Matches</div>
-                      <Button 
-                        className="w-full"
-                        onClick={() => {
-                          setSelectedGoal(goal.name);
-                          setActiveTab('browse');
-                        }}
-                      >
+                      <Button className="w-full" onClick={() => { setSelectedGoal(goal.name); setActiveTab('browse'); }}>
                         View {goal.name} Options
                       </Button>
                     </div>
@@ -959,7 +1020,7 @@ export default function PlantBasedProteinPage() {
               <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="relative">
                   <img 
-                    src={shake.image} 
+                    src={shake.image || 'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=400&h=300&fit=crop'} 
                     alt={shake.name}
                     className="w-full h-48 object-cover"
                     onError={(e) => {
@@ -977,7 +1038,6 @@ export default function PlantBasedProteinPage() {
                 <CardHeader>
                   <CardTitle className="text-xl">{shake.name}</CardTitle>
                   <p className="text-gray-600">{shake.description}</p>
-                  
                   <div className="flex items-center gap-2 mt-2">
                     <Badge className="bg-green-100 text-green-800">{shake.proteinSource}</Badge>
                     <Badge variant="outline">{shake.flavor}</Badge>
@@ -990,69 +1050,48 @@ export default function PlantBasedProteinPage() {
                 </CardHeader>
                 
                 <CardContent>
-                  {/* Enhanced nutrition display */}
                   <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-green-50 rounded-lg">
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-green-600">{shake.nutrition.protein}g</div>
-                      <div className="text-xs text-gray-600">Protein</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div>
-                      <div className="text-xs text-gray-600">Calories</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-purple-600">{shake.nutrition.fiber}g</div>
-                      <div className="text-xs text-gray-600">Fiber</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-amber-600">${shake.price}</div>
-                      <div className="text-xs text-gray-600">Price</div>
-                    </div>
+                    <div className="text-center"><div className="text-xl font-bold text-green-600">{shake.nutrition.protein}g</div><div className="text-xs text-gray-600">Protein</div></div>
+                    <div className="text-center"><div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div><div className="text-xs text-gray-600">Calories</div></div>
+                    <div className="text-center"><div className="text-xl font-bold text-purple-600">{shake.nutrition.fiber ?? '—'}{shake.nutrition.fiber ? 'g':''}</div><div className="text-xs text-gray-600">Fiber</div></div>
+                    <div className="text-center"><div className="text-xl font-bold text-amber-600">${shake.price}</div><div className="text-xs text-gray-600">Price</div></div>
                   </div>
 
-                  {/* Allergen-free badges */}
                   <div className="mb-4">
                     <h4 className="font-medium text-gray-900 mb-2">Allergen-Free:</h4>
                     <div className="flex flex-wrap gap-1">
                       {shake.allergenFree.map((allergen, index) => (
-                        <Badge key={index} className="bg-blue-100 text-blue-800 text-xs">
-                          {allergen}-Free
-                        </Badge>
+                        <Badge key={index} className="bg-blue-100 text-blue-800 text-xs">{allergen}-Free</Badge>
                       ))}
                     </div>
                   </div>
 
-                  {/* Benefits */}
                   <div className="mb-4">
                     <h4 className="font-medium text-gray-900 mb-2">Key Benefits:</h4>
                     <div className="flex flex-wrap gap-1">
                       {shake.benefits.map((benefit, index) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {benefit}
-                        </Badge>
+                        <Badge key={index} variant="outline" className="text-xs">{benefit}</Badge>
                       ))}
                     </div>
                   </div>
 
-                  {/* Ingredients */}
-                  <div className="mb-6">
-                    <h4 className="font-medium text-gray-900 mb-2">Ingredients:</h4>
-                    <div className="text-sm text-gray-700 space-y-1">
-                      {shake.ingredients.map((ingredient, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <Leaf className="h-3 w-3 text-green-500" />
-                          {ingredient}
-                        </div>
-                      ))}
+                  {/* NEW: full measured list quick view */}
+                  {shake.recipe?.measurements && (
+                    <div className="mb-6">
+                      <h4 className="font-medium text-gray-900 mb-2">Recipe (1 serving)</h4>
+                      <div className="text-sm text-gray-700 space-y-1">
+                        {shake.recipe.measurements.map((ing, index) => (
+                          <div key={index} className="flex items-start gap-2">
+                            <Leaf className="h-3 w-3 text-green-500 mt-0.5" />
+                            <span><span className="font-semibold">{ing.amount} {ing.unit}</span> {ing.item}{ing.note ? ` — ${ing.note}` : ''}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Action buttons */}
                   <div className="flex gap-3">
-                    <Button 
-                      className="flex-1 bg-green-600 hover:bg-green-700"
-                      onClick={() => handleMakeShake(shake)}
-                    >
+                    <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={() => handleMakeShake(shake)}>
                       <Dumbbell className="h-4 w-4 mr-2" />
                       Make This Shake
                     </Button>
@@ -1067,22 +1106,16 @@ export default function PlantBasedProteinPage() {
           </div>
         )}
 
-        {/* Your Progress (in-content) */}
+        {/* Your Progress */}
         <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mt-8">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold mb-2">Your Progress</h3>
                 <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="text-purple-600">
-                    Level {userProgress.level}
-                  </Badge>
-                  <Badge variant="outline" className="text-blue-600">
-                    {userProgress.totalPoints} XP
-                  </Badge>
-                  <Badge variant="outline" className="text-green-600">
-                    {userProgress.totalDrinksMade} Drinks Made
-                  </Badge>
+                  <Badge variant="outline" className="text-purple-600">Level {userProgress.level}</Badge>
+                  <Badge variant="outline" className="text-blue-600">{userProgress.totalPoints} XP</Badge>
+                  <Badge variant="outline" className="text-green-600">{userProgress.totalDrinksMade} Drinks Made</Badge>
                 </div>
               </div>
               <div className="text-center">
