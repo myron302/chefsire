@@ -1,3 +1,4 @@
+// server/app.ts
 import "dotenv/config";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
@@ -25,7 +26,7 @@ app.get("/healthz", (_req: Request, res: Response) => {
   res.status(200).json({ ok: true, env: process.env.NODE_ENV || "development" });
 });
 
-// API first (mounted under /api)
+// API routes (mounted under /api)
 app.use("/api", routes);
 
 // Optional API banner (at /api)
@@ -37,12 +38,7 @@ app.get("/api", (_req, res) => {
   });
 });
 
-// 404 for unknown API paths
-app.use("/api", (_req: Request, res: Response) => {
-  res.status(404).json({ error: "Not Found" });
-});
-
-// Serve built client at ../dist/public (since App Root is /httpdocs/server)
+// Serve built client at ../dist/public (App Root is /httpdocs/server)
 const clientDir = path.resolve(process.cwd(), "../dist/public");
 const hasClient = fs.existsSync(clientDir);
 
@@ -69,6 +65,11 @@ app.get("*", (req, res, next) => {
       );
   }
   res.sendFile(path.join(clientDir, "index.html"));
+});
+
+// FINAL: 404 for unknown API paths (keep this at the very end)
+app.all("/api/*", (_req: Request, res: Response) => {
+  res.status(404).json({ error: "API endpoint not found" });
 });
 
 // Global error handler
