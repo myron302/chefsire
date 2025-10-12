@@ -1,8 +1,8 @@
-// drizzle.config.ts
+// drizzle.config.ts (ESM-safe)
 import { defineConfig } from "drizzle-kit";
 import { config as dotenv } from "dotenv";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,7 +18,7 @@ if (!DATABASE_URL) {
   );
 }
 
-// Ensure Neon SSL parameter is present
+// Ensure Neon SSL is required
 if (!/[?&]sslmode=/.test(DATABASE_URL)) {
   DATABASE_URL += (DATABASE_URL.includes("?") ? "&" : "?") + "sslmode=require";
 }
