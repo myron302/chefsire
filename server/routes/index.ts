@@ -1,8 +1,7 @@
-// server/routes/index.ts
 import { Router } from "express";
 
-// --- Core feature routers ---
-import { recipesRouter } from "./recipes";   // ✅ use the named export we just added
+// Core feature routers
+import recipesRouter from "./recipes"; // default import
 import bitesRouter from "./bites";
 import usersRouter from "./users";
 import postsRouter from "./posts";
@@ -11,25 +10,24 @@ import marketplaceRouter from "./marketplace";
 import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
 
-// --- Integrations ---
+// Integrations
 import lookupRouter from "./lookup";
 import exportRouter from "./exportList";
 import { googleRouter } from "./google";
 
-// --- Competitions (Cook-Off Feature) ---
+// Competitions
 import competitionsRouter from "./competitions";
 
-// --- Auth (signup/login) ---
+// Auth
 import authRouter from "./auth";
 
 const r = Router();
 
 /**
- * Mounted in app.ts as: app.use("/api", r)
- * Final paths: /api/recipes, /api/auth/login, etc.
+ * Mounted by app.ts as: app.use("/api", r)
+ * Final endpoints: /api/recipes/search, /api/recipes/random, etc.
  */
 
-// Primary mounts
 r.use("/recipes", recipesRouter);
 r.use("/bites", bitesRouter);
 r.use("/users", usersRouter);
@@ -39,18 +37,14 @@ r.use("/marketplace", marketplaceRouter);
 r.use("/substitutions", substitutionsRouter);
 r.use("/drinks", drinksRouter);
 
-// Auth
 r.use(authRouter); // /auth/signup, /auth/login
 
-// Integrations
 r.use("/lookup", lookupRouter);
 r.use("/export", exportRouter);
 r.use("/google", googleRouter);
 
-// Competitions
 r.use("/competitions", competitionsRouter);
 
-// Debug (dev only)
 if (process.env.NODE_ENV !== "production") {
   r.get("/_routes", (_req, res) => {
     res.json({
