@@ -1,4 +1,4 @@
-import "./lib/load-env";
+import "./lib/load-env"
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool } from "@neondatabase/serverless";
@@ -469,4 +469,5 @@ seedDatabase().catch((e) => {
   console.error(e);
   process.exit(1);
 });
+
 
