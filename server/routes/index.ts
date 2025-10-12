@@ -2,7 +2,7 @@
 import { Router } from "express";
 
 // --- Core feature routers ---
-import recipesRouter from "./recipes";
+import { recipesRouter } from "./recipes";   // ✅ use the named export we just added
 import bitesRouter from "./bites";
 import usersRouter from "./users";
 import postsRouter from "./posts";
@@ -25,9 +25,8 @@ import authRouter from "./auth";
 const r = Router();
 
 /**
- * This file defines explicit mount points.
- * `app.ts` mounts this as: app.use("/api", r)
- * So final paths are, e.g., /api/recipes, /api/auth/login, etc.
+ * Mounted in app.ts as: app.use("/api", r)
+ * Final paths: /api/recipes, /api/auth/login, etc.
  */
 
 // Primary mounts
@@ -41,7 +40,7 @@ r.use("/substitutions", substitutionsRouter);
 r.use("/drinks", drinksRouter);
 
 // Auth
-r.use(authRouter); // routes are /auth/signup and /auth/login
+r.use(authRouter); // /auth/signup, /auth/login
 
 // Integrations
 r.use("/lookup", lookupRouter);
