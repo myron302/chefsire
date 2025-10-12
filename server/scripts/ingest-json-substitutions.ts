@@ -1,4 +1,5 @@
 // server/scripts/ingest-json-substitutions.ts
+import "./lib/load-env";
 import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
