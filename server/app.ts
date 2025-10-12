@@ -23,34 +23,42 @@ if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));
 }
 
-// ---- Health & Root API info ----
+// ---- Health ----
 app.get("/healthz", (_req: Request, res: Response) => {
   res.status(200).json({ ok: true, env: process.env.NODE_ENV || "development" });
 });
 
-app.get("/", (_req: Request, res: Response) => {
-  res.status(200).json({
+// ---- API FIRST (mounted under /api) ----
+app.use("/api", routes);
+
+// Helpful API root info (not at "/")
+app.get("/api", (_req, res) => {
+  res.json({
     name: "ChefSire API",
     status: "running",
     timestamp: new Date().toISOString(),
   });
 });
 
-// ---- API (mounted first so it’s not intercepted by SPA fallback) ----
-app.use("/api", routes);
-
-// ---- 404 for unknown API paths ----
+// 404 for unknown API paths
 app.use("/api", (_req: Request, res: Response) => {
   res.status(404).json({ error: "Not Found" });
 });
 
 // ---- Serve built client (Vite output at /dist/public) ----
 const clientDir = path.resolve(process.cwd(), "dist/public");
-app.use(express.static(clientDir));
+app.use(express.static(clientDir, {
+  // Optional: strong caching for hashed assets
+  setHeaders: (res, filePath) => {
+    if (filePath.includes("/assets/")) {
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    }
+  }
+}));
 
-// ---- SPA fallback: send index.html for any non-API route ----
+// ---- SPA fallback for all non-API routes ----
 app.get("*", (req, res, next) => {
-  if (req.path.startsWith("/api")) return next(); // never hijack API
+  if (req.path.startsWith("/api")) return next();
   res.sendFile(path.join(clientDir, "index.html"));
 });
 
@@ -60,9 +68,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message = err instanceof Error ? err.message : "Unknown error";
   const stack = err instanceof Error ? err.stack : undefined;
 
-  if (!isProd) {
-    console.error("[ERROR]", err);
-  }
+  if (!isProd) console.error("[ERROR]", err);
 
   res.status(500).json({
     error: "Internal Server Error",
