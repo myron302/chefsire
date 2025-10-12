@@ -1,22 +1,5 @@
 // server/services/recipes-service.ts
-import fetch from "node-fetch";
-
-export type RecipeCardData = {
-  id: string;
-  title: string;
-  image?: string | null;
-  imageUrl?: string | null;
-  cuisine?: string | null;
-  mealType?: string | null;
-  dietTags?: string[];
-  ratingSpoons?: number | null;
-  cookTime?: number | null;
-  servings?: number | null;
-  source?: string;
-  strInstructions?: string | null;
-};
-
-export type RecipeSearchOptions = {
+type SearchParams = {
   q?: string;
   cuisines?: string[];
   diets?: string[];
@@ -28,14 +11,43 @@ export type RecipeSearchOptions = {
 type MealDBMeal = {
   idMeal: string;
   strMeal: string;
-  strCategory: string | null;
-  strArea: string | null;
-  strInstructions: string | null;
-  strMealThumb: string | null;
-  strTags: string | null; // comma-separated
+  strMealThumb?: string | null;
+  strArea?: string | null;
+  strCategory?: string | null;
+  strTags?: string | null;
+  strInstructions?: string | null;
 };
 
-function mapMealDB(m: MealDBMeal): RecipeCardData {
+export type RecipeItem = {
+  id: string;
+  title: string;
+  image: string | null;
+  imageUrl: string | null;
+  cuisine: string | null;
+  mealType: string | null;
+  dietTags?: string[];
+  instructions?: string | null;
+  ratingSpoons: number | null;
+  cookTime: number | null;
+  servings: number | null;
+  source: "mealdb";
+};
+
+const SOURCE: "mealdb" = "mealdb";
+
+async function fetchJSON<T>(url: string, timeoutMs = 10000): Promise<T> {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`Upstream ${res.status} for ${url}`);
+    return (await res.json()) as T;
+  } finally {
+    clearTimeout(to);
+  }
+}
+
+function mapMealDB(m: MealDBMeal): RecipeItem {
   const tags = (m.strTags || "")
     .split(",")
     .map((s) => s.trim())
@@ -49,178 +61,109 @@ function mapMealDB(m: MealDBMeal): RecipeCardData {
     cuisine: m.strArea || null,
     mealType: m.strCategory || null,
     dietTags: tags.length ? tags : undefined,
+    instructions: m.strInstructions || null,
     ratingSpoons: null,
     cookTime: null,
     servings: null,
-    source: "mealdb",
-    strInstructions: m.strInstructions || null,
+    source: SOURCE,
   };
 }
 
-async function mealdbSearchByName(q: string): Promise<RecipeCardData[]> {
-  const url = `https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(q)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`MealDB error ${res.status}`);
-  const json = (await res.json()) as { meals: MealDBMeal[] | null };
-  const meals = json.meals || [];
-  return meals.map(mapMealDB);
+function normalizeList(list?: string[] | null): string[] | undefined {
+  if (!list || !list.length) return undefined;
+  return list.map((s) => s.trim().toLowerCase()).filter(Boolean);
 }
 
-// FIXED: Generate more random recipes for infinite scroll
-async function mealdbRandom(count = 24): Promise<RecipeCardData[]> {
-  // Instead of fetching individual random meals, get from different categories
-  const categories = [
-    'Seafood', 'Chicken', 'Beef', 'Pork', 'Lamb', 'Vegetarian', 'Pasta', 'Side',
-    'Starter', 'Dessert', 'Breakfast', 'Goat', 'Miscellaneous', 'Vegan'
-  ];
-  
-  const results: RecipeCardData[] = [];
-  const seenIds = new Set<string>();
-  
-  // Try to get recipes from different categories
-  for (const category of categories.slice(0, Math.ceil(count / 4))) {
-    try {
-      const url = `https://www.themealdb.com/api/json/v1/1/filter.php?c=${category}`;
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      
-      const json = (await res.json()) as { meals: MealDBMeal[] | null };
-      const meals = (json.meals || []).slice(0, 4); // Take 4 from each category
-      
-      for (const meal of meals) {
-        if (!seenIds.has(meal.idMeal) && results.length < count) {
-          // Need to fetch full meal details to get instructions
-          try {
-            const detailUrl = `https://www.themealdb.com/api/json/v1/1/lookup.php?i=${meal.idMeal}`;
-            const detailRes = await fetch(detailUrl);
-            if (detailRes.ok) {
-              const detailJson = (await detailRes.json()) as { meals: MealDBMeal[] | null };
-              const fullMeal = (detailJson.meals || [])[0];
-              if (fullMeal) {
-                results.push(mapMealDB(fullMeal));
-                seenIds.add(meal.idMeal);
-              }
-            }
-          } catch (e) {
-            // Skip individual meal if fetch fails
-          }
-        }
-      }
-    } catch (e) {
-      // Skip category if it fails
+function filterMeals(
+  meals: MealDBMeal[],
+  { cuisines, diets, mealTypes }: Required<Pick<SearchParams, "cuisines" | "diets" | "mealTypes">>
+): MealDBMeal[] {
+  const wantCuisines = normalizeList(cuisines);
+  const wantMealTypes = normalizeList(mealTypes);
+  const wantDiets = normalizeList(diets);
+
+  if (!wantCuisines && !wantMealTypes && !wantDiets) return meals;
+
+  return meals.filter((m) => {
+    if (wantCuisines) {
+      const area = (m.strArea || "").trim().toLowerCase();
+      if (!area || !wantCuisines.includes(area)) return false;
     }
-  }
-  
-  // If we still need more recipes, fill with truly random ones
-  while (results.length < count) {
-    try {
-      const res = await fetch("https://www.themealdb.com/api/json/v1/1/random.php");
-      if (!res.ok) break;
-      
-      const json = (await res.json()) as { meals: MealDBMeal[] | null };
-      const meal = (json.meals || [])[0];
-      if (meal && !seenIds.has(meal.idMeal)) {
-        results.push(mapMealDB(meal));
-        seenIds.add(meal.idMeal);
-      }
-    } catch (e) {
-      break;
+    if (wantMealTypes) {
+      const cat = (m.strCategory || "").trim().toLowerCase();
+      if (!cat || !wantMealTypes.includes(cat)) return false;
     }
-  }
-  
-  return results.slice(0, count);
+    if (wantDiets) {
+      const tags = (m.strTags || "")
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+      if (!tags.length || !wantDiets.some((d) => tags.includes(d))) return false;
+    }
+    return true;
+  });
 }
 
-const STATIC_FALLBACK: RecipeCardData[] = [
-  {
-    id: "static_salmon",
-    title: "Honey Glazed Salmon with Roasted Vegetables",
-    image:
-      "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=800&h=600&fit=crop&auto=format",
-    imageUrl:
-      "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=800&h=600&fit=crop&auto=format",
-    cuisine: "American",
-    mealType: "Dinner",
-    dietTags: ["Seafood", "Healthy"],
-    ratingSpoons: 4,
-    cookTime: 30,
-    servings: 4,
-    source: "static",
-    strInstructions: "1. Preheat oven to 400°F. 2. Season salmon with salt and pepper. 3. Brush with honey glaze. 4. Roast vegetables and salmon for 20-25 minutes until cooked through.",
-  },
-  {
-    id: "static_pasta",
-    title: "Fresh Fettuccine with Wild Mushroom Ragu",
-    image:
-      "https://images.unsplash.com/photo-1621996346565-e3dbc353d2e5?w=800&h=600&fit=crop&auto=format",
-    imageUrl:
-      "https://images.unsplash.com/photo-1621996346565-e3dbc353d2e5?w=800&h=600&fit=crop&auto=format",
-    cuisine: "Italian",
-    mealType: "Dinner",
-    dietTags: ["Pasta", "Vegetarian"],
-    ratingSpoons: 5,
-    cookTime: 45,
-    servings: 4,
-    source: "static",
-    strInstructions: "1. Cook fettuccine according to package directions. 2. Sauté mixed wild mushrooms with garlic and herbs. 3. Add cream and simmer. 4. Toss pasta with mushroom ragu and serve with parmesan.",
-  },
-];
+// True-random set by calling TheMealDB's random endpoint repeatedly
+async function getRandomMeals(target = 24): Promise<MealDBMeal[]> {
+  const out: MealDBMeal[] = [];
+  const seen = new Set<string>();
+  let attempts = 0;
 
-export async function searchRecipes(opts: RecipeSearchOptions) {
-  const pageSize = Math.max(1, Math.min(50, opts.pageSize ?? 24));
-  const offset = Math.max(0, opts.offset ?? 0);
-
-  try {
-    let items: RecipeCardData[] = [];
-
-    if (opts.q && opts.q.trim()) {
-      // Search by name
-      items = await mealdbSearchByName(opts.q.trim());
-    } else {
-      // FIXED: Get more random recipes for infinite scroll
-      const totalNeeded = offset + pageSize;
-      items = await mealdbRandom(Math.min(totalNeeded + 10, 50)); // Get extra to account for pagination
-    }
-
-    // Apply filters
-    if (opts.cuisines?.length) {
-      const set = new Set(opts.cuisines.map((s) => s.toLowerCase()));
-      items = items.filter((r) => (r.cuisine ? set.has(r.cuisine.toLowerCase()) : true));
-    }
-    if (opts.mealTypes?.length) {
-      const set = new Set(opts.mealTypes.map((s) => s.toLowerCase()));
-      items = items.filter((r) => (r.mealType ? set.has(r.mealType.toLowerCase()) : true));
-    }
-    if (opts.diets?.length) {
-      const set = new Set(opts.diets.map((s) => s.toLowerCase()));
-      items = items.filter((r) =>
-        (r.dietTags || []).some((t) => set.has(t.toLowerCase()))
+  while (out.length < target && attempts < target * 5) {
+    attempts++;
+    try {
+      const json = await fetchJSON<{ meals: MealDBMeal[] | null }>(
+        "https://www.themealdb.com/api/json/v1/1/random.php",
+        10000
       );
+      const m = json.meals?.[0];
+      if (m && !seen.has(m.idMeal)) {
+        out.push(m);
+        seen.add(m.idMeal);
+      }
+    } catch {
+      // ignore transient upstream failures
     }
-
-    const total = items.length;
-    const sliced = items.slice(offset, offset + pageSize);
-
-    // If still empty, return static so the UI always shows something
-    const finalItems = sliced.length ? sliced : STATIC_FALLBACK.slice(offset, offset + pageSize);
-    const hasMore = (offset + pageSize) < (sliced.length ? total : STATIC_FALLBACK.length);
-
-    return {
-      ok: true as const,
-      total: finalItems.length,
-      hasMore,
-      source: finalItems === STATIC_FALLBACK ? "static" : "mealdb",
-      results: finalItems,
-    };
-  } catch (err) {
-    // On any failure, provide static fallback instead of empty
-    const sliced = STATIC_FALLBACK.slice(offset, offset + pageSize);
-    return {
-      ok: true as const,
-      total: sliced.length,
-      hasMore: (offset + pageSize) < STATIC_FALLBACK.length,
-      source: "static",
-      results: sliced,
-    };
   }
+  return out;
+}
+
+export async function searchRecipes(params: SearchParams): Promise<{
+  total: number;
+  source: typeof SOURCE;
+  results: RecipeItem[];
+}> {
+  const pageSize = Math.min(Math.max(params.pageSize ?? 24, 1), 60);
+  const offset = Math.max(params.offset ?? 0, 0);
+
+  // Empty query => serve a fresh random page every request
+  if (!params.q || params.q.trim() === "") {
+    const randomMeals = await getRandomMeals(pageSize + offset);
+    const filtered = filterMeals(randomMeals, {
+      cuisines: params.cuisines ?? [],
+      diets: params.diets ?? [],
+      mealTypes: params.mealTypes ?? [],
+    });
+    const page = filtered.slice(offset, offset + pageSize);
+    return { total: filtered.length, source: SOURCE, results: page.map(mapMealDB) };
+  }
+
+  // Named search (MealDB search-by-name)
+  const q = params.q.trim();
+  const url = `https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(q)}`;
+  const json = await fetchJSON<{ meals: MealDBMeal[] | null }>(url, 12000);
+  const meals = json.meals ?? [];
+
+  const filtered = filterMeals(meals, {
+    cuisines: params.cuisines ?? [],
+    diets: params.diets ?? [],
+    mealTypes: params.mealTypes ?? [],
+  });
+
+  const total = filtered.length;
+  const page = filtered.slice(offset, offset + pageSize);
+  const results = page.map(mapMealDB);
+
+  return { total, source: SOURCE, results };
 }
