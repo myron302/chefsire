@@ -13,7 +13,7 @@
     "start": "NODE_ENV=production node server/dist/index.js",
     "check": "tsc",
     "db:ping": "tsx server/scripts/db-ping.ts",
-    "db:push": "drizzle-kit push",
+    "db:push": "drizzle-kit push --config=drizzle.config.cjs",
     "db:push:accept": "drizzle-kit push --force",
     "db:seed": "tsx server/seed.ts",
     "db:seed:subs": "tsx server/seed-substitutions.ts",
