@@ -1,28 +1,37 @@
-// server/index.ts
-import "dotenv/config";
-import http from "node:http";
-import app from "./app";
+// server/routes/index.ts
+import { Router } from "express";
 
-const PORT = Number(process.env.PORT) || 3001;
+import recipesRouter from "./recipes";
+import bitesRouter from "./bites";
+import usersRouter from "./users";
+import postsRouter from "./posts";
+import pantryRouter from "./pantry";
+import marketplaceRouter from "./marketplace";
+import substitutionsRouter from "./substitutions";
+import drinksRouter from "./drinks";
+import lookupRouter from "./lookup";
+import exportRouter from "./exportList";
+import { googleRouter } from "./google";
+import competitionsRouter from "./competitions";
 
-const server = http.createServer(app);
+const r = Router();
 
-server.listen(PORT, () => {
-  if (process.env.NODE_ENV !== "production") {
-    console.log(`➡️  ChefSire API listening on port ${PORT}`);
-  }
-});
+// ✅ Mount routers that already include their own path segments (e.g. "/recipes/...") with NO base prefix
+r.use(recipesRouter);
+r.use(bitesRouter);
+r.use(usersRouter);
+r.use(postsRouter);
+r.use(pantryRouter);
+r.use(marketplaceRouter);
+r.use(substitutionsRouter);
+r.use(drinksRouter);
 
-const shutdown = (signal: string) => {
-  console.log(`\n${signal} received, shutting down...`);
-  server.close((err?: Error) => {
-    if (err) {
-      console.error("Error during server close:", err);
-      process.exit(1);
-    }
-    process.exit(0);
-  });
-};
+// Integrations (these expect a base)
+r.use("/lookup", lookupRouter);
+r.use("/export", exportRouter);
+r.use("/google", googleRouter);
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+// Feature
+r.use("/competitions", competitionsRouter);
+
+export default r;
