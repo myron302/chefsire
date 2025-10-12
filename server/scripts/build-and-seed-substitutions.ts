@@ -6,6 +6,7 @@
 // If you want to pass custom PDF paths, you can: 
 //   node --loader tsx server/scripts/build-and-seed-substitutions.ts "/abs/path/A.pdf" "/abs/path/B.pdf"
 
+import "./lib/load-env";
 import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
