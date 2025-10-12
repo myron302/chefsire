@@ -1,4 +1,5 @@
 // server/scripts/db-ping.ts
+import "./lib/load-env";
 import { Pool } from "@neondatabase/serverless";
 
 const url = process.env.DATABASE_URL;
