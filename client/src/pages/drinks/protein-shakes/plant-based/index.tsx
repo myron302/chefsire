@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
   Leaf, Heart, Star, Search, ArrowLeft, Sparkles, Wine, Zap, Moon,
-  Target, Flame, Apple, Sprout, Dumbbell, Share2, ArrowRight, X, Check, Camera
+  Target, Flame, Apple, Sprout, Dumbbell, Share2, ArrowRight, X, Check, Camera, RotateCcw, Clipboard
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -29,7 +29,53 @@ const proteinSubcategories = [
 ];
 
 // ---------- Helpers ----------
-const m = (amount: number | string, unit: string, item: string, note: string = '') => ({ amount, unit, item, note });
+type Measured = { amount: number | string; unit: string; item: string; note?: string };
+const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+// ---- Servings helpers ----
+const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+
+// convert decimals like 0.25, 0.5, 0.75 to nice fractions "1/4", "1/2", "3/4"
+const toNiceFraction = (value: number) => {
+  const rounded = Math.round(value * 4) / 4; // snap to quarter
+  const whole = Math.trunc(rounded);
+  const frac = Math.round((rounded - whole) * 4);
+  const fracMap: Record<number, string> = { 0: '', 1: '1/4', 2: '1/2', 3: '3/4' };
+  const fracStr = fracMap[frac];
+  if (!whole && fracStr) return fracStr;
+  if (whole && fracStr) return `${whole} ${fracStr}`;
+  return `${whole}`;
+};
+
+const scaleAmount = (baseAmount: number | string, servings: number) => {
+  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
+  if (Number.isNaN(n)) return baseAmount; // leave string amounts (e.g., "1 pinch") unchanged
+  return toNiceFraction(n * servings);
+};
+
+const getScaledMeasurements = (list: Measured[], servings: number) =>
+  list.map((ing) => ({
+    ...ing,
+    amountScaled: scaleAmount(ing.amount, servings),
+  }));
+
+// Local storage helpers
+const LS_SERVINGS_KEY = 'plantProtein.servingsById';
+const LS_NOTES_KEY = 'plantProtein.notesById';
+
+const loadJSON = <T,>(key: string, fallback: T): T => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+const saveJSON = (key: string, value: any) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+};
 
 // Plant-based protein shake data (with measured recipes)
 const plantBasedShakes = [
@@ -469,6 +515,24 @@ export default function PlantBasedProteinPage() {
   const [selectedShake, setSelectedShake] = useState<any>(null);
   const [showModal, setShowModal] = useState(false);
 
+  // Per-recipe servings and notes (persisted)
+  const [servingsById, setServingsById] = useState<Record<string, number>>({});
+  const [notesById, setNotesById] = useState<Record<string, string>>({});
+
+  // Load persisted state
+  useEffect(() => {
+    setServingsById(loadJSON<Record<string, number>>(LS_SERVINGS_KEY, {}));
+    setNotesById(loadJSON<Record<string, string>>(LS_NOTES_KEY, {}));
+  }, []);
+  // Save on change
+  useEffect(() => { saveJSON(LS_SERVINGS_KEY, servingsById); }, [servingsById]);
+  useEffect(() => { saveJSON(LS_NOTES_KEY, notesById); }, [notesById]);
+
+  const getServings = (id: string) => clamp(servingsById[id] ?? 1);
+  const setServings = (id: string, n: number) => setServingsById((prev) => ({ ...prev, [id]: clamp(n) }));
+  const bumpServings = (id: string, delta: number) => setServings(id, getServings(id) + delta);
+  const resetServings = (id: string) => setServings(id, 1);
+
   const handleSharePage = async () => {
     const shareData = {
       title: 'Plant-Based Protein',
@@ -511,6 +575,19 @@ export default function PlantBasedProteinPage() {
       } catch {
         alert('Unable to share on this device.');
       }
+    }
+  };
+
+  const copyScaledRecipe = async (id: string, name: string, list: Measured[]) => {
+    const s = getServings(id);
+    const scaled = getScaledMeasurements(list, s);
+    const lines = scaled.map((ing) => `- ${ing.amountScaled} ${ing.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`);
+    const text = `${name} (serves ${s})\n${lines.join('\n')}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      alert('Recipe copied!');
+    } catch {
+      alert('Unable to copy on this device.');
     }
   };
 
@@ -570,6 +647,18 @@ export default function PlantBasedProteinPage() {
     setSelectedShake(null);
   };
 
+  // Scaled macros (modal)
+  const scaledMacros = useMemo(() => {
+    if (!selectedShake) return null;
+    const s = getServings(selectedShake.id);
+    const n = selectedShake.nutrition || {};
+    // Only scale calories & protein (safe + clear); others left as-is
+    return {
+      calories: Math.round((n.calories || 0) * s),
+      protein: Math.round((n.protein || 0) * s),
+    };
+  }, [selectedShake, servingsById]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50">
       {/* Universal Search Modal */}
@@ -595,7 +684,7 @@ export default function PlantBasedProteinPage() {
         </div>
       )}
 
-      {/* Make Shake Modal (bigger & darker recipe text) */}
+      {/* Make Shake Modal (bigger & darker recipe text + scaling + notes + copy) */}
       {showModal && selectedShake && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
           <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
@@ -607,13 +696,14 @@ export default function PlantBasedProteinPage() {
             </div>
 
             <div className="space-y-4">
+              {/* Scaled stats strip */}
               <div className="grid grid-cols-3 gap-2 p-3 bg-green-50 rounded-lg">
                 <div className="text-center">
-                  <div className="font-bold text-green-600">{selectedShake.nutrition.protein}g</div>
+                  <div className="font-bold text-green-600">{scaledMacros?.protein ?? selectedShake.nutrition.protein}g</div>
                   <div className="text-xs text-gray-600">Protein</div>
                 </div>
                 <div className="text-center">
-                  <div className="font-bold text-blue-600">{selectedShake.nutrition.calories}</div>
+                  <div className="font-bold text-blue-600">{scaledMacros?.calories ?? selectedShake.nutrition.calories}</div>
                   <div className="text-xs text-gray-600">Calories</div>
                 </div>
                 <div className="text-center">
@@ -623,21 +713,64 @@ export default function PlantBasedProteinPage() {
               </div>
 
               <div>
-                <h3 className="font-semibold mb-2 text-gray-900">Recipe • {selectedShake?.recipe?.servings || 1} serving</h3>
-                <ul className="space-y-2 text-base leading-6 text-gray-800 font-sans tracking-normal">
-                  {selectedShake.recipe?.measurements?.map((ing: any, idx: number) => (
-                    <li key={idx} className="flex items-start gap-2">
-                      <Check className="h-4 w-4 text-green-600 mt-0.5" />
-                      <span>
-                        <span className="text-green-700 font-semibold">
-                          {ing.amount} {ing.unit}
-                        </span>{" "}
-                        {ing.item}
-                        {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-semibold text-gray-900">
+                    Recipe • {getServings(selectedShake.id)} {getServings(selectedShake.id) === 1 ? 'serving' : 'servings'}
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="px-2 py-1 border rounded text-sm"
+                      onClick={() => bumpServings(selectedShake.id, -1)}
+                      aria-label="decrease servings"
+                    >
+                      −
+                    </button>
+                    <div className="min-w-[2ch] text-center text-sm">{getServings(selectedShake.id)}</div>
+                    <button
+                      className="px-2 py-1 border rounded text-sm"
+                      onClick={() => bumpServings(selectedShake.id, +1)}
+                      aria-label="increase servings"
+                    >
+                      +
+                    </button>
+                    <button
+                      className="px-2 py-1 border rounded text-sm flex items-center gap-1"
+                      onClick={() => resetServings(selectedShake.id)}
+                      aria-label="reset servings"
+                      title="Reset to 1"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" /> Reset
+                    </button>
+                    <button
+                      className="px-2 py-1 border rounded text-sm flex items-center gap-1"
+                      onClick={() => copyScaledRecipe(selectedShake.id, selectedShake.name, selectedShake.recipe?.measurements || [])}
+                      aria-label="copy recipe"
+                      title="Copy scaled recipe"
+                    >
+                      <Clipboard className="h-3.5 w-3.5" /> Copy
+                    </button>
+                  </div>
+                </div>
+
+                {(() => {
+                  const scaled = getScaledMeasurements(selectedShake.recipe?.measurements || [], getServings(selectedShake.id));
+                  return (
+                    <ul className="space-y-2 text-base leading-6 text-gray-800 font-sans tracking-normal">
+                      {scaled.map((ing: any, idx: number) => (
+                        <li key={idx} className="flex items-start gap-2">
+                          <Check className="h-4 w-4 text-green-600 mt-0.5" />
+                          <span>
+                            <span className="text-green-700 font-semibold">
+                              {ing.amountScaled} {ing.unit}
+                            </span>{" "}
+                            {ig.item ?? ing.item}
+                            {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                })()}
               </div>
 
               {Array.isArray(selectedShake.recipe?.directions) && (
@@ -648,6 +781,18 @@ export default function PlantBasedProteinPage() {
                   </ol>
                 </div>
               )}
+
+              {/* Personal notes (persisted) */}
+              <div>
+                <h3 className="font-semibold mb-2 text-gray-900">Your Notes</h3>
+                <textarea
+                  className="w-full border rounded-md p-2 text-sm text-gray-800"
+                  rows={3}
+                  placeholder="Add tweaks, swaps, or how it turned out…"
+                  value={notesById[selectedShake.id] ?? ''}
+                  onChange={(e) => setNotesById((prev) => ({ ...prev, [selectedShake.id]: e.target.value }))}
+                />
+              </div>
 
               <div className="flex gap-4 pt-2">
                 <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={handleCompleteShake}>
@@ -876,29 +1021,63 @@ export default function PlantBasedProteinPage() {
                       ))}
                     </div>
 
-                    {/* Compact measured recipe preview (bigger & darker) */}
+                    {/* Compact measured recipe preview with Servings control */}
                     {shake.recipe?.measurements && (
                       <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                        <div className="text-sm font-semibold text-gray-900 mb-2">
-                          Recipe (serves {shake.recipe.servings || 1})
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-sm font-semibold text-gray-900">
+                            Recipe (serves {getServings(shake.id)})
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="px-2 py-1 border rounded text-sm"
+                              onClick={() => bumpServings(shake.id, -1)}
+                              aria-label="decrease servings"
+                            >
+                              −
+                            </button>
+                            <div className="min-w-[2ch] text-center text-sm">{getServings(shake.id)}</div>
+                            <button
+                              className="px-2 py-1 border rounded text-sm"
+                              onClick={() => bumpServings(shake.id, +1)}
+                              aria-label="increase servings"
+                            >
+                              +
+                            </button>
+                            <button
+                              className="px-2 py-1 border rounded text-sm flex items-center gap-1"
+                              onClick={() => resetServings(shake.id)}
+                              aria-label="reset servings"
+                              title="Reset to 1"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              Reset
+                            </button>
+                          </div>
                         </div>
-                        <ul className="text-base leading-6 text-gray-800 space-y-1 font-sans tracking-normal">
-                          {shake.recipe.measurements.slice(0,4).map((ing: any, i: number) => (
-                            <li key={i} className="flex items-start gap-2">
-                              <Check className="h-4 w-4 text-green-600 mt-0.5" />
-                              <span>
-                                <span className="text-green-700 font-semibold">
-                                  {ing.amount} {ing.unit}
-                                </span>{" "}
-                                {ing.item}
-                                {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
-                              </span>
-                            </li>
-                          ))}
-                          {shake.recipe.measurements.length > 4 && (
-                            <li className="text-sm text-gray-600">…plus {shake.recipe.measurements.length - 4} more</li>
-                          )}
-                        </ul>
+
+                        {(() => {
+                          const scaled = getScaledMeasurements(shake.recipe.measurements, getServings(shake.id));
+                          return (
+                            <ul className="text-base leading-6 text-gray-800 space-y-1 font-sans tracking-normal">
+                              {scaled.slice(0, 4).map((ing: any, i: number) => (
+                                <li key={i} className="flex items-start gap-2">
+                                  <Check className="h-4 w-4 text-green-600 mt-0.5" />
+                                  <span>
+                                    <span className="text-green-700 font-semibold">
+                                      {ing.amountScaled} {ing.unit}
+                                    </span>{" "}
+                                    {ing.item}
+                                    {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                  </span>
+                                </li>
+                              ))}
+                              {scaled.length > 4 && (
+                                <li className="text-sm text-gray-600">…plus {scaled.length - 4} more</li>
+                              )}
+                            </ul>
+                          );
+                        })()}
                       </div>
                     )}
 
@@ -1082,24 +1261,58 @@ export default function PlantBasedProteinPage() {
                     </div>
                   </div>
 
-                  {/* Full measured list quick view (bigger & darker) */}
+                  {/* Full measured list quick view with Servings control */}
                   {shake.recipe?.measurements && (
                     <div className="mb-6">
-                      <h4 className="font-medium text-gray-900 mb-2">Recipe (1 serving)</h4>
-                      <div className="text-base leading-6 text-gray-800 space-y-1 font-sans tracking-normal">
-                        {shake.recipe.measurements.map((ing: any, index: number) => (
-                          <div key={index} className="flex items-start gap-2">
-                            <Leaf className="h-4 w-4 text-green-600 mt-0.5" />
-                            <span>
-                              <span className="text-green-700 font-semibold">
-                                {ing.amount} {ing.unit}
-                              </span>{" "}
-                              {ing.item}
-                              {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
-                            </span>
-                          </div>
-                        ))}
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-medium text-gray-900">Recipe (serves {getServings(shake.id)})</h4>
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="px-2 py-1 border rounded text-sm"
+                            onClick={() => bumpServings(shake.id, -1)}
+                            aria-label="decrease servings"
+                          >
+                            −
+                          </button>
+                          <div className="min-w-[2ch] text-center text-sm">{getServings(shake.id)}</div>
+                          <button
+                            className="px-2 py-1 border rounded text-sm"
+                            onClick={() => bumpServings(shake.id, +1)}
+                            aria-label="increase servings"
+                          >
+                            +
+                          </button>
+                          <button
+                            className="px-2 py-1 border rounded text-sm flex items-center gap-1"
+                            onClick={() => resetServings(shake.id)}
+                            aria-label="reset servings"
+                            title="Reset to 1"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Reset
+                          </button>
+                        </div>
                       </div>
+
+                      {(() => {
+                        const scaled = getScaledMeasurements(shake.recipe.measurements, getServings(shake.id));
+                        return (
+                          <div className="text-base leading-6 text-gray-800 space-y-1 font-sans tracking-normal">
+                            {scaled.map((ing: any, index: number) => (
+                              <div key={index} className="flex items-start gap-2">
+                                <Leaf className="h-4 w-4 text-green-600 mt-0.5" />
+                                <span>
+                                  <span className="text-green-700 font-semibold">
+                                    {ing.amountScaled} {ing.unit}
+                                  </span>{" "}
+                                  {ing.item}
+                                  {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
