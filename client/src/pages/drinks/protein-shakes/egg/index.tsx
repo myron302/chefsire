@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
-  Target, Heart, Star, Zap, Clock, Leaf, Apple, Wine, Sparkles, FlaskConical,
+  Target, Heart, Star, Zap, Leaf, Apple, Wine, Sparkles, FlaskConical,
   Dumbbell, Droplets, Search, ArrowLeft, Moon, X, Check, Camera, ArrowRight,
   Share2, Plus, RotateCcw, Clipboard
 } from 'lucide-react';
@@ -15,7 +15,7 @@ import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
 
 /* =========================
-   Helpers & Types (JS-friendly)
+   Helpers (JS-friendly)
    ========================= */
 const m = (amount, unit, item, note = '') => ({ amount, unit, item, note });
 const clamp = (n, min = 1, max = 8) => Math.max(min, Math.min(max, n));
@@ -64,7 +64,7 @@ const proteinSubcategories = [
 ];
 
 /* =========================
-   Egg Protein Recipes (NOW WITH MEASUREMENTS)
+   Egg Protein Recipes (with measurements)
    ========================= */
 const eggProteinRecipes = [
   {
@@ -207,8 +207,7 @@ const eggProteinRecipes = [
       ]
     }
   },
-
-  // --- New extras ---
+  // Extras
   {
     id: 'egg-7',
     name: 'Espresso Egg Boost',
@@ -286,11 +285,11 @@ const eggProteinRecipes = [
    Benefits list
    ========================= */
 const eggProteinBenefits = [
-  { icon: Target, title: 'Complete Protein', description: 'All 9 essential amino acids in optimal ratios', color: 'text-blue-600' },
-  { icon: Droplets, title: 'Lactose-Free', description: 'Great if dairy causes bloating', color: 'text-green-600' },
-  { icon: Zap, title: 'Medium Absorption', description: 'Steady release for recovery', color: 'text-orange-600' },
-  { icon: Heart, title: 'Heart Friendly', description: 'Naturally low in saturated fat', color: 'text-red-600' },
-  { icon: Dumbbell, title: 'Muscle Building', description: 'High biological value (BV ≈ 100)', color: 'text-purple-600' },
+  { icon: Target, title: 'Complete Protein', description: 'All 9 essential amino acids in optimal ratios', color: 'text-yellow-500' },
+  { icon: Droplets, title: 'Lactose-Free', description: 'Great if dairy causes bloating', color: 'text-yellow-500' },
+  { icon: Zap, title: 'Medium Absorption', description: 'Steady release for recovery', color: 'text-yellow-500' },
+  { icon: Heart, title: 'Heart Friendly', description: 'Naturally low in saturated fat', color: 'text-yellow-500' },
+  { icon: Dumbbell, title: 'Muscle Building', description: 'High biological value (BV ≈ 100)', color: 'text-yellow-500' },
 ];
 
 /* =========================
@@ -454,7 +453,7 @@ export default function EggProteinPage() {
         </div>
       )}
 
-      {/* Make Recipe Modal (with bigger/darker recipe text, servings scaler, notes) */}
+      {/* Make Recipe Modal (brighter yellow accents) */}
       {showModal && selectedRecipe && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
           <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
@@ -469,7 +468,7 @@ export default function EggProteinPage() {
               {/* Stats strip */}
               <div className="grid grid-cols-3 gap-2 p-3 bg-yellow-50 rounded-lg">
                 <div className="text-center">
-                  <div className="font-bold text-yellow-600">{scaledMacros?.protein ?? selectedRecipe.protein}g</div>
+                  <div className="font-bold text-yellow-500">{scaledMacros?.protein ?? selectedRecipe.protein}g</div>
                   <div className="text-xs text-gray-600">Protein</div>
                 </div>
                 <div className="text-center">
@@ -477,7 +476,7 @@ export default function EggProteinPage() {
                   <div className="text-xs text-gray-600">Calories</div>
                 </div>
                 <div className="text-center">
-                  <div className="font-bold text-purple-600">{selectedRecipe.prepTime}min</div>
+                  <div className="font-bold text-yellow-600">{selectedRecipe.prepTime}min</div>
                   <div className="text-xs text-gray-600">Prep</div>
                 </div>
               </div>
@@ -504,14 +503,14 @@ export default function EggProteinPage() {
                 </div>
               </div>
 
-              {/* Ingredients list (bigger, darker, legible) */}
+              {/* Ingredients list (bigger, brighter yellow accents) */}
               <ul className="space-y-2 text-base leading-6 text-gray-800 font-sans tracking-normal">
                 {getScaledMeasurements(selectedRecipe.recipe?.measurements || [], getServings(selectedRecipe.id))
                   .map((ing, idx) => (
                   <li key={idx} className="flex items-start gap-2">
-                    <Check className="h-4 w-4 text-yellow-600 mt-0.5" />
+                    <Check className="h-4 w-4 text-yellow-500 mt-0.5" />
                     <span>
-                      <span className="text-yellow-700 font-semibold">
+                      <span className="text-yellow-600 font-semibold">
                         {ing.amountScaled} {ing.unit}
                       </span>{" "}
                       {ing.item}
@@ -545,7 +544,7 @@ export default function EggProteinPage() {
 
               <div className="flex gap-4 pt-2">
                 <Button
-                  className="flex-1 bg-gradient-to-r from-yellow-300 to-yellow-400 hover:from-yellow-400 hover:to-yellow-500"
+                  className="flex-1 bg-gradient-to-r from-yellow-200 to-yellow-300 hover:from-yellow-300 hover:to-yellow-400"
                   onClick={handleCompleteRecipe}
                 >
                   Complete Recipe (+100 XP)
@@ -572,7 +571,7 @@ export default function EggProteinPage() {
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
-                <Target className="h-6 w-6 text-yellow-400" />
+                <Target className="h-6 w-6 text-yellow-500" />
                 <h1 className="text-2xl font-bold text-gray-900">Egg Protein Shakes</h1>
                 <Badge className="bg-yellow-100 text-yellow-800">BV Score: 100</Badge>
               </div>
@@ -584,12 +583,12 @@ export default function EggProteinPage() {
                 Universal Search
               </Button>
               <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Star className="h-4 w-4 text-yellow-500" />
+                <Star className="h-4 w-4 text-yellow-400" />
                 <span>Level {userProgress.level}</span>
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-yellow-400 hover:bg-yellow-500" onClick={handleSharePage}>
+              <Button size="sm" className="bg-yellow-300 hover:bg-yellow-400" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Recipes
               </Button>
@@ -760,7 +759,7 @@ export default function EggProteinPage() {
                   <div className="text-xs text-muted-foreground">Carbs</div>
                 </div>
                 <div>
-                  <div className="font-bold text-orange-600">{recipe.calories}</div>
+                  <div className="font-bold text-yellow-600">{recipe.calories}</div>
                   <div className="text-xs text-muted-foreground">Calories</div>
                 </div>
               </div>
@@ -787,9 +786,9 @@ export default function EggProteinPage() {
                       <ul className="text-base leading-6 text-gray-800 space-y-1 font-sans tracking-normal">
                         {scaled.slice(0,4).map((ing, i) => (
                           <li key={i} className="flex items-start gap-2">
-                            <Check className="h-4 w-4 text-yellow-600 mt-0.5" />
+                            <Check className="h-4 w-4 text-yellow-500 mt-0.5" />
                             <span>
-                              <span className="text-yellow-700 font-semibold">
+                              <span className="text-yellow-600 font-semibold">
                                 {ing.amountScaled} {ing.unit}
                               </span>{" "}
                               {ing.item}
@@ -814,7 +813,7 @@ export default function EggProteinPage() {
 
               <div className="flex gap-2">
                 <Button
-                  className="flex-1 bg-gradient-to-r from-yellow-300 to-yellow-400 hover:from-yellow-400 hover:to-yellow-500"
+                  className="flex-1 bg-gradient-to-r from-yellow-200 to-yellow-300 hover:from-yellow-300 hover:to-yellow-400"
                   onClick={() => makeRecipe(recipe)}
                 >
                   <Plus className="h-4 w-4 mr-2" />
