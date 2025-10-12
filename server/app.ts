@@ -1,37 +1,34 @@
 import express from "express";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
-import apiRouter from "./routes";
-import authRouter from "./routes/auth";  // NEW: Import auth routes
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+import apiRouter from "./routes/index.js";
+import authRouter from "./routes/auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const app = express();
+
 app.use(express.json());
 
-// NEW: Mount auth routes under /api/auth
+// Mount auth routes
 app.use("/api/auth", authRouter);
 
-// Find a built SPA (works with root /dist or /client/dist)
+// Mount API routes
+app.use("/api", apiRouter);
+
+// Find built frontend
 const candidates = [
-  // server-relative
-  path.join(__dirname, "../dist"),
-  path.join(__dirname, "../dist/public"),
-  path.join(__dirname, "../client/dist"),
-  path.join(__dirname, "../client/dist/public"),
-  // root-relative (your current Vite output)
-  path.join(__dirname, "../../dist"),
-  path.join(__dirname, "../../dist/public"),
-  path.join(__dirname, "../../client/dist"),
-  path.join(__dirname, "../../client/dist/public"),
+  path.resolve(__dirname, "../../dist"),
+  path.resolve(__dirname, "../dist"),
+  path.resolve(__dirname, "../../client/dist"),
 ];
 
 let staticDir: string | null = null;
 for (const p of candidates) {
   try {
-    if (fs.existsSync(p) && fs.existsSync(path.join(p, "index.html"))) {
+    if (fs.existsSync(path.join(p, "index.html"))) {
       staticDir = p;
       break;
     }
@@ -40,51 +37,35 @@ for (const p of candidates) {
 
 if (staticDir) {
   app.use(express.static(staticDir));
-  console.log(`🗂️  Serving static frontend from: ${staticDir}`);
+  console.log(`🗂️  Serving static from: ${staticDir}`);
 } else {
-  console.warn("⚠️  No built frontend found. The API will run; build the client to serve the SPA.");
+  console.warn("⚠️  No built frontend found.");
 }
 
-// Always-on healthcheck (no DB needed)
+// Health check
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
+  res.json({ status: "ok", staticDir });
 });
 
-// Mount all API routes under /api
-app.use("/api", apiRouter);
-
-// ---------- NEW: centralized error handler (shows real errors) ----------
+// Error handler
 app.use((err: any, _req: any, res: any, _next: any) => {
-  const status = err.status || err.code === "42P01" ? 200 : 500; // keep UI alive if table missing
-  const env = process.env.NODE_ENV || "development";
-
-  // Always log full error on server
-  console.error("❌ API Error:", err);
-
-  // In prod, don’t leak stack; in dev, show detail
-  if (env === "production") {
-    return res.status(err.status || 500).json({
-      error: err.message || "Internal Server Error",
-      code: err.code,
-    });
-  }
-
-  return res.status(status).json({
+  console.error("❌ Error:", err);
+  const status = err.status || 500;
+  res.status(status).json({
     error: err.message || "Internal Server Error",
     code: err.code,
-    stack: err.stack,
   });
 });
 
-// SPA fallback for client-side routing
-app.get("*", (req, res, next) => {
-  const wantsHtml = (req.headers.accept || "").includes("text/html");
-  const isApi = req.path.startsWith("/api/");
-  const looksLikeAsset = req.path.includes(".");
-
-  if (!wantsHtml || req.method !== "GET" || isApi || looksLikeAsset) return next();
-  if (!staticDir) {
-    return res.status(501).send("Frontend not built. Run `npm run build` to create dist/public/index.html.");
+// SPA fallback
+app.get("*", (req, res) => {
+  if (req.path.startsWith("/api/")) {
+    return res.status(404).json({ error: "Not found" });
   }
+  
+  if (!staticDir) {
+    return res.status(501).send("Frontend not built");
+  }
+  
   res.sendFile(path.join(staticDir, "index.html"));
 });
