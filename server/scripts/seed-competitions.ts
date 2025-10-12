@@ -1,4 +1,5 @@
 // server/scripts/seed-competitions.ts
+import "./lib/load-env";
 import "dotenv/config";
 import crypto from "crypto";
 import { drizzle } from "drizzle-orm/neon-serverless";
