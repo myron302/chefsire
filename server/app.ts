@@ -1,90 +1,37 @@
-// server/app.ts
-import "dotenv/config";
-import express, { Request, Response, NextFunction } from "express";
-import cors from "cors";
-import compression from "compression";
-import morgan from "morgan";
-import path from "node:path";
-import fs from "node:fs";
-import routes from "./routes";
+// server/routes/index.ts
+import { Router } from "express";
 
-const app = express();
+import recipesRouter from "./recipes";
+import bitesRouter from "./bites";
+import usersRouter from "./users";
+import postsRouter from "./posts";
+import pantryRouter from "./pantry";
+import marketplaceRouter from "./marketplace";
+import substitutionsRouter from "./substitutions";
+import drinksRouter from "./drinks";
+import lookupRouter from "./lookup";
+import exportRouter from "./exportList";
+import { googleRouter } from "./google";
+import competitionsRouter from "./competitions";
 
-app.set("trust proxy", true);
+const r = Router();
 
-app.use(cors());
-app.use(express.json({ limit: "2mb" }));
-app.use(express.urlencoded({ extended: true }));
-app.use(compression());
+// ✅ Mount routers that already include their own path segments (e.g. "/recipes/...") with NO base prefix
+r.use(recipesRouter);
+r.use(bitesRouter);
+r.use(usersRouter);
+r.use(postsRouter);
+r.use(pantryRouter);
+r.use(marketplaceRouter);
+r.use(substitutionsRouter);
+r.use(drinksRouter);
 
-if (process.env.NODE_ENV !== "production") {
-  app.use(morgan("dev"));
-}
+// Integrations (these expect a base)
+r.use("/lookup", lookupRouter);
+r.use("/export", exportRouter);
+r.use("/google", googleRouter);
 
-// Health
-app.get("/healthz", (_req: Request, res: Response) => {
-  res.status(200).json({ ok: true, env: process.env.NODE_ENV || "development" });
-});
+// Feature
+r.use("/competitions", competitionsRouter);
 
-// API routes (mounted under /api)
-app.use("/api", routes);
-
-// Optional API banner (at /api)
-app.get("/api", (_req, res) => {
-  res.json({
-    name: "ChefSire API",
-    status: "running",
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// Serve built client at ../dist/public (App Root is /httpdocs/server)
-const clientDir = path.resolve(process.cwd(), "../dist/public");
-const hasClient = fs.existsSync(clientDir);
-
-if (hasClient) {
-  app.use(
-    express.static(clientDir, {
-      setHeaders: (res, filePath) => {
-        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
-          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-        }
-      },
-    })
-  );
-}
-
-// SPA fallback for any non-API route
-app.get("*", (req, res, next) => {
-  if (req.path.startsWith("/api")) return next();
-  if (!hasClient) {
-    return res
-      .status(200)
-      .send(
-        "Client bundle not found. Build UI with `npm run build` to populate /httpdocs/dist/public."
-      );
-  }
-  res.sendFile(path.join(clientDir, "index.html"));
-});
-
-// FINAL: 404 for unknown API paths (keep this at the very end)
-app.all("/api/*", (_req: Request, res: Response) => {
-  res.status(404).json({ error: "API endpoint not found" });
-});
-
-// Global error handler
-app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  const isProd = process.env.NODE_ENV === "production";
-  const message = err instanceof Error ? err.message : "Unknown error";
-  const stack = err instanceof Error ? err.stack : undefined;
-
-  if (!isProd) console.error("[ERROR]", err);
-
-  res.status(500).json({
-    error: "Internal Server Error",
-    message: isProd ? "An unexpected error occurred." : message,
-    ...(isProd ? {} : { stack }),
-  });
-});
-
-export default app;
+export default r;
