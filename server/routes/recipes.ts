@@ -1,7 +1,12 @@
+// server/routes/recipes.ts
 import { Router } from "express";
 import { searchRecipes } from "../services/recipes-service";
 
 const router = Router();
+
+function noStore(res: any) {
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+}
 
 function parseList(input: unknown): string[] {
   if (Array.isArray(input)) {
@@ -21,9 +26,10 @@ function parseList(input: unknown): string[] {
 
 /**
  * GET /api/recipes/search
- * (Mounted at /recipes in routes/index.ts → path here is just "/search")
+ * If q is missing/empty => returns a random page (fresh each request)
  */
 router.get("/search", async (req, res) => {
+  noStore(res);
   try {
     const q = typeof req.query.q === "string" ? req.query.q : undefined;
     const cuisines = parseList(req.query.cuisines);
@@ -45,7 +51,7 @@ router.get("/search", async (req, res) => {
         : 0;
 
     const out = await searchRecipes({
-      q,
+      q, // empty or undefined triggers randomness in the service
       cuisines: cuisines.length ? cuisines : undefined,
       diets: diets.length ? diets : undefined,
       mealTypes: mealTypes.length ? mealTypes : undefined,
@@ -67,12 +73,20 @@ router.get("/search", async (req, res) => {
 });
 
 /**
- * GET /api/recipes/random
- * (Mounted at /recipes → path is "/random")
+ * GET /api/recipes/random?count=24
+ * Always random, ignores q and pagination, and returns 'count' items.
  */
-router.get("/random", async (_req, res) => {
+router.get("/random", async (req, res) => {
+  noStore(res);
   try {
-    const out = await searchRecipes({ q: "" });
+    const count =
+      typeof req.query.count === "string"
+        ? Number(req.query.count)
+        : typeof req.query.count === "number"
+        ? req.query.count
+        : 24;
+
+    const out = await searchRecipes({ q: "", pageSize: count, offset: 0 });
     res.json({ ok: true, items: out.results, total: out.total, source: out.source });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err?.message || "Random failed" });
