@@ -25,7 +25,8 @@
     "check:imports": "node tools/check-imports.js",
     "gen:shims": "node tools/generate-import-shims.js",
     "fix:filenames": "node tools/fix-filenames.js",
-    "env:print": "node -e \"console.log({ NODE_ENV: process.env.NODE_ENV, DATABASE_URL: !!process.env.DATABASE_URL })\""
+    "env:print": "tsx server/scripts/print-env.ts"
+
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
