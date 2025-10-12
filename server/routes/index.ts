@@ -19,22 +19,29 @@ import { googleRouter } from "./google";
 // --- Competitions (Cook-Off Feature) ---
 import competitionsRouter from "./competitions";
 
+// --- Auth (signup/login) ---
+import authRouter from "./auth";
+
 const r = Router();
 
 /**
- * Mounted under `/api` in app.ts.
- * Do NOT prefix `/api` here.
+ * This file defines explicit mount points.
+ * `app.ts` mounts this as: app.use("/api", r)
+ * So final paths are, e.g., /api/recipes, /api/auth/login, etc.
  */
 
 // Primary mounts
-r.use(recipesRouter);
-r.use(bitesRouter);
-r.use(usersRouter);
-r.use(postsRouter);
-r.use(pantryRouter);
-r.use(marketplaceRouter);
-r.use(substitutionsRouter);
-r.use(drinksRouter);
+r.use("/recipes", recipesRouter);
+r.use("/bites", bitesRouter);
+r.use("/users", usersRouter);
+r.use("/posts", postsRouter);
+r.use("/pantry", pantryRouter);
+r.use("/marketplace", marketplaceRouter);
+r.use("/substitutions", substitutionsRouter);
+r.use("/drinks", drinksRouter);
+
+// Auth
+r.use(authRouter); // routes are /auth/signup and /auth/login
 
 // Integrations
 r.use("/lookup", lookupRouter);
@@ -59,6 +66,8 @@ if (process.env.NODE_ENV !== "production") {
         "/marketplace",
         "/substitutions",
         "/drinks",
+        "/auth/signup",
+        "/auth/login",
         "/lookup",
         "/export",
         "/google",
