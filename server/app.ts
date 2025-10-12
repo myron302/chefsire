@@ -1,71 +1,63 @@
-import express from "express";
-import path from "node:path";
-import fs from "node:fs";
-import { fileURLToPath } from "node:url";
-import apiRouter from "./routes/index.js";
-import authRouter from "./routes/auth.js";
+// server/app.ts
+import "dotenv/config";
+import express, { Request, Response, NextFunction } from "express";
+import cors from "cors";
+import compression from "compression";
+import morgan from "morgan";
+import routes from "./routes";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const app = express();
 
-export const app = express();
+// ---- App-level settings ----
+app.set("trust proxy", true);
 
-app.use(express.json());
+// ---- Middleware ----
+app.use(cors());
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(compression());
 
-// Mount auth routes
-app.use("/api/auth", authRouter);
-
-// Mount API routes
-app.use("/api", apiRouter);
-
-// Find built frontend
-const candidates = [
-  path.resolve(__dirname, "../../dist"),
-  path.resolve(__dirname, "../dist"),
-  path.resolve(__dirname, "../../client/dist"),
-];
-
-let staticDir: string | null = null;
-for (const p of candidates) {
-  try {
-    if (fs.existsSync(path.join(p, "index.html"))) {
-      staticDir = p;
-      break;
-    }
-  } catch {}
+// Log verbosely only in dev
+if (process.env.NODE_ENV !== "production") {
+  app.use(morgan("dev"));
 }
 
-if (staticDir) {
-  app.use(express.static(staticDir));
-  console.log(`🗂️  Serving static from: ${staticDir}`);
-} else {
-  console.warn("⚠️  No built frontend found.");
-}
-
-// Health check
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", staticDir });
+// ---- Health & Root ----
+app.get("/healthz", (_req: Request, res: Response) => {
+  res.status(200).json({ ok: true, env: process.env.NODE_ENV || "development" });
 });
 
-// Error handler
-app.use((err: any, _req: any, res: any, _next: any) => {
-  console.error("❌ Error:", err);
-  const status = err.status || 500;
-  res.status(status).json({
-    error: err.message || "Internal Server Error",
-    code: err.code,
+app.get("/", (_req: Request, res: Response) => {
+  res.status(200).json({
+    name: "ChefSire API",
+    status: "running",
+    timestamp: new Date().toISOString(),
   });
 });
 
-// SPA fallback
-app.get("*", (req, res) => {
-  if (req.path.startsWith("/api/")) {
-    return res.status(404).json({ error: "Not found" });
-  }
-  
-  if (!staticDir) {
-    return res.status(501).send("Frontend not built");
-  }
-  
-  res.sendFile(path.join(staticDir, "index.html"));
+// ---- API ----
+app.use("/api", routes);
+
+// ---- 404 for unknown API paths ----
+app.use("/api", (_req: Request, res: Response) => {
+  res.status(404).json({ error: "Not Found" });
 });
+
+// ---- Global error handler ----
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  const isProd = process.env.NODE_ENV === "production";
+  const message = err instanceof Error ? err.message : "Unknown error";
+  const stack = err instanceof Error ? err.stack : undefined;
+
+  if (!isProd) {
+    console.error("[ERROR]", err);
+  }
+
+  res.status(500).json({
+    error: "Internal Server Error",
+    message: isProd ? "An unexpected error occurred." : message,
+    ...(isProd ? {} : { stack }),
+  });
+});
+
+export default app;
