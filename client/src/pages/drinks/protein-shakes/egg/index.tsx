@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
   Target, Heart, Star, Zap, Flame, Leaf, Apple, Sparkles, Moon, Wine,
-  Search, ArrowLeft, ArrowRight, Share2, Camera, Plus, X, Check
+  Search, ArrowLeft, ArrowRight, Camera, Plus, X, Check, Clipboard
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
@@ -17,6 +17,21 @@ import RecipeKit from '@/components/recipes/RecipeKit';
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+// basic US -> metric conversion (mirror of RecipeKit)
+const toMetric = (unit: string, amount: number) => {
+  const mlPerCup = 240, mlPerTbsp = 15, mlPerTsp = 5;
+  const gPerScoop30 = 30;
+  switch (unit) {
+    case 'cup': return { amount: Math.round(amount * mlPerCup), unit: 'ml' };
+    case 'tbsp': return { amount: Math.round(amount * mlPerTbsp), unit: 'ml' };
+    case 'tsp': return { amount: Math.round(amount * mlPerTsp), unit: 'ml' };
+    case 'scoop (30g)': return { amount: Math.round(amount * gPerScoop30), unit: 'g' };
+    case 'scoop (32g)': return { amount: Math.round(amount * 32), unit: 'g' };
+    case 'tbsp (~25g)': return { amount: Math.round(amount * 25), unit: 'g' };
+    default: return { amount, unit };
+  }
+};
 
 // ---------- Data ----------
 const otherDrinkHubs = [
@@ -233,6 +248,9 @@ export default function EggProteinPage() {
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [showKit, setShowKit] = useState(false);
 
+  // per-card Metric toggle
+  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
+
   const allTags = ['All', ...new Set(eggProteinRecipes.flatMap(r => r.tags))];
 
   // Filter + sort
@@ -294,7 +312,7 @@ export default function EggProteinPage() {
     setSelectedRecipe(null);
   };
 
-  // Share handlers
+  // Header share
   const handleSharePage = async () => {
     const shareData = {
       title: 'Egg Protein Shakes',
@@ -318,6 +336,25 @@ export default function EggProteinPage() {
     }
   };
 
+  // Inline copy (per card)
+  const copyRecipe = async (recipe: any) => {
+    const useMetric = !!metricFlags[recipe.id];
+    const lines = (recipe.recipe?.measurements || []).map((ing: Measured) => {
+      if (useMetric && typeof ing.amount === 'number') {
+        const m = toMetric(ing.unit, ing.amount);
+        return `- ${m.amount} ${m.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+      }
+      return `- ${ing.amount} ${ing.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+    });
+    const txt = `${recipe.name} (serves ${recipe.recipe?.servings || 1})\n${lines.join('\n')}`;
+    try {
+      await navigator.clipboard.writeText(txt);
+      alert('Recipe copied!');
+    } catch {
+      alert('Unable to copy on this device.');
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
       {/* Universal Search Modal */}
@@ -337,23 +374,23 @@ export default function EggProteinPage() {
         </div>
       )}
 
-      {/* RecipeKit modal (shared component) */}
+      {/* RecipeKit modal (controlled usage) */}
       {selectedRecipe && (
         <RecipeKit
           open={showKit}
           onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
-          accent="amber"                    // amber styling in the kit UI
-          pointsReward={100}                // XP awarded on "Complete"
-          onComplete={handleCompleteRecipe} // callback to award points + record drink
+          accent="amber"
+          pointsReward={100}
           item={{
             id: selectedRecipe.id,
             name: selectedRecipe.name,
-            prepTime: selectedRecipe.prepTime,
-            directions: selectedRecipe.recipe?.directions || [],
             measurements: selectedRecipe.recipe?.measurements || [],
+            directions: selectedRecipe.recipe?.directions || [],
             baseNutrition: { calories: selectedRecipe.calories, protein: selectedRecipe.protein },
-            defaultServings: selectedRecipe.recipe?.servings || 1
+            defaultServings: selectedRecipe.recipe?.servings || 1,
+            prepTime: selectedRecipe.prepTime
           }}
+          onComplete={handleCompleteRecipe}
         />
       )}
 
@@ -488,118 +525,144 @@ export default function EggProteinPage() {
 
       {/* Recipe Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredRecipes.map((recipe) => (
-          <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between mb-3">
-                <h3 className="font-bold text-lg">{recipe.name}</h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    const drinkData = {
-                      id: recipe.id,
-                      name: recipe.name,
-                      category: 'protein-shakes' as const,
-                      description: `${recipe.flavor || ''} egg protein shake`,
-                      ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
-                      nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
-                      difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
-                      prepTime: recipe.prepTime,
-                      rating: recipe.rating
-                    };
-                    addToFavorites(drinkData);
-                  }}
-                  className="text-gray-400 hover:text-red-500"
-                >
-                  <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                </Button>
-              </div>
+        {filteredRecipes.map((recipe) => {
+          const useMetric = !!metricFlags[recipe.id];
 
-              <div className="flex items-center gap-2 mb-3">
-                <div className="flex items-center gap-1">
-                  <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                  <span className="text-sm font-medium">{recipe.rating}</span>
+          return (
+            <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between mb-3">
+                  <h3 className="font-bold text-lg">{recipe.name}</h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      const drinkData = {
+                        id: recipe.id,
+                        name: recipe.name,
+                        category: 'protein-shakes' as const,
+                        description: `${recipe.flavor || ''} egg protein shake`,
+                        ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
+                        nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
+                        difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
+                        prepTime: recipe.prepTime,
+                        rating: recipe.rating
+                      };
+                      addToFavorites(drinkData);
+                    }}
+                    className="text-gray-400 hover:text-red-500"
+                  >
+                    <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                  </Button>
                 </div>
-                <span className="text-sm text-muted-foreground">({recipe.reviews} reviews)</span>
-                <Badge variant="outline" className="ml-auto">{recipe.difficulty}</Badge>
-              </div>
 
-              <div className="grid grid-cols-3 gap-2 text-center mb-4">
-                <div>
-                  <div className="font-bold text-blue-600">{recipe.protein}g</div>
-                  <div className="text-xs text-muted-foreground">Protein</div>
-                </div>
-                <div>
-                  <div className="font-bold text-green-600">{recipe.carbs}g</div>
-                  <div className="text-xs text-muted-foreground">Carbs</div>
-                </div>
-                <div>
-                  <div className="font-bold text-amber-600">{recipe.calories}</div>
-                  <div className="text-xs text-muted-foreground">Calories</div>
-                </div>
-              </div>
-
-              {/* Compact measured recipe preview (with Show more) */}
-              {recipe.recipe?.measurements && (
-                <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                  <div className="text-sm font-semibold text-gray-900 mb-1">
-                    Recipe (serves {recipe.recipe.servings || 1})
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-1">
+                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                    <span className="text-sm font-medium">{recipe.rating}</span>
                   </div>
-                  <ul className="text-sm leading-6 text-gray-800 space-y-1">
-                    {recipe.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => (
-                      <li key={i} className="flex items-start gap-2">
-                        <Check className="h-4 w-4 text-amber-600 mt-0.5" />
-                        <span>
-                          <span className="text-amber-700 font-semibold">
-                            {ing.amount} {ing.unit}
-                          </span>{" "}
-                          {ing.item}
-                          {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
-                        </span>
-                      </li>
-                    ))}
-                    {recipe.recipe.measurements.length > 4 && (
-                      <li className="text-xs text-gray-600">
-                        …plus {recipe.recipe.measurements.length - 4} more •{" "}
-                        <button
-                          type="button"
-                          onClick={() => openRecipeModal(recipe)}
-                          className="underline underline-offset-2"
-                        >
-                          Show more
-                        </button>
-                      </li>
-                    )}
-                  </ul>
+                  <span className="text-sm text-muted-foreground">({recipe.reviews} reviews)</span>
+                  <Badge variant="outline" className="ml-auto">{recipe.difficulty}</Badge>
                 </div>
-              )}
 
-              <div className="flex flex-wrap gap-1 mb-4">
-                {recipe.tags.map((tag: string) => (
-                  <Badge key={tag} variant="secondary" className="text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
+                <div className="grid grid-cols-3 gap-2 text-center mb-4">
+                  <div>
+                    <div className="font-bold text-blue-600">{recipe.protein}g</div>
+                    <div className="text-xs text-muted-foreground">Protein</div>
+                  </div>
+                  <div>
+                    <div className="font-bold text-green-600">{recipe.carbs}g</div>
+                    <div className="text-xs text-muted-foreground">Carbs</div>
+                  </div>
+                  <div>
+                    <div className="font-bold text-amber-600">{recipe.calories}</div>
+                    <div className="text-xs text-muted-foreground">Calories</div>
+                  </div>
+                </div>
 
-              <div className="mb-3 text-xs text-muted-foreground">
-                Benefits: {recipe.benefits.join(' · ')}
-              </div>
+                {/* Compact measured recipe preview (with Show more + Copy/Metric inline) */}
+                {recipe.recipe?.measurements && (
+                  <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <div className="text-sm font-semibold text-gray-900 mb-1">
+                      Recipe (serves {recipe.recipe.servings || 1})
+                    </div>
+                    <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                      {recipe.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                        const isNum = typeof ing.amount === 'number';
+                        const display = useMetric && isNum
+                          ? toMetric(ing.unit, ing.amount as number)
+                          : { amount: ing.amount as number | string, unit: ing.unit };
+                        return (
+                          <li key={i} className="flex items-start gap-2">
+                            <Check className="h-4 w-4 text-amber-600 mt-0.5" />
+                            <span>
+                              <span className="text-amber-700 font-semibold">
+                                {display.amount} {display.unit}
+                              </span>{" "}
+                              {ing.item}
+                              {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                            </span>
+                          </li>
+                        );
+                      })}
+                      {recipe.recipe.measurements.length > 4 && (
+                        <li className="text-xs text-gray-600">
+                          …plus {recipe.recipe.measurements.length - 4} more •{" "}
+                          <button
+                            type="button"
+                            onClick={() => openRecipeModal(recipe)}
+                            className="underline underline-offset-2"
+                          >
+                            Show more
+                          </button>
+                        </li>
+                      )}
+                    </ul>
 
-              <div className="flex gap-2">
-                <Button
-                  className="w-full bg-amber-600 hover:bg-amber-700 text-white"
-                  onClick={() => openRecipeModal(recipe)}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Make (+100 XP)
-                </Button>
-                {/* Removed inline Share button to avoid redundancy */}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                    {/* Inline actions: Copy & Metric toggle (Share stays header & modal) */}
+                    <div className="flex gap-2 mt-3">
+                      <Button variant="outline" size="sm" onClick={() => copyRecipe(recipe)}>
+                        <Clipboard className="w-4 h-4 mr-1" /> Copy
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setMetricFlags((prev) => ({ ...prev, [recipe.id]: !prev[recipe.id] }))
+                        }
+                      >
+                        {useMetric ? 'US' : 'Metric'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-1 mb-4">
+                  {recipe.tags.map((tag: string) => (
+                    <Badge key={tag} variant="secondary" className="text-xs">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+
+                <div className="mb-3 text-xs text-muted-foreground">
+                  Benefits: {recipe.benefits.join(' · ')}
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                    onClick={() => openRecipeModal(recipe)}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Make (+100 XP)
+                  </Button>
+                  {/* No extra Share here (kept in header + modal) */}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Your Progress */}
