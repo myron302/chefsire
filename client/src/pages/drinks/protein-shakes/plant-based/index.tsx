@@ -1,4 +1,4 @@
-// pages/drinks/protein-shakes/plant-based.tsx
+// client/src/pages/drinks/protein-shakes/plant-based.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +40,7 @@ const plantBasedShakes = [
     id: 'plant-1',
     name: 'Pea Power Green Machine',
     description: 'Complete amino acid profile with organic pea protein',
-    image: 'https://images.unsplash.com/photo-1610970881699-44a5587cabec?w=400&h=300&fit=crop',
+    image: 'https://images.unsplash.com/photo-1610970881699-44a5587cabec?w=1200&q=80&auto=format&fit=crop',
     proteinSource: 'Pea Protein Isolate',
     proteinType: 'pea',
     flavor: 'Vanilla Mint',
@@ -432,6 +432,14 @@ export default function PlantBasedProteinPage() {
     incrementDrinksMade
   } = useDrinks();
 
+  // ✅ Safe fallback so UI never crashes if context is missing pieces
+  const safeUserProgress = userProgress ?? {
+    level: 1,
+    totalPoints: 0,
+    totalDrinksMade: 0,
+    dailyGoalProgress: 0
+  };
+
   const [activeTab, setActiveTab] = useState<'browse'|'protein-types'|'goals'|'featured'>('browse');
   const [selectedProteinType, setSelectedProteinType] = useState('');
   const [selectedGoal, setSelectedGoal] = useState('');
@@ -440,7 +448,7 @@ export default function PlantBasedProteinPage() {
   const [sortBy, setSortBy] = useState<'rating'|'protein'|'price'|'calories'>('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
-  // deep-link (?id=plant-7) — open modal via anchor handled by RecipeKit's "Open Recipe" (we just scroll it into view)
+  // deep-link (?id=plant-7) — scroll into view
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
@@ -567,9 +575,9 @@ export default function PlantBasedProteinPage() {
               </Button>
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Star className="h-4 w-4 text-yellow-500" />
-                <span>Level {userProgress.level}</span>
+                <span>Level {safeUserProgress.level}</span>
                 <div className="w-px h-4 bg-gray-300" />
-                <span>{userProgress.totalPoints} XP</span>
+                <span>{safeUserProgress.totalPoints} XP</span>
               </div>
               <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
@@ -751,7 +759,7 @@ export default function PlantBasedProteinPage() {
 
                     {/* Certifications */}
                     <div className="flex flex-wrap gap-1 mb-4">
-                      {shake.certifications.map((cert: string, index: number) => (
+                      {(shake.certifications ?? []).map((cert: string, index: number) => (
                         <Badge key={index} variant="outline" className="text-xs">{cert}</Badge>
                       ))}
                     </div>
@@ -792,11 +800,41 @@ export default function PlantBasedProteinPage() {
                         <span className="font-medium">{shake.rating}</span>
                         <span className="text-gray-500 text-sm">({shake.reviews})</span>
                       </div>
+
+                      {/* ✅ Buttons added and wired for your flow */}
                       <div className="flex gap-2">
+                        <Button
+                          className="bg-green-600 hover:bg-green-700"
+                          size="sm"
+                          onClick={() => {
+                            // record intent + make it easy to use RecipeKit immediately
+                            addToRecentlyViewed({
+                              id: shake.id,
+                              name: shake.name,
+                              category: 'protein-shakes',
+                              description: shake.description,
+                              ingredients: shake.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
+                              nutrition: shake.nutrition,
+                              difficulty: shake.difficulty,
+                              prepTime: shake.prepTime,
+                              rating: shake.rating,
+                              fitnessGoal: shake.fitnessGoal,
+                              bestTime: shake.bestTime
+                            });
+                            incrementDrinksMade();
+                            addPoints(25);
+                            // scroll into view so RecipeKit's own opener is right there
+                            const anchor = document.getElementById(`card-${shake.id}`);
+                            anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }}
+                        >
+                          <Dumbbell className="h-4 w-4 mr-1" />
+                          Make Shake
+                        </Button>
+
                         <Button variant="outline" size="sm" onClick={() => handleShareShake(shake)}>
                           <Share2 className="h-4 w-4 mr-1" /> Share
                         </Button>
-                        <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
                       </div>
                     </div>
                   </CardContent>
@@ -903,12 +941,12 @@ export default function PlantBasedProteinPage() {
               <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="relative">
                   <img
-                    src={shake.image || 'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=400&h=300&fit=crop'}
+                    src={shake.image || 'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=1200&q=80&auto=format&fit=crop'}
                     alt={shake.name}
                     className="w-full h-48 object-cover"
                     onError={(e) => {
                       (e.currentTarget as HTMLImageElement).src =
-                        'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=400&h=300&fit=crop';
+                        'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=1200&q=80&auto=format&fit=crop';
                     }}
                   />
                   <div className="absolute top-4 left-4">
@@ -972,9 +1010,23 @@ export default function PlantBasedProteinPage() {
 
                   <div className="flex gap-3">
                     <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={() => {
-                      // scroll already in view; the RecipeKit has its own "Open Recipe" button for modal
                       const anchor = document.getElementById(`card-${shake.id}`);
                       anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      incrementDrinksMade();
+                      addPoints(25);
+                      addToRecentlyViewed({
+                        id: shake.id,
+                        name: shake.name,
+                        category: 'protein-shakes',
+                        description: shake.description,
+                        ingredients: shake.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
+                        nutrition: shake.nutrition,
+                        difficulty: shake.difficulty,
+                        prepTime: shake.prepTime,
+                        rating: shake.rating,
+                        fitnessGoal: shake.fitnessGoal,
+                        bestTime: shake.bestTime
+                      });
                     }}>
                       <Dumbbell className="h-4 w-4 mr-2" />
                       Make This Shake
@@ -997,13 +1049,13 @@ export default function PlantBasedProteinPage() {
               <div>
                 <h3 className="text-lg font-bold mb-2">Your Progress</h3>
                 <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="text-purple-600">Level {userProgress.level}</Badge>
-                  <Badge variant="outline" className="text-blue-600">{userProgress.totalPoints} XP</Badge>
-                  <Badge variant="outline" className="text-green-600">{userProgress.totalDrinksMade} Drinks Made</Badge>
+                  <Badge variant="outline" className="text-purple-600">Level {safeUserProgress.level}</Badge>
+                  <Badge variant="outline" className="text-blue-600">{safeUserProgress.totalPoints} XP</Badge>
+                  <Badge variant="outline" className="text-green-600">{safeUserProgress.totalDrinksMade} Drinks Made</Badge>
                 </div>
               </div>
               <div className="text-center">
-                <Progress value={userProgress.dailyGoalProgress} className="w-32 mb-2" />
+                <Progress value={safeUserProgress.dailyGoalProgress} className="w-32 mb-2" />
                 <div className="text-xs text-gray-500">Daily Goal Progress</div>
               </div>
             </div>
