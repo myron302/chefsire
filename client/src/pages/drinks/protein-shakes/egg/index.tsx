@@ -1,5 +1,5 @@
 // pages/drinks/protein-shakes/egg.tsx
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,13 +8,14 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
   Target, Heart, Star, Zap, Flame, Leaf, Apple, Sparkles, Moon, Wine,
-  Search, ArrowLeft, ArrowRight, Share2, Camera, Dumbbell, X, Check
+  Search, ArrowLeft, ArrowRight, Share2, Camera, Plus, X, Check
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
-import RecipeKit, { Measured, RecipeKitHandle } from '@/components/recipes/RecipeKit';
+import RecipeKit from '@/components/recipes/RecipeKit';
 
 // ---------- Helpers ----------
+type Measured = { amount: number | string; unit: string; item: string; note?: string };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
 
 // ---------- Data ----------
@@ -54,7 +55,7 @@ const eggProteinRecipes = [
       measurements: [
         m(1, 'scoop (30g)', 'egg white protein'),
         m(1, 'cup', 'unsweetened almond milk'),
-        m(0.5, 'whole', 'banana', 'ripe, frozen preferred'),
+        m(0.5, 'banana', 'ripe, frozen preferred'),
         m(2, 'tbsp', 'rolled oats'),
         m(0.5, 'tsp', 'cinnamon'),
         m(4, 'ice cubes', 'ice')
@@ -144,7 +145,7 @@ const eggProteinRecipes = [
         m(1, 'scoop (30g)', 'egg protein'),
         m(1, 'tbsp', 'unsweetened cocoa powder'),
         m(1, 'tbsp', 'peanut butter'),
-        m(0.5, 'whole', 'banana', 'ripe'),
+        m(0.5, 'banana', 'ripe'),
         m(1, 'cup', 'milk or almond milk'),
         m(4, 'ice cubes', 'ice')
       ],
@@ -174,7 +175,7 @@ const eggProteinRecipes = [
         m(1, 'cup', 'water or coconut water'),
         m(1, 'handful', 'kale'),
         m(0.25, 'medium', 'avocado'),
-        m(0.5, 'small', 'green apple', 'cored'),
+        m(0.5, 'small', 'green apple, cored'),
         m(1, 'tsp', 'fresh lemon juice'),
         m(4, 'ice cubes', 'ice')
       ],
@@ -225,13 +226,12 @@ export default function EggProteinPage() {
     addToRecentlyViewed
   } = useDrinks();
 
+  const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [filterTag, setFilterTag] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'calories' | 'prepTime'>('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-
-  // per-card refs for RecipeKit
-  const kitRefs = useRef<Record<string, RecipeKitHandle | null>>({});
+  const [showKit, setShowKit] = useState(false);
 
   const allTags = ['All', ...new Set(eggProteinRecipes.flatMap(r => r.tags))];
 
@@ -261,6 +261,39 @@ export default function EggProteinPage() {
     return filtered;
   }, [searchQuery, filterTag, sortBy]);
 
+  const openRecipeModal = (recipe: any) => {
+    setSelectedRecipe(recipe);
+    setShowKit(true);
+  };
+
+  const handleCompleteRecipe = () => {
+    if (selectedRecipe) {
+      const drinkData = {
+        id: selectedRecipe.id,
+        name: selectedRecipe.name,
+        category: 'protein-shakes' as const,
+        description: `${selectedRecipe.flavor || ''} egg protein shake`,
+        ingredients: selectedRecipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || selectedRecipe.ingredients,
+        nutrition: {
+          calories: selectedRecipe.calories,
+          protein: selectedRecipe.protein,
+          carbs: selectedRecipe.carbs,
+          fat: 5
+        },
+        difficulty: selectedRecipe.difficulty as 'Easy' | 'Medium' | 'Hard',
+        prepTime: selectedRecipe.prepTime,
+        rating: selectedRecipe.rating,
+        tags: selectedRecipe.tags
+      };
+
+      addToRecentlyViewed(drinkData);
+      incrementDrinksMade();
+      addPoints(100);
+    }
+    setShowKit(false);
+    setSelectedRecipe(null);
+  };
+
   // Share handlers
   const handleSharePage = async () => {
     const shareData = {
@@ -285,29 +318,6 @@ export default function EggProteinPage() {
     }
   };
 
-  const handleShareRecipe = async (recipe: any) => {
-    const url = typeof window !== 'undefined' ? window.location.href : '';
-    const preview = recipe?.recipe?.measurements?.slice(0, 4)
-      .map((r: Measured) => `${r.amount} ${r.unit} ${r.item}`).join(' · ');
-    const text = `${recipe.name} • ${recipe.protein}g protein • ${recipe.calories} cal\n${preview || recipe.ingredients.join(', ')}`;
-    const shareData = { title: recipe.name, text, url };
-    try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else {
-        await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
-        alert('Recipe copied to clipboard!');
-      }
-    } catch {
-      try {
-        await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
-        alert('Recipe copied to clipboard!');
-      } catch {
-        alert('Unable to share on this device.');
-      }
-    }
-  };
-
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
       {/* Universal Search Modal */}
@@ -325,6 +335,26 @@ export default function EggProteinPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* RecipeKit modal (shared component) */}
+      {selectedRecipe && (
+        <RecipeKit
+          open={showKit}
+          onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
+          accent="amber"                    // amber styling in the kit UI
+          pointsReward={100}                // XP awarded on "Complete"
+          onComplete={handleCompleteRecipe} // callback to award points + record drink
+          item={{
+            id: selectedRecipe.id,
+            name: selectedRecipe.name,
+            prepTime: selectedRecipe.prepTime,
+            directions: selectedRecipe.recipe?.directions || [],
+            measurements: selectedRecipe.recipe?.measurements || [],
+            baseNutrition: { calories: selectedRecipe.calories, protein: selectedRecipe.protein },
+            defaultServings: selectedRecipe.recipe?.servings || 1
+          }}
+        />
       )}
 
       {/* Header */}
@@ -459,40 +489,33 @@ export default function EggProteinPage() {
       {/* Recipe Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredRecipes.map((recipe) => (
-          <Card key={recipe.id} id={`card-${recipe.id}`} className="hover:shadow-lg transition-shadow">
+          <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
             <CardContent className="p-6">
-              {/* Title + Actions (Favorite + Share) */}
               <div className="flex items-start justify-between mb-3">
                 <h3 className="font-bold text-lg">{recipe.name}</h3>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      const drinkData = {
-                        id: recipe.id,
-                        name: recipe.name,
-                        category: 'protein-shakes' as const,
-                        description: `${recipe.flavor || ''} egg protein shake`,
-                        ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
-                        nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
-                        difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
-                        prepTime: recipe.prepTime,
-                        rating: recipe.rating
-                      };
-                      addToFavorites(drinkData);
-                    }}
-                    className="text-gray-400 hover:text-red-500"
-                  >
-                    <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleShareRecipe(recipe)} aria-label="Share recipe">
-                    <Share2 className="h-5 w-5 text-gray-500" />
-                  </Button>
-                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const drinkData = {
+                      id: recipe.id,
+                      name: recipe.name,
+                      category: 'protein-shakes' as const,
+                      description: `${recipe.flavor || ''} egg protein shake`,
+                      ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
+                      nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
+                      difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
+                      prepTime: recipe.prepTime,
+                      rating: recipe.rating
+                    };
+                    addToFavorites(drinkData);
+                  }}
+                  className="text-gray-400 hover:text-red-500"
+                >
+                  <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                </Button>
               </div>
 
-              {/* Rating / Reviews / Difficulty (TOP) */}
               <div className="flex items-center gap-2 mb-3">
                 <div className="flex items-center gap-1">
                   <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
@@ -502,7 +525,6 @@ export default function EggProteinPage() {
                 <Badge variant="outline" className="ml-auto">{recipe.difficulty}</Badge>
               </div>
 
-              {/* Macros */}
               <div className="grid grid-cols-3 gap-2 text-center mb-4">
                 <div>
                   <div className="font-bold text-blue-600">{recipe.protein}g</div>
@@ -518,37 +540,41 @@ export default function EggProteinPage() {
                 </div>
               </div>
 
-              {/* RecipeKit preview */}
+              {/* Compact measured recipe preview (with Show more) */}
               {recipe.recipe?.measurements && (
-                <RecipeKit
-                  ref={(el) => { kitRefs.current[recipe.id] = el; }}
-                  id={recipe.id}
-                  name={recipe.name}
-                  measurements={recipe.recipe.measurements}
-                  directions={recipe.recipe.directions}
-                  nutrition={{ calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 }}
-                  prepTime={recipe.prepTime}
-                  onComplete={() => {
-                    // Award only on complete to avoid double counting
-                    incrementDrinksMade();
-                    addPoints(100);
-                    addToRecentlyViewed({
-                      id: recipe.id,
-                      name: recipe.name,
-                      category: 'protein-shakes',
-                      description: `${recipe.flavor || ''} egg protein shake`,
-                      ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
-                      nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
-                      difficulty: recipe.difficulty,
-                      prepTime: recipe.prepTime,
-                      rating: recipe.rating,
-                      tags: recipe.tags
-                    });
-                  }}
-                />
+                <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  <div className="text-sm font-semibold text-gray-900 mb-1">
+                    Recipe (serves {recipe.recipe.servings || 1})
+                  </div>
+                  <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                    {recipe.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <Check className="h-4 w-4 text-amber-600 mt-0.5" />
+                        <span>
+                          <span className="text-amber-700 font-semibold">
+                            {ing.amount} {ing.unit}
+                          </span>{" "}
+                          {ing.item}
+                          {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                        </span>
+                      </li>
+                    ))}
+                    {recipe.recipe.measurements.length > 4 && (
+                      <li className="text-xs text-gray-600">
+                        …plus {recipe.recipe.measurements.length - 4} more •{" "}
+                        <button
+                          type="button"
+                          onClick={() => openRecipeModal(recipe)}
+                          className="underline underline-offset-2"
+                        >
+                          Show more
+                        </button>
+                      </li>
+                    )}
+                  </ul>
+                </div>
               )}
 
-              {/* Tags */}
               <div className="flex flex-wrap gap-1 mb-4">
                 {recipe.tags.map((tag: string) => (
                   <Badge key={tag} variant="secondary" className="text-xs">
@@ -557,24 +583,19 @@ export default function EggProteinPage() {
                 ))}
               </div>
 
-              {/* Benefits */}
               <div className="mb-3 text-xs text-muted-foreground">
                 Benefits: {recipe.benefits.join(' · ')}
               </div>
 
-              {/* Actions */}
-              <div className="flex">
+              <div className="flex gap-2">
                 <Button
-                  className="flex-1 bg-amber-600 hover:bg-amber-700 text-white"
-                  onClick={() => {
-                    const anchor = document.getElementById(`card-${recipe.id}`);
-                    anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    kitRefs.current[recipe.id]?.open?.();
-                  }}
+                  className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                  onClick={() => openRecipeModal(recipe)}
                 >
-                  <Dumbbell className="h-4 w-4 mr-2" />
-                  Make Shake (+100 XP)
+                  <Plus className="h-4 w-4 mr-2" />
+                  Make (+100 XP)
                 </Button>
+                {/* Removed inline Share button to avoid redundancy */}
               </div>
             </CardContent>
           </Card>
