@@ -27,13 +27,9 @@ type RecipeKitProps = {
   shareText?: string;
   /** optional className to wrap the preview */
   className?: string;
-
-  /** NEW (optional): if true, modal opens on first mount (non-breaking default = false) */
-  openOnMount?: boolean;
 };
 
 export type RecipeKitHandle = {
-  /** Imperative controls so parent pages (egg, whey, beef, plant) can open the modal */
   open: () => void;
   close: () => void;
   toggle: () => void;
@@ -97,10 +93,7 @@ const saveJSON = (key: string, value: any) => {
 
 // ---------- Component ----------
 const RecipeKit = React.forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit(props, ref) {
-  const {
-    id, name, measurements, directions = [], nutrition = {}, prepTime = 0,
-    onComplete, shareText, className, openOnMount = false
-  } = props;
+  const { id, name, measurements, directions = [], nutrition = {}, prepTime = 0, onComplete, shareText, className } = props;
 
   // per-recipe persisted state
   const LS_SERV = `rk.servings.${id}`;
@@ -116,7 +109,7 @@ const RecipeKit = React.forwardRef<RecipeKitHandle, RecipeKitProps>(function Rec
   useImperativeHandle(ref, () => ({
     open: () => setOpen(true),
     close: () => setOpen(false),
-    toggle: () => setOpen((v) => !v),
+    toggle: () => setOpen(v => !v),
   }), []);
 
   useEffect(() => {
@@ -127,10 +120,6 @@ const RecipeKit = React.forwardRef<RecipeKitHandle, RecipeKitProps>(function Rec
   useEffect(() => { saveJSON(LS_SERV, servings); }, [servings]);
   useEffect(() => { saveJSON(LS_NOTES, notes); }, [notes]);
   useEffect(() => { saveJSON(LS_METRIC, useMetric); }, [useMetric]);
-
-  useEffect(() => {
-    if (openOnMount) setOpen(true);
-  }, [openOnMount]);
 
   const bumpServings = (delta: number) => setServings((s) => clamp(s + delta));
   const resetServings = () => setServings(1);
