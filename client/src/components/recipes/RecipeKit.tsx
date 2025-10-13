@@ -1,5 +1,5 @@
 // components/recipes/RecipeKit.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useImperativeHandle } from 'react';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RotateCcw, Clipboard, Check, X, Share2 } from 'lucide-react';
@@ -27,6 +27,16 @@ type RecipeKitProps = {
   shareText?: string;
   /** optional className to wrap the preview */
   className?: string;
+
+  /** NEW (optional): if true, modal opens on first mount (non-breaking default = false) */
+  openOnMount?: boolean;
+};
+
+export type RecipeKitHandle = {
+  /** Imperative controls so parent pages (egg, whey, beef, plant) can open the modal */
+  open: () => void;
+  close: () => void;
+  toggle: () => void;
 };
 
 // ---------- Helpers ----------
@@ -86,8 +96,11 @@ const saveJSON = (key: string, value: any) => {
 };
 
 // ---------- Component ----------
-export default function RecipeKit(props: RecipeKitProps) {
-  const { id, name, measurements, directions = [], nutrition = {}, prepTime = 0, onComplete, shareText, className } = props;
+const RecipeKit = React.forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit(props, ref) {
+  const {
+    id, name, measurements, directions = [], nutrition = {}, prepTime = 0,
+    onComplete, shareText, className, openOnMount = false
+  } = props;
 
   // per-recipe persisted state
   const LS_SERV = `rk.servings.${id}`;
@@ -99,6 +112,13 @@ export default function RecipeKit(props: RecipeKitProps) {
   const [useMetric, setUseMetric] = useState<boolean>(false);
   const [open, setOpen] = useState<boolean>(false);
 
+  // expose imperative API (non-breaking)
+  useImperativeHandle(ref, () => ({
+    open: () => setOpen(true),
+    close: () => setOpen(false),
+    toggle: () => setOpen((v) => !v),
+  }), []);
+
   useEffect(() => {
     setServings(clamp(loadJSON<number>(LS_SERV, 1)));
     setNotes(loadJSON<string>(LS_NOTES, ''));
@@ -107,6 +127,10 @@ export default function RecipeKit(props: RecipeKitProps) {
   useEffect(() => { saveJSON(LS_SERV, servings); }, [servings]);
   useEffect(() => { saveJSON(LS_NOTES, notes); }, [notes]);
   useEffect(() => { saveJSON(LS_METRIC, useMetric); }, [useMetric]);
+
+  useEffect(() => {
+    if (openOnMount) setOpen(true);
+  }, [openOnMount]);
 
   const bumpServings = (delta: number) => setServings((s) => clamp(s + delta));
   const resetServings = () => setServings(1);
@@ -131,7 +155,7 @@ export default function RecipeKit(props: RecipeKitProps) {
       if (useMetric && typeof ing.amountScaledNum === 'number') {
         const m = toMetric(ing.unit, ing.amountScaledNum);
         return `- ${m.amount} ${m.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
-        }
+      }
       // fallback to US scaled fraction
       return `- ${ing.amountScaled} ${ing.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
     });
@@ -223,7 +247,7 @@ export default function RecipeKit(props: RecipeKitProps) {
           <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-start mb-4">
               <h2 className="text-2xl font-bold">{name}</h2>
-              <button onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-700">
+              <button onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-700" aria-label="Close">
                 <X className="h-6 w-6" />
               </button>
             </div>
@@ -309,4 +333,6 @@ export default function RecipeKit(props: RecipeKitProps) {
       )}
     </div>
   );
-}
+});
+
+export default RecipeKit;
