@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
   Target, Heart, Star, Zap, Flame, Leaf, Apple, Sparkles, Moon, Wine,
-  Search, ArrowLeft, ArrowRight, Camera, Plus, X, Check, Clipboard
+  Search, ArrowLeft, ArrowRight, Camera, Plus, X, Check, Clipboard, Share2
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
@@ -336,7 +336,7 @@ export default function EggProteinPage() {
     }
   };
 
-  // Inline copy (per card)
+  // Inline copy/share (per card)
   const copyRecipe = async (recipe: any) => {
     const useMetric = !!metricFlags[recipe.id];
     const lines = (recipe.recipe?.measurements || []).map((ing: Measured) => {
@@ -352,6 +352,29 @@ export default function EggProteinPage() {
       alert('Recipe copied!');
     } catch {
       alert('Unable to copy on this device.');
+    }
+  };
+
+  const shareRecipe = async (recipe: any) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const preview = recipe?.recipe?.measurements?.slice(0, 4)
+      .map((r: Measured) => `${r.amount} ${r.unit} ${r.item}`).join(' · ');
+    const text = `${recipe.name} • ${recipe.protein}g protein • ${recipe.calories} cal\n${preview || recipe.ingredients.join(', ')}`;
+    const shareData = { title: recipe.name, text, url };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
     }
   };
 
@@ -374,23 +397,23 @@ export default function EggProteinPage() {
         </div>
       )}
 
-      {/* RecipeKit modal (controlled usage) */}
+      {/* RecipeKit modal (shared component) — keep your existing integration */}
       {selectedRecipe && (
         <RecipeKit
           open={showKit}
           onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
           accent="amber"
           pointsReward={100}
+          onComplete={handleCompleteRecipe}
           item={{
             id: selectedRecipe.id,
             name: selectedRecipe.name,
-            measurements: selectedRecipe.recipe?.measurements || [],
+            prepTime: selectedRecipe.prepTime,
             directions: selectedRecipe.recipe?.directions || [],
+            measurements: selectedRecipe.recipe?.measurements || [],
             baseNutrition: { calories: selectedRecipe.calories, protein: selectedRecipe.protein },
-            defaultServings: selectedRecipe.recipe?.servings || 1,
-            prepTime: selectedRecipe.prepTime
+            defaultServings: selectedRecipe.recipe?.servings || 1
           }}
-          onComplete={handleCompleteRecipe}
         />
       )}
 
@@ -580,7 +603,7 @@ export default function EggProteinPage() {
                   </div>
                 </div>
 
-                {/* Compact measured recipe preview (with Show more + Copy/Metric inline) */}
+                {/* Compact measured recipe preview (with Show more + Copy/Share/Metric inline) */}
                 {recipe.recipe?.measurements && (
                   <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
                     <div className="text-sm font-semibold text-gray-900 mb-1">
@@ -619,10 +642,13 @@ export default function EggProteinPage() {
                       )}
                     </ul>
 
-                    {/* Inline actions: Copy & Metric toggle (Share stays header & modal) */}
+                    {/* Inline actions in this exact order: Copy • Share • Metric */}
                     <div className="flex gap-2 mt-3">
                       <Button variant="outline" size="sm" onClick={() => copyRecipe(recipe)}>
                         <Clipboard className="w-4 h-4 mr-1" /> Copy
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => shareRecipe(recipe)}>
+                        <Share2 className="w-4 h-4 mr-1" /> Share
                       </Button>
                       <Button
                         variant="outline"
@@ -655,9 +681,8 @@ export default function EggProteinPage() {
                     onClick={() => openRecipeModal(recipe)}
                   >
                     <Plus className="h-4 w-4 mr-2" />
-                    Make (+100 XP)
+                    Make Shake (+100 XP)
                   </Button>
-                  {/* No extra Share here (kept in header + modal) */}
                 </div>
               </CardContent>
             </Card>
