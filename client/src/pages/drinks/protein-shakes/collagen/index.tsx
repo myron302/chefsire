@@ -10,7 +10,7 @@ import {
   CheckCircle, Target, Flame, Droplets, Leaf, Apple, Gem,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift,
   Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
-  Activity, BarChart3, Crown, Dumbbell, Eye, Bone, Moon, Wine, ArrowRight, X, Check
+  Activity, BarChart3, Crown, Dumbbell, Eye, Bone, Moon, Wine, ArrowRight, X, Check, Clipboard
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -39,6 +39,22 @@ const m = (amount: number | string, unit: string, item: string, note: string = '
 const scaleAmount = (amt: number | string, factor: number): number | string => {
   if (typeof amt === 'number') return Math.round((amt * factor + Number.EPSILON) * 100) / 100;
   return amt;
+};
+
+// Metric conversion helper
+const toMetric = (unit: string, amount: number) => {
+  const mlPerCup = 240, mlPerTbsp = 15, mlPerTsp = 5;
+  switch (unit) {
+    case 'cup': return { amount: Math.round(amount * mlPerCup), unit: 'ml' };
+    case 'tbsp': return { amount: Math.round(amount * mlPerTbsp), unit: 'ml' };
+    case 'tsp': return { amount: Math.round(amount * mlPerTsp), unit: 'ml' };
+    case 'scoop (20g)': return { amount: Math.round(amount * 20), unit: 'g' };
+    case 'scoop (15g)': return { amount: Math.round(amount * 15), unit: 'g' };
+    case 'scoop (12g)': return { amount: Math.round(amount * 12), unit: 'g' };
+    case 'scoop (22g)': return { amount: Math.round(amount * 22), unit: 'g' };
+    case 'scoop (25g)': return { amount: Math.round(amount * 25), unit: 'g' };
+    default: return { amount, unit };
+  }
 };
 
 // Collagen protein shake data
@@ -500,6 +516,7 @@ export default function CollagenProteinPage() {
   const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
+  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
   // per-card refs to open RecipeKit modals
   const kitRefs = useRef<Record<string, RecipeKitHandle | null>>({});
@@ -860,6 +877,7 @@ export default function CollagenProteinPage() {
               {filteredShakes.map(shake => {
                 const servings = getServings(shake);
                 const factor = (servings || 1) / (shake.recipe?.servings || 1);
+                const useMetric = !!metricFlags[shake.id];
 
                 return (
                   <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow">
@@ -954,16 +972,24 @@ export default function CollagenProteinPage() {
                           </div>
 
                           <ul className="text-sm leading-6 text-gray-800 space-y-1">
-                            {shake.recipe.measurements.slice(0, 6).map((ing: Measured, i: number) => (
-                              <li key={i} className="flex gap-2">
-                                <span className="text-pink-700 font-medium min-w-[90px]">
-                                  {scaleAmount(ing.amount, factor)} {ing.unit}
-                                </span>
-                                <span className="flex-1">
-                                  {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
-                                </span>
-                              </li>
-                            ))}
+                            {shake.recipe.measurements.slice(0, 6).map((ing: Measured, i: number) => {
+                              const isNum = typeof ing.amount === 'number';
+                              const scaledAmount = isNum ? scaleAmount(ing.amount, factor) : ing.amount;
+                              const show = useMetric && isNum
+                                ? toMetric(ing.unit, Number(ing.amount) * factor)
+                                : { amount: scaledAmount, unit: ing.unit };
+
+                              return (
+                                <li key={i} className="flex gap-2">
+                                  <span className="text-pink-700 font-medium min-w-[90px]">
+                                    {show.amount} {show.unit}
+                                  </span>
+                                  <span className="flex-1">
+                                    {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                  </span>
+                                </li>
+                              );
+                            })}
                           </ul>
                           {(shake.recipe.measurements.length > 6) && (
                             <div className="text-xs text-gray-600 mt-1">
@@ -979,10 +1005,72 @@ export default function CollagenProteinPage() {
                             </div>
                           )}
                           <div className="flex gap-2 mt-3">
-                            <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.copyScaledRecipe?.()}><Clipboard className="w-4 h-4 mr-1" /> Copy</Button>
-                            <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.doShare?.()}><Share2 className="w-4 h-4 mr-1" /> Share</Button>
-                            <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.setUseMetric(v => !v)}>
-                              {kitRefs.current[shake.id]?.useMetric ? 'US' : 'Metric'}
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={async () => {
+                                const lines = (shake.recipe?.measurements || []).map((ing: Measured) => {
+                                  if (useMetric && typeof ing.amount === 'number') {
+                                    const m = toMetric(ing.unit, Number(ing.amount) * factor);
+                                    return `- ${m.amount} ${m.unit} ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
+                                  }
+                                  const scaled = typeof ing.amount === 'number' ? scaleAmount(ing.amount, factor) : ing.amount;
+                                  return `- ${scaled} ${ing.unit} ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
+                                });
+                                const txt = `${shake.name} (serves ${servings})\n${lines.join('\n')}`;
+                                try {
+                                  await navigator.clipboard.writeText(txt);
+                                  alert('Recipe copied!');
+                                } catch {
+                                  alert('Unable to copy on this device.');
+                                }
+                              }}
+                            >
+                              <Clipboard className="w-4 h-4 mr-1" /> Copy
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={async () => {
+                                const preview = (shake?.recipe?.measurements || [])
+                                  .slice(0, 4)
+                                  .map((r: Measured) => {
+                                    const scaled = typeof r.amount === 'number' 
+                                      ? `${scaleAmount(r.amount, factor)} ${r.unit}`
+                                      : `${r.amount} ${r.unit}`;
+                                    return `${scaled} ${r.item}`;
+                                  })
+                                  .join(' · ');
+                                const text = `${shake.name} • ${shake.collagenTypes?.join(', ')} • ${shake.source}\n${preview}`;
+                                const url = typeof window !== 'undefined' ? window.location.href : '';
+                                const shareData = { title: shake.name, text, url };
+                                try {
+                                  if (navigator.share) {
+                                    await navigator.share(shareData);
+                                  } else {
+                                    await navigator.clipboard.writeText(`${shake.name}\n${text}\n${url}`);
+                                    alert('Recipe copied to clipboard!');
+                                  }
+                                } catch {
+                                  try {
+                                    await navigator.clipboard.writeText(`${shake.name}\n${text}\n${url}`);
+                                    alert('Recipe copied to clipboard!');
+                                  } catch {
+                                    alert('Unable to share on this device.');
+                                  }
+                                }
+                              }}
+                            >
+                              <Share2 className="w-4 h-4 mr-1" /> Share
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setMetricFlags((prev) => ({ ...prev, [shake.id]: !prev[shake.id] }))
+                              }
+                            >
+                              {useMetric ? 'US' : 'Metric'}
                             </Button>
                           </div>
                         </div>
@@ -1217,6 +1305,7 @@ export default function CollagenProteinPage() {
             {featuredShakes.map(shake => {
               const servings = getServings(shake);
               const factor = (servings || 1) / (shake.recipe?.servings || 1);
+              const useMetric = !!metricFlags[shake.id];
 
               return (
                 <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow">
