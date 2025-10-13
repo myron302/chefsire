@@ -9,7 +9,7 @@ import {
   Dumbbell, Clock, Heart, Star, Target, Flame, Droplets, Leaf, Apple,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
-  Beaker, Activity, BarChart3, Sparkles, Moon, Wine, ArrowRight, X, Check, Clipboard
+  Beaker, Activity, BarChart3, Sparkles, Moon, Wine, ArrowRight, X, Check, Clipboard, RotateCcw
 } from 'lucide-react';
 import { useDrinks } from "@/contexts/DrinksContext";
 import UniversalSearch from '@/components/UniversalSearch';
@@ -32,6 +32,24 @@ const toMetric = (unit: string, amount: number) => {
     case 'tbsp (~25g)': return { amount: Math.round(amount * 25), unit: 'g' };
     default: return { amount, unit };
   }
+};
+
+// scaling helpers to match Egg behavior
+const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+const toNiceFraction = (value: number) => {
+  const rounded = Math.round(value * 4) / 4;
+  const whole = Math.trunc(rounded);
+  const frac = Math.round((rounded - whole) * 4);
+  const fracMap: Record<number, string> = { 0: '', 1: '1/4', 2: '1/2', 3: '3/4' };
+  const fracStr = fracMap[frac];
+  if (!whole && fracStr) return fracStr;
+  if (whole && fracStr) return `${whole} ${fracStr}`;
+  return `${whole}`;
+};
+const scaleAmount = (baseAmount: number | string, servings: number) => {
+  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
+  if (Number.isNaN(n)) return baseAmount;
+  return toNiceFraction(n * servings);
 };
 
 // ---------- Navigation data (unchanged) ----------
@@ -329,6 +347,9 @@ export default function WheyProteinShakesPage() {
   // per-card Metric toggle for inline preview
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
+  // per-card servings (inline preview) -> also used as default in modal
+  const [servingsById, setServingsById] = useState<Record<string, number>>({});
+
   const handleSharePage = async () => {
     const shareData = {
       title: 'Whey Protein Shakes',
@@ -352,10 +373,19 @@ export default function WheyProteinShakesPage() {
     }
   };
 
-  const handleShareShake = async (shake: any) => {
+  const handleShareShake = async (shake: any, servingsOverride?: number) => {
     const url = typeof window !== 'undefined' ? window.location.href : '';
-    const preview = shake?.recipe?.measurements?.slice(0, 4)
-      .map((r: Measured) => `${r.amount} ${r.unit} ${r.item}`).join(' · ');
+    const servings = servingsOverride ?? servingsById[shake.id] ?? (shake.recipe?.servings || 1);
+    const preview = (shake?.recipe?.measurements || [])
+      .slice(0, 4)
+      .map((r: Measured) => {
+        const scaled =
+          typeof r.amount === 'number'
+            ? `${scaleAmount(r.amount, servings)} ${r.unit}`
+            : `${r.amount} ${r.unit}`;
+        return `${scaled} ${r.item}`;
+      })
+      .join(' · ');
     const text = `${shake.name} • ${shake.fitnessGoal} • ${shake.wheyType}\n${preview || (shake.ingredients?.slice(0,4)?.join(', ') ?? '')}`;
     const shareData = { title: shake.name, text, url };
     try {
@@ -396,7 +426,6 @@ export default function WheyProteinShakesPage() {
       };
       addToRecentlyViewed(drinkData);
       incrementDrinksMade();
-      // Preserve your original XP choice for Whey (+25) unless you want to align to Egg (+100):
       addPoints(25);
     }
     setShowKit(false);
@@ -466,7 +495,7 @@ export default function WheyProteinShakesPage() {
             directions: selectedRecipe.recipe?.directions || [],
             measurements: selectedRecipe.recipe?.measurements || [],
             baseNutrition: selectedRecipe.nutrition || {},
-            defaultServings: selectedRecipe.recipe?.servings || 1
+            defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
           }}
         />
       )}
@@ -643,6 +672,8 @@ export default function WheyProteinShakesPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredShakes.map(shake => {
                 const useMetric = !!metricFlags[shake.id];
+                const servings = servingsById[shake.id] ?? (shake.recipe?.servings || 1);
+
                 return (
                   <Card key={shake.id} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-2">
@@ -715,7 +746,7 @@ export default function WheyProteinShakesPage() {
                         </div>
                       </div>
 
-                      {/* Rating */}
+                      {/* Rating / Difficulty (leave placement as-is) */}
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-1">
                           <Star className="h-4 w-4 text-yellow-400 fill-current" />
@@ -730,21 +761,59 @@ export default function WheyProteinShakesPage() {
                       {/* Compact measured recipe preview + inline actions (Egg pattern) */}
                       {shake.recipe?.measurements && (
                         <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                          <div className="text-sm font-semibold text-gray-900 mb-1">
-                            Recipe (serves {shake.recipe.servings || 1})
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-sm font-semibold text-gray-900">
+                              Recipe (serves {servings})
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                className="px-2 py-1 border rounded text-sm"
+                                onClick={() =>
+                                  setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) - 1) }))
+                                }
+                                aria-label="decrease servings"
+                              >
+                                −
+                              </button>
+                              <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                              <button
+                                className="px-2 py-1 border rounded text-sm"
+                                onClick={() =>
+                                  setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) + 1) }))
+                                }
+                                aria-label="increase servings"
+                              >
+                                +
+                              </button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setServingsById(prev => {
+                                  const next = { ...prev };
+                                  next[shake.id] = shake.recipe?.servings || 1;
+                                  return next;
+                                })}
+                                title="Reset servings"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
+                              </Button>
+                            </div>
                           </div>
+
                           <ul className="text-sm leading-6 text-gray-800 space-y-1">
                             {shake.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
                               const isNum = typeof ing.amount === 'number';
-                              const display = useMetric && isNum
-                                ? toMetric(ing.unit, ing.amount as number)
-                                : { amount: ing.amount as number | string, unit: ing.unit };
+                              const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount;
+                              const show = useMetric && isNum
+                                ? toMetric(ing.unit, Number((typeof ing.amount === 'number' ? (ing.amount as number) : parseFloat(String(ing.amount))) * servings))
+                                : { amount: scaledDisplay, unit: ing.unit };
+
                               return (
                                 <li key={i} className="flex items-start gap-2">
                                   <Check className="h-4 w-4 text-blue-600 mt-0.5" />
                                   <span>
                                     <span className="text-blue-700 font-semibold">
-                                      {display.amount} {display.unit}
+                                      {show.amount} {show.unit}
                                     </span>{" "}
                                     {ing.item}
                                     {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
@@ -773,12 +842,13 @@ export default function WheyProteinShakesPage() {
                               onClick={async () => {
                                 const lines = (shake.recipe?.measurements || []).map((ing: Measured) => {
                                   if (useMetric && typeof ing.amount === 'number') {
-                                    const mm = toMetric(ing.unit, ing.amount);
-                                    return `- ${mm.amount} ${mm.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+                                    const mm = toMetric(ing.unit, Number(ing.amount) * servings);
+                                    return `- ${mm.amount} ${mm.unit} ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
                                   }
-                                  return `- ${ing.amount} ${ing.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+                                  const scaled = typeof ing.amount === 'number' ? scaleAmount(ing.amount, servings) : ing.amount;
+                                  return `- ${scaled} ${ing.unit} ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
                                 });
-                                const txt = `${shake.name} (serves ${shake.recipe?.servings || 1})\n${lines.join('\n')}`;
+                                const txt = `${shake.name} (serves ${servings})\n${lines.join('\n')}`;
                                 try {
                                   await navigator.clipboard.writeText(txt);
                                   alert('Recipe copied!');
@@ -789,7 +859,7 @@ export default function WheyProteinShakesPage() {
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => handleShareShake(shake)}>
+                            <Button variant="outline" size="sm" onClick={() => handleShareShake(shake, servings)}>
                               <Share2 className="w-4 h-4 mr-1" /> Share
                             </Button>
                             <Button
@@ -814,17 +884,14 @@ export default function WheyProteinShakesPage() {
                         ))}
                       </div>
 
-                      {/* Actions */}
-                      <div className="flex gap-2">
+                      {/* Actions — NO share button here; Make Shake stretched full width */}
+                      <div className="mt-3">
                         <Button
-                          className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          className="w-full bg-blue-600 hover:bg-blue-700"
                           onClick={() => openRecipeModal(shake)}
                         >
                           <Zap className="h-4 w-4 mr-2" />
                           Make Shake (+25 XP)
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleShareShake(shake)}>
-                          <Share2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </CardContent>
@@ -944,6 +1011,8 @@ export default function WheyProteinShakesPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {featuredShakes.map(shake => {
               const useMetric = !!metricFlags[shake.id];
+              const servings = servingsById[shake.id] ?? (shake.recipe?.servings || 1);
+
               return (
                 <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                   <div className="relative">
@@ -1035,24 +1104,61 @@ export default function WheyProteinShakesPage() {
                       </div>
                     </div>
 
-                    {/* Compact measured recipe preview (same as browse) */}
+                    {/* Compact measured recipe preview (with serving controls, same as browse) */}
                     {shake.recipe?.measurements && (
                       <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                        <div className="text-sm font-semibold text-gray-900 mb-1">
-                          Recipe (serves {shake.recipe.servings || 1})
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-sm font-semibold text-gray-900">
+                            Recipe (serves {servings})
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="px-2 py-1 border rounded text-sm"
+                              onClick={() =>
+                                setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) - 1) }))
+                              }
+                              aria-label="decrease servings"
+                            >
+                              −
+                            </button>
+                            <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                            <button
+                              className="px-2 py-1 border rounded text-sm"
+                              onClick={() =>
+                                setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) + 1) }))
+                              }
+                              aria-label="increase servings"
+                            >
+                              +
+                            </button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setServingsById(prev => {
+                                const next = { ...prev };
+                                next[shake.id] = shake.recipe?.servings || 1;
+                                return next;
+                              })}
+                            >
+                              <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
+                            </Button>
+                          </div>
                         </div>
+
                         <ul className="text-sm leading-6 text-gray-800 space-y-1">
                           {shake.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
                             const isNum = typeof ing.amount === 'number';
-                            const display = useMetric && isNum
-                              ? toMetric(ing.unit, ing.amount as number)
-                              : { amount: ing.amount as number | string, unit: ing.unit };
+                            const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount;
+                            const show = useMetric && isNum
+                              ? toMetric(ing.unit, Number((typeof ing.amount === 'number' ? (ing.amount as number) : parseFloat(String(ing.amount))) * servings))
+                              : { amount: scaledDisplay, unit: ing.unit };
+
                             return (
                               <li key={i} className="flex items-start gap-2">
                                 <Check className="h-4 w-4 text-blue-600 mt-0.5" />
                                 <span>
                                   <span className="text-blue-700 font-semibold">
-                                    {display.amount} {display.unit}
+                                    {show.amount} {show.unit}
                                   </span>{" "}
                                   {ing.item}
                                   {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
@@ -1081,12 +1187,13 @@ export default function WheyProteinShakesPage() {
                             onClick={async () => {
                               const lines = (shake.recipe?.measurements || []).map((ing: Measured) => {
                                 if (useMetric && typeof ing.amount === 'number') {
-                                  const mm = toMetric(ing.unit, ing.amount);
-                                  return `- ${mm.amount} ${mm.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+                                  const mm = toMetric(ing.unit, Number(ing.amount) * servings);
+                                  return `- ${mm.amount} ${mm.unit} ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
                                 }
-                                return `- ${ing.amount} ${ing.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+                                const scaled = typeof ing.amount === 'number' ? scaleAmount(ing.amount, servings) : ing.amount;
+                                return `- ${scaled} ${ing.unit} ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
                               });
-                              const txt = `${shake.name} (serves ${shake.recipe?.servings || 1})\n${lines.join('\n')}`;
+                              const txt = `${shake.name} (serves ${servings})\n${lines.join('\n')}`;
                               try {
                                 await navigator.clipboard.writeText(txt);
                                 alert('Recipe copied!');
@@ -1097,7 +1204,7 @@ export default function WheyProteinShakesPage() {
                           >
                             <Clipboard className="w-4 h-4 mr-1" /> Copy
                           </Button>
-                          <Button variant="outline" size="sm" onClick={() => handleShareShake(shake)}>
+                          <Button variant="outline" size="sm" onClick={() => handleShareShake(shake, servings)}>
                             <Share2 className="w-4 h-4 mr-1" /> Share
                           </Button>
                           <Button
@@ -1113,18 +1220,14 @@ export default function WheyProteinShakesPage() {
                       </div>
                     )}
 
-                    {/* Action buttons */}
-                    <div className="flex gap-3">
+                    {/* Action button — NO extra Share; full width */}
+                    <div className="mt-3">
                       <Button
-                        className="flex-1 bg-blue-600 hover:bg-blue-700"
+                        className="w-full bg-blue-600 hover:bg-blue-700"
                         onClick={() => openRecipeModal(shake)}
                       >
                         <Zap className="h-4 w-4 mr-2" />
                         Make This Shake (+25 XP)
-                      </Button>
-                      <Button variant="outline" onClick={() => handleShareShake(shake)}>
-                        <Share2 className="h-4 w-4 mr-2" />
-                        Share
                       </Button>
                     </div>
                   </CardContent>
