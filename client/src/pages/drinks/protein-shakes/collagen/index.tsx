@@ -931,55 +931,9 @@ export default function CollagenProteinPage() {
                         <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
                       </div>
 
-                      {/* Inline serving incrementer + compact measured preview */}
+                      {/* RecipeKit component - handles both preview and modal */}
                       {shake.recipe?.measurements && (
-                        <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="text-sm font-semibold text-gray-900">
-                              Recipe (serves {servings})
-                            </div>
-                            <div className="flex items-center rounded-md border border-gray-300 overflow-hidden">
-                              <button
-                                aria-label="decrease servings"
-                                onClick={() => incrementServings(shake, -1)}
-                                className="px-2 py-1 text-sm hover:bg-gray-100"
-                              >−</button>
-                              <div className="px-3 py-1 text-sm border-l border-r border-gray-300">{servings}</div>
-                              <button
-                                aria-label="increase servings"
-                                onClick={() => incrementServings(shake, +1)}
-                                className="px-2 py-1 text-sm hover:bg-gray-100"
-                              >+</button>
-                            </div>
-                          </div>
-
-                          <ul className="text-sm leading-6 text-gray-800 space-y-1">
-                            {shake.recipe.measurements.slice(0, 6).map((ing: Measured, i: number) => (
-                              <li key={i} className="flex gap-2">
-                                <span className="text-pink-700 font-medium min-w-[90px]">
-                                  {scaleAmount(ing.amount, factor)} {ing.unit}
-                                </span>
-                                <span className="flex-1">
-                                  {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                          {(shake.recipe.measurements.length > 6) && (
-                            <div className="text-xs text-gray-600 mt-1">
-                              …plus {shake.recipe.measurements.length - 6} more
-                              {" • "}
-                              <button
-                                type="button"
-                                onClick={() => kitRefs.current[shake.id]?.open?.()}
-                                className="underline underline-offset-2"
-                              >
-                                Show more
-                              </button>
-                            </div>
-                          )}
-                          
-                          {/* RecipeKit component handles copy/share internally */}
+                        <div className="mb-4">
                           <RecipeKit
                             ref={ref => {
                               kitRefs.current[shake.id] = ref;
@@ -1222,155 +1176,104 @@ export default function CollagenProteinPage() {
         {/* Featured Tab */}
         {activeTab === 'featured' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {featuredShakes.map(shake => {
-              const servings = getServings(shake);
-              const factor = (servings || 1) / (shake.recipe?.servings || 1);
-
-              return (
-                <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow">
-                  <div className="relative">
-                    <img 
-                      src={shake.image || 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=400&h=300&fit=crop'}
-                      alt={shake.name}
-                      className="w-full h-48 object-cover"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=400&h=300&fit=crop';
-                      }}
-                    />
-                    <div className="absolute top-4 left-4">
-                      <Badge className="bg-pink-500 text-white">Featured Collagen</Badge>
+            {featuredShakes.map(shake => (
+              <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow">
+                <div className="relative">
+                  <img 
+                    src={shake.image || 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=400&h=300&fit=crop'}
+                    alt={shake.name}
+                    className="w-full h-48 object-cover"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=400&h=300&fit=crop';
+                    }}
+                  />
+                  <div className="absolute top-4 left-4">
+                    <Badge className="bg-pink-500 text-white">Featured Collagen</Badge>
+                  </div>
+                  <div className="absolute top-4 right-4">
+                    <Badge className="bg-white text-pink-800">{shake.bioavailability}% Bio</Badge>
+                  </div>
+                </div>
+                
+                <CardHeader>
+                  <CardTitle className="text-xl">{shake.name}</CardTitle>
+                  <p className="text-gray-600">{shake.description}</p>
+                  
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge className="bg-pink-100 text-pink-800">{shake.source}</Badge>
+                    <Badge variant="outline">{shake.flavor}</Badge>
+                    {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                  </div>
+                </CardHeader>
+                
+                <CardContent>
+                  {/* Quick stats */}
+                  <div className="grid grid-cols-4 gap-2 text-center mb-4">
+                    <div>
+                      <div className="font-bold text-pink-600">{shake.nutrition.collagen}g</div>
+                      <div className="text-xs text-gray-500">Collagen</div>
                     </div>
-                    <div className="absolute top-4 right-4">
-                      <Badge className="bg-white text-pink-800">{shake.bioavailability}% Bio</Badge>
+                    <div>
+                      <div className="font-bold text-blue-600">{shake.nutrition.calories}</div>
+                      <div className="text-xs text-gray-500">Calories</div>
+                    </div>
+                    <div>
+                      <div className="font-bold text-purple-600">{shake.bioavailability}%</div>
+                      <div className="text-xs text-gray-500">Bio</div>
+                    </div>
+                    <div>
+                      <div className="font-bold text-amber-600">${shake.price}</div>
+                      <div className="text-xs text-gray-500">Price</div>
                     </div>
                   </div>
-                  
-                  <CardHeader>
-                    <CardTitle className="text-xl">{shake.name}</CardTitle>
-                    <p className="text-gray-600">{shake.description}</p>
-                    
-                    <div className="flex items-center gap-2 mt-2">
-                      <Badge className="bg-pink-100 text-pink-800">{shake.source}</Badge>
-                      <Badge variant="outline">{shake.flavor}</Badge>
-                      {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+
+                  {/* Rating + Difficulty row */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-1">
+                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                      <span className="font-medium">{shake.rating}</span>
+                      <span className="text-gray-500 text-sm">({shake.reviews})</span>
                     </div>
-                  </CardHeader>
-                  
-                  <CardContent>
-                    {/* Quick stats */}
-                    <div className="grid grid-cols-4 gap-2 text-center mb-4">
-                      <div>
-                        <div className="font-bold text-pink-600">{shake.nutrition.collagen}g</div>
-                        <div className="text-xs text-gray-500">Collagen</div>
-                      </div>
-                      <div>
-                        <div className="font-bold text-blue-600">{shake.nutrition.calories}</div>
-                        <div className="text-xs text-gray-500">Calories</div>
-                      </div>
-                      <div>
-                        <div className="font-bold text-purple-600">{shake.bioavailability}%</div>
-                        <div className="text-xs text-gray-500">Bio</div>
-                      </div>
-                      <div>
-                        <div className="font-bold text-amber-600">${shake.price}</div>
-                        <div className="text-xs text-gray-500">Price</div>
-                      </div>
+                    <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
+                  </div>
+
+                  {/* RecipeKit component */}
+                  {shake.recipe?.measurements && (
+                    <div className="mb-4">
+                      <RecipeKit
+                        ref={ref => {
+                          kitRefs.current[shake.id] = ref;
+                        }}
+                        id={shake.id}
+                        name={shake.name}
+                        measurements={shake.recipe.measurements}
+                        directions={shake.recipe.directions}
+                        nutrition={shake.nutrition}
+                        prepTime={shake.prepTime}
+                        onComplete={() => handleCompleteRecipe(shake)}
+                        accent="pink"
+                      />
                     </div>
+                  )}
 
-                    {/* Rating + Difficulty row */}
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="font-medium">{shake.rating}</span>
-                        <span className="text-gray-500 text-sm">({shake.reviews})</span>
-                      </div>
-                      <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
-                    </div>
+                  {/* Tags (certifications) */}
+                  <div className="flex flex-wrap gap-1 mb-4">
+                    {shake.certifications.map((cert: string) => (
+                      <Badge key={cert} variant="secondary" className="text-xs">{cert}</Badge>
+                    ))}
+                  </div>
 
-                    {/* Inline serving incrementer + compact measured preview */}
-                    {shake.recipe?.measurements && (
-                      <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="text-sm font-semibold text-gray-900">
-                            Recipe (serves {servings})
-                          </div>
-                          <div className="flex items-center rounded-md border border-gray-300 overflow-hidden">
-                            <button
-                              aria-label="decrease servings"
-                              onClick={() => incrementServings(shake, -1)}
-                              className="px-2 py-1 text-sm hover:bg-gray-100"
-                            >−</button>
-                            <div className="px-3 py-1 text-sm border-l border-r border-gray-300">{servings}</div>
-                            <button
-                              aria-label="increase servings"
-                              onClick={() => incrementServings(shake, +1)}
-                              className="px-2 py-1 text-sm hover:bg-gray-100"
-                            >+</button>
-                          </div>
-                        </div>
-
-                        <ul className="text-sm leading-6 text-gray-800 space-y-1">
-                          {shake.recipe.measurements.slice(0, 6).map((ing: Measured, i: number) => (
-                            <li key={i} className="flex gap-2">
-                              <span className="text-pink-700 font-medium min-w-[90px]">
-                                {scaleAmount(ing.amount, factor)} {ing.unit}
-                              </span>
-                              <span className="flex-1">
-                                {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                        {(shake.recipe.measurements.length > 6) && (
-                          <div className="text-xs text-gray-600 mt-1">
-                            …plus {shake.recipe.measurements.length - 6} more
-                            {" • "}
-                            <button
-                              type="button"
-                              onClick={() => kitRefs.current[shake.id]?.open?.()}
-                              className="underline underline-offset-2"
-                            >
-                              Show more
-                            </button>
-                          </div>
-                        )}
-                        
-                        {/* RecipeKit component handles copy/share internally */}
-                        <RecipeKit
-                          ref={ref => {
-                            kitRefs.current[shake.id] = ref;
-                          }}
-                          id={shake.id}
-                          name={shake.name}
-                          measurements={shake.recipe.measurements}
-                          directions={shake.recipe.directions}
-                          nutrition={shake.nutrition}
-                          prepTime={shake.prepTime}
-                          onComplete={() => handleCompleteRecipe(shake)}
-                          accent="pink"
-                        />
-                      </div>
-                    )}
-
-                    {/* Tags (certifications) */}
-                    <div className="flex flex-wrap gap-1 mb-4">
-                      {shake.certifications.map((cert: string) => (
-                        <Badge key={cert} variant="secondary" className="text-xs">{cert}</Badge>
-                      ))}
-                    </div>
-
-                    {/* Full-width CTA — Make Shake */}
-                    <Button
-                      className="w-full bg-pink-600 hover:bg-pink-700 text-white"
-                      onClick={() => kitRefs.current[shake.id]?.open?.()}
-                    >
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      Make Shake (+35 XP)
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                  {/* Full-width CTA — Make Shake */}
+                  <Button
+                    className="w-full bg-pink-600 hover:bg-pink-700 text-white"
+                    onClick={() => kitRefs.current[shake.id]?.open?.()}
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Make Shake (+35 XP)
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         )}
 
