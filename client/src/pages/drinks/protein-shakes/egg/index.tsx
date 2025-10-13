@@ -1,41 +1,32 @@
 // pages/drinks/protein-shakes/egg.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
   Target, Heart, Star, Zap, Flame, Leaf, Sparkles, Moon, Wine,
-  Search, ArrowLeft, ArrowRight, Camera, Plus, X, Check, Clipboard, Share2, RotateCcw
+  Search, ArrowLeft, ArrowRight, Camera, X, Plus
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
-import RecipeKit from '@/components/recipes/RecipeKit';
+import RecipeKit, { Measured } from '@/components/recipes/RecipeKit';
+import type { RecipeKitHandle } from '@/components/recipes/RecipeKit';
 
 // ---------- Helpers ----------
-type Measured = { amount: number | string; unit: string; item: string; note?: string };
+type Nutrition = { calories?: number; protein?: number; carbs?: number; fat?: number; fiber?: number };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
 
-// basic US -> metric conversion (mirror of RecipeKit)
-const toMetric = (unit: string, amount: number) => {
-  const mlPerCup = 240, mlPerTbsp = 15, mlPerTsp = 5;
-  const gPerScoop30 = 30;
-  switch (unit) {
-    case 'cup': return { amount: Math.round(amount * mlPerCup), unit: 'ml' };
-    case 'tbsp': return { amount: Math.round(amount * mlPerTbsp), unit: 'ml' };
-    case 'tsp': return { amount: Math.round(amount * mlPerTsp), unit: 'ml' };
-    case 'scoop (30g)': return { amount: Math.round(amount * gPerScoop30), unit: 'g' };
-    case 'scoop (32g)': return { amount: Math.round(amount * 32), unit: 'g' };
-    case 'tbsp (~25g)': return { amount: Math.round(amount * 25), unit: 'g' };
-    default: return { amount, unit };
-  }
+const scaleAmount = (amt: number | string, factor: number): number | string => {
+  if (typeof amt === 'number') return Math.round((amt * factor + Number.EPSILON) * 100) / 100;
+  return amt;
 };
 
-// ---------- Data ----------
+// ---------- Cross-nav ----------
 const otherDrinkHubs = [
-  { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
+  { id: 'smoothies', name: 'Smoothies', icon: Leaf, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
   { id: 'detoxes', name: 'Detox Drinks', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing & wellness' },
   { id: 'potables', name: 'Potent Potables', icon: Wine, route: '/drinks/potent-potables', description: 'Cocktails (21+)' },
   { id: 'all-drinks', name: 'All Drinks', icon: Sparkles, route: '/drinks', description: 'Browse everything' }
@@ -49,7 +40,7 @@ const proteinSubcategories = [
   { id: 'beef', name: 'Beef Protein', icon: Flame, path: '/drinks/protein-shakes/beef', description: 'Natural creatine' }
 ];
 
-// Egg protein recipes with measured recipes (serves 1 baseline)
+// ---------- Data (Egg) ----------
 const eggProteinRecipes = [
   {
     id: 'egg-1',
@@ -230,6 +221,7 @@ const eggProteinRecipes = [
   }
 ];
 
+// ---------- Component ----------
 export default function EggProteinPage() {
   const {
     userProgress,
@@ -247,10 +239,11 @@ export default function EggProteinPage() {
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [showKit, setShowKit] = useState(false);
 
-  // per-card Metric toggle
-  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
-  // per-card servings incrementer (inside card)
+  // Serving incrementer (inline, per card)
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
+
+  // keep in case you open by ref later
+  const kitRefs = useRef<Record<string, RecipeKitHandle | null>>({});
 
   const allTags = ['All', ...new Set(eggProteinRecipes.flatMap(r => r.tags))];
 
@@ -262,7 +255,9 @@ export default function EggProteinPage() {
         !q ||
         recipe.name.toLowerCase().includes(q) ||
         recipe.ingredients.some((ing: string) => ing.toLowerCase().includes(q)) ||
-        (recipe.flavor || '').toLowerCase().includes(q);
+        (recipe.flavor || '').toLowerCase().includes(q) ||
+        recipe.tags.some(t => t.toLowerCase().includes(q)) ||
+        (recipe.benefits || []).some((b: string) => b.toLowerCase().includes(q));
       const matchesTag = filterTag === 'All' || recipe.tags.includes(filterTag);
       return matchesSearch && matchesTag;
     });
@@ -279,6 +274,15 @@ export default function EggProteinPage() {
 
     return filtered;
   }, [searchQuery, filterTag, sortBy]);
+
+  const getServings = (recipe: any) => servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
+  const incrementServings = (recipe: any, dir: 1 | -1) => {
+    setServingsById(prev => {
+      const current = prev[recipe.id] ?? (recipe.recipe?.servings || 1);
+      const next = Math.min(12, Math.max(1, current + dir));
+      return { ...prev, [recipe.id]: next };
+    });
+  };
 
   const openRecipeModal = (recipe: any) => {
     setSelectedRecipe(recipe);
@@ -298,22 +302,20 @@ export default function EggProteinPage() {
           protein: selectedRecipe.protein,
           carbs: selectedRecipe.carbs,
           fat: 5
-        },
+        } as Nutrition,
         difficulty: selectedRecipe.difficulty as 'Easy' | 'Medium' | 'Hard',
         prepTime: selectedRecipe.prepTime,
         rating: selectedRecipe.rating,
         tags: selectedRecipe.tags
       };
-
       addToRecentlyViewed(drinkData);
       incrementDrinksMade();
-      addPoints(100);
+      addPoints(100); // Egg page keeps your +100 XP
     }
     setShowKit(false);
     setSelectedRecipe(null);
   };
 
-  // Header share
   const handleSharePage = async () => {
     const shareData = {
       title: 'Egg Protein Shakes',
@@ -337,53 +339,8 @@ export default function EggProteinPage() {
     }
   };
 
-  // Inline copy/share (per card)
-  const copyRecipe = async (recipe: any) => {
-    const useMetric = !!metricFlags[recipe.id];
-    const s = servingsById[recipe.id] || recipe.recipe?.servings || 1;
-    const lines = (recipe.recipe?.measurements || []).map((ing: Measured) => {
-      const baseAmt = typeof ing.amount === 'number' ? ing.amount * s : ing.amount;
-      if (useMetric && typeof ing.amount === 'number') {
-        const mtr = toMetric(ing.unit, baseAmt as number);
-        return `- ${mtr.amount} ${mtr.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
-      }
-      return `- ${baseAmt} ${ing.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
-    });
-    const txt = `${recipe.name} (serves ${s})\n${lines.join('\n')}`;
-    try {
-      await navigator.clipboard.writeText(txt);
-      alert('Recipe copied!');
-    } catch {
-      alert('Unable to copy on this device.');
-    }
-  };
-
-  const shareRecipe = async (recipe: any) => {
-    const url = typeof window !== 'undefined' ? window.location.href : '';
-    const s = servingsById[recipe.id] || recipe.recipe?.servings || 1;
-    const preview = recipe?.recipe?.measurements?.slice(0, 4)
-      .map((r: Measured) => `${r.amount} ${r.unit} ${r.item}`).join(' · ');
-    const text = `${recipe.name} • ${recipe.protein}g protein • ${recipe.calories} cal • serves ${s}\n${preview || recipe.ingredients.join(', ')}`;
-    const shareData = { title: recipe.name, text, url };
-    try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else {
-        await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
-        alert('Recipe copied to clipboard!');
-      }
-    } catch {
-      try {
-        await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
-        alert('Recipe copied to clipboard!');
-      } catch {
-        alert('Unable to share on this device.');
-      }
-    }
-  };
-
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-amber-100">
       {/* Universal Search Modal */}
       {showUniversalSearch && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
@@ -401,7 +358,7 @@ export default function EggProteinPage() {
         </div>
       )}
 
-      {/* RecipeKit modal (shared component) */}
+      {/* Controlled RecipeKit Modal (popup) */}
       {selectedRecipe && (
         <RecipeKit
           open={showKit}
@@ -416,14 +373,14 @@ export default function EggProteinPage() {
             directions: selectedRecipe.recipe?.directions || [],
             measurements: selectedRecipe.recipe?.measurements || [],
             baseNutrition: { calories: selectedRecipe.calories, protein: selectedRecipe.protein },
-            defaultServings: servingsById[selectedRecipe.id] || selectedRecipe.recipe?.servings || 1
+            defaultServings: selectedRecipe.recipe?.servings || 1
           }}
         />
       )}
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-40 -mx-4 -mt-6 px-4 md:-mx-6 md:px-6">
-        <div className="max-w-7xl mx-auto">
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
               <Link href="/drinks/protein-shakes">
@@ -453,272 +410,235 @@ export default function EggProteinPage() {
               </div>
               <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
-                Share Recipes
+                Share Page
               </Button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Cross-Hub Navigation */}
-      <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
-        <CardContent className="p-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            {otherDrinkHubs.map((hub) => {
-              const Icon = hub.icon as any;
-              return (
-                <Link key={hub.id} href={hub.route}>
-                  <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
-                    <Icon className="h-4 w-4 mr-2 text-blue-600" />
-                    <div className="text-left flex-1">
-                      <div className="font-medium text-sm">{hub.name}</div>
-                      <div className="text-xs text-gray-500">{hub.description}</div>
-                    </div>
-                    <ArrowRight className="h-3 w-3 ml-auto" />
-                  </Button>
-                </Link>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Sister Protein Pages Navigation */}
-      <Card className="bg-gradient-to-r from-amber-50 to-amber-100 border-amber-200">
-        <CardContent className="p-4">
-          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <Sparkles className="w-4 h-4" />
-            Other Protein Types
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            {proteinSubcategories.map((subcategory) => {
-              const Icon = subcategory.icon as any;
-              return (
-                <Link key={subcategory.id} href={subcategory.path}>
-                  <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
-                    <Icon className="h-4 w-4 mr-2 text-amber-600" />
-                    <div className="text-left flex-1">
-                      <div className="font-medium text-sm">{subcategory.name}</div>
-                      <div className="text-xs text-gray-500">{subcategory.description}</div>
-                    </div>
-                    <ArrowRight className="h-3 w-3 ml-auto" />
-                  </Button>
-                </Link>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Search & Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <Input
-                placeholder="Search egg protein recipes..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex gap-2">
-              <select
-                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                value={filterTag}
-                onChange={(e) => setFilterTag(e.target.value)}
-              >
-                <option value="All">All Tags</option>
-                {allTags.filter(t => t !== 'All').map(tag => (
-                  <option key={tag} value={tag}>{tag}</option>
-                ))}
-              </select>
-              <select
-                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
-              >
-                <option value="rating">Sort by Rating</option>
-                <option value="protein">Sort by Protein</option>
-                <option value="calories">Sort by Calories</option>
-                <option value="prepTime">Sort by Prep Time</option>
-              </select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Recipe Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredRecipes.map((recipe) => {
-          const useMetric = !!metricFlags[recipe.id];
-          const servings = servingsById[recipe.id] || recipe.recipe?.servings || 1;
-
-          return (
-            <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between mb-1">
-                  <h3 className="font-bold text-lg">{recipe.name}</h3>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      const drinkData = {
-                        id: recipe.id,
-                        name: recipe.name,
-                        category: 'protein-shakes' as const,
-                        description: `${recipe.flavor || ''} egg protein shake`,
-                        ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
-                        nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
-                        difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
-                        prepTime: recipe.prepTime,
-                        rating: recipe.rating
-                      };
-                      addToFavorites(drinkData);
-                    }}
-                    className="text-gray-400 hover:text-red-500"
-                  >
-                    <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                  </Button>
-                </div>
-
-                {/* ✅ RESTORED: Benefits directly under title */}
-                <div className="mb-2 text-xs text-muted-foreground">
-                  Benefits: {recipe.benefits.join(' · ')}
-                </div>
-
-                {/* Rating + Difficulty row (matching Whey) */}
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="flex items-center gap-1">
-                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    <span className="text-sm font-medium">{recipe.rating}</span>
-                  </div>
-                  <span className="text-sm text-muted-foreground">({recipe.reviews} reviews)</span>
-                  <Badge variant="outline" className="ml-auto">{recipe.difficulty}</Badge>
-                </div>
-
-                {/* Macros */}
-                <div className="grid grid-cols-3 gap-2 text-center mb-4">
-                  <div>
-                    <div className="font-bold text-blue-600">{recipe.protein}g</div>
-                    <div className="text-xs text-muted-foreground">Protein</div>
-                  </div>
-                  <div>
-                    <div className="font-bold text-green-600">{recipe.carbs}g</div>
-                    <div className="text-xs text-muted-foreground">Carbs</div>
-                  </div>
-                  <div>
-                    <div className="font-bold text-amber-600">{recipe.calories}</div>
-                    <div className="text-xs text-muted-foreground">Calories</div>
-                  </div>
-                </div>
-
-                {/* Compact measured recipe preview + actions */}
-                {recipe.recipe?.measurements && (
-                  <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                    {/* servings incrementer inside the card */}
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-sm font-semibold text-gray-900">
-                        Recipe (serves {servings})
+      {/* Body */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Cross-Hub Navigation */}
+        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              {otherDrinkHubs.map((hub) => {
+                const Icon = hub.icon as any;
+                return (
+                  <Link key={hub.id} href={hub.route}>
+                    <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
+                      <Icon className="h-4 w-4 mr-2 text-blue-600" />
+                      <div className="text-left flex-1">
+                        <div className="font-medium text-sm">{hub.name}</div>
+                        <div className="text-xs text-gray-500">{hub.description}</div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="px-2 py-1 border rounded text-sm"
-                          onClick={() =>
-                            setServingsById(prev => ({ ...prev, [recipe.id]: Math.max(1, (servings - 1)) }))
-                          }
-                          aria-label="decrease servings"
-                        >
-                          −
-                        </button>
-                        <div className="min-w-[2ch] text-center text-sm">{servings}</div>
-                        <button
-                          className="px-2 py-1 border rounded text-sm"
-                          onClick={() =>
-                            setServingsById(prev => ({ ...prev, [recipe.id]: (servings + 1) }))
-                          }
-                          aria-label="increase servings"
-                        >
-                          +
-                        </button>
-                        <button
-                          className="px-2 py-1 border rounded text-sm flex items-center gap-1"
-                          onClick={() => setServingsById(prev => ({ ...prev, [recipe.id]: recipe.recipe?.servings || 1 }))}
-                          title="Reset to default"
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" /> Reset
-                        </button>
-                      </div>
-                    </div>
+                      <ArrowRight className="h-3 w-3 ml-auto" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
-                    <ul className="text-sm leading-6 text-gray-800 space-y-1">
-                      {recipe.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
-                        const isNum = typeof ing.amount === 'number';
-                        const scaledNum = isNum ? (ing.amount as number) * servings : ing.amount;
-                        const display = (!!metricFlags[recipe.id] && isNum)
-                          ? toMetric(ing.unit, scaledNum as number)
-                          : { amount: scaledNum as number | string, unit: ing.unit };
-                        return (
-                          <li key={i} className="flex items-start gap-2">
-                            <Check className="h-4 w-4 text-amber-600 mt-0.5" />
-                            <span>
-                              <span className="text-amber-700 font-semibold">
-                                {display.amount} {display.unit}
-                              </span>{" "}
-                              {ing.item}
-                              {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+        {/* Sister Protein Pages Navigation */}
+        <Card className="bg-gradient-to-r from-amber-50 to-amber-100 border-amber-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+              <Sparkles className="w-4 h-4" />
+              Other Protein Types
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              {proteinSubcategories.map((subcategory) => {
+                const Icon = subcategory.icon as any;
+                return (
+                  <Link key={subcategory.id} href={subcategory.path}>
+                    <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
+                      <Icon className="h-4 w-4 mr-2 text-amber-600" />
+                      <div className="text-left flex-1">
+                        <div className="font-medium text-sm">{subcategory.name}</div>
+                        <div className="text-xs text-gray-500">{subcategory.description}</div>
+                      </div>
+                      <ArrowRight className="h-3 w-3 ml-auto" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Filters */}
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search egg protein recipes..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <div className="flex gap-2">
+                <select
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={filterTag}
+                  onChange={(e) => setFilterTag(e.target.value)}
+                >
+                  <option value="All">All Tags</option>
+                  {allTags.filter(t => t !== 'All').map(tag => (
+                    <option key={tag} value={tag}>{tag}</option>
+                  ))}
+                </select>
+                <select
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                >
+                  <option value="rating">Sort by Rating</option>
+                  <option value="protein">Sort by Protein</option>
+                  <option value="calories">Sort by Calories</option>
+                  <option value="prepTime">Sort by Prep Time</option>
+                </select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Recipe Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredRecipes.map((recipe) => {
+            const servings = getServings(recipe);
+            const factor = (servings || 1) / (recipe.recipe?.servings || 1);
+
+            return (
+              <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="text-lg mb-1">{recipe.name}</CardTitle>
+
+                      {/* RESTORED: Benefits directly below the title */}
+                      {Array.isArray(recipe.benefits) && recipe.benefits.length > 0 && (
+                        <div className="mt-0.5 mb-2 text-xs text-gray-600">
+                          Benefits: {recipe.benefits.join(' · ')}
+                        </div>
+                      )}
+
+                      <p className="text-sm text-gray-600">{recipe.flavor}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const drinkData = {
+                          id: recipe.id,
+                          name: recipe.name,
+                          category: 'protein-shakes' as const,
+                          description: `${recipe.flavor || ''} egg protein shake`,
+                          ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
+                          nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
+                          difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
+                          prepTime: recipe.prepTime,
+                          rating: recipe.rating
+                        };
+                        addToFavorites(drinkData);
+                      }}
+                      className="text-gray-400 hover:text-red-500"
+                    >
+                      <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                    </Button>
+                  </div>
+
+                  {/* Keep a small tag line right under header, not benefits */}
+                  <div className="flex items-center gap-2 mt-2">
+                    {recipe.tags.slice(0,3).map((t) => (
+                      <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                    ))}
+                  </div>
+                </CardHeader>
+
+                <CardContent>
+                  {/* Quick stats */}
+                  <div className="grid grid-cols-3 gap-2 text-center mb-4">
+                    <div>
+                      <div className="font-bold text-blue-600">{recipe.protein}g</div>
+                      <div className="text-xs text-gray-500">Protein</div>
+                    </div>
+                    <div>
+                      <div className="font-bold text-green-600">{recipe.carbs}g</div>
+                      <div className="text-xs text-gray-500">Carbs</div>
+                    </div>
+                    <div>
+                      <div className="font-bold text-amber-600">{recipe.calories}</div>
+                      <div className="text-xs text-gray-500">Calories</div>
+                    </div>
+                  </div>
+
+                  {/* Rating + Difficulty row (same placement as Whey) */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-1">
+                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                      <span className="font-medium">{recipe.rating}</span>
+                      <span className="text-gray-500 text-sm">({recipe.reviews})</span>
+                    </div>
+                    <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
+                  </div>
+
+                  {/* Inline serving incrementer + compact measured preview */}
+                  {recipe.recipe?.measurements && (
+                    <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-semibold text-gray-900">
+                          Recipe (serves {servings})
+                        </div>
+                        <div className="flex items-center rounded-md border border-gray-300 overflow-hidden">
+                          <button
+                            aria-label="decrease servings"
+                            onClick={() => incrementServings(recipe, -1)}
+                            className="px-2 py-1 text-sm hover:bg-gray-100"
+                          >−</button>
+                          <div className="px-3 py-1 text-sm border-l border-r border-gray-300">{servings}</div>
+                          <button
+                            aria-label="increase servings"
+                            onClick={() => incrementServings(recipe, +1)}
+                            className="px-2 py-1 text-sm hover:bg-gray-100"
+                          >+</button>
+                        </div>
+                      </div>
+
+                      <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                        {recipe.recipe.measurements.slice(0, 6).map((ing: Measured, i: number) => (
+                          <li key={i} className="flex gap-2">
+                            <span className="text-amber-700 font-medium min-w-[90px]">
+                              {scaleAmount(ing.amount, factor)} {ing.unit}
+                            </span>
+                            <span className="flex-1">
+                              {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
                             </span>
                           </li>
-                        );
-                      })}
-                      {recipe.recipe.measurements.length > 4 && (
-                        <li className="text-xs text-gray-600">
-                          …plus {recipe.recipe.measurements.length - 4} more •{" "}
-                          <button
-                            type="button"
-                            onClick={() => openRecipeModal(recipe)}
-                            className="underline underline-offset-2"
-                          >
-                            Show more
-                          </button>
-                        </li>
+                        ))}
+                      </ul>
+                      {(recipe.recipe.measurements.length > 6) && (
+                        <div className="text-xs text-gray-600 mt-1">
+                          …more shown in full recipe
+                        </div>
                       )}
-                    </ul>
-
-                    {/* Inline actions: Copy • Share • Metric */}
-                    <div className="flex gap-2 mt-3">
-                      <Button variant="outline" size="sm" onClick={() => copyRecipe(recipe)}>
-                        <Clipboard className="w-4 h-4 mr-1" /> Copy
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => shareRecipe(recipe)}>
-                        <Share2 className="w-4 h-4 mr-1" /> Share
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setMetricFlags((prev) => ({ ...prev, [recipe.id]: !prev[recipe.id] }))
-                        }
-                      >
-                        {useMetric ? 'US' : 'Metric'}
-                      </Button>
                     </div>
+                  )}
+
+                  {/* Tags (full list) */}
+                  <div className="flex flex-wrap gap-1 mb-4">
+                    {recipe.tags.map((tag: string) => (
+                      <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
+                    ))}
                   </div>
-                )}
 
-                {/* Tags row */}
-                <div className="flex flex-wrap gap-1 mb-4">
-                  {recipe.tags.map((tag: string) => (
-                    <Badge key={tag} variant="secondary" className="text-xs">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-
-                {/* CTA */}
-                <div className="flex gap-2">
+                  {/* Full-width CTA — Make Shake */}
                   <Button
                     className="w-full bg-amber-600 hover:bg-amber-700 text-white"
                     onClick={() => openRecipeModal(recipe)}
@@ -726,38 +646,38 @@ export default function EggProteinPage() {
                     <Plus className="h-4 w-4 mr-2" />
                     Make Shake (+100 XP)
                   </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
 
-      {/* Your Progress */}
-      <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-bold mb-2">Your Progress</h3>
-              <div className="flex items-center gap-4">
-                <Badge variant="outline" className="text-purple-600">
-                  Level {userProgress.level}
-                </Badge>
-                <Badge variant="outline" className="text-blue-600">
-                  {userProgress.totalPoints} XP
-                </Badge>
-                <Badge variant="outline" className="text-green-600">
-                  {userProgress.totalDrinksMade} Drinks Made
-                </Badge>
+        {/* Your Progress */}
+        <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mt-8">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold mb-2">Your Progress</h3>
+                <div className="flex items-center gap-4">
+                  <Badge variant="outline" className="text-purple-600">
+                    Level {userProgress.level}
+                  </Badge>
+                  <Badge variant="outline" className="text-blue-600">
+                    {userProgress.totalPoints} XP
+                  </Badge>
+                  <Badge variant="outline" className="text-green-600">
+                    {userProgress.totalDrinksMade} Drinks Made
+                  </Badge>
+                </div>
+              </div>
+              <div className="text-center">
+                <Progress value={userProgress.dailyGoalProgress} className="w-32 mb-2" />
+                <div className="text-xs text-gray-500">Daily Goal Progress</div>
               </div>
             </div>
-            <div className="text-center">
-              <Progress value={userProgress.dailyGoalProgress} className="w-32 mb-2" />
-              <div className="text-xs text-gray-500">Daily Goal Progress</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
