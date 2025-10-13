@@ -1,4 +1,3 @@
-// server/routes/index.ts
 import { Router } from "express";
 
 // Core feature routers
@@ -24,26 +23,37 @@ const r = Router();
 /**
  * Mounted under `/api` by app.ts:
  *   app.use("/api", routes)
- *
- * Recipes routes are UNPREFXED inside the file ("/search", "/random"),
- * so we mount them here at "/recipes" to produce:
- *   /api/recipes/search
- *   /api/recipes/random
  */
+
+// Recipes routes (prefixed)
 r.use("/recipes", recipesRouter);
 
-// Other routers already include their own path segments internally
-r.use(bitesRouter);
-r.use(usersRouter);
-r.use(postsRouter);
-r.use(pantryRouter);
-r.use(marketplaceRouter);
-r.use(substitutionsRouter);
-r.use(drinksRouter);
+// Bites (social stories) - prefixed
+r.use("/bites", bitesRouter);
+
+// Users - prefixed
+r.use("/users", usersRouter);
+
+// Posts - prefixed
+r.use("/posts", postsRouter);
+
+// Pantry - prefixed
+r.use("/pantry", pantryRouter);
+
+// Marketplace - prefixed
+r.use("/marketplace", marketplaceRouter);
+
+// Substitutions - prefixed
+r.use("/substitutions", substitutionsRouter);
+
+// Drinks - prefixed
+r.use("/drinks", drinksRouter);
 
 // Integrations with explicit prefixes
 r.use("/lookup", lookupRouter);
 r.use("/export", exportRouter);
+
+// IMPORTANT: Google router for BiteMap
 r.use("/google", googleRouter);
 
 // Competitions
@@ -66,7 +76,7 @@ if (process.env.NODE_ENV !== "production") {
         "/drinks/*",
         "/lookup/*",
         "/export/*",
-        "/google/*",
+        "/google/*",        // <-- BiteMap uses this
         "/competitions/*",
       ],
     });
