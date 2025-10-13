@@ -1,21 +1,40 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
-import { 
-  Dumbbell, Clock, Users, Trophy, Heart, Star, Calendar, 
-  CheckCircle, Target, Flame, Droplets, Leaf, Apple,
-  Timer, Award, TrendingUp, ChefHat, Zap, Gift,
+import {
+  Dumbbell, Clock, Heart, Star, Target, Flame, Droplets, Leaf, Apple,
+  Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
-  Beaker, Activity, BarChart3, Sparkles, Moon, Wine, ArrowRight, X, Check
+  Beaker, Activity, BarChart3, Sparkles, Moon, Wine, ArrowRight, X, Check, Clipboard
 } from 'lucide-react';
 import { useDrinks } from "@/contexts/DrinksContext";
 import UniversalSearch from '@/components/UniversalSearch';
+import RecipeKit from '@/components/recipes/RecipeKit';
 
-// Navigation data - FIXED PATHS
+// ---------- Helpers (mirror Egg page) ----------
+type Measured = { amount: number | string; unit: string; item: string; note?: string };
+const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+// basic US -> metric conversion for inline preview (RecipeKit has its own too)
+const toMetric = (unit: string, amount: number) => {
+  const mlPerCup = 240, mlPerTbsp = 15, mlPerTsp = 5;
+  const gPerScoop30 = 30;
+  switch (unit) {
+    case 'cup': return { amount: Math.round(amount * mlPerCup), unit: 'ml' };
+    case 'tbsp': return { amount: Math.round(amount * mlPerTbsp), unit: 'ml' };
+    case 'tsp': return { amount: Math.round(amount * mlPerTsp), unit: 'ml' };
+    case 'scoop (30g)': return { amount: Math.round(amount * gPerScoop30), unit: 'g' };
+    case 'scoop (32g)': return { amount: Math.round(amount * 32), unit: 'g' };
+    case 'tbsp (~25g)': return { amount: Math.round(amount * 25), unit: 'g' };
+    default: return { amount, unit };
+  }
+};
+
+// ---------- Navigation data (unchanged) ----------
 const otherDrinkHubs = [
   { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
   { id: 'detoxes', name: 'Detox Drinks', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing & wellness' },
@@ -31,7 +50,7 @@ const proteinSubcategories = [
   { id: 'beef', name: 'Beef Protein', icon: Flame, route: '/drinks/protein-shakes/beef', description: 'Natural creatine' }
 ];
 
-// Whey-specific data
+// ---------- Whey data WITH measured recipes (serves 1) ----------
 const wheyProteinShakes = [
   {
     id: 'whey-1',
@@ -51,9 +70,22 @@ const wheyProteinShakes = [
     benefits: ['Fast protein absorption', 'Muscle recovery', 'Low carb'],
     bestTime: 'Post-workout (0-30 minutes)',
     fitnessGoal: 'Muscle Building',
-    wheyType: 'Isolate',
+    wheyType: 'Whey Isolate',
     absorptionTime: '30-60 minutes',
-    leucineContent: '2.5g'
+    leucineContent: '2.5g',
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'whey isolate'),
+        m(1, 'cup', 'water or unsweetened almond milk'),
+        m(0.25, 'tsp', 'vanilla extract'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Add liquid first, then powder and vanilla, then ice.',
+        'Blend 30–45 seconds until smooth.'
+      ]
+    }
   },
   {
     id: 'whey-2',
@@ -73,9 +105,24 @@ const wheyProteinShakes = [
     benefits: ['High protein', 'Calorie dense', 'Great taste', 'Sustained energy'],
     bestTime: 'Post-workout or meal replacement',
     fitnessGoal: 'Mass Gaining',
-    wheyType: 'Concentrate',
+    wheyType: 'Whey Concentrate',
     absorptionTime: '60-90 minutes',
-    leucineContent: '3.2g'
+    leucineContent: '3.2g',
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'whey concentrate, chocolate preferred'),
+        m(2, 'tbsp', 'natural peanut butter'),
+        m(1, 'small', 'banana, ripe'),
+        m(1, 'cup', 'whole milk'),
+        m(1, 'tsp', 'honey (optional)'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend milk + powder 10 seconds.',
+        'Add banana, peanut butter, honey, and ice; blend creamy.'
+      ]
+    }
   },
   {
     id: 'whey-3',
@@ -94,9 +141,22 @@ const wheyProteinShakes = [
     benefits: ['Low calorie', 'Fat burning support', 'Refreshing', 'Muscle preservation'],
     bestTime: 'Morning or pre-workout',
     fitnessGoal: 'Fat Loss',
-    wheyType: 'Isolate',
+    wheyType: 'Whey Isolate',
     absorptionTime: '30-60 minutes',
-    leucineContent: '2.4g'
+    leucineContent: '2.4g',
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'whey isolate, vanilla or strawberry'),
+        m(0.75, 'cup', 'frozen strawberries'),
+        m(1, 'cup', 'cold water'),
+        m(1, 'tsp', 'stevia or to taste'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend all ingredients 30–45 seconds; adjust sweetness to taste.'
+      ]
+    }
   },
   {
     id: 'whey-4',
@@ -115,9 +175,23 @@ const wheyProteinShakes = [
     benefits: ['Energy boost', 'Sustained fuel', 'Performance enhancement', 'Muscle protection'],
     bestTime: 'Pre-workout (30-60 minutes)',
     fitnessGoal: 'Performance',
-    wheyType: 'Concentrate',
+    wheyType: 'Whey Concentrate',
     absorptionTime: '60-90 minutes',
-    leucineContent: '2.8g'
+    leucineContent: '2.8g',
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'whey concentrate, vanilla'),
+        m(0.75, 'cup', 'cold brew coffee'),
+        m(0.5, 'small', 'banana'),
+        m(2, 'tbsp', 'rolled oats'),
+        m(0.25, 'tsp', 'ground cinnamon'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend coffee + powder first; add banana, oats, cinnamon, ice; blend smooth.'
+      ]
+    }
   },
   {
     id: 'whey-5',
@@ -136,9 +210,21 @@ const wheyProteinShakes = [
     benefits: ['Fastest absorption', 'Superior recovery', 'Reduced muscle soreness', 'Premium quality'],
     bestTime: 'Immediately post-workout',
     fitnessGoal: 'Elite Performance',
-    wheyType: 'Hydrolyzed',
+    wheyType: 'Hydrolyzed Whey',
     absorptionTime: '15-30 minutes',
-    leucineContent: '3.8g'
+    leucineContent: '3.8g',
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'hydrolyzed whey protein'),
+        m(1, 'cup', 'coconut water'),
+        m(1, 'pinch', 'sea salt'),
+        m(0.5, 'tsp', 'fresh lemon juice'),
+      ],
+      directions: [
+        'Shake in a bottle 10–15 seconds; no blender required.'
+      ]
+    }
   },
   {
     id: 'whey-6',
@@ -159,10 +245,26 @@ const wheyProteinShakes = [
     fitnessGoal: 'Recovery & Growth',
     wheyType: 'Whey-Casein Blend',
     absorptionTime: '2-8 hours',
-    leucineContent: '3.0g'
+    leucineContent: '3.0g',
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(2/3, 'scoop (30g)', 'whey protein (≈20g)'),
+        m(0.5, 'scoop (30g)', 'micellar casein (≈15g)'),
+        m(0.75, 'cup', 'unsweetened almond milk'),
+        m(0.25, 'cup', 'plain Greek yogurt'),
+        m(0.5, 'tsp', 'vanilla extract'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend liquids + proteins 15 seconds.',
+        'Add yogurt, vanilla, ice; blend silky.'
+      ]
+    }
   }
 ];
 
+// ---------- Filters ----------
 const fitnessGoals = [
   { id: 'muscle-building', name: 'Muscle Building', icon: Dumbbell, count: 15, color: 'text-blue-600' },
   { id: 'fat-loss', name: 'Fat Loss', icon: Flame, count: 8, color: 'text-red-600' },
@@ -173,28 +275,28 @@ const fitnessGoals = [
 ];
 
 const wheyTypes = [
-  { 
-    id: 'isolate', 
-    name: 'Whey Isolate', 
-    description: 'Fastest absorption, lowest carbs', 
+  {
+    id: 'isolate',
+    name: 'Whey Isolate',
+    description: 'Fastest absorption, lowest carbs',
     icon: Zap,
     absorptionTime: '30-60 min',
     proteinContent: '90-95%',
     bestFor: 'Post-workout, cutting'
   },
-  { 
-    id: 'concentrate', 
-    name: 'Whey Concentrate', 
-    description: 'Great taste, cost-effective', 
+  {
+    id: 'concentrate',
+    name: 'Whey Concentrate',
+    description: 'Great taste, cost-effective',
     icon: Award,
     absorptionTime: '60-90 min',
     proteinContent: '70-80%',
     bestFor: 'General use, mass gain'
   },
-  { 
-    id: 'hydrolyzed', 
-    name: 'Hydrolyzed Whey', 
-    description: 'Pre-digested, ultra-fast', 
+  {
+    id: 'hydrolyzed',
+    name: 'Hydrolyzed Whey',
+    description: 'Pre-digested, ultra-fast',
     icon: Sparkles,
     absorptionTime: '15-30 min',
     proteinContent: '85-95%',
@@ -202,26 +304,31 @@ const wheyTypes = [
   }
 ];
 
+// ---------- Component ----------
 export default function WheyProteinShakesPage() {
-  const { 
-    addToFavorites, 
-    isFavorite, 
-    addToRecentlyViewed, 
+  const {
+    addToFavorites,
+    isFavorite,
+    addToRecentlyViewed,
     userProgress,
     addPoints,
     incrementDrinksMade
   } = useDrinks();
 
-  const [activeTab, setActiveTab] = useState('browse');
+  const [activeTab, setActiveTab] = useState<'browse' | 'types' | 'goals' | 'featured'>('browse');
   const [selectedGoal, setSelectedGoal] = useState('');
   const [selectedWheyType, setSelectedWheyType] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('rating');
+  const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'calories' | 'time'>('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  const [selectedShake, setSelectedShake] = useState(null);
-  const [showModal, setShowModal] = useState(false);
 
-  // Share handlers
+  // RecipeKit controlled modal (mirror Egg)
+  const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
+  const [showKit, setShowKit] = useState(false);
+
+  // per-card Metric toggle for inline preview
+  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
+
   const handleSharePage = async () => {
     const shareData = {
       title: 'Whey Protein Shakes',
@@ -245,14 +352,12 @@ export default function WheyProteinShakesPage() {
     }
   };
 
-  const handleShareShake = async (shake) => {
+  const handleShareShake = async (shake: any) => {
     const url = typeof window !== 'undefined' ? window.location.href : '';
-    const text = `${shake.name} • ${shake.fitnessGoal} • ${shake.wheyType}\n${shake.description}`;
-    const shareData = {
-      title: shake.name,
-      text,
-      url
-    };
+    const preview = shake?.recipe?.measurements?.slice(0, 4)
+      .map((r: Measured) => `${r.amount} ${r.unit} ${r.item}`).join(' · ');
+    const text = `${shake.name} • ${shake.fitnessGoal} • ${shake.wheyType}\n${preview || (shake.ingredients?.slice(0,4)?.join(', ') ?? '')}`;
+    const shareData = { title: shake.name, text, url };
     try {
       if (navigator.share) {
         await navigator.share(shareData);
@@ -270,18 +375,48 @@ export default function WheyProteinShakesPage() {
     }
   };
 
-  // Filter and sort shakes
-  const getFilteredShakes = () => {
+  const openRecipeModal = (recipe: any) => {
+    setSelectedRecipe(recipe);
+    setShowKit(true);
+  };
+
+  const handleCompleteRecipe = () => {
+    if (selectedRecipe) {
+      const drinkData = {
+        id: selectedRecipe.id,
+        name: selectedRecipe.name,
+        category: 'protein-shakes' as const,
+        description: `${selectedRecipe.fitnessGoal || ''} • ${selectedRecipe.wheyType || ''}`,
+        ingredients: selectedRecipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || selectedRecipe.ingredients,
+        nutrition: selectedRecipe.nutrition,
+        difficulty: selectedRecipe.difficulty as 'Easy' | 'Medium' | 'Hard',
+        prepTime: selectedRecipe.prepTime,
+        rating: selectedRecipe.rating,
+        tags: selectedRecipe.tags
+      };
+      addToRecentlyViewed(drinkData);
+      incrementDrinksMade();
+      // Preserve your original XP choice for Whey (+25) unless you want to align to Egg (+100):
+      addPoints(25);
+    }
+    setShowKit(false);
+    setSelectedRecipe(null);
+  };
+
+  // Filter and sort
+  const filteredShakes = useMemo(() => {
     let filtered = wheyProteinShakes.filter(shake => {
-      const matchesSearch = shake.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           shake.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const q = searchQuery.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        shake.name.toLowerCase().includes(q) ||
+        shake.description.toLowerCase().includes(q) ||
+        (shake.ingredients || []).some((ing: string) => ing.toLowerCase().includes(q));
       const matchesGoal = !selectedGoal || shake.fitnessGoal.toLowerCase().includes(selectedGoal.toLowerCase());
       const matchesWheyType = !selectedWheyType || shake.wheyType.toLowerCase().includes(selectedWheyType.toLowerCase());
-      
       return matchesSearch && matchesGoal && matchesWheyType;
     });
 
-    // Sort results
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'rating': return (b.rating || 0) - (a.rating || 0);
@@ -293,26 +428,9 @@ export default function WheyProteinShakesPage() {
     });
 
     return filtered;
-  };
+  }, [searchQuery, selectedGoal, selectedWheyType, sortBy]);
 
-  const filteredShakes = getFilteredShakes();
   const featuredShakes = wheyProteinShakes.filter(shake => shake.featured);
-  const trendingShakes = wheyProteinShakes.filter(shake => shake.trending);
-
-  const handleMakeShake = (shake) => {
-    setSelectedShake(shake);
-    setShowModal(true);
-  };
-
-  const handleCompleteShake = () => {
-    if (selectedShake) {
-      addToRecentlyViewed(selectedShake);
-      incrementDrinksMade();
-      addPoints(25);
-    }
-    setShowModal(false);
-    setSelectedShake(null);
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
@@ -333,57 +451,24 @@ export default function WheyProteinShakesPage() {
         </div>
       )}
 
-      {/* Make Shake Modal */}
-      {showModal && selectedShake && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-start mb-4">
-              <h2 className="text-2xl font-bold">{selectedShake.name}</h2>
-              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold mb-2">Ingredients:</h3>
-                <ul className="space-y-2">
-                  {selectedShake.ingredients.map((ing, idx) => (
-                    <li key={idx} className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-green-600" />
-                      <span>{ing}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h3 className="font-semibold mb-2">Instructions:</h3>
-                <p className="text-sm text-gray-600">{selectedShake.instructions}</p>
-              </div>
-              <div className="grid grid-cols-3 gap-2 p-3 bg-blue-50 rounded-lg">
-                <div className="text-center">
-                  <div className="font-bold text-blue-600">{selectedShake.nutrition.protein}g</div>
-                  <div className="text-xs text-gray-600">Protein</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-green-600">{selectedShake.nutrition.calories}</div>
-                  <div className="text-xs text-gray-600">Calories</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-purple-600">{selectedShake.prepTime}min</div>
-                  <div className="text-xs text-gray-600">Prep</div>
-                </div>
-              </div>
-              <div className="flex gap-4 pt-4">
-                <Button 
-                  className="flex-1 bg-blue-600 hover:bg-blue-700"
-                  onClick={handleCompleteShake}
-                >
-                  Complete Shake (+25 XP)
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* RecipeKit modal (controlled) */}
+      {selectedRecipe && (
+        <RecipeKit
+          open={showKit}
+          onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
+          accent="blue"
+          pointsReward={25}
+          onComplete={handleCompleteRecipe}
+          item={{
+            id: selectedRecipe.id,
+            name: selectedRecipe.name,
+            prepTime: selectedRecipe.prepTime,
+            directions: selectedRecipe.recipe?.directions || [],
+            measurements: selectedRecipe.recipe?.measurements || [],
+            baseNutrition: selectedRecipe.nutrition || {},
+            defaultServings: selectedRecipe.recipe?.servings || 1
+          }}
+        />
       )}
 
       {/* Header */}
@@ -404,7 +489,7 @@ export default function WheyProteinShakesPage() {
                 <Badge className="bg-blue-100 text-blue-800">Premium</Badge>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
               <Button variant="outline" size="sm" onClick={() => setShowUniversalSearch(true)}>
                 <Search className="h-4 w-4 mr-2" />
@@ -417,14 +502,15 @@ export default function WheyProteinShakesPage() {
                 <span>{userProgress.totalPoints} XP</span>
               </div>
               <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleSharePage}>
-                <Camera className="h-4 w-4 mr-2" />
-                Share Recipe
+                <Share2 className="h-4 w-4 mr-2" />
+                Share Page
               </Button>
             </div>
           </div>
         </div>
       </div>
 
+      {/* Body */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Cross-Hub Navigation */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
@@ -476,30 +562,10 @@ export default function WheyProteinShakesPage() {
 
         {/* Quick Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">35g+</div>
-              <div className="text-sm text-gray-600">Avg Protein</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">4.7★</div>
-              <div className="text-sm text-gray-600">Avg Rating</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">3 min</div>
-              <div className="text-sm text-gray-600">Avg Prep</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-orange-600">6</div>
-              <div className="text-sm text-gray-600">Recipes</div>
-            </CardContent>
-          </Card>
+          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-blue-600">35g+</div><div className="text-sm text-gray-600">Avg Protein</div></CardContent></Card>
+          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-green-600">4.7★</div><div className="text-sm text-gray-600">Avg Rating</div></CardContent></Card>
+          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-purple-600">3 min</div><div className="text-sm text-gray-600">Avg Prep</div></CardContent></Card>
+          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-orange-600">6</div><div className="text-sm text-gray-600">Recipes</div></CardContent></Card>
         </div>
 
         {/* Navigation Tabs */}
@@ -515,7 +581,7 @@ export default function WheyProteinShakesPage() {
               <Button
                 key={tab.id}
                 variant={activeTab === tab.id ? "default" : "ghost"}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => setActiveTab(tab.id as any)}
                 className={`flex-1 ${activeTab === tab.id ? 'bg-white shadow-sm' : ''}`}
               >
                 <Icon className="h-4 w-4 mr-2" />
@@ -539,9 +605,8 @@ export default function WheyProteinShakesPage() {
                   className="pl-10"
                 />
               </div>
-              
               <div className="flex gap-2">
-                <select 
+                <select
                   className="px-3 py-2 border border-gray-300 rounded-md text-sm"
                   value={selectedGoal}
                   onChange={(e) => setSelectedGoal(e.target.value)}
@@ -551,8 +616,7 @@ export default function WheyProteinShakesPage() {
                     <option key={goal.id} value={goal.name}>{goal.name}</option>
                   ))}
                 </select>
-                
-                <select 
+                <select
                   className="px-3 py-2 border border-gray-300 rounded-md text-sm"
                   value={selectedWheyType}
                   onChange={(e) => setSelectedWheyType(e.target.value)}
@@ -562,11 +626,10 @@ export default function WheyProteinShakesPage() {
                     <option key={type.id} value={type.name}>{type.name}</option>
                   ))}
                 </select>
-                
-                <select 
+                <select
                   className="px-3 py-2 border border-gray-300 rounded-md text-sm"
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
+                  onChange={(e) => setSortBy(e.target.value as any)}
                 >
                   <option value="rating">Sort by Rating</option>
                   <option value="protein">Sort by Protein</option>
@@ -578,92 +641,196 @@ export default function WheyProteinShakesPage() {
 
             {/* Results */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredShakes.map(shake => (
-                <Card key={shake.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg mb-1">{shake.name}</CardTitle>
-                        <p className="text-sm text-gray-600 mb-2">{shake.description}</p>
+              {filteredShakes.map(shake => {
+                const useMetric = !!metricFlags[shake.id];
+                return (
+                  <Card key={shake.id} className="hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <CardTitle className="text-lg mb-1">{shake.name}</CardTitle>
+                          <p className="text-sm text-gray-600 mb-2">{shake.description}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const drinkData = {
+                              id: shake.id,
+                              name: shake.name,
+                              category: 'protein-shakes' as const,
+                              description: `${shake.fitnessGoal} • ${shake.wheyType}`,
+                              ingredients: shake.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || shake.ingredients,
+                              nutrition: shake.nutrition,
+                              difficulty: shake.difficulty as 'Easy' | 'Medium' | 'Hard',
+                              prepTime: shake.prepTime,
+                              rating: shake.rating,
+                              tags: shake.tags,
+                            };
+                            addToFavorites(drinkData);
+                          }}
+                          className="text-gray-400 hover:text-red-500"
+                        >
+                          <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                        </Button>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => addToFavorites(shake)}
-                        className="text-gray-400 hover:text-red-500"
-                      >
-                        <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                      </Button>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="outline">{shake.wheyType}</Badge>
-                      <Badge className="bg-blue-100 text-blue-800">{shake.fitnessGoal}</Badge>
-                      {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent>
-                    {/* Nutrition Grid */}
-                    <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
-                      <div>
-                        <div className="font-bold text-blue-600">{shake.nutrition.protein}g</div>
-                        <div className="text-gray-500">Protein</div>
-                      </div>
-                      <div>
-                        <div className="font-bold text-green-600">{shake.nutrition.calories}</div>
-                        <div className="text-gray-500">Calories</div>
-                      </div>
-                      <div>
-                        <div className="font-bold text-purple-600">{shake.prepTime}min</div>
-                        <div className="text-gray-500">Prep</div>
-                      </div>
-                    </div>
 
-                    {/* Key Info */}
-                    <div className="space-y-2 mb-4 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Absorption:</span>
-                        <span className="font-medium">{shake.absorptionTime}</span>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="outline">{shake.wheyType}</Badge>
+                        <Badge className="bg-blue-100 text-blue-800">{shake.fitnessGoal}</Badge>
+                        {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Leucine:</span>
-                        <span className="font-medium">{shake.leucineContent}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Best Time:</span>
-                        <span className="font-medium text-xs">{shake.bestTime}</span>
-                      </div>
-                    </div>
+                    </CardHeader>
 
-                    {/* Rating */}
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="font-medium">{shake.rating}</span>
-                        <span className="text-gray-500 text-sm">({shake.reviews})</span>
+                    <CardContent>
+                      {/* Nutrition Grid */}
+                      <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
+                        <div>
+                          <div className="font-bold text-blue-600">{shake.nutrition?.protein ?? '—'}{shake.nutrition?.protein ? 'g' : ''}</div>
+                          <div className="text-gray-500">Protein</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-green-600">{shake.nutrition?.calories ?? '—'}</div>
+                          <div className="text-gray-500">Calories</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-purple-600">{shake.prepTime}min</div>
+                          <div className="text-gray-500">Prep</div>
+                        </div>
                       </div>
-                      <Badge variant="outline" className="text-xs">
-                        {shake.difficulty}
-                      </Badge>
-                    </div>
 
-                    {/* Actions */}
-                    <div className="flex gap-2">
-                      <Button 
-                        className="flex-1 bg-blue-600 hover:bg-blue-700"
-                        onClick={() => handleMakeShake(shake)}
-                      >
-                        <Zap className="h-4 w-4 mr-2" />
-                        Make Shake
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleShareShake(shake)}>
-                        <Share2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                      {/* Key Info */}
+                      <div className="space-y-2 mb-4 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Absorption:</span>
+                          <span className="font-medium">{shake.absorptionTime}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Leucine:</span>
+                          <span className="font-medium">{shake.leucineContent}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Best Time:</span>
+                          <span className="font-medium text-xs">{shake.bestTime}</span>
+                        </div>
+                      </div>
+
+                      {/* Rating */}
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-1">
+                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                          <span className="font-medium">{shake.rating}</span>
+                          <span className="text-gray-500 text-sm">({shake.reviews})</span>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {shake.difficulty}
+                        </Badge>
+                      </div>
+
+                      {/* Compact measured recipe preview + inline actions (Egg pattern) */}
+                      {shake.recipe?.measurements && (
+                        <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                          <div className="text-sm font-semibold text-gray-900 mb-1">
+                            Recipe (serves {shake.recipe.servings || 1})
+                          </div>
+                          <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                            {shake.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                              const isNum = typeof ing.amount === 'number';
+                              const display = useMetric && isNum
+                                ? toMetric(ing.unit, ing.amount as number)
+                                : { amount: ing.amount as number | string, unit: ing.unit };
+                              return (
+                                <li key={i} className="flex items-start gap-2">
+                                  <Check className="h-4 w-4 text-blue-600 mt-0.5" />
+                                  <span>
+                                    <span className="text-blue-700 font-semibold">
+                                      {display.amount} {display.unit}
+                                    </span>{" "}
+                                    {ing.item}
+                                    {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                            {shake.recipe.measurements.length > 4 && (
+                              <li className="text-xs text-gray-600">
+                                …plus {shake.recipe.measurements.length - 4} more •{" "}
+                                <button
+                                  type="button"
+                                  onClick={() => openRecipeModal(shake)}
+                                  className="underline underline-offset-2"
+                                >
+                                  Show more
+                                </button>
+                              </li>
+                            )}
+                          </ul>
+
+                          <div className="flex gap-2 mt-3">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                const lines = (shake.recipe?.measurements || []).map((ing: Measured) => {
+                                  if (useMetric && typeof ing.amount === 'number') {
+                                    const mm = toMetric(ing.unit, ing.amount);
+                                    return `- ${mm.amount} ${mm.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+                                  }
+                                  return `- ${ing.amount} ${ing.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+                                });
+                                const txt = `${shake.name} (serves ${shake.recipe?.servings || 1})\n${lines.join('\n')}`;
+                                try {
+                                  await navigator.clipboard.writeText(txt);
+                                  alert('Recipe copied!');
+                                } catch {
+                                  alert('Unable to copy on this device.');
+                                }
+                              }}
+                            >
+                              <Clipboard className="w-4 h-4 mr-1" /> Copy
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleShareShake(shake)}>
+                              <Share2 className="w-4 h-4 mr-1" /> Share
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setMetricFlags((prev) => ({ ...prev, [shake.id]: !prev[shake.id] }))
+                              }
+                            >
+                              {useMetric ? 'US' : 'Metric'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tags */}
+                      <div className="flex flex-wrap gap-1 mb-4">
+                        {shake.tags.map((tag: string) => (
+                          <Badge key={tag} variant="secondary" className="text-xs">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-2">
+                        <Button
+                          className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          onClick={() => openRecipeModal(shake)}
+                        >
+                          <Zap className="h-4 w-4 mr-2" />
+                          Make Shake (+25 XP)
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleShareShake(shake)}>
+                          <Share2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
@@ -673,10 +840,10 @@ export default function WheyProteinShakesPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {wheyTypes.map(type => {
               const Icon = type.icon;
-              const typeShakes = wheyProteinShakes.filter(shake => 
+              const typeShakes = wheyProteinShakes.filter(shake =>
                 shake.wheyType.toLowerCase().includes(type.id)
               );
-              
+
               return (
                 <Card key={type.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
@@ -690,7 +857,7 @@ export default function WheyProteinShakesPage() {
                       </div>
                     </div>
                   </CardHeader>
-                  
+
                   <CardContent>
                     <div className="space-y-3 mb-4">
                       <div className="flex justify-between text-sm">
@@ -706,13 +873,13 @@ export default function WheyProteinShakesPage() {
                         <span className="font-medium text-xs">{type.bestFor}</span>
                       </div>
                     </div>
-                    
+
                     <div className="text-center">
                       <div className="text-2xl font-bold text-blue-600 mb-1">
                         {typeShakes.length}
                       </div>
                       <div className="text-sm text-gray-600 mb-3">Available Recipes</div>
-                      <Button 
+                      <Button
                         className="w-full"
                         onClick={() => {
                           setSelectedWheyType(type.name);
@@ -734,10 +901,10 @@ export default function WheyProteinShakesPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {fitnessGoals.map(goal => {
               const Icon = goal.icon;
-              const goalShakes = wheyProteinShakes.filter(shake => 
+              const goalShakes = wheyProteinShakes.filter(shake =>
                 shake.fitnessGoal.toLowerCase().includes(goal.name.toLowerCase())
               );
-              
+
               return (
                 <Card key={goal.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
@@ -748,14 +915,14 @@ export default function WheyProteinShakesPage() {
                       <CardTitle className="text-lg">{goal.name}</CardTitle>
                     </div>
                   </CardHeader>
-                  
+
                   <CardContent>
                     <div className="text-center">
                       <div className={`text-3xl font-bold ${goal.color} mb-1`}>
                         {goalShakes.length}
                       </div>
                       <div className="text-sm text-gray-600 mb-4">Optimized Recipes</div>
-                      <Button 
+                      <Button
                         className="w-full"
                         onClick={() => {
                           setSelectedGoal(goal.name);
@@ -774,14 +941,15 @@ export default function WheyProteinShakesPage() {
 
         {/* Featured Tab */}
         {activeTab === 'featured' && (
-          <div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {featuredShakes.map(shake => (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {featuredShakes.map(shake => {
+              const useMetric = !!metricFlags[shake.id];
+              return (
                 <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                   <div className="relative">
                     {shake.image && (
-                      <img 
-                        src={shake.image} 
+                      <img
+                        src={shake.image}
                         alt={shake.name}
                         className="w-full h-48 object-cover"
                       />
@@ -793,18 +961,32 @@ export default function WheyProteinShakesPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => addToFavorites(shake)}
+                        onClick={() => {
+                          const drinkData = {
+                            id: shake.id,
+                            name: shake.name,
+                            category: 'protein-shakes' as const,
+                            description: `${shake.fitnessGoal} • ${shake.wheyType}`,
+                            ingredients: shake.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || shake.ingredients,
+                            nutrition: shake.nutrition,
+                            difficulty: shake.difficulty as 'Easy' | 'Medium' | 'Hard',
+                            prepTime: shake.prepTime,
+                            rating: shake.rating,
+                            tags: shake.tags,
+                          };
+                          addToFavorites(drinkData);
+                        }}
                         className="bg-white/80 hover:bg-white text-gray-600 hover:text-red-500"
                       >
                         <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
                       </Button>
                     </div>
                   </div>
-                  
+
                   <CardHeader>
                     <CardTitle className="text-xl">{shake.name}</CardTitle>
                     <p className="text-gray-600">{shake.description}</p>
-                    
+
                     <div className="flex items-center gap-2 mt-2">
                       <Badge variant="outline">{shake.wheyType}</Badge>
                       <Badge className="bg-blue-100 text-blue-800">{shake.fitnessGoal}</Badge>
@@ -815,20 +997,20 @@ export default function WheyProteinShakesPage() {
                       </div>
                     </div>
                   </CardHeader>
-                  
+
                   <CardContent>
                     {/* Enhanced nutrition display */}
                     <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
                       <div className="text-center">
-                        <div className="text-xl font-bold text-blue-600">{shake.nutrition.protein}g</div>
+                        <div className="text-xl font-bold text-blue-600">{shake.nutrition?.protein ?? '—'}{shake.nutrition?.protein ? 'g' : ''}</div>
                         <div className="text-xs text-gray-600">Protein</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-xl font-bold text-green-600">{shake.nutrition.calories}</div>
+                        <div className="text-xl font-bold text-green-600">{shake.nutrition?.calories ?? '—'}</div>
                         <div className="text-xs text-gray-600">Calories</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-xl font-bold text-purple-600">{shake.nutrition.carbs}g</div>
+                        <div className="text-xl font-bold text-purple-600">{shake.nutrition?.carbs ?? '—'}{shake.nutrition?.carbs ? 'g' : ''}</div>
                         <div className="text-xs text-gray-600">Carbs</div>
                       </div>
                       <div className="text-center">
@@ -853,43 +1035,92 @@ export default function WheyProteinShakesPage() {
                       </div>
                     </div>
 
-                    {/* Ingredients */}
-                    <div className="mb-4">
-                      <h4 className="font-medium text-gray-900 mb-2">Key Ingredients:</h4>
-                      <div className="flex flex-wrap gap-1">
-                        {shake.ingredients.slice(0, 3).map((ingredient, index) => (
-                          <Badge key={index} variant="outline" className="text-xs">
-                            {ingredient}
-                          </Badge>
-                        ))}
-                        {shake.ingredients.length > 3 && (
-                          <Badge variant="outline" className="text-xs">
-                            +{shake.ingredients.length - 3} more
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
+                    {/* Compact measured recipe preview (same as browse) */}
+                    {shake.recipe?.measurements && (
+                      <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <div className="text-sm font-semibold text-gray-900 mb-1">
+                          Recipe (serves {shake.recipe.servings || 1})
+                        </div>
+                        <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                          {shake.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                            const isNum = typeof ing.amount === 'number';
+                            const display = useMetric && isNum
+                              ? toMetric(ing.unit, ing.amount as number)
+                              : { amount: ing.amount as number | string, unit: ing.unit };
+                            return (
+                              <li key={i} className="flex items-start gap-2">
+                                <Check className="h-4 w-4 text-blue-600 mt-0.5" />
+                                <span>
+                                  <span className="text-blue-700 font-semibold">
+                                    {display.amount} {display.unit}
+                                  </span>{" "}
+                                  {ing.item}
+                                  {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                </span>
+                              </li>
+                            );
+                          })}
+                          {shake.recipe.measurements.length > 4 && (
+                            <li className="text-xs text-gray-600">
+                              …plus {shake.recipe.measurements.length - 4} more •{" "}
+                              <button
+                                type="button"
+                                onClick={() => openRecipeModal(shake)}
+                                className="underline underline-offset-2"
+                              >
+                                Show more
+                              </button>
+                            </li>
+                          )}
+                        </ul>
 
-                    {/* Benefits */}
-                    <div className="mb-6">
-                      <h4 className="font-medium text-gray-900 mb-2">Key Benefits:</h4>
-                      <div className="flex flex-wrap gap-1">
-                        {shake.benefits.map((benefit, index) => (
-                          <Badge key={index} className="bg-green-100 text-green-800 text-xs">
-                            {benefit}
-                          </Badge>
-                        ))}
+                        <div className="flex gap-2 mt-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              const lines = (shake.recipe?.measurements || []).map((ing: Measured) => {
+                                if (useMetric && typeof ing.amount === 'number') {
+                                  const mm = toMetric(ing.unit, ing.amount);
+                                  return `- ${mm.amount} ${mm.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+                                }
+                                return `- ${ing.amount} ${ing.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+                              });
+                              const txt = `${shake.name} (serves ${shake.recipe?.servings || 1})\n${lines.join('\n')}`;
+                              try {
+                                await navigator.clipboard.writeText(txt);
+                                alert('Recipe copied!');
+                              } catch {
+                                alert('Unable to copy on this device.');
+                              }
+                            }}
+                          >
+                            <Clipboard className="w-4 h-4 mr-1" /> Copy
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleShareShake(shake)}>
+                            <Share2 className="w-4 h-4 mr-1" /> Share
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setMetricFlags((prev) => ({ ...prev, [shake.id]: !prev[shake.id] }))
+                            }
+                          >
+                            {useMetric ? 'US' : 'Metric'}
+                          </Button>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Action buttons */}
                     <div className="flex gap-3">
-                      <Button 
+                      <Button
                         className="flex-1 bg-blue-600 hover:bg-blue-700"
-                        onClick={() => handleMakeShake(shake)}
+                        onClick={() => openRecipeModal(shake)}
                       >
                         <Zap className="h-4 w-4 mr-2" />
-                        Make This Shake
+                        Make This Shake (+25 XP)
                       </Button>
                       <Button variant="outline" onClick={() => handleShareShake(shake)}>
                         <Share2 className="h-4 w-4 mr-2" />
@@ -898,12 +1129,12 @@ export default function WheyProteinShakesPage() {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
-            </div>
+              );
+            })}
           </div>
         )}
 
-        {/* Your Progress (in-content) */}
+        {/* Your Progress */}
         <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mt-8">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
