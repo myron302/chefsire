@@ -63,8 +63,8 @@ const plantBasedShakes = [
       measurements: [
         m(1, 'scoop (30g)', 'pea protein isolate'),
         m(1, 'cup', 'unsweetened almond milk'),
-        m(1, 'cup', 'spinach, loosely packed'),
-        m(0.5, 'frozen banana', 'banana'),
+        m(1, 'cup', 'spinach', 'loosely packed'),
+        m(0.5, 'whole', 'banana', 'frozen preferred'),
         m(0.5, 'tsp', 'pure vanilla extract'),
         m(2, 'leaves', 'fresh mint', 'or 1–2 drops mint extract'),
         m(1, 'tsp', 'MCT oil', 'optional'),
@@ -249,7 +249,7 @@ const plantBasedShakes = [
         m(2, 'tbsp (~25g)', 'algae protein blend (spirulina/chlorella)'),
         m(0.75, 'cup', 'coconut water'),
         m(0.25, 'cup', 'frozen pineapple'),
-        m(0.5, 'banana', 'ripe'),
+        m(0.5, 'whole', 'banana', 'ripe'),
         m(1, 'tsp', 'lime juice'),
         m(5, 'ice cubes', 'ice'),
       ],
@@ -259,7 +259,7 @@ const plantBasedShakes = [
       ]
     }
   },
-  // extras you asked for:
+  // extras:
   {
     id: 'plant-7',
     name: 'Matcha Pea Energizer',
@@ -322,7 +322,7 @@ const plantBasedShakes = [
         m(1, 'scoop (30–35g)', 'plant protein (neutral)'),
         m(1, 'cup', 'oat milk'),
         m(1, 'tbsp', 'natural peanut butter'),
-        m(0.5, 'banana', 'ripe, frozen preferred'),
+        m(0.5, 'whole', 'banana', 'ripe, frozen preferred'),
         m(0.5, 'tsp', 'vanilla extract'),
         m(1, 'pinch', 'sea salt'),
         m(4, 'ice cubes', 'ice'),
@@ -441,10 +441,10 @@ export default function PlantBasedProteinPage() {
   const [sortBy, setSortBy] = useState<'rating'|'protein'|'price'|'calories'>('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
-  // NEW: per-card refs to open RecipeKit modals
+  // per-card refs to open RecipeKit modals
   const kitRefs = useRef<Record<string, RecipeKitHandle | null>>({});
 
-  // deep-link (?id=plant-7) — open modal via anchor handled by RecipeKit's "Open Recipe" (we just scroll it into view)
+  // deep-link (?id=plant-7) — scroll into view
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
@@ -710,34 +710,52 @@ export default function PlantBasedProteinPage() {
               {filteredShakes.map(shake => (
                 <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow">
                   <CardHeader className="pb-2">
+                    {/* Title + actions */}
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <CardTitle className="text-lg mb-1">{shake.name}</CardTitle>
                         <p className="text-sm text-gray-600 mb-2">{shake.description}</p>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => addToFavorites({
-                          id: shake.id,
-                          name: shake.name,
-                          category: 'protein-shakes',
-                          description: shake.description,
-                          ingredients: shake.recipe?.measurements?.map(m => m.item) ?? [],
-                          nutrition: shake.nutrition,
-                          difficulty: shake.difficulty,
-                          prepTime: shake.prepTime,
-                          rating: shake.rating,
-                          fitnessGoal: shake.fitnessGoal,
-                          bestTime: shake.bestTime
-                        })}
-                        className="text-gray-400 hover:text-red-500"
-                      >
-                        <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => addToFavorites({
+                            id: shake.id,
+                            name: shake.name,
+                            category: 'protein-shakes',
+                            description: shake.description,
+                            ingredients: shake.recipe?.measurements?.map(m => m.item) ?? [],
+                            nutrition: shake.nutrition,
+                            difficulty: shake.difficulty,
+                            prepTime: shake.prepTime,
+                            rating: shake.rating,
+                            fitnessGoal: shake.fitnessGoal,
+                            bestTime: shake.bestTime
+                          })}
+                          className="text-gray-400 hover:text-red-500"
+                          aria-label="Add to favorites"
+                        >
+                          <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleShareShake(shake)} aria-label="Share recipe">
+                          <Share2 className="h-4 w-4 text-gray-500" />
+                        </Button>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2 mb-2">
+                    {/* Rating / reviews / difficulty (TOP) */}
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-1">
+                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                        <span className="font-medium text-sm">{shake.rating}</span>
+                        <span className="text-gray-500 text-sm">({shake.reviews})</span>
+                      </div>
+                      <Badge variant="outline" className="ml-auto">{shake.difficulty}</Badge>
+                    </div>
+
+                    {/* Meta badges */}
+                    <div className="flex items-center gap-2 mt-2">
                       <Badge className="bg-green-100 text-green-800">{shake.proteinSource}</Badge>
                       <Badge variant="outline">{shake.flavor}</Badge>
                       {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
@@ -760,7 +778,7 @@ export default function PlantBasedProteinPage() {
                       ))}
                     </div>
 
-                    {/* RecipeKit (preview + modal + copy + metric) */}
+                    {/* RecipeKit */}
                     {shake.recipe?.measurements && (
                       <RecipeKit
                         ref={(el) => { kitRefs.current[shake.id] = el; }}
@@ -790,47 +808,21 @@ export default function PlantBasedProteinPage() {
                       />
                     )}
 
-                    {/* Rating + actions */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="font-medium">{shake.rating}</span>
-                        <span className="text-gray-500 text-sm">({shake.reviews})</span>
-                      </div>
+                    {/* Actions (no share here) */}
+                    <div className="flex items-center justify-between mt-3">
                       <div className="flex gap-2">
-                        {/* NEW: Make Shake opens the modal */}
                         <Button
                           className="bg-green-600 hover:bg-green-700"
                           size="sm"
                           onClick={() => {
-                            addToRecentlyViewed({
-                              id: shake.id,
-                              name: shake.name,
-                              category: 'protein-shakes',
-                              description: shake.description,
-                              ingredients: shake.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
-                              nutrition: shake.nutrition,
-                              difficulty: shake.difficulty,
-                              prepTime: shake.prepTime,
-                              rating: shake.rating,
-                              fitnessGoal: shake.fitnessGoal,
-                              bestTime: shake.bestTime
-                            });
-                            incrementDrinksMade();
-                            addPoints(25);
                             const anchor = document.getElementById(`card-${shake.id}`);
                             anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                             kitRefs.current[shake.id]?.open?.();
                           }}
                         >
                           <Dumbbell className="h-4 w-4 mr-1" />
-                          Make Shake
+                          Make Shake (+25 XP)
                         </Button>
-
-                        <Button variant="outline" size="sm" onClick={() => handleShareShake(shake)}>
-                          <Share2 className="h-4 w-4 mr-1" /> Share
-                        </Button>
-                        <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
                       </div>
                     </div>
                   </CardContent>
@@ -948,22 +940,32 @@ export default function PlantBasedProteinPage() {
                   <div className="absolute top-4 left-4">
                     <Badge className="bg-green-500 text-white">Featured Plant Protein</Badge>
                   </div>
-                  <div className="absolute top-4 right-4">
+                  <div className="absolute top-4 right-4 flex gap-2">
                     <Badge className="bg-white text-green-800">{shake.sustainability}</Badge>
+                    {/* Header share for featured */}
+                    <Button variant="secondary" size="sm" onClick={() => handleShareShake(shake)} aria-label="Share recipe">
+                      <Share2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
 
                 <CardHeader>
                   <CardTitle className="text-xl">{shake.name}</CardTitle>
                   <p className="text-gray-600">{shake.description}</p>
+
+                  {/* Rating / reviews / difficulty (TOP) */}
                   <div className="flex items-center gap-2 mt-2">
-                    <Badge className="bg-green-100 text-green-800">{shake.proteinSource}</Badge>
-                    <Badge variant="outline">{shake.flavor}</Badge>
-                    <div className="flex items-center gap-1 ml-auto">
+                    <div className="flex items-center gap-1">
                       <Star className="h-4 w-4 text-yellow-400 fill-current" />
                       <span className="font-medium">{shake.rating}</span>
                       <span className="text-gray-500 text-sm">({shake.reviews})</span>
                     </div>
+                    <Badge variant="outline" className="ml-auto">{shake.difficulty}</Badge>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge className="bg-green-100 text-green-800">{shake.proteinSource}</Badge>
+                    <Badge variant="outline">{shake.flavor}</Badge>
                   </div>
                 </CardHeader>
 
@@ -975,7 +977,6 @@ export default function PlantBasedProteinPage() {
                     <div className="text-center"><div className="text-xl font-bold text-amber-600">${shake.price}</div><div className="text-xs text-gray-600">Price</div></div>
                   </div>
 
-                  {/* RecipeKit full usability still available in Featured */}
                   {shake.recipe?.measurements && (
                     <RecipeKit
                       ref={(el) => { kitRefs.current[shake.id] = el; }}
@@ -1009,31 +1010,12 @@ export default function PlantBasedProteinPage() {
                     <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={() => {
                       const anchor = document.getElementById(`card-${shake.id}`);
                       anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                      incrementDrinksMade();
-                      addPoints(25);
-                      addToRecentlyViewed({
-                        id: shake.id,
-                        name: shake.name,
-                        category: 'protein-shakes',
-                        description: shake.description,
-                        ingredients: shake.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
-                        nutrition: shake.nutrition,
-                        difficulty: shake.difficulty,
-                        prepTime: shake.prepTime,
-                        rating: shake.rating,
-                        fitnessGoal: shake.fitnessGoal,
-                        bestTime: shake.bestTime
-                      });
-                      // open modal as requested
                       kitRefs.current[shake.id]?.open?.();
                     }}>
                       <Dumbbell className="h-4 w-4 mr-2" />
-                      Make This Shake
+                      Make This Shake (+25 XP)
                     </Button>
-                    <Button variant="outline" onClick={() => handleShareShake(shake)}>
-                      <Share2 className="h-4 w-4 mr-2" />
-                      Share
-                    </Button>
+                    {/* removed bottom Share to avoid redundancy */}
                   </div>
                 </CardContent>
               </Card>
