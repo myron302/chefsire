@@ -15,7 +15,6 @@ import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit, { Measured } from '@/components/recipes/RecipeKit';
 import type { RecipeKitHandle } from '@/components/recipes/RecipeKit';
 
-// ---------- Nav data ----------
 const otherDrinkHubs = [
   { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
   { id: 'detoxes', name: 'Detox Drinks', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing & wellness' },
@@ -31,11 +30,9 @@ const proteinSubcategories = [
   { id: 'beef', name: 'Beef Protein', icon: Flame, path: '/drinks/protein-shakes/beef', description: 'Natural creatine' }
 ];
 
-// ---------- Helpers ----------
 type Nutrition = { calories: number; protein: number; carbs?: number; fat?: number; fiber?: number };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
 
-// ---------- Data ----------
 const plantBasedShakes = [
   {
     id: 'plant-1',
@@ -259,7 +256,6 @@ const plantBasedShakes = [
       ]
     }
   },
-  // extras:
   {
     id: 'plant-7',
     name: 'Matcha Pea Energizer',
@@ -408,7 +404,6 @@ const plantBasedShakes = [
   }
 ];
 
-// meta cards
 const proteinTypes = [
   { id: 'pea', name: 'Pea Protein', description: 'Complete amino acid profile, easy digestion', icon: Sprout, color: 'text-green-600', benefits: ['Complete Protein', 'BCAA Rich', 'Iron Source', 'Allergen-Free'], digestibility: 98 },
   { id: 'hemp', name: 'Hemp Protein', description: 'Omega fatty acids with complete nutrition', icon: Leaf, color: 'text-emerald-600', benefits: ['Omega 3&6', 'High Fiber', 'Magnesium', 'Heart Health'], digestibility: 87 },
@@ -425,12 +420,7 @@ const fitnessGoals = [
 
 export default function PlantBasedProteinPage() {
   const {
-    addToFavorites,
-    isFavorite,
-    addToRecentlyViewed,
-    userProgress,
-    addPoints,
-    incrementDrinksMade
+    addToFavorites, isFavorite, addToRecentlyViewed, userProgress, addPoints, incrementDrinksMade
   } = useDrinks();
 
   const [activeTab, setActiveTab] = useState<'browse'|'protein-types'|'goals'|'featured'>('browse');
@@ -441,10 +431,8 @@ export default function PlantBasedProteinPage() {
   const [sortBy, setSortBy] = useState<'rating'|'protein'|'price'|'calories'>('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
-  // per-card refs to open RecipeKit modals
   const kitRefs = useRef<Record<string, RecipeKitHandle | null>>({});
 
-  // deep-link (?id=plant-7) — scroll into view
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
@@ -461,9 +449,8 @@ export default function PlantBasedProteinPage() {
       url: typeof window !== 'undefined' ? window.location.href : ''
     };
     try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else {
+      if (navigator.share) await navigator.share(shareData);
+      else {
         await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
         alert('Link copied to clipboard!');
       }
@@ -528,7 +515,6 @@ export default function PlantBasedProteinPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50">
-      {/* Universal Search Modal */}
       {showUniversalSearch && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -545,7 +531,6 @@ export default function PlantBasedProteinPage() {
         </div>
       )}
 
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -584,9 +569,7 @@ export default function PlantBasedProteinPage() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Cross-Hub Navigation */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
@@ -610,7 +593,6 @@ export default function PlantBasedProteinPage() {
           </CardContent>
         </Card>
 
-        {/* Sister Subpages */}
         <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 mb-6">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Protein Types</h3>
@@ -634,7 +616,6 @@ export default function PlantBasedProteinPage() {
           </CardContent>
         </Card>
 
-        {/* Quick Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-green-600">21g</div><div className="text-sm text-gray-600">Avg Protein</div></CardContent></Card>
           <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-blue-600">0mg</div><div className="text-sm text-gray-600">Cholesterol</div></CardContent></Card>
@@ -642,7 +623,6 @@ export default function PlantBasedProteinPage() {
           <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-emerald-600">{plantBasedShakes.length}</div><div className="text-sm text-gray-600">Protein Options</div></CardContent></Card>
         </div>
 
-        {/* Tabs */}
         <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
@@ -665,10 +645,8 @@ export default function PlantBasedProteinPage() {
           })}
         </div>
 
-        {/* Browse */}
         {activeTab === 'browse' && (
           <div>
-            {/* Filters */}
             <div className="flex flex-col md:flex-row gap-4 mb-6">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -705,12 +683,10 @@ export default function PlantBasedProteinPage() {
               </div>
             </div>
 
-            {/* Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredShakes.map(shake => (
                 <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow">
                   <CardHeader className="pb-2">
-                    {/* Title + actions */}
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <CardTitle className="text-lg mb-1">{shake.name}</CardTitle>
@@ -744,7 +720,6 @@ export default function PlantBasedProteinPage() {
                       </div>
                     </div>
 
-                    {/* Rating / reviews / difficulty (TOP) */}
                     <div className="flex items-center gap-2 mt-1">
                       <div className="flex items-center gap-1">
                         <Star className="h-4 w-4 text-yellow-400 fill-current" />
@@ -754,7 +729,6 @@ export default function PlantBasedProteinPage() {
                       <Badge variant="outline" className="ml-auto">{shake.difficulty}</Badge>
                     </div>
 
-                    {/* Meta badges */}
                     <div className="flex items-center gap-2 mt-2">
                       <Badge className="bg-green-100 text-green-800">{shake.proteinSource}</Badge>
                       <Badge variant="outline">{shake.flavor}</Badge>
@@ -763,7 +737,6 @@ export default function PlantBasedProteinPage() {
                   </CardHeader>
 
                   <CardContent>
-                    {/* Nutrition */}
                     <div className="grid grid-cols-4 gap-2 mb-4 text-center text-sm">
                       <div><div className="text-xl font-bold text-green-600">{shake.nutrition.protein}g</div><div className="text-gray-500">Protein</div></div>
                       <div><div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div><div className="text-gray-500">Cal</div></div>
@@ -771,14 +744,12 @@ export default function PlantBasedProteinPage() {
                       <div><div className="text-xl font-bold text-amber-600">${shake.price}</div><div className="text-gray-500">Price</div></div>
                     </div>
 
-                    {/* Certifications */}
                     <div className="flex flex-wrap gap-1 mb-4">
                       {shake.certifications.map((cert: string, index: number) => (
                         <Badge key={index} variant="outline" className="text-xs">{cert}</Badge>
                       ))}
                     </div>
 
-                    {/* RecipeKit */}
                     {shake.recipe?.measurements && (
                       <RecipeKit
                         ref={(el) => { kitRefs.current[shake.id] = el; }}
@@ -788,6 +759,7 @@ export default function PlantBasedProteinPage() {
                         directions={shake.recipe.directions}
                         nutrition={shake.nutrition}
                         prepTime={shake.prepTime}
+                        hideOpenButton
                         onComplete={() => {
                           addToRecentlyViewed({
                             id: shake.id,
@@ -808,22 +780,19 @@ export default function PlantBasedProteinPage() {
                       />
                     )}
 
-                    {/* Actions (no share here) */}
                     <div className="flex items-center justify-between mt-3">
-                      <div className="flex gap-2">
-                        <Button
-                          className="bg-green-600 hover:bg-green-700"
-                          size="sm"
-                          onClick={() => {
-                            const anchor = document.getElementById(`card-${shake.id}`);
-                            anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            kitRefs.current[shake.id]?.open?.();
-                          }}
-                        >
-                          <Dumbbell className="h-4 w-4 mr-1" />
-                          Make Shake (+25 XP)
-                        </Button>
-                      </div>
+                      <Button
+                        className="flex-1 bg-green-600 hover:bg-green-700"
+                        size="sm"
+                        onClick={() => {
+                          const anchor = document.getElementById(`card-${shake.id}`);
+                          anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          kitRefs.current[shake.id]?.open?.();
+                        }}
+                      >
+                        <Dumbbell className="h-4 w-4 mr-1" />
+                        Make Shake (+25 XP)
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -832,7 +801,6 @@ export default function PlantBasedProteinPage() {
           </div>
         )}
 
-        {/* Protein Types */}
         {activeTab === 'protein-types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {proteinTypes.map(type => {
@@ -876,7 +844,6 @@ export default function PlantBasedProteinPage() {
           </div>
         )}
 
-        {/* Goals */}
         {activeTab === 'goals' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {fitnessGoals.map(goal => {
@@ -922,7 +889,6 @@ export default function PlantBasedProteinPage() {
           </div>
         )}
 
-        {/* Featured */}
         {activeTab === 'featured' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {featuredShakes.map(shake => (
@@ -942,7 +908,6 @@ export default function PlantBasedProteinPage() {
                   </div>
                   <div className="absolute top-4 right-4 flex gap-2">
                     <Badge className="bg-white text-green-800">{shake.sustainability}</Badge>
-                    {/* Header share for featured */}
                     <Button variant="secondary" size="sm" onClick={() => handleShareShake(shake)} aria-label="Share recipe">
                       <Share2 className="h-4 w-4" />
                     </Button>
@@ -953,7 +918,6 @@ export default function PlantBasedProteinPage() {
                   <CardTitle className="text-xl">{shake.name}</CardTitle>
                   <p className="text-gray-600">{shake.description}</p>
 
-                  {/* Rating / reviews / difficulty (TOP) */}
                   <div className="flex items-center gap-2 mt-2">
                     <div className="flex items-center gap-1">
                       <Star className="h-4 w-4 text-yellow-400 fill-current" />
@@ -986,6 +950,7 @@ export default function PlantBasedProteinPage() {
                       directions={shake.recipe.directions}
                       nutrition={shake.nutrition}
                       prepTime={shake.prepTime}
+                      hideOpenButton
                       onComplete={() => {
                         addToRecentlyViewed({
                           id: shake.id,
@@ -1015,7 +980,6 @@ export default function PlantBasedProteinPage() {
                       <Dumbbell className="h-4 w-4 mr-2" />
                       Make This Shake (+25 XP)
                     </Button>
-                    {/* removed bottom Share to avoid redundancy */}
                   </div>
                 </CardContent>
               </Card>
@@ -1023,7 +987,6 @@ export default function PlantBasedProteinPage() {
           </div>
         )}
 
-        {/* Progress */}
         <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mt-8">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
