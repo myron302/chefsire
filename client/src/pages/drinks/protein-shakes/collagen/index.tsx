@@ -80,7 +80,7 @@ const collagenShakes = [
       servings: 1,
       measurements: [
         m(1, 'scoop (20g)', 'hydrolyzed collagen peptides'),
-        m(1, 'cup', 'unsweetened almond milk'),
+        m(0.75, 'cup', 'unsweetened almond milk'),
         m(0.5, 'cup', 'mixed berries, frozen'),
         m(0.5, 'tsp', 'vanilla extract'),
         m(1, 'tsp', 'vitamin C powder'),
@@ -593,6 +593,28 @@ export default function CollagenProteinPage() {
     });
   };
 
+  const handleCompleteRecipe = (shake: any) => {
+    addToRecentlyViewed({
+      id: shake.id,
+      name: shake.name,
+      category: 'protein-shakes' as const,
+      description: shake.description,
+      ingredients: shake.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || shake.ingredients,
+      nutrition: {
+        calories: shake.nutrition.calories,
+        protein: shake.nutrition.protein,
+        carbs: shake.nutrition.carbs,
+        fat: shake.nutrition.fat
+      },
+      difficulty: shake.difficulty as 'Easy' | 'Medium' | 'Hard',
+      prepTime: shake.prepTime,
+      rating: shake.rating,
+      tags: shake.tags
+    });
+    incrementDrinksMade();
+    addPoints(35);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50">
       {/* Universal Search Modal */}
@@ -945,9 +967,24 @@ export default function CollagenProteinPage() {
                           </ul>
                           {(shake.recipe.measurements.length > 6) && (
                             <div className="text-xs text-gray-600 mt-1">
-                              …more shown in full recipe
+                              …plus {shake.recipe.measurements.length - 6} more
+                              {" • "}
+                              <button
+                                type="button"
+                                onClick={() => kitRefs.current[shake.id]?.open?.()}
+                                className="underline underline-offset-2"
+                              >
+                                Show more
+                              </button>
                             </div>
                           )}
+                          <div className="flex gap-2 mt-3">
+                            <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.copyScaledRecipe?.()}><Clipboard className="w-4 h-4 mr-1" /> Copy</Button>
+                            <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.doShare?.()}><Share2 className="w-4 h-4 mr-1" /> Share</Button>
+                            <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.setUseMetric(v => !v)}>
+                              {kitRefs.current[shake.id]?.useMetric ? 'US' : 'Metric'}
+                            </Button>
+                          </div>
                         </div>
                       )}
 
@@ -1278,20 +1315,35 @@ export default function CollagenProteinPage() {
                         </ul>
                         {(shake.recipe.measurements.length > 6) && (
                           <div className="text-xs text-gray-600 mt-1">
-                            …more shown in full recipe
+                            …plus {shake.recipe.measurements.length - 6} more
+                            {" • "}
+                            <button
+                              type="button"
+                              onClick={() => kitRefs.current[shake.id]?.open?.()}
+                              className="underline underline-offset-2"
+                            >
+                              Show more
+                            </button>
                           </div>
                         )}
+                        <div className="flex gap-2 mt-3">
+                          <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.copyScaledRecipe?.()}><Clipboard className="w-4 h-4 mr-1" /> Copy</Button>
+                          <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.doShare?.()}><Share2 className="w-4 h-4 mr-1" /> Share</Button>
+                          <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.setUseMetric(v => !v)}>
+                            {kitRefs.current[shake.id]?.useMetric ? 'US' : 'Metric'}
+                          </Button>
+                        </div>
                       </div>
                     )}
 
-                    {/* Certifications (tags) */}
+                    {/* Tags (certifications) */}
                     <div className="flex flex-wrap gap-1 mb-4">
                       {shake.certifications.map((cert: string) => (
                         <Badge key={cert} variant="secondary" className="text-xs">{cert}</Badge>
                       ))}
                     </div>
 
-                    {/* Full-width CTA */}
+                    {/* Full-width CTA — Make Shake */}
                     <Button
                       className="w-full bg-pink-600 hover:bg-pink-700 text-white"
                       onClick={() => kitRefs.current[shake.id]?.open?.()}
