@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState, useImperativeHandle } from 'react';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RotateCcw, Clipboard, Check, X, Share2 } from 'lucide-react';
+import { RotateCcw, Clipboard, Check, X, Share2, BookMarked } from 'lucide-react';
 
 // ---------- Types ----------
 export type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -27,6 +27,16 @@ type RecipeKitProps = {
   shareText?: string;
   /** optional className to wrap the preview */
   className?: string;
+
+  /**
+   * Optional cookbook integration (future-proof).
+   * If provided, an "Add to Cookbook" button appears in the modal footer.
+   */
+  onSaveToCookbook?: (item: any) => void;
+  /** The normalized item to save (only used if onSaveToCookbook is provided) */
+  normalizedItem?: any;
+  /** Optional label override for cookbook button */
+  saveLabel?: string;
 };
 
 export type RecipeKitHandle = {
@@ -93,7 +103,11 @@ const saveJSON = (key: string, value: any) => {
 
 // ---------- Component ----------
 const RecipeKit = React.forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit(props, ref) {
-  const { id, name, measurements, directions = [], nutrition = {}, prepTime = 0, onComplete, shareText, className } = props;
+  const {
+    id, name, measurements, directions = [], nutrition = {}, prepTime = 0, onComplete,
+    shareText, className,
+    onSaveToCookbook, normalizedItem, saveLabel = 'Add to Cookbook'
+  } = props;
 
   // per-recipe persisted state
   const LS_SERV = `rk.servings.${id}`;
@@ -143,10 +157,10 @@ const RecipeKit = React.forwardRef<RecipeKitHandle, RecipeKitProps>(function Rec
       // prefer metric if possible and we have numeric base
       if (useMetric && typeof ing.amountScaledNum === 'number') {
         const m = toMetric(ing.unit, ing.amountScaledNum);
-        return `- ${m.amount} ${m.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+        return `- ${m.amount} ${m.unit} ${ing.item}${(ing as any).note ? ` — ${(ing as any).note}` : ''}`;
       }
       // fallback to US scaled fraction
-      return `- ${ing.amountScaled} ${ing.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+      return `- ${ing.amountScaled} ${ing.unit} ${ing.item}${(ing as any).note ? ` — ${(ing as any).note}` : ''}`;
     });
     const txt = `${name} (serves ${servings})\n${lines.join('\n')}\n\nNotes: ${notes || '-'}`;
     try {
@@ -182,6 +196,17 @@ const RecipeKit = React.forwardRef<RecipeKitHandle, RecipeKitProps>(function Rec
     }
   };
 
+  const handleSaveToCookbook = () => {
+    if (onSaveToCookbook && normalizedItem) {
+      try {
+        onSaveToCookbook(normalizedItem);
+        alert('Saved to Cookbook!');
+      } catch {
+        alert('Unable to save to Cookbook.');
+      }
+    }
+  };
+
   return (
     <div className={className}>
       {/* PREVIEW (card inline) */}
@@ -211,16 +236,25 @@ const RecipeKit = React.forwardRef<RecipeKitHandle, RecipeKitProps>(function Rec
                     : `${ing.amountScaled} ${ing.unit}`
                   }
                 </span>{" "}
-                {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                {ing.item}{(ing as any).note ? <span className="text-gray-600 italic"> — {(ing as any).note}</span> : null}
               </span>
             </li>
           ))}
           {scaled.length > 4 && (
-            <li className="text-sm text-gray-600">…plus {scaled.length - 4} more</li>
+            <li className="text-sm text-gray-600">
+              …plus {scaled.length - 4} more{" "}
+              <button
+                className="underline underline-offset-2 hover:no-underline"
+                onClick={() => setOpen(true)}
+                aria-label="Show more ingredients"
+              >
+                Show more
+              </button>
+            </li>
           )}
         </ul>
 
-        <div className="flex gap-2 mt-3">
+        <div className="flex flex-wrap gap-2 mt-3">
           <Button variant="outline" size="sm" onClick={() => setOpen(true)}>Open Recipe</Button>
           <Button variant="outline" size="sm" onClick={copyScaledRecipe}><Clipboard className="w-4 h-4 mr-1" /> Copy</Button>
           <Button variant="outline" size="sm" onClick={doShare}><Share2 className="w-4 h-4 mr-1" /> Share</Button>
@@ -283,7 +317,7 @@ const RecipeKit = React.forwardRef<RecipeKitHandle, RecipeKitProps>(function Rec
                         : `${ing.amountScaled} ${ing.unit}`
                       }
                     </span>{" "}
-                    {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                    {ing.item}{(ing as any).note ? <span className="text-gray-600 italic"> — {(ing as any).note}</span> : null}
                   </span>
                 </li>
               ))}
@@ -310,12 +344,18 @@ const RecipeKit = React.forwardRef<RecipeKitHandle, RecipeKitProps>(function Rec
               />
             </div>
 
-            <div className="flex gap-2 mt-4">
-              <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={() => { onComplete?.(); setOpen(false); }}>
+            <div className="flex flex-wrap gap-2 mt-4">
+              <Button className="flex-1" onClick={() => { onComplete?.(); setOpen(false); }}>
                 Complete
               </Button>
               <Button variant="outline" onClick={copyScaledRecipe}><Clipboard className="w-4 h-4 mr-1" /> Copy</Button>
               <Button variant="outline" onClick={doShare}><Share2 className="w-4 h-4 mr-1" /> Share</Button>
+              {onSaveToCookbook && normalizedItem && (
+                <Button variant="outline" onClick={handleSaveToCookbook}>
+                  <BookMarked className="w-4 h-4 mr-1" />
+                  {saveLabel}
+                </Button>
+              )}
             </div>
           </div>
         </div>
