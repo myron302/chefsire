@@ -1,3 +1,4 @@
+// pages/drinks/protein-shakes/plant-based.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,12 +8,13 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
   Leaf, Heart, Star, Search, ArrowLeft, Sparkles, Wine, Zap, Moon,
-  Target, Flame, Apple, Sprout, Dumbbell, Share2, ArrowRight, X, Check, Camera, RotateCcw, Clipboard
+  Target, Flame, Apple, Sprout, Dumbbell, Share2, ArrowRight, Camera
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
+import RecipeKit, { Measured } from '@/components/recipes/RecipeKit';
 
-// Navigation data
+// ---------- Nav data ----------
 const otherDrinkHubs = [
   { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
   { id: 'detoxes', name: 'Detox Drinks', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing & wellness' },
@@ -29,55 +31,10 @@ const proteinSubcategories = [
 ];
 
 // ---------- Helpers ----------
-type Measured = { amount: number | string; unit: string; item: string; note?: string };
+type Nutrition = { calories: number; protein: number; carbs?: number; fat?: number; fiber?: number };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
 
-// ---- Servings helpers ----
-const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
-
-// convert decimals like 0.25, 0.5, 0.75 to nice fractions "1/4", "1/2", "3/4"
-const toNiceFraction = (value: number) => {
-  const rounded = Math.round(value * 4) / 4; // snap to quarter
-  const whole = Math.trunc(rounded);
-  const frac = Math.round((rounded - whole) * 4);
-  const fracMap: Record<number, string> = { 0: '', 1: '1/4', 2: '1/2', 3: '3/4' };
-  const fracStr = fracMap[frac];
-  if (!whole && fracStr) return fracStr;
-  if (whole && fracStr) return `${whole} ${fracStr}`;
-  return `${whole}`;
-};
-
-const scaleAmount = (baseAmount: number | string, servings: number) => {
-  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
-  if (Number.isNaN(n)) return baseAmount; // leave string amounts (e.g., "1 pinch") unchanged
-  return toNiceFraction(n * servings);
-};
-
-const getScaledMeasurements = (list: Measured[], servings: number) =>
-  list.map((ing) => ({
-    ...ing,
-    amountScaled: scaleAmount(ing.amount, servings),
-  }));
-
-// Local storage helpers
-const LS_SERVINGS_KEY = 'plantProtein.servingsById';
-const LS_NOTES_KEY = 'plantProtein.notesById';
-
-const loadJSON = <T,>(key: string, fallback: T): T => {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-};
-const saveJSON = (key: string, value: any) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
-};
-
-// Plant-based protein shake data (with measured recipes)
+// ---------- Data ----------
 const plantBasedShakes = [
   {
     id: 'plant-1',
@@ -88,27 +45,7 @@ const plantBasedShakes = [
     proteinType: 'pea',
     flavor: 'Vanilla Mint',
     servingSize: '30g',
-    nutrition: { calories: 120, protein: 25, carbs: 3, fat: 1, fiber: 2, iron: 4.5, bcaa: 5.2 },
-    ingredients: ['Organic Pea Protein Isolate', 'Natural Vanilla', 'Stevia', 'Mint Extract', 'MCT Oil'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (30g)', 'pea protein isolate'),
-        m(1, 'cup', 'unsweetened almond milk'),
-        m(1, 'cup', 'spinach, loosely packed'),
-        m(0.5, 'frozen banana', 'banana'),
-        m(0.5, 'tsp', 'pure vanilla extract'),
-        m(2, 'leaves', 'fresh mint', 'or 1–2 drops mint extract'),
-        m(1, 'tsp', 'MCT oil', 'optional'),
-        m(4, 'ice cubes', 'ice')
-      ],
-      directions: [
-        'Add liquids first, then powders, then solids.',
-        'Blend 40–60 seconds until silky; add ice to thicken.',
-        'Taste and adjust mint/vanilla; serve cold.'
-      ]
-    },
-    benefits: ['Complete Amino Profile', 'Easy Digestion', 'Allergen-Free', 'Sustainable'],
+    nutrition: { calories: 120, protein: 25, carbs: 3, fat: 1, fiber: 2 },
     certifications: ['Organic', 'Non-GMO', 'Vegan', 'Gluten-Free'],
     difficulty: 'Easy',
     prepTime: 2,
@@ -120,7 +57,24 @@ const plantBasedShakes = [
     allergenFree: ['Dairy', 'Soy', 'Gluten', 'Nuts'],
     sustainability: 'Carbon Negative',
     fitnessGoal: 'Muscle Building',
-    bestTime: 'Post-Workout'
+    bestTime: 'Post-Workout',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (30g)', 'pea protein isolate'),
+        m(1, 'cup', 'unsweetened almond milk'),
+        m(1, 'cup', 'spinach, loosely packed'),
+        m(0.5, 'frozen banana', 'banana'),
+        m(0.5, 'tsp', 'pure vanilla extract'),
+        m(2, 'leaves', 'fresh mint', 'or 1–2 drops mint extract'),
+        m(1, 'tsp', 'MCT oil', 'optional'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Add liquids first, then powders, then solids.',
+        'Blend 40–60 seconds until silky; add ice to thicken.',
+        'Taste and adjust mint/vanilla; serve cold.'
+      ]
+    }
   },
   {
     id: 'plant-2',
@@ -130,25 +84,7 @@ const plantBasedShakes = [
     proteinType: 'hemp',
     flavor: 'Natural Nutty',
     servingSize: '30g',
-    nutrition: { calories: 110, protein: 20, carbs: 4, fat: 3, fiber: 8, omega3: 2.5, magnesium: 180 },
-    ingredients: ['Organic Hemp Protein', 'Natural Flavors', 'Coconut MCT', 'Chia Seeds'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (30g)', 'hemp protein'),
-        m(1, 'cup', 'oat milk'),
-        m(1, 'tbsp', 'chia seeds'),
-        m(1, 'tsp', 'maple syrup', 'optional'),
-        m(0.25, 'tsp', 'cinnamon'),
-        m(4, 'ice cubes', 'ice')
-      ],
-      directions: [
-        'Soak chia in oat milk for 5 minutes (optional thicker body).',
-        'Blend with hemp protein, cinnamon, sweetener, and ice.',
-        'Pulse to desired texture.'
-      ]
-    },
-    benefits: ['Omega 3 & 6', 'High Fiber', 'Complete Protein', 'Heart Health'],
+    nutrition: { calories: 110, protein: 20, carbs: 4, fat: 3, fiber: 8 },
     certifications: ['Organic', 'Raw', 'Vegan', 'Non-GMO'],
     difficulty: 'Easy',
     prepTime: 2,
@@ -160,7 +96,22 @@ const plantBasedShakes = [
     allergenFree: ['Dairy', 'Soy', 'Gluten'],
     sustainability: 'Regenerative',
     fitnessGoal: 'General Wellness',
-    bestTime: 'Morning'
+    bestTime: 'Morning',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (30g)', 'hemp protein'),
+        m(1, 'cup', 'oat milk'),
+        m(1, 'tbsp', 'chia seeds'),
+        m(1, 'tsp', 'maple syrup', 'optional'),
+        m(0.25, 'tsp', 'cinnamon'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Soak chia in oat milk for 5 minutes (optional thicker body).',
+        'Blend with hemp protein, cinnamon, sweetener, and ice.',
+        'Pulse to desired texture.'
+      ]
+    }
   },
   {
     id: 'plant-3',
@@ -170,25 +121,7 @@ const plantBasedShakes = [
     proteinType: 'rice-quinoa',
     flavor: 'Chocolate Cacao',
     servingSize: '32g',
-    nutrition: { calories: 125, protein: 24, carbs: 5, fat: 1, fiber: 3, iron: 3.2, lysine: 1.8 },
-    ingredients: ['Brown Rice Protein', 'Quinoa Protein', 'Raw Cacao', 'Coconut Sugar', 'Vanilla'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (32g)', 'rice–quinoa protein'),
-        m(1, 'cup', 'unsweetened almond milk'),
-        m(1, 'tbsp', 'raw cacao powder'),
-        m(1, 'tsp', 'coconut sugar', 'or monk fruit to taste'),
-        m(0.5, 'tsp', 'vanilla extract'),
-        m(1, 'pinch', 'sea salt'),
-        m(5, 'ice cubes', 'ice')
-      ],
-      directions: [
-        'Combine all; blend until creamy.',
-        'Add extra cacao or sweetener to taste.'
-      ]
-    },
-    benefits: ['Hypoallergenic', 'Complete Amino', 'Ancient Grains', 'Antioxidants'],
+    nutrition: { calories: 125, protein: 24, carbs: 5, fat: 1, fiber: 3 },
     certifications: ['Organic', 'Fair Trade', 'Vegan', 'Sprouted'],
     difficulty: 'Easy',
     prepTime: 3,
@@ -200,7 +133,22 @@ const plantBasedShakes = [
     allergenFree: ['Dairy', 'Soy', 'Gluten', 'Nuts', 'Legumes'],
     sustainability: 'Water Efficient',
     fitnessGoal: 'Weight Management',
-    bestTime: 'Meal Replacement'
+    bestTime: 'Meal Replacement',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (32g)', 'rice–quinoa protein'),
+        m(1, 'cup', 'unsweetened almond milk'),
+        m(1, 'tbsp', 'raw cacao powder'),
+        m(1, 'tsp', 'coconut sugar', 'or monk fruit to taste'),
+        m(0.5, 'tsp', 'vanilla extract'),
+        m(1, 'pinch', 'sea salt'),
+        m(5, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Combine all; blend until creamy.',
+        'Add extra cacao or sweetener to taste.'
+      ]
+    }
   },
   {
     id: 'plant-4',
@@ -210,24 +158,7 @@ const plantBasedShakes = [
     proteinType: 'soy',
     flavor: 'Strawberry Vanilla',
     servingSize: '28g',
-    nutrition: { calories: 105, protein: 25, carbs: 2, fat: 0.5, fiber: 1, isoflavones: 25, leucine: 2.1 },
-    ingredients: ['Non-GMO Soy Protein Isolate', 'Natural Strawberry', 'Vanilla Extract', 'Stevia'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (28g)', 'soy protein isolate'),
-        m(1, 'cup', 'soy milk or almond milk'),
-        m(0.5, 'cup', 'frozen strawberries'),
-        m(0.5, 'tsp', 'vanilla extract'),
-        m(1, 'tsp', 'honey or stevia to taste'),
-        m(4, 'ice cubes', 'ice')
-      ],
-      directions: [
-        'Blend milk + protein first 10 seconds.',
-        'Add strawberries, vanilla, sweetener; blend smooth.'
-      ]
-    },
-    benefits: ['Complete Protein', 'Fast Absorption', 'Isoflavones', 'Muscle Recovery'],
+    nutrition: { calories: 105, protein: 25, carbs: 2, fat: 0.5, fiber: 1 },
     certifications: ['Non-GMO', 'Vegan', 'Organic'],
     difficulty: 'Easy',
     prepTime: 2,
@@ -239,7 +170,21 @@ const plantBasedShakes = [
     allergenFree: ['Dairy', 'Gluten', 'Nuts'],
     sustainability: 'Nitrogen Fixing',
     fitnessGoal: 'Muscle Building',
-    bestTime: 'Post-Workout'
+    bestTime: 'Post-Workout',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (28g)', 'soy protein isolate'),
+        m(1, 'cup', 'soy milk or almond milk'),
+        m(0.5, 'cup', 'frozen strawberries'),
+        m(0.5, 'tsp', 'vanilla extract'),
+        m(1, 'tsp', 'honey or stevia to taste'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend milk + protein first 10 seconds.',
+        'Add strawberries, vanilla, sweetener; blend smooth.'
+      ]
+    }
   },
   {
     id: 'plant-5',
@@ -249,24 +194,7 @@ const plantBasedShakes = [
     proteinType: 'seed',
     flavor: 'Cinnamon Spice',
     servingSize: '30g',
-    nutrition: { calories: 115, protein: 18, carbs: 6, fat: 2, fiber: 4, zinc: 2.3, magnesium: 160 },
-    ingredients: ['Organic Pumpkin Seed Protein', 'Ceylon Cinnamon', 'Nutmeg', 'Monk Fruit'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (30g)', 'pumpkin seed protein'),
-        m(1, 'cup', 'cashew milk or water'),
-        m(0.5, 'tsp', 'Ceylon cinnamon'),
-        m(0.125, 'tsp', 'fresh nutmeg', 'optional'),
-        m(1, 'tsp', 'monk fruit or maple syrup'),
-        m(4, 'ice cubes', 'ice')
-      ],
-      directions: [
-        'Blend all until frothy; spice to taste.',
-        'Great warm: gently heat milk first, then blend briefly.'
-      ]
-    },
-    benefits: ['Mineral Rich', 'Prostate Health', 'Immune Support', 'Seasonal Flavor'],
+    nutrition: { calories: 115, protein: 18, carbs: 6, fat: 2, fiber: 4 },
     certifications: ['Organic', 'Raw', 'Vegan', 'Sprouted'],
     difficulty: 'Easy',
     prepTime: 2,
@@ -278,7 +206,21 @@ const plantBasedShakes = [
     allergenFree: ['Dairy', 'Soy', 'Gluten', 'Nuts', 'Legumes'],
     sustainability: 'Upcycled',
     fitnessGoal: 'General Wellness',
-    bestTime: 'Afternoon'
+    bestTime: 'Afternoon',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (30g)', 'pumpkin seed protein'),
+        m(1, 'cup', 'cashew milk or water'),
+        m(0.5, 'tsp', 'Ceylon cinnamon'),
+        m(0.125, 'tsp', 'fresh nutmeg', 'optional'),
+        m(1, 'tsp', 'monk fruit or maple syrup'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend all until frothy; spice to taste.',
+        'Great warm: gently heat milk first, then blend briefly.'
+      ]
+    }
   },
   {
     id: 'plant-6',
@@ -288,24 +230,7 @@ const plantBasedShakes = [
     proteinType: 'algae',
     flavor: 'Tropical Green',
     servingSize: '25g',
-    nutrition: { calories: 95, protein: 16, carbs: 8, fat: 1, fiber: 2, chlorophyll: 150, b12: 2.4 },
-    ingredients: ['Organic Spirulina', 'Chlorella', 'Pineapple Extract', 'Coconut Water Powder'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(2, 'tbsp (~25g)', 'algae protein blend (spirulina/chlorella)'),
-        m(0.75, 'cup', 'coconut water'),
-        m(0.25, 'cup', 'frozen pineapple'),
-        m(0.5, 'banana', 'ripe'),
-        m(1, 'tsp', 'lime juice'),
-        m(5, 'ice cubes', 'ice')
-      ],
-      directions: [
-        'Blend until bright green and smooth.',
-        'Add extra pineapple if you prefer sweeter.'
-      ]
-    },
-    benefits: ['Detoxification', 'B-Vitamins', 'Antioxidants', 'Alkalizing'],
+    nutrition: { calories: 95, protein: 16, carbs: 8, fat: 1, fiber: 2 },
     certifications: ['Organic', 'Raw', 'Vegan', 'Superfood'],
     difficulty: 'Medium',
     prepTime: 3,
@@ -317,10 +242,23 @@ const plantBasedShakes = [
     allergenFree: ['Dairy', 'Soy', 'Gluten', 'Nuts', 'Legumes'],
     sustainability: 'Ocean Positive',
     fitnessGoal: 'Detox',
-    bestTime: 'Morning'
+    bestTime: 'Morning',
+    recipe: {
+      measurements: [
+        m(2, 'tbsp (~25g)', 'algae protein blend (spirulina/chlorella)'),
+        m(0.75, 'cup', 'coconut water'),
+        m(0.25, 'cup', 'frozen pineapple'),
+        m(0.5, 'banana', 'ripe'),
+        m(1, 'tsp', 'lime juice'),
+        m(5, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend until bright green and smooth.',
+        'Add extra pineapple if you prefer sweeter.'
+      ]
+    }
   },
-
-  // -------- New additions --------
+  // extras you asked for:
   {
     id: 'plant-7',
     name: 'Matcha Pea Energizer',
@@ -330,23 +268,6 @@ const plantBasedShakes = [
     flavor: 'Matcha Vanilla',
     servingSize: '30g',
     nutrition: { calories: 140, protein: 26, carbs: 6, fat: 2, fiber: 2 },
-    ingredients: ['Pea Protein', 'Ceremonial Matcha', 'Vanilla', 'Dates'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (30g)', 'pea protein'),
-        m(1, 'tsp', 'matcha powder'),
-        m(1, 'cup', 'unsweetened almond milk'),
-        m(1, 'whole', 'Medjool date', 'pitted (or 1 tsp honey)'),
-        m(0.5, 'tsp', 'vanilla extract'),
-        m(4, 'ice cubes', 'ice')
-      ],
-      directions: [
-        'Blend milk + matcha first to fully disperse.',
-        'Add remaining, blend until smooth.'
-      ]
-    },
-    benefits: ['Steady Energy', 'Complete Protein', 'Antioxidants'],
     certifications: ['Vegan', 'Non-GMO', 'Gluten-Free'],
     difficulty: 'Easy',
     prepTime: 3,
@@ -358,7 +279,21 @@ const plantBasedShakes = [
     allergenFree: ['Dairy', 'Soy', 'Gluten', 'Nuts'],
     sustainability: 'Carbon Neutral',
     fitnessGoal: 'General Wellness',
-    bestTime: 'Morning'
+    bestTime: 'Morning',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (30g)', 'pea protein'),
+        m(1, 'tsp', 'matcha powder'),
+        m(1, 'cup', 'unsweetened almond milk'),
+        m(1, 'whole', 'Medjool date', 'pitted (or 1 tsp honey)'),
+        m(0.5, 'tsp', 'vanilla extract'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend milk + matcha first to fully disperse.',
+        'Add remaining, blend until smooth.'
+      ]
+    }
   },
   {
     id: 'plant-8',
@@ -369,24 +304,6 @@ const plantBasedShakes = [
     flavor: 'Peanut Butter',
     servingSize: '35g',
     nutrition: { calories: 260, protein: 24, carbs: 20, fat: 9, fiber: 5 },
-    ingredients: ['Oat Milk', 'Peanut Butter', 'Banana', 'Vanilla'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (30–35g)', 'plant protein (neutral)'),
-        m(1, 'cup', 'oat milk'),
-        m(1, 'tbsp', 'natural peanut butter'),
-        m(0.5, 'banana', 'ripe, frozen preferred'),
-        m(0.5, 'tsp', 'vanilla extract'),
-        m(1, 'pinch', 'sea salt'),
-        m(4, 'ice cubes', 'ice')
-      ],
-      directions: [
-        'Blend until creamy; add splash of milk if too thick.',
-        'Top with oat crumble or cacao nibs (optional).'
-      ]
-    },
-    benefits: ['Recovery', 'Satiety', 'Comfort Flavor'],
     certifications: ['Vegan', 'Non-GMO'],
     difficulty: 'Easy',
     prepTime: 2,
@@ -398,7 +315,22 @@ const plantBasedShakes = [
     allergenFree: ['Dairy', 'Soy', 'Gluten'],
     sustainability: 'Low Water',
     fitnessGoal: 'Muscle Building',
-    bestTime: 'Post-Workout'
+    bestTime: 'Post-Workout',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (30–35g)', 'plant protein (neutral)'),
+        m(1, 'cup', 'oat milk'),
+        m(1, 'tbsp', 'natural peanut butter'),
+        m(0.5, 'banana', 'ripe, frozen preferred'),
+        m(0.5, 'tsp', 'vanilla extract'),
+        m(1, 'pinch', 'sea salt'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend until creamy; add splash of milk if too thick.',
+        'Top with oat crumble or cacao nibs (optional).'
+      ]
+    }
   },
   {
     id: 'plant-9',
@@ -409,23 +341,6 @@ const plantBasedShakes = [
     flavor: 'Mixed Berry',
     servingSize: '32g',
     nutrition: { calories: 180, protein: 24, carbs: 22, fat: 2, fiber: 6 },
-    ingredients: ['Rice–Quinoa Protein', 'Mixed Berries', 'Flaxseed'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (32g)', 'rice–quinoa protein'),
-        m(0.75, 'cup', 'almond milk'),
-        m(0.75, 'cup', 'frozen mixed berries'),
-        m(1, 'tbsp', 'ground flaxseed'),
-        m(1, 'tsp', 'honey or agave', 'optional'),
-        m(4, 'ice cubes', 'ice')
-      ],
-      directions: [
-        'Blend milk + protein first; add berries + flax.',
-        'Pulse to keep berry texture or blend fully smooth.'
-      ]
-    },
-    benefits: ['Antioxidants', 'Omega-3 (ALA)', 'Hypoallergenic'],
     certifications: ['Vegan', 'Gluten-Free'],
     difficulty: 'Easy',
     prepTime: 3,
@@ -434,10 +349,24 @@ const plantBasedShakes = [
     trending: true,
     featured: false,
     price: 31.99,
-    allergenFree: ['Dairy', 'Soy', 'Nuts* (if using almond milk, swap if needed)'],
+    allergenFree: ['Dairy', 'Soy', 'Nuts* (swap milk if needed)'],
     sustainability: 'Water Efficient',
     fitnessGoal: 'Weight Management',
-    bestTime: 'Snack'
+    bestTime: 'Snack',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (32g)', 'rice–quinoa protein'),
+        m(0.75, 'cup', 'almond milk'),
+        m(0.75, 'cup', 'frozen mixed berries'),
+        m(1, 'tbsp', 'ground flaxseed'),
+        m(1, 'tsp', 'honey or agave', 'optional'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend milk + protein first; add berries + flax.',
+        'Pulse to keep texture or blend fully smooth.'
+      ]
+    }
   },
   {
     id: 'plant-10',
@@ -448,24 +377,6 @@ const plantBasedShakes = [
     flavor: 'Golden Spice',
     servingSize: '30g',
     nutrition: { calories: 170, protein: 21, carbs: 12, fat: 5, fiber: 7 },
-    ingredients: ['Hemp Protein', 'Turmeric', 'Ginger', 'Black Pepper'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (30g)', 'hemp protein'),
-        m(1, 'cup', 'coconut milk (light)'),
-        m(0.5, 'tsp', 'ground turmeric'),
-        m(0.25, 'tsp', 'ground ginger'),
-        m(1, 'pinch', 'black pepper', 'bioavailability'),
-        m(1, 'tsp', 'maple syrup', 'to taste'),
-        m(4, 'ice cubes', 'ice')
-      ],
-      directions: [
-        'Blend all; for latte vibe, warm milk first and blend briefly.',
-        'Adjust sweetness/spice to taste.'
-      ]
-    },
-    benefits: ['Anti-Inflammatory', 'Fiber', 'Omega 3&6'],
     certifications: ['Vegan', 'Non-GMO', 'Gluten-Free'],
     difficulty: 'Easy',
     prepTime: 3,
@@ -477,21 +388,37 @@ const plantBasedShakes = [
     allergenFree: ['Dairy', 'Soy', 'Gluten', 'Nuts'],
     sustainability: 'Regenerative',
     fitnessGoal: 'General Wellness',
-    bestTime: 'Evening'
+    bestTime: 'Evening',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (30g)', 'hemp protein'),
+        m(1, 'cup', 'coconut milk (light)'),
+        m(0.5, 'tsp', 'ground turmeric'),
+        m(0.25, 'tsp', 'ground ginger'),
+        m(1, 'pinch', 'black pepper', 'bioavailability'),
+        m(1, 'tsp', 'maple syrup', 'to taste'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend all; for latte vibe, warm milk first and blend briefly.',
+        'Adjust sweetness/spice to taste.'
+      ]
+    }
   }
 ];
 
+// meta cards
 const proteinTypes = [
-  { id: 'pea', name: 'Pea Protein', description: 'Complete amino acid profile, easy digestion', icon: Sprout, color: 'text-green-600', benefits: ['Complete Protein', 'BCAA Rich', 'Iron Source', 'Allergen-Free'], digestibility: 98, sustainability: 'High', commonUses: ['Post-Workout', 'Meal Replacement'] },
-  { id: 'hemp', name: 'Hemp Protein', description: 'Omega fatty acids with complete nutrition', icon: Leaf, color: 'text-emerald-600', benefits: ['Omega 3&6', 'High Fiber', 'Magnesium', 'Heart Health'], digestibility: 87, sustainability: 'Very High', commonUses: ['Morning Smoothie', 'General Wellness'] },
-  { id: 'rice-quinoa', name: 'Rice & Quinoa', description: 'Hypoallergenic ancient grain blend', icon: Apple, color: 'text-amber-600', benefits: ['Hypoallergenic', 'Ancient Grains', 'Complete Amino', 'Gentle'], digestibility: 94, sustainability: 'Medium', commonUses: ['Sensitive Stomachs', 'Clean Eating'] },
-  { id: 'soy', name: 'Soy Protein', description: 'Traditional complete protein powerhouse', icon: Target, color: 'text-blue-600', benefits: ['Complete Protein', 'Fast Absorption', 'Isoflavones', 'Proven'], digestibility: 100, sustainability: 'Medium', commonUses: ['Muscle Building', 'Athletic Performance'] }
+  { id: 'pea', name: 'Pea Protein', description: 'Complete amino acid profile, easy digestion', icon: Sprout, color: 'text-green-600', benefits: ['Complete Protein', 'BCAA Rich', 'Iron Source', 'Allergen-Free'], digestibility: 98 },
+  { id: 'hemp', name: 'Hemp Protein', description: 'Omega fatty acids with complete nutrition', icon: Leaf, color: 'text-emerald-600', benefits: ['Omega 3&6', 'High Fiber', 'Magnesium', 'Heart Health'], digestibility: 87 },
+  { id: 'rice-quinoa', name: 'Rice & Quinoa', description: 'Hypoallergenic ancient grain blend', icon: Apple, color: 'text-amber-600', benefits: ['Hypoallergenic', 'Ancient Grains', 'Complete Amino', 'Gentle'], digestibility: 94 },
+  { id: 'soy', name: 'Soy Protein', description: 'Traditional complete protein powerhouse', icon: Target, color: 'text-blue-600', benefits: ['Complete Protein', 'Fast Absorption', 'Isoflavones', 'Proven'], digestibility: 100 }
 ];
 
 const fitnessGoals = [
   { id: 'muscle-building', name: 'Muscle Building', description: 'High protein for lean mass gains', icon: Dumbbell, color: 'bg-red-500', recommendedIntake: '25-30g protein', timing: 'Post-workout within 30 minutes' },
   { id: 'weight-management', name: 'Weight Management', description: 'Balanced nutrition for healthy weight', icon: Target, color: 'bg-blue-500', recommendedIntake: '20-25g protein', timing: 'Between meals or meal replacement' },
-  { id: 'general-wellness', name: 'General Wellness', description: 'Daily nutrition and vitality', icon: Heart, color: 'bg-green-500', recommendedIntake: '15-20g protein', timing: 'Morning or afternoon' },
+  { id: 'general-wellness', name: 'General Wellness', description: 'Daily nutrition and vitality', icon: Leaf, color: 'bg-green-500', recommendedIntake: '15-20g protein', timing: 'Morning or afternoon' },
   { id: 'detox', name: 'Detox & Cleanse', description: 'Cleansing and alkalizing support', icon: Sparkles, color: 'bg-purple-500', recommendedIntake: '10-15g protein', timing: 'Morning on empty stomach' }
 ];
 
@@ -512,26 +439,16 @@ export default function PlantBasedProteinPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'rating'|'protein'|'price'|'calories'>('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  const [selectedShake, setSelectedShake] = useState<any>(null);
-  const [showModal, setShowModal] = useState(false);
 
-  // Per-recipe servings and notes (persisted)
-  const [servingsById, setServingsById] = useState<Record<string, number>>({});
-  const [notesById, setNotesById] = useState<Record<string, string>>({});
-
-  // Load persisted state
+  // deep-link (?id=plant-7) — open modal via anchor handled by RecipeKit's "Open Recipe" (we just scroll it into view)
   useEffect(() => {
-    setServingsById(loadJSON<Record<string, number>>(LS_SERVINGS_KEY, {}));
-    setNotesById(loadJSON<Record<string, string>>(LS_NOTES_KEY, {}));
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    if (id) {
+      const el = document.getElementById(`card-${id}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   }, []);
-  // Save on change
-  useEffect(() => { saveJSON(LS_SERVINGS_KEY, servingsById); }, [servingsById]);
-  useEffect(() => { saveJSON(LS_NOTES_KEY, notesById); }, [notesById]);
-
-  const getServings = (id: string) => clamp(servingsById[id] ?? 1);
-  const setServings = (id: string, n: number) => setServingsById((prev) => ({ ...prev, [id]: clamp(n) }));
-  const bumpServings = (id: string, delta: number) => setServings(id, getServings(id) + delta);
-  const resetServings = (id: string) => setServings(id, 1);
 
   const handleSharePage = async () => {
     const shareData = {
@@ -557,37 +474,22 @@ export default function PlantBasedProteinPage() {
   };
 
   const handleShareShake = async (shake: any) => {
-    const url = typeof window !== 'undefined' ? window.location.href : '';
-    const measured = shake?.recipe?.measurements?.slice(0,4).map((r: any) => `${r.amount} ${r.unit} ${r.item}`).join(' · ');
-    const text = `${shake.name} • ${shake.fitnessGoal} • ${shake.proteinSource}\n${shake.description}\nRecipe: ${measured || 'see page'}`;
+    const url = typeof window !== 'undefined' ? `${window.location.pathname}?id=${shake.id}` : '';
+    const text = `${shake.name} • ${shake.fitnessGoal} • ${shake.proteinSource}\n${shake.description}`;
     const shareData = { title: shake.name, text, url };
     try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else {
+      if (navigator.share) await navigator.share(shareData);
+      else {
         await navigator.clipboard.writeText(`${shake.name}\n${text}\n${url}`);
-        alert('Recipe copied to clipboard!');
+        alert('Recipe link copied!');
       }
     } catch {
       try {
         await navigator.clipboard.writeText(`${shake.name}\n${text}\n${url}`);
-        alert('Recipe copied to clipboard!');
+        alert('Recipe link copied!');
       } catch {
         alert('Unable to share on this device.');
       }
-    }
-  };
-
-  const copyScaledRecipe = async (id: string, name: string, list: Measured[]) => {
-    const s = getServings(id);
-    const scaled = getScaledMeasurements(list, s);
-    const lines = scaled.map((ing) => `- ${ing.amountScaled} ${ing.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`);
-    const text = `${name} (serves ${s})\n${lines.join('\n')}`;
-    try {
-      await navigator.clipboard.writeText(text);
-      alert('Recipe copied!');
-    } catch {
-      alert('Unable to copy on this device.');
     }
   };
 
@@ -600,7 +502,7 @@ export default function PlantBasedProteinPage() {
       const matchesGoal = !selectedGoal || shake.fitnessGoal.toLowerCase().includes(selectedGoal.toLowerCase());
       const matchesAllergen =
         !selectedAllergen ||
-        shake.allergenFree.some((a: string) => (a || '').toLowerCase().includes(selectedAllergen.toLowerCase()));
+        (shake.allergenFree || []).some((a: string) => (a || '').toLowerCase().includes(selectedAllergen.toLowerCase()));
       return matchesSearch && matchesType && matchesGoal && matchesAllergen;
     });
 
@@ -620,188 +522,20 @@ export default function PlantBasedProteinPage() {
   const filteredShakes = getFilteredShakes();
   const featuredShakes = plantBasedShakes.filter(shake => shake.featured);
 
-  const handleMakeShake = (shake: any) => {
-    setSelectedShake(shake);
-    setShowModal(true);
-  };
-
-  const handleCompleteShake = () => {
-    if (selectedShake) {
-      addToRecentlyViewed({
-        id: selectedShake.id,
-        name: selectedShake.name,
-        category: 'protein-shakes',
-        description: selectedShake.description,
-        ingredients: selectedShake.ingredients,
-        nutrition: selectedShake.nutrition,
-        difficulty: selectedShake.difficulty,
-        prepTime: selectedShake.prepTime,
-        rating: selectedShake.rating,
-        fitnessGoal: selectedShake.fitnessGoal,
-        bestTime: selectedShake.bestTime
-      });
-      incrementDrinksMade();
-      addPoints(25);
-    }
-    setShowModal(false);
-    setSelectedShake(null);
-  };
-
-  // Scaled macros (modal)
-  const scaledMacros = useMemo(() => {
-    if (!selectedShake) return null;
-    const s = getServings(selectedShake.id);
-    const n = selectedShake.nutrition || {};
-    // Only scale calories & protein (safe + clear); others left as-is
-    return {
-      calories: Math.round((n.calories || 0) * s),
-      protein: Math.round((n.protein || 0) * s),
-    };
-  }, [selectedShake, servingsById]);
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50">
       {/* Universal Search Modal */}
       {showUniversalSearch && (
-        <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20"
-          onClick={() => setShowUniversalSearch(false)}
-        >
-          <div
-            className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
               <h2 className="text-lg font-semibold">Search All Drinks</h2>
               <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
-                <X className="h-4 w-4" />
+                <span className="sr-only">Close</span>✕
               </Button>
             </div>
             <div className="p-4">
               <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Make Shake Modal (bigger & darker recipe text + scaling + notes + copy) */}
-      {showModal && selectedShake && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-start mb-4">
-              <h2 className="text-2xl font-bold">{selectedShake.name}</h2>
-              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {/* Scaled stats strip */}
-              <div className="grid grid-cols-3 gap-2 p-3 bg-green-50 rounded-lg">
-                <div className="text-center">
-                  <div className="font-bold text-green-600">{scaledMacros?.protein ?? selectedShake.nutrition.protein}g</div>
-                  <div className="text-xs text-gray-600">Protein</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-blue-600">{scaledMacros?.calories ?? selectedShake.nutrition.calories}</div>
-                  <div className="text-xs text-gray-600">Calories</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-purple-600">{selectedShake.prepTime}min</div>
-                  <div className="text-xs text-gray-600">Prep</div>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold text-gray-900">
-                    Recipe • {getServings(selectedShake.id)} {getServings(selectedShake.id) === 1 ? 'serving' : 'servings'}
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <button
-                      className="px-2 py-1 border rounded text-sm"
-                      onClick={() => bumpServings(selectedShake.id, -1)}
-                      aria-label="decrease servings"
-                    >
-                      −
-                    </button>
-                    <div className="min-w-[2ch] text-center text-sm">{getServings(selectedShake.id)}</div>
-                    <button
-                      className="px-2 py-1 border rounded text-sm"
-                      onClick={() => bumpServings(selectedShake.id, +1)}
-                      aria-label="increase servings"
-                    >
-                      +
-                    </button>
-                    <button
-                      className="px-2 py-1 border rounded text-sm flex items-center gap-1"
-                      onClick={() => resetServings(selectedShake.id)}
-                      aria-label="reset servings"
-                      title="Reset to 1"
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" /> Reset
-                    </button>
-                    <button
-                      className="px-2 py-1 border rounded text-sm flex items-center gap-1"
-                      onClick={() => copyScaledRecipe(selectedShake.id, selectedShake.name, selectedShake.recipe?.measurements || [])}
-                      aria-label="copy recipe"
-                      title="Copy scaled recipe"
-                    >
-                      <Clipboard className="h-3.5 w-3.5" /> Copy
-                    </button>
-                  </div>
-                </div>
-
-                {(() => {
-                  const scaled = getScaledMeasurements(selectedShake.recipe?.measurements || [], getServings(selectedShake.id));
-                  return (
-                    <ul className="space-y-2 text-base leading-6 text-gray-800 font-sans tracking-normal">
-                      {scaled.map((ing: any, idx: number) => (
-                        <li key={idx} className="flex items-start gap-2">
-                          <Check className="h-4 w-4 text-green-600 mt-0.5" />
-                          <span>
-                            <span className="text-green-700 font-semibold">
-                              {ing.amountScaled} {ing.unit}
-                            </span>{" "}
-                            {ing.item ?? ing.item}
-                            {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  );
-                })()}
-              </div>
-
-              {Array.isArray(selectedShake.recipe?.directions) && (
-                <div>
-                  <h3 className="font-semibold mb-2 text-gray-900">Directions</h3>
-                  <ol className="list-decimal list-inside text-sm space-y-1 text-gray-700">
-                    {selectedShake.recipe.directions.map((step: string, i: number) => <li key={i}>{step}</li>)}
-                  </ol>
-                </div>
-              )}
-
-              {/* Personal notes (persisted) */}
-              <div>
-                <h3 className="font-semibold mb-2 text-gray-900">Your Notes</h3>
-                <textarea
-                  className="w-full border rounded-md p-2 text-sm text-gray-800"
-                  rows={3}
-                  placeholder="Add tweaks, swaps, or how it turned out…"
-                  value={notesById[selectedShake.id] ?? ''}
-                  onChange={(e) => setNotesById((prev) => ({ ...prev, [selectedShake.id]: e.target.value }))}
-                />
-              </div>
-
-              <div className="flex gap-4 pt-2">
-                <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={handleCompleteShake}>
-                  Complete Shake (+25 XP)
-                </Button>
-                <Button variant="outline" onClick={() => handleShareShake(selectedShake)}>
-                  <Share2 className="h-4 w-4 mr-2" /> Share
-                </Button>
-              </div>
             </div>
           </div>
         </div>
@@ -846,6 +580,7 @@ export default function PlantBasedProteinPage() {
         </div>
       </div>
 
+      {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Cross-Hub Navigation */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
@@ -871,7 +606,7 @@ export default function PlantBasedProteinPage() {
           </CardContent>
         </Card>
 
-        {/* Sister Subpages Navigation */}
+        {/* Sister Subpages */}
         <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 mb-6">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Protein Types</h3>
@@ -903,7 +638,7 @@ export default function PlantBasedProteinPage() {
           <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-emerald-600">{plantBasedShakes.length}</div><div className="text-sm text-gray-600">Protein Options</div></CardContent></Card>
         </div>
 
-        {/* Navigation Tabs */}
+        {/* Tabs */}
         <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
@@ -926,10 +661,10 @@ export default function PlantBasedProteinPage() {
           })}
         </div>
 
-        {/* Browse Tab */}
+        {/* Browse */}
         {activeTab === 'browse' && (
           <div>
-            {/* Search and Filters */}
+            {/* Filters */}
             <div className="flex flex-col md:flex-row gap-4 mb-6">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -966,10 +701,10 @@ export default function PlantBasedProteinPage() {
               </div>
             </div>
 
-            {/* Results */}
+            {/* Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredShakes.map(shake => (
-                <Card key={shake.id} className="hover:shadow-lg transition-shadow">
+                <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow">
                   <CardHeader className="pb-2">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -984,7 +719,7 @@ export default function PlantBasedProteinPage() {
                           name: shake.name,
                           category: 'protein-shakes',
                           description: shake.description,
-                          ingredients: shake.ingredients,
+                          ingredients: shake.recipe?.measurements?.map(m => m.item) ?? [],
                           nutrition: shake.nutrition,
                           difficulty: shake.difficulty,
                           prepTime: shake.prepTime,
@@ -1006,11 +741,11 @@ export default function PlantBasedProteinPage() {
                   </CardHeader>
 
                   <CardContent>
-                    {/* Nutrition Grid */}
+                    {/* Nutrition */}
                     <div className="grid grid-cols-4 gap-2 mb-4 text-center text-sm">
                       <div><div className="text-xl font-bold text-green-600">{shake.nutrition.protein}g</div><div className="text-gray-500">Protein</div></div>
                       <div><div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div><div className="text-gray-500">Cal</div></div>
-                      <div><div className="text-xl font-bold text-purple-600">{(shake.nutrition as any).fiber ?? '—'}{(shake.nutrition as any).fiber ? 'g':''}</div><div className="text-gray-500">Fiber</div></div>
+                      <div><div className="text-xl font-bold text-purple-600">{shake.nutrition.fiber ?? '—'}{shake.nutrition.fiber ? 'g':''}</div><div className="text-gray-500">Fiber</div></div>
                       <div><div className="text-xl font-bold text-amber-600">${shake.price}</div><div className="text-gray-500">Price</div></div>
                     </div>
 
@@ -1021,85 +756,48 @@ export default function PlantBasedProteinPage() {
                       ))}
                     </div>
 
-                    {/* Compact measured recipe preview with Servings control */}
+                    {/* RecipeKit (preview + modal + copy + metric) */}
                     {shake.recipe?.measurements && (
-                      <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="text-sm font-semibold text-gray-900">
-                            Recipe (serves {getServings(shake.id)})
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              className="px-2 py-1 border rounded text-sm"
-                              onClick={() => bumpServings(shake.id, -1)}
-                              aria-label="decrease servings"
-                            >
-                              −
-                            </button>
-                            <div className="min-w-[2ch] text-center text-sm">{getServings(shake.id)}</div>
-                            <button
-                              className="px-2 py-1 border rounded text-sm"
-                              onClick={() => bumpServings(shake.id, +1)}
-                              aria-label="increase servings"
-                            >
-                              +
-                            </button>
-                            <button
-                              className="px-2 py-1 border rounded text-sm flex items-center gap-1"
-                              onClick={() => resetServings(shake.id)}
-                              aria-label="reset servings"
-                              title="Reset to 1"
-                            >
-                              <RotateCcw className="h-3.5 w-3.5" />
-                              Reset
-                            </button>
-                          </div>
-                        </div>
-
-                        {(() => {
-                          const scaled = getScaledMeasurements(shake.recipe.measurements, getServings(shake.id));
-                          return (
-                            <ul className="text-base leading-6 text-gray-800 space-y-1 font-sans tracking-normal">
-                              {scaled.slice(0, 4).map((ing: any, i: number) => (
-                                <li key={i} className="flex items-start gap-2">
-                                  <Check className="h-4 w-4 text-green-600 mt-0.5" />
-                                  <span>
-                                    <span className="text-green-700 font-semibold">
-                                      {ing.amountScaled} {ing.unit}
-                                    </span>{" "}
-                                    {ing.item}
-                                    {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
-                                  </span>
-                                </li>
-                              ))}
-                              {scaled.length > 4 && (
-                                <li className="text-sm text-gray-600">…plus {scaled.length - 4} more</li>
-                              )}
-                            </ul>
-                          );
-                        })()}
-                      </div>
+                      <RecipeKit
+                        id={shake.id}
+                        name={shake.name}
+                        measurements={shake.recipe.measurements}
+                        directions={shake.recipe.directions}
+                        nutrition={shake.nutrition}
+                        prepTime={shake.prepTime}
+                        onComplete={() => {
+                          addToRecentlyViewed({
+                            id: shake.id,
+                            name: shake.name,
+                            category: 'protein-shakes',
+                            description: shake.description,
+                            ingredients: shake.recipe.measurements.map((x: Measured) => x.item),
+                            nutrition: shake.nutrition,
+                            difficulty: shake.difficulty,
+                            prepTime: shake.prepTime,
+                            rating: shake.rating,
+                            fitnessGoal: shake.fitnessGoal,
+                            bestTime: shake.bestTime
+                          });
+                          incrementDrinksMade();
+                          addPoints(25);
+                        }}
+                      />
                     )}
 
-                    {/* Rating + difficulty */}
-                    <div className="flex items-center justify-between mb-4">
+                    {/* Rating + actions */}
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1">
                         <Star className="h-4 w-4 text-yellow-400 fill-current" />
                         <span className="font-medium">{shake.rating}</span>
                         <span className="text-gray-500 text-sm">({shake.reviews})</span>
                       </div>
-                      <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-2">
-                      <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={() => handleMakeShake(shake)}>
-                        <Dumbbell className="h-4 w-4 mr-2" />
-                        Make Shake
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleShareShake(shake)}>
-                        <Share2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => handleShareShake(shake)}>
+                          <Share2 className="h-4 w-4 mr-1" /> Share
+                        </Button>
+                        <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -1108,7 +806,7 @@ export default function PlantBasedProteinPage() {
           </div>
         )}
 
-        {/* Protein Types Tab */}
+        {/* Protein Types */}
         {activeTab === 'protein-types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {proteinTypes.map(type => {
@@ -1152,7 +850,7 @@ export default function PlantBasedProteinPage() {
           </div>
         )}
 
-        {/* Goals Tab */}
+        {/* Goals */}
         {activeTab === 'goals' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {fitnessGoals.map(goal => {
@@ -1198,7 +896,7 @@ export default function PlantBasedProteinPage() {
           </div>
         )}
 
-        {/* Featured Tab */}
+        {/* Featured */}
         {activeTab === 'featured' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {featuredShakes.map(shake => (
@@ -1239,85 +937,45 @@ export default function PlantBasedProteinPage() {
                   <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-green-50 rounded-lg">
                     <div className="text-center"><div className="text-xl font-bold text-green-600">{shake.nutrition.protein}g</div><div className="text-xs text-gray-600">Protein</div></div>
                     <div className="text-center"><div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div><div className="text-xs text-gray-600">Calories</div></div>
-                    <div className="text-center"><div className="text-xl font-bold text-purple-600">{(shake.nutrition as any).fiber ?? '—'}{(shake.nutrition as any).fiber ? 'g':''}</div><div className="text-xs text-gray-600">Fiber</div></div>
+                    <div className="text-center"><div className="text-xl font-bold text-purple-600">{shake.nutrition.fiber ?? '—'}{shake.nutrition.fiber ? 'g':''}</div><div className="text-xs text-gray-600">Fiber</div></div>
                     <div className="text-center"><div className="text-xl font-bold text-amber-600">${shake.price}</div><div className="text-xs text-gray-600">Price</div></div>
                   </div>
 
-                  <div className="mb-4">
-                    <h4 className="font-medium text-gray-900 mb-2">Allergen-Free:</h4>
-                    <div className="flex flex-wrap gap-1">
-                      {shake.allergenFree.map((allergen: string, index: number) => (
-                        <Badge key={index} className="bg-blue-100 text-blue-800 text-xs">{allergen}-Free</Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mb-4">
-                    <h4 className="font-medium text-gray-900 mb-2">Key Benefits:</h4>
-                    <div className="flex flex-wrap gap-1">
-                      {shake.benefits.map((benefit: string, index: number) => (
-                        <Badge key={index} variant="outline" className="text-xs">{benefit}</Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Full measured list quick view with Servings control */}
+                  {/* RecipeKit full usability still available in Featured */}
                   {shake.recipe?.measurements && (
-                    <div className="mb-6">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium text-gray-900">Recipe (serves {getServings(shake.id)})</h4>
-                        <div className="flex items-center gap-2">
-                          <button
-                            className="px-2 py-1 border rounded text-sm"
-                            onClick={() => bumpServings(shake.id, -1)}
-                            aria-label="decrease servings"
-                          >
-                            −
-                          </button>
-                          <div className="min-w-[2ch] text-center text-sm">{getServings(shake.id)}</div>
-                          <button
-                            className="px-2 py-1 border rounded text-sm"
-                            onClick={() => bumpServings(shake.id, +1)}
-                            aria-label="increase servings"
-                          >
-                            +
-                          </button>
-                          <button
-                            className="px-2 py-1 border rounded text-sm flex items-center gap-1"
-                            onClick={() => resetServings(shake.id)}
-                            aria-label="reset servings"
-                            title="Reset to 1"
-                          >
-                            <RotateCcw className="h-3.5 w-3.5" />
-                            Reset
-                          </button>
-                        </div>
-                      </div>
-
-                      {(() => {
-                        const scaled = getScaledMeasurements(shake.recipe.measurements, getServings(shake.id));
-                        return (
-                          <div className="text-base leading-6 text-gray-800 space-y-1 font-sans tracking-normal">
-                            {scaled.map((ing: any, index: number) => (
-                              <div key={index} className="flex items-start gap-2">
-                                <Leaf className="h-4 w-4 text-green-600 mt-0.5" />
-                                <span>
-                                  <span className="text-green-700 font-semibold">
-                                    {ing.amountScaled} {ing.unit}
-                                  </span>{" "}
-                                  {ing.item}
-                                  {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                    </div>
+                    <RecipeKit
+                      id={shake.id}
+                      name={shake.name}
+                      measurements={shake.recipe.measurements}
+                      directions={shake.recipe.directions}
+                      nutrition={shake.nutrition}
+                      prepTime={shake.prepTime}
+                      onComplete={() => {
+                        addToRecentlyViewed({
+                          id: shake.id,
+                          name: shake.name,
+                          category: 'protein-shakes',
+                          description: shake.description,
+                          ingredients: shake.recipe.measurements.map((x: Measured) => x.item),
+                          nutrition: shake.nutrition,
+                          difficulty: shake.difficulty,
+                          prepTime: shake.prepTime,
+                          rating: shake.rating,
+                          fitnessGoal: shake.fitnessGoal,
+                          bestTime: shake.bestTime
+                        });
+                        incrementDrinksMade();
+                        addPoints(25);
+                      }}
+                    />
                   )}
 
                   <div className="flex gap-3">
-                    <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={() => handleMakeShake(shake)}>
+                    <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={() => {
+                      // scroll already in view; the RecipeKit has its own "Open Recipe" button for modal
+                      const anchor = document.getElementById(`card-${shake.id}`);
+                      anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }}>
                       <Dumbbell className="h-4 w-4 mr-2" />
                       Make This Shake
                     </Button>
@@ -1332,7 +990,7 @@ export default function PlantBasedProteinPage() {
           </div>
         )}
 
-        {/* Your Progress */}
+        {/* Progress */}
         <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mt-8">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
