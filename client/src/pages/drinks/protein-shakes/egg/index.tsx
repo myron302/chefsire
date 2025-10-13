@@ -1,14 +1,14 @@
 // pages/drinks/protein-shakes/egg.tsx
 import React, { useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
   Target, Heart, Star, Zap, Flame, Leaf, Apple, Sparkles, Moon, Wine,
-  Search, ArrowLeft, ArrowRight, Share2, Camera, Plus, X, Check, Dumbbell
+  Search, ArrowLeft, ArrowRight, Share2, Camera, Dumbbell, X, Check
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
@@ -54,7 +54,6 @@ const eggProteinRecipes = [
       measurements: [
         m(1, 'scoop (30g)', 'egg white protein'),
         m(1, 'cup', 'unsweetened almond milk'),
-        // FIX: unit/item corrected (was unit="banana", item="ripe…")
         m(0.5, 'whole', 'banana', 'ripe, frozen preferred'),
         m(2, 'tbsp', 'rolled oats'),
         m(0.5, 'tsp', 'cinnamon'),
@@ -460,35 +459,40 @@ export default function EggProteinPage() {
       {/* Recipe Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredRecipes.map((recipe) => (
-          <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
+          <Card key={recipe.id} id={`card-${recipe.id}`} className="hover:shadow-lg transition-shadow">
             <CardContent className="p-6">
-              {/* Title + Favorite */}
+              {/* Title + Actions (Favorite + Share) */}
               <div className="flex items-start justify-between mb-3">
                 <h3 className="font-bold text-lg">{recipe.name}</h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    const drinkData = {
-                      id: recipe.id,
-                      name: recipe.name,
-                      category: 'protein-shakes' as const,
-                      description: `${recipe.flavor || ''} egg protein shake`,
-                      ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
-                      nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
-                      difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
-                      prepTime: recipe.prepTime,
-                      rating: recipe.rating
-                    };
-                    addToFavorites(drinkData);
-                  }}
-                  className="text-gray-400 hover:text-red-500"
-                >
-                  <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      const drinkData = {
+                        id: recipe.id,
+                        name: recipe.name,
+                        category: 'protein-shakes' as const,
+                        description: `${recipe.flavor || ''} egg protein shake`,
+                        ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
+                        nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
+                        difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
+                        prepTime: recipe.prepTime,
+                        rating: recipe.rating
+                      };
+                      addToFavorites(drinkData);
+                    }}
+                    className="text-gray-400 hover:text-red-500"
+                  >
+                    <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => handleShareRecipe(recipe)} aria-label="Share recipe">
+                    <Share2 className="h-5 w-5 text-gray-500" />
+                  </Button>
+                </div>
               </div>
 
-              {/* Rating / Reviews / Difficulty (TOP — matches your Egg layout) */}
+              {/* Rating / Reviews / Difficulty (TOP) */}
               <div className="flex items-center gap-2 mb-3">
                 <div className="flex items-center gap-1">
                   <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
@@ -559,21 +563,17 @@ export default function EggProteinPage() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-2">
+              <div className="flex">
                 <Button
                   className="flex-1 bg-amber-600 hover:bg-amber-700 text-white"
                   onClick={() => {
-                    // no XP here — only onComplete
-                    const anchor = document.getElementById(recipe.id);
+                    const anchor = document.getElementById(`card-${recipe.id}`);
                     anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     kitRefs.current[recipe.id]?.open?.();
                   }}
                 >
                   <Dumbbell className="h-4 w-4 mr-2" />
                   Make Shake (+100 XP)
-                </Button>
-                <Button variant="outline" size="icon" onClick={() => handleShareRecipe(recipe)}>
-                  <Share2 className="h-4 w-4" />
                 </Button>
               </div>
             </CardContent>
