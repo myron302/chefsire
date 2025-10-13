@@ -35,7 +35,6 @@ const scaleAmount = (base: number | string, servings: number) => {
   return toNiceFraction(n * servings);
 };
 
-// basic US -> metric conversion
 const toMetric = (unit: string, amount: number) => {
   const mlPerCup = 240, mlPerTbsp = 15, mlPerTsp = 5;
   const gPerScoop30 = 30;
@@ -300,7 +299,6 @@ export default function EggProteinPage() {
     setSelectedRecipe(null);
   };
 
-  // Header share
   const handleSharePage = async () => {
     const shareData = {
       title: 'Egg Protein Shakes',
@@ -324,7 +322,6 @@ export default function EggProteinPage() {
     }
   };
 
-  // Inline copy/share (per card) – uses scaled servings + metric toggle
   const copyRecipe = async (recipe: any) => {
     const useMetric = !!metricFlags[recipe.id];
     const servings = servingsFlags[recipe.id] || recipe.recipe?.servings || 1;
@@ -589,7 +586,7 @@ export default function EggProteinPage() {
                   </div>
                 ) : null}
 
-                {/* Flavor / meta row (no tags shoved on the right) */}
+                {/* Flavor / meta row */}
                 <div className="flex items-center gap-2 mb-3">
                   {recipe.flavor && <Badge variant="outline">{recipe.flavor}</Badge>}
                   <Badge variant="outline">Prep {recipe.prepTime} min</Badge>
@@ -611,7 +608,7 @@ export default function EggProteinPage() {
                   </div>
                 </div>
 
-                {/* RATING + DIFFICULTY row (ABOVE recipe preview, matching Whey) */}
+                {/* Rating + Difficulty ABOVE recipe preview (match Whey) */}
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-1">
                     <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
@@ -621,7 +618,7 @@ export default function EggProteinPage() {
                   <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
                 </div>
 
-                {/* Compact measured recipe preview with SERVINGS + METRIC controls */}
+                {/* Recipe preview with SERVINGS + METRIC controls */}
                 {recipe.recipe?.measurements && (
                   <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
@@ -711,7 +708,6 @@ export default function EggProteinPage() {
                       )}
                     </ul>
 
-                    {/* Inline actions: Copy • Share */}
                     <div className="flex gap-2 mt-3">
                       <Button variant="outline" size="sm" onClick={() => copyRecipe(recipe)}>
                         <Clipboard className="w-4 h-4 mr-1" /> Copy
@@ -723,7 +719,7 @@ export default function EggProteinPage() {
                   </div>
                 )}
 
-                {/* Tags section (kept here, below recipe box) */}
+                {/* Tags */}
                 <div className="flex flex-wrap gap-1 mb-4">
                   {recipe.tags.map((tag: string) => (
                     <Badge key={tag} variant="secondary" className="text-xs">
@@ -732,7 +728,7 @@ export default function EggProteinPage() {
                   ))}
                 </div>
 
-                {/* CTA — full width */}
+                {/* CTA */}
                 <div className="flex">
                   <Button
                     className="w-full bg-amber-600 hover:bg-amber-700 text-white"
