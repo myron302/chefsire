@@ -522,6 +522,13 @@ export default function EggProteinPage() {
                     <div className="flex-1">
                       <CardTitle className="text-lg mb-1">{recipe.name}</CardTitle>
 
+                      {/* Benefits directly below the title */}
+                      {Array.isArray(recipe.benefits) && recipe.benefits.length > 0 && (
+                        <div className="mt-0.5 mb-2 text-xs text-gray-600">
+                          Benefits: {recipe.benefits.join(' · ')}
+                        </div>
+                      )}
+
                       <p className="text-sm text-gray-600">{recipe.flavor}</p>
                     </div>
                     <Button
