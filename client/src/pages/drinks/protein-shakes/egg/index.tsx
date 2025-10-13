@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
   Target, Heart, Star, Zap, Flame, Leaf, Apple, Sparkles, Moon, Wine,
-  Search, ArrowLeft, ArrowRight, Camera, Plus, X, Check, Clipboard, Share2
+  Search, ArrowLeft, ArrowRight, Camera, Plus, X, Check, Clipboard, Share2, RotateCcw
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
@@ -17,6 +17,24 @@ import RecipeKit from '@/components/recipes/RecipeKit';
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+// nice fraction display to match RecipeKit
+const toNiceFraction = (value: number) => {
+  const r = Math.round(value * 4) / 4;
+  const whole = Math.trunc(r);
+  const frac = Math.round((r - whole) * 4);
+  const map: Record<number, string> = { 0: '', 1: '1/4', 2: '1/2', 3: '3/4' };
+  const fs = map[frac];
+  if (!whole && fs) return fs;
+  if (whole && fs) return `${whole} ${fs}`;
+  return `${whole}`;
+};
+
+const scaleAmount = (base: number | string, servings: number) => {
+  const n = typeof base === 'number' ? base : parseFloat(String(base));
+  if (Number.isNaN(n)) return base;
+  return toNiceFraction(n * servings);
+};
 
 // basic US -> metric conversion (mirror of RecipeKit)
 const toMetric = (unit: string, amount: number) => {
@@ -33,7 +51,7 @@ const toMetric = (unit: string, amount: number) => {
   }
 };
 
-// ---------- Data ----------
+// ---------- Nav ----------
 const otherDrinkHubs = [
   { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
   { id: 'detoxes', name: 'Detox Drinks', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing & wellness' },
@@ -49,19 +67,14 @@ const proteinSubcategories = [
   { id: 'beef', name: 'Beef Protein', icon: Flame, path: '/drinks/protein-shakes/beef', description: 'Natural creatine' }
 ];
 
-// Egg protein recipes with measured recipes (serves 1 baseline)
+// ---------- Data (unchanged content; same as before) ----------
 const eggProteinRecipes = [
   {
     id: 'egg-1',
     name: 'Classic Egg White Power',
     flavor: 'Cinnamon Banana',
-    protein: 28,
-    carbs: 15,
-    calories: 210,
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.7,
-    reviews: 156,
+    protein: 28, carbs: 15, calories: 210,
+    difficulty: 'Easy', prepTime: 3, rating: 4.7, reviews: 156,
     tags: ['Lactose-Free', 'Post-Workout', 'Muscle Building'],
     benefits: ['Complete amino acids', 'Easy digestion', 'No lactose'],
     ingredients: ['Egg White Protein', 'Banana', 'Oats', 'Cinnamon', 'Almond Milk'],
@@ -85,13 +98,8 @@ const eggProteinRecipes = [
     id: 'egg-2',
     name: 'Vanilla Egg Protein Delight',
     flavor: 'Vanilla Cream',
-    protein: 30,
-    carbs: 20,
-    calories: 240,
-    difficulty: 'Easy',
-    prepTime: 2,
-    rating: 4.8,
-    reviews: 203,
+    protein: 30, carbs: 20, calories: 240,
+    difficulty: 'Easy', prepTime: 2, rating: 4.8, reviews: 203,
     tags: ['High Protein', 'Morning Boost', 'Muscle Recovery'],
     benefits: ['Sustained energy', 'Rich in BCAAs', 'Smooth texture'],
     ingredients: ['Egg Protein', 'Vanilla', 'Greek Yogurt', 'Honey', 'Ice'],
@@ -115,13 +123,8 @@ const eggProteinRecipes = [
     id: 'egg-3',
     name: 'Berry Egg Fusion',
     flavor: 'Mixed Berry',
-    protein: 26,
-    carbs: 18,
-    calories: 220,
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.6,
-    reviews: 187,
+    protein: 26, carbs: 18, calories: 220,
+    difficulty: 'Easy', prepTime: 4, rating: 4.6, reviews: 187,
     tags: ['Antioxidants', 'Recovery', 'Lactose-Free'],
     benefits: ['Antioxidant rich', 'Anti-inflammatory', 'Heart health'],
     ingredients: ['Egg Protein', 'Mixed Berries', 'Spinach', 'Chia', 'Coconut Water'],
@@ -144,13 +147,8 @@ const eggProteinRecipes = [
     id: 'egg-4',
     name: 'Chocolate Egg Power',
     flavor: 'Cocoa PB',
-    protein: 32,
-    carbs: 22,
-    calories: 260,
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.9,
-    reviews: 245,
+    protein: 32, carbs: 22, calories: 260,
+    difficulty: 'Easy', prepTime: 3, rating: 4.9, reviews: 245,
     tags: ['Indulgent', 'Post-Workout', 'Strength'],
     benefits: ['Muscle growth', 'Energy boost', 'Great taste'],
     ingredients: ['Egg Protein', 'Cocoa', 'Peanut Butter', 'Banana', 'Milk'],
@@ -173,13 +171,8 @@ const eggProteinRecipes = [
     id: 'egg-5',
     name: 'Green Egg Power Smoothie',
     flavor: 'Green Apple',
-    protein: 27,
-    carbs: 16,
-    calories: 205,
-    difficulty: 'Medium',
-    prepTime: 5,
-    rating: 4.5,
-    reviews: 134,
+    protein: 27, carbs: 16, calories: 205,
+    difficulty: 'Medium', prepTime: 5, rating: 4.5, reviews: 134,
     tags: ['Detox', 'Nutrient-Dense', 'Alkalizing'],
     benefits: ['Nutrient-dense', 'Digestive health', 'Clean protein'],
     ingredients: ['Egg Protein', 'Kale', 'Avocado', 'Apple', 'Lemon'],
@@ -203,13 +196,8 @@ const eggProteinRecipes = [
     id: 'egg-6',
     name: 'Tropical Egg Protein',
     flavor: 'Mango Pineapple',
-    protein: 29,
-    carbs: 25,
-    calories: 250,
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.7,
-    reviews: 178,
+    protein: 29, carbs: 25, calories: 250,
+    difficulty: 'Easy', prepTime: 3, rating: 4.7, reviews: 178,
     tags: ['Tropical', 'Anti-Inflammatory', 'Recovery'],
     benefits: ['Tropical flavor', 'Anti-inflammatory', 'Immune boost'],
     ingredients: ['Egg Protein', 'Mango', 'Pineapple', 'Coconut Milk', 'Turmeric'],
@@ -248,8 +236,9 @@ export default function EggProteinPage() {
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [showKit, setShowKit] = useState(false);
 
-  // per-card Metric toggle
+  // per-card Metric + Servings
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
+  const [servingsFlags, setServingsFlags] = useState<Record<string, number>>({});
 
   const allTags = ['All', ...new Set(eggProteinRecipes.flatMap(r => r.tags))];
 
@@ -336,17 +325,22 @@ export default function EggProteinPage() {
     }
   };
 
-  // Inline copy/share (per card)
+  // Inline copy/share (per card) – now uses scaled servings + metric toggle
   const copyRecipe = async (recipe: any) => {
     const useMetric = !!metricFlags[recipe.id];
+    const servings = servingsFlags[recipe.id] || recipe.recipe?.servings || 1;
     const lines = (recipe.recipe?.measurements || []).map((ing: Measured) => {
-      if (useMetric && typeof ing.amount === 'number') {
-        const m = toMetric(ing.unit, ing.amount);
-        return `- ${m.amount} ${m.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+      const baseNum = typeof ing.amount === 'number' ? ing.amount : parseFloat(String(ing.amount));
+      const scaledNum = Number.isFinite(baseNum) ? (baseNum as number) * servings : undefined;
+
+      if (useMetric && typeof scaledNum === 'number') {
+        const mcv = toMetric(ing.unit, scaledNum);
+        return `- ${mcv.amount} ${mcv.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
       }
-      return `- ${ing.amount} ${ing.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+      const scaled = scaleAmount(ing.amount, servings);
+      return `- ${scaled} ${ing.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
     });
-    const txt = `${recipe.name} (serves ${recipe.recipe?.servings || 1})\n${lines.join('\n')}`;
+    const txt = `${recipe.name} (serves ${servings})\n${lines.join('\n')}`;
     try {
       await navigator.clipboard.writeText(txt);
       alert('Recipe copied!');
@@ -357,9 +351,14 @@ export default function EggProteinPage() {
 
   const shareRecipe = async (recipe: any) => {
     const url = typeof window !== 'undefined' ? window.location.href : '';
+    const servings = servingsFlags[recipe.id] || recipe.recipe?.servings || 1;
     const preview = recipe?.recipe?.measurements?.slice(0, 4)
-      .map((r: Measured) => `${r.amount} ${r.unit} ${r.item}`).join(' · ');
-    const text = `${recipe.name} • ${recipe.protein}g protein • ${recipe.calories} cal\n${preview || recipe.ingredients.join(', ')}`;
+      .map((r: Measured) => {
+        const baseNum = typeof r.amount === 'number' ? r.amount : parseFloat(String(r.amount));
+        const scaled = Number.isFinite(baseNum) ? toNiceFraction((baseNum as number) * servings) : String(r.amount);
+        return `${scaled} ${r.unit} ${r.item}`;
+      }).join(' · ');
+    const text = `${recipe.name} • ${recipe.protein}g protein • ${recipe.calories} cal (serves ${servings})\n${preview || recipe.ingredients.join(', ')}`;
     const shareData = { title: recipe.name, text, url };
     try {
       if (navigator.share) {
@@ -397,7 +396,7 @@ export default function EggProteinPage() {
         </div>
       )}
 
-      {/* RecipeKit modal (shared component) — keep your existing integration */}
+      {/* RecipeKit modal (controlled) */}
       {selectedRecipe && (
         <RecipeKit
           open={showKit}
@@ -412,7 +411,8 @@ export default function EggProteinPage() {
             directions: selectedRecipe.recipe?.directions || [],
             measurements: selectedRecipe.recipe?.measurements || [],
             baseNutrition: { calories: selectedRecipe.calories, protein: selectedRecipe.protein },
-            defaultServings: selectedRecipe.recipe?.servings || 1
+            // open modal using current card servings value
+            defaultServings: servingsFlags[selectedRecipe.id] || selectedRecipe.recipe?.servings || 1
           }}
         />
       )}
@@ -480,7 +480,7 @@ export default function EggProteinPage() {
         </CardContent>
       </Card>
 
-      {/* Sister Protein Pages Navigation */}
+      {/* Sister Protein Pages */}
       <Card className="bg-gradient-to-r from-amber-50 to-amber-100 border-amber-200">
         <CardContent className="p-4">
           <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -550,11 +550,12 @@ export default function EggProteinPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredRecipes.map((recipe) => {
           const useMetric = !!metricFlags[recipe.id];
+          const servings = servingsFlags[recipe.id] || recipe.recipe?.servings || 1;
 
           return (
             <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
               <CardContent className="p-6">
-                <div className="flex items-start justify-between mb-3">
+                <div className="flex items-start justify-between mb-2">
                   <h3 className="font-bold text-lg">{recipe.name}</h3>
                   <Button
                     variant="ghost"
@@ -579,15 +580,27 @@ export default function EggProteinPage() {
                   </Button>
                 </div>
 
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="flex items-center gap-1">
-                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    <span className="text-sm font-medium">{recipe.rating}</span>
+                {/* NEW: Benefits moved directly under title (uniform with Whey request) */}
+                {recipe.benefits?.length ? (
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {recipe.benefits.map((b: string, i: number) => (
+                      <Badge key={i} className="bg-green-100 text-green-800 text-xs">
+                        {b}
+                      </Badge>
+                    ))}
                   </div>
-                  <span className="text-sm text-muted-foreground">({recipe.reviews} reviews)</span>
-                  <Badge variant="outline" className="ml-auto">{recipe.difficulty}</Badge>
+                ) : null}
+
+                {/* Flavor / meta row (kept) */}
+                <div className="flex items-center gap-2 mb-3">
+                  {recipe.flavor && <Badge variant="outline">{recipe.flavor}</Badge>}
+                  <Badge variant="outline">Prep {recipe.prepTime} min</Badge>
+                  <Badge variant="secondary" className="ml-auto text-xs">
+                    {recipe.tags[0]}
+                  </Badge>
                 </div>
 
+                {/* Macros */}
                 <div className="grid grid-cols-3 gap-2 text-center mb-4">
                   <div>
                     <div className="font-bold text-blue-600">{recipe.protein}g</div>
@@ -603,18 +616,60 @@ export default function EggProteinPage() {
                   </div>
                 </div>
 
-                {/* Compact measured recipe preview (with Show more + Copy/Share/Metric inline) */}
+                {/* Compact measured recipe preview with SERVINGS + METRIC controls */}
                 {recipe.recipe?.measurements && (
                   <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                    <div className="text-sm font-semibold text-gray-900 mb-1">
-                      Recipe (serves {recipe.recipe.servings || 1})
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm font-semibold text-gray-900">
+                        Recipe (serves {servings})
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="px-2 py-1 border rounded text-sm"
+                          onClick={() =>
+                            setServingsFlags(prev => {
+                              const v = Math.max(1, (prev[recipe.id] || recipe.recipe.servings || 1) - 1);
+                              return { ...prev, [recipe.id]: v };
+                            })
+                          }
+                          aria-label="decrease servings"
+                        >
+                          −
+                        </button>
+                        <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                        <button
+                          className="px-2 py-1 border rounded text-sm"
+                          onClick={() =>
+                            setServingsFlags(prev => {
+                              const v = Math.min(6, (prev[recipe.id] || recipe.recipe.servings || 1) + 1);
+                              return { ...prev, [recipe.id]: v };
+                            })
+                          }
+                          aria-label="increase servings"
+                        >
+                          +
+                        </button>
+                        <button
+                          className="px-2 py-1 border rounded text-sm flex items-center gap-1"
+                          onClick={() =>
+                            setServingsFlags(prev => ({ ...prev, [recipe.id]: recipe.recipe.servings || 1 }))
+                          }
+                          title="Reset to default"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" /> Reset
+                        </button>
+                      </div>
                     </div>
+
                     <ul className="text-sm leading-6 text-gray-800 space-y-1">
                       {recipe.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
-                        const isNum = typeof ing.amount === 'number';
-                        const display = useMetric && isNum
-                          ? toMetric(ing.unit, ing.amount as number)
-                          : { amount: ing.amount as number | string, unit: ing.unit };
+                        const baseNum = typeof ing.amount === 'number' ? ing.amount : parseFloat(String(ing.amount));
+                        const scaledNum = Number.isFinite(baseNum) ? (baseNum as number) * servings : undefined;
+
+                        const display = (useMetric && typeof scaledNum === 'number')
+                          ? toMetric(ing.unit, scaledNum)
+                          : { amount: scaleAmount(ing.amount, servings), unit: ing.unit };
+
                         return (
                           <li key={i} className="flex items-start gap-2">
                             <Check className="h-4 w-4 text-amber-600 mt-0.5" />
@@ -642,7 +697,7 @@ export default function EggProteinPage() {
                       )}
                     </ul>
 
-                    {/* Inline actions in this exact order: Copy • Share • Metric */}
+                    {/* Inline actions: Copy • Share • Metric/US */}
                     <div className="flex gap-2 mt-3">
                       <Button variant="outline" size="sm" onClick={() => copyRecipe(recipe)}>
                         <Clipboard className="w-4 h-4 mr-1" /> Copy
@@ -663,6 +718,7 @@ export default function EggProteinPage() {
                   </div>
                 )}
 
+                {/* Tags */}
                 <div className="flex flex-wrap gap-1 mb-4">
                   {recipe.tags.map((tag: string) => (
                     <Badge key={tag} variant="secondary" className="text-xs">
@@ -671,11 +727,18 @@ export default function EggProteinPage() {
                   ))}
                 </div>
 
-                <div className="mb-3 text-xs text-muted-foreground">
-                  Benefits: {recipe.benefits.join(' · ')}
+                {/* MOVED: Rating row + Difficulty (match Whey placement) */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-1">
+                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                    <span className="text-sm font-medium">{recipe.rating}</span>
+                    <span className="text-sm text-muted-foreground">({recipe.reviews} reviews)</span>
+                  </div>
+                  <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
                 </div>
 
-                <div className="flex gap-2">
+                {/* CTA — full width, no share beside it */}
+                <div className="flex">
                   <Button
                     className="w-full bg-amber-600 hover:bg-amber-700 text-white"
                     onClick={() => openRecipeModal(recipe)}
