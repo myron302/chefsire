@@ -718,14 +718,6 @@ export default function PlantBasedProteinPage() {
                     <div className="flex items-center gap-2 mb-2">
                       <Badge className="bg-green-100 text-green-800">{shake.proteinSource}</Badge>
                       <Badge variant="outline">{shake.flavor}</Badge>
-                      {/* move difficulty up here to keep bottom clean & match egg layout */}
-                      <Badge variant="outline">{shake.difficulty}</Badge>
-                      {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
-                      <div className="flex items-center gap-1 ml-auto">
-                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="font-medium">{shake.rating}</span>
-                        <span className="text-gray-500 text-sm">({shake.reviews})</span>
-                      </div>
                     </div>
                   </CardHeader>
 
@@ -738,73 +730,86 @@ export default function PlantBasedProteinPage() {
                       <div><div className="text-xl font-bold text-amber-600">${shake.price}</div><div className="text-gray-500">Price</div></div>
                     </div>
 
-                    {/* Certifications */}
-                    <div className="flex flex-wrap gap-1 mb-4">
-                      {shake.certifications.map((cert: string, index: number) => (
-                        <Badge key={index} variant="outline" className="text-xs">{cert}</Badge>
-                      ))}
+                    {/* Rating + Difficulty row */}
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                          <span className="font-medium">{shake.rating}</span>
+                          <span className="text-gray-500 text-sm">({shake.reviews})</span>
+                        </div>
+                        {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                      </div>
+                      <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
                     </div>
 
                     {/* RecipeKit (preview + modal) */}
                     {shake.recipe?.measurements && (
-                      <RecipeKit
-                        ref={(el) => { kitRefs.current[shake.id] = el; }}
-                        id={shake.id}
-                        name={shake.name}
-                        measurements={shake.recipe.measurements}
-                        directions={shake.recipe.directions}
-                        nutrition={shake.nutrition}
-                        prepTime={shake.prepTime}
-                        onComplete={() => {
-                          addToRecentlyViewed({
-                            id: shake.id,
-                            name: shake.name,
-                            category: 'protein-shakes',
-                            description: shake.description,
-                            ingredients: shake.recipe.measurements.map((x: Measured) => x.item),
-                            nutrition: shake.nutrition,
-                            difficulty: shake.difficulty,
-                            prepTime: shake.prepTime,
-                            rating: shake.rating,
-                            fitnessGoal: shake.fitnessGoal,
-                            bestTime: shake.bestTime
-                          });
-                          incrementDrinksMade();
-                          addPoints(25);
-                        }}
-                      />
+                      <div className="mb-4">
+                        <RecipeKit
+                          ref={(el) => { kitRefs.current[shake.id] = el; }}
+                          id={shake.id}
+                          name={shake.name}
+                          measurements={shake.recipe.measurements}
+                          directions={shake.recipe.directions}
+                          nutrition={shake.nutrition}
+                          prepTime={shake.prepTime}
+                          onComplete={() => {
+                            addToRecentlyViewed({
+                              id: shake.id,
+                              name: shake.name,
+                              category: 'protein-shakes',
+                              description: shake.description,
+                              ingredients: shake.recipe.measurements.map((x: Measured) => x.item),
+                              nutrition: shake.nutrition,
+                              difficulty: shake.difficulty,
+                              prepTime: shake.prepTime,
+                              rating: shake.rating,
+                              fitnessGoal: shake.fitnessGoal,
+                              bestTime: shake.bestTime
+                            });
+                            incrementDrinksMade();
+                            addPoints(25);
+                          }}
+                        />
+                      </div>
                     )}
 
-                    {/* Full-width CTA only (no extra Share next to it) */}
-                    <div className="mt-3">
-                      <Button
-                        className="w-full bg-green-600 hover:bg-green-700"
-                        size="sm"
-                        onClick={() => {
-                          addToRecentlyViewed({
-                            id: shake.id,
-                            name: shake.name,
-                            category: 'protein-shakes',
-                            description: shake.description,
-                            ingredients: shake.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
-                            nutrition: shake.nutrition,
-                            difficulty: shake.difficulty,
-                            prepTime: shake.prepTime,
-                            rating: shake.rating,
-                            fitnessGoal: shake.fitnessGoal,
-                            bestTime: shake.bestTime
-                          });
-                          incrementDrinksMade();
-                          addPoints(25);
-                          const anchor = document.getElementById(`card-${shake.id}`);
-                          anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                          kitRefs.current[shake.id]?.open?.();
-                        }}
-                      >
-                        <Dumbbell className="h-4 w-4 mr-1" />
-                        Make Shake (+25 XP)
-                      </Button>
+                    {/* Certifications (tags) */}
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {shake.certifications.map((cert: string, index: number) => (
+                        <Badge key={index} variant="secondary" className="text-xs">{cert}</Badge>
+                      ))}
                     </div>
+
+                    {/* Full-width CTA only (no extra Share next to it) */}
+                    <Button
+                      className="w-full bg-green-600 hover:bg-green-700"
+                      size="sm"
+                      onClick={() => {
+                        addToRecentlyViewed({
+                          id: shake.id,
+                          name: shake.name,
+                          category: 'protein-shakes',
+                          description: shake.description,
+                          ingredients: shake.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
+                          nutrition: shake.nutrition,
+                          difficulty: shake.difficulty,
+                          prepTime: shake.prepTime,
+                          rating: shake.rating,
+                          fitnessGoal: shake.fitnessGoal,
+                          bestTime: shake.bestTime
+                        });
+                        incrementDrinksMade();
+                        addPoints(25);
+                        const anchor = document.getElementById(`card-${shake.id}`);
+                        anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        kitRefs.current[shake.id]?.open?.();
+                      }}
+                    >
+                      <Dumbbell className="h-4 w-4 mr-1" />
+                      Make Shake (+25 XP)
+                    </Button>
                   </CardContent>
                 </Card>
               ))}
@@ -931,12 +936,6 @@ export default function PlantBasedProteinPage() {
                   <div className="flex items-center gap-2 mt-2">
                     <Badge className="bg-green-100 text-green-800">{shake.proteinSource}</Badge>
                     <Badge variant="outline">{shake.flavor}</Badge>
-                    <Badge variant="outline">{shake.difficulty}</Badge>
-                    <div className="flex items-center gap-1 ml-auto">
-                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium">{shake.rating}</span>
-                      <span className="text-gray-500 text-sm">({shake.reviews})</span>
-                    </div>
                   </div>
                 </CardHeader>
 
@@ -948,65 +947,75 @@ export default function PlantBasedProteinPage() {
                     <div className="text-center"><div className="text-xl font-bold text-amber-600">${shake.price}</div><div className="text-xs text-gray-600">Price</div></div>
                   </div>
 
+                  {/* Rating + Difficulty row */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-1">
+                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                      <span className="font-medium">{shake.rating}</span>
+                      <span className="text-gray-500 text-sm">({shake.reviews})</span>
+                    </div>
+                    <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
+                  </div>
+
                   {/* RecipeKit */}
                   {shake.recipe?.measurements && (
-                    <RecipeKit
-                      ref={(el) => { kitRefs.current[shake.id] = el; }}
-                      id={shake.id}
-                      name={shake.name}
-                      measurements={shake.recipe.measurements}
-                      directions={shake.recipe.directions}
-                      nutrition={shake.nutrition}
-                      prepTime={shake.prepTime}
-                      onComplete={() => {
-                        addToRecentlyViewed({
-                          id: shake.id,
-                          name: shake.name,
-                          category: 'protein-shakes',
-                          description: shake.description,
-                          ingredients: shake.recipe.measurements.map((x: Measured) => x.item),
-                          nutrition: shake.nutrition,
-                          difficulty: shake.difficulty,
-                          prepTime: shake.prepTime,
-                          rating: shake.rating,
-                          fitnessGoal: shake.fitnessGoal,
-                          bestTime: shake.bestTime
-                        });
-                        incrementDrinksMade();
-                        addPoints(25);
-                      }}
-                    />
+                    <div className="mb-4">
+                      <RecipeKit
+                        ref={(el) => { kitRefs.current[shake.id] = el; }}
+                        id={shake.id}
+                        name={shake.name}
+                        measurements={shake.recipe.measurements}
+                        directions={shake.recipe.directions}
+                        nutrition={shake.nutrition}
+                        prepTime={shake.prepTime}
+                        onComplete={() => {
+                          addToRecentlyViewed({
+                            id: shake.id,
+                            name: shake.name,
+                            category: 'protein-shakes',
+                            description: shake.description,
+                            ingredients: shake.recipe.measurements.map((x: Measured) => x.item),
+                            nutrition: shake.nutrition,
+                            difficulty: shake.difficulty,
+                            prepTime: shake.prepTime,
+                            rating: shake.rating,
+                            fitnessGoal: shake.fitnessGoal,
+                            bestTime: shake.bestTime
+                          });
+                          incrementDrinksMade();
+                          addPoints(25);
+                        }}
+                      />
+                    </div>
                   )}
 
                   {/* Full-width CTA only */}
-                  <div className="mt-3">
-                    <Button
-                      className="w-full bg-green-600 hover:bg-green-700"
-                      onClick={() => {
-                        const anchor = document.getElementById(`card-${shake.id}`);
-                        anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        incrementDrinksMade();
-                        addPoints(25);
-                        addToRecentlyViewed({
-                          id: shake.id,
-                          name: shake.name,
-                          category: 'protein-shakes',
-                          description: shake.description,
-                          ingredients: shake.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
-                          nutrition: shake.nutrition,
-                          difficulty: shake.difficulty,
-                          prepTime: shake.prepTime,
-                          rating: shake.rating,
-                          fitnessGoal: shake.fitnessGoal,
-                          bestTime: shake.bestTime
-                        });
-                        kitRefs.current[shake.id]?.open?.();
-                      }}
-                    >
-                      <Dumbbell className="h-4 w-4 mr-2" />
-                      Make Shake (+25 XP)
-                    </Button>
-                  </div>
+                  <Button
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    onClick={() => {
+                      const anchor = document.getElementById(`card-${shake.id}`);
+                      anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      incrementDrinksMade();
+                      addPoints(25);
+                      addToRecentlyViewed({
+                        id: shake.id,
+                        name: shake.name,
+                        category: 'protein-shakes',
+                        description: shake.description,
+                        ingredients: shake.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
+                        nutrition: shake.nutrition,
+                        difficulty: shake.difficulty,
+                        prepTime: shake.prepTime,
+                        rating: shake.rating,
+                        fitnessGoal: shake.fitnessGoal,
+                        bestTime: shake.bestTime
+                      });
+                      kitRefs.current[shake.id]?.open?.();
+                    }}
+                  >
+                    <Dumbbell className="h-4 w-4 mr-2" />
+                    Make Shake (+25 XP)
+                  </Button>
                 </CardContent>
               </Card>
             ))}
