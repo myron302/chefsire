@@ -1076,6 +1076,18 @@ export default function CollagenProteinPage() {
                         </div>
                       )}
 
+                      {/* RecipeKit component for each shake */}
+                      <RecipeKit
+                        ref={(el) => { kitRefs.current[shake.id] = el; }}
+                        id={shake.id}
+                        name={shake.name}
+                        measurements={shake.recipe?.measurements || []}
+                        directions={shake.recipe?.directions || []}
+                        nutrition={shake.nutrition}
+                        prepTime={shake.prepTime}
+                        onComplete={() => handleCompleteRecipe(shake)}
+                      />
+
                       {/* Tags (certifications) */}
                       <div className="flex flex-wrap gap-1 mb-4">
                         {shake.certifications.map((cert: string) => (
