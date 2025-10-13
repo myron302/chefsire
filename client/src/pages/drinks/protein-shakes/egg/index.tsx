@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
-  Target, Heart, Star, Zap, Flame, Leaf, Apple, Sparkles, Moon,
+  Target, Heart, Star, Zap, Flame, Leaf, Apple, Sparkles, Moon, Wine,
   Search, ArrowLeft, ArrowRight, Share2, Camera, Plus, X, Check
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
