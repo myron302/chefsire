@@ -278,34 +278,38 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
             <div className="text-sm font-semibold text-gray-900">
               Recipe (serves {servings})
             </div>
-            <div className="flex items-center gap-2">
-              <button className="px-2 py-1 border rounded text-sm" onClick={() => bumpServings(-1)} aria-label="decrease servings">−</button>
-              <div className="min-w-[2ch] text-center text-sm">{servings}</div>
-              <button className="px-2 py-1 border rounded text-sm" onClick={() => bumpServings(+1)} aria-label="increase servings">+</button>
-              <button className="px-2 py-1 border rounded text-sm flex items-center gap-1" onClick={resetServings} title="Reset to default">
-                <RotateCcw className="h-3.5 w-3.5" /> Reset
-              </button>
+            <div className="flex items-center rounded-md border border-gray-300 overflow-hidden">
+              <button
+                aria-label="decrease servings"
+                onClick={() => bumpServings(-1)}
+                className="px-2 py-1 text-sm hover:bg-gray-100"
+              >−</button>
+              <div className="px-3 py-1 text-sm border-l border-r border-gray-300">{servings}</div>
+              <button
+                aria-label="increase servings"
+                onClick={() => bumpServings(+1)}
+                className="px-2 py-1 text-sm hover:bg-gray-100"
+              >+</button>
             </div>
           </div>
 
-          <ul className="text-base leading-6 text-gray-800 space-y-1 font-sans tracking-normal">
-            {scaled.slice(0, 4).map((ing, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <Check className={`h-4 w-4 ${accentText} mt-0.5`} />
-                <span>
-                  <span className={`${accentText} font-semibold`}>
-                    {typeof ing.amountScaledNum === 'number' && useMetric
-                      ? `${toMetric(ing.unit, ing.amountScaledNum).amount} ${toMetric(ing.unit, ing.amountScaledNum).unit}`
-                      : `${ing.amountScaled} ${ing.unit}`
-                    }
-                  </span>{" "}
+          <ul className="text-sm leading-6 text-gray-800 space-y-1">
+            {scaled.slice(0, 6).map((ing, i) => (
+              <li key={i} className="flex gap-2">
+                <span className={`${accentText} font-medium min-w-[90px]`}>
+                  {typeof ing.amountScaledNum === 'number' && useMetric
+                    ? `${toMetric(ing.unit, ing.amountScaledNum).amount} ${toMetric(ing.unit, ing.amountScaledNum).unit}`
+                    : `${ing.amountScaled} ${ing.unit}`
+                  }
+                </span>
+                <span className="flex-1">
                   {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
                 </span>
               </li>
             ))}
-            {scaled.length > 4 && (
-              <li className="text-sm text-gray-600">
-                …plus {scaled.length - 4} more
+            {scaled.length > 6 && (
+              <div className="text-xs text-gray-600 mt-1">
+                …more shown in full recipe
                 {" • "}
                 <button
                   type="button"
@@ -314,12 +318,11 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
                 >
                   Show more
                 </button>
-              </li>
+              </div>
             )}
           </ul>
 
           <div className="flex gap-2 mt-3">
-            {/* Removed: Open Recipe */}
             <Button variant="outline" size="sm" onClick={copyScaledRecipe}><Clipboard className="w-4 h-4 mr-1" /> Copy</Button>
             <Button variant="outline" size="sm" onClick={doShare}><Share2 className="w-4 h-4 mr-1" /> Share</Button>
             <Button variant="outline" size="sm" onClick={() => setUseMetric(v => !v)}>
