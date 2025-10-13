@@ -522,13 +522,6 @@ export default function EggProteinPage() {
                     <div className="flex-1">
                       <CardTitle className="text-lg mb-1">{recipe.name}</CardTitle>
 
-                      {/* RESTORED: Benefits directly below the title */}
-                      {Array.isArray(recipe.benefits) && recipe.benefits.length > 0 && (
-                        <div className="mt-0.5 mb-2 text-xs text-gray-600">
-                          Benefits: {recipe.benefits.join(' · ')}
-                        </div>
-                      )}
-
                       <p className="text-sm text-gray-600">{recipe.flavor}</p>
                     </div>
                     <Button
@@ -552,13 +545,6 @@ export default function EggProteinPage() {
                     >
                       <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
                     </Button>
-                  </div>
-
-                  {/* Keep a small tag line right under header, not benefits */}
-                  <div className="flex items-center gap-2 mt-2">
-                    {recipe.tags.slice(0,3).map((t) => (
-                      <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
-                    ))}
                   </div>
                 </CardHeader>
 
