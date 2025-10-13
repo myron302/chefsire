@@ -978,13 +978,21 @@ export default function CollagenProteinPage() {
                               </button>
                             </div>
                           )}
-                          <div className="flex gap-2 mt-3">
-                            <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.copyScaledRecipe?.()}><Clipboard className="w-4 h-4 mr-1" /> Copy</Button>
-                            <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.doShare?.()}><Share2 className="w-4 h-4 mr-1" /> Share</Button>
-                            <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.setUseMetric(v => !v)}>
-                              {kitRefs.current[shake.id]?.useMetric ? 'US' : 'Metric'}
-                            </Button>
-                          </div>
+                          
+                          {/* RecipeKit component handles copy/share internally */}
+                          <RecipeKit
+                            ref={ref => {
+                              kitRefs.current[shake.id] = ref;
+                            }}
+                            id={shake.id}
+                            name={shake.name}
+                            measurements={shake.recipe.measurements}
+                            directions={shake.recipe.directions}
+                            nutrition={shake.nutrition}
+                            prepTime={shake.prepTime}
+                            onComplete={() => handleCompleteRecipe(shake)}
+                            accent="pink"
+                          />
                         </div>
                       )}
 
@@ -1326,13 +1334,21 @@ export default function CollagenProteinPage() {
                             </button>
                           </div>
                         )}
-                        <div className="flex gap-2 mt-3">
-                          <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.copyScaledRecipe?.()}><Clipboard className="w-4 h-4 mr-1" /> Copy</Button>
-                          <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.doShare?.()}><Share2 className="w-4 h-4 mr-1" /> Share</Button>
-                          <Button variant="outline" size="sm" onClick={() => kitRefs.current[shake.id]?.setUseMetric(v => !v)}>
-                            {kitRefs.current[shake.id]?.useMetric ? 'US' : 'Metric'}
-                          </Button>
-                        </div>
+                        
+                        {/* RecipeKit component handles copy/share internally */}
+                        <RecipeKit
+                          ref={ref => {
+                            kitRefs.current[shake.id] = ref;
+                          }}
+                          id={shake.id}
+                          name={shake.name}
+                          measurements={shake.recipe.measurements}
+                          directions={shake.recipe.directions}
+                          nutrition={shake.nutrition}
+                          prepTime={shake.prepTime}
+                          onComplete={() => handleCompleteRecipe(shake)}
+                          accent="pink"
+                        />
                       </div>
                     )}
 
