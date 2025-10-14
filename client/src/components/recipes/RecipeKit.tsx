@@ -1,768 +1,448 @@
-// pages/drinks/protein-shakes/beef.tsx
-import React, { useMemo, useRef, useState } from 'react';
-import { Link } from 'wouter';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+// components/recipes/RecipeKit.tsx
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useImperativeHandle,
+  forwardRef,
+} from 'react';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
-import {
-  Target, Heart, Star, Zap, Flame, Leaf, Sparkles, Moon, Wine,
-  Search, ArrowLeft, ArrowRight, Camera, X, Plus, Dumbbell, Trophy, Activity, Shield
-} from 'lucide-react';
-import UniversalSearch from '@/components/UniversalSearch';
-import { useDrinks } from '@/contexts/DrinksContext';
-import RecipeKit, { Measured } from '@/components/recipes/RecipeKit';
-import type { RecipeKitHandle } from '@/components/recipes/RecipeKit';
+import { RotateCcw, Clipboard, Check, X, Share2 } from 'lucide-react';
 
-// ---------- Helpers ----------
-type Nutrition = { calories?: number; protein?: number; carbs?: number; fat?: number; creatine?: number; iron?: number };
-const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+// ---------- Public Types ----------
+export type Measured = { amount: number | string; unit: string; item: string; note?: string };
+export type Nutrition = { calories?: number; protein?: number; carbs?: number; fat?: number; fiber?: number };
 
-const scaleAmount = (amt: number | string, factor: number): number | string => {
-  if (typeof amt === 'number') return Math.round((amt * factor + Number.EPSILON) * 100) / 100;
-  return amt;
+export type RecipeKitHandle = {
+  open: () => void;
+  close: () => void;
+  toggle: () => void;
 };
 
-// ---------- Cross-nav ----------
-const otherDrinkHubs = [
-  { id: 'smoothies', name: 'Smoothies', icon: Leaf, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
-  { id: 'detoxes', name: 'Detox Drinks', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing & wellness' },
-  { id: 'potables', name: 'Potent Potables', icon: Wine, route: '/drinks/potent-potables', description: 'Cocktails (21+)' },
-  { id: 'all-drinks', name: 'All Drinks', icon: Sparkles, route: '/drinks', description: 'Browse everything' }
-];
+// ---------- Props ----------
+// This component supports TWO usage patterns:
+//
+// A) Controlled Modal (used by Egg page):
+//    <RecipeKit open={bool} onClose={fn} item={{ id, name, measurements, directions, baseNutrition, defaultServings, prepTime }} pointsReward={100} accent="amber" />
+//
+// B) Inline Card + Imperative Handle (used by Plant-Based page):
+//    <RecipeKit ref={ref} id name measurements directions nutrition prepTime onComplete />
+//
+type ControlledItem = {
+  id: string;
+  name: string;
+  measurements: Measured[];
+  directions?: string[];
+  baseNutrition?: { calories?: number; protein?: number; carbs?: number; fat?: number; fiber?: number };
+  defaultServings?: number;
+  prepTime?: number;
+};
 
-const proteinSubcategories = [
-  { id: 'whey', name: 'Whey Protein', icon: Zap, path: '/drinks/protein-shakes/whey', description: 'Fast absorption' },
-  { id: 'plant', name: 'Plant-Based', icon: Leaf, path: '/drinks/protein-shakes/plant-based', description: 'Vegan friendly' },
-  { id: 'casein', name: 'Casein', icon: Moon, path: '/drinks/protein-shakes/casein', description: 'Slow release' },
-  { id: 'collagen', name: 'Collagen', icon: Sparkles, path: '/drinks/protein-shakes/collagen', description: 'Beauty support' },
-  { id: 'egg', name: 'Egg Protein', icon: Target, path: '/drinks/protein-shakes/egg', description: 'Complete amino' }
-];
+type RecipeKitProps = {
+  // Controlled modal API
+  open?: boolean;
+  onClose?: () => void;
+  item?: ControlledItem;
+  pointsReward?: number;
+  accent?: 'amber' | 'green' | 'blue' | 'purple'; // visual hint only; we keep existing colors on each page
 
-// ---------- Data (Beef) ----------
-const beefProteinShakes = [
-  {
-    id: 'beef-1',
-    name: 'Carnivore Power Blast',
-    flavor: 'Natural Beef',
-    protein: 28,
-    carbs: 2,
-    calories: 120,
-    creatine: 0.5,
-    iron: 4.5,
-    difficulty: 'Easy',
-    prepTime: 2,
-    rating: 4.7,
-    reviews: 523,
-    tags: ['Grass-Fed', 'Paleo-Friendly', 'Muscle Building', 'Natural Creatine'],
-    benefits: ['Natural Creatine', 'High Iron', 'Complete Amino Profile', 'Paleo-Friendly'],
-    ingredients: ['Grass-Fed Beef Protein Isolate', 'Natural Flavors', 'Sea Salt', 'Digestive Enzymes'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (30g)', 'grass-fed beef protein'),
-        m(1, 'cup', 'cold water or milk'),
-        m(1, 'tsp', 'honey or maple syrup', 'optional'),
-        m(1, 'pinch', 'sea salt'),
-        m(4, 'ice cubes', 'ice', 'optional')
-      ],
-      directions: [
-        'Add liquid first, then slowly add beef protein while blending',
-        'Blend for 45-60 seconds until completely smooth',
-        'Add ice for colder, thicker consistency'
-      ]
-    }
-  },
-  {
-    id: 'beef-2',
-    name: 'Primal Strength Formula',
-    flavor: 'Chocolate Beef',
-    protein: 26,
-    carbs: 3,
-    calories: 125,
-    creatine: 0.4,
-    iron: 3.8,
-    difficulty: 'Easy',
-    prepTime: 2,
-    rating: 4.6,
-    reviews: 445,
-    tags: ['Hydrolyzed', 'Joint Support', 'Keto-Friendly', 'Strength'],
-    benefits: ['Joint Support', 'Muscle Recovery', 'Gut Health', 'Keto-Friendly'],
-    ingredients: ['Hydrolyzed Beef Protein', 'Beef Collagen', 'Cocoa Powder', 'Monk Fruit', 'MCT Oil'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (32g)', 'hydrolyzed beef protein'),
-        m(1, 'cup', 'almond milk'),
-        m(1, 'tbsp', 'cocoa powder'),
-        m(1, 'tsp', 'MCT oil'),
-        m(1, 'pinch', 'sea salt')
-      ],
-      directions: [
-        'Mix protein with small amount of liquid first to create paste',
-        'Gradually add remaining liquid while blending',
-        'Blend until rich and chocolatey'
-      ]
-    }
-  },
-  {
-    id: 'beef-3',
-    name: 'Paleo Performance Shake',
-    flavor: 'Vanilla Bean',
-    protein: 27,
-    carbs: 2,
-    calories: 115,
-    creatine: 0.45,
-    iron: 5.0,
-    difficulty: 'Easy',
-    prepTime: 2,
-    rating: 4.5,
-    reviews: 367,
-    tags: ['Paleo Certified', 'Clean Ingredients', 'Iron Rich', 'General Wellness'],
-    benefits: ['Paleo Approved', 'Clean Ingredients', 'Natural Energy', 'Iron Rich'],
-    ingredients: ['Grass-Fed Beef Protein', 'Vanilla Bean Extract', 'Stevia', 'Himalayan Salt'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (28g)', 'beef protein isolate'),
-        m(1, 'cup', 'coconut water'),
-        m(0.5, 'tsp', 'vanilla extract'),
-        m(1, 'tsp', 'honey', 'optional'),
-        m(1, 'pinch', 'cinnamon')
-      ],
-      directions: [
-        'Combine all ingredients in blender',
-        'Blend until smooth and frothy',
-        'Enjoy as morning energy boost'
-      ]
-    }
-  },
-  {
-    id: 'beef-4',
-    name: 'Beef & Berry Recovery',
-    flavor: 'Mixed Berry',
-    protein: 25,
-    carbs: 8,
-    calories: 140,
-    creatine: 0.4,
-    iron: 4.2,
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.4,
-    reviews: 289,
-    tags: ['Antioxidant Boost', 'Muscle Recovery', 'Fiber Rich', 'Immune Support'],
-    benefits: ['Antioxidant Boost', 'Muscle Recovery', 'Fiber Rich', 'Immune Support'],
-    ingredients: ['Grass-Fed Beef Protein', 'Mixed Berry Blend', 'Acai Powder', 'Chia Seeds', 'Natural Berry Flavor'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (30g)', 'beef protein'),
-        m(1, 'cup', 'unsweetened almond milk'),
-        m(0.5, 'cup', 'mixed berries, frozen'),
-        m(1, 'tsp', 'acai powder'),
-        m(1, 'tsp', 'chia seeds'),
-        m(4, 'ice cubes', 'ice')
-      ],
-      directions: [
-        'Blend beef protein with almond milk first',
-        'Add frozen berries and acai powder',
-        'Blend until smooth, stir in chia seeds last'
-      ]
-    }
-  },
-  {
-    id: 'beef-5',
-    name: 'Coffee Beef Energizer',
-    flavor: 'Mocha',
-    protein: 26,
-    carbs: 4,
-    calories: 130,
-    creatine: 0.42,
-    iron: 3.5,
-    difficulty: 'Medium',
-    prepTime: 3,
-    rating: 4.6,
-    reviews: 412,
-    tags: ['Pre-Workout', 'Sustained Energy', 'Mental Focus', 'Keto'],
-    benefits: ['Sustained Energy', 'Mental Focus', 'Pre-Workout Boost', 'Mood Support'],
-    ingredients: ['Hydrolyzed Beef Protein', 'Coffee Extract', 'Cocoa Powder', 'L-Theanine', 'Natural Mocha Flavor'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (33g)', 'mocha beef protein'),
-        m(1, 'cup', 'cold brew coffee'),
-        m(2, 'tbsp', 'cream or milk alternative'),
-        m(1, 'tsp', 'cocoa powder'),
-        m(1, 'pinch', 'cinnamon')
-      ],
-      directions: [
-        'Brew coffee and let cool completely',
-        'Blend coffee with beef protein and cocoa',
-        'Add cream and blend until frothy'
-      ]
-    }
-  },
-  {
-    id: 'beef-6',
-    name: 'Tropical Beef Fusion',
-    flavor: 'Pina Colada',
-    protein: 24,
-    carbs: 7,
-    calories: 135,
-    creatine: 0.38,
-    iron: 3.2,
-    difficulty: 'Easy',
-    prepTime: 2,
-    rating: 4.3,
-    reviews: 198,
-    tags: ['Electrolyte Balance', 'Hydration', 'Tropical Taste', 'Digestive Support'],
-    benefits: ['Electrolyte Balance', 'Digestive Support', 'Tropical Taste', 'Hydration'],
-    ingredients: ['Beef Protein Isolate', 'Pineapple Extract', 'Coconut Cream Powder', 'Natural Flavors', 'Sea Salt'],
-    recipe: {
-      servings: 1,
-      measurements: [
-        m(1, 'scoop (29g)', 'tropical beef protein'),
-        m(1, 'cup', 'coconut water'),
-        m(0.25, 'cup', 'pineapple chunks, frozen'),
-        m(1, 'tsp', 'coconut cream powder'),
-        m(4, 'ice cubes', 'ice')
-      ],
-      directions: [
-        'Blend beef protein with coconut water',
-        'Add frozen pineapple and coconut cream',
-        'Blend until tropical smoothie consistency'
-      ]
-    }
+  // Inline/ref API
+  id?: string;
+  name?: string;
+  measurements?: Measured[];
+  directions?: string[];
+  nutrition?: Nutrition;
+  prepTime?: number;
+  onComplete?: () => void;
+
+  // Shared
+  shareText?: string;
+  className?: string;
+};
+
+// ---------- Helpers ----------
+const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+
+// convert decimals to neat quarters (1/4, 1/2, 3/4)
+const toNiceFraction = (value: number) => {
+  const rounded = Math.round(value * 4) / 4;
+  const whole = Math.trunc(rounded);
+  const frac = Math.round((rounded - whole) * 4);
+  const fracMap: Record<number, string> = { 0: '', 1: '1/4', 2: '1/2', 3: '3/4' };
+  const fracStr = fracMap[frac];
+  if (!whole && fracStr) return fracStr;
+  if (whole && fracStr) return `${whole} ${fracStr}`;
+  return `${whole}`;
+};
+
+const scaleAmount = (baseAmount: number | string, servings: number) => {
+  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
+  if (Number.isNaN(n)) return baseAmount; // strings like "1 pinch" remain as-is
+  return toNiceFraction(n * servings);
+};
+
+const getScaledMeasurements = (list: Measured[], servings: number) =>
+  list.map((ing) => ({
+    ...ing,
+    amountScaled: scaleAmount(ing.amount, servings),
+    amountScaledNum: typeof ing.amount === 'number' ? (Number(ing.amount) * servings) : undefined,
+  }));
+
+// basic US -> metric conversion (extend as desired)
+const toMetric = (unit: string, amount: number) => {
+  const mlPerCup = 240, mlPerTbsp = 15, mlPerTsp = 5;
+  const gPerScoop30 = 30;
+  switch (unit) {
+    case 'cup': return { amount: Math.round(amount * mlPerCup), unit: 'ml' };
+    case 'tbsp': return { amount: Math.round(amount * mlPerTbsp), unit: 'ml' };
+    case 'tsp': return { amount: Math.round(amount * mlPerTsp), unit: 'ml' };
+    case 'scoop (30g)': return { amount: Math.round(amount * gPerScoop30), unit: 'g' };
+    case 'scoop (32g)': return { amount: Math.round(amount * 32), unit: 'g' };
+    case 'tbsp (~25g)': return { amount: Math.round(amount * 25), unit: 'g' };
+    default: return { amount, unit };
   }
-];
+};
 
-const beefProteinBenefits = [
-  { icon: Dumbbell, title: 'Natural Creatine', description: '0.4-0.5g per serving for strength gains', color: 'text-red-600' },
-  { icon: Shield, title: 'High Iron Content', description: 'Supports energy and blood health', color: 'text-orange-600' },
-  { icon: Zap, title: 'Fast Absorption', description: 'Quickly digested for rapid recovery', color: 'text-yellow-600' },
-  { icon: Flame, title: 'Complete Amino Profile', description: 'All essential amino acids (BV 88)', color: 'text-red-600' },
-  { icon: Trophy, title: 'Paleo & Keto Friendly', description: 'Perfect for low-carb diets', color: 'text-purple-600' },
-  { icon: Heart, title: 'No Dairy Allergens', description: 'Lactose-free alternative to whey', color: 'text-pink-600' }
-];
+// localStorage helpers (guarded)
+const safeLoadJSON = <T,>(key: string, fallback: T): T => {
+  try {
+    if (typeof window === 'undefined') return fallback;
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+const safeSaveJSON = (key: string, value: any) => {
+  try {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+};
 
 // ---------- Component ----------
-export default function BeefProteinPage() {
+const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit(props, ref) {
   const {
-    userProgress,
-    addPoints,
-    incrementDrinksMade,
-    addToFavorites,
-    isFavorite,
-    addToRecentlyViewed
-  } = useDrinks();
+    // Controlled
+    open: controlledOpen,
+    onClose,
+    item,
+    pointsReward,
+    accent,
 
-  const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
-  const [filterTag, setFilterTag] = useState('All');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'calories' | 'creatine'>('rating');
-  const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  const [showKit, setShowKit] = useState(false);
+    // Inline
+    id,
+    name,
+    measurements,
+    directions,
+    nutrition,
+    prepTime,
+    onComplete,
 
-  // Serving incrementer (inline, per card)
-  const [servingsById, setServingsById] = useState<Record<string, number>>({});
+    // Shared
+    shareText,
+    className,
+  } = props;
 
-  const allTags = ['All', ...new Set(beefProteinShakes.flatMap(r => r.tags))];
+  // Normalize data from either API
+  const recipeId = item?.id ?? id ?? 'rk-unknown';
+  const recipeName = item?.name ?? name ?? 'Recipe';
+  const recipeMeasurements = (item?.measurements ?? measurements ?? []) as Measured[];
+  const recipeDirections = item?.directions ?? directions ?? [];
+  const baseNutrition = item?.baseNutrition ?? nutrition ?? {};
+  const basePrepTime = item?.prepTime ?? prepTime ?? 0;
+  const defaultServings = item?.defaultServings ?? 1;
 
-  // Filter + sort
-  const filteredRecipes = useMemo(() => {
-    let filtered = beefProteinShakes.filter(recipe => {
-      const q = searchQuery.trim().toLowerCase();
-      const matchesSearch =
-        !q ||
-        recipe.name.toLowerCase().includes(q) ||
-        recipe.ingredients.some((ing: string) => ing.toLowerCase().includes(q)) ||
-        (recipe.flavor || '').toLowerCase().includes(q) ||
-        recipe.tags.some(t => t.toLowerCase().includes(q)) ||
-        (recipe.benefits || []).some((b: string) => b.toLowerCase().includes(q));
-      const matchesTag = filterTag === 'All' || recipe.tags.includes(filterTag);
-      return matchesSearch && matchesTag;
-    });
+  // Persisted state keys
+  const LS_SERV = `rk.servings.${recipeId}`;
+  const LS_NOTES = `rk.notes.${recipeId}`;
+  const LS_METRIC = `rk.metric.${recipeId}`;
 
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
-        case 'protein': return (b.protein || 0) - (a.protein || 0);
-        case 'calories': return (a.calories || 0) - (b.calories || 0);
-        case 'creatine': return (b.creatine || 0) - (a.creatine || 0);
-        default: return 0;
-      }
-    });
+  // Internal UI state
+  const [servings, setServings] = useState<number>(defaultServings || 1);
+  const [notes, setNotes] = useState<string>('');
+  const [useMetric, setUseMetric] = useState<boolean>(false);
 
-    return filtered;
-  }, [searchQuery, filterTag, sortBy]);
+  // Hybrid modal control: if controlledOpen is undefined, use internal open state
+  const [internalOpen, setInternalOpen] = useState<boolean>(false);
+  const isControlled = typeof controlledOpen === 'boolean';
+  const open = isControlled ? controlledOpen! : internalOpen;
 
-  const getServings = (recipe: any) => servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
-  const incrementServings = (recipe: any, dir: 1 | -1) => {
-    setServingsById(prev => {
-      const current = prev[recipe.id] ?? (recipe.recipe?.servings || 1);
-      const next = Math.min(12, Math.max(1, current + dir));
-      return { ...prev, [recipe.id]: next };
-    });
-  };
-
-  const openRecipeModal = (recipe: any) => {
-    setSelectedRecipe(recipe);
-    setShowKit(true);
-  };
-
-  const handleCompleteRecipe = () => {
-    if (selectedRecipe) {
-      const drinkData = {
-        id: selectedRecipe.id,
-        name: selectedRecipe.name,
-        category: 'protein-shakes' as const,
-        description: `${selectedRecipe.flavor || ''} beef protein shake`,
-        ingredients: selectedRecipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || selectedRecipe.ingredients,
-        nutrition: {
-          calories: selectedRecipe.calories,
-          protein: selectedRecipe.protein,
-          carbs: selectedRecipe.carbs,
-          fat: 0.5,
-          creatine: selectedRecipe.creatine,
-          iron: selectedRecipe.iron
-        } as Nutrition,
-        difficulty: selectedRecipe.difficulty as 'Easy' | 'Medium' | 'Hard',
-        prepTime: selectedRecipe.prepTime,
-        rating: selectedRecipe.rating,
-        tags: selectedRecipe.tags
-      };
-      addToRecentlyViewed(drinkData);
-      incrementDrinksMade();
-      addPoints(100);
-    }
-    setShowKit(false);
-    setSelectedRecipe(null);
-  };
-
-  const handleSharePage = async () => {
-    const shareData = {
-      title: 'Beef Protein Shakes',
-      text: 'Browse beef protein shake recipes with natural creatine and high iron.',
-      url: typeof window !== 'undefined' ? window.location.href : ''
-    };
-    try {
-      if (navigator.share) {
-        await navigator.share(shareData);
+  // Imperative API
+  useImperativeHandle(ref, () => ({
+    open: () => (isControlled ? console.warn('RecipeKit: open() called in controlled mode; use the parent state.') : setInternalOpen(true)),
+    close: () => (isControlled ? onClose?.() : setInternalOpen(false)),
+    toggle: () => {
+      if (isControlled) {
+        if (open) onClose?.(); else console.warn('RecipeKit: toggle() in controlled mode — set open in parent.');
       } else {
-        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
-        alert('Link copied to clipboard!');
+        setInternalOpen(v => !v);
+      }
+    },
+  }), [isControlled, open, onClose]);
+
+  // Load persisted preferences
+  useEffect(() => {
+    setServings(clamp(safeLoadJSON<number>(LS_SERV, defaultServings || 1)));
+    setNotes(safeLoadJSON<string>(LS_NOTES, ''));
+    setUseMetric(safeLoadJSON<boolean>(LS_METRIC, false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipeId]);
+
+  useEffect(() => { safeSaveJSON(LS_SERV, servings); }, [LS_SERV, servings]);
+  useEffect(() => { safeSaveJSON(LS_NOTES, notes); }, [LS_NOTES, notes]);
+  useEffect(() => { safeSaveJSON(LS_METRIC, useMetric); }, [LS_METRIC, useMetric]);
+
+  const bumpServings = (delta: number) => setServings((s) => clamp(s + delta));
+  const resetServings = () => setServings(defaultServings || 1);
+
+  const scaled = useMemo(() => getScaledMeasurements(recipeMeasurements, servings), [recipeMeasurements, servings]);
+
+  const scaledMacros = useMemo(() => {
+    const n = baseNutrition || {};
+    const s = servings || 1;
+    return {
+      calories: n.calories ? Math.round(n.calories * s) : undefined,
+      protein: n.protein ? Math.round(n.protein * s) : undefined,
+      carbs: n.carbs ? Math.round(n.carbs * s) : undefined,
+      fat: n.fat ? Math.round(n.fat * s) : undefined,
+      fiber: n.fiber ? Math.round(n.fiber * s) : undefined,
+    };
+  }, [baseNutrition, servings]);
+
+  const copyScaledRecipe = async () => {
+    const lines = scaled.map((ing) => {
+      if (useMetric && typeof ing.amountScaledNum === 'number') {
+        const m = toMetric(ing.unit, ing.amountScaledNum);
+        return `- ${m.amount} ${m.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+      }
+      return `- ${ing.amountScaled} ${ing.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+    });
+    const txt = `${recipeName} (serves ${servings})\n${lines.join('\n')}\n\nNotes: ${notes || '-'}`;
+    try {
+      await navigator.clipboard.writeText(txt);
+      alert('Recipe copied!');
+    } catch {
+      alert('Unable to copy on this device.');
+    }
+  };
+
+  const doShare = async () => {
+    const preview = scaled.slice(0, 4).map((r) =>
+      `${typeof r.amountScaledNum === 'number' && useMetric
+        ? `${toMetric(r.unit, r.amountScaledNum).amount} ${toMetric(r.unit, r.amountScaledNum).unit}`
+        : `${r.amountScaled} ${r.unit}`
+      } ${r.item}`).join(' · ');
+    const text = shareText || `${recipeName} — serves ${servings}\n${preview}${scaled.length > 4 ? ` …plus ${scaled.length - 4} more` : ''}`;
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const data = { title: recipeName, text, url };
+    try {
+      if (navigator.share) await navigator.share(data);
+      else {
+        await navigator.clipboard.writeText(`${recipeName}\n${text}\n${url}`);
+        alert('Recipe link copied!');
       }
     } catch {
       try {
-        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
-        alert('Link copied to clipboard!');
+        await navigator.clipboard.writeText(`${recipeName}\n${text}\n${url}`);
+        alert('Recipe link copied!');
       } catch {
         alert('Unable to share on this device.');
       }
     }
   };
 
+  // Accent hues (kept simple; we are NOT changing the established page color schemes)
+  const accentText = accent === 'amber' ? 'text-amber-600'
+                    : accent === 'blue' ? 'text-blue-600'
+                    : accent === 'purple' ? 'text-purple-600'
+                    : 'text-green-600'; // default matches plant-based vibe
+
+  const accentBadge = accent === 'amber' ? 'bg-amber-50 text-amber-800'
+                    : accent === 'blue' ? 'bg-blue-50 text-blue-800'
+                    : accent === 'purple' ? 'bg-purple-50 text-purple-800'
+                    : 'bg-green-50 text-green-800';
+
+  // PREVIEW (inline) — ONLY render when using the inline API (Plant-Based).
+  // If this component is used as a pure modal (Egg) via `item` + `open`, we skip the preview.
+  const shouldRenderPreview =
+    !isControlled && recipeMeasurements.length > 0;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-orange-50">
-      {/* Universal Search Modal */}
-      {showUniversalSearch && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
-              <h2 className="text-lg font-semibold">Search All Drinks</h2>
-              <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
-                <X className="h-4 w-4" />
-              </Button>
+    <div className={className}>
+      {/* --------- PREVIEW (no "Open Recipe" button here) --------- */}
+      {shouldRenderPreview && (
+        <div className="mb-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-semibold text-gray-900">
+              Recipe (serves {servings})
             </div>
-            <div className="p-4">
-              <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+            <div className="flex items-center rounded-md border border-gray-300 overflow-hidden">
+              <button
+                aria-label="decrease servings"
+                onClick={() => bumpServings(-1)}
+                className="px-2 py-1 text-sm hover:bg-gray-100"
+              >−</button>
+              <div className="px-3 py-1 text-sm border-l border-r border-gray-300">{servings}</div>
+              <button
+                aria-label="increase servings"
+                onClick={() => bumpServings(+1)}
+                className="px-2 py-1 text-sm hover:bg-gray-100"
+              >+</button>
             </div>
+          </div>
+
+          <ul className="text-sm leading-6 text-gray-800 space-y-1">
+            {scaled.slice(0, 6).map((ing, i) => (
+              <li key={i} className="flex gap-2">
+                <span className={`${accentText} font-medium min-w-[90px]`}>
+                  {typeof ing.amountScaledNum === 'number' && useMetric
+                    ? `${toMetric(ing.unit, ing.amountScaledNum).amount} ${toMetric(ing.unit, ing.amountScaledNum).unit}`
+                    : `${ing.amountScaled} ${ing.unit}`
+                  }
+                </span>
+                <span className="flex-1">
+                  {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                </span>
+              </li>
+            ))}
+            {scaled.length > 6 && (
+              <div className="text-xs text-gray-600 mt-1">
+                …more shown in full recipe
+                {" • "}
+                <button
+                  type="button"
+                  onClick={() => setInternalOpen(true)}
+                  className="underline underline-offset-2"
+                >
+                  Show more
+                </button>
+              </div>
+            )}
+          </ul>
+
+          <div className="flex gap-2 mt-3">
+            <Button variant="outline" size="sm" onClick={copyScaledRecipe}><Clipboard className="w-4 h-4 mr-1" /> Copy</Button>
+            <Button variant="outline" size="sm" onClick={doShare}><Share2 className="w-4 h-4 mr-1" /> Share</Button>
+            <Button variant="outline" size="sm" onClick={() => setUseMetric(v => !v)}>
+              {useMetric ? 'US' : 'Metric'}
+            </Button>
           </div>
         </div>
       )}
 
-      {/* Controlled RecipeKit Modal (popup) */}
-      {selectedRecipe && (
-        <RecipeKit
-          open={showKit}
-          onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
-          accent="red"
-          pointsReward={100}
-          onComplete={handleCompleteRecipe}
-          item={{
-            id: selectedRecipe.id,
-            name: selectedRecipe.name,
-            prepTime: selectedRecipe.prepTime,
-            directions: selectedRecipe.recipe?.directions || [],
-            measurements: selectedRecipe.recipe?.measurements || [],
-            baseNutrition: { 
-              calories: selectedRecipe.calories, 
-              protein: selectedRecipe.protein,
-              creatine: selectedRecipe.creatine,
-              iron: selectedRecipe.iron
-            },
-            defaultServings: selectedRecipe.recipe?.servings || 1
-          }}
-        />
-      )}
-
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/drinks/protein-shakes">
-                <Button variant="ghost" size="sm" className="text-gray-500">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Protein Shakes
-                </Button>
-              </Link>
-              <div className="h-6 w-px bg-gray-300" />
-              <div className="flex items-center gap-2">
-                <Flame className="h-6 w-6 text-red-600" />
-                <h1 className="text-2xl font-bold text-gray-900">Beef Protein Shakes</h1>
-                <Badge className="bg-red-100 text-red-800">Natural Creatine</Badge>
-              </div>
+      {/* --------- MODAL --------- */}
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => (isControlled ? onClose?.() : setInternalOpen(false))}
+        >
+          <div
+            className="bg-white rounded-lg max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-2xl font-bold">{recipeName}</h2>
+              <button
+                onClick={() => (isControlled ? onClose?.() : setInternalOpen(false))}
+                className="text-gray-500 hover:text-gray-700"
+                aria-label="Close"
+              >
+                <X className="h-6 w-6" />
+              </button>
             </div>
 
-            <div className="flex items-center gap-4">
-              <Button variant="outline" size="sm" onClick={() => setShowUniversalSearch(true)}>
-                <Search className="h-4 w-4 mr-2" />
-                Universal Search
-              </Button>
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Star className="h-4 w-4 text-yellow-500" />
-                <span>Level {userProgress.level}</span>
-                <div className="w-px h-4 bg-gray-300" />
-                <span>{userProgress.totalPoints} XP</span>
-              </div>
-              <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" onClick={handleSharePage}>
-                <Camera className="h-4 w-4 mr-2" />
-                Share Page
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Body */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Cross-Hub Navigation */}
-        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200 mb-6">
-          <CardContent className="p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              {otherDrinkHubs.map((hub) => {
-                const Icon = hub.icon as any;
-                return (
-                  <Link key={hub.id} href={hub.route}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
-                      <Icon className="h-4 w-4 mr-2 text-blue-600" />
-                      <div className="text-left flex-1">
-                        <div className="font-medium text-sm">{hub.name}</div>
-                        <div className="text-xs text-gray-500">{hub.description}</div>
-                      </div>
-                      <ArrowRight className="h-3 w-3 ml-auto" />
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Sister Protein Pages Navigation */}
-        <Card className="bg-gradient-to-r from-red-50 to-orange-50 border-red-200 mb-6">
-          <CardContent className="p-4">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <Sparkles className="w-4 h-4" />
-              Other Protein Types
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-              {proteinSubcategories.map((subcategory) => {
-                const Icon = subcategory.icon as any;
-                return (
-                  <Link key={subcategory.id} href={subcategory.path}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-red-50 hover:border-red-300">
-                      <Icon className="h-4 w-4 mr-2 text-red-600" />
-                      <div className="text-left flex-1">
-                        <div className="font-medium text-sm">{subcategory.name}</div>
-                        <div className="text-xs text-gray-500">{subcategory.description}</div>
-                      </div>
-                      <ArrowRight className="h-3 w-3 ml-auto" />
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Beef Protein Benefits */}
-        <Card className="mb-8">
-          <CardContent className="p-6">
-            <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-              <Star className="h-6 w-6 text-red-500" />
-              Why Beef Protein?
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {beefProteinBenefits.map((benefit, index) => {
-                const Icon = benefit.icon as any;
-                return (
-                  <div key={index} className="flex items-start gap-3 p-4 rounded-lg border hover:shadow-md transition-shadow">
-                    <Icon className={`h-6 w-6 ${benefit.color} flex-shrink-0`} />
-                    <div>
-                      <h3 className="font-semibold mb-1">{benefit.title}</h3>
-                      <p className="text-sm text-muted-foreground">{benefit.description}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Stats Overview */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-red-600">26g</div>
-              <div className="text-sm text-gray-600">Avg Protein</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-orange-600">0.43g</div>
-              <div className="text-sm text-gray-600">Avg Creatine</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">4.6mg</div>
-              <div className="text-sm text-gray-600">Avg Iron</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-600">6</div>
-              <div className="text-sm text-gray-600">Beef Formulas</div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Filters */}
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  placeholder="Search beef protein recipes..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <div className="flex gap-2">
-                <select
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={filterTag}
-                  onChange={(e) => setFilterTag(e.target.value)}
-                >
-                  <option value="All">All Tags</option>
-                  {allTags.filter(t => t !== 'All').map(tag => (
-                    <option key={tag} value={tag}>{tag}</option>
-                  ))}
-                </select>
-                <select
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                >
-                  <option value="rating">Sort by Rating</option>
-                  <option value="protein">Sort by Protein</option>
-                  <option value="calories">Sort by Calories</option>
-                  <option value="creatine">Sort by Creatine</option>
-                </select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Recipe Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredRecipes.map((recipe) => {
-            const servings = getServings(recipe);
-            const factor = (servings || 1) / (recipe.recipe?.servings || 1);
-
-            return (
-              <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-lg mb-1">{recipe.name}</CardTitle>
-
-                      {/* Benefits directly below the title */}
-                      {Array.isArray(recipe.benefits) && recipe.benefits.length > 0 && (
-                        <div className="mt-0.5 mb-2 text-xs text-gray-600">
-                          Benefits: {recipe.benefits.join(' · ')}
-                        </div>
-                      )}
-
-                      <p className="text-sm text-gray-600">{recipe.flavor}</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const drinkData = {
-                          id: recipe.id,
-                          name: recipe.name,
-                          category: 'protein-shakes' as const,
-                          description: `${recipe.flavor || ''} beef protein shake`,
-                          ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
-                          nutrition: { 
-                            calories: recipe.calories, 
-                            protein: recipe.protein, 
-                            carbs: recipe.carbs, 
-                            fat: 0.5,
-                            creatine: recipe.creatine,
-                            iron: recipe.iron
-                          },
-                          difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
-                          prepTime: recipe.prepTime,
-                          rating: recipe.rating
-                        };
-                        addToFavorites(drinkData);
-                      }}
-                      className="text-gray-400 hover:text-red-500"
-                    >
-                      <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                    </Button>
-                  </div>
-                </CardHeader>
-
-                <CardContent>
-                  {/* Quick stats */}
-                  <div className="grid grid-cols-4 gap-2 text-center mb-4">
-                    <div>
-                      <div className="font-bold text-red-600">{recipe.protein}g</div>
-                      <div className="text-xs text-gray-500">Protein</div>
-                    </div>
-                    <div>
-                      <div className="font-bold text-blue-600">{recipe.calories}</div>
-                      <div className="text-xs text-gray-500">Calories</div>
-                    </div>
-                    <div>
-                      <div className="font-bold text-orange-600">{recipe.creatine}g</div>
-                      <div className="text-xs text-gray-500">Creatine</div>
-                    </div>
-                    <div>
-                      <div className="font-bold text-amber-600">{recipe.iron}mg</div>
-                      <div className="text-xs text-gray-500">Iron</div>
-                    </div>
-                  </div>
-
-                  {/* Rating + Difficulty row */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium">{recipe.rating}</span>
-                      <span className="text-gray-500 text-sm">({recipe.reviews})</span>
-                    </div>
-                    <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
-                  </div>
-
-                  {/* Inline serving incrementer + compact measured preview */}
-                  {recipe.recipe?.measurements && (
-                    <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm font-semibold text-gray-900">
-                          Recipe (serves {servings})
-                        </div>
-                        <div className="flex items-center rounded-md border border-gray-300 overflow-hidden">
-                          <button
-                            aria-label="decrease servings"
-                            onClick={() => incrementServings(recipe, -1)}
-                            className="px-2 py-1 text-sm hover:bg-gray-100"
-                          >−</button>
-                          <div className="px-3 py-1 text-sm border-l border-r border-gray-300">{servings}</div>
-                          <button
-                            aria-label="increase servings"
-                            onClick={() => incrementServings(recipe, +1)}
-                            className="px-2 py-1 text-sm hover:bg-gray-100"
-                          >+</button>
-                        </div>
-                      </div>
-
-                      <ul className="text-sm leading-6 text-gray-800 space-y-1">
-                        {recipe.recipe.measurements.slice(0, 6).map((ing: Measured, i: number) => (
-                          <li key={i} className="flex gap-2">
-                            <span className="text-red-700 font-medium min-w-[90px]">
-                              {scaleAmount(ing.amount, factor)} {ing.unit}
-                            </span>
-                            <span className="flex-1">
-                              {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                      {(recipe.recipe.measurements.length > 6) && (
-                        <div className="text-xs text-gray-600 mt-1">
-                          …more shown in full recipe
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Tags (full list) */}
-                  <div className="flex flex-wrap gap-1 mb-4">
-                    {recipe.tags.map((tag: string) => (
-                      <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
-                    ))}
-                  </div>
-
-                  {/* Full-width CTA — Make Shake */}
-                  <Button
-                    className="w-full bg-red-600 hover:bg-red-700 text-white"
-                    onClick={() => openRecipeModal(recipe)}
-                  >
-                    <Flame className="h-4 w-4 mr-2" />
-                    Make Shake (+100 XP)
-                  </Button>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-
-        {/* Your Progress */}
-        <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mt-8">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold mb-2">Your Progress</h3>
-                <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="text-purple-600">
-                    Level {userProgress.level}
-                  </Badge>
-                  <Badge variant="outline" className="text-blue-600">
-                    {userProgress.totalPoints} XP
-                  </Badge>
-                  <Badge variant="outline" className="text-green-600">
-                    {userProgress.totalDrinksMade} Drinks Made
-                  </Badge>
+            {/* stats strip */}
+            <div className={`grid grid-cols-3 gap-2 p-3 ${accentBadge} rounded-lg mb-4`}>
+              <div className="text-center">
+                <div className={`font-bold ${accentText}`}>
+                  {scaledMacros.protein ?? '—'}{scaledMacros.protein ? 'g' : ''}
                 </div>
+                <div className="text-xs">Protein</div>
               </div>
               <div className="text-center">
-                <Progress value={userProgress.dailyGoalProgress} className="w-32 mb-2" />
-                <div className="text-xs text-gray-500">Daily Goal Progress</div>
+                <div className="font-bold text-blue-600">{scaledMacros.calories ?? '—'}</div>
+                <div className="text-xs">Calories</div>
+              </div>
+              <div className="text-center">
+                <div className="font-bold text-purple-600">{(basePrepTime ?? 0)}min</div>
+                <div className="text-xs">Prep</div>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+
+            {/* servings + toggles */}
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold text-gray-900">Recipe • {servings} {servings === 1 ? 'serving' : 'servings'}</h3>
+              <div className="flex items-center gap-2">
+                <button className="px-2 py-1 border rounded text-sm" onClick={() => bumpServings(-1)}>−</button>
+                <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                <button className="px-2 py-1 border rounded text-sm" onClick={() => bumpServings(+1)}>+</button>
+                <Button variant="outline" size="sm" onClick={resetServings}><RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset</Button>
+                <Button variant="outline" size="sm" onClick={() => setUseMetric(v => !v)}>{useMetric ? 'US' : 'Metric'}</Button>
+              </div>
+            </div>
+
+            {/* full list */}
+            <ul className="space-y-2 text-base leading-6 text-gray-800 font-sans tracking-normal">
+              {scaled.map((ing, idx) => (
+                <li key={idx} className="flex items-start gap-2">
+                  <Check className={`h-4 w-4 ${accentText} mt-0.5`} />
+                  <span>
+                    <span className={`${accentText} font-semibold`}>
+                      {typeof ing.amountScaledNum === 'number' && useMetric
+                        ? `${toMetric(ing.unit, ing.amountScaledNum).amount} ${toMetric(ing.unit, ing.amountScaledNum).unit}`
+                        : `${ing.amountScaled} ${ing.unit}`
+                      }
+                    </span>{" "}
+                    {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            {recipeDirections.length > 0 && (
+              <div className="mt-4">
+                <h3 className="font-semibold mb-2 text-gray-900">Directions</h3>
+                <ol className="list-decimal list-inside text-sm space-y-1 text-gray-700">
+                  {recipeDirections.map((step, i) => <li key={i}>{step}</li>)}
+                </ol>
+              </div>
+            )}
+
+            {/* notes */}
+            <div className="mt-4">
+              <h3 className="font-semibold mb-2 text-gray-900">Your Notes</h3>
+              <textarea
+                className="w-full border rounded-md p-2 text-sm text-gray-800"
+                rows={3}
+                placeholder="Add tweaks, swaps, or how it turned out…"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
+
+            <div className="flex gap-2 mt-4">
+              <Button
+                className={`${accent === 'amber' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-green-600 hover:bg-green-700'} flex-1`}
+                onClick={() => {
+                  // Prefer the inline API callback if present; otherwise the parent of the controlled modal will handle XP etc.
+                  onComplete?.();
+                  // Close appropriately
+                  if (isControlled) onClose?.();
+                  else setInternalOpen(false);
+                }}
+              >
+                Complete{pointsReward ? ` (+${pointsReward} XP)` : ''}
+              </Button>
+              <Button variant="outline" onClick={copyScaledRecipe}><Clipboard className="w-4 h-4 mr-1" /> Copy</Button>
+              <Button variant="outline" onClick={doShare}><Share2 className="w-4 h-4 mr-1" /> Share</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
+});
+
+export default RecipeKit;
