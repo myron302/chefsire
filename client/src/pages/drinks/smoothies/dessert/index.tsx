@@ -1,5 +1,5 @@
 // client/src/pages/drinks/smoothies/dessert/index.tsx
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,10 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { 
   IceCream, Heart, Star, Search, Share2, ArrowLeft,
-  Camera, Cookie, ChefHat, X, Check, Zap, Activity, Sun, Sparkles, Trophy, Crown, Leaf
+  Camera, Cookie, ChefHat, X, Check, Zap, Activity, Sun, Sparkles, Trophy, Crown, Leaf,
+  Clipboard, RotateCcw
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
+import RecipeKit from '@/components/recipes/RecipeKit';
 import { 
   dessertSmoothies, 
   dessertTypes,
@@ -19,6 +21,40 @@ import {
   smoothieSubcategories,
   otherDrinkHubs 
 } from '../../data/smoothies';
+
+// ---------- Helpers ----------
+type Measured = { amount: number | string; unit: string; item: string; note?: string };
+const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+// scaling helpers
+const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+const toNiceFraction = (value: number) => {
+  const rounded = Math.round(value * 4) / 4;
+  const whole = Math.trunc(rounded);
+  const frac = Math.round((rounded - whole) * 4);
+  const fracMap: Record<number, string> = { 0: '', 1: '1/4', 2: '1/2', 3: '3/4' };
+  const fracStr = fracMap[frac];
+  if (!whole && fracStr) return fracStr;
+  if (whole && fracStr) return `${whole} ${fracStr}`;
+  return `${whole}`;
+};
+const scaleAmount = (baseAmount: number | string, servings: number) => {
+  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
+  if (Number.isNaN(n)) return baseAmount;
+  return toNiceFraction(n * servings);
+};
+
+// metric conversion for smoothies
+const toMetric = (unit: string, amount: number) => {
+  const mlPerCup = 240, mlPerOz = 30;
+  switch (unit) {
+    case 'cup': return { amount: Math.round(amount * mlPerCup), unit: 'ml' };
+    case 'oz': return { amount: Math.round(amount * mlPerOz), unit: 'ml' };
+    case 'tbsp': return { amount: Math.round(amount * 15), unit: 'ml' };
+    case 'tsp': return { amount: Math.round(amount * 5), unit: 'ml' };
+    default: return { amount, unit };
+  }
+};
 
 export default function DessertSmoothiesPage() {
   const { 
@@ -38,11 +74,93 @@ export default function DessertSmoothiesPage() {
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'cost' | 'calories'>('rating');
   const [activeTab, setActiveTab] = useState<'browse'|'dessert-types'|'categories'|'featured'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [selectedSmoothie, setSelectedSmoothie] = useState<any>(null);
+  
+  // RecipeKit state
+  const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
+  const [showKit, setShowKit] = useState(false);
+  const [servingsById, setServingsById] = useState<Record<string, number>>({});
+  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
+
+  // Convert dessert smoothies to RecipeKit format
+  const smoothieRecipesWithMeasurements = useMemo(() => {
+    return dessertSmoothies.map(smoothie => ({
+      ...smoothie,
+      recipe: {
+        servings: 1,
+        measurements: smoothie.ingredients.map((ing, index) => {
+          // Parse ingredients into measured format
+          const parts = ing.split(' ');
+          if (parts.length >= 2 && !isNaN(parseFloat(parts[0]))) {
+            const amount = parts[0];
+            const unit = parts[1];
+            const item = parts.slice(2).join(' ');
+            return m(amount, unit, item);
+          }
+          return m('1', 'item', ing);
+        }),
+        directions: [
+          'Add all ingredients to blender',
+          'Blend until smooth and creamy',
+          'Pour into glass and serve immediately',
+          'Enjoy your dessert smoothie!'
+        ]
+      }
+    }));
+  }, []);
+
+  const handleShareSmoothie = async (smoothie: any, servingsOverride?: number) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const servings = servingsOverride ?? servingsById[smoothie.id] ?? (smoothie.recipe?.servings || 1);
+    const preview = smoothie.ingredients.slice(0, 4).join(' • ');
+    const text = `${smoothie.name} • ${smoothie.dessertType} • ${smoothie.bestTime}\n${preview}${smoothie.ingredients.length > 4 ? ` …plus ${smoothie.ingredients.length - 4} more` : ''}`;
+    const shareData = { title: smoothie.name, text, url };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${smoothie.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${smoothie.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const openRecipeModal = (recipe: any) => {
+    setSelectedRecipe(recipe);
+    setShowKit(true);
+  };
+
+  const handleCompleteRecipe = () => {
+    if (selectedRecipe) {
+      const drinkData = {
+        id: selectedRecipe.id,
+        name: selectedRecipe.name,
+        category: 'smoothies' as const,
+        description: `${selectedRecipe.dessertType || ''} • ${selectedRecipe.bestTime || ''}`,
+        ingredients: selectedRecipe.ingredients,
+        nutrition: selectedRecipe.nutrition,
+        difficulty: selectedRecipe.difficulty,
+        prepTime: selectedRecipe.prepTime,
+        rating: selectedRecipe.rating,
+        bestTime: selectedRecipe.bestTime,
+        tags: selectedRecipe.benefits
+      };
+      addToRecentlyViewed(drinkData);
+      incrementDrinksMade();
+      addPoints(25);
+    }
+    setShowKit(false);
+    setSelectedRecipe(null);
+  };
 
   const getFilteredSmoothies = () => {
-    let filtered = dessertSmoothies.filter(smoothie => {
+    let filtered = smoothieRecipesWithMeasurements.filter(smoothie => {
       const matchesSearch = smoothie.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            smoothie.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType = !selectedDessertType || smoothie.dessertType === selectedDessertType;
@@ -68,36 +186,9 @@ export default function DessertSmoothiesPage() {
   };
 
   const filteredSmoothies = getFilteredSmoothies();
-  const featuredSmoothies = dessertSmoothies.filter(s => s.trending);
+  const featuredSmoothies = smoothieRecipesWithMeasurements.filter(s => s.trending);
 
-  const handleMakeSmoothie = (smoothie: any) => {
-    setSelectedSmoothie(smoothie);
-    setShowModal(true);
-  };
-
-  const handleCompleteSmoothie = () => {
-    if (selectedSmoothie) {
-      addToRecentlyViewed({
-        id: selectedSmoothie.id,
-        name: selectedSmoothie.name,
-        category: 'smoothies',
-        description: selectedSmoothie.description,
-        ingredients: selectedSmoothie.ingredients,
-        nutrition: selectedSmoothie.nutrition,
-        difficulty: selectedSmoothie.difficulty,
-        prepTime: selectedSmoothie.prepTime,
-        rating: selectedSmoothie.rating,
-        fitnessGoal: 'Dessert',
-        bestTime: selectedSmoothie.bestTime
-      });
-      incrementDrinksMade();
-      addPoints(25);
-    }
-    setShowModal(false);
-    setSelectedSmoothie(null);
-  };
-
-  // === Share handlers (page + per-smoothie) ===
+  // Share page handler
   const handleSharePage = async () => {
     const shareData = {
       title: 'Dessert Smoothies',
@@ -115,27 +206,6 @@ export default function DessertSmoothiesPage() {
       try {
         await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
         alert('Link copied to clipboard!');
-      } catch {
-        alert('Unable to share on this device.');
-      }
-    }
-  };
-
-  const handleShareSmoothie = async (smoothie: any) => {
-    const url = typeof window !== 'undefined' ? window.location.href : '';
-    const text = `${smoothie.name} • ${smoothie.nutrition.protein}g protein • ${smoothie.nutrition.calories} cal\n${smoothie.ingredients.join(', ')}`;
-    const shareData = { title: smoothie.name, text, url };
-    try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else {
-        await navigator.clipboard.writeText(`${smoothie.name}\n${text}\n${url}`);
-        alert('Recipe copied to clipboard!');
-      }
-    } catch {
-      try {
-        await navigator.clipboard.writeText(`${smoothie.name}\n${text}\n${url}`);
-        alert('Recipe copied to clipboard!');
       } catch {
         alert('Unable to share on this device.');
       }
@@ -172,61 +242,24 @@ export default function DessertSmoothiesPage() {
         </div>
       )}
 
-      {/* Make Smoothie Modal */}
-      {showModal && selectedSmoothie && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-start mb-4">
-              <h2 className="text-2xl font-bold">{selectedSmoothie.name}</h2>
-              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold mb-2">Ingredients:</h3>
-                <ul className="space-y-2">
-                  {selectedSmoothie.ingredients.map((ing: string, idx: number) => (
-                    <li key={idx} className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-pink-600" />
-                      <span>{ing}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h3 className="font-semibold mb-2">Benefits:</h3>
-                <ul className="text-sm text-gray-700 space-y-1">
-                  {selectedSmoothie.benefits?.map((benefit: string, idx: number) => (
-                    <li key={idx}>• {benefit}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className="grid grid-cols-3 gap-2 p-3 bg-pink-50 rounded-lg">
-                <div className="text-center">
-                  <div className="font-bold text-pink-600">{selectedSmoothie.nutrition.calories}</div>
-                  <div className="text-xs text-gray-600">Calories</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-blue-600">{selectedSmoothie.nutrition.protein}g</div>
-                  <div className="text-xs text-gray-600">Protein</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-purple-600">{selectedSmoothie.prepTime}min</div>
-                  <div className="text-xs text-gray-600">Prep</div>
-                </div>
-              </div>
-              <div className="flex gap-4 pt-4">
-                <Button 
-                  className="flex-1 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600"
-                  onClick={handleCompleteSmoothie}
-                >
-                  Complete Smoothie (+25 XP)
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* RecipeKit Modal */}
+      {selectedRecipe && (
+        <RecipeKit
+          open={showKit}
+          onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
+          accent="pink"
+          pointsReward={25}
+          onComplete={handleCompleteRecipe}
+          item={{
+            id: selectedRecipe.id,
+            name: selectedRecipe.name,
+            prepTime: selectedRecipe.prepTime,
+            directions: selectedRecipe.recipe?.directions || [],
+            measurements: selectedRecipe.recipe?.measurements || [],
+            baseNutrition: selectedRecipe.nutrition || {},
+            defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+          }}
+        />
       )}
 
       {/* Header */}
@@ -265,7 +298,7 @@ export default function DessertSmoothiesPage() {
               </div>
               <Button size="sm" className="bg-pink-600 hover:bg-pink-700" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
-                Share Recipe
+                Share Page
               </Button>
             </div>
           </div>
@@ -283,8 +316,8 @@ export default function DessertSmoothiesPage() {
                 const Icon = hub.icon;
                 return (
                   <Link key={hub.id} href={hub.route}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
-                      <Icon className="h-4 w-4 mr-2 text-blue-600" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-pink-50 hover:border-pink-300">
+                      <Icon className="h-4 w-4 mr-2 text-pink-600" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{hub.name}</div>
                         <div className="text-xs text-gray-500">{hub.description}</div>
@@ -321,6 +354,34 @@ export default function DessertSmoothiesPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-pink-600">320</div>
+              <div className="text-sm text-gray-600">Avg Calories</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-pink-600">12g</div>
+              <div className="text-sm text-gray-600">Avg Protein</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-pink-600">4.7★</div>
+              <div className="text-sm text-gray-600">Avg Rating</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-pink-600">{dessertSmoothies.length}</div>
+              <div className="text-sm text-gray-600">Recipes</div>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Tabs */}
         <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
@@ -423,91 +484,220 @@ export default function DessertSmoothiesPage() {
 
             {/* Smoothie Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredSmoothies.map(smoothie => (
-                <Card key={smoothie.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg mb-1">{smoothie.name}</CardTitle>
-                        <p className="text-sm text-gray-600 mb-2">{smoothie.description}</p>
+              {filteredSmoothies.map(smoothie => {
+                const useMetric = !!metricFlags[smoothie.id];
+                const servings = servingsById[smoothie.id] ?? (smoothie.recipe?.servings || 1);
+
+                return (
+                  <Card key={smoothie.id} className="hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <CardTitle className="text-lg mb-1">{smoothie.name}</CardTitle>
+                          <p className="text-sm text-gray-600 mb-2">{smoothie.description}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => addToFavorites({
+                            id: smoothie.id,
+                            name: smoothie.name,
+                            category: 'smoothies',
+                            description: smoothie.description,
+                            ingredients: smoothie.ingredients,
+                            nutrition: smoothie.nutrition,
+                            difficulty: smoothie.difficulty,
+                            prepTime: smoothie.prepTime,
+                            rating: smoothie.rating,
+                            fitnessGoal: 'Dessert',
+                            bestTime: smoothie.bestTime
+                          })}
+                        >
+                          <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
+                        </Button>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => addToFavorites({
-                          id: smoothie.id,
-                          name: smoothie.name,
-                          category: 'smoothies',
-                          description: smoothie.description,
-                          ingredients: smoothie.ingredients,
-                          nutrition: smoothie.nutrition,
-                          difficulty: smoothie.difficulty,
-                          prepTime: smoothie.prepTime,
-                          rating: smoothie.rating,
-                          fitnessGoal: 'Dessert',
-                          bestTime: smoothie.bestTime
-                        })}
-                      >
-                        <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
-                      </Button>
-                    </div>
+                      
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge className="bg-pink-100 text-pink-800">{smoothie.dessertType}</Badge>
+                        {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                      </div>
+                    </CardHeader>
                     
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge className="bg-pink-100 text-pink-800">{smoothie.dessertType}</Badge>
-                      {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent>
-                    <div className="grid grid-cols-4 gap-2 mb-4 text-center text-sm">
-                      <div>
-                        <div className="text-xl font-bold text-pink-600">{smoothie.nutrition.calories}</div>
-                        <div className="text-gray-500">Cal</div>
+                    <CardContent>
+                      <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
+                        <div>
+                          <div className="font-bold text-pink-600">{smoothie.nutrition.calories}</div>
+                          <div className="text-gray-500">Cal</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-pink-600">{smoothie.nutrition.protein}g</div>
+                          <div className="text-gray-500">Protein</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-pink-600">{smoothie.prepTime}m</div>
+                          <div className="text-gray-500">Prep</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-xl font-bold text-blue-600">{smoothie.nutrition.protein}g</div>
-                        <div className="text-gray-500">Protein</div>
-                      </div>
-                      <div>
-                        <div className="text-xl font-bold text-green-600">{smoothie.nutrition.fiber}g</div>
-                        <div className="text-gray-500">Fiber</div>
-                      </div>
-                      <div>
-                        <div className="text-xl font-bold text-purple-600">{smoothie.prepTime}m</div>
-                        <div className="text-gray-500">Time</div>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="font-medium">{smoothie.rating}</span>
-                        <span className="text-gray-500 text-sm">({smoothie.reviews})</span>
+                      {/* RATING & DIFFICULTY - IMMEDIATELY ABOVE RECIPE CARD */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-1">
+                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                          <span className="font-medium">{smoothie.rating}</span>
+                          <span className="text-gray-500 text-sm">({smoothie.reviews})</span>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {smoothie.difficulty}
+                        </Badge>
                       </div>
-                      <Badge variant="outline" className="text-xs">
-                        {smoothie.difficulty}
-                      </Badge>
-                    </div>
 
-                    <div className="flex gap-2">
-                      <Button 
-                        className="flex-1 bg-pink-600 hover:bg-pink-700"
-                        onClick={() => handleMakeSmoothie(smoothie)}
-                      >
-                        <ChefHat className="h-4 w-4 mr-2" />
-                        Make It
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleShareSmoothie(smoothie)}>
-                        <Share2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                      {/* RecipeKit Preview */}
+                      {smoothie.recipe?.measurements && (
+                        <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-sm font-semibold text-gray-900">
+                              Recipe (serves {servings})
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                className="px-2 py-1 border rounded text-sm"
+                                onClick={() =>
+                                  setServingsById(prev => ({ ...prev, [smoothie.id]: clamp((prev[smoothie.id] ?? (smoothie.recipe?.servings || 1)) - 1) }))
+                                }
+                                aria-label="decrease servings"
+                              >
+                                −
+                              </button>
+                              <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                              <button
+                                className="px-2 py-1 border rounded text-sm"
+                                onClick={() =>
+                                  setServingsById(prev => ({ ...prev, [smoothie.id]: clamp((prev[smoothie.id] ?? (smoothie.recipe?.servings || 1)) + 1) }))
+                                }
+                                aria-label="increase servings"
+                              >
+                                +
+                              </button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setServingsById(prev => {
+                                  const next = { ...prev };
+                                  next[smoothie.id] = smoothie.recipe?.servings || 1;
+                                  return next;
+                                })}
+                                title="Reset servings"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
+                              </Button>
+                            </div>
+                          </div>
+
+                          <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                            {smoothie.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                              const isNum = typeof ing.amount === 'number';
+                              const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount;
+                              const show = useMetric && isNum
+                                ? toMetric(ing.unit, Number((typeof ing.amount === 'number' ? (ing.amount as number) : parseFloat(String(ing.amount))) * servings))
+                                : { amount: scaledDisplay, unit: ing.unit };
+
+                              return (
+                                <li key={i} className="flex items-start gap-2">
+                                  <Check className="h-4 w-4 text-pink-600 mt-0.5" />
+                                  <span>
+                                    <span className="text-pink-700 font-semibold">
+                                      {show.amount} {show.unit}
+                                    </span>{" "}
+                                    {ing.item}
+                                    {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                            {smoothie.recipe.measurements.length > 4 && (
+                              <li className="text-xs text-gray-600">
+                                …plus {smoothie.recipe.measurements.length - 4} more •{" "}
+                                <button
+                                  type="button"
+                                  onClick={() => openRecipeModal(smoothie)}
+                                  className="underline underline-offset-2"
+                                >
+                                  Show more
+                                </button>
+                              </li>
+                            )}
+                          </ul>
+
+                          <div className="flex gap-2 mt-3">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                const lines = smoothie.ingredients.map((ing: string) => `- ${ing}`);
+                                const txt = `${smoothie.name} (serves ${servings})\n${lines.join('\n')}`;
+                                try {
+                                  await navigator.clipboard.writeText(txt);
+                                  alert('Recipe copied!');
+                                } catch {
+                                  alert('Unable to copy on this device.');
+                                }
+                              }}
+                            >
+                              <Clipboard className="w-4 h-4 mr-1" /> Copy
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleShareSmoothie(smoothie, servings)}>
+                              <Share2 className="w-4 h-4 mr-1" /> Share
+                            </Button>
+                            {/* Metric Button */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setMetricFlags((prev) => ({ ...prev, [smoothie.id]: !prev[smoothie.id] }))
+                              }
+                            >
+                              {useMetric ? 'US' : 'Metric'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Best Time */}
+                      <div className="space-y-2 mb-3 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Best Time:</span>
+                          <span className="font-medium text-pink-600">{smoothie.bestTime}</span>
+                        </div>
+                      </div>
+
+                      {/* Benefits Tags */}
+                      <div className="flex flex-wrap gap-1 mb-4">
+                        {smoothie.benefits?.slice(0, 3).map((benefit: string, index: number) => (
+                          <Badge key={index} variant="secondary" className="text-xs bg-pink-100 text-pink-800 hover:bg-pink-200">
+                            {benefit}
+                          </Badge>
+                        ))}
+                      </div>
+
+                      {/* Make Smoothie Button */}
+                      <div className="mt-3">
+                        <Button 
+                          className="w-full bg-pink-600 hover:bg-pink-700"
+                          onClick={() => openRecipeModal(smoothie)}
+                        >
+                          <IceCream className="h-4 w-4 mr-2" />
+                          Make Smoothie (+25 XP)
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
 
+        {/* Rest of the tabs remain the same structure */}
         {activeTab === 'dessert-types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {dessertTypes.map(type => {
@@ -532,7 +722,7 @@ export default function DessertSmoothiesPage() {
                         <h4 className="font-semibold text-sm mb-2">Healthy Ingredients:</h4>
                         <div className="flex flex-wrap gap-1">
                           {type.healthyIngredients.map((ingredient: string, index: number) => (
-                            <Badge key={index} variant="outline" className="text-xs">
+                            <Badge key={index} variant="outline" className="text-xs bg-pink-100 text-pink-800">
                               {ingredient}
                             </Badge>
                           ))}
@@ -606,9 +796,9 @@ export default function DessertSmoothiesPage() {
                 <CardContent>
                   <Button 
                     className="w-full bg-pink-600 hover:bg-pink-700"
-                    onClick={() => handleMakeSmoothie(smoothie)}
+                    onClick={() => openRecipeModal(smoothie)}
                   >
-                    <ChefHat className="h-4 w-4 mr-2" />
+                    <IceCream className="h-4 w-4 mr-2" />
                     Make This Dessert
                   </Button>
                 </CardContent>
@@ -617,7 +807,7 @@ export default function DessertSmoothiesPage() {
           </div>
         )}
 
-        {/* Your Progress (in-content) */}
+        {/* Your Progress */}
         <Card className="bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -627,10 +817,10 @@ export default function DessertSmoothiesPage() {
                   <Badge variant="outline" className="text-pink-600">
                     Level {userProgress.level}
                   </Badge>
-                  <Badge variant="outline" className="text-purple-600">
+                  <Badge variant="outline" className="text-pink-600">
                     {userProgress.totalPoints} XP
                   </Badge>
-                  <Badge variant="outline" className="text-blue-600">
+                  <Badge variant="outline" className="text-pink-600">
                     {userProgress.totalDrinksMade} Drinks Made
                   </Badge>
                 </div>
