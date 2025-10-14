@@ -718,14 +718,17 @@ export default function PlantBasedProteinPage() {
                     <div className="flex items-center gap-2 mb-2">
                       <Badge className="bg-green-100 text-green-800">{shake.proteinSource}</Badge>
                       <Badge variant="outline">{shake.flavor}</Badge>
-                      {/* move difficulty up here to keep bottom clean & match egg layout */}
-                      <Badge variant="outline">{shake.difficulty}</Badge>
                       {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
-                      <div className="flex items-center gap-1 ml-auto">
+                    </div>
+
+                    {/* Rating and Difficulty moved above recipe box */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-1">
                         <Star className="h-4 w-4 text-yellow-400 fill-current" />
                         <span className="font-medium">{shake.rating}</span>
                         <span className="text-gray-500 text-sm">({shake.reviews})</span>
                       </div>
+                      <Badge variant="outline">{shake.difficulty}</Badge>
                     </div>
                   </CardHeader>
 
@@ -736,13 +739,6 @@ export default function PlantBasedProteinPage() {
                       <div><div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div><div className="text-gray-500">Cal</div></div>
                       <div><div className="text-xl font-bold text-purple-600">{shake.nutrition.fiber ?? '—'}{shake.nutrition.fiber ? 'g':''}</div><div className="text-gray-500">Fiber</div></div>
                       <div><div className="text-xl font-bold text-amber-600">${shake.price}</div><div className="text-gray-500">Price</div></div>
-                    </div>
-
-                    {/* Certifications */}
-                    <div className="flex flex-wrap gap-1 mb-4">
-                      {shake.certifications.map((cert: string, index: number) => (
-                        <Badge key={index} variant="outline" className="text-xs">{cert}</Badge>
-                      ))}
                     </div>
 
                     {/* RecipeKit (preview + modal) */}
@@ -774,6 +770,13 @@ export default function PlantBasedProteinPage() {
                         }}
                       />
                     )}
+
+                    {/* Tags moved below recipe box */}
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {shake.certifications.map((cert: string, index: number) => (
+                        <Badge key={index} variant="outline" className="text-xs">{cert}</Badge>
+                      ))}
+                    </div>
 
                     {/* Full-width CTA only (no extra Share next to it) */}
                     <div className="mt-3">
@@ -931,12 +934,17 @@ export default function PlantBasedProteinPage() {
                   <div className="flex items-center gap-2 mt-2">
                     <Badge className="bg-green-100 text-green-800">{shake.proteinSource}</Badge>
                     <Badge variant="outline">{shake.flavor}</Badge>
-                    <Badge variant="outline">{shake.difficulty}</Badge>
-                    <div className="flex items-center gap-1 ml-auto">
+                    {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                  </div>
+
+                  {/* Rating and Difficulty moved above recipe box */}
+                  <div className="flex items-center justify-between mt-3">
+                    <div className="flex items-center gap-1">
                       <Star className="h-4 w-4 text-yellow-400 fill-current" />
                       <span className="font-medium">{shake.rating}</span>
                       <span className="text-gray-500 text-sm">({shake.reviews})</span>
                     </div>
+                    <Badge variant="outline">{shake.difficulty}</Badge>
                   </div>
                 </CardHeader>
 
@@ -977,6 +985,13 @@ export default function PlantBasedProteinPage() {
                       }}
                     />
                   )}
+
+                  {/* Tags moved below recipe box */}
+                  <div className="flex flex-wrap gap-1 mb-4">
+                    {shake.certifications.map((cert: string, index: number) => (
+                      <Badge key={index} variant="outline" className="text-xs">{cert}</Badge>
+                    ))}
+                  </div>
 
                   {/* Full-width CTA only */}
                   <div className="mt-3">
