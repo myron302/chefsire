@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
   Target, Heart, Star, Zap, Flame, Leaf, Sparkles, Moon, Wine,
-  Search, ArrowLeft, ArrowRight, Camera, X, Plus
+  Search, ArrowLeft, ArrowRight, Camera, X, Plus, Dumbbell
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
@@ -18,11 +18,6 @@ import type { RecipeKitHandle } from '@/components/recipes/RecipeKit';
 // ---------- Helpers ----------
 type Nutrition = { calories?: number; protein?: number; carbs?: number; fat?: number; fiber?: number };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
-
-const scaleAmount = (amt: number | string, factor: number): number | string => {
-  if (typeof amt === 'number') return Math.round((amt * factor + Number.EPSILON) * 100) / 100;
-  return amt;
-};
 
 // ---------- Cross-nav ----------
 const otherDrinkHubs = [
@@ -40,7 +35,7 @@ const proteinSubcategories = [
   { id: 'beef', name: 'Beef Protein', icon: Flame, path: '/drinks/protein-shakes/beef', description: 'Natural creatine' }
 ];
 
-// ---------- Data (Egg) ----------
+// ---------- Data (Egg) - Expanded to 9 recipes ----------
 const eggProteinRecipes = [
   {
     id: 'egg-1',
@@ -64,7 +59,9 @@ const eggProteinRecipes = [
         m(0.5, 'banana', 'ripe, frozen preferred'),
         m(2, 'tbsp', 'rolled oats'),
         m(0.5, 'tsp', 'cinnamon'),
-        m(4, 'ice cubes', 'ice')
+        m(4, 'ice cubes', 'ice'),
+        m(1, 'tsp', 'honey', 'optional sweetener'),
+        m(1, 'pinch', 'nutmeg', 'optional')
       ],
       directions: [
         'Add milk, then protein and dry ingredients, then fruit.',
@@ -94,7 +91,9 @@ const eggProteinRecipes = [
         m(0.25, 'cup', 'Greek yogurt'),
         m(0.5, 'tsp', 'vanilla extract'),
         m(1, 'tsp', 'honey or stevia to taste'),
-        m(4, 'ice cubes', 'ice')
+        m(4, 'ice cubes', 'ice'),
+        m(1, 'tbsp', 'chia seeds', 'for fiber'),
+        m(0.25, 'tsp', 'cinnamon')
       ],
       directions: [
         'Blend liquids + protein 10 seconds.',
@@ -124,7 +123,9 @@ const eggProteinRecipes = [
         m(0.75, 'cup', 'mixed berries, frozen'),
         m(1, 'handful', 'spinach'),
         m(1, 'tsp', 'chia seeds'),
-        m(4, 'ice cubes', 'ice')
+        m(4, 'ice cubes', 'ice'),
+        m(1, 'tsp', 'lemon juice', 'optional'),
+        m(1, 'tsp', 'flax seeds', 'optional')
       ],
       directions: [
         'Blend all until smooth; pulse to keep berry texture if preferred.'
@@ -153,7 +154,9 @@ const eggProteinRecipes = [
         m(1, 'tbsp', 'peanut butter'),
         m(0.5, 'banana', 'ripe'),
         m(1, 'cup', 'milk or almond milk'),
-        m(4, 'ice cubes', 'ice')
+        m(4, 'ice cubes', 'ice'),
+        m(1, 'tsp', 'maple syrup', 'optional'),
+        m(1, 'pinch', 'sea salt')
       ],
       directions: [
         'Blend all 45–60 seconds until silky; add milk to thin as needed.'
@@ -183,7 +186,8 @@ const eggProteinRecipes = [
         m(0.25, 'medium', 'avocado'),
         m(0.5, 'small', 'green apple, cored'),
         m(1, 'tsp', 'fresh lemon juice'),
-        m(4, 'ice cubes', 'ice')
+        m(4, 'ice cubes', 'ice'),
+        m(1, 'tsp', 'ginger', 'optional')
       ],
       directions: [
         'Blend until bright and smooth; adjust lemon to taste.'
@@ -212,10 +216,108 @@ const eggProteinRecipes = [
         m(0.5, 'cup', 'pineapple, frozen'),
         m(0.75, 'cup', 'light coconut milk'),
         m(0.25, 'tsp', 'ground turmeric'),
-        m(4, 'ice cubes', 'ice')
+        m(4, 'ice cubes', 'ice'),
+        m(1, 'tsp', 'coconut flakes', 'optional'),
+        m(1, 'pinch', 'black pepper', 'for turmeric absorption')
       ],
       directions: [
         'Blend all ingredients until smooth; add milk for thinner texture.'
+      ]
+    }
+  },
+  {
+    id: 'egg-7',
+    name: 'Coffee Egg Energizer',
+    flavor: 'Mocha Latte',
+    protein: 31,
+    carbs: 12,
+    calories: 230,
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.6,
+    reviews: 198,
+    tags: ['Morning Boost', 'Energy', 'Focus'],
+    benefits: ['Caffeine boost', 'Mental focus', 'Sustained energy'],
+    ingredients: ['Egg Protein', 'Coffee', 'Cocoa', 'Milk', 'Vanilla'],
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'egg protein'),
+        m(0.5, 'cup', 'cold brew coffee'),
+        m(0.5, 'cup', 'milk or almond milk'),
+        m(1, 'tbsp', 'cocoa powder'),
+        m(0.5, 'tsp', 'vanilla extract'),
+        m(1, 'tsp', 'maple syrup', 'optional'),
+        m(4, 'ice cubes', 'ice'),
+        m(1, 'pinch', 'cinnamon')
+      ],
+      directions: [
+        'Blend coffee with protein and cocoa until smooth',
+        'Add milk and sweetener; blend until frothy'
+      ]
+    }
+  },
+  {
+    id: 'egg-8',
+    name: 'Pumpkin Spice Egg Protein',
+    flavor: 'Pumpkin Spice',
+    protein: 28,
+    carbs: 19,
+    calories: 235,
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.4,
+    reviews: 167,
+    tags: ['Seasonal', 'Comfort', 'Fiber Rich'],
+    benefits: ['Seasonal flavor', 'High fiber', 'Vitamin A'],
+    ingredients: ['Egg Protein', 'Pumpkin', 'Spices', 'Yogurt', 'Oats'],
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'egg protein'),
+        m(0.25, 'cup', 'pumpkin puree'),
+        m(0.5, 'cup', 'Greek yogurt'),
+        m(0.5, 'cup', 'milk or almond milk'),
+        m(0.5, 'tsp', 'pumpkin pie spice'),
+        m(2, 'tbsp', 'rolled oats'),
+        m(1, 'tsp', 'honey', 'optional'),
+        m(4, 'ice cubes', 'ice')
+      ],
+      directions: [
+        'Combine all ingredients in blender',
+        'Blend until smooth and creamy like pumpkin pie'
+      ]
+    }
+  },
+  {
+    id: 'egg-9',
+    name: 'Matcha Egg Green Tea',
+    flavor: 'Matcha Green Tea',
+    protein: 27,
+    carbs: 14,
+    calories: 215,
+    difficulty: 'Medium',
+    prepTime: 4,
+    rating: 4.7,
+    reviews: 189,
+    tags: ['Antioxidants', 'Energy', 'Metabolism'],
+    benefits: ['Antioxidant boost', 'Metabolism support', 'Calm energy'],
+    ingredients: ['Egg Protein', 'Matcha', 'Spinach', 'Avocado', 'Coconut Water'],
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'egg protein'),
+        m(1, 'tsp', 'matcha powder'),
+        m(1, 'cup', 'coconut water'),
+        m(1, 'handful', 'spinach'),
+        m(0.25, 'avocado', 'for creaminess'),
+        m(1, 'tsp', 'honey', 'optional'),
+        m(4, 'ice cubes', 'ice'),
+        m(1, 'tsp', 'lemon juice', 'optional')
+      ],
+      directions: [
+        'Blend matcha with liquid first to dissolve',
+        'Add remaining ingredients and blend until vibrant green'
       ]
     }
   }
@@ -238,11 +340,9 @@ export default function EggProteinPage() {
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'calories' | 'prepTime'>('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [showKit, setShowKit] = useState(false);
-
-  // Serving incrementer (inline, per card)
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
 
-  // keep in case you open by ref later
+  // RecipeKit refs
   const kitRefs = useRef<Record<string, RecipeKitHandle | null>>({});
 
   const allTags = ['All', ...new Set(eggProteinRecipes.flatMap(r => r.tags))];
@@ -274,47 +374,6 @@ export default function EggProteinPage() {
 
     return filtered;
   }, [searchQuery, filterTag, sortBy]);
-
-  const getServings = (recipe: any) => servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
-  const incrementServings = (recipe: any, dir: 1 | -1) => {
-    setServingsById(prev => {
-      const current = prev[recipe.id] ?? (recipe.recipe?.servings || 1);
-      const next = Math.min(12, Math.max(1, current + dir));
-      return { ...prev, [recipe.id]: next };
-    });
-  };
-
-  const openRecipeModal = (recipe: any) => {
-    setSelectedRecipe(recipe);
-    setShowKit(true);
-  };
-
-  const handleCompleteRecipe = () => {
-    if (selectedRecipe) {
-      const drinkData = {
-        id: selectedRecipe.id,
-        name: selectedRecipe.name,
-        category: 'protein-shakes' as const,
-        description: `${selectedRecipe.flavor || ''} egg protein shake`,
-        ingredients: selectedRecipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || selectedRecipe.ingredients,
-        nutrition: {
-          calories: selectedRecipe.calories,
-          protein: selectedRecipe.protein,
-          carbs: selectedRecipe.carbs,
-          fat: 5
-        } as Nutrition,
-        difficulty: selectedRecipe.difficulty as 'Easy' | 'Medium' | 'Hard',
-        prepTime: selectedRecipe.prepTime,
-        rating: selectedRecipe.rating,
-        tags: selectedRecipe.tags
-      };
-      addToRecentlyViewed(drinkData);
-      incrementDrinksMade();
-      addPoints(100); // Egg page keeps your +100 XP
-    }
-    setShowKit(false);
-    setSelectedRecipe(null);
-  };
 
   const handleSharePage = async () => {
     const shareData = {
@@ -358,26 +417,6 @@ export default function EggProteinPage() {
         </div>
       )}
 
-      {/* Controlled RecipeKit Modal (popup) */}
-      {selectedRecipe && (
-        <RecipeKit
-          open={showKit}
-          onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
-          accent="amber"
-          pointsReward={100}
-          onComplete={handleCompleteRecipe}
-          item={{
-            id: selectedRecipe.id,
-            name: selectedRecipe.name,
-            prepTime: selectedRecipe.prepTime,
-            directions: selectedRecipe.recipe?.directions || [],
-            measurements: selectedRecipe.recipe?.measurements || [],
-            baseNutrition: { calories: selectedRecipe.calories, protein: selectedRecipe.protein },
-            defaultServings: selectedRecipe.recipe?.servings || 1
-          }}
-        />
-      )}
-
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -408,7 +447,7 @@ export default function EggProteinPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white" onClick={handleSharePage}>
+              <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Page
               </Button>
@@ -470,6 +509,34 @@ export default function EggProteinPage() {
           </CardContent>
         </Card>
 
+        {/* Quick Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-amber-600">29g</div>
+              <div className="text-sm text-gray-600">Avg Protein</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-blue-600">100</div>
+              <div className="text-sm text-gray-600">BV Score</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-green-600">9</div>
+              <div className="text-sm text-gray-600">Recipes</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-purple-600">4.7</div>
+              <div className="text-sm text-gray-600">Avg Rating</div>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Filters */}
         <Card className="mb-6">
           <CardContent className="p-4">
@@ -511,138 +578,141 @@ export default function EggProteinPage() {
 
         {/* Recipe Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredRecipes.map((recipe) => {
-            const servings = getServings(recipe);
-            const factor = (servings || 1) / (recipe.recipe?.servings || 1);
-
-            return (
-              <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-lg mb-1">{recipe.name}</CardTitle>
-
-                      {/* Benefits directly below the title */}
-                      {Array.isArray(recipe.benefits) && recipe.benefits.length > 0 && (
-                        <div className="mt-0.5 mb-2 text-xs text-gray-600">
-                          Benefits: {recipe.benefits.join(' · ')}
-                        </div>
-                      )}
-
-                      <p className="text-sm text-gray-600">{recipe.flavor}</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const drinkData = {
-                          id: recipe.id,
-                          name: recipe.name,
-                          category: 'protein-shakes' as const,
-                          description: `${recipe.flavor || ''} egg protein shake`,
-                          ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
-                          nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
-                          difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
-                          prepTime: recipe.prepTime,
-                          rating: recipe.rating
-                        };
-                        addToFavorites(drinkData);
-                      }}
-                      className="text-gray-400 hover:text-red-500"
-                    >
-                      <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                    </Button>
+          {filteredRecipes.map((recipe) => (
+            <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <CardTitle className="text-lg mb-1">{recipe.name}</CardTitle>
+                    <p className="text-sm text-gray-600 mb-2">{recipe.flavor}</p>
                   </div>
-                </CardHeader>
-
-                <CardContent>
-                  {/* Quick stats */}
-                  <div className="grid grid-cols-3 gap-2 text-center mb-4">
-                    <div>
-                      <div className="font-bold text-blue-600">{recipe.protein}g</div>
-                      <div className="text-xs text-gray-500">Protein</div>
-                    </div>
-                    <div>
-                      <div className="font-bold text-green-600">{recipe.carbs}g</div>
-                      <div className="text-xs text-gray-500">Carbs</div>
-                    </div>
-                    <div>
-                      <div className="font-bold text-amber-600">{recipe.calories}</div>
-                      <div className="text-xs text-gray-500">Calories</div>
-                    </div>
-                  </div>
-
-                  {/* Rating + Difficulty row (same placement as Whey) */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium">{recipe.rating}</span>
-                      <span className="text-gray-500 text-sm">({recipe.reviews})</span>
-                    </div>
-                    <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
-                  </div>
-
-                  {/* Inline serving incrementer + compact measured preview */}
-                  {recipe.recipe?.measurements && (
-                    <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm font-semibold text-gray-900">
-                          Recipe (serves {servings})
-                        </div>
-                        <div className="flex items-center rounded-md border border-gray-300 overflow-hidden">
-                          <button
-                            aria-label="decrease servings"
-                            onClick={() => incrementServings(recipe, -1)}
-                            className="px-2 py-1 text-sm hover:bg-gray-100"
-                          >−</button>
-                          <div className="px-3 py-1 text-sm border-l border-r border-gray-300">{servings}</div>
-                          <button
-                            aria-label="increase servings"
-                            onClick={() => incrementServings(recipe, +1)}
-                            className="px-2 py-1 text-sm hover:bg-gray-100"
-                          >+</button>
-                        </div>
-                      </div>
-
-                      <ul className="text-sm leading-6 text-gray-800 space-y-1">
-                        {recipe.recipe.measurements.slice(0, 6).map((ing: Measured, i: number) => (
-                          <li key={i} className="flex gap-2">
-                            <span className="text-amber-700 font-medium min-w-[90px]">
-                              {scaleAmount(ing.amount, factor)} {ing.unit}
-                            </span>
-                            <span className="flex-1">
-                              {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                      {(recipe.recipe.measurements.length > 6) && (
-                        <div className="text-xs text-gray-600 mt-1">
-                          …more shown in full recipe
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Tags (full list) */}
-                  <div className="flex flex-wrap gap-1 mb-4">
-                    {recipe.tags.map((tag: string) => (
-                      <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
-                    ))}
-                  </div>
-
-                  {/* Full-width CTA — Make Shake */}
                   <Button
-                    className="w-full bg-amber-600 hover:bg-amber-700 text-white"
-                    onClick={() => openRecipeModal(recipe)}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      const drinkData = {
+                        id: recipe.id,
+                        name: recipe.name,
+                        category: 'protein-shakes' as const,
+                        description: `${recipe.flavor || ''} egg protein shake`,
+                        ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
+                        nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
+                        difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
+                        prepTime: recipe.prepTime,
+                        rating: recipe.rating
+                      };
+                      addToFavorites(drinkData);
+                    }}
+                    className="text-gray-400 hover:text-red-500"
                   >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Make Shake (+100 XP)
+                    <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
                   </Button>
-                </CardContent>
-              </Card>
-            );
-          })}
+                </div>
+
+                {/* Tags at top with different colors */}
+                <div className="flex flex-wrap gap-1 mb-2">
+                  <Badge className="bg-amber-100 text-amber-800">Egg Protein</Badge>
+                  <Badge variant="outline">{recipe.flavor}</Badge>
+                  {recipe.tags.includes('Post-Workout') && <Badge className="bg-red-100 text-red-800">Post-Workout</Badge>}
+                  {recipe.tags.includes('Lactose-Free') && <Badge className="bg-blue-100 text-blue-800">Lactose-Free</Badge>}
+                </div>
+
+                {/* Rating and Difficulty just above recipe box */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-1">
+                    <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                    <span className="font-medium">{recipe.rating}</span>
+                    <span className="text-gray-500 text-sm">({recipe.reviews})</span>
+                  </div>
+                  <Badge variant="outline">{recipe.difficulty}</Badge>
+                </div>
+              </CardHeader>
+
+              <CardContent>
+                {/* Nutrition Grid */}
+                <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
+                  <div>
+                    <div className="text-xl font-bold text-amber-600">{recipe.protein}g</div>
+                    <div className="text-gray-500">Protein</div>
+                  </div>
+                  <div>
+                    <div className="text-xl font-bold text-blue-600">{recipe.calories}</div>
+                    <div className="text-gray-500">Calories</div>
+                  </div>
+                  <div>
+                    <div className="text-xl font-bold text-green-600">{recipe.prepTime}m</div>
+                    <div className="text-gray-500">Prep Time</div>
+                  </div>
+                </div>
+
+                {/* RecipeKit (preview + modal) */}
+                {recipe.recipe?.measurements && (
+                  <RecipeKit
+                    ref={(el) => { kitRefs.current[recipe.id] = el; }}
+                    id={recipe.id}
+                    name={recipe.name}
+                    measurements={recipe.recipe.measurements}
+                    directions={recipe.recipe.directions}
+                    nutrition={{ calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 }}
+                    prepTime={recipe.prepTime}
+                    onComplete={() => {
+                      addToRecentlyViewed({
+                        id: recipe.id,
+                        name: recipe.name,
+                        category: 'protein-shakes',
+                        description: recipe.flavor,
+                        ingredients: recipe.recipe.measurements.map((x: Measured) => x.item),
+                        nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
+                        difficulty: recipe.difficulty,
+                        prepTime: recipe.prepTime,
+                        rating: recipe.rating,
+                        fitnessGoal: 'Muscle Building',
+                        bestTime: 'Post-Workout'
+                      });
+                      incrementDrinksMade();
+                      addPoints(100);
+                    }}
+                  />
+                )}
+
+                {/* Benefits tags with Egg color scheme */}
+                <div className="flex flex-wrap gap-1 mb-4">
+                  {recipe.benefits.map((benefit: string, index: number) => (
+                    <Badge key={index} variant="secondary" className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-200">
+                      {benefit}
+                    </Badge>
+                  ))}
+                </div>
+
+                {/* Full-width CTA — Make Shake with lighter amber */}
+                <Button
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+                  size="sm"
+                  onClick={() => {
+                    addToRecentlyViewed({
+                      id: recipe.id,
+                      name: recipe.name,
+                      category: 'protein-shakes',
+                      description: recipe.flavor,
+                      ingredients: recipe.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
+                      nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
+                      difficulty: recipe.difficulty,
+                      prepTime: recipe.prepTime,
+                      rating: recipe.rating,
+                      fitnessGoal: 'Muscle Building',
+                      bestTime: 'Post-Workout'
+                    });
+                    incrementDrinksMade();
+                    addPoints(100);
+                    kitRefs.current[recipe.id]?.open?.();
+                  }}
+                >
+                  <Dumbbell className="h-4 w-4 mr-1" />
+                  Make Shake (+100 XP)
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
         {/* Your Progress */}
