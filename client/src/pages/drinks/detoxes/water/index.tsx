@@ -330,13 +330,13 @@ export default function DetoxWatersPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">100%</div>
+              <div className="text-2xl font-bold text-cyan-600">100%</div>
               <div className="text-sm text-gray-600">Natural</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">{infusedWaters.length}</div>
+              <div className="text-2xl font-bold text-cyan-600">{infusedWaters.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -470,11 +470,11 @@ export default function DetoxWatersPage() {
                           <div className="text-gray-500">Cal</div>
                         </div>
                         <div>
-                          <div className="font-bold text-blue-600">{water.nutrition.sugar}g</div>
+                          <div className="font-bold text-cyan-600">{water.nutrition.sugar}g</div>
                           <div className="text-gray-500">Sugar</div>
                         </div>
                         <div>
-                          <div className="font-bold text-green-600">{water.prepTime}m</div>
+                          <div className="font-bold text-cyan-600">{water.prepTime}m</div>
                           <div className="text-gray-500">Prep</div>
                         </div>
                       </div>
@@ -607,11 +607,11 @@ export default function DetoxWatersPage() {
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           <div>
                             <span className="text-gray-600">Infusion:</span>
-                            <span className="font-medium ml-1">{water.infusionTime}</span>
+                            <span className="font-medium ml-1 text-cyan-600">{water.infusionTime}</span>
                           </div>
                           <div>
                             <span className="text-gray-600">Temp:</span>
-                            <span className="font-medium ml-1">{water.temperature}</span>
+                            <span className="font-medium ml-1 text-cyan-600">{water.temperature}</span>
                           </div>
                         </div>
                       </div>
@@ -620,11 +620,11 @@ export default function DetoxWatersPage() {
                       <div className="space-y-2 mb-3 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Best Time:</span>
-                          <span className="font-medium">{water.bestTime}</span>
+                          <span className="font-medium text-cyan-600">{water.bestTime}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">Duration:</span>
-                          <span className="font-medium">{water.duration}</span>
+                          <span className="font-medium text-cyan-600">{water.duration}</span>
                         </div>
                       </div>
 
@@ -673,7 +673,7 @@ export default function DetoxWatersPage() {
                         <p className="text-sm text-gray-600 mb-3">{type.description}</p>
                         <div className="flex flex-wrap gap-1">
                           {type.benefits.map((benefit, i) => (
-                            <Badge key={i} variant="outline" className="text-xs">
+                            <Badge key={i} variant="outline" className="text-xs bg-cyan-100 text-cyan-800">
                               {benefit}
                             </Badge>
                           ))}
@@ -708,11 +708,11 @@ export default function DetoxWatersPage() {
                         <div className="space-y-3">
                           <div className="flex items-center justify-between text-sm">
                             <span>Rating:</span>
-                            <span className="font-semibold">{water.rating} ⭐</span>
+                            <span className="font-semibold text-cyan-600">{water.rating} ⭐</span>
                           </div>
                           <div className="flex items-center justify-between text-sm">
                             <span>Prep Time:</span>
-                            <span className="font-semibold">{water.prepTime} mins</span>
+                            <span className="font-semibold text-cyan-600">{water.prepTime} mins</span>
                           </div>
                           <Button 
                             className="w-full bg-cyan-600 hover:bg-cyan-700"
@@ -741,10 +741,10 @@ export default function DetoxWatersPage() {
                   <Badge variant="outline" className="text-cyan-600">
                     Level {userProgress.level}
                   </Badge>
-                  <Badge variant="outline" className="text-blue-600">
+                  <Badge variant="outline" className="text-cyan-600">
                     {userProgress.totalPoints} XP
                   </Badge>
-                  <Badge variant="outline" className="text-green-600">
+                  <Badge variant="outline" className="text-cyan-600">
                     {userProgress.totalDrinksMade} Drinks Made
                   </Badge>
                 </div>
