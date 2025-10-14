@@ -25,9 +25,16 @@ import {
   ArrowRight,
   X,
   Check,
+  Copy,
+  BarChart3,
 } from "lucide-react"
 import { useDrinks } from "@/contexts/DrinksContext"
 import UniversalSearch from "@/components/UniversalSearch"
+import RecipeKit, { Measured } from '@/components/recipes/RecipeKit';
+import type { RecipeKitHandle } from '@/components/recipes/RecipeKit';
+
+// ---------- Helpers ----------
+const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
 
 // Navigation data
 const otherDrinkHubs = [
@@ -103,6 +110,22 @@ const caseinShakes = [
     fitnessGoal: "Muscle Recovery",
     mixability: "Good",
     texture: "Thick",
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (35g)', 'micellar casein protein'),
+        m(1, 'cup', 'cold milk or water'),
+        m(1, 'tsp', 'natural vanilla extract'),
+        m(1, 'pinch', 'sea salt'),
+        m(4, 'ice cubes', 'ice', 'optional for thicker shake')
+      ],
+      directions: [
+        'Add liquid first to prevent clumping',
+        'Slowly add casein protein while blending on low',
+        'Blend for 60-90 seconds until completely smooth',
+        'Let sit for 1 minute to thicken before drinking'
+      ]
+    }
   },
   {
     id: "casein-2",
@@ -135,6 +158,21 @@ const caseinShakes = [
     fitnessGoal: "Recovery",
     mixability: "Excellent",
     texture: "Creamy",
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (32g)', 'calcium caseinate'),
+        m(1, 'cup', 'almond milk'),
+        m(1, 'tbsp', 'cocoa powder'),
+        m(1, 'tsp', 'natural sweetener'),
+        m(1, 'pinch', 'sea salt')
+      ],
+      directions: [
+        'Mix casein with small amount of liquid first to create paste',
+        'Gradually add remaining liquid while blending',
+        'Blend until rich and chocolatey smooth'
+      ]
+    }
   },
   {
     id: "casein-3",
@@ -167,6 +205,21 @@ const caseinShakes = [
     fitnessGoal: "Sleep & Recovery",
     mixability: "Good",
     texture: "Smooth",
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'micellar casein'),
+        m(1, 'cup', 'milk or water'),
+        m(0.5, 'cup', 'frozen strawberries'),
+        m(1, 'tsp', 'honey', 'optional'),
+        m(1, 'pinch', 'vanilla extract')
+      ],
+      directions: [
+        'Blend casein with liquid until smooth',
+        'Add frozen strawberries and honey',
+        'Blend until creamy pink consistency'
+      ]
+    }
   },
   {
     id: "casein-4",
@@ -199,6 +252,21 @@ const caseinShakes = [
     fitnessGoal: "Weight Management",
     mixability: "Good",
     texture: "Rich",
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (35g)', 'cookie dough casein'),
+        m(1, 'cup', 'milk'),
+        m(1, 'tbsp', 'Greek yogurt'),
+        m(1, 'tsp', 'vanilla extract'),
+        m(1, 'pinch', 'cinnamon')
+      ],
+      directions: [
+        'Combine all ingredients in blender',
+        'Blend until thick and creamy',
+        'Add more milk if too thick'
+      ]
+    }
   },
   {
     id: "casein-5",
@@ -231,6 +299,21 @@ const caseinShakes = [
     fitnessGoal: "Sleep Quality",
     mixability: "Excellent",
     texture: "Smooth",
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (30g)', 'banana casein'),
+        m(1, 'cup', 'coconut water'),
+        m(0.5, 'banana', 'ripe'),
+        m(1, 'tsp', 'honey', 'optional'),
+        m(1, 'pinch', 'nutmeg')
+      ],
+      directions: [
+        'Blend casein with coconut water',
+        'Add banana and honey',
+        'Blend until smooth and frothy'
+      ]
+    }
   },
   {
     id: "casein-6",
@@ -263,6 +346,21 @@ const caseinShakes = [
     fitnessGoal: "Mental Performance",
     mixability: "Fair",
     texture: "Frothy",
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (33g)', 'mocha casein'),
+        m(1, 'cup', 'cold brew coffee'),
+        m(2, 'tbsp', 'cream or milk alternative'),
+        m(1, 'tsp', 'cocoa powder'),
+        m(1, 'pinch', 'cinnamon')
+      ],
+      directions: [
+        'Brew coffee and let cool completely',
+        'Blend coffee with casein and cocoa',
+        'Add cream and blend until frothy'
+      ]
+    }
   },
 ]
 
@@ -350,6 +448,21 @@ export default function CaseinProteinPage() {
   const [showUniversalSearch, setShowUniversalSearch] = useState(false)
   const [selectedShake, setSelectedShake] = useState(null)
   const [showModal, setShowModal] = useState(false)
+  const [servingsById, setServingsById] = useState<Record<string, number>>({});
+
+  // RecipeKit refs
+  const kitRefs = useRef<Record<string, RecipeKitHandle | null>>({});
+
+  const allTags = ['All', ...new Set(caseinShakes.flatMap(r => r.benefits))];
+
+  const getServings = (recipe: any) => servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
+  const incrementServings = (recipe: any, dir: 1 | -1) => {
+    setServingsById(prev => {
+      const current = prev[recipe.id] ?? (recipe.recipe?.servings || 1);
+      const next = Math.min(12, Math.max(1, current + dir));
+      return { ...prev, [recipe.id]: next };
+    });
+  };
 
   // Filter and sort shakes
   const getFilteredShakes = () => {
@@ -386,34 +499,71 @@ export default function CaseinProteinPage() {
 
   const filteredShakes = getFilteredShakes()
   const featuredShakes = caseinShakes.filter((shake) => shake.featured)
-  const trendingShakes = caseinShakes.filter((shake) => shake.trending)
 
-  const handleMakeShake = (shake) => {
-    setSelectedShake(shake)
-    setShowModal(true)
-  }
-
-  const handleCompleteShake = () => {
-    if (selectedShake) {
-      addToRecentlyViewed({
-        id: selectedShake.id,
-        name: selectedShake.name,
-        category: "protein-shakes",
-        description: selectedShake.description,
-        ingredients: selectedShake.ingredients,
-        nutrition: selectedShake.nutrition,
-        difficulty: selectedShake.difficulty,
-        prepTime: selectedShake.prepTime,
-        rating: selectedShake.rating,
-        fitnessGoal: selectedShake.fitnessGoal,
-        bestTime: selectedShake.bestTime,
-      })
-      incrementDrinksMade()
-      addPoints(30)
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Casein Protein Shakes',
+      text: 'Browse slow-digesting casein protein shakes for overnight recovery.',
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
     }
-    setShowModal(false)
-    setSelectedShake(null)
-  }
+  };
+
+  const handleCopyRecipe = (recipe: any) => {
+    const recipeText = `
+${recipe.name}
+${recipe.flavor}
+
+Ingredients:
+${recipe.recipe.measurements.map((m: Measured) => `• ${m.amount} ${m.unit} ${m.item}${m.note ? ` (${m.note})` : ''}`).join('\n')}
+
+Directions:
+${recipe.recipe.directions.map((d: string, i: number) => `${i + 1}. ${d}`).join('\n')}
+
+Nutrition: ${recipe.nutrition.protein}g protein, ${recipe.nutrition.calories} calories, ${recipe.releaseTime} release
+    `.trim();
+
+    navigator.clipboard.writeText(recipeText);
+    alert('Recipe copied to clipboard!');
+  };
+
+  const handleShareRecipe = async (recipe: any) => {
+    const shareData = {
+      title: recipe.name,
+      text: `${recipe.flavor} - ${recipe.nutrition.protein}g protein, ${recipe.releaseTime} release time`,
+      url: typeof window !== 'undefined' ? window.location.href + `#${recipe.id}` : ''
+    };
+    
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Recipe link copied to clipboard!');
+      }
+    } catch {
+      await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+      alert('Recipe link copied to clipboard!');
+    }
+  };
+
+  const handleShowMetrics = (recipe: any) => {
+    alert(`Detailed metrics for ${recipe.name}:\n\nProtein: ${recipe.nutrition.protein}g\nCalories: ${recipe.nutrition.calories}\nRelease Time: ${recipe.releaseTime}\nCalcium: ${recipe.nutrition.calcium}mg\nRating: ${recipe.rating}/5 (${recipe.reviews} reviews)`);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
@@ -435,65 +585,6 @@ export default function CaseinProteinPage() {
             </div>
             <div className="p-4">
               <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Make Shake Modal */}
-      {showModal && selectedShake && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowModal(false)}
-        >
-          <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-start mb-4">
-              <h2 className="text-2xl font-bold">{selectedShake.name}</h2>
-              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold mb-2">Ingredients:</h3>
-                <ul className="space-y-2">
-                  {selectedShake.ingredients.map((ing, idx) => (
-                    <li key={idx} className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-green-600" />
-                      <span>{ing}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h3 className="font-semibold mb-2">Benefits:</h3>
-                <div className="flex flex-wrap gap-1">
-                  {selectedShake.benefits.map((benefit, idx) => (
-                    <Badge key={idx} className="bg-purple-100 text-purple-800 text-xs">
-                      {benefit}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 p-3 bg-purple-50 rounded-lg">
-                <div className="text-center">
-                  <div className="font-bold text-purple-600">{selectedShake.nutrition.protein}g</div>
-                  <div className="text-xs text-gray-600">Protein</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-blue-600">{selectedShake.nutrition.calories}</div>
-                  <div className="text-xs text-gray-600">Calories</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-green-600">{selectedShake.releaseTime}</div>
-                  <div className="text-xs text-gray-600">Release</div>
-                </div>
-              </div>
-              <div className="flex gap-4 pt-4">
-                <Button className="flex-1 bg-purple-600 hover:bg-purple-700" onClick={handleCompleteShake}>
-                  Complete Shake (+30 XP)
-                </Button>
-              </div>
             </div>
           </div>
         </div>
@@ -529,9 +620,9 @@ export default function CaseinProteinPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-purple-600 hover:bg-purple-700">
+              <Button size="sm" className="bg-purple-500 hover:bg-purple-600 text-white" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
-                Share Recipe
+                Share Page
               </Button>
             </div>
           </div>
@@ -698,110 +789,149 @@ export default function CaseinProteinPage() {
 
             {/* Results */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredShakes.map((shake) => (
-                <Card key={shake.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg mb-1">{shake.name}</CardTitle>
-                        <p className="text-sm text-gray-600 mb-2">{shake.description}</p>
+              {filteredShakes.map((shake) => {
+                const servings = getServings(shake);
+                const hasMoreThan5Ingredients = shake.recipe?.measurements?.length > 5;
+
+                return (
+                  <Card key={shake.id} className="hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <CardTitle className="text-lg mb-1">{shake.name}</CardTitle>
+                          <p className="text-sm text-gray-600 mb-2">{shake.description}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            addToFavorites({
+                              id: shake.id,
+                              name: shake.name,
+                              category: "protein-shakes",
+                              description: shake.description,
+                              ingredients: shake.ingredients,
+                              nutrition: shake.nutrition,
+                              difficulty: shake.difficulty,
+                              prepTime: shake.prepTime,
+                              rating: shake.rating,
+                              fitnessGoal: shake.fitnessGoal,
+                              bestTime: shake.bestTime,
+                            })
+                          }
+                          className="text-gray-400 hover:text-red-500"
+                        >
+                          <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? "fill-red-500 text-red-500" : ""}`} />
+                        </Button>
                       </div>
+
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge className="bg-purple-100 text-purple-800">{shake.caseinType}</Badge>
+                        <Badge variant="outline">{shake.flavor}</Badge>
+                        {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                      </div>
+
+                      {/* Rating and Difficulty moved above recipe box */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-1">
+                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                          <span className="font-medium">{shake.rating}</span>
+                          <span className="text-gray-500 text-sm">({shake.reviews})</span>
+                        </div>
+                        <Badge variant="outline">{shake.difficulty}</Badge>
+                      </div>
+                    </CardHeader>
+
+                    <CardContent>
+                      {/* Nutrition Grid */}
+                      <div className="grid grid-cols-4 gap-2 mb-4 text-center text-sm">
+                        <div>
+                          <div className="text-xl font-bold text-purple-600">{shake.nutrition.protein}g</div>
+                          <div className="text-gray-500">Protein</div>
+                        </div>
+                        <div>
+                          <div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div>
+                          <div className="text-gray-500">Cal</div>
+                        </div>
+                        <div>
+                          <div className="text-xl font-bold text-green-600">{shake.releaseTime}</div>
+                          <div className="text-gray-500">Release</div>
+                        </div>
+                        <div>
+                          <div className="text-xl font-bold text-amber-600">${shake.price}</div>
+                          <div className="text-gray-500">Price</div>
+                        </div>
+                      </div>
+
+                      {/* RecipeKit (preview + modal) */}
+                      {shake.recipe?.measurements && (
+                        <RecipeKit
+                          ref={(el) => { kitRefs.current[shake.id] = el; }}
+                          id={shake.id}
+                          name={shake.name}
+                          measurements={shake.recipe.measurements}
+                          directions={shake.recipe.directions}
+                          nutrition={shake.nutrition}
+                          prepTime={shake.prepTime}
+                          onComplete={() => {
+                            addToRecentlyViewed({
+                              id: shake.id,
+                              name: shake.name,
+                              category: 'protein-shakes',
+                              description: shake.description,
+                              ingredients: shake.recipe.measurements.map((x: Measured) => x.item),
+                              nutrition: shake.nutrition,
+                              difficulty: shake.difficulty,
+                              prepTime: shake.prepTime,
+                              rating: shake.rating,
+                              fitnessGoal: shake.fitnessGoal,
+                              bestTime: shake.bestTime
+                            });
+                            incrementDrinksMade();
+                            addPoints(30);
+                          }}
+                        />
+                      )}
+
+                      {/* Tags with Night Time color scheme */}
+                      <div className="flex flex-wrap gap-1 mb-4">
+                        {shake.benefits.map((benefit: string, index: number) => (
+                          <Badge key={index} variant="secondary" className="text-xs bg-purple-100 text-purple-800 hover:bg-purple-200">
+                            {benefit}
+                          </Badge>
+                        ))}
+                      </div>
+
+                      {/* Full-width CTA — Make Shake with lighter purple */}
                       <Button
-                        variant="ghost"
+                        className="w-full bg-purple-500 hover:bg-purple-600 text-white"
                         size="sm"
-                        onClick={() =>
-                          addToFavorites({
+                        onClick={() => {
+                          addToRecentlyViewed({
                             id: shake.id,
                             name: shake.name,
-                            category: "protein-shakes",
+                            category: 'protein-shakes',
                             description: shake.description,
-                            ingredients: shake.ingredients,
+                            ingredients: shake.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
                             nutrition: shake.nutrition,
                             difficulty: shake.difficulty,
                             prepTime: shake.prepTime,
                             rating: shake.rating,
                             fitnessGoal: shake.fitnessGoal,
-                            bestTime: shake.bestTime,
-                          })
-                        }
-                        className="text-gray-400 hover:text-red-500"
+                            bestTime: shake.bestTime
+                          });
+                          incrementDrinksMade();
+                          addPoints(30);
+                          kitRefs.current[shake.id]?.open?.();
+                        }}
                       >
-                        <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? "fill-red-500 text-red-500" : ""}`} />
+                        <Moon className="h-4 w-4 mr-1" />
+                        Make Shake (+30 XP)
                       </Button>
-                    </div>
-
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge className="bg-purple-100 text-purple-800">{shake.caseinType}</Badge>
-                      <Badge variant="outline">{shake.flavor}</Badge>
-                      {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
-                    </div>
-                  </CardHeader>
-
-                  <CardContent>
-                    {/* Nutrition Grid */}
-                    <div className="grid grid-cols-4 gap-2 mb-4 text-center text-sm">
-                      <div>
-                        <div className="text-xl font-bold text-purple-600">{shake.nutrition.protein}g</div>
-                        <div className="text-gray-500">Protein</div>
-                      </div>
-                      <div>
-                        <div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div>
-                        <div className="text-gray-500">Cal</div>
-                      </div>
-                      <div>
-                        <div className="text-xl font-bold text-green-600">{shake.releaseTime}</div>
-                        <div className="text-gray-500">Release</div>
-                      </div>
-                      <div>
-                        <div className="text-xl font-bold text-amber-600">${shake.price}</div>
-                        <div className="text-gray-500">Price</div>
-                      </div>
-                    </div>
-
-                    {/* Key Details */}
-                    <div className="space-y-2 mb-4 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Best Time:</span>
-                        <span className="font-medium">{shake.bestTime}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Absorption:</span>
-                        <span className="font-medium">{shake.absorption}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Texture:</span>
-                        <span className="font-medium">{shake.texture}</span>
-                      </div>
-                    </div>
-
-                    {/* Rating */}
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="font-medium">{shake.rating}</span>
-                        <span className="text-gray-500 text-sm">({shake.reviews})</span>
-                      </div>
-                      <Badge variant="outline" className="text-xs">
-                        {shake.mixability} Mix
-                      </Badge>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-2">
-                      <Button
-                        className="flex-1 bg-purple-600 hover:bg-purple-700"
-                        onClick={() => handleMakeShake(shake)}
-                      >
-                        <Moon className="h-4 w-4 mr-2" />
-                        Make Shake
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <Share2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
@@ -963,11 +1093,16 @@ export default function CaseinProteinPage() {
                   <div className="flex items-center gap-2 mt-2">
                     <Badge className="bg-purple-100 text-purple-800">{shake.caseinType}</Badge>
                     <Badge variant="outline">{shake.flavor}</Badge>
-                    <div className="flex items-center gap-1 ml-auto">
+                  </div>
+
+                  {/* Rating and Difficulty moved above recipe box */}
+                  <div className="flex items-center justify-between mt-3">
+                    <div className="flex items-center gap-1">
                       <Star className="h-4 w-4 text-yellow-400 fill-current" />
                       <span className="font-medium">{shake.rating}</span>
                       <span className="text-gray-500 text-sm">({shake.reviews})</span>
                     </div>
+                    <Badge variant="outline">{shake.difficulty}</Badge>
                   </div>
                 </CardHeader>
 
@@ -992,63 +1127,77 @@ export default function CaseinProteinPage() {
                     </div>
                   </div>
 
-                  {/* Benefits */}
-                  <div className="mb-4">
-                    <h4 className="font-medium text-gray-900 mb-2">Key Benefits:</h4>
-                    <div className="flex flex-wrap gap-1">
-                      {shake.benefits.map((benefit, index) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {benefit}
-                        </Badge>
-                      ))}
-                    </div>
+                  {/* RecipeKit */}
+                  {shake.recipe?.measurements && (
+                    <RecipeKit
+                      ref={(el) => { kitRefs.current[shake.id] = el; }}
+                      id={shake.id}
+                      name={shake.name}
+                      measurements={shake.recipe.measurements}
+                      directions={shake.recipe.directions}
+                      nutrition={shake.nutrition}
+                      prepTime={shake.prepTime}
+                      onComplete={() => {
+                        addToRecentlyViewed({
+                          id: shake.id,
+                          name: shake.name,
+                          category: 'protein-shakes',
+                          description: shake.description,
+                          ingredients: shake.recipe.measurements.map((x: Measured) => x.item),
+                          nutrition: shake.nutrition,
+                          difficulty: shake.difficulty,
+                          prepTime: shake.prepTime,
+                          rating: shake.rating,
+                          fitnessGoal: shake.fitnessGoal,
+                          bestTime: shake.bestTime
+                        });
+                        incrementDrinksMade();
+                        addPoints(30);
+                      }}
+                    />
+                  )}
+
+                  {/* Tags with Night Time color scheme */}
+                  <div className="flex flex-wrap gap-1 mb-4">
+                    {shake.benefits.map((benefit: string, index: number) => (
+                      <Badge key={index} variant="secondary" className="text-xs bg-purple-100 text-purple-800 hover:bg-purple-200">
+                        {benefit}
+                      </Badge>
+                    ))}
                   </div>
 
-                  {/* Timing & Usage */}
-                  <div className="mb-4 bg-gray-50 p-4 rounded-lg">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-sm font-medium text-gray-700 mb-1">Best Time:</div>
-                        <div className="text-purple-600 font-semibold">{shake.bestTime}</div>
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium text-gray-700 mb-1">Release Time:</div>
-                        <div className="text-blue-600 font-semibold">{shake.releaseTime}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Ingredients */}
-                  <div className="mb-6">
-                    <h4 className="font-medium text-gray-900 mb-2">Ingredients:</h4>
-                    <div className="text-sm text-gray-700 space-y-1">
-                      {shake.ingredients.map((ingredient, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <Moon className="h-3 w-3 text-purple-500" />
-                          {ingredient}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Action buttons */}
-                  <div className="flex gap-3">
-                    <Button className="flex-1 bg-purple-600 hover:bg-purple-700" onClick={() => handleMakeShake(shake)}>
-                      <Moon className="h-4 w-4 mr-2" />
-                      Make This Shake
-                    </Button>
-                    <Button variant="outline">
-                      <Share2 className="h-4 w-4 mr-2" />
-                      Share
-                    </Button>
-                  </div>
+                  {/* Full-width CTA */}
+                  <Button
+                    className="w-full bg-purple-500 hover:bg-purple-600 text-white"
+                    onClick={() => {
+                      addToRecentlyViewed({
+                        id: shake.id,
+                        name: shake.name,
+                        category: 'protein-shakes',
+                        description: shake.description,
+                        ingredients: shake.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
+                        nutrition: shake.nutrition,
+                        difficulty: shake.difficulty,
+                        prepTime: shake.prepTime,
+                        rating: shake.rating,
+                        fitnessGoal: shake.fitnessGoal,
+                        bestTime: shake.bestTime
+                      });
+                      incrementDrinksMade();
+                      addPoints(30);
+                      kitRefs.current[shake.id]?.open?.();
+                    }}
+                  >
+                    <Moon className="h-4 w-4 mr-2" />
+                    Make Shake (+30 XP)
+                  </Button>
                 </CardContent>
               </Card>
             ))}
           </div>
         )}
 
-        {/* Your Progress (in-content) - moved from bottom bar */}
+        {/* Your Progress */}
         <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mt-8">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
