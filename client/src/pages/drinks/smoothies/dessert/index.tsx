@@ -56,6 +56,39 @@ const toMetric = (unit: string, amount: number) => {
   }
 };
 
+// Improved ingredient parser that handles fractions and complex units
+const parseIngredient = (ingredient: string): Measured => {
+  // Handle fractions first
+  const fractionMap: Record<string, number> = {
+    '½': 0.5, '⅓': 0.33, '⅔': 0.67, '¼': 0.25, '¾': 0.75, '⅛': 0.125
+  };
+  
+  const parts = ingredient.split(' ');
+  if (parts.length >= 2) {
+    let amountStr = parts[0];
+    let unit = parts[1];
+    let item = parts.slice(2).join(' ');
+    
+    // Handle fractions in amount
+    let amount: number | string = amountStr;
+    if (fractionMap[amountStr]) {
+      amount = fractionMap[amountStr];
+    } else if (!isNaN(parseFloat(amountStr))) {
+      amount = parseFloat(amountStr);
+    }
+    
+    // Handle complex units like "ice cubes", "cream cheese" etc.
+    if (unit === 'low-fat' || unit === 'frozen' || unit === 'unsweetened' || unit === 'natural') {
+      unit = parts.slice(1, 3).join(' ');
+      item = parts.slice(3).join(' ');
+    }
+    
+    return m(amount, unit, item);
+  }
+  
+  return m('1', 'item', ingredient);
+};
+
 export default function DessertSmoothiesPage() {
   const { 
     addToFavorites, 
@@ -81,23 +114,13 @@ export default function DessertSmoothiesPage() {
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
-  // Convert dessert smoothies to RecipeKit format
+  // Convert dessert smoothies to RecipeKit format with PROPER parsing
   const smoothieRecipesWithMeasurements = useMemo(() => {
     return dessertSmoothies.map(smoothie => ({
       ...smoothie,
       recipe: {
         servings: 1,
-        measurements: smoothie.ingredients.map((ing, index) => {
-          // Parse ingredients into measured format
-          const parts = ing.split(' ');
-          if (parts.length >= 2 && !isNaN(parseFloat(parts[0]))) {
-            const amount = parts[0];
-            const unit = parts[1];
-            const item = parts.slice(2).join(' ');
-            return m(amount, unit, item);
-          }
-          return m('1', 'item', ing);
-        }),
+        measurements: smoothie.ingredients.map(parseIngredient),
         directions: [
           'Add all ingredients to blender',
           'Blend until smooth and creamy',
@@ -192,7 +215,7 @@ export default function DessertSmoothiesPage() {
   const handleSharePage = async () => {
     const shareData = {
       title: 'Dessert Smoothies',
-      text: 'Browse dessert smoothies on ChefSire.',
+      text: `Browse ${dessertSmoothies.length} dessert smoothies on ChefSire.`,
       url: typeof window !== 'undefined' ? window.location.href : ''
     };
     try {
