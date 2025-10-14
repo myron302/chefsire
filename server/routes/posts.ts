@@ -1,4 +1,3 @@
-// server/routes/posts.ts
 import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
@@ -8,11 +7,13 @@ const r = Router();
 /**
  * Posts
  */
-r.get("/posts/feed/:userId", async (req, res) => {
+r.get("/posts/feed", async (req, res) => {  // Changed from /feed/:userId to /feed (userId via query)
   try {
+    const userId = req.query.userId as string;  // Get from query param
+    if (!userId) return res.status(400).json({ message: "userId is required" });
     const offset = Number(req.query.offset ?? 0);
     const limit = Number(req.query.limit ?? 10);
-    const posts = await storage.getFeedPosts(req.params.userId, offset, limit);
+    const posts = await storage.getFeedPosts(userId, offset, limit);
     res.json(posts);
   } catch (e) {
     console.error("posts/feed error", e);
