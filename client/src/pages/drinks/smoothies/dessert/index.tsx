@@ -78,9 +78,15 @@ const parseIngredient = (ingredient: string): Measured => {
     }
     
     // Handle complex units like "ice cubes", "cream cheese" etc.
-    if (unit === 'low-fat' || unit === 'frozen' || unit === 'unsweetened' || unit === 'natural') {
+    if (unit === 'low-fat' || unit === 'frozen' || unit === 'unsweetened' || unit === 'natural' || unit === 'vanilla') {
       unit = parts.slice(1, 3).join(' ');
       item = parts.slice(3).join(' ');
+    }
+    
+    // Handle "for color" notes
+    if (item.includes('(for color)')) {
+      item = item.replace('(for color)', '').trim();
+      return m(amount, unit, item, 'for color');
     }
     
     return m(amount, unit, item);
