@@ -1,3 +1,4 @@
+// pages/drinks/protein-shakes/plant-based.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
   Leaf, Heart, Star, Search, ArrowLeft, Sparkles, Wine, Zap, Moon,
-  Target, Flame, Apple, Sprout, Dumbbell, ArrowRight, Camera
+  Target, Flame, Apple, Sprout, Dumbbell, Share2, ArrowRight, Camera
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -258,6 +259,7 @@ const plantBasedShakes = [
       ]
     }
   },
+  // extras you asked for:
   {
     id: 'plant-7',
     name: 'Matcha Pea Energizer',
@@ -439,10 +441,10 @@ export default function PlantBasedProteinPage() {
   const [sortBy, setSortBy] = useState<'rating'|'protein'|'price'|'calories'>('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
-  // per-card refs to open RecipeKit modals
+  // NEW: per-card refs to open RecipeKit modals
   const kitRefs = useRef<Record<string, RecipeKitHandle | null>>({});
 
-  // deep-link (?id=plant-7) — scroll card into view
+  // deep-link (?id=plant-7) — open modal via anchor handled by RecipeKit's "Open Recipe" (we just scroll it into view)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
@@ -469,6 +471,26 @@ export default function PlantBasedProteinPage() {
       try {
         await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
         alert('Link copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const handleShareShake = async (shake: any) => {
+    const url = typeof window !== 'undefined' ? `${window.location.pathname}?id=${shake.id}` : '';
+    const text = `${shake.name} • ${shake.fitnessGoal} • ${shake.proteinSource}\n${shake.description}`;
+    const shareData = { title: shake.name, text, url };
+    try {
+      if (navigator.share) await navigator.share(shareData);
+      else {
+        await navigator.clipboard.writeText(`${shake.name}\n${text}\n${url}`);
+        alert('Recipe link copied!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shake.name}\n${text}\n${url}`);
+        alert('Recipe link copied!');
       } catch {
         alert('Unable to share on this device.');
       }
@@ -718,6 +740,7 @@ export default function PlantBasedProteinPage() {
                     <div className="flex items-center gap-2 mb-2">
                       <Badge className="bg-green-100 text-green-800">{shake.proteinSource}</Badge>
                       <Badge variant="outline">{shake.flavor}</Badge>
+                      {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                     </div>
                   </CardHeader>
 
@@ -730,37 +753,62 @@ export default function PlantBasedProteinPage() {
                       <div><div className="text-xl font-bold text-amber-600">${shake.price}</div><div className="text-gray-500">Price</div></div>
                     </div>
 
-                    {/* Rating + Difficulty row */}
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                          <span className="font-medium">{shake.rating}</span>
-                          <span className="text-gray-500 text-sm">({shake.reviews})</span>
-                        </div>
-                        {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
-                      </div>
-                      <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
+                    {/* Certifications */}
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {shake.certifications.map((cert: string, index: number) => (
+                        <Badge key={index} variant="outline" className="text-xs">{cert}</Badge>
+                      ))}
                     </div>
 
-                    {/* RecipeKit (preview + modal) */}
+                    {/* RecipeKit (preview + modal + copy + metric) */}
                     {shake.recipe?.measurements && (
-                      <div className="mb-4">
-                        <RecipeKit
-                          ref={(el) => { kitRefs.current[shake.id] = el; }}
-                          id={shake.id}
-                          name={shake.name}
-                          measurements={shake.recipe.measurements}
-                          directions={shake.recipe.directions}
-                          nutrition={shake.nutrition}
-                          prepTime={shake.prepTime}
-                          onComplete={() => {
+                      <RecipeKit
+                        ref={(el) => { kitRefs.current[shake.id] = el; }}
+                        id={shake.id}
+                        name={shake.name}
+                        measurements={shake.recipe.measurements}
+                        directions={shake.recipe.directions}
+                        nutrition={shake.nutrition}
+                        prepTime={shake.prepTime}
+                        onComplete={() => {
+                          addToRecentlyViewed({
+                            id: shake.id,
+                            name: shake.name,
+                            category: 'protein-shakes',
+                            description: shake.description,
+                            ingredients: shake.recipe.measurements.map((x: Measured) => x.item),
+                            nutrition: shake.nutrition,
+                            difficulty: shake.difficulty,
+                            prepTime: shake.prepTime,
+                            rating: shake.rating,
+                            fitnessGoal: shake.fitnessGoal,
+                            bestTime: shake.bestTime
+                          });
+                          incrementDrinksMade();
+                          addPoints(25);
+                        }}
+                      />
+                    )}
+
+                    {/* Rating + actions */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1">
+                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                        <span className="font-medium">{shake.rating}</span>
+                        <span className="text-gray-500 text-sm">({shake.reviews})</span>
+                      </div>
+                      <div className="flex gap-2">
+                        {/* NEW: Make Shake opens the modal */}
+                        <Button
+                          className="bg-green-600 hover:bg-green-700"
+                          size="sm"
+                          onClick={() => {
                             addToRecentlyViewed({
                               id: shake.id,
                               name: shake.name,
                               category: 'protein-shakes',
                               description: shake.description,
-                              ingredients: shake.recipe.measurements.map((x: Measured) => x.item),
+                              ingredients: shake.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
                               nutrition: shake.nutrition,
                               difficulty: shake.difficulty,
                               prepTime: shake.prepTime,
@@ -770,46 +818,21 @@ export default function PlantBasedProteinPage() {
                             });
                             incrementDrinksMade();
                             addPoints(25);
+                            const anchor = document.getElementById(`card-${shake.id}`);
+                            anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            kitRefs.current[shake.id]?.open?.();
                           }}
-                        />
+                        >
+                          <Dumbbell className="h-4 w-4 mr-1" />
+                          Make Shake
+                        </Button>
+
+                        <Button variant="outline" size="sm" onClick={() => handleShareShake(shake)}>
+                          <Share2 className="h-4 w-4 mr-1" /> Share
+                        </Button>
+                        <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
                       </div>
-                    )}
-
-                    {/* Certifications (tags) */}
-                    <div className="flex flex-wrap gap-1 mb-4">
-                      {shake.certifications.map((cert: string, index: number) => (
-                        <Badge key={index} variant="secondary" className="text-xs">{cert}</Badge>
-                      ))}
                     </div>
-
-                    {/* Full-width CTA only (no extra Share next to it) */}
-                    <Button
-                      className="w-full bg-green-600 hover:bg-green-700"
-                      size="sm"
-                      onClick={() => {
-                        addToRecentlyViewed({
-                          id: shake.id,
-                          name: shake.name,
-                          category: 'protein-shakes',
-                          description: shake.description,
-                          ingredients: shake.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
-                          nutrition: shake.nutrition,
-                          difficulty: shake.difficulty,
-                          prepTime: shake.prepTime,
-                          rating: shake.rating,
-                          fitnessGoal: shake.fitnessGoal,
-                          bestTime: shake.bestTime
-                        });
-                        incrementDrinksMade();
-                        addPoints(25);
-                        const anchor = document.getElementById(`card-${shake.id}`);
-                        anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        kitRefs.current[shake.id]?.open?.();
-                      }}
-                    >
-                      <Dumbbell className="h-4 w-4 mr-1" />
-                      Make Shake (+25 XP)
-                    </Button>
                   </CardContent>
                 </Card>
               ))}
@@ -936,6 +959,11 @@ export default function PlantBasedProteinPage() {
                   <div className="flex items-center gap-2 mt-2">
                     <Badge className="bg-green-100 text-green-800">{shake.proteinSource}</Badge>
                     <Badge variant="outline">{shake.flavor}</Badge>
+                    <div className="flex items-center gap-1 ml-auto">
+                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                      <span className="font-medium">{shake.rating}</span>
+                      <span className="text-gray-500 text-sm">({shake.reviews})</span>
+                    </div>
                   </div>
                 </CardHeader>
 
@@ -947,52 +975,38 @@ export default function PlantBasedProteinPage() {
                     <div className="text-center"><div className="text-xl font-bold text-amber-600">${shake.price}</div><div className="text-xs text-gray-600">Price</div></div>
                   </div>
 
-                  {/* Rating + Difficulty row */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium">{shake.rating}</span>
-                      <span className="text-gray-500 text-sm">({shake.reviews})</span>
-                    </div>
-                    <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
-                  </div>
-
-                  {/* RecipeKit */}
+                  {/* RecipeKit full usability still available in Featured */}
                   {shake.recipe?.measurements && (
-                    <div className="mb-4">
-                      <RecipeKit
-                        ref={(el) => { kitRefs.current[shake.id] = el; }}
-                        id={shake.id}
-                        name={shake.name}
-                        measurements={shake.recipe.measurements}
-                        directions={shake.recipe.directions}
-                        nutrition={shake.nutrition}
-                        prepTime={shake.prepTime}
-                        onComplete={() => {
-                          addToRecentlyViewed({
-                            id: shake.id,
-                            name: shake.name,
-                            category: 'protein-shakes',
-                            description: shake.description,
-                            ingredients: shake.recipe.measurements.map((x: Measured) => x.item),
-                            nutrition: shake.nutrition,
-                            difficulty: shake.difficulty,
-                            prepTime: shake.prepTime,
-                            rating: shake.rating,
-                            fitnessGoal: shake.fitnessGoal,
-                            bestTime: shake.bestTime
-                          });
-                          incrementDrinksMade();
-                          addPoints(25);
-                        }}
-                      />
-                    </div>
+                    <RecipeKit
+                      ref={(el) => { kitRefs.current[shake.id] = el; }}
+                      id={shake.id}
+                      name={shake.name}
+                      measurements={shake.recipe.measurements}
+                      directions={shake.recipe.directions}
+                      nutrition={shake.nutrition}
+                      prepTime={shake.prepTime}
+                      onComplete={() => {
+                        addToRecentlyViewed({
+                          id: shake.id,
+                          name: shake.name,
+                          category: 'protein-shakes',
+                          description: shake.description,
+                          ingredients: shake.recipe.measurements.map((x: Measured) => x.item),
+                          nutrition: shake.nutrition,
+                          difficulty: shake.difficulty,
+                          prepTime: shake.prepTime,
+                          rating: shake.rating,
+                          fitnessGoal: shake.fitnessGoal,
+                          bestTime: shake.bestTime
+                        });
+                        incrementDrinksMade();
+                        addPoints(25);
+                      }}
+                    />
                   )}
 
-                  {/* Full-width CTA only */}
-                  <Button
-                    className="w-full bg-green-600 hover:bg-green-700"
-                    onClick={() => {
+                  <div className="flex gap-3">
+                    <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={() => {
                       const anchor = document.getElementById(`card-${shake.id}`);
                       anchor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                       incrementDrinksMade();
@@ -1010,12 +1024,17 @@ export default function PlantBasedProteinPage() {
                         fitnessGoal: shake.fitnessGoal,
                         bestTime: shake.bestTime
                       });
+                      // open modal as requested
                       kitRefs.current[shake.id]?.open?.();
-                    }}
-                  >
-                    <Dumbbell className="h-4 w-4 mr-2" />
-                    Make Shake (+25 XP)
-                  </Button>
+                    }}>
+                      <Dumbbell className="h-4 w-4 mr-2" />
+                      Make This Shake
+                    </Button>
+                    <Button variant="outline" onClick={() => handleShareShake(shake)}>
+                      <Share2 className="h-4 w-4 mr-2" />
+                      Share
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}
