@@ -1,370 +1,332 @@
-import React, { useState } from 'react';
+// client/src/pages/drinks/smoothies/breakfast/index.tsx
+import React, { useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
 import { 
-  Crown, Clock, Heart, Star, Search, Share2, ArrowLeft,
-  Plus, Camera, Zap, Trophy, Sun, Sparkles, Activity, X, Check, Leaf, IceCream
+  Sun, Clock, Heart, Star, Target, Zap,
+  Search, Share2, ArrowLeft, Camera, Apple, Droplets, Leaf,
+  Coffee, X, Check, Clipboard, RotateCcw
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
+import RecipeKit from '@/components/recipes/RecipeKit';
 
-// Breakfast smoothies data with measurements in ingredients
+// ---------- Helpers ----------
+type Measured = { amount: number | string; unit: string; item: string; note?: string };
+const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+// scaling helpers
+const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+const toNiceFraction = (value: number) => {
+  const rounded = Math.round(value * 4) / 4;
+  const whole = Math.trunc(rounded);
+  const frac = Math.round((rounded - whole) * 4);
+  const fracMap: Record<number, string> = { 0: '', 1: '1/4', 2: '1/2', 3: '3/4' };
+  const fracStr = fracMap[frac];
+  if (!whole && fracStr) return fracStr;
+  if (whole && fracStr) return `${whole} ${fracStr}`;
+  return `${whole}`;
+};
+const scaleAmount = (baseAmount: number | string, servings: number) => {
+  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
+  if (Number.isNaN(n)) return baseAmount;
+  return toNiceFraction(n * servings);
+};
+
+// metric conversion for smoothies
+const toMetric = (unit: string, amount: number) => {
+  const mlPerCup = 240, mlPerOz = 30;
+  switch (unit) {
+    case 'cup': return { amount: Math.round(amount * mlPerCup), unit: 'ml' };
+    case 'oz': return { amount: Math.round(amount * mlPerOz), unit: 'ml' };
+    case 'tbsp': return { amount: Math.round(amount * 15), unit: 'ml' };
+    case 'tsp': return { amount: Math.round(amount * 5), unit: 'ml' };
+    default: return { amount, unit };
+  }
+};
+
+// Breakfast smoothies data
 const breakfastSmoothies = [
   {
-    id: 'breakfast-1',
-    name: 'Tropical Sunrise',
-    description: 'Energizing blend of tropical fruits and greens',
-    ingredients: [
-      '1 cup fresh pineapple chunks',
-      '1 ripe banana',
-      '1 cup fresh spinach',
-      '1 cup coconut water',
-      '1 tbsp chia seeds'
-    ],
-    morningBenefits: ['Boosts metabolism', 'Provides sustained energy', 'Rich in vitamins'],
-    nutrition: { calories: 280, protein: 5, fiber: 7, caffeine: 0 },
+    id: 'overnight-oats-smoothie',
+    name: 'Overnight Oats Smoothie',
+    description: 'Creamy oats and banana for sustained morning energy',
+    ingredients: ['1/2 cup rolled oats', '1 banana', '1 cup milk', '1 tbsp chia seeds', '1 tsp honey', 'Ice'],
+    benefits: ['Sustained energy', 'Fiber rich', 'Heart healthy', 'Digestive support'],
+    nutrition: { calories: 320, protein: 12, carbs: 58, fiber: 8, sugar: 22 },
     difficulty: 'Easy',
-    prepTime: 5,
+    prepTime: 3,
     rating: 4.8,
-    reviews: 245,
-    breakfastType: 'Energizing',
-    energyLevel: 'High',
-    energyDuration: '4 hours',
-    bestTime: 'Morning',
-    satietyLevel: 'Medium',
+    reviews: 423,
+    smoothieType: 'Oat-Based',
+    featured: true,
     trending: true,
-    image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3133?w=400&h=300&fit=crop'
+    bestTime: 'Morning',
+    caffeineFree: true,
+    image: 'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=400&h=300&fit=crop'
   },
   {
-    id: 'breakfast-2',
-    name: 'Berry Protein Power',
-    description: 'High-protein start with mixed berries and yogurt',
-    ingredients: [
-      '1 cup mixed berries',
-      '1 scoop vanilla protein powder',
-      '1 cup Greek yogurt',
-      '1/2 cup almond milk',
-      '1 tbsp almond butter'
-    ],
-    morningBenefits: ['Builds muscle', 'Antioxidant boost', 'Keeps you full'],
-    nutrition: { calories: 350, protein: 25, fiber: 6, caffeine: 0 },
+    id: 'green-breakfast-power',
+    name: 'Green Breakfast Power',
+    description: 'Spinach and fruit blend to start your day right',
+    ingredients: ['1 cup spinach', '1/2 banana', '1/2 cup pineapple', '1/2 cup Greek yogurt', '1 tbsp flax seeds', 'Ice'],
+    benefits: ['Energy boost', 'Nutrient dense', 'Protein packed', 'Immune support'],
+    nutrition: { calories: 280, protein: 15, carbs: 42, fiber: 7, sugar: 28 },
     difficulty: 'Easy',
     prepTime: 4,
     rating: 4.7,
-    reviews: 312,
-    breakfastType: 'Complete Meal',
-    energyLevel: 'Medium',
-    energyDuration: '5 hours',
+    reviews: 367,
+    smoothieType: 'Green',
+    featured: false,
+    trending: true,
     bestTime: 'Morning',
-    satietyLevel: 'High',
-    image: 'https://images.unsplash.com/photo-1542838132-92e7304d3a21?w=400&h=300&fit=crop'
+    caffeineFree: true
   },
   {
-    id: 'breakfast-3',
-    name: 'Green Detox Kickstart',
-    description: 'Light and refreshing green smoothie for cleansing',
-    ingredients: [
-      '2 cups kale leaves',
-      '1 green apple, cored',
-      '1/2 cucumber',
-      '1/2 lemon, juiced',
-      '1 cup water'
-    ],
-    morningBenefits: ['Detoxifies body', 'Hydrates', 'Improves digestion'],
-    nutrition: { calories: 150, protein: 4, fiber: 8, caffeine: 0 },
+    id: 'coffee-protein-shake',
+    name: 'Coffee Protein Shake',
+    description: 'Morning coffee meets protein power',
+    ingredients: ['1/2 cup cold brew', '1 scoop vanilla protein', '1/2 banana', '1/2 cup almond milk', 'Ice'],
+    benefits: ['Caffeine boost', 'Muscle fuel', 'Mental clarity', 'Morning energy'],
+    nutrition: { calories: 240, protein: 25, carbs: 22, fiber: 3, sugar: 12 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.9,
+    reviews: 512,
+    smoothieType: 'Coffee',
+    featured: true,
+    trending: false,
+    bestTime: 'Morning',
+    caffeineFree: false
+  },
+  {
+    id: 'berry-yogurt-breakfast',
+    name: 'Berry Yogurt Breakfast',
+    description: 'Classic berry and yogurt combination',
+    ingredients: ['1 cup mixed berries', '3/4 cup Greek yogurt', '1/4 cup orange juice', '1 tbsp honey', 'Ice'],
+    benefits: ['Antioxidants', 'Probiotics', 'Vitamin C', 'Calcium rich'],
+    nutrition: { calories: 290, protein: 18, carbs: 45, fiber: 6, sugar: 32 },
     difficulty: 'Easy',
     prepTime: 3,
     rating: 4.6,
-    reviews: 189,
-    breakfastType: 'Light & Fresh',
-    energyLevel: 'Medium',
-    energyDuration: '3 hours',
+    reviews: 289,
+    smoothieType: 'Yogurt',
+    featured: false,
+    trending: false,
     bestTime: 'Morning',
-    satietyLevel: 'Low',
-    image: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=400&h=300&fit=crop'
+    caffeineFree: true
   },
   {
-    id: 'breakfast-4',
-    name: 'Mocha Oat Energizer',
-    description: 'Coffee-infused smoothie with oats for steady energy',
-    ingredients: [
-      '1/2 cup brewed coffee, cooled',
-      '1/2 cup rolled oats',
-      '1 banana',
-      '1 cup almond milk',
-      '1 tbsp cocoa powder'
-    ],
-    morningBenefits: ['Steady caffeine release', 'Fiber for fullness', 'Mood booster'],
-    nutrition: { calories: 320, protein: 8, fiber: 9, caffeine: 95 },
-    difficulty: 'Medium',
-    prepTime: 6,
-    rating: 4.9,
-    reviews: 456,
-    breakfastType: 'Energizing',
-    energyLevel: 'Very High',
-    energyDuration: '4 hours',
-    bestTime: 'Morning',
-    satietyLevel: 'Medium',
-    trending: true,
-    image: 'https://images.unsplash.com/photo-1512568400610-3f3f73e9e1a5?w=400&h=300&fit=crop'
-  },
-  {
-    id: 'breakfast-5',
-    name: 'Peanut Butter Banana Bliss',
-    description: 'Classic combo for athletic mornings',
-    ingredients: [
-      '2 tbsp peanut butter',
-      '1 large banana',
-      '1 cup oat milk',
-      '1/2 cup Greek yogurt',
-      '1 tsp honey'
-    ],
-    morningBenefits: ['Quick carbs', 'Healthy fats', 'Protein for recovery'],
-    nutrition: { calories: 420, protein: 18, fiber: 5, caffeine: 0 },
+    id: 'tropical-morning-bliss',
+    name: 'Tropical Morning Bliss',
+    description: 'Island flavors to brighten your morning',
+    ingredients: ['1/2 cup mango', '1/2 cup pineapple', '1/2 banana', '1/2 cup coconut milk', '1 tbsp shredded coconut', 'Ice'],
+    benefits: ['Vitamin C', 'Tropical flavor', 'Energy boost', 'Hydrating'],
+    nutrition: { calories: 310, protein: 4, carbs: 52, fiber: 5, sugar: 38 },
     difficulty: 'Easy',
     prepTime: 4,
     rating: 4.5,
-    reviews: 278,
-    breakfastType: 'Athletic',
-    energyLevel: 'High',
-    energyDuration: '4 hours',
-    bestTime: 'Pre-workout',
-    satietyLevel: 'High',
-    image: 'https://images.unsplash.com/photo-1578659194159-1f1c955db791?w=400&h=300&fit=crop'
+    reviews: 198,
+    smoothieType: 'Tropical',
+    featured: false,
+    trending: false,
+    bestTime: 'Morning',
+    caffeineFree: true
   },
   {
-    id: 'breakfast-6',
-    name: 'Citrus Ginger Zest',
-    description: 'Refreshing citrus with a ginger kick',
-    ingredients: [
-      '1 orange, peeled',
-      '1/2 grapefruit, peeled',
-      '1 inch fresh ginger',
-      '1 cup yogurt',
-      '1/2 cup ice'
-    ],
-    morningBenefits: ['Immune support', 'Anti-inflammatory', 'Vitamin C boost'],
-    nutrition: { calories: 220, protein: 10, fiber: 4, caffeine: 0 },
+    id: 'peanut-butter-energy',
+    name: 'Peanut Butter Energy',
+    description: 'Creamy peanut butter for lasting morning fuel',
+    ingredients: ['2 tbsp peanut butter', '1 banana', '1 cup milk', '1/4 cup oats', '1 tsp cinnamon', 'Ice'],
+    benefits: ['Protein rich', 'Healthy fats', 'Sustained energy', 'Satisfying'],
+    nutrition: { calories: 380, protein: 16, carbs: 44, fiber: 6, sugar: 24 },
     difficulty: 'Easy',
-    prepTime: 5,
+    prepTime: 3,
     rating: 4.7,
-    reviews: 334,
-    breakfastType: 'Light & Fresh',
-    energyLevel: 'Medium',
-    energyDuration: '3 hours',
+    reviews: 345,
+    smoothieType: 'Nut Butter',
+    featured: false,
+    trending: true,
     bestTime: 'Morning',
-    satietyLevel: 'Medium',
-    image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=400&h=300&fit=crop'
+    caffeineFree: true
   },
   {
-    id: 'breakfast-7',
-    name: 'Chocolate Avocado Dream',
-    description: 'Creamy chocolate smoothie for indulgence',
-    ingredients: [
-      '1/2 ripe avocado',
-      '1 tbsp cocoa powder',
-      '1 cup almond milk',
-      '1 banana',
-      '1 tsp vanilla extract'
-    ],
-    morningBenefits: ['Healthy fats', 'Mood enhancer', 'Sustained release'],
-    nutrition: { calories: 380, protein: 6, fiber: 10, caffeine: 0 },
-    difficulty: 'Medium',
-    prepTime: 5,
-    rating: 4.8,
-    reviews: 401,
-    breakfastType: 'Complete Meal',
-    energyLevel: 'High',
-    energyDuration: '5 hours',
-    bestTime: 'Morning',
-    satietyLevel: 'High',
-    image: 'https://images.unsplash.com/photo-1541781774459-26b31891e2f6?w=400&h=300&fit=crop'
-  },
-  {
-    id: 'breakfast-8',
-    name: 'Matcha Mango Fusion',
-    description: 'Green tea powered tropical delight',
-    ingredients: [
-      '1 tsp matcha powder',
-      '1 cup frozen mango',
-      '1 cup coconut yogurt',
-      '1/2 cup orange juice',
-      '1 tbsp flaxseeds'
-    ],
-    morningBenefits: ['Antioxidants', 'Calm energy', 'Gut health'],
-    nutrition: { calories: 290, protein: 7, fiber: 6, caffeine: 70 },
+    id: 'chocolate-breakfast-treat',
+    name: 'Chocolate Breakfast Treat',
+    description: 'Healthy chocolate smoothie that feels like dessert',
+    ingredients: ['1 tbsp cocoa powder', '1 banana', '1 cup milk', '1 scoop chocolate protein', '1 tbsp almond butter', 'Ice'],
+    benefits: ['Antioxidants', 'Protein packed', 'Mood boosting', 'Indulgent'],
+    nutrition: { calories: 350, protein: 28, carbs: 36, fiber: 7, sugar: 20 },
     difficulty: 'Easy',
     prepTime: 4,
-    rating: 4.6,
-    reviews: 267,
-    breakfastType: 'Energizing',
-    energyLevel: 'Medium',
-    energyDuration: '4 hours',
+    rating: 4.8,
+    reviews: 278,
+    smoothieType: 'Chocolate',
+    featured: true,
+    trending: false,
     bestTime: 'Morning',
-    satietyLevel: 'Medium',
-    image: 'https://images.unsplash.com/photo-1572493840216-4a0e6c0e507b?w=400&h=300&fit=crop'
+    caffeineFree: true
   },
   {
-    id: 'breakfast-9',
-    name: 'Oatmeal Cookie Smoothie',
-    description: 'Tastes like breakfast cookie in a glass',
-    ingredients: [
-      '1/2 cup rolled oats',
-      '1 cup milk',
-      '1 banana',
-      '1 tsp cinnamon',
-      '1 tbsp raisins'
-    ],
-    morningBenefits: ['Fiber rich', 'Blood sugar stable', 'Comforting'],
-    nutrition: { calories: 360, protein: 12, fiber: 8, caffeine: 0 },
+    id: 'sunrise-citrus-boost',
+    name: 'Sunrise Citrus Boost',
+    description: 'Bright citrus flavors to wake up your senses',
+    ingredients: ['1 orange', '1/2 grapefruit', '1/2 banana', '1/2 cup Greek yogurt', '1 tbsp honey', 'Ice'],
+    benefits: ['Vitamin C', 'Immune support', 'Refreshing', 'Digestive aid'],
+    nutrition: { calories: 260, protein: 12, carbs: 48, fiber: 5, sugar: 35 },
     difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.9,
-    reviews: 523,
-    breakfastType: 'Complete Meal',
-    energyLevel: 'Medium',
-    energyDuration: '5 hours',
+    prepTime: 4,
+    rating: 4.4,
+    reviews: 167,
+    smoothieType: 'Citrus',
+    featured: false,
+    trending: false,
     bestTime: 'Morning',
-    satietyLevel: 'High',
-    trending: true,
-    image: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400&h=300&fit=crop'
-  }
-];
-
-const breakfastTypes = [
-  {
-    id: 'complete-meal',
-    name: 'Complete Meal',
-    description: 'Balanced nutrition to start your day right',
-    icon: Crown,
-    color: 'text-amber-500',
-    energyProfile: 'Sustained',
-    keyNutrients: ['Protein', 'Fiber', 'Carbs'],
-    idealFor: 'Busy mornings',
-    satietyDuration: '4-5 hours',
-    avgCalories: '350-450'
-  },
-  {
-    id: 'energizing',
-    name: 'Energizing',
-    description: 'Quick boost for active days',
-    icon: Zap,
-    color: 'text-green-500',
-    energyProfile: 'Rapid',
-    keyNutrients: ['Caffeine', 'B Vitamins', 'Natural sugars'],
-    idealFor: 'Pre-workout',
-    satietyDuration: '3-4 hours',
-    avgCalories: '250-350'
-  },
-  {
-    id: 'light-fresh',
-    name: 'Light & Fresh',
-    description: 'Hydrating and low-cal options',
-    icon: Sun,
-    color: 'text-blue-500',
-    energyProfile: 'Gentle',
-    keyNutrients: ['Hydration', 'Vitamins', 'Electrolytes'],
-    idealFor: 'Hot days',
-    satietyDuration: '2-3 hours',
-    avgCalories: '150-250'
-  },
-  {
-    id: 'athletic',
-    name: 'Athletic',
-    description: 'Fuel for fitness enthusiasts',
-    icon: Activity,
-    color: 'text-purple-500',
-    energyProfile: 'Performance',
-    keyNutrients: ['Protein', 'Electrolytes', 'Carbs'],
-    idealFor: 'Athletes',
-    satietyDuration: '4 hours',
-    avgCalories: '300-400'
-  }
-];
-
-const breakfastCategories = [
-  {
-    id: 'sustained-energy',
-    name: 'Sustained Energy',
-    description: 'Long-lasting fuel without crashes',
-    icon: Clock,
-    color: 'bg-amber-500',
-    energyDuration: '4-5 hours',
-    macroFocus: 'Balanced macros'
-  },
-  {
-    id: 'quick-boost',
-    name: 'Quick Boost',
-    description: 'Fast energy for immediate needs',
-    icon: Zap,
-    color: 'bg-green-500',
-    energyDuration: '2-3 hours',
-    macroFocus: 'Carb-focused'
+    caffeineFree: true
   }
 ];
 
 const smoothieSubcategories = [
-  { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Zap, description: 'High-protein blends' },
-  { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Activity, description: 'Pre & post workout' },
-  { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Superfood greens' },
-  { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Sun, description: 'Exotic fruits' },
+  { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Zap, description: 'High protein blends' },
+  { id: 'breakfast', name: 'Breakfast', path: '/drinks/smoothies/breakfast', icon: Sun, description: 'Morning fuel' },
+  { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Target, description: 'Performance boost' },
+  { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Leafy greens' },
+  { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Sun, description: 'Island flavors' },
   { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
-  { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Trophy, description: 'Cleansing blends' },
-  { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: IceCream, description: 'Healthy treats' }
+  { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Droplets, description: 'Cleansing blends' },
+  { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: Star, description: 'Sweet treats' }
 ];
 
 const otherDrinkHubs = [
-  { id: 'juices', name: 'Fresh Juices', route: '/drinks/juices', icon: Plus, description: 'Cold-pressed nutrition' },
-  { id: 'teas', name: 'Specialty Teas', route: '/drinks/teas', icon: Leaf, description: 'Hot & iced teas' },
-  { id: 'coffee', name: 'Coffee Drinks', route: '/drinks/coffee', icon: Crown, description: 'Artisan coffee' },
-  { id: 'protein-shakes', name: 'Protein Shakes', route: '/drinks/protein-shakes', icon: Activity, description: 'Muscle fuel' }
+  { id: 'juices', name: 'Fresh Juices', route: '/drinks/juices', icon: Droplets, description: 'Cold-pressed nutrition' },
+  { id: 'teas', name: 'Specialty Teas', route: '/drinks/teas', icon: Coffee, description: 'Hot & iced teas' },
+  { id: 'coffee', name: 'Coffee Drinks', route: '/drinks/coffee', icon: Zap, description: 'Artisan coffee' },
+  { id: 'protein-shakes', name: 'Protein Shakes', route: '/drinks/protein-shakes', icon: Apple, description: 'Muscle fuel' }
 ];
 
 export default function BreakfastSmoothiesPage() {
   const { 
     addToFavorites, 
-    isFavorite,
-    addToRecentlyViewed,
+    isFavorite, 
+    addToRecentlyViewed, 
     userProgress,
-    incrementDrinksMade,
-    addPoints
+    addPoints,
+    incrementDrinksMade
   } = useDrinks();
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedBreakfastType, setSelectedBreakfastType] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [energyLevel, setEnergyLevel] = useState(['Any']);
-  const [maxCalories, setMaxCalories] = useState([500]);
-  const [needsCaffeine, setNeedsCaffeine] = useState(false);
-  const [sortBy, setSortBy] = useState('rating');
   const [activeTab, setActiveTab] = useState('browse');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSmoothieType, setSelectedSmoothieType] = useState('');
+  const [caffeineLevel, setCaffeineLevel] = useState(['Any']);
+  const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [selectedSmoothie, setSelectedSmoothie] = useState<any>(null);
+  
+  // RecipeKit state
+  const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
+  const [showKit, setShowKit] = useState(false);
+  const [servingsById, setServingsById] = useState<Record<string, number>>({});
+  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
+
+  // Convert breakfast smoothies to RecipeKit format
+  const smoothieRecipesWithMeasurements = useMemo(() => {
+    return breakfastSmoothies.map(smoothie => ({
+      ...smoothie,
+      recipe: {
+        servings: 1,
+        measurements: smoothie.ingredients.map((ing, index) => {
+          // Parse ingredients into measured format
+          const parts = ing.split(' ');
+          if (parts.length >= 2 && !isNaN(parseFloat(parts[0]))) {
+            const amount = parts[0];
+            const unit = parts[1];
+            const item = parts.slice(2).join(' ');
+            return m(amount, unit, item);
+          }
+          return m('1', 'item', ing);
+        }),
+        directions: [
+          'Add all ingredients to blender',
+          'Blend until smooth and creamy',
+          'Pour into glass and serve immediately',
+          'Enjoy your breakfast smoothie!'
+        ]
+      }
+    }));
+  }, []);
+
+  const handleShareSmoothie = async (smoothie: any, servingsOverride?: number) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const servings = servingsOverride ?? servingsById[smoothie.id] ?? (smoothie.recipe?.servings || 1);
+    const preview = smoothie.ingredients.slice(0, 4).join(' • ');
+    const text = `${smoothie.name} • ${smoothie.smoothieType} • ${smoothie.bestTime}\n${preview}${smoothie.ingredients.length > 4 ? ` …plus ${smoothie.ingredients.length - 4} more` : ''}`;
+    const shareData = { title: smoothie.name, text, url };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${smoothie.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${smoothie.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const openRecipeModal = (recipe: any) => {
+    setSelectedRecipe(recipe);
+    setShowKit(true);
+  };
+
+  const handleCompleteRecipe = () => {
+    if (selectedRecipe) {
+      const drinkData = {
+        id: selectedRecipe.id,
+        name: selectedRecipe.name,
+        category: 'smoothies' as const,
+        description: `${selectedRecipe.smoothieType || ''} • ${selectedRecipe.bestTime || ''}`,
+        ingredients: selectedRecipe.ingredients,
+        nutrition: selectedRecipe.nutrition,
+        difficulty: selectedRecipe.difficulty,
+        prepTime: selectedRecipe.prepTime,
+        rating: selectedRecipe.rating,
+        bestTime: selectedRecipe.bestTime,
+        tags: selectedRecipe.benefits
+      };
+      addToRecentlyViewed(drinkData);
+      incrementDrinksMade();
+      addPoints(25);
+    }
+    setShowKit(false);
+    setSelectedRecipe(null);
+  };
 
   const getFilteredSmoothies = () => {
-    let filtered = breakfastSmoothies.filter(smoothie => {
-      const matchesSearch = smoothie.name.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesType = !selectedBreakfastType || smoothie.breakfastType.includes(selectedBreakfastType);
-      const matchesCategory = !selectedCategory || smoothie.category.includes(selectedCategory);
-      const matchesEnergy = energyLevel[0] === 'Any' || smoothie.energyLevel === energyLevel[0];
-      const matchesCalories = smoothie.nutrition.calories <= maxCalories[0];
-      const matchesCaffeine = !needsCaffeine || smoothie.nutrition.caffeine > 0;
+    let filtered = smoothieRecipesWithMeasurements.filter(smoothie => {
+      const matchesSearch = smoothie.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           smoothie.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesType = !selectedSmoothieType || smoothie.smoothieType?.toLowerCase().includes(selectedSmoothieType.toLowerCase());
+      const matchesCaffeine = caffeineLevel[0] === 'Any' || 
+        (caffeineLevel[0] === 'Caffeinated' && !smoothie.caffeineFree) ||
+        (caffeineLevel[0] === 'Caffeine-Free' && smoothie.caffeineFree);
       
-      return matchesSearch && matchesType && matchesCategory && matchesEnergy && matchesCalories && matchesCaffeine;
+      return matchesSearch && matchesType && matchesCaffeine;
     });
 
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'rating': return (b.rating || 0) - (a.rating || 0);
         case 'protein': return (b.nutrition.protein || 0) - (a.nutrition.protein || 0);
-        case 'energy': return b.energyDuration.localeCompare(a.energyDuration);
         case 'calories': return (a.nutrition.calories || 0) - (b.nutrition.calories || 0);
+        case 'time': return (a.prepTime || 0) - (b.prepTime || 0);
         default: return 0;
       }
     });
@@ -373,48 +335,11 @@ export default function BreakfastSmoothiesPage() {
   };
 
   const filteredSmoothies = getFilteredSmoothies();
-  const featuredSmoothies = breakfastSmoothies.filter(s => s.trending);
-
-  const handleMakeSmoothie = (smoothie: any) => {
-    setSelectedSmoothie(smoothie);
-    setShowModal(true);
-  };
-
-  const handleCompleteSmoothie = () => {
-    if (selectedSmoothie) {
-      addToRecentlyViewed({
-        id: selectedSmoothie.id,
-        name: selectedSmoothie.name,
-        category: 'smoothies',
-        description: selectedSmoothie.description,
-        ingredients: selectedSmoothie.ingredients,
-        nutrition: selectedSmoothie.nutrition,
-        difficulty: selectedSmoothie.difficulty,
-        prepTime: selectedSmoothie.prepTime,
-        rating: selectedSmoothie.rating,
-        fitnessGoal: 'Breakfast',
-        bestTime: selectedSmoothie.bestTime
-      });
-      incrementDrinksMade();
-      addPoints(25);
-    }
-    setShowModal(false);
-    setSelectedSmoothie(null);
-  };
-
-  // Sister smoothie categories with all 7
-  const allSmoothieSubcategories = [
-    { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Zap, description: 'High-protein blends' },
-    { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Activity, description: 'Pre & post workout' },
-    { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Superfood greens' },
-    { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Sun, description: 'Exotic fruits' },
-    { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
-    { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Trophy, description: 'Cleansing blends' },
-    { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: IceCream, description: 'Healthy treats' }
-  ];
+  const featuredSmoothies = smoothieRecipesWithMeasurements.filter(s => s.featured);
+  const trendingSmoothies = smoothieRecipesWithMeasurements.filter(s => s.trending);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-orange-50 to-pink-50">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-amber-50">
       {/* Universal Search Modal */}
       {showUniversalSearch && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
@@ -432,63 +357,24 @@ export default function BreakfastSmoothiesPage() {
         </div>
       )}
 
-      {/* Make Smoothie Modal */}
-      {showModal && selectedSmoothie && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-start mb-4">
-              <h2 className="text-2xl font-bold">{selectedSmoothie.name}</h2>
-              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold mb-2">Ingredients:</h3>
-                <ul className="space-y-2">
-                  {selectedSmoothie.ingredients.map((ing, idx) => (
-                    <li key={idx} className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-amber-600" />
-                      <span>{ing}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              {selectedSmoothie.morningBenefits && (
-                <div>
-                  <h3 className="font-semibold mb-2">Morning Benefits:</h3>
-                  <ul className="text-sm text-gray-700 space-y-1">
-                    {selectedSmoothie.morningBenefits.map((benefit, idx) => (
-                      <li key={idx}>• {benefit}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              <div className="grid grid-cols-3 gap-2 p-3 bg-amber-50 rounded-lg">
-                <div className="text-center">
-                  <div className="font-bold text-amber-600">{selectedSmoothie.nutrition.calories}</div>
-                  <div className="text-xs text-gray-600">Calories</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-blue-600">{selectedSmoothie.nutrition.protein}g</div>
-                  <div className="text-xs text-gray-600">Protein</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-green-600">{selectedSmoothie.prepTime}min</div>
-                  <div className="text-xs text-gray-600">Prep</div>
-                </div>
-              </div>
-              <div className="flex gap-4 pt-4">
-                <Button 
-                  className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
-                  onClick={handleCompleteSmoothie}
-                >
-                  Complete Smoothie (+25 XP)
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* RecipeKit Modal */}
+      {selectedRecipe && (
+        <RecipeKit
+          open={showKit}
+          onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
+          accent="orange"
+          pointsReward={25}
+          onComplete={handleCompleteRecipe}
+          item={{
+            id: selectedRecipe.id,
+            name: selectedRecipe.name,
+            prepTime: selectedRecipe.prepTime,
+            directions: selectedRecipe.recipe?.directions || [],
+            measurements: selectedRecipe.recipe?.measurements || [],
+            baseNutrition: selectedRecipe.nutrition || {},
+            defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+          }}
+        />
       )}
 
       {/* Header */}
@@ -504,9 +390,9 @@ export default function BreakfastSmoothiesPage() {
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
-                <Crown className="h-6 w-6 text-amber-600" />
+                <Sun className="h-6 w-6 text-orange-600" />
                 <h1 className="text-2xl font-bold text-gray-900">Breakfast Smoothies</h1>
-                <Badge className="bg-amber-100 text-amber-800">Morning Fuel</Badge>
+                <Badge className="bg-orange-100 text-orange-800">Morning Fuel</Badge>
               </div>
             </div>
             
@@ -525,9 +411,9 @@ export default function BreakfastSmoothiesPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-amber-600 hover:bg-amber-700">
+              <Button size="sm" className="bg-orange-600 hover:bg-orange-700">
                 <Camera className="h-4 w-4 mr-2" />
-                Share Recipe
+                Share Page
               </Button>
             </div>
           </div>
@@ -545,8 +431,8 @@ export default function BreakfastSmoothiesPage() {
                 const Icon = hub.icon;
                 return (
                   <Link key={hub.id} href={hub.route}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
-                      <Icon className="h-4 w-4 mr-2 text-blue-600" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-orange-50 hover:border-orange-300">
+                      <Icon className="h-4 w-4 mr-2 text-orange-600" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{hub.name}</div>
                         <div className="text-xs text-gray-500">{hub.description}</div>
@@ -560,17 +446,17 @@ export default function BreakfastSmoothiesPage() {
           </CardContent>
         </Card>
 
-        {/* SISTER SUBPAGES NAVIGATION - ALL 7 SMOOTHIE TYPES */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+        {/* SISTER SUBPAGES NAVIGATION */}
+        <Card className="bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Smoothie Types</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-              {allSmoothieSubcategories.map((subcategory) => {
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              {smoothieSubcategories.map((subcategory) => {
                 const Icon = subcategory.icon;
                 return (
                   <Link key={subcategory.id} href={subcategory.path}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
-                      <Icon className="h-4 w-4 mr-2 text-amber-600" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-orange-50 hover:border-orange-300">
+                      <Icon className="h-4 w-4 mr-2 text-orange-600" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{subcategory.name}</div>
                         <div className="text-xs text-gray-500">{subcategory.description}</div>
@@ -588,25 +474,25 @@ export default function BreakfastSmoothiesPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-600">340</div>
+              <div className="text-2xl font-bold text-orange-600">305</div>
               <div className="text-sm text-gray-600">Avg Calories</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">15g</div>
+              <div className="text-2xl font-bold text-orange-600">15g</div>
               <div className="text-sm text-gray-600">Avg Protein</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">4.7★</div>
+              <div className="text-2xl font-bold text-orange-600">4.7★</div>
               <div className="text-sm text-gray-600">Avg Rating</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">{breakfastSmoothies.length}</div>
+              <div className="text-2xl font-bold text-orange-600">{breakfastSmoothies.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -616,9 +502,8 @@ export default function BreakfastSmoothiesPage() {
         <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
-            { id: 'breakfast-types', label: 'Breakfast Types', icon: Crown },
-            { id: 'categories', label: 'Categories', icon: Sparkles },
-            { id: 'featured', label: 'Featured', icon: Star }
+            { id: 'featured', label: 'Featured', icon: Star },
+            { id: 'trending', label: 'Trending', icon: Zap }
           ].map(tab => {
             const Icon = tab.icon;
             return (
@@ -654,62 +539,29 @@ export default function BreakfastSmoothiesPage() {
                   <div className="flex gap-2">
                     <select 
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                      value={selectedBreakfastType}
-                      onChange={(e) => setSelectedBreakfastType(e.target.value)}
+                      value={selectedSmoothieType}
+                      onChange={(e) => setSelectedSmoothieType(e.target.value)}
                     >
-                      <option value="">All Breakfast Types</option>
-                      <option value="Complete">Complete Meal</option>
-                      <option value="Energizing">Energizing</option>
-                      <option value="Light">Light & Fresh</option>
-                      <option value="Athletic">Athletic</option>
-                    </select>
-                    
-                    <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                      value={selectedCategory}
-                      onChange={(e) => setSelectedCategory(e.target.value)}
-                    >
-                      <option value="">All Categories</option>
-                      <option value="Complete">Complete</option>
+                      <option value="">All Types</option>
+                      <option value="Oat-Based">Oat-Based</option>
+                      <option value="Green">Green</option>
                       <option value="Coffee">Coffee</option>
-                      <option value="Protein">Protein</option>
-                      <option value="Detox">Detox</option>
-                      <option value="Athletic">Athletic</option>
+                      <option value="Yogurt">Yogurt</option>
+                      <option value="Tropical">Tropical</option>
+                      <option value="Nut Butter">Nut Butter</option>
+                      <option value="Chocolate">Chocolate</option>
+                      <option value="Citrus">Citrus</option>
                     </select>
                     
                     <select 
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                      value={energyLevel[0]}
-                      onChange={(e) => setEnergyLevel([e.target.value])}
+                      value={caffeineLevel[0]}
+                      onChange={(e) => setCaffeineLevel([e.target.value])}
                     >
-                      <option value="Any">Any Energy Level</option>
-                      <option value="Very High">Very High</option>
-                      <option value="High">High</option>
-                      <option value="Medium">Medium</option>
+                      <option value="Any">Any Caffeine</option>
+                      <option value="Caffeinated">With Caffeine</option>
+                      <option value="Caffeine-Free">Caffeine-Free</option>
                     </select>
-                    
-                    <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white min-w-[120px]">
-                      <span>Max Cal:</span>
-                      <Slider
-                        value={maxCalories}
-                        onValueChange={setMaxCalories}
-                        max={500}
-                        min={200}
-                        step={25}
-                        className="flex-1"
-                      />
-                      <span className="text-xs text-gray-500">{maxCalories[0]}</span>
-                    </div>
-                    
-                    <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
-                      <input
-                        type="checkbox"
-                        checked={needsCaffeine}
-                        onChange={(e) => setNeedsCaffeine(e.target.checked)}
-                        className="rounded"
-                      />
-                      Caffeine
-                    </label>
                     
                     <select 
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm"
@@ -718,8 +570,8 @@ export default function BreakfastSmoothiesPage() {
                     >
                       <option value="rating">Sort by Rating</option>
                       <option value="protein">Sort by Protein</option>
-                      <option value="energy">Sort by Energy</option>
                       <option value="calories">Sort by Calories</option>
+                      <option value="time">Sort by Prep Time</option>
                     </select>
                   </div>
                 </div>
@@ -728,270 +580,235 @@ export default function BreakfastSmoothiesPage() {
 
             {/* Smoothie Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredSmoothies.map(smoothie => (
-                <Card key={smoothie.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg mb-1">{smoothie.name}</CardTitle>
-                        <p className="text-sm text-gray-600 mb-2">{smoothie.description}</p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => addToFavorites({
-                          id: smoothie.id,
-                          name: smoothie.name,
-                          category: 'smoothies',
-                          description: smoothie.description,
-                          ingredients: smoothie.ingredients,
-                          nutrition: smoothie.nutrition,
-                          difficulty: smoothie.difficulty,
-                          prepTime: smoothie.prepTime,
-                          rating: smoothie.rating,
-                          fitnessGoal: 'Breakfast',
-                          bestTime: smoothie.bestTime
-                        })}
-                        className="text-gray-400 hover:text-red-500"
-                      >
-                        <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                      </Button>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge className="bg-amber-100 text-amber-800">{smoothie.breakfastType}</Badge>
-                      <Badge variant="outline">{smoothie.energyLevel} Energy</Badge>
-                      {smoothie.nutrition.caffeine > 0 && <Badge className="bg-orange-100 text-orange-800">Caffeine</Badge>}
-                      {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent>
-                    <div className="grid grid-cols-4 gap-2 mb-4 text-center text-sm">
-                      <div>
-                        <div className="text-xl font-bold text-amber-600">{smoothie.nutrition.calories}</div>
-                        <div className="text-gray-500">Cal</div>
-                      </div>
-                      <div>
-                        <div className="text-xl font-bold text-blue-600">{smoothie.nutrition.protein}g</div>
-                        <div className="text-gray-500">Protein</div>
-                      </div>
-                      <div>
-                        <div className="text-xl font-bold text-green-600">{smoothie.nutrition.fiber}g</div>
-                        <div className="text-gray-500">Fiber</div>
-                      </div>
-                      <div>
-                        <div className="text-xl font-bold text-orange-600">{smoothie.energyDuration}</div>
-                        <div className="text-gray-500">Energy</div>
-                      </div>
-                    </div>
+              {filteredSmoothies.map(smoothie => {
+                const useMetric = !!metricFlags[smoothie.id];
+                const servings = servingsById[smoothie.id] ?? (smoothie.recipe?.servings || 1);
 
-                    <div className="mb-4">
-                      <h4 className="font-medium text-sm text-gray-700 mb-2">Morning Benefits:</h4>
-                      <div className="flex flex-wrap gap-1">
-                        {smoothie.morningBenefits.slice(0, 3).map((benefit, index) => (
-                          <Badge key={index} variant="outline" className="text-xs">
+                return (
+                  <Card key={smoothie.id} className="hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <CardTitle className="text-lg mb-1">{smoothie.name}</CardTitle>
+                          <p className="text-sm text-gray-600 mb-2">{smoothie.description}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => addToFavorites({
+                            id: smoothie.id,
+                            name: smoothie.name,
+                            category: 'smoothies',
+                            description: smoothie.description,
+                            ingredients: smoothie.ingredients,
+                            nutrition: smoothie.nutrition,
+                            difficulty: smoothie.difficulty,
+                            prepTime: smoothie.prepTime,
+                            rating: smoothie.rating,
+                            bestTime: smoothie.bestTime
+                          })}
+                          className="text-gray-400 hover:text-red-500"
+                        >
+                          <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                        </Button>
+                      </div>
+                      
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge className="bg-orange-100 text-orange-800">{smoothie.smoothieType}</Badge>
+                        {!smoothie.caffeineFree && <Badge className="bg-amber-100 text-amber-800">Caffeinated</Badge>}
+                        {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                      </div>
+                    </CardHeader>
+                    
+                    <CardContent>
+                      <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
+                        <div>
+                          <div className="font-bold text-orange-600">{smoothie.nutrition.calories}</div>
+                          <div className="text-gray-500">Cal</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-orange-600">{smoothie.nutrition.protein}g</div>
+                          <div className="text-gray-500">Protein</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-orange-600">{smoothie.prepTime}m</div>
+                          <div className="text-gray-500">Prep</div>
+                        </div>
+                      </div>
+
+                      {/* RATING & DIFFICULTY - IMMEDIATELY ABOVE RECIPE CARD */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-1">
+                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                          <span className="font-medium">{smoothie.rating}</span>
+                          <span className="text-gray-500 text-sm">({smoothie.reviews})</span>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {smoothie.difficulty}
+                        </Badge>
+                      </div>
+
+                      {/* RecipeKit Preview */}
+                      {smoothie.recipe?.measurements && (
+                        <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-sm font-semibold text-gray-900">
+                              Recipe (serves {servings})
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                className="px-2 py-1 border rounded text-sm"
+                                onClick={() =>
+                                  setServingsById(prev => ({ ...prev, [smoothie.id]: clamp((prev[smoothie.id] ?? (smoothie.recipe?.servings || 1)) - 1) }))
+                                }
+                                aria-label="decrease servings"
+                              >
+                                −
+                              </button>
+                              <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                              <button
+                                className="px-2 py-1 border rounded text-sm"
+                                onClick={() =>
+                                  setServingsById(prev => ({ ...prev, [smoothie.id]: clamp((prev[smoothie.id] ?? (smoothie.recipe?.servings || 1)) + 1) }))
+                                }
+                                aria-label="increase servings"
+                              >
+                                +
+                              </button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setServingsById(prev => {
+                                  const next = { ...prev };
+                                  next[smoothie.id] = smoothie.recipe?.servings || 1;
+                                  return next;
+                                })}
+                                title="Reset servings"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
+                              </Button>
+                            </div>
+                          </div>
+
+                          <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                            {smoothie.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                              const isNum = typeof ing.amount === 'number';
+                              const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount;
+                              const show = useMetric && isNum
+                                ? toMetric(ing.unit, Number((typeof ing.amount === 'number' ? (ing.amount as number) : parseFloat(String(ing.amount))) * servings))
+                                : { amount: scaledDisplay, unit: ing.unit };
+
+                              return (
+                                <li key={i} className="flex items-start gap-2">
+                                  <Check className="h-4 w-4 text-orange-600 mt-0.5" />
+                                  <span>
+                                    <span className="text-orange-700 font-semibold">
+                                      {show.amount} {show.unit}
+                                    </span>{" "}
+                                    {ing.item}
+                                    {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                            {smoothie.recipe.measurements.length > 4 && (
+                              <li className="text-xs text-gray-600">
+                                …plus {smoothie.recipe.measurements.length - 4} more •{" "}
+                                <button
+                                  type="button"
+                                  onClick={() => openRecipeModal(smoothie)}
+                                  className="underline underline-offset-2"
+                                >
+                                  Show more
+                                </button>
+                              </li>
+                            )}
+                          </ul>
+
+                          <div className="flex gap-2 mt-3">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                const lines = smoothie.ingredients.map((ing: string) => `- ${ing}`);
+                                const txt = `${smoothie.name} (serves ${servings})\n${lines.join('\n')}`;
+                                try {
+                                  await navigator.clipboard.writeText(txt);
+                                  alert('Recipe copied!');
+                                } catch {
+                                  alert('Unable to copy on this device.');
+                                }
+                              }}
+                            >
+                              <Clipboard className="w-4 h-4 mr-1" /> Copy
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleShareSmoothie(smoothie, servings)}>
+                              <Share2 className="w-4 h-4 mr-1" /> Share
+                            </Button>
+                            {/* Metric Button */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setMetricFlags((prev) => ({ ...prev, [smoothie.id]: !prev[smoothie.id] }))
+                              }
+                            >
+                              {useMetric ? 'US' : 'Metric'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Best Time */}
+                      <div className="space-y-2 mb-3 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Best Time:</span>
+                          <span className="font-medium text-orange-600">{smoothie.bestTime}</span>
+                        </div>
+                      </div>
+
+                      {/* Benefits Tags */}
+                      <div className="flex flex-wrap gap-1 mb-4">
+                        {smoothie.benefits.slice(0, 3).map((benefit, index) => (
+                          <Badge key={index} variant="secondary" className="text-xs bg-orange-100 text-orange-800 hover:bg-orange-200">
                             {benefit}
                           </Badge>
                         ))}
                       </div>
-                    </div>
 
-                    <div className="space-y-2 mb-4 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Best Time:</span>
-                        <span className="font-medium">{smoothie.bestTime}</span>
+                      {/* Make Smoothie Button */}
+                      <div className="mt-3">
+                        <Button 
+                          className="w-full bg-orange-600 hover:bg-orange-700"
+                          onClick={() => openRecipeModal(smoothie)}
+                        >
+                          <Apple className="h-4 w-4 mr-2" />
+                          Make Smoothie (+25 XP)
+                        </Button>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Satiety Level:</span>
-                        <span className="font-medium">{smoothie.satietyLevel}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="font-medium">{smoothie.rating}</span>
-                        <span className="text-gray-500 text-sm">({smoothie.reviews})</span>
-                      </div>
-                      <Badge variant="outline" className="text-xs">
-                        {smoothie.difficulty}
-                      </Badge>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button 
-                        className="flex-1 bg-amber-600 hover:bg-amber-700"
-                        onClick={() => handleMakeSmoothie(smoothie)}
-                      >
-                        <Crown className="h-4 w-4 mr-2" />
-                        Start Morning
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <Share2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
 
-        {activeTab === 'breakfast-types' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {breakfastTypes.map(type => {
-              const Icon = type.icon;
-              const typeSmoothies = breakfastSmoothies.filter(smoothie => 
-                smoothie.breakfastType.toLowerCase().includes(type.name.toLowerCase().split(' ')[0]) ||
-                smoothie.category.toLowerCase().includes(type.name.toLowerCase())
-              );
-              
-              return (
-                <Card key={type.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader>
-                    <div className="text-center">
-                      <Icon className={`h-8 w-8 mx-auto mb-2 ${type.color}`} />
-                      <CardTitle className="text-lg">{type.name}</CardTitle>
-                      <p className="text-sm text-gray-600">{type.description}</p>
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent>
-                    <div className="space-y-3 mb-4">
-                      <div className="text-center bg-gray-50 p-3 rounded-lg">
-                        <div className="text-sm font-medium text-gray-700 mb-1">Energy Profile</div>
-                        <div className="text-lg font-bold text-amber-600">{type.energyProfile}</div>
-                      </div>
-                      
-                      <div>
-                        <h4 className="font-semibold text-sm mb-2">Key Nutrients:</h4>
-                        <div className="flex flex-wrap gap-1">
-                          {type.keyNutrients.map((nutrient, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
-                              {nutrient}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="bg-blue-50 p-2 rounded text-center">
-                          <div className="text-xs text-gray-600">Ideal For</div>
-                          <div className="font-semibold text-blue-600 text-xs">{type.idealFor}</div>
-                        </div>
-                        <div className="bg-green-50 p-2 rounded text-center">
-                          <div className="text-xs text-gray-600">Duration</div>
-                          <div className="font-semibold text-green-600 text-xs">{type.satietyDuration}</div>
-                        </div>
-                      </div>
-                      
-                      <div className="bg-amber-50 p-2 rounded text-center">
-                        <div className="text-xs text-gray-600">Avg Calories</div>
-                        <div className="font-semibold text-amber-600">{type.avgCalories}</div>
-                      </div>
-                    </div>
-                    
-                    <div className="text-center">
-                      <div className={`text-2xl font-bold ${type.color} mb-1`}>
-                        {typeSmoothies.length}
-                      </div>
-                      <div className="text-sm text-gray-600 mb-3">Available Recipes</div>
-                      <Button 
-                        className="w-full"
-                        onClick={() => {
-                          setSelectedBreakfastType(type.name.split(' ')[0]);
-                          setActiveTab('browse');
-                        }}
-                      >
-                        Explore {type.name}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-
-        {activeTab === 'categories' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {breakfastCategories.map(category => {
-              const Icon = category.icon;
-              const categorySmoothies = breakfastSmoothies.filter(smoothie => {
-                if (category.id === 'sustained-energy') return smoothie.energyDuration.includes('4') || smoothie.energyDuration.includes('5');
-                if (category.id === 'quick-boost') return smoothie.nutrition.caffeine > 0 || smoothie.energyLevel === 'Very High';
-                return false;
-              });
-              
-              return (
-                <Card key={category.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader>
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className={`p-2 ${category.color.replace('bg-', 'bg-').replace('-500', '-100')} rounded-lg`}>
-                        <Icon className={`h-6 w-6 ${category.color.replace('bg-', 'text-')}`} />
-                      </div>
-                      <div>
-                        <CardTitle className="text-lg">{category.name}</CardTitle>
-                        <p className="text-sm text-gray-600">{category.description}</p>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent>
-                    <div className="space-y-3 mb-4">
-                      <div className="bg-gray-50 p-3 rounded-lg">
-                        <div className="text-sm font-medium text-gray-700 mb-1">Energy Duration:</div>
-                        <div className="text-lg font-bold text-amber-600">{category.energyDuration}</div>
-                      </div>
-                      
-                      <div className="bg-blue-50 p-3 rounded-lg">
-                        <div className="text-sm font-medium text-gray-700 mb-1">Macro Focus:</div>
-                        <div className="text-sm text-blue-800">{category.macroFocus}</div>
-                      </div>
-                    </div>
-                    
-                    <div className="text-center">
-                      <div className={`text-2xl font-bold ${category.color.replace('bg-', 'text-')} mb-1`}>
-                        {categorySmoothies.length}
-                      </div>
-                      <div className="text-sm text-gray-600 mb-3">Available Recipes</div>
-                      <Button 
-                        className="w-full"
-                        onClick={() => {
-                          if (category.id === 'sustained-energy') setSelectedCategory('Complete');
-                          else if (category.id === 'quick-boost') setSelectedCategory('Coffee');
-                          setActiveTab('browse');
-                        }}
-                      >
-                        View {category.name}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-
+        {/* Rest of the tabs remain the same structure */}
         {activeTab === 'featured' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {featuredSmoothies.map(smoothie => (
               <Card key={smoothie.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="relative">
-                  <img 
-                    src={smoothie.image} 
-                    alt={smoothie.name}
-                    className="w-full h-48 object-cover"
-                    onError={(e) => {
-                      e.currentTarget.src = 'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=400&h=300&fit=crop';
-                    }}
-                  />
+                  {smoothie.image && (
+                    <img 
+                      src={smoothie.image} 
+                      alt={smoothie.name}
+                      className="w-full h-48 object-cover"
+                    />
+                  )}
                   <div className="absolute top-4 left-4">
-                    <Badge className="bg-amber-500 text-white">Featured Morning</Badge>
-                  </div>
-                  <div className="absolute top-4 right-4">
-                    <Badge className="bg-white text-amber-800">{smoothie.energyDuration}</Badge>
+                    <Badge className="bg-orange-500 text-white">Featured</Badge>
                   </div>
                 </div>
                 
@@ -1000,106 +817,71 @@ export default function BreakfastSmoothiesPage() {
                   <p className="text-gray-600">{smoothie.description}</p>
                   
                   <div className="flex items-center gap-2 mt-2">
-                    <Badge className="bg-amber-100 text-amber-800">{smoothie.breakfastType}</Badge>
-                    <Badge variant="outline">{smoothie.energyLevel} Energy</Badge>
-                    {smoothie.nutrition.caffeine > 0 && <Badge className="bg-orange-100 text-orange-800">Caffeine</Badge>}
+                    <Badge className="bg-orange-100 text-orange-800">{smoothie.smoothieType}</Badge>
                     <div className="flex items-center gap-1 ml-auto">
                       <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium">{smoothie.rating}</span>
+                      <span className="font-medium text-orange-600">{smoothie.rating}</span>
                       <span className="text-gray-500 text-sm">({smoothie.reviews})</span>
                     </div>
                   </div>
                 </CardHeader>
                 
                 <CardContent>
-                  <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-amber-50 rounded-lg">
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-amber-600">{smoothie.nutrition.calories}</div>
-                      <div className="text-xs text-gray-600">Calories</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-blue-600">{smoothie.nutrition.protein}g</div>
-                      <div className="text-xs text-gray-600">Protein</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-green-600">{smoothie.nutrition.fiber}g</div>
-                      <div className="text-xs text-gray-600">Fiber</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-orange-600">{smoothie.energyDuration}</div>
-                      <div className="text-xs text-gray-600">Energy</div>
-                    </div>
-                  </div>
-
-                  <div className="mb-4">
-                    <h4 className="font-medium text-gray-900 mb-2">Morning Benefits:</h4>
-                    <div className="flex flex-wrap gap-1">
-                      {smoothie.morningBenefits.map((benefit, index) => (
-                        <Badge key={index} className="bg-amber-100 text-amber-800 text-xs">
-                          {benefit}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mb-4 bg-gray-50 p-4 rounded-lg">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-sm font-medium text-gray-700 mb-1">Best Time:</div>
-                        <div className="text-amber-600 font-semibold">{smoothie.bestTime}</div>
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium text-gray-700 mb-1">Satiety Level:</div>
-                        <div className="text-green-600 font-semibold">{smoothie.satietyLevel}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mb-6">
-                    <h4 className="font-medium text-gray-900 mb-2">Ingredients:</h4>
-                    <div className="text-sm text-gray-700 space-y-1">
-                      {smoothie.ingredients.map((ingredient, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <Crown className="h-3 w-3 text-amber-500" />
-                          {ingredient}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <Button 
-                      className="flex-1 bg-amber-600 hover:bg-amber-700"
-                      onClick={() => handleMakeSmoothie(smoothie)}
-                    >
-                      <Crown className="h-4 w-4 mr-2" />
-                      Start This Morning
-                    </Button>
-                    <Button variant="outline">
-                      <Share2 className="h-4 w-4 mr-2" />
-                      Share
-                    </Button>
-                  </div>
+                  <Button 
+                    className="w-full bg-orange-600 hover:bg-orange-700"
+                    onClick={() => openRecipeModal(smoothie)}
+                  >
+                    <Apple className="h-4 w-4 mr-2" />
+                    Make This Smoothie
+                  </Button>
                 </CardContent>
               </Card>
             ))}
           </div>
         )}
 
-        {/* Your Progress (in-content) */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+        {activeTab === 'trending' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {trendingSmoothies.map(smoothie => (
+              <Card key={smoothie.id} className="hover:shadow-lg transition-shadow border-2 border-orange-200">
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="text-lg mb-1">{smoothie.name}</CardTitle>
+                      <p className="text-sm text-gray-600 mb-2">{smoothie.description}</p>
+                    </div>
+                    <Badge className="bg-red-500 text-white">🔥 Trending</Badge>
+                  </div>
+                </CardHeader>
+                
+                <CardContent>
+                  <Button 
+                    className="w-full bg-orange-600 hover:bg-orange-700"
+                    onClick={() => openRecipeModal(smoothie)}
+                  >
+                    <Apple className="h-4 w-4 mr-2" />
+                    Try This Trend
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Your Progress */}
+        <Card className="bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold mb-2">Your Progress</h3>
                 <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="text-amber-600">
+                  <Badge variant="outline" className="text-orange-600">
                     Level {userProgress.level}
                   </Badge>
-                  <Badge variant="outline" className="text-yellow-600">
+                  <Badge variant="outline" className="text-orange-600">
                     {userProgress.totalPoints} XP
                   </Badge>
-                  <Badge variant="outline" className="text-blue-600">
+                  <Badge variant="outline" className="text-orange-600">
                     {userProgress.totalDrinksMade} Drinks Made
                   </Badge>
                 </div>
