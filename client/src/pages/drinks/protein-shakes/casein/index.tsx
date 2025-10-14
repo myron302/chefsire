@@ -1,5 +1,3 @@
-"use client"
-
 import { useState, useRef } from "react"
 import { Link } from "wouter"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
