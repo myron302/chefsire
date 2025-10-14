@@ -402,9 +402,9 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
     }
   };
 
-  const handleShowMetrics = (recipe: any) => {
-    // This would typically open a detailed metrics modal
-    alert(`Detailed metrics for ${recipe.name}:\n\nProtein: ${recipe.protein}g\nCalories: ${recipe.calories}\nCreatine: ${recipe.creatine}g\nIron: ${recipe.iron}mg\nRating: ${recipe.rating}/5 (${recipe.reviews} reviews)`);
+  const handleShowMetric = (recipe: any) => {
+    // This would typically open a detailed Metric modal
+    alert(`Detailed Metric for ${recipe.name}:\n\nProtein: ${recipe.protein}g\nCalories: ${recipe.calories}\nCreatine: ${recipe.creatine}g\nIron: ${recipe.iron}mg\nRating: ${recipe.rating}/5 (${recipe.reviews} reviews)`);
   };
 
   return (
@@ -758,7 +758,7 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
                         </div>
                       )}
 
-                      {/* Copy, Share, Metrics buttons moved inside recipe div */}
+                      {/* Copy, Share, Metric buttons moved inside recipe div */}
                       <div className="flex gap-2 mt-3">
                         <Button
                           variant="outline"
@@ -782,10 +782,10 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
                           variant="outline"
                           size="sm"
                           className="flex-1"
-                          onClick={() => handleShowMetrics(recipe)}
+                          onClick={() => handleShowMetric(recipe)}
                         >
                           <BarChart3 className="h-3 w-3 mr-1" />
-                          Metrics
+                          Metric
                         </Button>
                       </div>
                     </div>
