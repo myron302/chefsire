@@ -65,11 +65,11 @@ const proteinSubcategories = [
   },
   { id: "egg", name: "Egg Protein", icon: Target, path: "/drinks/protein-shakes/egg", description: "Complete amino" },
   {
-    id: "beef",
-    name: "Beef Protein",
-    icon: Flame,
-    path: "/drinks/protein-shakes/beef",
-    description: "Natural creatine",
+    id: "casein",
+    name: "Casein Protein",
+    icon: Moon,
+    path: "/drinks/protein-shakes/casein",
+    description: "Slow digesting",
   },
 ]
 
