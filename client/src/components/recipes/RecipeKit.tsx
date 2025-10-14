@@ -37,7 +37,7 @@ type RecipeKitProps = {
   onClose?: () => void;
   item?: ControlledItem;
   pointsReward?: number;
-  accent?: 'amber' | 'green' | 'blue' | 'purple' | 'red';
+  accent?: 'amber' | 'green' | 'blue' | 'purple' | 'red' | 'pink' | 'cyan';
 
   // Inline/ref API
   id?: string;
@@ -118,7 +118,7 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
     onClose,
     item,
     pointsReward,
-    accent,
+    accent = 'green', // Default to green if not specified
     id,
     name,
     measurements,
@@ -190,6 +190,69 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
     };
   }, [baseNutrition, servings]);
 
+  // Dynamic accent colors based on the accent prop
+  const accentConfig = useMemo(() => {
+    const configs = {
+      amber: {
+        text: 'text-amber-600',
+        bgLight: 'bg-amber-50',
+        textDark: 'text-amber-800',
+        border: 'border-amber-200',
+        button: 'bg-amber-600 hover:bg-amber-700',
+        check: 'text-amber-600'
+      },
+      green: {
+        text: 'text-green-600',
+        bgLight: 'bg-green-50',
+        textDark: 'text-green-800',
+        border: 'border-green-200',
+        button: 'bg-green-600 hover:bg-green-700',
+        check: 'text-green-600'
+      },
+      blue: {
+        text: 'text-blue-600',
+        bgLight: 'bg-blue-50',
+        textDark: 'text-blue-800',
+        border: 'border-blue-200',
+        button: 'bg-blue-600 hover:bg-blue-700',
+        check: 'text-blue-600'
+      },
+      purple: {
+        text: 'text-purple-600',
+        bgLight: 'bg-purple-50',
+        textDark: 'text-purple-800',
+        border: 'border-purple-200',
+        button: 'bg-purple-600 hover:bg-purple-700',
+        check: 'text-purple-600'
+      },
+      red: {
+        text: 'text-red-600',
+        bgLight: 'bg-red-50',
+        textDark: 'text-red-800',
+        border: 'border-red-200',
+        button: 'bg-red-600 hover:bg-red-700',
+        check: 'text-red-600'
+      },
+      pink: {
+        text: 'text-pink-600',
+        bgLight: 'bg-pink-50',
+        textDark: 'text-pink-800',
+        border: 'border-pink-200',
+        button: 'bg-pink-600 hover:bg-pink-700',
+        check: 'text-pink-600'
+      },
+      cyan: {
+        text: 'text-cyan-600',
+        bgLight: 'bg-cyan-50',
+        textDark: 'text-cyan-800',
+        border: 'border-cyan-200',
+        button: 'bg-cyan-600 hover:bg-cyan-700',
+        check: 'text-cyan-600'
+      }
+    };
+    return configs[accent] || configs.green;
+  }, [accent]);
+
   const copyScaledRecipe = async () => {
     const lines = scaled.map((ing) => {
       if (useMetric && typeof ing.amountScaledNum === 'number') {
@@ -232,18 +295,6 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
     }
   };
 
-  const accentText = accent === 'amber' ? 'text-amber-600'
-                    : accent === 'blue' ? 'text-blue-600'
-                    : accent === 'purple' ? 'text-purple-600'
-                    : accent === 'red' ? 'text-red-600'
-                    : 'text-green-600';
-
-  const accentBadge = accent === 'amber' ? 'bg-amber-50 text-amber-800'
-                    : accent === 'blue' ? 'bg-blue-50 text-blue-800'
-                    : accent === 'purple' ? 'bg-purple-50 text-purple-800'
-                    : accent === 'red' ? 'bg-red-50 text-red-800'
-                    : 'bg-green-50 text-green-800';
-
   const shouldRenderPreview = !isControlled && recipeMeasurements.length > 0;
   const hasMoreThan5Ingredients = recipeMeasurements.length > 5;
   const displayIngredients = showAllIngredients ? scaled : scaled.slice(0, 5);
@@ -275,7 +326,7 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
           <ul className="text-sm leading-6 text-gray-800 space-y-1">
             {displayIngredients.map((ing, i) => (
               <li key={i} className="flex gap-2">
-                <span className={`${accentText} font-medium min-w-[90px]`}>
+                <span className={`${accentConfig.text} font-medium min-w-[90px]`}>
                   {typeof ing.amountScaledNum === 'number' && useMetric
                     ? `${toMetric(ing.unit, ing.amountScaledNum).amount} ${toMetric(ing.unit, ing.amountScaledNum).unit}`
                     : `${ing.amountScaled} ${ing.unit}`
@@ -341,19 +392,20 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
               </button>
             </div>
 
-            <div className={`grid grid-cols-3 gap-2 p-3 ${accentBadge} rounded-lg mb-4`}>
+            {/* Nutrition Grid - ALL COLORS NOW USE ACCENT */}
+            <div className={`grid grid-cols-3 gap-2 p-3 ${accentConfig.bgLight} rounded-lg mb-4`}>
               <div className="text-center">
-                <div className={`font-bold ${accentText}`}>
+                <div className={`font-bold ${accentConfig.text}`}>
                   {scaledMacros.protein ?? '—'}{scaledMacros.protein ? 'g' : ''}
                 </div>
                 <div className="text-xs">Protein</div>
               </div>
               <div className="text-center">
-                <div className="font-bold text-blue-600">{scaledMacros.calories ?? '—'}</div>
+                <div className={`font-bold ${accentConfig.text}`}>{scaledMacros.calories ?? '—'}</div>
                 <div className="text-xs">Calories</div>
               </div>
               <div className="text-center">
-                <div className="font-bold text-purple-600">{(basePrepTime ?? 0)}min</div>
+                <div className={`font-bold ${accentConfig.text}`}>{(basePrepTime ?? 0)}min</div>
                 <div className="text-xs">Prep</div>
               </div>
             </div>
@@ -372,9 +424,9 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
             <ul className="space-y-2 text-base leading-6 text-gray-800 font-sans tracking-normal">
               {scaled.map((ing, idx) => (
                 <li key={idx} className="flex items-start gap-2">
-                  <Check className={`h-4 w-4 ${accentText} mt-0.5`} />
+                  <Check className={`h-4 w-4 ${accentConfig.check} mt-0.5`} />
                   <span>
-                    <span className={`${accentText} font-semibold`}>
+                    <span className={`${accentConfig.text} font-semibold`}>
                       {typeof ing.amountScaledNum === 'number' && useMetric
                         ? `${toMetric(ing.unit, ing.amountScaledNum).amount} ${toMetric(ing.unit, ing.amountScaledNum).unit}`
                         : `${ing.amountScaled} ${ing.unit}`
@@ -408,11 +460,7 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
 
             <div className="flex gap-2 mt-4">
               <Button
-                className={`${accent === 'amber' ? 'bg-amber-600 hover:bg-amber-700' : 
-                          accent === 'blue' ? 'bg-blue-600 hover:bg-blue-700' :
-                          accent === 'purple' ? 'bg-purple-600 hover:bg-purple-700' :
-                          accent === 'red' ? 'bg-red-600 hover:bg-red-700' :
-                          'bg-green-600 hover:bg-green-700'} flex-1`}
+                className={`${accentConfig.button} flex-1`}
                 onClick={() => {
                   onComplete?.();
                   if (isControlled) onClose?.();
