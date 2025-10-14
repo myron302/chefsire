@@ -411,6 +411,35 @@ export default function DetoxesHub() {
             </div>
           </CardContent>
         </Card>
+
+        {/* User Progress */}
+        <Card className="bg-gradient-to-r from-green-50 to-teal-50 border-green-200">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-green-600" />
+                  Your Detox Progress
+                </h3>
+                <div className="flex items-center gap-4">
+                  <Badge variant="outline" className="text-green-600">
+                    Level {userProgress.level}
+                  </Badge>
+                  <Badge variant="outline" className="text-teal-600">
+                    {userProgress.totalPoints} XP
+                  </Badge>
+                  <Badge variant="outline" className="text-blue-600">
+                    {userProgress.totalDrinksMade} Detoxes Made
+                  </Badge>
+                </div>
+              </div>
+              <div className="text-center">
+                <Progress value={userProgress.dailyGoalProgress} className="w-32 mb-2" />
+                <div className="text-xs text-gray-500">Daily Goal Progress</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
