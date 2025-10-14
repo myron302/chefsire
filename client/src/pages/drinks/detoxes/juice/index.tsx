@@ -14,7 +14,6 @@ import {
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
-import { otherDrinkHubs, detoxTypes } from '../../data/detoxes';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -50,7 +49,58 @@ const toMetric = (unit: string, amount: number) => {
   }
 };
 
-// ---------- Detox Juices Data (with 4 new recipes) ----------
+// ---------- Navigation data ----------
+const otherDrinkHubs = [
+  { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
+  { id: 'detoxes', name: 'Detoxes', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing & wellness' },
+  { id: 'potables', name: 'Potent Potables', icon: GlassWater, route: '/drinks/potent-potables', description: 'Cocktails (21+)' },
+  { id: 'all-drinks', name: 'All Drinks', icon: Sparkles, route: '/drinks', description: 'Browse everything' }
+];
+
+const detoxTypes = [
+  {
+    id: 'gentle',
+    name: 'Gentle Cleanse',
+    description: 'Daily maintenance and gentle detoxification',
+    icon: Leaf,
+    intensity: 'Gentle',
+    duration: 'Daily',
+    color: 'text-green-600',
+    benefits: ['Daily maintenance', 'Gentle cleansing', 'Hydration support']
+  },
+  {
+    id: 'moderate',
+    name: 'Moderate Reset',
+    description: 'Weekly reset for digestive and liver health',
+    icon: Target,
+    intensity: 'Moderate',
+    duration: '3-7 days',
+    color: 'text-blue-600',
+    benefits: ['Liver support', 'Digestive reset', 'Toxin elimination']
+  },
+  {
+    id: 'intense',
+    name: 'Intense Cleanse',
+    description: 'Deep cellular cleansing and heavy metal support',
+    icon: Flame,
+    intensity: 'Intense',
+    duration: '1-3 days',
+    color: 'text-red-600',
+    benefits: ['Deep cleansing', 'Heavy metal support', 'Cellular detox']
+  },
+  {
+    id: 'seasonal',
+    name: 'Seasonal Cleanse',
+    description: 'Seasonal transitions and immune system support',
+    icon: Sparkles,
+    intensity: 'Moderate',
+    duration: 'Seasonal',
+    color: 'text-purple-600',
+    benefits: ['Immune support', 'Seasonal transition', 'Allergy relief']
+  }
+];
+
+// ---------- Detox Juices Data ----------
 const detoxJuices = [
   {
     id: 'green-detox-1',
@@ -157,7 +207,6 @@ const detoxJuices = [
     benefits: ['Blood purification', 'Antioxidant rich', 'Skin health', 'Circulation boost'],
     specialInstructions: 'Stain alert: beet juice can temporarily color urine'
   },
-  // NEW RECIPES START HERE
   {
     id: 'kidney-cleanser',
     name: 'Kidney Cleanser Elixir',
@@ -241,6 +290,69 @@ const detoxJuices = [
     ingredients: ['2 cups cilantro', '1 cup parsley', '2 celery stalks', '1 lemon', '1 green apple', '1 tsp chlorella'],
     benefits: ['Heavy metal chelation', 'Antioxidant protection', 'Liver support', 'Cellular detox'],
     specialInstructions: 'CONSULT HEALTHCARE PROVIDER - Intensive detox protocol'
+  },
+  {
+    id: 'morning-glory',
+    name: 'Morning Glory Energizer',
+    description: 'Morning juice to kickstart metabolism and provide natural energy',
+    nutrition: { calories: 92, protein: 2, carbs: 20, fat: 1, fiber: 4 },
+    difficulty: 'Easy',
+    prepTime: 7,
+    rating: 4.7,
+    reviews: 312,
+    trending: true,
+    featured: false,
+    detoxType: 'Metabolic',
+    detoxLevel: 'Gentle',
+    category: 'Green',
+    bestTime: 'Morning',
+    duration: 'Daily',
+    estimatedCost: 4.10,
+    ingredients: ['2 cups spinach', '1 green apple', '1/2 lemon', '1 inch ginger', '1 tbsp wheatgrass powder'],
+    benefits: ['Metabolism boost', 'Natural energy', 'Alkalizing', 'Mental clarity'],
+    specialInstructions: 'Best consumed on empty stomach for maximum absorption'
+  },
+  {
+    id: 'sunset-serenity',
+    name: 'Sunset Serenity Juice',
+    description: 'Evening juice to promote relaxation and overnight detoxification',
+    nutrition: { calories: 78, protein: 1, carbs: 18, fat: 1, fiber: 3 },
+    difficulty: 'Easy',
+    prepTime: 6,
+    rating: 4.5,
+    reviews: 201,
+    trending: false,
+    featured: false,
+    detoxType: 'Relaxation',
+    detoxLevel: 'Gentle',
+    category: 'Red',
+    bestTime: 'Evening',
+    duration: 'Daily',
+    estimatedCost: 3.90,
+    ingredients: ['1 beet', '2 carrots', '1/2 cup cherries', '1 tsp lavender', '1 cup coconut water'],
+    benefits: ['Relaxation support', 'Sleep quality', 'Overnight detox', 'Blood sugar balance'],
+    specialInstructions: 'Consume 1-2 hours before bedtime for best results'
+  },
+  {
+    id: 'gut-hero',
+    name: 'Gut Hero Restorer',
+    description: 'Specialized juice for gut microbiome and digestive system healing',
+    nutrition: { calories: 85, protein: 2, carbs: 19, fat: 1, fiber: 5 },
+    difficulty: 'Medium',
+    prepTime: 9,
+    rating: 4.6,
+    reviews: 178,
+    trending: true,
+    featured: true,
+    detoxType: 'Digestive',
+    detoxLevel: 'Moderate',
+    category: 'Root',
+    bestTime: 'Between meals',
+    duration: '2-4 weeks',
+    estimatedCost: 5.50,
+    ingredients: ['1 cabbage', '2 carrots', '1 pear', '1 inch ginger', '1 tsp slippery elm', '1 cup kefir'],
+    benefits: ['Gut microbiome', 'Leaky gut support', 'Inflammation reduction', 'Digestive healing'],
+    specialInstructions: 'Add kefir after juicing for probiotic benefits'
   }
 ];
 
@@ -593,6 +705,8 @@ export default function DetoxJuicesPage() {
                       <option value="Immune Support">Immune Support</option>
                       <option value="Beauty Detox">Beauty Detox</option>
                       <option value="Stress Support">Stress Support</option>
+                      <option value="Metabolic">Metabolic</option>
+                      <option value="Relaxation">Relaxation</option>
                     </select>
                     
                     <select 
@@ -653,41 +767,51 @@ export default function DetoxJuicesPage() {
 
                 return (
                   <Card key={juice.id} className="hover:shadow-lg transition-shadow">
-                    // In the CardHeader section of detox juices page, replace this part:
-<CardHeader className="pb-2">
-  <div className="flex items-start justify-between">
-    <div className="flex-1">
-      <CardTitle className="text-lg mb-1">{juice.name}</CardTitle>
-      <p className="text-sm text-gray-600 mb-2">{juice.description}</p>
-    </div>
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={() => addToFavorites({...})}
-      className="text-gray-400 hover:text-red-500"
-    >
-      <Heart className={`h-4 w-4 ${isFavorite(juice.id) ? 'fill-red-500 text-red-500' : ''}`} />
-    </Button>
-  </div>
-  
-  <div className="flex items-center gap-2 mb-2">
-    <Badge className="bg-green-100 text-green-800">{juice.detoxType}</Badge>
-    <Badge variant="outline">{juice.detoxLevel}</Badge>
-    {juice.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
-  </div>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <CardTitle className="text-lg mb-1">{juice.name}</CardTitle>
+                          <p className="text-sm text-gray-600 mb-2">{juice.description}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => addToFavorites({
+                            id: juice.id,
+                            name: juice.name,
+                            category: 'detoxes',
+                            description: juice.description,
+                            ingredients: juice.ingredients,
+                            nutrition: juice.nutrition,
+                            difficulty: juice.difficulty,
+                            prepTime: juice.prepTime,
+                            rating: juice.rating,
+                            bestTime: juice.bestTime
+                          })}
+                          className="text-gray-400 hover:text-red-500"
+                        >
+                          <Heart className={`h-4 w-4 ${isFavorite(juice.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                        </Button>
+                      </div>
+                      
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge className="bg-green-100 text-green-800">{juice.detoxType}</Badge>
+                        <Badge variant="outline">{juice.detoxLevel}</Badge>
+                        {juice.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                      </div>
 
-  {/* MOVED: Difficulty and Rating immediately above recipe card */}
-  <div className="flex items-center justify-between mb-3">
-    <div className="flex items-center gap-1">
-      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-      <span className="font-medium">{juice.rating}</span>
-      <span className="text-gray-500 text-sm">({juice.reviews})</span>
-    </div>
-    <Badge variant="outline" className="text-xs">
-      {juice.difficulty}
-    </Badge>
-  </div>
-</CardHeader>
+                      {/* Rating and Difficulty immediately above recipe card */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-1">
+                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                          <span className="font-medium">{juice.rating}</span>
+                          <span className="text-gray-500 text-sm">({juice.reviews})</span>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {juice.difficulty}
+                        </Badge>
+                      </div>
+                    </CardHeader>
                     
                     <CardContent>
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
@@ -802,7 +926,7 @@ export default function DetoxJuicesPage() {
                             <Button variant="outline" size="sm" onClick={() => handleShareJuice(juice, servings)}>
                               <Share2 className="w-4 h-4 mr-1" /> Share
                             </Button>
-                            {/* ADDED: Metric Button */}
+                            {/* Metric Button */}
                             <Button
                               variant="outline"
                               size="sm"
@@ -816,7 +940,7 @@ export default function DetoxJuicesPage() {
                         </div>
                       )}
 
-                      {/* MOVED: Duration and Time above tags */}
+                      {/* Duration and Time above tags */}
                       <div className="space-y-2 mb-3 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Best Time:</span>
@@ -855,8 +979,174 @@ export default function DetoxJuicesPage() {
           </div>
         )}
 
-        {/* Rest of the tabs (detox-types and featured) remain the same */}
-        {/* ... */}
+        {activeTab === 'detox-types' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {detoxTypes.map(type => {
+              const Icon = type.icon;
+              const typeJuices = detoxJuices.filter(juice => 
+                juice.detoxLevel === type.intensity ||
+                juice.detoxType?.toLowerCase().includes(type.name.toLowerCase())
+              );
+              
+              return (
+                <Card key={type.id} className="hover:shadow-lg transition-shadow">
+                  <CardHeader>
+                    <div className="text-center">
+                      <Icon className={`h-8 w-8 mx-auto mb-2 ${type.color}`} />
+                      <CardTitle className="text-lg">{type.name}</CardTitle>
+                      <p className="text-sm text-gray-600">{type.description}</p>
+                    </div>
+                  </CardHeader>
+                  
+                  <CardContent>
+                    <div className="space-y-3 mb-4">
+                      <div className="text-center bg-gray-50 p-3 rounded-lg">
+                        <div className="text-sm font-medium text-gray-700 mb-1">Intensity</div>
+                        <div className="text-lg font-bold text-green-600">{type.intensity}</div>
+                      </div>
+                      
+                      <div className="text-center bg-blue-50 p-3 rounded-lg">
+                        <div className="text-sm font-medium text-gray-700 mb-1">Duration</div>
+                        <div className="text-sm text-blue-800">{type.duration}</div>
+                      </div>
+                      
+                      <div>
+                        <h4 className="font-semibold text-sm mb-2">Benefits:</h4>
+                        <div className="flex flex-wrap gap-1">
+                          {type.benefits.map((benefit, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {benefit}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="text-center">
+                      <div className={`text-2xl font-bold ${type.color} mb-1`}>
+                        {typeJuices.length}
+                      </div>
+                      <div className="text-sm text-gray-600 mb-3">Available Recipes</div>
+                      <Button 
+                        className="w-full"
+                        onClick={() => {
+                          setDetoxIntensity([type.intensity]);
+                          setActiveTab('browse');
+                        }}
+                      >
+                        Explore {type.name}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {activeTab === 'featured' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {featuredJuices.map(juice => (
+              <Card key={juice.id} className="overflow-hidden hover:shadow-xl transition-shadow">
+                <div className="relative bg-gradient-to-br from-green-100 to-emerald-100 h-48 flex items-center justify-center">
+                  <Droplets className="h-24 w-24 text-green-600 opacity-20" />
+                  <div className="absolute top-4 left-4">
+                    <Badge className="bg-green-500 text-white">Featured Cleanse</Badge>
+                  </div>
+                  <div className="absolute top-4 right-4">
+                    <Badge className="bg-white text-green-800">{juice.nutrition.calories} Cal</Badge>
+                  </div>
+                </div>
+                
+                <CardHeader>
+                  <CardTitle className="text-xl">{juice.name}</CardTitle>
+                  <p className="text-gray-600">{juice.description}</p>
+                  
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge className="bg-green-100 text-green-800">{juice.detoxType}</Badge>
+                    <Badge variant="outline">{juice.detoxLevel}</Badge>
+                    <div className="flex items-center gap-1 ml-auto">
+                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                      <span className="font-medium">{juice.rating}</span>
+                      <span className="text-gray-500 text-sm">({juice.reviews})</span>
+                    </div>
+                  </div>
+                </CardHeader>
+                
+                <CardContent>
+                  <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-green-50 rounded-lg">
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-green-600">{juice.nutrition.calories}</div>
+                      <div className="text-xs text-gray-600">Calories</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-blue-600">{juice.nutrition.fiber}g</div>
+                      <div className="text-xs text-gray-600">Fiber</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-orange-600">{juice.prepTime}m</div>
+                      <div className="text-xs text-gray-600">Prep Time</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-emerald-600">${juice.estimatedCost}</div>
+                      <div className="text-xs text-gray-600">Cost</div>
+                    </div>
+                  </div>
+
+                  <div className="mb-4">
+                    <h4 className="font-medium text-gray-900 mb-2">Detox Benefits:</h4>
+                    <div className="flex flex-wrap gap-1">
+                      {juice.benefits.map((benefit, index) => (
+                        <Badge key={index} className="bg-green-100 text-green-800 text-xs">
+                          {benefit}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mb-4 bg-gray-50 p-4 rounded-lg">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-1">Best Time:</div>
+                        <div className="text-green-600 font-semibold">{juice.bestTime}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-1">Duration:</div>
+                        <div className="text-blue-600 font-semibold">{juice.duration}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-6">
+                    <h4 className="font-medium text-gray-900 mb-2">Ingredients:</h4>
+                    <div className="text-sm text-gray-700 space-y-1">
+                      {juice.ingredients.map((ingredient, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <Leaf className="h-3 w-3 text-green-500" />
+                          {ingredient}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <Button 
+                      className="flex-1 bg-green-600 hover:bg-green-700"
+                      onClick={() => openRecipeModal(juice)}
+                    >
+                      <Droplets className="h-4 w-4 mr-2" />
+                      Start Cleanse
+                    </Button>
+                    <Button variant="outline">
+                      <Share2 className="h-4 w-4 mr-2" />
+                      Share
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
         {/* Your Progress */}
         <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
