@@ -1,5 +1,5 @@
 // client/src/pages/drinks/detoxes/water/index.tsx
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,12 +9,46 @@ import { Progress } from "@/components/ui/progress";
 import { 
   Waves, Clock, Heart, Star, Target, Sparkles,
   Search, Share2, ArrowLeft, Zap, Camera, Droplets, Leaf,
-  Apple, FlaskConical, GlassWater, Coffee, X, Check
+  Apple, FlaskConical, GlassWater, Coffee, X, Check, Clipboard, RotateCcw
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
+import RecipeKit from '@/components/recipes/RecipeKit';
 import { otherDrinkHubs, infusedWaters, waterTypes } from '../../data/detoxes';
-import { DetoxRecipe } from '../../types/detox';
+
+// ---------- Helpers ----------
+type Measured = { amount: number | string; unit: string; item: string; note?: string };
+const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+// scaling helpers
+const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+const toNiceFraction = (value: number) => {
+  const rounded = Math.round(value * 4) / 4;
+  const whole = Math.trunc(rounded);
+  const frac = Math.round((rounded - whole) * 4);
+  const fracMap: Record<number, string> = { 0: '', 1: '1/4', 2: '1/2', 3: '3/4' };
+  const fracStr = fracMap[frac];
+  if (!whole && fracStr) return fracStr;
+  if (whole && fracStr) return `${whole} ${fracStr}`;
+  return `${whole}`;
+};
+const scaleAmount = (baseAmount: number | string, servings: number) => {
+  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
+  if (Number.isNaN(n)) return baseAmount;
+  return toNiceFraction(n * servings);
+};
+
+// metric conversion for waters
+const toMetric = (unit: string, amount: number) => {
+  const mlPerCup = 240, mlPerOz = 30;
+  switch (unit) {
+    case 'cup': return { amount: Math.round(amount * mlPerCup), unit: 'ml' };
+    case 'oz': return { amount: Math.round(amount * mlPerOz), unit: 'ml' };
+    case 'tbsp': return { amount: Math.round(amount * 15), unit: 'ml' };
+    case 'tsp': return { amount: Math.round(amount * 5), unit: 'ml' };
+    default: return { amount, unit };
+  }
+};
 
 export default function DetoxWatersPage() {
   const { 
@@ -32,11 +66,94 @@ export default function DetoxWatersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [selectedWater, setSelectedWater] = useState<DetoxRecipe | null>(null);
+  
+  // RecipeKit state
+  const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
+  const [showKit, setShowKit] = useState(false);
+  const [servingsById, setServingsById] = useState<Record<string, number>>({});
+  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
+
+  // Convert infused waters to RecipeKit format
+  const waterRecipesWithMeasurements = useMemo(() => {
+    return infusedWaters.map(water => ({
+      ...water,
+      recipe: {
+        servings: 1,
+        measurements: water.ingredients.map((ing, index) => {
+          // Parse ingredients into measured format
+          const parts = ing.split(' ');
+          if (parts.length >= 2 && !isNaN(parseFloat(parts[0]))) {
+            const amount = parts[0];
+            const unit = parts[1];
+            const item = parts.slice(2).join(' ');
+            return m(amount, unit, item);
+          }
+          return m('1', 'item', ing);
+        }),
+        directions: [
+          `Prepare ingredients: ${water.ingredients.join(', ')}`,
+          `Add to ${water.containerType || 'large pitcher'}`,
+          `Infuse for ${water.infusionTime}`,
+          `Serve at ${water.temperature}`,
+          ...(water.specialInstructions ? [water.specialInstructions] : [])
+        ]
+      }
+    }));
+  }, []);
+
+  const handleShareWater = async (water: any, servingsOverride?: number) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const servings = servingsOverride ?? servingsById[water.id] ?? (water.recipe?.servings || 1);
+    const preview = water.ingredients.slice(0, 4).join(' • ');
+    const text = `${water.name} • ${water.waterType} • ${water.flavorProfile}\n${preview}${water.ingredients.length > 4 ? ` …plus ${water.ingredients.length - 4} more` : ''}`;
+    const shareData = { title: water.name, text, url };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${water.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${water.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const openRecipeModal = (recipe: any) => {
+    setSelectedRecipe(recipe);
+    setShowKit(true);
+  };
+
+  const handleCompleteRecipe = () => {
+    if (selectedRecipe) {
+      const drinkData = {
+        id: selectedRecipe.id,
+        name: selectedRecipe.name,
+        category: 'detoxes' as const,
+        description: `${selectedRecipe.waterType || ''} • ${selectedRecipe.flavorProfile || ''}`,
+        ingredients: selectedRecipe.ingredients,
+        nutrition: selectedRecipe.nutrition,
+        difficulty: selectedRecipe.difficulty,
+        prepTime: selectedRecipe.prepTime,
+        rating: selectedRecipe.rating,
+        bestTime: selectedRecipe.bestTime,
+        tags: selectedRecipe.benefits
+      };
+      addToRecentlyViewed(drinkData);
+      incrementDrinksMade();
+      addPoints(15);
+    }
+    setShowKit(false);
+    setSelectedRecipe(null);
+  };
 
   const getFilteredWaters = () => {
-    let filtered = infusedWaters.filter(water => {
+    let filtered = waterRecipesWithMeasurements.filter(water => {
       const matchesSearch = water.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            water.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType = !selectedWaterType || water.waterType?.toLowerCase().includes(selectedWaterType.toLowerCase());
@@ -58,33 +175,7 @@ export default function DetoxWatersPage() {
   };
 
   const filteredWaters = getFilteredWaters();
-  const featuredWaters = infusedWaters.filter(water => water.featured);
-
-  const handleMakeWater = (water: DetoxRecipe) => {
-    setSelectedWater(water);
-    setShowModal(true);
-  };
-
-  const handleCompleteWater = () => {
-    if (selectedWater) {
-      addToRecentlyViewed({
-        id: selectedWater.id,
-        name: selectedWater.name,
-        category: 'detoxes',
-        description: selectedWater.description,
-        ingredients: selectedWater.ingredients,
-        nutrition: selectedWater.nutrition,
-        difficulty: selectedWater.difficulty,
-        prepTime: selectedWater.prepTime,
-        rating: selectedWater.rating,
-        bestTime: selectedWater.bestTime
-      });
-      incrementDrinksMade();
-      addPoints(15);
-    }
-    setShowModal(false);
-    setSelectedWater(null);
-  };
+  const featuredWaters = waterRecipesWithMeasurements.filter(water => water.featured);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-white to-blue-50">
@@ -105,73 +196,24 @@ export default function DetoxWatersPage() {
         </div>
       )}
 
-      {/* Make Water Modal */}
-      {showModal && selectedWater && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-lg max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-start mb-4">
-              <h2 className="text-2xl font-bold">{selectedWater.name}</h2>
-              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold mb-2">Ingredients:</h3>
-                <ul className="space-y-2">
-                  {selectedWater.ingredients.map((ing, idx) => (
-                    <li key={idx} className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-cyan-600" />
-                      <span>{ing}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h3 className="font-semibold mb-2">Benefits:</h3>
-                <ul className="text-sm text-gray-700 space-y-1">
-                  {selectedWater.benefits.map((benefit, idx) => (
-                    <li key={idx}>• {benefit}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className="bg-cyan-50 p-3 rounded-lg">
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span className="text-gray-600">Infusion Time:</span>
-                    <div className="font-medium">{selectedWater.infusionTime}</div>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Temperature:</span>
-                    <div className="font-medium">{selectedWater.temperature}</div>
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 p-3 bg-blue-100 rounded-lg">
-                <div className="text-center">
-                  <div className="font-bold text-cyan-600">{selectedWater.nutrition.calories}</div>
-                  <div className="text-xs text-gray-600">Calories</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-blue-600">{selectedWater.nutrition.sugar}g</div>
-                  <div className="text-xs text-gray-600">Sugar</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-bold text-green-600">{selectedWater.prepTime}min</div>
-                  <div className="text-xs text-gray-600">Prep</div>
-                </div>
-              </div>
-              <div className="flex gap-4 pt-4">
-                <Button 
-                  className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600"
-                  onClick={handleCompleteWater}
-                >
-                  Complete Water (+15 XP)
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* RecipeKit Modal */}
+      {selectedRecipe && (
+        <RecipeKit
+          open={showKit}
+          onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
+          accent="cyan"
+          pointsReward={15}
+          onComplete={handleCompleteRecipe}
+          item={{
+            id: selectedRecipe.id,
+            name: selectedRecipe.name,
+            prepTime: selectedRecipe.prepTime,
+            directions: selectedRecipe.recipe?.directions || [],
+            measurements: selectedRecipe.recipe?.measurements || [],
+            baseNutrition: selectedRecipe.nutrition || {},
+            defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+          }}
+        />
       )}
 
       {/* Header */}
@@ -210,7 +252,7 @@ export default function DetoxWatersPage() {
               </div>
               <Button size="sm" className="bg-cyan-600 hover:bg-cyan-700">
                 <Camera className="h-4 w-4 mr-2" />
-                Share Recipe
+                Share Page
               </Button>
             </div>
           </div>
@@ -224,46 +266,21 @@ export default function DetoxWatersPage() {
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <Link href="/drinks/smoothies">
-                <Button variant="outline" className="w-full justify-start hover:bg-green-50 hover:border-green-300">
-                  <Apple className="h-4 w-4 mr-2 text-green-600" />
-                  <div className="text-left flex-1">
-                    <div className="font-medium text-sm">Smoothies</div>
-                    <div className="text-xs text-gray-500">Nutrient-packed blends</div>
-                  </div>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
-                </Button>
-              </Link>
-              <Link href="/drinks/protein-shakes">
-                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
-                  <FlaskConical className="h-4 w-4 mr-2 text-blue-600" />
-                  <div className="text-left flex-1">
-                    <div className="font-medium text-sm">Protein Shakes</div>
-                    <div className="text-xs text-gray-500">Fitness-focused nutrition</div>
-                  </div>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
-                </Button>
-              </Link>
-              <Link href="/drinks/detoxes">
-                <Button variant="outline" className="w-full justify-start hover:bg-teal-50 hover:border-teal-300 border-teal-400">
-                  <Leaf className="h-4 w-4 mr-2 text-teal-600" />
-                  <div className="text-left flex-1">
-                    <div className="font-medium text-sm">Detoxes Hub</div>
-                    <div className="text-xs text-gray-500">Cleanse & wellness</div>
-                  </div>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
-                </Button>
-              </Link>
-              <Link href="/drinks/potent-potables">
-                <Button variant="outline" className="w-full justify-start hover:bg-purple-50 hover:border-purple-300">
-                  <GlassWater className="h-4 w-4 mr-2 text-purple-600" />
-                  <div className="text-left flex-1">
-                    <div className="font-medium text-sm">Potent Potables</div>
-                    <div className="text-xs text-gray-500">Cocktails & beverages</div>
-                  </div>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
-                </Button>
-              </Link>
+              {otherDrinkHubs.map((hub) => {
+                const Icon = hub.icon;
+                return (
+                  <Link key={hub.id} href={hub.route}>
+                    <Button variant="outline" className="w-full justify-start hover:bg-cyan-50 hover:border-cyan-300">
+                      <Icon className="h-4 w-4 mr-2 text-cyan-600" />
+                      <div className="text-left flex-1">
+                        <div className="font-medium text-sm">{hub.name}</div>
+                        <div className="text-xs text-gray-500">{hub.description}</div>
+                      </div>
+                      <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                    </Button>
+                  </Link>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -319,7 +336,7 @@ export default function DetoxWatersPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">10</div>
+              <div className="text-2xl font-bold text-purple-600">{infusedWaters.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -406,301 +423,315 @@ export default function DetoxWatersPage() {
 
             {/* Water Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredWaters.map(water => (
-                <Card key={water.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg mb-1">{water.name}</CardTitle>
-                        <p className="text-sm text-gray-600 mb-2">{water.description}</p>
+              {filteredWaters.map(water => {
+                const useMetric = !!metricFlags[water.id];
+                const servings = servingsById[water.id] ?? (water.recipe?.servings || 1);
+
+                return (
+                  <Card key={water.id} className="hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <CardTitle className="text-lg mb-1">{water.name}</CardTitle>
+                          <p className="text-sm text-gray-600 mb-2">{water.description}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => addToFavorites({
+                            id: water.id,
+                            name: water.name,
+                            category: 'detoxes',
+                            description: water.description,
+                            ingredients: water.ingredients,
+                            nutrition: water.nutrition,
+                            difficulty: water.difficulty,
+                            prepTime: water.prepTime,
+                            rating: water.rating,
+                            bestTime: water.bestTime
+                          })}
+                          className="text-gray-400 hover:text-red-500"
+                        >
+                          <Heart className={`h-4 w-4 ${isFavorite(water.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                        </Button>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => addToFavorites({
-                          id: water.id,
-                          name: water.name,
-                          category: 'detoxes',
-                          description: water.description,
-                          ingredients: water.ingredients,
-                          nutrition: water.nutrition,
-                          difficulty: water.difficulty,
-                          prepTime: water.prepTime,
-                          rating: water.rating,
-                          bestTime: water.bestTime
-                        })}
-                        className="text-gray-400 hover:text-red-500"
-                      >
-                        <Heart className={`h-4 w-4 ${isFavorite(water.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                      </Button>
-                    </div>
+                      
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge className="bg-cyan-100 text-cyan-800">{water.waterType}</Badge>
+                        <Badge variant="outline">{water.flavorProfile}</Badge>
+                        {water.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                      </div>
+                    </CardHeader>
                     
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge className="bg-cyan-100 text-cyan-800">{water.waterType}</Badge>
-                      <Badge variant="outline">{water.flavorProfile}</Badge>
-                      {water.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent>
-                    <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
-                      <div>
-                        <div className="text-xl font-bold text-cyan-600">{water.nutrition.calories}</div>
-                        <div className="text-gray-500">Cal</div>
-                      </div>
-                      <div>
-                        <div className="text-xl font-bold text-blue-600">{water.nutrition.sugar}g</div>
-                        <div className="text-gray-500">Sugar</div>
-                      </div>
-                      <div>
-                        <div className="text-xl font-bold text-green-600">{water.prepTime}m</div>
-                        <div className="text-gray-500">Prep</div>
-                      </div>
-                    </div>
-
-                    <div className="mb-4 bg-cyan-50 p-3 rounded-lg">
-                      <div className="grid grid-cols-2 gap-2 text-xs">
+                    <CardContent>
+                      <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
-                          <span className="text-gray-600">Infusion:</span>
-                          <span className="font-medium ml-1">{water.infusionTime}</span>
+                          <div className="font-bold text-cyan-600">{water.nutrition.calories}</div>
+                          <div className="text-gray-500">Cal</div>
                         </div>
                         <div>
-                          <span className="text-gray-600">Temp:</span>
-                          <span className="font-medium ml-1">{water.temperature}</span>
+                          <div className="font-bold text-blue-600">{water.nutrition.sugar}g</div>
+                          <div className="text-gray-500">Sugar</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-green-600">{water.prepTime}m</div>
+                          <div className="text-gray-500">Prep</div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="mb-4">
-                      <h4 className="font-medium text-sm text-gray-700 mb-2">Benefits:</h4>
-                      <div className="flex flex-wrap gap-1">
+                      {/* RATING & DIFFICULTY - IMMEDIATELY ABOVE RECIPE CARD */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-1">
+                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                          <span className="font-medium">{water.rating}</span>
+                          <span className="text-gray-500 text-sm">({water.reviews})</span>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {water.difficulty}
+                        </Badge>
+                      </div>
+
+                      {/* RecipeKit Preview */}
+                      {water.recipe?.measurements && (
+                        <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-sm font-semibold text-gray-900">
+                              Recipe (serves {servings})
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                className="px-2 py-1 border rounded text-sm"
+                                onClick={() =>
+                                  setServingsById(prev => ({ ...prev, [water.id]: clamp((prev[water.id] ?? (water.recipe?.servings || 1)) - 1) }))
+                                }
+                                aria-label="decrease servings"
+                              >
+                                −
+                              </button>
+                              <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                              <button
+                                className="px-2 py-1 border rounded text-sm"
+                                onClick={() =>
+                                  setServingsById(prev => ({ ...prev, [water.id]: clamp((prev[water.id] ?? (water.recipe?.servings || 1)) + 1) }))
+                                }
+                                aria-label="increase servings"
+                              >
+                                +
+                              </button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setServingsById(prev => {
+                                  const next = { ...prev };
+                                  next[water.id] = water.recipe?.servings || 1;
+                                  return next;
+                                })}
+                                title="Reset servings"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
+                              </Button>
+                            </div>
+                          </div>
+
+                          <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                            {water.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                              const isNum = typeof ing.amount === 'number';
+                              const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount;
+                              const show = useMetric && isNum
+                                ? toMetric(ing.unit, Number((typeof ing.amount === 'number' ? (ing.amount as number) : parseFloat(String(ing.amount))) * servings))
+                                : { amount: scaledDisplay, unit: ing.unit };
+
+                              return (
+                                <li key={i} className="flex items-start gap-2">
+                                  <Check className="h-4 w-4 text-cyan-600 mt-0.5" />
+                                  <span>
+                                    <span className="text-cyan-700 font-semibold">
+                                      {show.amount} {show.unit}
+                                    </span>{" "}
+                                    {ing.item}
+                                    {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                            {water.recipe.measurements.length > 4 && (
+                              <li className="text-xs text-gray-600">
+                                …plus {water.recipe.measurements.length - 4} more •{" "}
+                                <button
+                                  type="button"
+                                  onClick={() => openRecipeModal(water)}
+                                  className="underline underline-offset-2"
+                                >
+                                  Show more
+                                </button>
+                              </li>
+                            )}
+                          </ul>
+
+                          <div className="flex gap-2 mt-3">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                const lines = water.ingredients.map((ing: string) => `- ${ing}`);
+                                const txt = `${water.name} (serves ${servings})\n${lines.join('\n')}`;
+                                try {
+                                  await navigator.clipboard.writeText(txt);
+                                  alert('Recipe copied!');
+                                } catch {
+                                  alert('Unable to copy on this device.');
+                                }
+                              }}
+                            >
+                              <Clipboard className="w-4 h-4 mr-1" /> Copy
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleShareWater(water, servings)}>
+                              <Share2 className="w-4 h-4 mr-1" /> Share
+                            </Button>
+                            {/* Metric Button */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setMetricFlags((prev) => ({ ...prev, [water.id]: !prev[water.id] }))
+                              }
+                            >
+                              {useMetric ? 'US' : 'Metric'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Infusion Info */}
+                      <div className="mb-4 bg-cyan-50 p-3 rounded-lg">
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <span className="text-gray-600">Infusion:</span>
+                            <span className="font-medium ml-1">{water.infusionTime}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Temp:</span>
+                            <span className="font-medium ml-1">{water.temperature}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Duration and Time */}
+                      <div className="space-y-2 mb-3 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Best Time:</span>
+                          <span className="font-medium">{water.bestTime}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Duration:</span>
+                          <span className="font-medium">{water.duration}</span>
+                        </div>
+                      </div>
+
+                      {/* Benefits Tags */}
+                      <div className="flex flex-wrap gap-1 mb-4">
                         {water.benefits.slice(0, 3).map((benefit, index) => (
-                          <Badge key={index} variant="outline" className="text-xs">
+                          <Badge key={index} variant="secondary" className="text-xs bg-cyan-100 text-cyan-800 hover:bg-cyan-200">
                             {benefit}
                           </Badge>
                         ))}
                       </div>
-                    </div>
 
-                    <div className="space-y-2 mb-4 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Best Time:</span>
-                        <span className="font-medium">{water.bestTime}</span>
+                      {/* Make Water Button */}
+                      <div className="mt-3">
+                        <Button 
+                          className="w-full bg-cyan-600 hover:bg-cyan-700"
+                          onClick={() => openRecipeModal(water)}
+                        >
+                          <Waves className="h-4 w-4 mr-2" />
+                          Infuse Water (+15 XP)
+                        </Button>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Duration:</span>
-                        <span className="font-medium">{water.duration}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="font-medium">{water.rating}</span>
-                        <span className="text-gray-500 text-sm">({water.reviews})</span>
-                      </div>
-                      <Badge variant="outline" className="text-xs">
-                        {water.difficulty}
-                      </Badge>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button 
-                        className="flex-1 bg-cyan-600 hover:bg-cyan-700"
-                        onClick={() => handleMakeWater(water)}
-                      >
-                        <Waves className="h-4 w-4 mr-2" />
-                        Make Water
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <Share2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
 
         {activeTab === 'water-types' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {waterTypes.map(type => {
-              const Icon = type.icon;
-              const typeWaters = infusedWaters.filter(water => 
-                water.waterType?.toLowerCase().includes(type.name.toLowerCase())
-              );
-              
-              return (
-                <Card key={type.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader>
-                    <div className="text-center">
-                      <Icon className={`h-8 w-8 mx-auto mb-2 ${type.color}`} />
-                      <CardTitle className="text-lg">{type.name}</CardTitle>
-                      <p className="text-sm text-gray-600">{type.description}</p>
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent>
-                    <div className="space-y-3 mb-4">
-                      <div>
-                        <h4 className="font-semibold text-sm mb-2">Benefits:</h4>
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Water Types & Benefits</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {waterTypes.map((type, index) => (
+                    <Card key={index} className="border-l-4 border-l-cyan-500">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <type.icon className="h-5 w-5 text-cyan-600" />
+                          <h3 className="font-semibold">{type.name}</h3>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-3">{type.description}</p>
                         <div className="flex flex-wrap gap-1">
-                          {type.benefits.map((benefit, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
+                          {type.benefits.map((benefit, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">
                               {benefit}
                             </Badge>
                           ))}
                         </div>
-                      </div>
-                      
-                      <div className="bg-blue-50 p-3 rounded-lg">
-                        <div className="text-sm font-medium text-gray-700 mb-1">Best For:</div>
-                        <div className="text-sm text-blue-800">{type.bestFor}</div>
-                      </div>
-                    </div>
-                    
-                    <div className="text-center">
-                      <div className={`text-2xl font-bold ${type.color} mb-1`}>
-                        {typeWaters.length}
-                      </div>
-                      <div className="text-sm text-gray-600 mb-3">Available Recipes</div>
-                      <Button 
-                        className="w-full"
-                        onClick={() => {
-                          setSelectedWaterType(type.name.split(' ')[0]);
-                          setActiveTab('browse');
-                        }}
-                      >
-                        Explore {type.name}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
         {activeTab === 'featured' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {featuredWaters.map(water => (
-              <Card key={water.id} className="overflow-hidden hover:shadow-xl transition-shadow">
-                <div className="relative bg-gradient-to-br from-cyan-100 to-blue-100 h-48 flex items-center justify-center">
-                  <Waves className="h-24 w-24 text-cyan-600 opacity-20" />
-                  <div className="absolute top-4 left-4">
-                    <Badge className="bg-cyan-500 text-white">Featured Water</Badge>
-                  </div>
-                  <div className="absolute top-4 right-4">
-                    <Badge className="bg-white text-cyan-800">{water.nutrition.calories} Cal</Badge>
-                  </div>
-                </div>
-                
-                <CardHeader>
-                  <CardTitle className="text-xl">{water.name}</CardTitle>
-                  <p className="text-gray-600">{water.description}</p>
-                  
-                  <div className="flex items-center gap-2 mt-2">
-                    <Badge className="bg-cyan-100 text-cyan-800">{water.waterType}</Badge>
-                    <Badge variant="outline">{water.flavorProfile}</Badge>
-                    <div className="flex items-center gap-1 ml-auto">
-                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium">{water.rating}</span>
-                      <span className="text-gray-500 text-sm">({water.reviews})</span>
-                    </div>
-                  </div>
-                </CardHeader>
-                
-                <CardContent>
-                  <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-cyan-50 rounded-lg">
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-cyan-600">{water.nutrition.calories}</div>
-                      <div className="text-xs text-gray-600">Calories</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-blue-600">{water.nutrition.sugar}g</div>
-                      <div className="text-xs text-gray-600">Sugar</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-green-600">{water.prepTime}m</div>
-                      <div className="text-xs text-gray-600">Prep Time</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-purple-600">${water.estimatedCost}</div>
-                      <div className="text-xs text-gray-600">Cost</div>
-                    </div>
-                  </div>
-
-                  <div className="mb-4 bg-blue-50 p-4 rounded-lg">
-                    <h4 className="font-medium text-gray-900 mb-2">Infusion Details:</h4>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <span className="text-gray-600">Infusion Time:</span>
-                        <div className="font-semibold text-cyan-600">{water.infusionTime}</div>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Temperature:</span>
-                        <div className="font-semibold text-cyan-600">{water.temperature}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mb-4">
-                    <h4 className="font-medium text-gray-900 mb-2">Health Benefits:</h4>
-                    <div className="flex flex-wrap gap-1">
-                      {water.benefits.map((benefit, index) => (
-                        <Badge key={index} className="bg-cyan-100 text-cyan-800 text-xs">
-                          {benefit}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mb-4 bg-gray-50 p-4 rounded-lg">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-sm font-medium text-gray-700 mb-1">Best Time:</div>
-                        <div className="text-cyan-600 font-semibold">{water.bestTime}</div>
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium text-gray-700 mb-1">Duration:</div>
-                        <div className="text-blue-600 font-semibold">{water.duration}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mb-6">
-                    <h4 className="font-medium text-gray-900 mb-2">Ingredients:</h4>
-                    <div className="text-sm text-gray-700 space-y-1">
-                      {water.ingredients.map((ingredient, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <Leaf className="h-3 w-3 text-cyan-500" />
-                          {ingredient}
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Featured Infused Waters</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {featuredWaters.map(water => (
+                    <Card key={water.id} className="border-2 border-cyan-300">
+                      <CardHeader>
+                        <div className="flex items-start justify-between">
+                          <CardTitle className="text-lg">{water.name}</CardTitle>
+                          <Badge className="bg-cyan-100 text-cyan-800">Featured</Badge>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <Button 
-                      className="flex-1 bg-cyan-600 hover:bg-cyan-700"
-                      onClick={() => handleMakeWater(water)}
-                    >
-                      <Waves className="h-4 w-4 mr-2" />
-                      Infuse This Water
-                    </Button>
-                    <Button variant="outline">
-                      <Share2 className="h-4 w-4 mr-2" />
-                      Share
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                        <p className="text-sm text-gray-600">{water.description}</p>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between text-sm">
+                            <span>Rating:</span>
+                            <span className="font-semibold">{water.rating} ⭐</span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span>Prep Time:</span>
+                            <span className="font-semibold">{water.prepTime} mins</span>
+                          </div>
+                          <Button 
+                            className="w-full bg-cyan-600 hover:bg-cyan-700"
+                            onClick={() => openRecipeModal(water)}
+                          >
+                            <Waves className="h-4 w-4 mr-2" />
+                            View Recipe
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
-        {/* Your Progress (in-content) */}
+        {/* Your Progress */}
         <Card className="bg-gradient-to-r from-cyan-50 to-blue-50 border-cyan-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
