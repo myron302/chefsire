@@ -76,7 +76,7 @@ const proteinSubcategories = [
   },
 ]
 
-// Casein protein shake data
+// Casein protein shake data - Expanded to 9 recipes
 const caseinShakes = [
   {
     id: "casein-1",
@@ -117,7 +117,10 @@ const caseinShakes = [
         m(1, 'cup', 'cold milk or water'),
         m(1, 'tsp', 'natural vanilla extract'),
         m(1, 'pinch', 'sea salt'),
-        m(4, 'ice cubes', 'ice', 'optional for thicker shake')
+        m(4, 'ice cubes', 'ice', 'optional for thicker shake'),
+        m(1, 'tbsp', 'Greek yogurt', 'for creaminess'),
+        m(0.5, 'tsp', 'cinnamon', 'optional'),
+        m(1, 'tsp', 'honey', 'natural sweetener')
       ],
       directions: [
         'Add liquid first to prevent clumping',
@@ -165,7 +168,9 @@ const caseinShakes = [
         m(1, 'cup', 'almond milk'),
         m(1, 'tbsp', 'cocoa powder'),
         m(1, 'tsp', 'natural sweetener'),
-        m(1, 'pinch', 'sea salt')
+        m(1, 'pinch', 'sea salt'),
+        m(1, 'tsp', 'MCT oil', 'for sustained energy'),
+        m(0.25, 'tsp', 'vanilla extract')
       ],
       directions: [
         'Mix casein with small amount of liquid first to create paste',
@@ -212,7 +217,9 @@ const caseinShakes = [
         m(1, 'cup', 'milk or water'),
         m(0.5, 'cup', 'frozen strawberries'),
         m(1, 'tsp', 'honey', 'optional'),
-        m(1, 'pinch', 'vanilla extract')
+        m(1, 'pinch', 'vanilla extract'),
+        m(1, 'tbsp', 'chia seeds', 'for fiber'),
+        m(0.25, 'cup', 'Greek yogurt')
       ],
       directions: [
         'Blend casein with liquid until smooth',
@@ -259,7 +266,9 @@ const caseinShakes = [
         m(1, 'cup', 'milk'),
         m(1, 'tbsp', 'Greek yogurt'),
         m(1, 'tsp', 'vanilla extract'),
-        m(1, 'pinch', 'cinnamon')
+        m(1, 'pinch', 'cinnamon'),
+        m(1, 'tbsp', 'almond butter', 'for richness'),
+        m(1, 'tsp', 'chocolate chips', 'optional')
       ],
       directions: [
         'Combine all ingredients in blender',
@@ -306,7 +315,9 @@ const caseinShakes = [
         m(1, 'cup', 'coconut water'),
         m(0.5, 'banana', 'ripe'),
         m(1, 'tsp', 'honey', 'optional'),
-        m(1, 'pinch', 'nutmeg')
+        m(1, 'pinch', 'nutmeg'),
+        m(1, 'tbsp', 'flax seeds', 'for omega-3'),
+        m(0.25, 'tsp', 'cinnamon')
       ],
       directions: [
         'Blend casein with coconut water',
@@ -353,7 +364,9 @@ const caseinShakes = [
         m(1, 'cup', 'cold brew coffee'),
         m(2, 'tbsp', 'cream or milk alternative'),
         m(1, 'tsp', 'cocoa powder'),
-        m(1, 'pinch', 'cinnamon')
+        m(1, 'pinch', 'cinnamon'),
+        m(1, 'tsp', 'maple syrup', 'optional sweetener'),
+        m(0.25, 'tsp', 'vanilla extract')
       ],
       directions: [
         'Brew coffee and let cool completely',
@@ -362,6 +375,153 @@ const caseinShakes = [
       ]
     }
   },
+  {
+    id: "casein-7",
+    name: "Blueberry Serenity",
+    description: "Antioxidant-rich blueberry casein for overnight repair",
+    caseinType: "Micellar Casein",
+    flavor: "Blueberry Vanilla",
+    servingSize: "34g",
+    nutrition: {
+      calories: 145,
+      protein: 26,
+      carbs: 7,
+      fat: 1.2,
+      calcium: 335,
+      antioxidants: 1200,
+      vitamin_c: 15,
+    },
+    ingredients: ["Micellar Casein", "Blueberry Powder", "Vanilla Extract", "Acerola Cherry", "Probiotics"],
+    benefits: ["Antioxidant Boost", "Immune Support", "Muscle Repair", "Digestive Health"],
+    releaseTime: "7-8 hours",
+    absorption: "Slow",
+    difficulty: "Easy",
+    prepTime: 3,
+    rating: 4.5,
+    reviews: 789,
+    trending: true,
+    featured: false,
+    price: 47.99,
+    bestTime: "Before Bed",
+    fitnessGoal: "Recovery",
+    mixability: "Excellent",
+    texture: "Smooth",
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (34g)', 'blueberry casein'),
+        m(1, 'cup', 'almond milk'),
+        m(0.5, 'cup', 'frozen blueberries'),
+        m(1, 'tsp', 'vanilla extract'),
+        m(1, 'tbsp', 'Greek yogurt'),
+        m(1, 'tsp', 'chia seeds'),
+        m(1, 'pinch', 'lemon zest')
+      ],
+      directions: [
+        'Blend casein with almond milk until smooth',
+        'Add frozen blueberries and vanilla',
+        'Blend until vibrant purple and creamy'
+      ]
+    }
+  },
+  {
+    id: "casein-8",
+    name: "Cinnamon Swirl Delight",
+    description: "Warm cinnamon flavor for cozy evenings",
+    caseinType: "Calcium Caseinate",
+    flavor: "Cinnamon Roll",
+    servingSize: "31g",
+    nutrition: {
+      calories: 128,
+      protein: 24,
+      carbs: 5,
+      fat: 1.3,
+      calcium: 310,
+      magnesium: 45,
+      manganese: 0.8,
+    },
+    ingredients: ["Calcium Caseinate", "Cinnamon", "Natural Sweeteners", "Vanilla", "MCT Powder"],
+    benefits: ["Blood Sugar Support", "Anti-Inflammatory", "Satiety", "Warm Comfort"],
+    releaseTime: "6-7 hours",
+    absorption: "Slow",
+    difficulty: "Easy",
+    prepTime: 2,
+    rating: 4.4,
+    reviews: 523,
+    trending: false,
+    featured: false,
+    price: 41.99,
+    bestTime: "Evening",
+    fitnessGoal: "Weight Management",
+    mixability: "Good",
+    texture: "Creamy",
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (31g)', 'cinnamon casein'),
+        m(1, 'cup', 'oat milk'),
+        m(0.5, 'tsp', 'cinnamon'),
+        m(1, 'tsp', 'honey'),
+        m(1, 'pinch', 'nutmeg'),
+        m(1, 'tbsp', 'pecans', 'optional crunch'),
+        m(0.25, 'tsp', 'vanilla extract')
+      ],
+      directions: [
+        'Combine all ingredients in blender',
+        'Blend until warm cinnamon aroma develops',
+        'Enjoy as comforting evening treat'
+      ]
+    }
+  },
+  {
+    id: "casein-9",
+    name: "Peanut Butter Dream",
+    description: "Creamy peanut butter casein for sustained nourishment",
+    caseinType: "Micellar Casein",
+    flavor: "Peanut Butter Cup",
+    servingSize: "36g",
+    nutrition: {
+      calories: 165,
+      protein: 28,
+      carbs: 6,
+      fat: 3,
+      calcium: 345,
+      healthy_fats: 2.5,
+      fiber: 2,
+    },
+    ingredients: ["Micellar Casein", "Peanut Flour", "Cocoa", "Natural Flavors", "Digestive Enzymes"],
+    benefits: ["Sustained Energy", "Heart Health", "Muscle Preservation", "Satiety"],
+    releaseTime: "8+ hours",
+    absorption: "Very Slow",
+    difficulty: "Easy",
+    prepTime: 3,
+    rating: 4.6,
+    reviews: 934,
+    trending: true,
+    featured: true,
+    price: 49.99,
+    bestTime: "Before Bed",
+    fitnessGoal: "Muscle Building",
+    mixability: "Good",
+    texture: "Rich",
+    recipe: {
+      servings: 1,
+      measurements: [
+        m(1, 'scoop (36g)', 'peanut butter casein'),
+        m(1, 'cup', 'milk'),
+        m(1, 'tbsp', 'natural peanut butter'),
+        m(1, 'tsp', 'cocoa powder'),
+        m(1, 'tsp', 'maple syrup'),
+        m(1, 'pinch', 'sea salt'),
+        m(1, 'tbsp', 'oats', 'for thickness')
+      ],
+      directions: [
+        'Blend casein with milk until smooth',
+        'Add peanut butter and cocoa',
+        'Blend until rich and creamy like peanut butter cup'
+      ]
+    }
+  }
 ]
 
 const caseinTypes = [
@@ -523,48 +683,6 @@ export default function CaseinProteinPage() {
     }
   };
 
-  const handleCopyRecipe = (recipe: any) => {
-    const recipeText = `
-${recipe.name}
-${recipe.flavor}
-
-Ingredients:
-${recipe.recipe.measurements.map((m: Measured) => `• ${m.amount} ${m.unit} ${m.item}${m.note ? ` (${m.note})` : ''}`).join('\n')}
-
-Directions:
-${recipe.recipe.directions.map((d: string, i: number) => `${i + 1}. ${d}`).join('\n')}
-
-Nutrition: ${recipe.nutrition.protein}g protein, ${recipe.nutrition.calories} calories, ${recipe.releaseTime} release
-    `.trim();
-
-    navigator.clipboard.writeText(recipeText);
-    alert('Recipe copied to clipboard!');
-  };
-
-  const handleShareRecipe = async (recipe: any) => {
-    const shareData = {
-      title: recipe.name,
-      text: `${recipe.flavor} - ${recipe.nutrition.protein}g protein, ${recipe.releaseTime} release time`,
-      url: typeof window !== 'undefined' ? window.location.href + `#${recipe.id}` : ''
-    };
-    
-    try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else {
-        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
-        alert('Recipe link copied to clipboard!');
-      }
-    } catch {
-      await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
-      alert('Recipe link copied to clipboard!');
-    }
-  };
-
-  const handleShowMetrics = (recipe: any) => {
-    alert(`Detailed metrics for ${recipe.name}:\n\nProtein: ${recipe.nutrition.protein}g\nCalories: ${recipe.nutrition.calories}\nRelease Time: ${recipe.releaseTime}\nCalcium: ${recipe.nutrition.calcium}mg\nRating: ${recipe.rating}/5 (${recipe.reviews} reviews)`);
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
       {/* Universal Search Modal */}
@@ -706,7 +824,7 @@ Nutrition: ${recipe.nutrition.protein}g protein, ${recipe.nutrition.calories} ca
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-600">6</div>
+              <div className="text-2xl font-bold text-amber-600">9</div>
               <div className="text-sm text-gray-600">Night Formulas</div>
             </CardContent>
           </Card>
@@ -825,13 +943,15 @@ Nutrition: ${recipe.nutrition.protein}g protein, ${recipe.nutrition.calories} ca
                         </Button>
                       </div>
 
-                      <div className="flex items-center gap-2 mb-2">
+                      {/* Tags at top with different colors */}
+                      <div className="flex flex-wrap gap-1 mb-2">
                         <Badge className="bg-purple-100 text-purple-800">{shake.caseinType}</Badge>
                         <Badge variant="outline">{shake.flavor}</Badge>
                         {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        <Badge className="bg-blue-100 text-blue-800">{shake.releaseTime}</Badge>
                       </div>
 
-                      {/* Rating and Difficulty moved above recipe box */}
+                      {/* Rating and Difficulty just above recipe box */}
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-1">
                           <Star className="h-4 w-4 text-yellow-400 fill-current" />
@@ -893,7 +1013,7 @@ Nutrition: ${recipe.nutrition.protein}g protein, ${recipe.nutrition.calories} ca
                         />
                       )}
 
-                      {/* Tags with Night Time color scheme */}
+                      {/* Benefits tags with Night Time color scheme */}
                       <div className="flex flex-wrap gap-1 mb-4">
                         {shake.benefits.map((benefit: string, index: number) => (
                           <Badge key={index} variant="secondary" className="text-xs bg-purple-100 text-purple-800 hover:bg-purple-200">
@@ -1090,12 +1210,15 @@ Nutrition: ${recipe.nutrition.protein}g protein, ${recipe.nutrition.calories} ca
                   <CardTitle className="text-xl">{shake.name}</CardTitle>
                   <p className="text-gray-600">{shake.description}</p>
 
-                  <div className="flex items-center gap-2 mt-2">
+                  {/* Tags at top with different colors */}
+                  <div className="flex flex-wrap gap-1 mt-2">
                     <Badge className="bg-purple-100 text-purple-800">{shake.caseinType}</Badge>
                     <Badge variant="outline">{shake.flavor}</Badge>
+                    <Badge className="bg-blue-100 text-blue-800">{shake.releaseTime}</Badge>
+                    {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                   </div>
 
-                  {/* Rating and Difficulty moved above recipe box */}
+                  {/* Rating and Difficulty just above recipe box */}
                   <div className="flex items-center justify-between mt-3">
                     <div className="flex items-center gap-1">
                       <Star className="h-4 w-4 text-yellow-400 fill-current" />
@@ -1157,7 +1280,7 @@ Nutrition: ${recipe.nutrition.protein}g protein, ${recipe.nutrition.calories} ca
                     />
                   )}
 
-                  {/* Tags with Night Time color scheme */}
+                  {/* Benefits tags with Night Time color scheme */}
                   <div className="flex flex-wrap gap-1 mb-4">
                     {shake.benefits.map((benefit: string, index: number) => (
                       <Badge key={index} variant="secondary" className="text-xs bg-purple-100 text-purple-800 hover:bg-purple-200">
