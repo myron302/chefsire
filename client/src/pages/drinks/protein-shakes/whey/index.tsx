@@ -459,7 +459,55 @@ export default function WheyProteinShakesPage() {
     return filtered;
   }, [searchQuery, selectedGoal, selectedWheyType, sortBy]);
 
-  const featuredShakes = wheyProteinShakes.filter(shake => shake.featured);
+  const featuredShakes = useMemo(() => 
+    wheyProteinShakes.filter(shake => shake.featured), 
+  []);
+
+  // No results state
+  if (filteredShakes.length === 0 && activeTab === 'browse') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center gap-4">
+                <Link href="/drinks/protein-shakes">
+                  <Button variant="ghost" size="sm" className="text-gray-500">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Back to Protein Shakes
+                  </Button>
+                </Link>
+                <div className="h-6 w-px bg-gray-300" />
+                <div className="flex items-center gap-2">
+                  <Dumbbell className="h-6 w-6 text-blue-600" />
+                  <h1 className="text-2xl font-bold text-gray-900">Whey Protein Shakes</h1>
+                  <Badge className="bg-blue-100 text-blue-800">Premium</Badge>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-lg">No shakes found matching your criteria.</p>
+            <Button 
+              variant="outline" 
+              className="mt-4"
+              onClick={() => {
+                setSearchQuery('');
+                setSelectedGoal('');
+                setSelectedWheyType('');
+              }}
+            >
+              Clear Filters
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
