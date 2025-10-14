@@ -56,43 +56,36 @@ const toMetric = (unit: string, amount: number) => {
   }
 };
 
-// Improved ingredient parser that handles fractions and complex units
+// Improved ingredient parser that handles fractions and descriptors properly
 const parseIngredient = (ingredient: string): Measured => {
-  // Handle fractions first
   const fractionMap: Record<string, number> = {
-    '½': 0.5, '⅓': 0.33, '⅔': 0.67, '¼': 0.25, '¾': 0.75, '⅛': 0.125
+    '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
   };
   
-  const parts = ingredient.split(' ');
-  if (parts.length >= 2) {
-    let amountStr = parts[0];
-    let unit = parts[1];
-    let item = parts.slice(2).join(' ');
-    
-    // Handle fractions in amount
-    let amount: number | string = amountStr;
-    if (fractionMap[amountStr]) {
-      amount = fractionMap[amountStr];
-    } else if (!isNaN(parseFloat(amountStr))) {
-      amount = parseFloat(amountStr);
-    }
-    
-    // Handle complex units like "ice cubes", "cream cheese" etc.
-    if (unit === 'low-fat' || unit === 'frozen' || unit === 'unsweetened' || unit === 'natural' || unit === 'vanilla') {
-      unit = parts.slice(1, 3).join(' ');
-      item = parts.slice(3).join(' ');
-    }
-    
-    // Handle "for color" notes
-    if (item.includes('(for color)')) {
-      item = item.replace('(for color)', '').trim();
-      return m(amount, unit, item, 'for color');
-    }
-    
-    return m(amount, unit, item);
+  const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
+  if (parts.length < 2) return m('1', 'item', ingredient);
+
+  let amountStr = parts[0];
+  let amount: number | string = fractionMap[amountStr] ?? 
+    (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
+
+  let unit = parts[1];
+  let item = parts.slice(2).join(' ');
+
+  // If unit looks like a descriptor (not a real unit), fold it back into the item
+  const descriptors = new Set(['low-fat', 'frozen', 'unsweetened', 'natural', 'vanilla', 'plain']);
+  if (descriptors.has(unit)) {
+    item = [unit, item].filter(Boolean).join(' ').trim();
+    unit = 'item'; // generic unit
+  }
+
+  // Handle notes like "(for color)"
+  if (item.includes('(for color)')) {
+    item = item.replace('(for color)', '').trim();
+    return m(amount, unit, item, 'for color');
   }
   
-  return m('1', 'item', ingredient);
+  return m(amount, unit, item);
 };
 
 export default function DessertSmoothiesPage() {
@@ -108,7 +101,7 @@ export default function DessertSmoothiesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDessertType, setSelectedDessertType] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [maxCalories, setMaxCalories] = useState(450);
+  const [maxCalories, setMaxCalories] = useState<number | 'all'>('all'); // FIXED: Now supports 'all'
   const [onlyNaturalSweetener, setOnlyNaturalSweetener] = useState(false);
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'cost' | 'calories'>('rating');
   const [activeTab, setActiveTab] = useState<'browse'|'dessert-types'|'categories'|'featured'>('browse');
@@ -120,21 +113,34 @@ export default function DessertSmoothiesPage() {
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
-  // Convert dessert smoothies to RecipeKit format with PROPER parsing
+  // Convert dessert smoothies to RecipeKit format with ROBUST parsing
   const smoothieRecipesWithMeasurements = useMemo(() => {
-    return dessertSmoothies.map(smoothie => ({
-      ...smoothie,
-      recipe: {
-        servings: 1,
-        measurements: smoothie.ingredients.map(parseIngredient),
-        directions: [
-          'Add all ingredients to blender',
-          'Blend until smooth and creamy',
-          'Pour into glass and serve immediately',
-          'Enjoy your dessert smoothie!'
-        ]
-      }
-    }));
+    return dessertSmoothies.map((s) => {
+      // FIXED: Handle various data shapes for ingredients
+      const rawList = Array.isArray(s.ingredients) ? s.ingredients : [];
+      
+      // Normalize everything to { amount, unit, item, note }
+      const measurements = rawList.map((ing: any) => {
+        if (typeof ing === 'string') return parseIngredient(ing);
+        // If already measured object, keep as-is
+        const { amount = 1, unit = 'item', item = '', note = '' } = ing || {};
+        return { amount, unit, item, note };
+      });
+
+      return {
+        ...s,
+        recipe: {
+          servings: 1,
+          measurements,
+          directions: [
+            'Add all ingredients to blender',
+            'Blend until smooth and creamy',
+            'Pour into glass and serve immediately',
+            'Enjoy your dessert smoothie!'
+          ]
+        }
+      };
+    });
   }, []);
 
   const handleShareSmoothie = async (smoothie: any, servingsOverride?: number) => {
@@ -196,7 +202,8 @@ export default function DessertSmoothiesPage() {
       const matchesCategory = !selectedCategory || (Array.isArray(smoothie.category)
         ? smoothie.category.includes(selectedCategory)
         : smoothie.category === selectedCategory);
-      const matchesCalories = smoothie.nutrition.calories <= maxCalories;
+      // FIXED: Proper calorie filtering with 'all' option
+      const matchesCalories = maxCalories === 'all' || smoothie.nutrition.calories <= maxCalories;
       const matchesSweetener = !onlyNaturalSweetener || smoothie.nutrition.added_sugar === 0;
       return matchesSearch && matchesType && matchesCategory && matchesCalories && matchesSweetener;
     });
@@ -474,17 +481,22 @@ export default function DessertSmoothiesPage() {
                       ))}
                     </select>
                     
+                    {/* FIXED: Calorie filter with 'all' option */}
                     <select 
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                       value={maxCalories}
-                      onChange={(e) => setMaxCalories(Number(e.target.value))}
+                      onChange={(e) => {
+                        const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
+                        setMaxCalories(v);
+                      }}
                     >
-                      <option value={450}>All Calories</option>
+                      <option value="all">All Calories</option>
                       <option value={200}>Under 200 cal</option>
                       <option value={250}>Under 250 cal</option>
                       <option value={300}>Under 300 cal</option>
                       <option value={350}>Under 350 cal</option>
                       <option value={400}>Under 400 cal</option>
+                      <option value={450}>Under 450 cal</option>
                     </select>
                     
                     <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
@@ -580,8 +592,8 @@ export default function DessertSmoothiesPage() {
                         </Badge>
                       </div>
 
-                      {/* RecipeKit Preview */}
-                      {smoothie.recipe?.measurements && (
+                      {/* FIXED: RecipeKit Preview with robust measurements check */}
+                      {Array.isArray(smoothie.recipe?.measurements) && smoothie.recipe.measurements.length > 0 && (
                         <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
                             <div className="text-sm font-semibold text-gray-900">
