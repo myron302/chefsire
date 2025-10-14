@@ -110,6 +110,46 @@ const demoSuggestedUsers = [
   },
 ];
 
+// Demo posts fallback (add more as needed)
+const demoPosts: PostWithUser[] = [
+  {
+    id: "demo-post-1",
+    caption: "Just made this amazing pasta! 🍝",
+    imageUrl: "https://images.unsplash.com/photo-1484723091739-30a097e8f929?w=400&h=400&fit=crop&auto=format",
+    isRecipe: false,
+    likesCount: 42,
+    user: {
+      id: "user-2",
+      displayName: "Alice Chef",
+      avatar: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&auto=format",
+    },
+  },
+  {
+    id: "demo-post-2",
+    caption: "Fresh salad for lunch 🌿",
+    imageUrl: "https://images.unsplash.com/photo-1512568400610-3f3f73e78e14?w=400&h=400&fit=crop&auto=format",
+    isRecipe: true,
+    likesCount: 28,
+    user: {
+      id: "user-3",
+      displayName: "Bob Baker",
+      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&auto=format",
+    },
+  },
+  {
+    id: "demo-post-3",
+    caption: "Baking cookies tonight! 🍪",
+    imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=400&fit=crop&auto=format",
+    isRecipe: true,
+    likesCount: 156,
+    user: {
+      id: "user-4",
+      displayName: "Carol Cook",
+      avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&auto=format",
+    },
+  },
+];
+
 function SimpleRecipeCard({
   post,
   currentUserId,
@@ -143,6 +183,10 @@ function SimpleRecipeCard({
               {post.user?.displayName?.[0] || "U"}
             </AvatarFallback>
           </Avatar>
+          <div>
+            <p className="font-medium">{post.user?.displayName || "Unknown Chef"}</p>
+            <p className="text-sm text-gray-500">Recipe</p>
+          </div>
         </div>
 
         <h3 className="text-xl font-semibold mb-2">
@@ -212,7 +256,8 @@ export default function Feed() {
       ),
   });
 
-  // FORCE demo data to show new images (remove later to use real API data)
+  // Use demo data as fallback
+  const displayPosts = postsError ? demoPosts : posts ?? demoPosts;
   const displaySuggestedUsers = usersError ? demoSuggestedUsers : suggestedUsers ?? demoSuggestedUsers;
   const displayTrendingRecipes = recipesError ? demoTrendingRecipes : trendingRecipes ?? demoTrendingRecipes;
 
@@ -248,14 +293,13 @@ export default function Feed() {
         <div className="space-y-8">
           {postsError && (
             <Card>
-              <CardContent className="p-4 text-sm text-muted-foreground">
-                Couldn’t load your feed from the server. Showing any available
-                posts below.
+              <CardContent className="p-4 text-sm text-destructive">
+                Error loading feed: {postsError.message}. Using demo posts below.
               </CardContent>
             </Card>
           )}
 
-          {(posts ?? []).map((post) =>
+          {displayPosts.map((post) =>
             post.isRecipe ? (
               <SimpleRecipeCard
                 key={post.id}
@@ -265,6 +309,10 @@ export default function Feed() {
             ) : (
               <PostCard key={post.id} post={post} currentUserId={currentUserId} />
             )
+          )}
+
+          {displayPosts.length === 0 && !postsLoading && !postsError && (
+            <p className="text-center text-muted-foreground py-8">No posts yet. Start following chefs!</p>
           )}
         </div>
 
@@ -299,7 +347,7 @@ export default function Feed() {
                       {user.displayName}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {"specialty" in user ? (user as any).specialty : "Cuisine"}
+                      {(user as any).specialty || "Expert Chef"}
                     </p>
                   </div>
                 </div>
