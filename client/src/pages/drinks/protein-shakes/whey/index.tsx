@@ -923,10 +923,10 @@ export default function WheyProteinShakesPage() {
                         </div>
                       )}
 
-                      {/* Tags */}
+                      {/* Tags - CHANGED TO BLUE COLOR */}
                       <div className="flex flex-wrap gap-1 mb-4">
                         {shake.tags.map((tag: string) => (
-                          <Badge key={tag} variant="secondary" className="text-xs">
+                          <Badge key={tag} variant="secondary" className="text-xs bg-blue-100 text-blue-800 hover:bg-blue-200">
                             {tag}
                           </Badge>
                         ))}
@@ -1267,6 +1267,15 @@ export default function WheyProteinShakesPage() {
                         </div>
                       </div>
                     )}
+
+                    {/* Tags - CHANGED TO BLUE COLOR */}
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {shake.tags.map((tag: string) => (
+                        <Badge key={tag} variant="secondary" className="text-xs bg-blue-100 text-blue-800 hover:bg-blue-200">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
 
                     {/* Action button — NO extra Share; full width */}
                     <div className="mt-3">
