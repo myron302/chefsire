@@ -32,7 +32,7 @@ const toNiceFraction = (value: number) => {
   const rounded = Math.round(value * 4) / 4;
   const whole = Math.trunc(rounded);
   const frac = Math.round((rounded - whole) * 4);
-  const fracMap: Record<number, string> = { 0: '', 1: '1/4', 2: '1/2', 3: '3/4' };
+  const fracMap: Record<number, string> = { 0: '', 1: '¼', 2: '½', 3: '¾' };
   const fracStr = fracMap[frac];
   if (!whole && fracStr) return fracStr;
   if (whole && fracStr) return `${whole} ${fracStr}`;
