@@ -8,7 +8,8 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
   Target, Heart, Star, Zap, Flame, Leaf, Sparkles, Moon, Wine,
-  Search, ArrowLeft, ArrowRight, Camera, X, Plus, Dumbbell, Trophy, Activity, Shield
+  Search, ArrowLeft, ArrowRight, Camera, X, Plus, Dumbbell, Trophy, 
+  Activity, Shield, Copy, Share2, BarChart3
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
@@ -361,6 +362,49 @@ export default function BeefProteinPage() {
         alert('Unable to share on this device.');
       }
     }
+  };
+
+  const handleCopyRecipe = (recipe: any) => {
+    const recipeText = `
+${recipe.name}
+${recipe.flavor}
+
+Ingredients:
+${recipe.recipe.measurements.map((m: Measured) => `• ${m.amount} ${m.unit} ${m.item}${m.note ? ` (${m.note})` : ''}`).join('\n')}
+
+Directions:
+${recipe.recipe.directions.map((d: string, i: number) => `${i + 1}. ${d}`).join('\n')}
+
+Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.creatine}g creatine
+    `.trim();
+
+    navigator.clipboard.writeText(recipeText);
+    alert('Recipe copied to clipboard!');
+  };
+
+  const handleShareRecipe = async (recipe: any) => {
+    const shareData = {
+      title: recipe.name,
+      text: `${recipe.flavor} - ${recipe.protein}g protein, ${recipe.creatine}g natural creatine`,
+      url: typeof window !== 'undefined' ? window.location.href + `#${recipe.id}` : ''
+    };
+    
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Recipe link copied to clipboard!');
+      }
+    } catch {
+      await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+      alert('Recipe link copied to clipboard!');
+    }
+  };
+
+  const handleShowMetrics = (recipe: any) => {
+    // This would typically open a detailed metrics modal
+    alert(`Detailed metrics for ${recipe.name}:\n\nProtein: ${recipe.protein}g\nCalories: ${recipe.calories}\nCreatine: ${recipe.creatine}g\nIron: ${recipe.iron}mg\nRating: ${recipe.rating}/5 (${recipe.reviews} reviews)`);
   };
 
   return (
@@ -721,6 +765,37 @@ export default function BeefProteinPage() {
                     {recipe.tags.map((tag: string) => (
                       <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
                     ))}
+                  </div>
+
+                  {/* Action Buttons Row - Copy, Share, Metrics */}
+                  <div className="flex gap-2 mb-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleCopyRecipe(recipe)}
+                    >
+                      <Copy className="h-3 w-3 mr-1" />
+                      Copy
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleShareRecipe(recipe)}
+                    >
+                      <Share2 className="h-3 w-3 mr-1" />
+                      Share
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleShowMetrics(recipe)}
+                    >
+                      <BarChart3 className="h-3 w-3 mr-1" />
+                      Metrics
+                    </Button>
                   </div>
 
                   {/* Full-width CTA — Make Shake */}
