@@ -26,6 +26,15 @@ import {
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
 
+// Safe bestTime validator
+const validateBestTime = (time: any): string => {
+  const validTimes = ['Morning', 'Afternoon', 'Evening', 'Dessert', 'Snack', 'Breakfast', 'Anytime'];
+  if (typeof time === 'string' && validTimes.includes(time)) {
+    return time;
+  }
+  return 'Anytime'; // Default fallback
+};
+
 // scaling helpers
 const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
 const toNiceFraction = (value: number) => {
@@ -101,7 +110,7 @@ export default function DessertSmoothiesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDessertType, setSelectedDessertType] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [maxCalories, setMaxCalories] = useState<number | 'all'>('all'); // FIXED: Now supports 'all'
+  const [maxCalories, setMaxCalories] = useState<number | 'all'>('all');
   const [onlyNaturalSweetener, setOnlyNaturalSweetener] = useState(false);
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'cost' | 'calories'>('rating');
   const [activeTab, setActiveTab] = useState<'browse'|'dessert-types'|'categories'|'featured'>('browse');
@@ -113,10 +122,10 @@ export default function DessertSmoothiesPage() {
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
-  // Convert dessert smoothies to RecipeKit format with ROBUST parsing
+  // Convert dessert smoothies to RecipeKit format with ROBUST parsing and validation
   const smoothieRecipesWithMeasurements = useMemo(() => {
     return dessertSmoothies.map((s) => {
-      // FIXED: Handle various data shapes for ingredients
+      // Handle various data shapes for ingredients
       const rawList = Array.isArray(s.ingredients) ? s.ingredients : [];
       
       // Normalize everything to { amount, unit, item, note }
@@ -127,8 +136,32 @@ export default function DessertSmoothiesPage() {
         return { amount, unit, item, note };
       });
 
+      // Validate all fields with safe fallbacks
       return {
         ...s,
+        id: s.id || `smoothie-${Math.random().toString(36).substr(2, 9)}`,
+        name: s.name || 'Unnamed Smoothie',
+        description: s.description || 'A delicious dessert smoothie',
+        dessertType: s.dessertType || 'Dessert',
+        category: Array.isArray(s.category) ? s.category : ['Dessert'],
+        ingredients: Array.isArray(s.ingredients) ? s.ingredients : [],
+        nutrition: {
+          calories: typeof s.nutrition?.calories === 'number' ? s.nutrition.calories : 300,
+          protein: typeof s.nutrition?.protein === 'number' ? s.nutrition.protein : 10,
+          carbs: typeof s.nutrition?.carbs === 'number' ? s.nutrition.carbs : 40,
+          fat: typeof s.nutrition?.fat === 'number' ? s.nutrition.fat : 8,
+          sugar: typeof s.nutrition?.sugar === 'number' ? s.nutrition.sugar : 25,
+          added_sugar: typeof s.nutrition?.added_sugar === 'number' ? s.nutrition.added_sugar : 10
+        },
+        prepTime: typeof s.prepTime === 'number' ? s.prepTime : 5,
+        difficulty: s.difficulty || 'Easy',
+        rating: typeof s.rating === 'number' ? s.rating : 4.5,
+        reviews: typeof s.reviews === 'number' ? s.reviews : 50,
+        bestTime: validateBestTime(s.bestTime),
+        benefits: Array.isArray(s.benefits) ? s.benefits : ['Delicious', 'Healthy'],
+        trending: !!s.trending,
+        image: s.image || '/images/smoothies/default.jpg',
+        estimatedCost: typeof s.estimatedCost === 'number' ? s.estimatedCost : 3.00,
         recipe: {
           servings: 1,
           measurements,
@@ -202,7 +235,6 @@ export default function DessertSmoothiesPage() {
       const matchesCategory = !selectedCategory || (Array.isArray(smoothie.category)
         ? smoothie.category.includes(selectedCategory)
         : smoothie.category === selectedCategory);
-      // FIXED: Proper calorie filtering with 'all' option
       const matchesCalories = maxCalories === 'all' || smoothie.nutrition.calories <= maxCalories;
       const matchesSweetener = !onlyNaturalSweetener || smoothie.nutrition.added_sugar === 0;
       return matchesSearch && matchesType && matchesCategory && matchesCalories && matchesSweetener;
