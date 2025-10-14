@@ -689,18 +689,6 @@ export default function DetoxTeasPage() {
                         {tea.nutrition.caffeine === 0 && <Badge className="bg-green-100 text-green-800">Caffeine-Free</Badge>}
                         {tea.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
-
-                      {/* MOVED: Difficulty and Rating immediately above recipe card */}
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                          <span className="font-medium">{tea.rating}</span>
-                          <span className="text-gray-500 text-sm">({tea.reviews})</span>
-                        </div>
-                        <Badge variant="outline" className="text-xs">
-                          {tea.difficulty}
-                        </Badge>
-                      </div>
                     </CardHeader>
                     
                     <CardContent>
@@ -717,6 +705,18 @@ export default function DetoxTeasPage() {
                           <div className="font-bold text-orange-600">{tea.prepTime}m</div>
                           <div className="text-gray-500">Prep</div>
                         </div>
+                      </div>
+
+                      {/* RATING & DIFFICULTY - MOVED TO BE IMMEDIATELY ABOVE RECIPE CARD */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-1">
+                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                          <span className="font-medium">{tea.rating}</span>
+                          <span className="text-gray-500 text-sm">({tea.reviews})</span>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {tea.difficulty}
+                        </Badge>
                       </div>
 
                       {/* RecipeKit Preview */}
@@ -816,7 +816,7 @@ export default function DetoxTeasPage() {
                             <Button variant="outline" size="sm" onClick={() => handleShareTea(tea, servings)}>
                               <Share2 className="w-4 h-4 mr-1" /> Share
                             </Button>
-                            {/* ADDED: Metric Button */}
+                            {/* Metric Button */}
                             <Button
                               variant="outline"
                               size="sm"
@@ -844,7 +844,7 @@ export default function DetoxTeasPage() {
                         </div>
                       </div>
 
-                      {/* MOVED: Duration and Time above tags */}
+                      {/* Duration and Time */}
                       <div className="space-y-2 mb-3 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Best Time:</span>
@@ -883,8 +883,81 @@ export default function DetoxTeasPage() {
           </div>
         )}
 
-        {/* Rest of the tabs (tea-types and featured) remain the same */}
-        {/* ... */}
+        {activeTab === 'tea-types' && (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Tea Types & Benefits</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {teaTypes.map((type, index) => (
+                    <Card key={index} className="border-l-4 border-l-amber-500">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <type.icon className="h-5 w-5 text-amber-600" />
+                          <h3 className="font-semibold">{type.name}</h3>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-3">{type.description}</p>
+                        <div className="flex flex-wrap gap-1">
+                          {type.benefits.map((benefit, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">
+                              {benefit}
+                            </Badge>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {activeTab === 'featured' && (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Featured Detox Teas</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {featuredTeas.map(tea => (
+                    <Card key={tea.id} className="border-2 border-amber-300">
+                      <CardHeader>
+                        <div className="flex items-start justify-between">
+                          <CardTitle className="text-lg">{tea.name}</CardTitle>
+                          <Badge className="bg-amber-100 text-amber-800">Featured</Badge>
+                        </div>
+                        <p className="text-sm text-gray-600">{tea.description}</p>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between text-sm">
+                            <span>Rating:</span>
+                            <span className="font-semibold">{tea.rating} ⭐</span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span>Prep Time:</span>
+                            <span className="font-semibold">{tea.prepTime} mins</span>
+                          </div>
+                          <Button 
+                            className="w-full bg-amber-600 hover:bg-amber-700"
+                            onClick={() => openRecipeModal(tea)}
+                          >
+                            <Coffee className="h-4 w-4 mr-2" />
+                            View Recipe
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Your Progress */}
         <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
