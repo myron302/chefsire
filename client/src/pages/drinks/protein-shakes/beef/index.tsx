@@ -481,7 +481,7 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" onClick={handleSharePage}>
+              <Button size="sm" className="bg-red-500 hover:bg-red-600 text-white" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Page
               </Button>
@@ -743,7 +743,7 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
                       <ul className="text-sm leading-6 text-gray-800 space-y-1">
                         {recipe.recipe.measurements.slice(0, 6).map((ing: Measured, i: number) => (
                           <li key={i} className="flex gap-2">
-                            <span className="text-red-700 font-medium min-w-[90px]">
+                            <span className="text-red-500 font-medium min-w-[90px]">
                               {scaleAmount(ing.amount, factor)} {ing.unit}
                             </span>
                             <span className="flex-1">
@@ -757,50 +757,52 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
                           …more shown in full recipe
                         </div>
                       )}
+
+                      {/* Copy, Share, Metrics buttons moved inside recipe div */}
+                      <div className="flex gap-2 mt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => handleCopyRecipe(recipe)}
+                        >
+                          <Copy className="h-3 w-3 mr-1" />
+                          Copy
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => handleShareRecipe(recipe)}
+                        >
+                          <Share2 className="h-3 w-3 mr-1" />
+                          Share
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => handleShowMetrics(recipe)}
+                        >
+                          <BarChart3 className="h-3 w-3 mr-1" />
+                          Metrics
+                        </Button>
+                      </div>
                     </div>
                   )}
 
-                  {/* Tags (full list) */}
+                  {/* Tags (full list) with powder blue color */}
                   <div className="flex flex-wrap gap-1 mb-4">
                     {recipe.tags.map((tag: string) => (
-                      <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
+                      <Badge key={tag} variant="secondary" className="text-xs bg-blue-100 text-blue-800 hover:bg-blue-200">
+                        {tag}
+                      </Badge>
                     ))}
                   </div>
 
-                  {/* Action Buttons Row - Copy, Share, Metrics */}
-                  <div className="flex gap-2 mb-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleCopyRecipe(recipe)}
-                    >
-                      <Copy className="h-3 w-3 mr-1" />
-                      Copy
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleShareRecipe(recipe)}
-                    >
-                      <Share2 className="h-3 w-3 mr-1" />
-                      Share
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleShowMetrics(recipe)}
-                    >
-                      <BarChart3 className="h-3 w-3 mr-1" />
-                      Metrics
-                    </Button>
-                  </div>
-
-                  {/* Full-width CTA — Make Shake */}
+                  {/* Full-width CTA — Make Shake with lighter red */}
                   <Button
-                    className="w-full bg-red-600 hover:bg-red-700 text-white"
+                    className="w-full bg-red-500 hover:bg-red-600 text-white"
                     onClick={() => openRecipeModal(recipe)}
                   >
                     <Flame className="h-4 w-4 mr-2" />
