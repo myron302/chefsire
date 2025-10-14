@@ -37,7 +37,7 @@ type RecipeKitProps = {
   onClose?: () => void;
   item?: ControlledItem;
   pointsReward?: number;
-  accent?: 'amber' | 'green' | 'blue' | 'purple';
+  accent?: 'amber' | 'green' | 'blue' | 'purple' | 'red';
 
   // Inline/ref API
   id?: string;
@@ -235,11 +235,13 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
   const accentText = accent === 'amber' ? 'text-amber-600'
                     : accent === 'blue' ? 'text-blue-600'
                     : accent === 'purple' ? 'text-purple-600'
+                    : accent === 'red' ? 'text-red-600'
                     : 'text-green-600';
 
   const accentBadge = accent === 'amber' ? 'bg-amber-50 text-amber-800'
                     : accent === 'blue' ? 'bg-blue-50 text-blue-800'
                     : accent === 'purple' ? 'bg-purple-50 text-purple-800'
+                    : accent === 'red' ? 'bg-red-50 text-red-800'
                     : 'bg-green-50 text-green-800';
 
   const shouldRenderPreview = !isControlled && recipeMeasurements.length > 0;
@@ -289,7 +291,7 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
                 <button
                   type="button"
                   onClick={() => setShowAllIngredients(true)}
-                  className="underline underline-offset-2"
+                  className="underline underline-offset-2 hover:text-gray-800"
                 >
                   Show more ({scaled.length - 5} more ingredients)
                 </button>
@@ -300,7 +302,7 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
                 <button
                   type="button"
                   onClick={() => setShowAllIngredients(false)}
-                  className="underline underline-offset-2"
+                  className="underline underline-offset-2 hover:text-gray-800"
                 >
                   Show less
                 </button>
@@ -313,13 +315,6 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
             <Button variant="outline" size="sm" onClick={doShare}><Share2 className="w-4 h-4 mr-1" /> Share</Button>
             <Button variant="outline" size="sm" onClick={() => setUseMetric(v => !v)}>
               {useMetric ? 'US' : 'Metric'}
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setInternalOpen(true)}
-            >
-              Full Recipe
             </Button>
           </div>
         </div>
@@ -413,7 +408,11 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
 
             <div className="flex gap-2 mt-4">
               <Button
-                className={`${accent === 'amber' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-green-600 hover:bg-green-700'} flex-1`}
+                className={`${accent === 'amber' ? 'bg-amber-600 hover:bg-amber-700' : 
+                          accent === 'blue' ? 'bg-blue-600 hover:bg-blue-700' :
+                          accent === 'purple' ? 'bg-purple-600 hover:bg-purple-700' :
+                          accent === 'red' ? 'bg-red-600 hover:bg-red-700' :
+                          'bg-green-600 hover:bg-green-700'} flex-1`}
                 onClick={() => {
                   onComplete?.();
                   if (isControlled) onClose?.();
