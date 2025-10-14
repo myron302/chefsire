@@ -402,9 +402,9 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
     }
   };
 
-  const handleShowMetric = (recipe: any) => {
-    // This would typically open a detailed Metric modal
-    alert(`Detailed Metric for ${recipe.name}:\n\nProtein: ${recipe.protein}g\nCalories: ${recipe.calories}\nCreatine: ${recipe.creatine}g\nIron: ${recipe.iron}mg\nRating: ${recipe.rating}/5 (${recipe.reviews} reviews)`);
+  const handleShowMetrics = (recipe: any) => {
+    // This would typically open a detailed metrics modal
+    alert(`Detailed metrics for ${recipe.name}:\n\nProtein: ${recipe.protein}g\nCalories: ${recipe.calories}\nCreatine: ${recipe.creatine}g\nIron: ${recipe.iron}mg\nRating: ${recipe.rating}/5 (${recipe.reviews} reviews)`);
   };
 
   return (
@@ -639,6 +639,7 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
           {filteredRecipes.map((recipe) => {
             const servings = getServings(recipe);
             const factor = (servings || 1) / (recipe.recipe?.servings || 1);
+            const hasMoreThan5Ingredients = recipe.recipe?.measurements?.length > 5;
 
             return (
               <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
@@ -741,7 +742,7 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
                       </div>
 
                       <ul className="text-sm leading-6 text-gray-800 space-y-1">
-                        {recipe.recipe.measurements.slice(0, 6).map((ing: Measured, i: number) => (
+                        {recipe.recipe.measurements.slice(0, 5).map((ing: Measured, i: number) => (
                           <li key={i} className="flex gap-2">
                             <span className="text-red-500 font-medium min-w-[90px]">
                               {scaleAmount(ing.amount, factor)} {ing.unit}
@@ -752,13 +753,21 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
                           </li>
                         ))}
                       </ul>
-                      {(recipe.recipe.measurements.length > 6) && (
+                      
+                      {/* Show More button that opens the popup modal */}
+                      {hasMoreThan5Ingredients && (
                         <div className="text-xs text-gray-600 mt-1">
-                          …more shown in full recipe
+                          <button
+                            type="button"
+                            onClick={() => openRecipeModal(recipe)}
+                            className="underline underline-offset-2 hover:text-red-500"
+                          >
+                            Show more ({recipe.recipe.measurements.length - 5} more ingredients)
+                          </button>
                         </div>
                       )}
 
-                      {/* Copy, Share, Metric buttons moved inside recipe div */}
+                      {/* Copy, Share, Metrics buttons moved inside recipe div */}
                       <div className="flex gap-2 mt-3">
                         <Button
                           variant="outline"
@@ -782,19 +791,19 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
                           variant="outline"
                           size="sm"
                           className="flex-1"
-                          onClick={() => handleShowMetric(recipe)}
+                          onClick={() => handleShowMetrics(recipe)}
                         >
                           <BarChart3 className="h-3 w-3 mr-1" />
-                          Metric
+                          Metrics
                         </Button>
                       </div>
                     </div>
                   )}
 
-                  {/* Tags (full list) with powder blue color */}
+                  {/* Tags (full list) with Natural Creatine color scheme */}
                   <div className="flex flex-wrap gap-1 mb-4">
                     {recipe.tags.map((tag: string) => (
-                      <Badge key={tag} variant="secondary" className="text-xs bg-blue-100 text-blue-800 hover:bg-blue-200">
+                      <Badge key={tag} variant="secondary" className="text-xs bg-red-100 text-red-800 hover:bg-red-200">
                         {tag}
                       </Badge>
                     ))}
