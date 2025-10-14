@@ -653,51 +653,41 @@ export default function DetoxJuicesPage() {
 
                 return (
                   <Card key={juice.id} className="hover:shadow-lg transition-shadow">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <CardTitle className="text-lg mb-1">{juice.name}</CardTitle>
-                          <p className="text-sm text-gray-600 mb-2">{juice.description}</p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => addToFavorites({
-                            id: juice.id,
-                            name: juice.name,
-                            category: 'detoxes',
-                            description: juice.description,
-                            ingredients: juice.ingredients,
-                            nutrition: juice.nutrition,
-                            difficulty: juice.difficulty,
-                            prepTime: juice.prepTime,
-                            rating: juice.rating,
-                            bestTime: juice.bestTime
-                          })}
-                          className="text-gray-400 hover:text-red-500"
-                        >
-                          <Heart className={`h-4 w-4 ${isFavorite(juice.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                        </Button>
-                      </div>
-                      
-                      <div className="flex items-center gap-2 mb-2">
-                        <Badge className="bg-green-100 text-green-800">{juice.detoxType}</Badge>
-                        <Badge variant="outline">{juice.detoxLevel}</Badge>
-                        {juice.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
-                      </div>
+                    // In the CardHeader section of detox juices page, replace this part:
+<CardHeader className="pb-2">
+  <div className="flex items-start justify-between">
+    <div className="flex-1">
+      <CardTitle className="text-lg mb-1">{juice.name}</CardTitle>
+      <p className="text-sm text-gray-600 mb-2">{juice.description}</p>
+    </div>
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => addToFavorites({...})}
+      className="text-gray-400 hover:text-red-500"
+    >
+      <Heart className={`h-4 w-4 ${isFavorite(juice.id) ? 'fill-red-500 text-red-500' : ''}`} />
+    </Button>
+  </div>
+  
+  <div className="flex items-center gap-2 mb-2">
+    <Badge className="bg-green-100 text-green-800">{juice.detoxType}</Badge>
+    <Badge variant="outline">{juice.detoxLevel}</Badge>
+    {juice.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+  </div>
 
-                      {/* MOVED: Difficulty and Rating immediately above recipe card */}
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                          <span className="font-medium">{juice.rating}</span>
-                          <span className="text-gray-500 text-sm">({juice.reviews})</span>
-                        </div>
-                        <Badge variant="outline" className="text-xs">
-                          {juice.difficulty}
-                        </Badge>
-                      </div>
-                    </CardHeader>
+  {/* MOVED: Difficulty and Rating immediately above recipe card */}
+  <div className="flex items-center justify-between mb-3">
+    <div className="flex items-center gap-1">
+      <Star className="h-4 w-4 text-yellow-400 fill-current" />
+      <span className="font-medium">{juice.rating}</span>
+      <span className="text-gray-500 text-sm">({juice.reviews})</span>
+    </div>
+    <Badge variant="outline" className="text-xs">
+      {juice.difficulty}
+    </Badge>
+  </div>
+</CardHeader>
                     
                     <CardContent>
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
