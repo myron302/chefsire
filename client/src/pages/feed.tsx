@@ -220,6 +220,13 @@ async function fetchJSON<T>(url: string): Promise<T> {
   return res.json();
 }
 
+// Helper to validate dates and prevent crashes
+function isValidDate(dateStr: string | undefined | null): boolean {
+  if (!dateStr) return false;
+  const date = new Date(dateStr);
+  return !isNaN(date.getTime()) && date.getFullYear() >= 1900 && date.getFullYear() <= 2100;  // Basic range check
+}
+
 export default function Feed() {
   const currentUserId = "user-1";
 
@@ -230,7 +237,7 @@ export default function Feed() {
     error: postsError,
   } = useQuery<PostWithUser[]>({
     queryKey: ["/api/posts/feed", currentUserId],
-    queryFn: () => fetchJSON<PostWithUser[]>("/api/posts/feed"),
+    queryFn: () => fetchJSON<PostWithUser[]>(`/api/posts/feed?userId=${currentUserId}`),
   });
 
   // Suggested users (sidebar) — falls back to demo if error
@@ -299,17 +306,19 @@ export default function Feed() {
             </Card>
           )}
 
-          {displayPosts.map((post) =>
-            post.isRecipe ? (
-              <SimpleRecipeCard
-                key={post.id}
-                post={post}
-                currentUserId={currentUserId}
-              />
-            ) : (
-              <PostCard key={post.id} post={post} currentUserId={currentUserId} />
-            )
-          )}
+          {displayPosts
+            .filter((post) => isValidDate((post as any).createdAt || (post as any).updatedAt))  // Filter invalid dates
+            .map((post) =>
+              post.isRecipe ? (
+                <SimpleRecipeCard
+                  key={post.id}
+                  post={post}
+                  currentUserId={currentUserId}
+                />
+              ) : (
+                <PostCard key={post.id} post={post} currentUserId={currentUserId} />
+              )
+            )}
 
           {displayPosts.length === 0 && !postsLoading && !postsError && (
             <p className="text-center text-muted-foreground py-8">No posts yet. Start following chefs!</p>
