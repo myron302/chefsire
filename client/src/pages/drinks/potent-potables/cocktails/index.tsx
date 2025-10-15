@@ -9,8 +9,9 @@ import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
   Heart, Star, Search, Share2, ArrowLeft,
   Camera, Zap, Sparkles, X, Check, Crown, 
-  Clipboard, RotateCcw, Wine, Flame, 
-  GlassWater, BookOpen, Gem, Target, ChefHat
+  Clipboard, RotateCcw, Wine, Flame, GlassWater,
+  Clock, Users, BookOpen, Gem, Target, ChefHat,
+  Home, FlaskConical, Leaf, Apple, Martini
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -156,13 +157,145 @@ const classicCocktails = [
     abv: '30%',
     glassware: 'Coupe glass',
     method: 'Stirred'
+  },
+  {
+    id: 'classic-4',
+    name: 'Negroni',
+    description: 'Italian aperitif with gin, Campari, and sweet vermouth',
+    ingredients: [
+      '1 oz Gin',
+      '1 oz Campari',
+      '1 oz Sweet vermouth',
+      '1 Orange peel'
+    ],
+    benefits: ['Bitter', 'Aperitif', 'Italian', 'Complex'],
+    nutrition: { calories: 190, carbs: 14, sugar: 12, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.5,
+    reviews: 1198,
+    cocktailType: 'Gin',
+    era: '1919',
+    category: 'Aperitif',
+    trending: true,
+    bestTime: 'Pre-dinner',
+    estimatedCost: 5.10,
+    abv: '24%',
+    glassware: 'Rocks glass',
+    method: 'Stirred'
+  },
+  {
+    id: 'classic-5',
+    name: 'Whiskey Sour',
+    description: 'Perfect balance of whiskey, lemon, and sugar',
+    ingredients: [
+      '2 oz Bourbon whiskey',
+      '0.75 oz Fresh lemon juice',
+      '0.75 oz Simple syrup',
+      '1 Egg white (optional)',
+      'As needed Ice'
+    ],
+    benefits: ['Balanced', 'Refreshing', 'Classic', 'Sour'],
+    nutrition: { calories: 220, carbs: 18, sugar: 16, added_sugar: 16 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.4,
+    reviews: 987,
+    cocktailType: 'Whiskey',
+    era: '1862',
+    category: 'Sour',
+    bestTime: 'Anytime',
+    estimatedCost: 3.90,
+    abv: '20%',
+    glassware: 'Rocks glass',
+    method: 'Shaken'
+  },
+  {
+    id: 'classic-6',
+    name: 'Daiquiri',
+    description: 'Cuban classic with rum, lime, and sugar',
+    ingredients: [
+      '2 oz White rum',
+      '1 oz Fresh lime juice',
+      '0.75 oz Simple syrup',
+      'As needed Ice'
+    ],
+    benefits: ['Tropical', 'Refreshing', 'Classic', 'Sour'],
+    nutrition: { calories: 180, carbs: 15, sugar: 14, added_sugar: 14 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.3,
+    reviews: 756,
+    cocktailType: 'Rum',
+    era: '1900',
+    category: 'Sour',
+    bestTime: 'Summer',
+    estimatedCost: 3.60,
+    abv: '18%',
+    glassware: 'Coupe glass',
+    method: 'Shaken'
+  },
+  {
+    id: 'classic-7',
+    name: 'Sazerac',
+    description: 'New Orleans classic with rye whiskey and absinthe rinse',
+    ingredients: [
+      '2 oz Rye whiskey',
+      '0.25 oz Simple syrup',
+      '2 dashes Peychauds bitters',
+      'Absinthe rinse',
+      '1 Lemon peel'
+    ],
+    benefits: ['Complex', 'Herbal', 'New Orleans', 'Sophisticated'],
+    nutrition: { calories: 200, carbs: 6, sugar: 5, added_sugar: 5 },
+    difficulty: 'Hard',
+    prepTime: 6,
+    rating: 4.6,
+    reviews: 445,
+    cocktailType: 'Whiskey',
+    era: '1850s',
+    category: 'Spirit-forward',
+    featured: true,
+    bestTime: 'Evening',
+    estimatedCost: 5.50,
+    abv: '32%',
+    glassware: 'Rocks glass',
+    method: 'Stirred'
+  },
+  {
+    id: 'classic-8',
+    name: 'Mint Julep',
+    description: 'Kentucky Derby tradition with bourbon and fresh mint',
+    ingredients: [
+      '2.5 oz Bourbon whiskey',
+      '0.5 oz Simple syrup',
+      '8-10 Fresh mint leaves',
+      'Crushed ice',
+      '1 Mint sprig'
+    ],
+    benefits: ['Refreshing', 'Southern', 'Minty', 'Classic'],
+    nutrition: { calories: 210, carbs: 10, sugar: 9, added_sugar: 9 },
+    difficulty: 'Medium',
+    prepTime: 5,
+    rating: 4.2,
+    reviews: 623,
+    cocktailType: 'Whiskey',
+    era: '1800s',
+    category: 'Refreshing',
+    bestTime: 'Summer',
+    estimatedCost: 4.30,
+    abv: '25%',
+    glassware: 'Julep cup',
+    method: 'Muddled'
   }
 ];
 
 const cocktailTypes = [
-  { id: 'whiskey', name: 'Whiskey', description: 'Bourbon, rye, and scottch classics' },
+  { id: 'whiskey', name: 'Whiskey', description: 'Bourbon, rye, and scotch classics' },
   { id: 'gin', name: 'Gin', description: 'Botanical and juniper-forward' },
-  { id: 'rum', name: 'Rum', description: 'Tropical and Caribbean classics' }
+  { id: 'rum', name: 'Rum', description: 'Tropical and Caribbean classics' },
+  { id: 'vodka', name: 'Vodka', description: 'Clean and versatile spirits' },
+  { id: 'tequila', name: 'Tequila', description: 'Agave-based classics' }
 ];
 
 const cocktailEras = [
@@ -174,7 +307,8 @@ const cocktailEras = [
 const cocktailCategories = [
   { id: 'spirit-forward', name: 'Spirit-Forward', description: 'Strong cocktails with minimal mixers' },
   { id: 'sour', name: 'Sours', description: 'Balance of spirit, citrus, and sweetener' },
-  { id: 'aperitif', name: 'Aperitifs', description: 'Pre-dinner appetite stimulants' }
+  { id: 'aperitif', name: 'Aperitifs', description: 'Pre-dinner appetite stimulants' },
+  { id: 'refreshing', name: 'Refreshing', description: 'Light and cooling cocktails' }
 ];
 
 // ---------- Cross-nav - Top Level Drink Categories ----------
@@ -187,10 +321,13 @@ const otherDrinkHubs = [
 
 // Sister cocktail subcategories (excluding classic since we're on classic page)
 const allCocktailSubcategories = [
-  { id: 'vodka', name: 'Vodka', path: '/drinks/potent-potables/vodka', icon: GlassWater, description: 'Clean and versatile' },
-  { id: 'whiskey-bourbon', name: 'Whiskey & Bourbon', path: '/drinks/potent-potables/whiskey-bourbon', icon: Wine, description: 'Kentucky classics' },
-  { id: 'tequila-mezcal', name: 'Tequila & Mezcal', path: '/drinks/potent-potables/tequila-mezcal', icon: Flame, description: 'Agave spirits' },
-  { id: 'rum', name: 'Rum', path: '/drinks/potent-potables/rum', icon: GlassWater, description: 'Tropical vibes' }
+  { id: 'vodka', name: 'Vodka Cocktails', path: '/drinks/potent-potables/vodka', icon: Droplets, description: 'Clean and versatile', color: 'from-cyan-500 to-blue-500' },
+  { id: 'whiskey-bourbon', name: 'Whiskey & Bourbon', path: '/drinks/potent-potables/whiskey-bourbon', icon: Wine, description: 'Kentucky classics', color: 'from-amber-500 to-orange-500' },
+  { id: 'tequila-mezcal', name: 'Tequila & Mezcal', path: '/drinks/potent-potables/tequila-mezcal', icon: Flame, description: 'Agave spirits', color: 'from-lime-500 to-green-500' },
+  { id: 'rum', name: 'Rum Cocktails', path: '/drinks/potent-potables/rum', icon: GlassWater, description: 'Tropical vibes', color: 'from-orange-500 to-red-500' },
+  { id: 'martinis', name: 'Martinis', path: '/drinks/potent-potables/martinis', icon: Martini, description: 'Elegant and timeless', color: 'from-purple-500 to-pink-500' },
+  { id: 'seasonal', name: 'Seasonal Specials', path: '/drinks/potent-potables/seasonal', icon: Sparkles, description: 'Seasonal drinks', color: 'from-teal-500 to-cyan-500' },
+  { id: 'mocktails', name: 'Mocktails', path: '/drinks/potent-potables/mocktails', icon: Apple, description: 'Zero-proof drinks', color: 'from-green-500 to-emerald-500' }
 ];
 
 const cocktailAdvantages = [
@@ -226,6 +363,9 @@ export default function ClassicCocktailsPage() {
   const [showKit, setShowKit] = useState(false);
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
+
+  // Color mapping for Classic Cocktails - using purple as per specification
+  const cocktailColor = 'purple';
 
   // Convert cocktails to RecipeKit format with robust parsing
   const cocktailRecipesWithMeasurements = useMemo(() => {
