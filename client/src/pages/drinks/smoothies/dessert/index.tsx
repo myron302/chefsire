@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { 
   IceCream, Heart, Star, Search, Share2, ArrowLeft,
-  Camera, Cookie, ChefHat, X, Check, Zap, Activity, Sun, Sparkles, Trophy, Crown, Leaf,
+  Camera, Cookie, X, Check, Zap, Activity, Sun, Trophy, Crown, Leaf,
   Clipboard, RotateCcw
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
@@ -18,7 +18,6 @@ import {
   dessertSmoothies, 
   dessertTypes,
   dessertCategories,
-  smoothieSubcategories,
   otherDrinkHubs 
 } from '../../data/smoothies';
 
@@ -28,11 +27,9 @@ const m = (amount: number | string, unit: string, item: string, note: string = '
 
 // Safe bestTime validator
 const validateBestTime = (time: any): string => {
-  const validTimes = ['Morning', 'Afternoon', 'Evening', 'Dessert', 'Snack', 'Breakfast', 'Anytime'];
-  if (typeof time === 'string' && validTimes.includes(time)) {
-    return time;
-  }
-  return 'Anytime'; // Default fallback
+  const validTimes = ['Morning', 'Afternoon', 'Evening', 'Dessert', 'Snack', 'Breakfast', 'Anytime', 'Post-workout'];
+  if (typeof time === 'string' && validTimes.includes(time)) return time;
+  return 'Anytime';
 };
 
 // scaling helpers
@@ -70,30 +67,25 @@ const parseIngredient = (ingredient: string): Measured => {
   const fractionMap: Record<string, number> = {
     '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
   };
-  
   const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
   if (parts.length < 2) return m('1', 'item', ingredient);
 
   let amountStr = parts[0];
-  let amount: number | string = fractionMap[amountStr] ?? 
-    (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
+  let amount: number | string = fractionMap[amountStr] ?? (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
 
   let unit = parts[1];
   let item = parts.slice(2).join(' ');
 
-  // If unit looks like a descriptor (not a real unit), fold it back into the item
   const descriptors = new Set(['low-fat', 'frozen', 'unsweetened', 'natural', 'vanilla', 'plain']);
   if (descriptors.has(unit)) {
     item = [unit, item].filter(Boolean).join(' ').trim();
-    unit = 'item'; // generic unit
+    unit = 'item';
   }
 
-  // Handle notes like "(for color)"
   if (item.includes('(for color)')) {
     item = item.replace('(for color)', '').trim();
     return m(amount, unit, item, 'for color');
   }
-  
   return m(amount, unit, item);
 };
 
@@ -122,21 +114,16 @@ export default function DessertSmoothiesPage() {
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
-  // Convert dessert smoothies to RecipeKit format with ROBUST parsing and validation
+  // Convert dessert smoothies to RecipeKit format with robust parsing and validation
   const smoothieRecipesWithMeasurements = useMemo(() => {
     return dessertSmoothies.map((s) => {
-      // Handle various data shapes for ingredients
       const rawList = Array.isArray(s.ingredients) ? s.ingredients : [];
-      
-      // Normalize everything to { amount, unit, item, note }
       const measurements = rawList.map((ing: any) => {
         if (typeof ing === 'string') return parseIngredient(ing);
-        // If already measured object, keep as-is
         const { amount = 1, unit = 'item', item = '', note = '' } = ing || {};
         return { amount, unit, item, note };
       });
 
-      // Validate all fields with safe fallbacks
       return {
         ...s,
         id: s.id || `smoothie-${Math.random().toString(36).substr(2, 9)}`,
@@ -179,20 +166,26 @@ export default function DessertSmoothiesPage() {
   const handleShareSmoothie = async (smoothie: any, servingsOverride?: number) => {
     const url = typeof window !== 'undefined' ? window.location.href : '';
     const servings = servingsOverride ?? servingsById[smoothie.id] ?? (smoothie.recipe?.servings || 1);
-    const preview = smoothie.ingredients.slice(0, 4).join(' • ');
-    const text = `${smoothie.name} • ${smoothie.dessertType} • ${smoothie.bestTime}\n${preview}${smoothie.ingredients.length > 4 ? ` …plus ${smoothie.ingredients.length - 4} more` : ''}`;
+    const list: string[] = Array.isArray(smoothie.ingredients) ? smoothie.ingredients : [];
+    const preview = list.slice(0, 4).join(' • ');
+    const text = `${smoothie.name} • ${smoothie.dessertType} • ${smoothie.bestTime}\n${preview}${list.length > 4 ? ` …plus ${list.length - 4} more` : ''}`;
     const shareData = { title: smoothie.name, text, url };
     try {
-      if (navigator.share) {
-        await navigator.share(shareData);
+      if (typeof navigator !== 'undefined' && (navigator as any).share) {
+        await (navigator as any).share(shareData);
       } else {
+        if (typeof navigator === 'undefined' || !navigator.clipboard) throw new Error('no-clipboard');
         await navigator.clipboard.writeText(`${smoothie.name}\n${text}\n${url}`);
         alert('Recipe copied to clipboard!');
       }
     } catch {
       try {
-        await navigator.clipboard.writeText(`${smoothie.name}\n${text}\n${url}`);
-        alert('Recipe copied to clipboard!');
+        if (typeof navigator !== 'undefined' && navigator.clipboard) {
+          await navigator.clipboard.writeText(`${smoothie.name}\n${text}\n${url}`);
+          alert('Recipe copied to clipboard!');
+        } else {
+          alert('Unable to share on this device.');
+        }
       } catch {
         alert('Unable to share on this device.');
       }
@@ -264,16 +257,21 @@ export default function DessertSmoothiesPage() {
       url: typeof window !== 'undefined' ? window.location.href : ''
     };
     try {
-      if (navigator.share) {
-        await navigator.share(shareData);
+      if (typeof navigator !== 'undefined' && (navigator as any).share) {
+        await (navigator as any).share(shareData);
       } else {
+        if (typeof navigator === 'undefined' || !navigator.clipboard) throw new Error('no-clipboard');
         await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
         alert('Link copied to clipboard!');
       }
     } catch {
       try {
-        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
-        alert('Link copied to clipboard!');
+        if (typeof navigator !== 'undefined' && navigator.clipboard) {
+          await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+          alert('Link copied to clipboard!');
+        } else {
+          alert('Unable to share on this device.');
+        }
       } catch {
         alert('Unable to share on this device.');
       }
@@ -290,6 +288,12 @@ export default function DessertSmoothiesPage() {
     { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
     { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Trophy, description: 'Cleansing blends' }
   ];
+
+  // Clamp & guard progress so it never crashes Progress
+  const safeDaily =
+    Number.isFinite(Number(userProgress?.dailyGoalProgress))
+      ? Math.max(0, Math.min(100, Number(userProgress.dailyGoalProgress)))
+      : 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50">
@@ -513,7 +517,7 @@ export default function DessertSmoothiesPage() {
                       ))}
                     </select>
                     
-                    {/* FIXED: Calorie filter with 'all' option */}
+                    {/* Calorie filter with 'all' option */}
                     <select 
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                       value={maxCalories}
@@ -612,7 +616,7 @@ export default function DessertSmoothiesPage() {
                         </div>
                       </div>
 
-                      {/* RATING & DIFFICULTY - IMMEDIATELY ABOVE RECIPE CARD */}
+                      {/* RATING & DIFFICULTY */}
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-1">
                           <Star className="h-4 w-4 text-yellow-400 fill-current" />
@@ -624,7 +628,7 @@ export default function DessertSmoothiesPage() {
                         </Badge>
                       </div>
 
-                      {/* FIXED: RecipeKit Preview with robust measurements check */}
+                      {/* RecipeKit Preview */}
                       {Array.isArray(smoothie.recipe?.measurements) && smoothie.recipe.measurements.length > 0 && (
                         <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
@@ -706,9 +710,10 @@ export default function DessertSmoothiesPage() {
                               variant="outline"
                               size="sm"
                               onClick={async () => {
-                                const lines = smoothie.ingredients.map((ing: string) => `- ${ing}`);
+                                const lines = (Array.isArray(smoothie.ingredients) ? smoothie.ingredients : []).map((ing: string) => `- ${ing}`);
                                 const txt = `${smoothie.name} (serves ${servings})\n${lines.join('\n')}`;
                                 try {
+                                  if (typeof navigator === 'undefined' || !navigator.clipboard) throw new Error('no-clipboard');
                                   await navigator.clipboard.writeText(txt);
                                   alert('Recipe copied!');
                                 } catch {
@@ -770,7 +775,6 @@ export default function DessertSmoothiesPage() {
           </div>
         )}
 
-        {/* Rest of the tabs remain the same structure */}
         {activeTab === 'dessert-types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {dessertTypes.map(type => {
@@ -790,7 +794,6 @@ export default function DessertSmoothiesPage() {
                         <div className="text-sm font-medium text-gray-700 mb-1">Key Benefit</div>
                         <div className="text-lg font-bold text-pink-600">{type.keyBenefit}</div>
                       </div>
-                      
                       <div>
                         <h4 className="font-semibold text-sm mb-2">Healthy Ingredients:</h4>
                         <div className="flex flex-wrap gap-1">
@@ -802,7 +805,6 @@ export default function DessertSmoothiesPage() {
                         </div>
                       </div>
                     </div>
-                    
                     <Button className="w-full" onClick={() => setActiveTab('browse')}>
                       Explore {type.name}
                     </Button>
@@ -837,7 +839,6 @@ export default function DessertSmoothiesPage() {
                         <div className="text-lg font-bold text-pink-600">{category.calorieRange}</div>
                       </div>
                     </div>
-                    
                     <Button className="w-full" onClick={() => setActiveTab('browse')}>
                       View {category.name}
                     </Button>
@@ -860,12 +861,10 @@ export default function DessertSmoothiesPage() {
                   />
                   <Badge className="absolute top-4 left-4 bg-pink-500 text-white">Featured</Badge>
                 </div>
-                
                 <CardHeader>
                   <CardTitle>{smoothie.name}</CardTitle>
                   <p className="text-gray-600">{smoothie.description}</p>
                 </CardHeader>
-                
                 <CardContent>
                   <Button 
                     className="w-full bg-pink-600 hover:bg-pink-700"
@@ -899,7 +898,7 @@ export default function DessertSmoothiesPage() {
                 </div>
               </div>
               <div className="text-center">
-                <Progress value={userProgress.dailyGoalProgress} className="w-32 mb-2" />
+                <Progress value={safeDaily} className="w-32 mb-2" />
                 <div className="text-xs text-gray-500">Daily Goal Progress</div>
               </div>
             </div>
