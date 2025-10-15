@@ -953,6 +953,7 @@ export default function TropicalSmoothiesPage() {
                           className="w-full bg-purple-600 hover:bg-purple-700"
                           onClick={() => openRecipeModal(smoothie)}
                         >
+                          <Palmtree className="h-4 w-4 mr-2" />
                           Make Smoothie (+25 XP)
                         </Button>
                       </div>
@@ -1046,6 +1047,7 @@ export default function TropicalSmoothiesPage() {
                     className="w-full bg-purple-600 hover:bg-purple-700"
                     onClick={() => openRecipeModal(smoothie)}
                   >
+                    <Palmtree className="h-4 w-4 mr-2" />
                     Make This Tropical Smoothie
                   </Button>
                 </CardContent>
@@ -1074,6 +1076,7 @@ export default function TropicalSmoothiesPage() {
                     className="w-full bg-purple-600 hover:bg-purple-700"
                     onClick={() => openRecipeModal(smoothie)}
                   >
+                    <Palmtree className="h-4 w-4 mr-2" />
                     Try This Trend
                   </Button>
                 </CardContent>
