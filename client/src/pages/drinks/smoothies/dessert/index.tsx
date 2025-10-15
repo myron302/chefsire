@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { 
   IceCream, Heart, Star, Search, Share2, ArrowLeft,
-  Camera, Cookie, X, Check, Zap, Activity, Sun, Trophy, Crown, Leaf,
+  Camera, Cookie, ChefHat, X, Check, Zap, Activity, Sun, Sparkles, Trophy, Crown, Leaf,
   Clipboard, RotateCcw
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
@@ -18,19 +18,13 @@ import {
   dessertSmoothies, 
   dessertTypes,
   dessertCategories,
+  smoothieSubcategories,
   otherDrinkHubs 
 } from '../../data/smoothies';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
-
-// Safe bestTime validator
-const validateBestTime = (time: any): string => {
-  const validTimes = ['Morning', 'Afternoon', 'Evening', 'Dessert', 'Snack', 'Breakfast', 'Anytime', 'Post-workout'];
-  if (typeof time === 'string' && validTimes.includes(time)) return time;
-  return 'Anytime';
-};
 
 // scaling helpers
 const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
@@ -67,25 +61,30 @@ const parseIngredient = (ingredient: string): Measured => {
   const fractionMap: Record<string, number> = {
     '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
   };
+  
   const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
   if (parts.length < 2) return m('1', 'item', ingredient);
 
   let amountStr = parts[0];
-  let amount: number | string = fractionMap[amountStr] ?? (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
+  let amount: number | string = fractionMap[amountStr] ?? 
+    (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
 
   let unit = parts[1];
   let item = parts.slice(2).join(' ');
 
+  // If unit looks like a descriptor (not a real unit), fold it back into the item
   const descriptors = new Set(['low-fat', 'frozen', 'unsweetened', 'natural', 'vanilla', 'plain']);
   if (descriptors.has(unit)) {
     item = [unit, item].filter(Boolean).join(' ').trim();
-    unit = 'item';
+    unit = 'item'; // generic unit
   }
 
+  // Handle notes like "(for color)"
   if (item.includes('(for color)')) {
     item = item.replace('(for color)', '').trim();
     return m(amount, unit, item, 'for color');
   }
+  
   return m(amount, unit, item);
 };
 
@@ -102,7 +101,7 @@ export default function DessertSmoothiesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDessertType, setSelectedDessertType] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [maxCalories, setMaxCalories] = useState<number | 'all'>('all');
+  const [maxCalories, setMaxCalories] = useState<number | 'all'>('all'); // FIXED: Now supports 'all'
   const [onlyNaturalSweetener, setOnlyNaturalSweetener] = useState(false);
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'cost' | 'calories'>('rating');
   const [activeTab, setActiveTab] = useState<'browse'|'dessert-types'|'categories'|'featured'>('browse');
@@ -114,41 +113,22 @@ export default function DessertSmoothiesPage() {
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
-  // Convert dessert smoothies to RecipeKit format with robust parsing and validation
+  // Convert dessert smoothies to RecipeKit format with ROBUST parsing
   const smoothieRecipesWithMeasurements = useMemo(() => {
     return dessertSmoothies.map((s) => {
+      // FIXED: Handle various data shapes for ingredients
       const rawList = Array.isArray(s.ingredients) ? s.ingredients : [];
+      
+      // Normalize everything to { amount, unit, item, note }
       const measurements = rawList.map((ing: any) => {
         if (typeof ing === 'string') return parseIngredient(ing);
+        // If already measured object, keep as-is
         const { amount = 1, unit = 'item', item = '', note = '' } = ing || {};
         return { amount, unit, item, note };
       });
 
       return {
         ...s,
-        id: s.id || `smoothie-${Math.random().toString(36).substr(2, 9)}`,
-        name: s.name || 'Unnamed Smoothie',
-        description: s.description || 'A delicious dessert smoothie',
-        dessertType: s.dessertType || 'Dessert',
-        category: Array.isArray(s.category) ? s.category : ['Dessert'],
-        ingredients: Array.isArray(s.ingredients) ? s.ingredients : [],
-        nutrition: {
-          calories: typeof s.nutrition?.calories === 'number' ? s.nutrition.calories : 300,
-          protein: typeof s.nutrition?.protein === 'number' ? s.nutrition.protein : 10,
-          carbs: typeof s.nutrition?.carbs === 'number' ? s.nutrition.carbs : 40,
-          fat: typeof s.nutrition?.fat === 'number' ? s.nutrition.fat : 8,
-          sugar: typeof s.nutrition?.sugar === 'number' ? s.nutrition.sugar : 25,
-          added_sugar: typeof s.nutrition?.added_sugar === 'number' ? s.nutrition.added_sugar : 10
-        },
-        prepTime: typeof s.prepTime === 'number' ? s.prepTime : 5,
-        difficulty: s.difficulty || 'Easy',
-        rating: typeof s.rating === 'number' ? s.rating : 4.5,
-        reviews: typeof s.reviews === 'number' ? s.reviews : 50,
-        bestTime: validateBestTime(s.bestTime),
-        benefits: Array.isArray(s.benefits) ? s.benefits : ['Delicious', 'Healthy'],
-        trending: !!s.trending,
-        image: s.image || '/images/smoothies/default.jpg',
-        estimatedCost: typeof s.estimatedCost === 'number' ? s.estimatedCost : 3.00,
         recipe: {
           servings: 1,
           measurements,
@@ -166,26 +146,20 @@ export default function DessertSmoothiesPage() {
   const handleShareSmoothie = async (smoothie: any, servingsOverride?: number) => {
     const url = typeof window !== 'undefined' ? window.location.href : '';
     const servings = servingsOverride ?? servingsById[smoothie.id] ?? (smoothie.recipe?.servings || 1);
-    const list: string[] = Array.isArray(smoothie.ingredients) ? smoothie.ingredients : [];
-    const preview = list.slice(0, 4).join(' • ');
-    const text = `${smoothie.name} • ${smoothie.dessertType} • ${smoothie.bestTime}\n${preview}${list.length > 4 ? ` …plus ${list.length - 4} more` : ''}`;
+    const preview = smoothie.ingredients.slice(0, 4).join(' • ');
+    const text = `${smoothie.name} • ${smoothie.dessertType} • ${smoothie.bestTime}\n${preview}${smoothie.ingredients.length > 4 ? ` …plus ${smoothie.ingredients.length - 4} more` : ''}`;
     const shareData = { title: smoothie.name, text, url };
     try {
-      if (typeof navigator !== 'undefined' && (navigator as any).share) {
-        await (navigator as any).share(shareData);
+      if (navigator.share) {
+        await navigator.share(shareData);
       } else {
-        if (typeof navigator === 'undefined' || !navigator.clipboard) throw new Error('no-clipboard');
         await navigator.clipboard.writeText(`${smoothie.name}\n${text}\n${url}`);
         alert('Recipe copied to clipboard!');
       }
     } catch {
       try {
-        if (typeof navigator !== 'undefined' && navigator.clipboard) {
-          await navigator.clipboard.writeText(`${smoothie.name}\n${text}\n${url}`);
-          alert('Recipe copied to clipboard!');
-        } else {
-          alert('Unable to share on this device.');
-        }
+        await navigator.clipboard.writeText(`${smoothie.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
       } catch {
         alert('Unable to share on this device.');
       }
@@ -228,6 +202,7 @@ export default function DessertSmoothiesPage() {
       const matchesCategory = !selectedCategory || (Array.isArray(smoothie.category)
         ? smoothie.category.includes(selectedCategory)
         : smoothie.category === selectedCategory);
+      // FIXED: Proper calorie filtering with 'all' option
       const matchesCalories = maxCalories === 'all' || smoothie.nutrition.calories <= maxCalories;
       const matchesSweetener = !onlyNaturalSweetener || smoothie.nutrition.added_sugar === 0;
       return matchesSearch && matchesType && matchesCategory && matchesCalories && matchesSweetener;
@@ -257,21 +232,16 @@ export default function DessertSmoothiesPage() {
       url: typeof window !== 'undefined' ? window.location.href : ''
     };
     try {
-      if (typeof navigator !== 'undefined' && (navigator as any).share) {
-        await (navigator as any).share(shareData);
+      if (navigator.share) {
+        await navigator.share(shareData);
       } else {
-        if (typeof navigator === 'undefined' || !navigator.clipboard) throw new Error('no-clipboard');
         await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
         alert('Link copied to clipboard!');
       }
     } catch {
       try {
-        if (typeof navigator !== 'undefined' && navigator.clipboard) {
-          await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
-          alert('Link copied to clipboard!');
-        } else {
-          alert('Unable to share on this device.');
-        }
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
       } catch {
         alert('Unable to share on this device.');
       }
@@ -288,12 +258,6 @@ export default function DessertSmoothiesPage() {
     { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
     { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Trophy, description: 'Cleansing blends' }
   ];
-
-  // Clamp & guard progress so it never crashes Progress
-  const safeDaily =
-    Number.isFinite(Number(userProgress?.dailyGoalProgress))
-      ? Math.max(0, Math.min(100, Number(userProgress.dailyGoalProgress)))
-      : 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50">
@@ -517,7 +481,7 @@ export default function DessertSmoothiesPage() {
                       ))}
                     </select>
                     
-                    {/* Calorie filter with 'all' option */}
+                    {/* FIXED: Calorie filter with 'all' option */}
                     <select 
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                       value={maxCalories}
@@ -616,7 +580,7 @@ export default function DessertSmoothiesPage() {
                         </div>
                       </div>
 
-                      {/* RATING & DIFFICULTY */}
+                      {/* RATING & DIFFICULTY - IMMEDIATELY ABOVE RECIPE CARD */}
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-1">
                           <Star className="h-4 w-4 text-yellow-400 fill-current" />
@@ -628,7 +592,7 @@ export default function DessertSmoothiesPage() {
                         </Badge>
                       </div>
 
-                      {/* RecipeKit Preview */}
+                      {/* FIXED: RecipeKit Preview with robust measurements check */}
                       {Array.isArray(smoothie.recipe?.measurements) && smoothie.recipe.measurements.length > 0 && (
                         <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
@@ -710,10 +674,9 @@ export default function DessertSmoothiesPage() {
                               variant="outline"
                               size="sm"
                               onClick={async () => {
-                                const lines = (Array.isArray(smoothie.ingredients) ? smoothie.ingredients : []).map((ing: string) => `- ${ing}`);
+                                const lines = smoothie.ingredients.map((ing: string) => `- ${ing}`);
                                 const txt = `${smoothie.name} (serves ${servings})\n${lines.join('\n')}`;
                                 try {
-                                  if (typeof navigator === 'undefined' || !navigator.clipboard) throw new Error('no-clipboard');
                                   await navigator.clipboard.writeText(txt);
                                   alert('Recipe copied!');
                                 } catch {
@@ -775,6 +738,7 @@ export default function DessertSmoothiesPage() {
           </div>
         )}
 
+        {/* Rest of the tabs remain the same structure */}
         {activeTab === 'dessert-types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {dessertTypes.map(type => {
@@ -794,6 +758,7 @@ export default function DessertSmoothiesPage() {
                         <div className="text-sm font-medium text-gray-700 mb-1">Key Benefit</div>
                         <div className="text-lg font-bold text-pink-600">{type.keyBenefit}</div>
                       </div>
+                      
                       <div>
                         <h4 className="font-semibold text-sm mb-2">Healthy Ingredients:</h4>
                         <div className="flex flex-wrap gap-1">
@@ -805,6 +770,7 @@ export default function DessertSmoothiesPage() {
                         </div>
                       </div>
                     </div>
+                    
                     <Button className="w-full" onClick={() => setActiveTab('browse')}>
                       Explore {type.name}
                     </Button>
@@ -839,6 +805,7 @@ export default function DessertSmoothiesPage() {
                         <div className="text-lg font-bold text-pink-600">{category.calorieRange}</div>
                       </div>
                     </div>
+                    
                     <Button className="w-full" onClick={() => setActiveTab('browse')}>
                       View {category.name}
                     </Button>
@@ -861,10 +828,12 @@ export default function DessertSmoothiesPage() {
                   />
                   <Badge className="absolute top-4 left-4 bg-pink-500 text-white">Featured</Badge>
                 </div>
+                
                 <CardHeader>
                   <CardTitle>{smoothie.name}</CardTitle>
                   <p className="text-gray-600">{smoothie.description}</p>
                 </CardHeader>
+                
                 <CardContent>
                   <Button 
                     className="w-full bg-pink-600 hover:bg-pink-700"
@@ -898,7 +867,7 @@ export default function DessertSmoothiesPage() {
                 </div>
               </div>
               <div className="text-center">
-                <Progress value={safeDaily} className="w-32 mb-2" />
+                <Progress value={userProgress.dailyGoalProgress} className="w-32 mb-2" />
                 <div className="text-xs text-gray-500">Daily Goal Progress</div>
               </div>
             </div>
