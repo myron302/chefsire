@@ -338,7 +338,7 @@ export default function BreakfastSmoothiesPage() {
   const trendingSmoothies = smoothieRecipesWithMeasurements.filter(s => s.trending);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-amber-50">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-violet-50 to-indigo-50">
       {/* Universal Search Modal */}
       {showUniversalSearch && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
@@ -361,7 +361,7 @@ export default function BreakfastSmoothiesPage() {
         <RecipeKit
           open={showKit}
           onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
-          accent="orange"
+          accent="purple"
           pointsReward={25}
           onComplete={handleCompleteRecipe}
           item={{
@@ -389,9 +389,9 @@ export default function BreakfastSmoothiesPage() {
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
-                <Sun className="h-6 w-6 text-orange-600" />
+                <Sun className="h-6 w-6 text-purple-600" />
                 <h1 className="text-2xl font-bold text-gray-900">Breakfast Smoothies</h1>
-                <Badge className="bg-orange-100 text-orange-800">Morning Fuel</Badge>
+                <Badge className="bg-purple-100 text-purple-800">Morning Fuel</Badge>
               </div>
             </div>
             
@@ -410,7 +410,7 @@ export default function BreakfastSmoothiesPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-orange-600 hover:bg-orange-700">
+              <Button size="sm" className="bg-purple-600 hover:bg-purple-700">
                 <Camera className="h-4 w-4 mr-2" />
                 Share Page
               </Button>
@@ -430,8 +430,8 @@ export default function BreakfastSmoothiesPage() {
                 const Icon = hub.icon;
                 return (
                   <Link key={hub.id} href={hub.route}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-orange-50 hover:border-orange-300">
-                      <Icon className="h-4 w-4 mr-2 text-orange-600" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-purple-50 hover:border-purple-300">
+                      <Icon className="h-4 w-4 mr-2 text-purple-600" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{hub.name}</div>
                         <div className="text-xs text-gray-500">{hub.description}</div>
@@ -446,7 +446,7 @@ export default function BreakfastSmoothiesPage() {
         </Card>
 
         {/* SISTER SUBPAGES NAVIGATION */}
-        <Card className="bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-200">
+        <Card className="bg-gradient-to-r from-purple-50 to-violet-50 border-purple-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Smoothie Types</h3>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -454,8 +454,8 @@ export default function BreakfastSmoothiesPage() {
                 const Icon = subcategory.icon;
                 return (
                   <Link key={subcategory.id} href={subcategory.path}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-orange-50 hover:border-orange-300">
-                      <Icon className="h-4 w-4 mr-2 text-orange-600" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-purple-50 hover:border-purple-300">
+                      <Icon className="h-4 w-4 mr-2 text-purple-600" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{subcategory.name}</div>
                         <div className="text-xs text-gray-500">{subcategory.description}</div>
@@ -473,25 +473,25 @@ export default function BreakfastSmoothiesPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-orange-600">305</div>
+              <div className="text-2xl font-bold text-purple-600">305</div>
               <div className="text-sm text-gray-600">Avg Calories</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-orange-600">15g</div>
+              <div className="text-2xl font-bold text-purple-600">15g</div>
               <div className="text-sm text-gray-600">Avg Protein</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-orange-600">4.7★</div>
+              <div className="text-2xl font-bold text-purple-600">4.7★</div>
               <div className="text-sm text-gray-600">Avg Rating</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-orange-600">{breakfastSmoothies.length}</div>
+              <div className="text-2xl font-bold text-purple-600">{breakfastSmoothies.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -613,7 +613,7 @@ export default function BreakfastSmoothiesPage() {
                       </div>
                       
                       <div className="flex items-center gap-2 mb-2">
-                        <Badge className="bg-orange-100 text-orange-800">{smoothie.smoothieType}</Badge>
+                        <Badge className="bg-purple-100 text-purple-800">{smoothie.smoothieType}</Badge>
                         {!smoothie.caffeineFree && <Badge className="bg-amber-100 text-amber-800">Caffeinated</Badge>}
                         {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
@@ -622,15 +622,15 @@ export default function BreakfastSmoothiesPage() {
                     <CardContent>
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
-                          <div className="font-bold text-orange-600">{smoothie.nutrition.calories}</div>
+                          <div className="font-bold text-purple-600">{smoothie.nutrition.calories}</div>
                           <div className="text-gray-500">Cal</div>
                         </div>
                         <div>
-                          <div className="font-bold text-orange-600">{smoothie.nutrition.protein}g</div>
+                          <div className="font-bold text-purple-600">{smoothie.nutrition.protein}g</div>
                           <div className="text-gray-500">Protein</div>
                         </div>
                         <div>
-                          <div className="font-bold text-orange-600">{smoothie.prepTime}m</div>
+                          <div className="font-bold text-purple-600">{smoothie.prepTime}m</div>
                           <div className="text-gray-500">Prep</div>
                         </div>
                       </div>
@@ -699,9 +699,9 @@ export default function BreakfastSmoothiesPage() {
 
                               return (
                                 <li key={i} className="flex items-start gap-2">
-                                  <Check className="h-4 w-4 text-orange-600 mt-0.5" />
+                                  <Check className="h-4 w-4 text-purple-600 mt-0.5" />
                                   <span>
-                                    <span className="text-orange-700 font-semibold">
+                                    <span className="text-purple-700 font-semibold">
                                       {show.amount} {show.unit}
                                     </span>{" "}
                                     {ing.item}
@@ -762,14 +762,14 @@ export default function BreakfastSmoothiesPage() {
                       <div className="space-y-2 mb-3 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Best Time:</span>
-                          <span className="font-medium text-orange-600">{smoothie.bestTime}</span>
+                          <span className="font-medium text-purple-600">{smoothie.bestTime}</span>
                         </div>
                       </div>
 
                       {/* Benefits Tags */}
                       <div className="flex flex-wrap gap-1 mb-4">
                         {smoothie.benefits.slice(0, 3).map((benefit, index) => (
-                          <Badge key={index} variant="secondary" className="text-xs bg-orange-100 text-orange-800 hover:bg-orange-200">
+                          <Badge key={index} variant="secondary" className="text-xs bg-purple-100 text-purple-800 hover:bg-purple-200">
                             {benefit}
                           </Badge>
                         ))}
@@ -778,7 +778,7 @@ export default function BreakfastSmoothiesPage() {
                       {/* Make Smoothie Button */}
                       <div className="mt-3">
                         <Button 
-                          className="w-full bg-orange-600 hover:bg-orange-700"
+                          className="w-full bg-purple-600 hover:bg-purple-700"
                           onClick={() => openRecipeModal(smoothie)}
                         >
                           <Apple className="h-4 w-4 mr-2" />
@@ -807,7 +807,7 @@ export default function BreakfastSmoothiesPage() {
                     />
                   )}
                   <div className="absolute top-4 left-4">
-                    <Badge className="bg-orange-500 text-white">Featured</Badge>
+                    <Badge className="bg-purple-500 text-white">Featured</Badge>
                   </div>
                 </div>
                 
@@ -816,10 +816,10 @@ export default function BreakfastSmoothiesPage() {
                   <p className="text-gray-600">{smoothie.description}</p>
                   
                   <div className="flex items-center gap-2 mt-2">
-                    <Badge className="bg-orange-100 text-orange-800">{smoothie.smoothieType}</Badge>
+                    <Badge className="bg-purple-100 text-purple-800">{smoothie.smoothieType}</Badge>
                     <div className="flex items-center gap-1 ml-auto">
                       <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium text-orange-600">{smoothie.rating}</span>
+                      <span className="font-medium text-purple-600">{smoothie.rating}</span>
                       <span className="text-gray-500 text-sm">({smoothie.reviews})</span>
                     </div>
                   </div>
@@ -827,7 +827,7 @@ export default function BreakfastSmoothiesPage() {
                 
                 <CardContent>
                   <Button 
-                    className="w-full bg-orange-600 hover:bg-orange-700"
+                    className="w-full bg-purple-600 hover:bg-purple-700"
                     onClick={() => openRecipeModal(smoothie)}
                   >
                     <Apple className="h-4 w-4 mr-2" />
@@ -842,7 +842,7 @@ export default function BreakfastSmoothiesPage() {
         {activeTab === 'trending' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {trendingSmoothies.map(smoothie => (
-              <Card key={smoothie.id} className="hover:shadow-lg transition-shadow border-2 border-orange-200">
+              <Card key={smoothie.id} className="hover:shadow-lg transition-shadow border-2 border-purple-200">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -855,7 +855,7 @@ export default function BreakfastSmoothiesPage() {
                 
                 <CardContent>
                   <Button 
-                    className="w-full bg-orange-600 hover:bg-orange-700"
+                    className="w-full bg-purple-600 hover:bg-purple-700"
                     onClick={() => openRecipeModal(smoothie)}
                   >
                     <Apple className="h-4 w-4 mr-2" />
@@ -868,19 +868,19 @@ export default function BreakfastSmoothiesPage() {
         )}
 
         {/* Your Progress */}
-        <Card className="bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-200">
+        <Card className="bg-gradient-to-r from-purple-50 to-violet-50 border-purple-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold mb-2">Your Progress</h3>
                 <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="text-orange-600">
+                  <Badge variant="outline" className="text-purple-600">
                     Level {userProgress.level}
                   </Badge>
-                  <Badge variant="outline" className="text-orange-600">
+                  <Badge variant="outline" className="text-purple-600">
                     {userProgress.totalPoints} XP
                   </Badge>
-                  <Badge variant="outline" className="text-orange-600">
+                  <Badge variant="outline" className="text-purple-600">
                     {userProgress.totalDrinksMade} Drinks Made
                   </Badge>
                 </div>
