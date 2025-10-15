@@ -1757,6 +1757,7 @@ export default function WorkoutSmoothiesPage() {
             </div>
           </CardContent>
         </Card>
+      </div>
     </div>
-);
+  );
 }
