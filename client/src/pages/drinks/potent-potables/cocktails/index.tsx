@@ -8,9 +8,9 @@ import { Progress } from "@/components/ui/progress";
 import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
   Heart, Star, Search, Share2, ArrowLeft,
-  Camera, Zap, Sparkles, X, Check, Crown, Activity, Droplets, Leaf,
-  Clipboard, RotateCcw, Wine, Flame, Apple, Sun, Clock, Users,
-  Trophy, Target, ChefHat, GlassWater, BookOpen, Gem, Ruler
+  Camera, Zap, Sparkles, X, Check, Crown, 
+  Clipboard, RotateCcw, Wine, Flame, 
+  GlassWater, BookOpen, Gem, Target, ChefHat
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -156,92 +156,13 @@ const classicCocktails = [
     abv: '30%',
     glassware: 'Coupe glass',
     method: 'Stirred'
-  },
-  {
-    id: 'classic-4',
-    name: 'Negroni',
-    description: 'Italian aperitif with gin, Campari, and sweet vermouth',
-    ingredients: [
-      '1 oz Gin',
-      '1 oz Campari',
-      '1 oz Sweet vermouth',
-      '1 Orange peel'
-    ],
-    benefits: ['Bitter', 'Aperitif', 'Italian', 'Complex'],
-    nutrition: { calories: 190, carbs: 14, sugar: 12, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.5,
-    reviews: 1198,
-    cocktailType: 'Gin',
-    era: '1919',
-    category: 'Aperitif',
-    trending: true,
-    bestTime: 'Pre-dinner',
-    estimatedCost: 5.10,
-    abv: '24%',
-    glassware: 'Rocks glass',
-    method: 'Stirred'
-  },
-  {
-    id: 'classic-5',
-    name: 'Whiskey Sour',
-    description: 'Perfect balance of whiskey, lemon, and sugar',
-    ingredients: [
-      '2 oz Bourbon whiskey',
-      '0.75 oz Fresh lemon juice',
-      '0.75 oz Simple syrup',
-      '1 Egg white (optional)',
-      'As needed Ice'
-    ],
-    benefits: ['Balanced', 'Refreshing', 'Classic', 'Sour'],
-    nutrition: { calories: 220, carbs: 18, sugar: 16, added_sugar: 16 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.4,
-    reviews: 987,
-    cocktailType: 'Whiskey',
-    era: '1862',
-    category: 'Sour',
-    bestTime: 'Anytime',
-    estimatedCost: 3.90,
-    abv: '20%',
-    glassware: 'Rocks glass',
-    method: 'Shaken'
-  },
-  {
-    id: 'classic-6',
-    name: 'Daiquiri',
-    description: 'Cuban classic with rum, lime, and sugar',
-    ingredients: [
-      '2 oz White rum',
-      '1 oz Fresh lime juice',
-      '0.75 oz Simple syrup',
-      'As needed Ice'
-    ],
-    benefits: ['Tropical', 'Refreshing', 'Classic', 'Sour'],
-    nutrition: { calories: 180, carbs: 15, sugar: 14, added_sugar: 14 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.3,
-    reviews: 756,
-    cocktailType: 'Rum',
-    era: '1900',
-    category: 'Sour',
-    bestTime: 'Summer',
-    estimatedCost: 3.60,
-    abv: '18%',
-    glassware: 'Coupe glass',
-    method: 'Shaken'
   }
 ];
 
 const cocktailTypes = [
-  { id: 'whiskey', name: 'Whiskey', description: 'Bourbon, rye, and scotch classics' },
+  { id: 'whiskey', name: 'Whiskey', description: 'Bourbon, rye, and scottch classics' },
   { id: 'gin', name: 'Gin', description: 'Botanical and juniper-forward' },
-  { id: 'rum', name: 'Rum', description: 'Tropical and Caribbean classics' },
-  { id: 'vodka', name: 'Vodka', description: 'Clean and versatile spirits' },
-  { id: 'tequila', name: 'Tequila', description: 'Agave-based classics' }
+  { id: 'rum', name: 'Rum', description: 'Tropical and Caribbean classics' }
 ];
 
 const cocktailEras = [
@@ -253,8 +174,7 @@ const cocktailEras = [
 const cocktailCategories = [
   { id: 'spirit-forward', name: 'Spirit-Forward', description: 'Strong cocktails with minimal mixers' },
   { id: 'sour', name: 'Sours', description: 'Balance of spirit, citrus, and sweetener' },
-  { id: 'aperitif', name: 'Aperitifs', description: 'Pre-dinner appetite stimulants' },
-  { id: 'refreshing', name: 'Refreshing', description: 'Light and cooling cocktails' }
+  { id: 'aperitif', name: 'Aperitifs', description: 'Pre-dinner appetite stimulants' }
 ];
 
 // ---------- Cross-nav - Top Level Drink Categories ----------
@@ -267,13 +187,10 @@ const otherDrinkHubs = [
 
 // Sister cocktail subcategories (excluding classic since we're on classic page)
 const allCocktailSubcategories = [
-  { id: 'vodka', name: 'Vodka', path: '/drinks/potent-potables/vodka', icon: Droplets, description: 'Clean and versatile' },
+  { id: 'vodka', name: 'Vodka', path: '/drinks/potent-potables/vodka', icon: GlassWater, description: 'Clean and versatile' },
   { id: 'whiskey-bourbon', name: 'Whiskey & Bourbon', path: '/drinks/potent-potables/whiskey-bourbon', icon: Wine, description: 'Kentucky classics' },
   { id: 'tequila-mezcal', name: 'Tequila & Mezcal', path: '/drinks/potent-potables/tequila-mezcal', icon: Flame, description: 'Agave spirits' },
-  { id: 'rum', name: 'Rum', path: '/drinks/potent-potables/rum', icon: GlassWater, description: 'Tropical vibes' },
-  { id: 'martinis', name: 'Martinis', path: '/drinks/potent-potables/martinis', icon: Martini, description: 'Elegant and timeless' },
-  { id: 'seasonal', name: 'Seasonal', path: '/drinks/potent-potables/seasonal', icon: Sparkles, description: 'Seasonal specials' },
-  { id: 'mocktails', name: 'Mocktails', path: '/drinks/potent-potables/mocktails', icon: Apple, description: 'Zero-proof drinks' }
+  { id: 'rum', name: 'Rum', path: '/drinks/potent-potables/rum', icon: GlassWater, description: 'Tropical vibes' }
 ];
 
 const cocktailAdvantages = [
@@ -309,9 +226,6 @@ export default function ClassicCocktailsPage() {
   const [showKit, setShowKit] = useState(false);
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
-
-  // Color mapping for Classic Cocktails - using purple as per specification
-  const cocktailColor = 'purple';
 
   // Convert cocktails to RecipeKit format with robust parsing
   const cocktailRecipesWithMeasurements = useMemo(() => {
@@ -560,7 +474,7 @@ export default function ClassicCocktailsPage() {
           <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
             <CardContent className="p-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Cocktail Types</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {allCocktailSubcategories.map((subcategory) => {
                   const Icon = subcategory.icon;
                   return (
@@ -589,13 +503,13 @@ export default function ClassicCocktailsPage() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {cocktailAdvantages.map((advantage, index) => {
-                  const Icon = advantage.icon as any;
+                  const Icon = advantage.icon;
                   return (
                     <div key={index} className="flex items-start gap-3 p-4 rounded-lg border hover:shadow-md transition-shadow">
-                      <Icon className={`h-6 w-6 ${advantage.color} flex-shrink-0`} />
+                      <Icon className={`h-6 w-6 text-purple-500 flex-shrink-0`} />
                       <div>
                         <h3 className="font-semibold mb-1">{advantage.title}</h3>
-                        <p className="text-sm text-muted-foreground">{advantage.description}</p>
+                        <p className="text-sm text-gray-600">{advantage.description}</p>
                       </div>
                     </div>
                   );
@@ -641,7 +555,7 @@ export default function ClassicCocktailsPage() {
               { id: 'featured', label: 'Featured', icon: Crown },
               { id: 'trending', label: 'Trending', icon: Flame }
             ].map(tab => {
-              const Icon = tab.icon as any;
+              const Icon = tab.icon;
               return (
                 <Button
                   key={tab.id}
@@ -957,126 +871,6 @@ export default function ClassicCocktailsPage() {
                   );
                 })}
               </div>
-            </div>
-          )}
-
-          {/* Cocktail Types Tab */}
-          {activeTab === 'cocktail-types' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {cocktailTypes.map(type => (
-                <Card key={type.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader>
-                    <div className="text-center">
-                      <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <Wine className="h-6 w-6 text-purple-500" />
-                      </div>
-                      <CardTitle className="text-lg">{type.name}</CardTitle>
-                      <p className="text-sm text-gray-600">{type.description}</p>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-center bg-purple-50 p-3 rounded-lg mb-4">
-                      <div className="text-sm font-medium text-gray-700 mb-1">Classic Examples</div>
-                      <div className="text-lg font-bold text-purple-500">Timeless</div>
-                    </div>
-                    <Button className="w-full bg-purple-500 hover:bg-purple-600 text-white" onClick={() => setActiveTab('browse')}>
-                      Explore {type.name}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-
-          {/* Eras Tab */}
-          {activeTab === 'eras' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {cocktailEras.map(era => (
-                <Card key={era.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-purple-100 rounded-lg">
-                        <BookOpen className="h-6 w-6 text-purple-500" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-lg">{era.name}</CardTitle>
-                        <p className="text-sm text-gray-600">{era.description}</p>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-center bg-purple-50 p-3 rounded-lg mb-4">
-                      <div className="text-sm font-medium text-gray-700 mb-1">Historical Period</div>
-                      <div className="text-lg font-bold text-purple-500">Classic</div>
-                    </div>
-                    <Button className="w-full bg-purple-500 hover:bg-purple-600 text-white" onClick={() => setActiveTab('browse')}>
-                      View {era.name}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-
-          {/* Featured Tab */}
-          {activeTab === 'featured' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {featuredCocktails.map(cocktail => (
-                <Card key={cocktail.id} className="overflow-hidden hover:shadow-xl transition-shadow">
-                  <div className="relative h-48">
-                    <img 
-                      src={cocktail.image} 
-                      alt={cocktail.name}
-                      className="w-full h-full object-cover"
-                    />
-                    <Badge className="absolute top-4 left-4 bg-purple-500 text-white">Featured</Badge>
-                  </div>
-                  
-                  <CardHeader>
-                    <CardTitle>{cocktail.name}</CardTitle>
-                    <p className="text-gray-600">{cocktail.description}</p>
-                  </CardHeader>
-                  
-                  <CardContent>
-                    <Button 
-                      className="w-full bg-purple-500 hover:bg-purple-600 text-white"
-                      onClick={() => openRecipeModal(cocktail)}
-                    >
-                      <GlassWater className="h-4 w-4 mr-2" />
-                      Make This Classic Cocktail
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-
-          {/* Trending Tab */}
-          {activeTab === 'trending' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {trendingCocktails.map(cocktail => (
-                <Card key={cocktail.id} className="hover:shadow-lg transition-shadow border-2 border-purple-200">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg mb-1">{cocktail.name}</CardTitle>
-                        <p className="text-sm text-gray-600 mb-2">{cocktail.description}</p>
-                      </div>
-                      <Badge className="bg-purple-500 text-white">🔥 Trending</Badge>
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent>
-                    <Button 
-                      className="w-full bg-purple-500 hover:bg-purple-600 text-white"
-                      onClick={() => openRecipeModal(cocktail)}
-                    >
-                      <GlassWater className="h-4 w-4 mr-2" />
-                      Try This Trend
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
             </div>
           )}
 
