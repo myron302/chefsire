@@ -295,15 +295,37 @@ export default function BiteMapPage() {
         </>
       )}
 
-      {/* Results */}
+      {/* Results - FIXED ERROR HANDLING */}
       {isLoading ? (
         <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin" />
           Loading…
         </div>
       ) : hasError ? (
-        <div className="text-red-600">
-          Search failed. Check your API keys in <code>server/.env</code>.
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+          <div className="font-semibold text-red-800 dark:text-red-200 mb-2">
+            Search Failed
+          </div>
+          <div className="text-sm text-red-700 dark:text-red-300 mb-3">
+            {list.error?.message || "Unable to search for restaurants"}
+          </div>
+          <div className="text-xs text-red-600 dark:text-red-400 space-y-1">
+            <div>Possible causes:</div>
+            <ul className="list-disc list-inside space-y-1 ml-2">
+              <li>Missing or invalid GOOGLE_MAPS_API_KEY in server/.env</li>
+              <li>API key doesn't have Places API enabled</li>
+              <li>Network or CORS issues</li>
+            </ul>
+            <div className="mt-3">
+              <a 
+                href="/api/google/diagnostics" 
+                target="_blank"
+                className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+              >
+                Check API diagnostics →
+              </a>
+            </div>
+          </div>
         </div>
       ) : (
         <ResultsGrid
