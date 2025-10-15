@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { 
   Apple, Leaf, Heart, Star, Search, Share2, ArrowLeft,
-  Camera, Zap, Sparkles, X, Check, Crown, Activity, Trophy, IceCream,
+  Camera, Zap, Sparkles, X, Check, Crown, Activity, IceCream,
   Clipboard, RotateCcw, Wine, Flame, Droplets
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
@@ -300,7 +300,6 @@ const allSmoothieSubcategories = [
   { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Superfood greens' },
   { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Droplets, description: 'Exotic fruits' },
   { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
-  { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Apple, description: 'Cleansing blends' },
   { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: IceCream, description: 'Healthy treats' }
 ];
 
@@ -461,7 +460,7 @@ export default function DetoxSmoothiesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-slate-50 to-stone-50">
       {/* Universal Search Modal */}
       {showUniversalSearch && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
@@ -484,7 +483,7 @@ export default function DetoxSmoothiesPage() {
         <RecipeKit
           open={showKit}
           onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
-          accent="amber"
+          accent="gray"
           pointsReward={25}
           onComplete={handleCompleteRecipe}
           item={{
@@ -512,9 +511,9 @@ export default function DetoxSmoothiesPage() {
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
-                <Apple className="h-6 w-6 text-amber-600" />
+                <Apple className="h-6 w-6 text-gray-600" />
                 <h1 className="text-2xl font-bold text-gray-900">Detox Smoothies</h1>
-                <Badge className="bg-amber-100 text-amber-800 border-amber-200">Cleansing</Badge>
+                <Badge className="bg-gray-100 text-gray-700 border-gray-300">Cleansing</Badge>
               </div>
             </div>
             
@@ -533,7 +532,7 @@ export default function DetoxSmoothiesPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white" onClick={handleSharePage}>
+              <Button size="sm" className="bg-gray-600 hover:bg-gray-700 text-white" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Page
               </Button>
@@ -545,7 +544,7 @@ export default function DetoxSmoothiesPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         
         {/* CROSS-HUB NAVIGATION - Top Level Sites */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+        <Card className="bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -553,8 +552,8 @@ export default function DetoxSmoothiesPage() {
                 const Icon = hub.icon;
                 return (
                   <Link key={hub.id} href={hub.route}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
-                      <Icon className="h-4 w-4 mr-2 text-amber-600" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-gray-50 hover:border-gray-300">
+                      <Icon className="h-4 w-4 mr-2 text-gray-600" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{hub.name}</div>
                         <div className="text-xs text-gray-500">{hub.description}</div>
@@ -568,8 +567,8 @@ export default function DetoxSmoothiesPage() {
           </CardContent>
         </Card>
 
-        {/* SISTER SUBPAGES NAVIGATION - ALL SMOOTHIE TYPES */}
-        <Card className="bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
+        {/* SISTER SUBPAGES NAVIGATION - ALL SMOOTHIE TYPES (No Detox) */}
+        <Card className="bg-gradient-to-r from-gray-50 to-stone-50 border-gray-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Smoothie Types</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -577,8 +576,8 @@ export default function DetoxSmoothiesPage() {
                 const Icon = subcategory.icon;
                 return (
                   <Link key={subcategory.id} href={subcategory.path}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
-                      <Icon className="h-4 w-4 mr-2 text-amber-600" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-gray-50 hover:border-gray-300">
+                      <Icon className="h-4 w-4 mr-2 text-gray-600" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{subcategory.name}</div>
                         <div className="text-xs text-gray-500">{subcategory.description}</div>
@@ -596,25 +595,25 @@ export default function DetoxSmoothiesPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-600">270</div>
+              <div className="text-2xl font-bold text-gray-600">270</div>
               <div className="text-sm text-gray-600">Avg Calories</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-600">8g</div>
+              <div className="text-2xl font-bold text-gray-600">8g</div>
               <div className="text-sm text-gray-600">Avg Fiber</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-600">4.7★</div>
+              <div className="text-2xl font-bold text-gray-600">4.7★</div>
               <div className="text-sm text-gray-600">Avg Rating</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-600">{detoxSmoothies.length}</div>
+              <div className="text-2xl font-bold text-gray-600">{detoxSmoothies.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -757,7 +756,7 @@ export default function DetoxSmoothiesPage() {
                       </div>
                       
                       <div className="flex items-center gap-2">
-                        <Badge className="bg-amber-100 text-amber-800 border-amber-200">{smoothie.smoothieType}</Badge>
+                        <Badge className="bg-gray-100 text-gray-700 border-gray-300">{smoothie.smoothieType}</Badge>
                         {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
                     </CardHeader>
@@ -766,15 +765,15 @@ export default function DetoxSmoothiesPage() {
                       {/* Nutrition Grid */}
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
-                          <div className="font-bold text-amber-600">{smoothie.nutrition.calories}</div>
+                          <div className="font-bold text-gray-600">{smoothie.nutrition.calories}</div>
                           <div className="text-gray-500">Calories</div>
                         </div>
                         <div>
-                          <div className="font-bold text-amber-600">{smoothie.nutrition.fiber}g</div>
+                          <div className="font-bold text-gray-600">{smoothie.nutrition.fiber}g</div>
                           <div className="text-gray-500">Fiber</div>
                         </div>
                         <div>
-                          <div className="font-bold text-amber-600">{smoothie.prepTime}m</div>
+                          <div className="font-bold text-gray-600">{smoothie.prepTime}m</div>
                           <div className="text-gray-500">Prep</div>
                         </div>
                       </div>
@@ -843,9 +842,9 @@ export default function DetoxSmoothiesPage() {
 
                               return (
                                 <li key={i} className="flex items-start gap-2">
-                                  <Check className="h-4 w-4 text-amber-600 mt-0.5" />
+                                  <Check className="h-4 w-4 text-gray-600 mt-0.5" />
                                   <span>
-                                    <span className="text-amber-700 font-semibold">
+                                    <span className="text-gray-700 font-semibold">
                                       {show.amount} {show.unit}
                                     </span>{" "}
                                     {ing.item}
@@ -906,14 +905,14 @@ export default function DetoxSmoothiesPage() {
                       <div className="space-y-2 mb-3 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Best Time:</span>
-                          <span className="font-medium text-amber-600">{smoothie.bestTime}</span>
+                          <span className="font-medium text-gray-600">{smoothie.bestTime}</span>
                         </div>
                       </div>
 
                       {/* Benefits Tags */}
                       <div className="flex flex-wrap gap-1 mb-4">
                         {smoothie.benefits?.slice(0, 3).map((benefit: string, index: number) => (
-                          <Badge key={index} variant="secondary" className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-200">
+                          <Badge key={index} variant="secondary" className="text-xs bg-gray-100 text-gray-700 hover:bg-gray-200">
                             {benefit}
                           </Badge>
                         ))}
@@ -922,7 +921,7 @@ export default function DetoxSmoothiesPage() {
                       {/* Make Smoothie Button */}
                       <div className="mt-3">
                         <Button 
-                          className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+                          className="w-full bg-gray-600 hover:bg-gray-700 text-white"
                           onClick={() => openRecipeModal(smoothie)}
                         >
                           <Apple className="h-4 w-4 mr-2" />
@@ -944,19 +943,19 @@ export default function DetoxSmoothiesPage() {
               <Card key={type.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader>
                   <div className="text-center">
-                    <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <Apple className="h-6 w-6 text-amber-600" />
+                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <Apple className="h-6 w-6 text-gray-600" />
                     </div>
                     <CardTitle className="text-lg">{type.name}</CardTitle>
                     <p className="text-sm text-gray-600">{type.description}</p>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center bg-amber-50 p-3 rounded-lg mb-4">
+                  <div className="text-center bg-gray-50 p-3 rounded-lg mb-4">
                     <div className="text-sm font-medium text-gray-700 mb-1">Key Benefit</div>
-                    <div className="text-lg font-bold text-amber-600">Cleansing</div>
+                    <div className="text-lg font-bold text-gray-600">Cleansing</div>
                   </div>
-                  <Button className="w-full bg-amber-500 hover:bg-amber-600 text-white" onClick={() => setActiveTab('browse')}>
+                  <Button className="w-full bg-gray-600 hover:bg-gray-700 text-white" onClick={() => setActiveTab('browse')}>
                     Explore {type.name}
                   </Button>
                 </CardContent>
@@ -972,8 +971,8 @@ export default function DetoxSmoothiesPage() {
               <Card key={benefit.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader>
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-amber-100 rounded-lg">
-                      <Heart className="h-6 w-6 text-amber-600" />
+                    <div className="p-2 bg-gray-100 rounded-lg">
+                      <Heart className="h-6 w-6 text-gray-600" />
                     </div>
                     <div>
                       <CardTitle className="text-lg">{benefit.name}</CardTitle>
@@ -982,11 +981,11 @@ export default function DetoxSmoothiesPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center bg-amber-50 p-3 rounded-lg mb-4">
+                  <div className="text-center bg-gray-50 p-3 rounded-lg mb-4">
                     <div className="text-sm font-medium text-gray-700 mb-1">Focus Area</div>
-                    <div className="text-lg font-bold text-amber-600">Wellness</div>
+                    <div className="text-lg font-bold text-gray-600">Wellness</div>
                   </div>
-                  <Button className="w-full bg-amber-500 hover:bg-amber-600 text-white" onClick={() => setActiveTab('browse')}>
+                  <Button className="w-full bg-gray-600 hover:bg-gray-700 text-white" onClick={() => setActiveTab('browse')}>
                     View {benefit.name}
                   </Button>
                 </CardContent>
@@ -1008,7 +1007,7 @@ export default function DetoxSmoothiesPage() {
                       className="w-full h-full object-cover"
                     />
                   )}
-                  <Badge className="absolute top-4 left-4 bg-amber-500 text-white">Featured</Badge>
+                  <Badge className="absolute top-4 left-4 bg-gray-600 text-white">Featured</Badge>
                 </div>
                 
                 <CardHeader>
@@ -1018,7 +1017,7 @@ export default function DetoxSmoothiesPage() {
                 
                 <CardContent>
                   <Button 
-                    className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+                    className="w-full bg-gray-600 hover:bg-gray-700 text-white"
                     onClick={() => openRecipeModal(smoothie)}
                   >
                     <Apple className="h-4 w-4 mr-2" />
@@ -1031,19 +1030,19 @@ export default function DetoxSmoothiesPage() {
         )}
 
         {/* Your Progress */}
-        <Card className="bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
+        <Card className="bg-gradient-to-r from-gray-50 to-stone-50 border-gray-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold mb-2">Your Progress</h3>
                 <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="text-amber-600">
+                  <Badge variant="outline" className="text-gray-600">
                     Level {userProgress.level}
                   </Badge>
-                  <Badge variant="outline" className="text-amber-600">
+                  <Badge variant="outline" className="text-gray-600">
                     {userProgress.totalPoints} XP
                   </Badge>
-                  <Badge variant="outline" className="text-amber-600">
+                  <Badge variant="outline" className="text-gray-600">
                     {userProgress.totalDrinksMade} Drinks Made
                   </Badge>
                 </div>
