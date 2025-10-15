@@ -6,446 +6,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { IceCream, Heart, Star, Search, Share2, ArrowLef// client/src/pages/feed.tsx
-import { useQuery } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import PostCard from "@/components/post-card";
-import { BitesRow } from "@/components/BitesRow";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Heart, Clock } from "lucide-react";
-import type { PostWithUser, User, Recipe } from "@shared/schema";
-
-const demoTrendingRecipes = [
-  {
-    id: "1",
-    title: "Creamy Mushroom Risotto",
-    cookTime: 35,
-    post: {
-      id: "post-1",
-      imageUrl:
-        "https://images.unsplash.com/photo-1476124369491-e7addf5db371?w=400&h=400&fit=crop&auto=format",
-      user: { id: "chef-1", displayName: "Marco Romano" },
-      likesCount: 245,
-    },
-  },
-  {
-    id: "2",
-    title: "Classic Fish & Chips",
-    cookTime: 25,
-    post: {
-      id: "post-2",
-      imageUrl:
-        "https://images.unsplash.com/photo-1544982503-9f984c14501a?w=400&h=400&fit=crop&auto=format",
-      user: { id: "chef-2", displayName: "Emma Watson" },
-      likesCount: 189,
-    },
-  },
-  {
-    id: "3",
-    title: "Spicy Thai Green Curry",
-    cookTime: 30,
-    post: {
-      id: "post-3",
-      imageUrl:
-        "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=400&h=400&fit=crop&auto=format",
-      user: { id: "chef-3", displayName: "Anong Siriporn" },
-      likesCount: 312,
-    },
-  },
-  {
-    id: "4",
-    title: "Chocolate Lava Cake",
-    cookTime: 20,
-    post: {
-      id: "post-4",
-      imageUrl:
-        "https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400&h=400&fit=crop&auto=format",
-      user: { id: "chef-4", displayName: "Pierre Dubois" },
-      likesCount: 567,
-    },
-  },
-  {
-    id: "5",
-    title: "Fresh Caesar Salad",
-    cookTime: 15,
-    post: {
-      id: "post-5",
-      imageUrl:
-        "https://images.unsplash.com/photo-1551248429-40975aa4de74?w=400&h=400&fit=crop&auto=format",
-      user: { id: "chef-5", displayName: "Julia Green" },
-      likesCount: 134,
-    },
-  },
-];
-
-const demoSuggestedUsers = [
-  {
-    id: "chef-6",
-    displayName: "Gordon Ramsay",
-    specialty: "Fine Dining",
-    avatar:
-      "https://images.unsplash.com/photo-1577219491135-ce391730fb2c?w=100&h=100&fit=crop&auto=format",
-  },
-  {
-    id: "chef-7",
-    displayName: "Nadia Singh",
-    specialty: "Indian Cuisine",
-    avatar:
-      "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&auto=format",
-  },
-  {
-    id: "chef-8",
-    displayName: "Carlos Rodriguez",
-    specialty: "Mexican Street Food",
-    avatar:
-      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&auto=format",
-  },
-  {
-    id: "chef-9",
-    displayName: "Sakura Tanaka",
-    specialty: "Japanese Fusion",
-    avatar:
-      "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&auto=format",
-  },
-  {
-    id: "chef-10",
-    displayName: "Oliver Bennett",
-    specialty: "Plant-Based",
-    avatar:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&auto=format",
-  },
-];
-
-// Demo posts fallback (add more as needed)
-const demoPosts: PostWithUser[] = [
-  {
-    id: "demo-post-1",
-    caption: "Just made this amazing pasta! 🍝",
-    imageUrl: "https://images.unsplash.com/photo-1484723091739-30a097e8f929?w=400&h=400&fit=crop&auto=format",
-    isRecipe: false,
-    likesCount: 42,
-    user: {
-      id: "user-2",
-      displayName: "Alice Chef",
-      avatar: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&auto=format",
-    },
-  },
-  {
-    id: "demo-post-2",
-    caption: "Fresh salad for lunch 🌿",
-    imageUrl: "https://images.unsplash.com/photo-1512568400610-3f3f73e78e14?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true,
-    likesCount: 28,
-    user: {
-      id: "user-3",
-      displayName: "Bob Baker",
-      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&auto=format",
-    },
-  },
-  {
-    id: "demo-post-3",
-    caption: "Baking cookies tonight! 🍪",
-    imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true,
-    likesCount: 156,
-    user: {
-      id: "user-4",
-      displayName: "Carol Cook",
-      avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&auto=format",
-    },
-  },
-];
-
-function SimpleRecipeCard({
-  post,
-  currentUserId,
-}: {
-  post: PostWithUser;
-  currentUserId: string;
-}) {
-  return (
-    <Card className="overflow-hidden">
-      <div className="relative">
-        {post.imageUrl ? (
-          <img
-            src={post.imageUrl}
-            alt={post.caption || "Recipe"}
-            className="w-full h-64 object-cover"
-          />
-        ) : (
-          <div className="w-full h-64 bg-gray-200 flex items-center justify-center">
-            <Heart className="w-8 h-8 text-gray-400" />
-          </div>
-        )}
-      </div>
-      <CardContent className="p-6">
-        <div className="flex items-center space-x-3 mb-4">
-          <Avatar className="w-10 h-10">
-            <AvatarImage
-              src={post.user?.avatar || ""}
-              alt={post.user?.displayName}
-            />
-            <AvatarFallback>
-              {post.user?.displayName?.[0] || "U"}
-            </AvatarFallback>
-          </Avatar>
-          <div>
-            <p className="font-medium">{post.user?.displayName || "Unknown Chef"}</p>
-            <p className="text-sm text-gray-500">Recipe</p>
-          </div>
-        </div>
-
-        <h3 className="text-xl font-semibold mb-2">
-          {post.caption || "Recipe"}
-        </h3>
-
-        {post.caption ? (
-          <p className="text-gray-600 mb-4">{post.caption}</p>
-        ) : (
-          <p className="text-gray-500 mb-4">Delicious home-cooked recipe.</p>
-        )}
-
-        <div className="flex items-center justify-between text-sm text-gray-500">
-          <span className="flex items-center gap-1">
-            <Heart className="w-4 h-4" />
-            <span>{post.likesCount ?? 0} likes</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <Clock className="w-4 h-4" />
-            <span>Recipe</span>
-          </span>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-async function fetchJSON<T>(url: string): Promise<T> {
-  const res = await fetch(url, { credentials: "include" });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
-}
-
-// Helper to validate dates and prevent crashes
-function isValidDate(dateStr: string | undefined | null): boolean {
-  if (!dateStr) return false;
-  const date = new Date(dateStr);
-  return !isNaN(date.getTime()) && date.getFullYear() >= 1900 && date.getFullYear() <= 2100;  // Basic range check
-}
-
-export default function Feed() {
-  const currentUserId = "user-1";
-
-  // Posts feed
-  const {
-    data: posts,
-    isLoading: postsLoading,
-    error: postsError,
-  } = useQuery<PostWithUser[]>({
-    queryKey: ["/api/posts/feed", currentUserId],
-    queryFn: () => fetchJSON<PostWithUser[]>(`/api/posts/feed?userId=${currentUserId}`),
-  });
-
-  // Suggested users (sidebar) — falls back to demo if error
-  const {
-    data: suggestedUsers,
-    isLoading: usersLoading,
-    error: usersError,
-  } = useQuery<User[]>({
-    queryKey: ["/api/users", currentUserId, "suggested"],
-    queryFn: () => fetchJSON<User[]>("/api/users/suggested?limit=5"),
-  });
-
-  // Trending recipes (sidebar) — falls back to demo if error
-  const {
-    data: trendingRecipes,
-    isLoading: recipesLoading,
-    error: recipesError,
-  } = useQuery<(Recipe & { post: PostWithUser })[]>({
-    queryKey: ["/api/recipes/trending"],
-    queryFn: () =>
-      fetchJSON<(Recipe & { post: PostWithUser })[]>(
-        "/api/recipes/trending?limit=5"
-      ),
-  });
-
-  // Use demo data as fallback
-  const displayPosts = postsError ? demoPosts : posts ?? demoPosts;
-  const displaySuggestedUsers = usersError ? demoSuggestedUsers : suggestedUsers ?? demoSuggestedUsers;
-  const displayTrendingRecipes = recipesError ? demoTrendingRecipes : trendingRecipes ?? demoTrendingRecipes;
-
-  if (postsLoading) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        <div className="space-y-8">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i} className="w-full animate-pulse">
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-3 mb-4">
-                  <div className="w-10 h-10 bg-muted rounded-full" />
-                  <div className="space-y-2">
-                    <div className="w-24 h-3 bg-muted rounded" />
-                    <div className="w-16 h-2 bg-muted rounded" />
-                  </div>
-                </div>
-                <div className="w-full h-96 bg-muted rounded" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex max-w-7xl mx-auto">
-      <div className="flex-1 max-w-4xl px-4 py-6">
-        <BitesRow />
-
-        {/* Posts */}
-        <div className="space-y-8">
-          {postsError && (
-            <Card>
-              <CardContent className="p-4 text-sm text-destructive">
-                Error loading feed: {postsError.message}. Using demo posts below.
-              </CardContent>
-            </Card>
-          )}
-
-          {displayPosts
-            .filter((post) => isValidDate((post as any).createdAt || (post as any).updatedAt))  // Filter invalid dates
-            .map((post) =>
-              post.isRecipe ? (
-                <SimpleRecipeCard
-                  key={post.id}
-                  post={post}
-                  currentUserId={currentUserId}
-                />
-              ) : (
-                <PostCard key={post.id} post={post} currentUserId={currentUserId} />
-              )
-            )}
-
-          {displayPosts.length === 0 && !postsLoading && !postsError && (
-            <p className="text-center text-muted-foreground py-8">No posts yet. Start following chefs!</p>
-          )}
-        </div>
-
-        <div className="flex justify-center mt-8">
-          <Button
-            variant="outline"
-            className="px-6 py-3"
-            data-testid="button-load-more"
-          >
-            Load More Posts
-          </Button>
-        </div>
-      </div>
-
-      {/* Sidebar */}
-      <aside className="hidden xl:block w-80 p-6 bg-card border-l border-border">
-        <section className="mb-8">
-          <h3 className="font-semibold mb-4">Suggested Chefs</h3>
-          <div className="space-y-3">
-            {displaySuggestedUsers.slice(0, 5).map((user) => (
-              <div key={user.id} className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <Avatar className="w-10 h-10">
-                    <AvatarImage src={user.avatar || ""} alt={user.displayName} />
-                    <AvatarFallback>{user.displayName[0]}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p
-                      className="text-sm font-medium"
-                      data-testid={`text-suggested-chef-${user.id}`}
-                    >
-                      {user.displayName}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {(user as any).specialty || "Expert Chef"}
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  className="bg-primary text-primary-foreground hover:opacity-90"
-                  data-testid={`button-follow-${user.id}`}
-                >
-                  Follow
-                </Button>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="mb-8">
-          <h3 className="font-semibold mb-4">Trending Recipes</h3>
-          <div className="space-y-4">
-            {displayTrendingRecipes.slice(0, 5).map((recipe) => (
-              <div
-                key={recipe.id}
-                className="flex space-x-3 cursor-pointer hover:bg-muted/50 p-2 rounded-lg transition-colors"
-                data-testid={`trending-recipe-${recipe.id}`}
-              >
-                <img
-                  src={recipe.post.imageUrl}
-                  alt={recipe.title}
-                  className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{recipe.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    by {recipe.post.user.displayName}
-                  </p>
-                  <div className="flex items-center space-x-2 mt-1">
-                    <span className="text-xs text-destructive">
-                      ♥ {recipe.post.likesCount}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      • {recipe.cookTime} min
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <h3 className="font-semibold mb-4">Popular Categories</h3>
-          <div className="flex flex-wrap gap-2">
-            {["Italian", "Healthy", "Desserts", "Quick", "Vegan"].map(
-              (category) => (
-                <Badge
-                  key={category}
-                  variant="outline"
-                  className="cursor-pointer hover:bg-primary/20 transition-colors"
-                  data-testid={`category-${category.toLowerCase()}`}
-                >
-                  #{category}
-                </Badge>
-              )
-            )}
-          </div>
-        </section>
-      </aside>
-    </div>
-  );
-}t,
-  Camera, Cookie, ChefHat, X, Check, Zap, Activity, Sun, Sparkles, Trophy, Crown, Leaf,
+import {
+  IceCream, Heart, Star, Search, Share2, ArrowLeft,
+  Camera, Cookie, X, Check, Zap, Activity, Sun, Trophy, Crown, Leaf,
   Clipboard, RotateCcw
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
-import { 
-  dessertSmoothies, 
+import {
+  dessertSmoothies,
   dessertTypes,
   dessertCategories,
-  smoothieSubcategories,
-  otherDrinkHubs 
+  otherDrinkHubs
 } from '../../data/smoothies';
 
 // ---------- Helpers ----------
@@ -485,15 +58,14 @@ const toMetric = (unit: string, amount: number) => {
 // Improved ingredient parser that handles fractions and descriptors properly
 const parseIngredient = (ingredient: string): Measured => {
   const fractionMap: Record<string, number> = {
-    '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
+    '½': 1 / 2, '⅓': 1 / 3, '⅔': 2 / 3, '¼': 1 / 4, '¾': 3 / 4, '⅛': 1 / 8
   };
-  
+
   const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
   if (parts.length < 2) return m('1', 'item', ingredient);
 
-  let amountStr = parts[0];
-  let amount: number | string = fractionMap[amountStr] ?? 
-    (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
+  const amountStr = parts[0];
+  let amount: number | string = fractionMap[amountStr] ?? (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
 
   let unit = parts[1];
   let item = parts.slice(2).join(' ');
@@ -510,13 +82,13 @@ const parseIngredient = (ingredient: string): Measured => {
     item = item.replace('(for color)', '').trim();
     return m(amount, unit, item, 'for color');
   }
-  
+
   return m(amount, unit, item);
 };
 
 export default function DessertSmoothiesPage() {
-  const { 
-    addToFavorites, 
+  const {
+    addToFavorites,
     isFavorite,
     addToRecentlyViewed,
     userProgress,
@@ -527,34 +99,39 @@ export default function DessertSmoothiesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDessertType, setSelectedDessertType] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [maxCalories, setMaxCalories] = useState<number | 'all'>('all'); // FIXED: Now supports 'all'
+  const [maxCalories, setMaxCalories] = useState<number | 'all'>('all'); // supports 'all'
   const [onlyNaturalSweetener, setOnlyNaturalSweetener] = useState(false);
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'cost' | 'calories'>('rating');
-  const [activeTab, setActiveTab] = useState<'browse'|'dessert-types'|'categories'|'featured'>('browse');
+  const [activeTab, setActiveTab] = useState<'browse' | 'dessert-types' | 'categories' | 'featured'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  
+
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
-  // Convert dessert smoothies to RecipeKit format with ROBUST parsing
+  // Convert dessert smoothies to RecipeKit format with robust parsing
   const smoothieRecipesWithMeasurements = useMemo(() => {
-    return dessertSmoothies.map((s) => {
-      // FIXED: Handle various data shapes for ingredients
+    return dessertSmoothies.map((s: any, idx: number) => {
       const rawList = Array.isArray(s.ingredients) ? s.ingredients : [];
-      
-      // Normalize everything to { amount, unit, item, note }
       const measurements = rawList.map((ing: any) => {
         if (typeof ing === 'string') return parseIngredient(ing);
-        // If already measured object, keep as-is
         const { amount = 1, unit = 'item', item = '', note = '' } = ing || {};
         return { amount, unit, item, note };
       });
 
       return {
         ...s,
+        id: s.id ?? `dessert-${idx}`,
+        name: s.name ?? 'Dessert Smoothie',
+        description: s.description ?? 'A delicious dessert smoothie',
+        nutrition: {
+          calories: s?.nutrition?.calories ?? undefined,
+          protein: s?.nutrition?.protein ?? undefined,
+        },
+        dessertType: s.dessertType ?? 'Dessert',
+        bestTime: s.bestTime ?? 'Anytime',
         recipe: {
           servings: 1,
           measurements,
@@ -572,8 +149,8 @@ export default function DessertSmoothiesPage() {
   const handleShareSmoothie = async (smoothie: any, servingsOverride?: number) => {
     const url = typeof window !== 'undefined' ? window.location.href : '';
     const servings = servingsOverride ?? servingsById[smoothie.id] ?? (smoothie.recipe?.servings || 1);
-    const preview = smoothie.ingredients.slice(0, 4).join(' • ');
-    const text = `${smoothie.name} • ${smoothie.dessertType} • ${smoothie.bestTime}\n${preview}${smoothie.ingredients.length > 4 ? ` …plus ${smoothie.ingredients.length - 4} more` : ''}`;
+    const preview = (smoothie.ingredients ?? []).slice(0, 4).join(' • ');
+    const text = `${smoothie.name} • ${smoothie.dessertType ?? 'Dessert'} • ${smoothie.bestTime ?? 'Anytime'}\n${preview}${(smoothie.ingredients?.length ?? 0) > 4 ? ` …plus ${(smoothie.ingredients.length - 4)} more` : ''}`;
     const shareData = { title: smoothie.name, text, url };
     try {
       if (navigator.share) {
@@ -621,25 +198,30 @@ export default function DessertSmoothiesPage() {
   };
 
   const getFilteredSmoothies = () => {
-    let filtered = smoothieRecipesWithMeasurements.filter(smoothie => {
-      const matchesSearch = smoothie.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           smoothie.description.toLowerCase().includes(searchQuery.toLowerCase());
+    let filtered = smoothieRecipesWithMeasurements.filter((smoothie: any) => {
+      const matchesSearch =
+        smoothie.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (smoothie.description ?? '').toLowerCase().includes(searchQuery.toLowerCase());
+
       const matchesType = !selectedDessertType || smoothie.dessertType === selectedDessertType;
       const matchesCategory = !selectedCategory || (Array.isArray(smoothie.category)
         ? smoothie.category.includes(selectedCategory)
         : smoothie.category === selectedCategory);
-      // FIXED: Proper calorie filtering with 'all' option
-      const matchesCalories = maxCalories === 'all' || smoothie.nutrition.calories <= maxCalories;
-      const matchesSweetener = !onlyNaturalSweetener || smoothie.nutrition.added_sugar === 0;
+
+      // Proper calorie filtering with 'all' option; items without calories pass when 'all'
+      const cal = smoothie.nutrition?.calories ?? Infinity;
+      const matchesCalories = maxCalories === 'all' || cal <= (maxCalories as number);
+
+      const matchesSweetener = !onlyNaturalSweetener || (smoothie.nutrition?.added_sugar ?? 0) === 0;
       return matchesSearch && matchesType && matchesCategory && matchesCalories && matchesSweetener;
     });
 
-    filtered.sort((a, b) => {
+    filtered.sort((a: any, b: any) => {
       switch (sortBy) {
         case 'rating': return (b.rating || 0) - (a.rating || 0);
-        case 'protein': return (b.nutrition.protein || 0) - (a.nutrition.protein || 0);
+        case 'protein': return (b.nutrition?.protein || 0) - (a.nutrition?.protein || 0);
         case 'cost': return (a.estimatedCost || 0) - (b.estimatedCost || 0);
-        case 'calories': return (a.nutrition.calories || 0) - (b.nutrition.calories || 0);
+        case 'calories': return (a.nutrition?.calories || 0) - (b.nutrition?.calories || 0);
         default: return 0;
       }
     });
@@ -648,7 +230,7 @@ export default function DessertSmoothiesPage() {
   };
 
   const filteredSmoothies = getFilteredSmoothies();
-  const featuredSmoothies = smoothieRecipesWithMeasurements.filter(s => s.trending);
+  const featuredSmoothies = smoothieRecipesWithMeasurements.filter((s: any) => s.trending);
 
   // Share page handler
   const handleSharePage = async () => {
@@ -742,10 +324,10 @@ export default function DessertSmoothiesPage() {
                 <Badge className="bg-pink-100 text-pink-800">Guilt-Free</Badge>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setShowUniversalSearch(true)}
               >
@@ -768,13 +350,13 @@ export default function DessertSmoothiesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        
+
         {/* CROSS-HUB NAVIGATION */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              {otherDrinkHubs.map((hub) => {
+              {otherDrinkHubs.map((hub: any) => {
                 const Icon = hub.icon;
                 return (
                   <Link key={hub.id} href={hub.route}>
@@ -883,37 +465,37 @@ export default function DessertSmoothiesPage() {
                       className="pl-10"
                     />
                   </div>
-                  
+
                   <div className="flex flex-wrap gap-2">
-                    <select 
+                    <select
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                       value={selectedDessertType}
                       onChange={(e) => setSelectedDessertType(e.target.value)}
                     >
                       <option value="">All Types</option>
-                      {Array.from(new Set(dessertTypes.map(t => t.name))).map(name => (
+                      {Array.from(new Set(dessertTypes.map((t: any) => t.name))).map((name) => (
                         <option key={name} value={name}>{name}</option>
                       ))}
                     </select>
 
-                    <select 
+                    <select
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                       value={selectedCategory}
                       onChange={(e) => setSelectedCategory(e.target.value)}
                     >
                       <option value="">All Categories</option>
-                      {dessertCategories.map(c => (
+                      {dessertCategories.map((c: any) => (
                         <option key={c.id} value={c.name}>{c.name}</option>
                       ))}
                     </select>
-                    
-                    {/* FIXED: Calorie filter with 'all' option */}
-                    <select 
+
+                    {/* Calorie filter with 'all' option */}
+                    <select
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
-                      value={maxCalories}
+                      value={String(maxCalories)}
                       onChange={(e) => {
                         const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
-                        setMaxCalories(v);
+                        setMaxCalories(v as any);
                       }}
                     >
                       <option value="all">All Calories</option>
@@ -924,7 +506,7 @@ export default function DessertSmoothiesPage() {
                       <option value={400}>Under 400 cal</option>
                       <option value={450}>Under 450 cal</option>
                     </select>
-                    
+
                     <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
                       <input
                         type="checkbox"
@@ -934,7 +516,7 @@ export default function DessertSmoothiesPage() {
                       Natural
                     </label>
 
-                    <select 
+                    <select
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
@@ -951,12 +533,16 @@ export default function DessertSmoothiesPage() {
 
             {/* Smoothie Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredSmoothies.map(smoothie => {
+              {filteredSmoothies.map((smoothie: any, i: number) => {
                 const useMetric = !!metricFlags[smoothie.id];
                 const servings = servingsById[smoothie.id] ?? (smoothie.recipe?.servings || 1);
 
+                const calories = smoothie.nutrition?.calories ?? 0;
+                const protein = smoothie.nutrition?.protein ?? 0;
+                const prepTime = smoothie.prepTime ?? 5;
+
                 return (
-                  <Card key={smoothie.id} className="hover:shadow-lg transition-shadow">
+                  <Card key={smoothie.id || `dessert-${i}`} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -983,42 +569,42 @@ export default function DessertSmoothiesPage() {
                           <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>
                       </div>
-                      
+
                       <div className="flex items-center gap-2 mb-2">
-                        <Badge className="bg-pink-100 text-pink-800">{smoothie.dessertType}</Badge>
+                        <Badge className="bg-pink-100 text-pink-800">{smoothie.dessertType ?? 'Dessert'}</Badge>
                         {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
                     </CardHeader>
-                    
+
                     <CardContent>
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
-                          <div className="font-bold text-pink-600">{smoothie.nutrition.calories}</div>
+                          <div className="font-bold text-pink-600">{calories}</div>
                           <div className="text-gray-500">Cal</div>
                         </div>
                         <div>
-                          <div className="font-bold text-pink-600">{smoothie.nutrition.protein}g</div>
+                          <div className="font-bold text-pink-600">{protein}g</div>
                           <div className="text-gray-500">Protein</div>
                         </div>
                         <div>
-                          <div className="font-bold text-pink-600">{smoothie.prepTime}m</div>
+                          <div className="font-bold text-pink-600">{prepTime}m</div>
                           <div className="text-gray-500">Prep</div>
                         </div>
                       </div>
 
-                      {/* RATING & DIFFICULTY - IMMEDIATELY ABOVE RECIPE CARD */}
+                      {/* RATING & DIFFICULTY */}
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-1">
                           <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                          <span className="font-medium">{smoothie.rating}</span>
-                          <span className="text-gray-500 text-sm">({smoothie.reviews})</span>
+                          <span className="font-medium">{smoothie.rating ?? '—'}</span>
+                          <span className="text-gray-500 text-sm">({smoothie.reviews ?? 0})</span>
                         </div>
                         <Badge variant="outline" className="text-xs">
-                          {smoothie.difficulty}
+                          {smoothie.difficulty ?? 'Easy'}
                         </Badge>
                       </div>
 
-                      {/* FIXED: RecipeKit Preview with robust measurements check */}
+                      {/* RecipeKit Preview (first 4 ingredients) */}
                       {Array.isArray(smoothie.recipe?.measurements) && smoothie.recipe.measurements.length > 0 && (
                         <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
@@ -1048,11 +634,7 @@ export default function DessertSmoothiesPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setServingsById(prev => {
-                                  const next = { ...prev };
-                                  next[smoothie.id] = smoothie.recipe?.servings || 1;
-                                  return next;
-                                })}
+                                onClick={() => setServingsById(prev => ({ ...prev, [smoothie.id]: smoothie.recipe?.servings || 1 }))}
                                 title="Reset servings"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
@@ -1061,7 +643,7 @@ export default function DessertSmoothiesPage() {
                           </div>
 
                           <ul className="text-sm leading-6 text-gray-800 space-y-1">
-                            {smoothie.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                            {smoothie.recipe.measurements.slice(0, 4).map((ing: Measured, i2: number) => {
                               const isNum = typeof ing.amount === 'number';
                               const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount;
                               const show = useMetric && isNum
@@ -1069,7 +651,7 @@ export default function DessertSmoothiesPage() {
                                 : { amount: scaledDisplay, unit: ing.unit };
 
                               return (
-                                <li key={i} className="flex items-start gap-2">
+                                <li key={i2} className="flex items-start gap-2">
                                   <Check className="h-4 w-4 text-pink-600 mt-0.5" />
                                   <span>
                                     <span className="text-pink-700 font-semibold">
@@ -1100,7 +682,7 @@ export default function DessertSmoothiesPage() {
                               variant="outline"
                               size="sm"
                               onClick={async () => {
-                                const lines = smoothie.ingredients.map((ing: string) => `- ${ing}`);
+                                const lines = (smoothie.ingredients ?? []).map((ing: string) => `- ${ing}`);
                                 const txt = `${smoothie.name} (serves ${servings})\n${lines.join('\n')}`;
                                 try {
                                   await navigator.clipboard.writeText(txt);
@@ -1119,9 +701,7 @@ export default function DessertSmoothiesPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() =>
-                                setMetricFlags((prev) => ({ ...prev, [smoothie.id]: !prev[smoothie.id] }))
-                              }
+                              onClick={() => setMetricFlags((prev) => ({ ...prev, [smoothie.id]: !prev[smoothie.id] }))}
                             >
                               {useMetric ? 'US' : 'Metric'}
                             </Button>
@@ -1133,13 +713,13 @@ export default function DessertSmoothiesPage() {
                       <div className="space-y-2 mb-3 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Best Time:</span>
-                          <span className="font-medium text-pink-600">{smoothie.bestTime}</span>
+                          <span className="font-medium text-pink-600">{smoothie.bestTime ?? 'Anytime'}</span>
                         </div>
                       </div>
 
                       {/* Benefits Tags */}
                       <div className="flex flex-wrap gap-1 mb-4">
-                        {smoothie.benefits?.slice(0, 3).map((benefit: string, index: number) => (
+                        {(smoothie.benefits ?? []).slice(0, 3).map((benefit: string, index: number) => (
                           <Badge key={index} variant="secondary" className="text-xs bg-pink-100 text-pink-800 hover:bg-pink-200">
                             {benefit}
                           </Badge>
@@ -1148,7 +728,7 @@ export default function DessertSmoothiesPage() {
 
                       {/* Make Smoothie Button */}
                       <div className="mt-3">
-                        <Button 
+                        <Button
                           className="w-full bg-pink-600 hover:bg-pink-700"
                           onClick={() => openRecipeModal(smoothie)}
                         >
@@ -1164,10 +744,10 @@ export default function DessertSmoothiesPage() {
           </div>
         )}
 
-        {/* Rest of the tabs remain the same structure */}
+        {/* Dessert Types */}
         {activeTab === 'dessert-types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {dessertTypes.map(type => {
+            {dessertTypes.map((type: any) => {
               const Icon = type.icon as any;
               return (
                 <Card key={type.id} className="hover:shadow-lg transition-shadow">
@@ -1184,7 +764,7 @@ export default function DessertSmoothiesPage() {
                         <div className="text-sm font-medium text-gray-700 mb-1">Key Benefit</div>
                         <div className="text-lg font-bold text-pink-600">{type.keyBenefit}</div>
                       </div>
-                      
+
                       <div>
                         <h4 className="font-semibold text-sm mb-2">Healthy Ingredients:</h4>
                         <div className="flex flex-wrap gap-1">
@@ -1196,7 +776,7 @@ export default function DessertSmoothiesPage() {
                         </div>
                       </div>
                     </div>
-                    
+
                     <Button className="w-full" onClick={() => setActiveTab('browse')}>
                       Explore {type.name}
                     </Button>
@@ -1207,9 +787,10 @@ export default function DessertSmoothiesPage() {
           </div>
         )}
 
+        {/* Categories */}
         {activeTab === 'categories' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {dessertCategories.map(category => {
+            {dessertCategories.map((category: any) => {
               const Icon = category.icon as any;
               return (
                 <Card key={category.id} className="hover:shadow-lg transition-shadow">
@@ -1231,7 +812,7 @@ export default function DessertSmoothiesPage() {
                         <div className="text-lg font-bold text-pink-600">{category.calorieRange}</div>
                       </div>
                     </div>
-                    
+
                     <Button className="w-full" onClick={() => setActiveTab('browse')}>
                       View {category.name}
                     </Button>
@@ -1242,26 +823,27 @@ export default function DessertSmoothiesPage() {
           </div>
         )}
 
+        {/* Featured */}
         {activeTab === 'featured' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {featuredSmoothies.map(smoothie => (
+            {featuredSmoothies.map((smoothie: any) => (
               <Card key={smoothie.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="relative h-48">
-                  <img 
-                    src={smoothie.image} 
+                  <img
+                    src={smoothie.image}
                     alt={smoothie.name}
                     className="w-full h-full object-cover"
                   />
                   <Badge className="absolute top-4 left-4 bg-pink-500 text-white">Featured</Badge>
                 </div>
-                
+
                 <CardHeader>
                   <CardTitle>{smoothie.name}</CardTitle>
                   <p className="text-gray-600">{smoothie.description}</p>
                 </CardHeader>
-                
+
                 <CardContent>
-                  <Button 
+                  <Button
                     className="w-full bg-pink-600 hover:bg-pink-700"
                     onClick={() => openRecipeModal(smoothie)}
                   >
