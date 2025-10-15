@@ -6,8 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { 
-  IceCream, Heart, Star, Search, Share2, ArrowLef// client/src/pages/feed.tsx
+import { IceCream, Heart, Star, Search, Share2, ArrowLef// client/src/pages/feed.tsx
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
