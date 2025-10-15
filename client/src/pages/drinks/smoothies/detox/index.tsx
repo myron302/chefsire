@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { 
   Droplets, Leaf, Heart, Star, Search, Share2, ArrowLeft,
   Camera, Zap, Sparkles, X, Check, Apple, Sun, Crown, Activity, Trophy, IceCream,
-  Clipboard, RotateCcw
+  Clipboard, RotateCcw, Wine, Flame
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -374,6 +374,14 @@ const detoxCategories = [
   { id: 'energy', name: 'Energy Cleanse', description: 'Natural energy boost' }
 ];
 
+// ---------- Cross-nav ----------
+const otherDrinkHubs = [
+  { id: 'protein-shakes', name: 'Protein Shakes', icon: Zap, route: '/drinks/protein-shakes', description: 'Muscle building' },
+  { id: 'detoxes', name: 'Detox Drinks', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing & wellness' },
+  { id: 'potables', name: 'Potent Potables', icon: Wine, route: '/drinks/potent-potables', description: 'Cocktails (21+)' },
+  { id: 'all-drinks', name: 'All Drinks', icon: Sparkles, route: '/drinks', description: 'Browse everything' }
+];
+
 const allSmoothieSubcategories = [
   { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Zap, description: 'High-protein blends' },
   { id: 'breakfast', name: 'Breakfast', path: '/drinks/smoothies/breakfast', icon: Crown, description: 'Morning fuel' },
@@ -383,13 +391,6 @@ const allSmoothieSubcategories = [
   { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
   { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Trophy, description: 'Cleansing blends' },
   { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: IceCream, description: 'Healthy treats' }
-];
-
-const otherDrinkHubs = [
-  { id: 'juices', name: 'Fresh Juices', route: '/drinks/juices', icon: Droplets, description: 'Cold-pressed nutrition' },
-  { id: 'teas', name: 'Specialty Teas', route: '/drinks/teas', icon: Sun, description: 'Hot & iced teas' },
-  { id: 'coffee', name: 'Coffee Drinks', route: '/drinks/coffee', icon: Zap, description: 'Artisan coffee' },
-  { id: 'protein-shakes', name: 'Protein Shakes', route: '/drinks/protein-shakes', icon: Apple, description: 'Muscle fuel' }
 ];
 
 export default function DetoxSmoothiesPage() {
@@ -601,7 +602,7 @@ export default function DetoxSmoothiesPage() {
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
-                <Droplets className="h-6 w-6 text-green-600" />
+                <Trophy className="h-6 w-6 text-green-600" />
                 <h1 className="text-2xl font-bold text-gray-900">Detox Smoothies</h1>
                 <Badge className="bg-green-100 text-green-800">Cleansing</Badge>
               </div>
@@ -633,7 +634,7 @@ export default function DetoxSmoothiesPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         
-        {/* CROSS-HUB NAVIGATION */}
+        {/* CROSS-HUB NAVIGATION - Top Level Sites */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
@@ -846,13 +847,14 @@ export default function DetoxSmoothiesPage() {
                         </Button>
                       </div>
                       
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2">
                         <Badge className="bg-green-100 text-green-800">{smoothie.detoxType}</Badge>
                         {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
                     </CardHeader>
                     
                     <CardContent>
+                      {/* Nutrition Grid */}
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
                           <div className="font-bold text-green-600">{smoothie.nutrition.calories}</div>
@@ -868,7 +870,7 @@ export default function DetoxSmoothiesPage() {
                         </div>
                       </div>
 
-                      {/* RATING & DIFFICULTY */}
+                      {/* RATING & DIFFICULTY - Immediately above recipe card */}
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-1">
                           <Star className="h-4 w-4 text-yellow-400 fill-current" />
@@ -1014,7 +1016,7 @@ export default function DetoxSmoothiesPage() {
                           className="w-full bg-green-600 hover:bg-green-700"
                           onClick={() => openRecipeModal(smoothie)}
                         >
-                          <Leaf className="h-4 w-4 mr-2" />
+                          <Trophy className="h-4 w-4 mr-2" />
                           Make Smoothie (+30 XP)
                         </Button>
                       </div>
@@ -1034,7 +1036,7 @@ export default function DetoxSmoothiesPage() {
                 <CardHeader>
                   <div className="text-center">
                     <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <Leaf className="h-6 w-6 text-green-600" />
+                      <Trophy className="h-6 w-6 text-green-600" />
                     </div>
                     <CardTitle className="text-lg">{type.name}</CardTitle>
                     <p className="text-sm text-gray-600">{type.description}</p>
@@ -1061,7 +1063,7 @@ export default function DetoxSmoothiesPage() {
                 <CardHeader>
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-green-100 rounded-lg">
-                      <Zap className="h-6 w-6 text-green-600" />
+                      <Trophy className="h-6 w-6 text-green-600" />
                     </div>
                     <div>
                       <CardTitle className="text-lg">{category.name}</CardTitle>
@@ -1106,7 +1108,7 @@ export default function DetoxSmoothiesPage() {
                     className="w-full bg-green-600 hover:bg-green-700"
                     onClick={() => openRecipeModal(smoothie)}
                   >
-                    <Leaf className="h-4 w-4 mr-2" />
+                    <Trophy className="h-4 w-4 mr-2" />
                     Make This Detox
                   </Button>
                 </CardContent>
