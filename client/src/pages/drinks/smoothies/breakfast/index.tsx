@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { 
-  Sun, Clock, Heart, Star, Target, Zap,
-  Search, Share2, ArrowLeft, Camera, Apple, Droplets, Leaf,
-  Coffee, X, Check, Clipboard, RotateCcw
+  Apple, Clock, Heart, Star, Crown, Search, 
+  Share2, ArrowLeft, Camera, Zap, X, Check,
+  Clipboard, RotateCcw, Sparkles, Wine, Flame,
+  Sun, Leaf, Palmtree, Droplets, Target
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -25,7 +26,7 @@ const toNiceFraction = (value: number) => {
   const rounded = Math.round(value * 4) / 4;
   const whole = Math.trunc(rounded);
   const frac = Math.round((rounded - whole) * 4);
-  const fracMap: Record<number, string> = { 0: '', 1: '1/4', 2: '1/2', 3: '3/4' };
+  const fracMap: Record<number, string> = { 0: '', 1: '¼', 2: '½', 3: '¾' };
   const fracStr = fracMap[frac];
   if (!whole && fracStr) return fracStr;
   if (whole && fracStr) return `${whole} ${fracStr}`;
@@ -49,179 +50,360 @@ const toMetric = (unit: string, amount: number) => {
   }
 };
 
-// Breakfast smoothies data
+// Improved ingredient parser that handles fractions and descriptors properly
+const parseIngredient = (ingredient: string): Measured => {
+  const fractionMap: Record<string, number> = {
+    '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
+  };
+  
+  const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
+  if (parts.length < 2) return m('1', 'item', ingredient);
+
+  let amountStr = parts[0];
+  let amount: number | string = fractionMap[amountStr] ?? 
+    (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
+
+  let unit = parts[1];
+  let item = parts.slice(2).join(' ');
+
+  // If unit looks like a descriptor (not a real unit), fold it back into the item
+  const descriptors = new Set(['low-fat', 'frozen', 'unsweetened', 'natural', 'vanilla', 'plain', 'fresh']);
+  if (descriptors.has(unit)) {
+    item = [unit, item].filter(Boolean).join(' ').trim();
+    unit = 'item'; // generic unit
+  }
+
+  // Handle notes like "(optional)"
+  if (item.includes('(optional)')) {
+    item = item.replace('(optional)', '').trim();
+    return m(amount, unit, item, 'optional');
+  }
+  
+  return m(amount, unit, item);
+};
+
+// Enhanced breakfast smoothies data with proper measurements
 const breakfastSmoothies = [
   {
     id: 'overnight-oats-smoothie',
     name: 'Overnight Oats Smoothie',
     description: 'Creamy oats and banana for sustained morning energy',
-    ingredients: ['1/2 cup rolled oats', '1 banana', '1 cup milk', '1 tbsp chia seeds', '1 tsp honey', 'Ice'],
+    ingredients: [
+      '1 banana',
+      '½ cup oats',
+      '1 cup milk',
+      '1 tbsp chia seeds',
+      '1 tsp honey',
+      '1 cup ice'
+    ],
     benefits: ['Sustained energy', 'Fiber rich', 'Heart healthy', 'Digestive support'],
-    nutrition: { calories: 320, protein: 12, carbs: 58, fiber: 8, sugar: 22 },
+    nutrition: { calories: 320, protein: 12, carbs: 58, fiber: 8, sugar: 22, added_sugar: 12 },
     difficulty: 'Easy',
     prepTime: 3,
     rating: 4.8,
     reviews: 423,
     smoothieType: 'Oat-Based',
+    energyLevel: 'Sustained',
     featured: true,
     trending: true,
     bestTime: 'Morning',
     caffeineFree: true,
-    image: 'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=400&h=300&fit=crop'
+    image: 'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=400&h=300&fit=crop',
+    estimatedCost: 2.80
   },
   {
     id: 'green-breakfast-power',
     name: 'Green Breakfast Power',
     description: 'Spinach and fruit blend to start your day right',
-    ingredients: ['1 cup spinach', '1/2 banana', '1/2 cup pineapple', '1/2 cup Greek yogurt', '1 tbsp flax seeds', 'Ice'],
+    ingredients: [
+      '1 cup spinach',
+      '½ banana',
+      '½ cup pineapple',
+      '½ cup Greek yogurt',
+      '1 tbsp flax seeds',
+      '1 cup ice'
+    ],
     benefits: ['Energy boost', 'Nutrient dense', 'Protein packed', 'Immune support'],
-    nutrition: { calories: 280, protein: 15, carbs: 42, fiber: 7, sugar: 28 },
+    nutrition: { calories: 280, protein: 15, carbs: 42, fiber: 7, sugar: 28, added_sugar: 0 },
     difficulty: 'Easy',
     prepTime: 4,
     rating: 4.7,
     reviews: 367,
     smoothieType: 'Green',
+    energyLevel: 'High',
     featured: false,
     trending: true,
     bestTime: 'Morning',
-    caffeineFree: true
+    caffeineFree: true,
+    estimatedCost: 3.20
   },
   {
     id: 'coffee-protein-shake',
     name: 'Coffee Protein Shake',
     description: 'Morning coffee meets protein power',
-    ingredients: ['1/2 cup cold brew', '1 scoop vanilla protein', '1/2 banana', '1/2 cup almond milk', 'Ice'],
+    ingredients: [
+      '½ cup cold brew',
+      '1 scoop protein powder',
+      '½ banana',
+      '½ cup almond milk',
+      '1 cup ice'
+    ],
     benefits: ['Caffeine boost', 'Muscle fuel', 'Mental clarity', 'Morning energy'],
-    nutrition: { calories: 240, protein: 25, carbs: 22, fiber: 3, sugar: 12 },
+    nutrition: { calories: 240, protein: 25, carbs: 22, fiber: 3, sugar: 12, added_sugar: 0 },
     difficulty: 'Easy',
     prepTime: 3,
     rating: 4.9,
     reviews: 512,
     smoothieType: 'Coffee',
+    energyLevel: 'Very High',
     featured: true,
     trending: false,
     bestTime: 'Morning',
-    caffeineFree: false
+    caffeineFree: false,
+    estimatedCost: 3.50
   },
   {
     id: 'berry-yogurt-breakfast',
     name: 'Berry Yogurt Breakfast',
     description: 'Classic berry and yogurt combination',
-    ingredients: ['1 cup mixed berries', '3/4 cup Greek yogurt', '1/4 cup orange juice', '1 tbsp honey', 'Ice'],
+    ingredients: [
+      '1 cup mixed berries',
+      '¾ cup Greek yogurt',
+      '¼ cup orange juice',
+      '1 tbsp honey',
+      '1 cup ice'
+    ],
     benefits: ['Antioxidants', 'Probiotics', 'Vitamin C', 'Calcium rich'],
-    nutrition: { calories: 290, protein: 18, carbs: 45, fiber: 6, sugar: 32 },
+    nutrition: { calories: 290, protein: 18, carbs: 45, fiber: 6, sugar: 32, added_sugar: 12 },
     difficulty: 'Easy',
     prepTime: 3,
     rating: 4.6,
     reviews: 289,
     smoothieType: 'Yogurt',
+    energyLevel: 'Medium',
     featured: false,
     trending: false,
     bestTime: 'Morning',
-    caffeineFree: true
+    caffeineFree: true,
+    estimatedCost: 3.00
   },
   {
     id: 'tropical-morning-bliss',
     name: 'Tropical Morning Bliss',
     description: 'Island flavors to brighten your morning',
-    ingredients: ['1/2 cup mango', '1/2 cup pineapple', '1/2 banana', '1/2 cup coconut milk', '1 tbsp shredded coconut', 'Ice'],
+    ingredients: [
+      '½ cup mango',
+      '½ cup pineapple',
+      '½ banana',
+      '½ cup coconut milk',
+      '1 tbsp shredded coconut',
+      '1 cup ice'
+    ],
     benefits: ['Vitamin C', 'Tropical flavor', 'Energy boost', 'Hydrating'],
-    nutrition: { calories: 310, protein: 4, carbs: 52, fiber: 5, sugar: 38 },
+    nutrition: { calories: 310, protein: 4, carbs: 52, fiber: 5, sugar: 38, added_sugar: 0 },
     difficulty: 'Easy',
     prepTime: 4,
     rating: 4.5,
     reviews: 198,
     smoothieType: 'Tropical',
+    energyLevel: 'Medium',
     featured: false,
     trending: false,
     bestTime: 'Morning',
-    caffeineFree: true
+    caffeineFree: true,
+    estimatedCost: 3.40
   },
   {
     id: 'peanut-butter-energy',
     name: 'Peanut Butter Energy',
     description: 'Creamy peanut butter for lasting morning fuel',
-    ingredients: ['2 tbsp peanut butter', '1 banana', '1 cup milk', '1/4 cup oats', '1 tsp cinnamon', 'Ice'],
+    ingredients: [
+      '2 tbsp peanut butter',
+      '1 banana',
+      '1 cup milk',
+      '¼ cup oats',
+      '1 tsp cinnamon',
+      '1 cup ice'
+    ],
     benefits: ['Protein rich', 'Healthy fats', 'Sustained energy', 'Satisfying'],
-    nutrition: { calories: 380, protein: 16, carbs: 44, fiber: 6, sugar: 24 },
+    nutrition: { calories: 380, protein: 16, carbs: 44, fiber: 6, sugar: 24, added_sugar: 0 },
     difficulty: 'Easy',
     prepTime: 3,
     rating: 4.7,
     reviews: 345,
     smoothieType: 'Nut Butter',
+    energyLevel: 'Sustained',
     featured: false,
     trending: true,
     bestTime: 'Morning',
-    caffeineFree: true
+    caffeineFree: true,
+    estimatedCost: 2.90
   },
   {
     id: 'chocolate-breakfast-treat',
     name: 'Chocolate Breakfast Treat',
     description: 'Healthy chocolate smoothie that feels like dessert',
-    ingredients: ['1 tbsp cocoa powder', '1 banana', '1 cup milk', '1 scoop chocolate protein', '1 tbsp almond butter', 'Ice'],
+    ingredients: [
+      '1 tbsp cocoa powder',
+      '1 banana',
+      '1 cup milk',
+      '1 scoop protein powder',
+      '1 tbsp almond butter',
+      '1 cup ice'
+    ],
     benefits: ['Antioxidants', 'Protein packed', 'Mood boosting', 'Indulgent'],
-    nutrition: { calories: 350, protein: 28, carbs: 36, fiber: 7, sugar: 20 },
+    nutrition: { calories: 350, protein: 28, carbs: 36, fiber: 7, sugar: 20, added_sugar: 0 },
     difficulty: 'Easy',
     prepTime: 4,
     rating: 4.8,
     reviews: 278,
     smoothieType: 'Chocolate',
+    energyLevel: 'High',
     featured: true,
     trending: false,
     bestTime: 'Morning',
-    caffeineFree: true
+    caffeineFree: true,
+    estimatedCost: 3.80
   },
   {
     id: 'sunrise-citrus-boost',
     name: 'Sunrise Citrus Boost',
     description: 'Bright citrus flavors to wake up your senses',
-    ingredients: ['1 orange', '1/2 grapefruit', '1/2 banana', '1/2 cup Greek yogurt', '1 tbsp honey', 'Ice'],
+    ingredients: [
+      '1 orange',
+      '½ grapefruit',
+      '½ banana',
+      '½ cup Greek yogurt',
+      '1 tbsp honey',
+      '1 cup ice'
+    ],
     benefits: ['Vitamin C', 'Immune support', 'Refreshing', 'Digestive aid'],
-    nutrition: { calories: 260, protein: 12, carbs: 48, fiber: 5, sugar: 35 },
+    nutrition: { calories: 260, protein: 12, carbs: 48, fiber: 5, sugar: 35, added_sugar: 12 },
     difficulty: 'Easy',
     prepTime: 4,
     rating: 4.4,
     reviews: 167,
     smoothieType: 'Citrus',
+    energyLevel: 'Gentle',
     featured: false,
     trending: false,
     bestTime: 'Morning',
-    caffeineFree: true
+    caffeineFree: true,
+    estimatedCost: 2.70
   }
 ];
 
-const smoothieSubcategories = [
-  { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Zap, description: 'High protein blends' },
-  { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Target, description: 'Performance boost' },
-  { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Leafy greens' },
-  { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Sun, description: 'Island flavors' },
-  { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
-  { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Droplets, description: 'Cleansing blends' },
-  { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: Star, description: 'Sweet treats' }
+const breakfastTypes = [
+  {
+    id: 'oat-based',
+    name: 'Oat-Based',
+    icon: Apple,
+    description: 'Sustained energy from whole grains',
+    color: 'text-purple-600',
+    timing: 'Morning',
+    focus: 'Long-lasting Energy'
+  },
+  {
+    id: 'green',
+    name: 'Green',
+    icon: Leaf,
+    description: 'Nutrient-packed with leafy greens',
+    color: 'text-purple-600',
+    timing: 'Morning',
+    focus: 'Nutrition & Vitamins'
+  },
+  {
+    id: 'protein',
+    name: 'Protein',
+    icon: Zap,
+    description: 'High-protein for morning fuel',
+    color: 'text-purple-600',
+    timing: 'Morning',
+    focus: 'Muscle & Energy'
+  },
+  {
+    id: 'tropical',
+    name: 'Tropical',
+    icon: Palmtree,
+    description: 'Bright, energizing island flavors',
+    color: 'text-purple-600',
+    timing: 'Morning',
+    focus: 'Vitamin C & Hydration'
+  },
+  {
+    id: 'yogurt',
+    name: 'Yogurt',
+    icon: Droplets,
+    description: 'Creamy probiotic blends',
+    color: 'text-purple-600',
+    timing: 'Morning',
+    focus: 'Gut Health & Protein'
+  },
+  {
+    id: 'nut-butter',
+    name: 'Nut Butter',
+    icon: Target,
+    description: 'Rich in healthy fats and protein',
+    color: 'text-purple-600',
+    timing: 'Morning',
+    focus: 'Satiety & Energy'
+  }
 ];
 
+const breakfastBenefitsList = [
+  { id: 'energy', name: 'Energy Boost', description: 'Sustained morning energy' },
+  { id: 'protein', name: 'Protein Packed', description: 'Muscle fuel and satiety' },
+  { id: 'fiber', name: 'Fiber Rich', description: 'Digestive health support' },
+  { id: 'vitamins', name: 'Vitamin Rich', description: 'Essential nutrients' },
+  { id: 'hydration', name: 'Hydration', description: 'Morning fluid intake' },
+  { id: 'satiety', name: 'Satiety', description: 'Keeps you full until lunch' }
+];
+
+// ---------- Cross-nav - Top Level Drink Categories ----------
 const otherDrinkHubs = [
-  { id: 'juices', name: 'Fresh Juices', route: '/drinks/juices', icon: Droplets, description: 'Cold-pressed nutrition' },
-  { id: 'teas', name: 'Specialty Teas', route: '/drinks/teas', icon: Coffee, description: 'Hot & iced teas' },
-  { id: 'coffee', name: 'Coffee Drinks', route: '/drinks/coffee', icon: Zap, description: 'Artisan coffee' },
-  { id: 'protein-shakes', name: 'Protein Shakes', route: '/drinks/protein-shakes', icon: Apple, description: 'Muscle fuel' }
+  { id: 'protein-shakes', name: 'Protein Shakes', icon: Zap, route: '/drinks/protein-shakes', description: 'Muscle building' },
+  { id: 'smoothies', name: 'All Smoothies', icon: Sparkles, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
+  { id: 'potables', name: 'Potent Potables', icon: Wine, route: '/drinks/potent-potables', description: 'Cocktails (21+)' },
+  { id: 'all-drinks', name: 'All Drinks', icon: Flame, route: '/drinks', description: 'Browse everything' }
+];
+
+// Sister smoothie subcategories (excluding breakfast since we're on breakfast page)
+const allSmoothieSubcategories = [
+  { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Target, description: 'Performance blends' },
+  { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Zap, description: 'High-protein blends' },
+  { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Superfood greens' },
+  { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Palmtree, description: 'Island flavors' },
+  { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
+  { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Droplets, description: 'Cleansing blends' },
+  { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: Crown, description: 'Healthy treats' }
+];
+
+const breakfastAdvantages = [
+  { icon: Sun, title: 'Morning Energy', description: 'Sustained energy to start your day right', color: 'text-purple-600' },
+  { icon: Clock, title: 'Quick Prep', description: 'Ready in minutes for busy mornings', color: 'text-purple-600' },
+  { icon: Heart, title: 'Nutrient Dense', description: 'Packed with vitamins and minerals', color: 'text-purple-600' },
+  { icon: Zap, title: 'Protein Power', description: 'Builds and repairs muscles overnight', color: 'text-purple-600' },
+  { icon: Apple, title: 'Natural Ingredients', description: 'Whole foods for optimal health', color: 'text-purple-600' },
+  { icon: Crown, title: 'Customizable', description: 'Easy to adapt to your preferences', color: 'text-purple-600' }
 ];
 
 export default function BreakfastSmoothiesPage() {
   const { 
     addToFavorites, 
-    isFavorite, 
-    addToRecentlyViewed, 
+    isFavorite,
+    addToRecentlyViewed,
     userProgress,
-    addPoints,
-    incrementDrinksMade
+    incrementDrinksMade,
+    addPoints
   } = useDrinks();
 
-  const [activeTab, setActiveTab] = useState('browse');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSmoothieType, setSelectedSmoothieType] = useState('');
-  const [caffeineLevel, setCaffeineLevel] = useState(['Any']);
-  const [sortBy, setSortBy] = useState('rating');
+  const [selectedBenefit, setSelectedBenefit] = useState('');
+  const [maxCalories, setMaxCalories] = useState<number | 'all'>('all');
+  const [onlyNaturalSweetener, setOnlyNaturalSweetener] = useState(false);
+  const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'cost' | 'calories'>('rating');
+  const [activeTab, setActiveTab] = useState<'browse'|'breakfast-types'|'benefits'|'featured'|'trending'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   
   // RecipeKit state
@@ -230,31 +412,33 @@ export default function BreakfastSmoothiesPage() {
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
-  // Convert breakfast smoothies to RecipeKit format
+  // Convert breakfast smoothies to RecipeKit format with robust parsing
   const smoothieRecipesWithMeasurements = useMemo(() => {
-    return breakfastSmoothies.map(smoothie => ({
-      ...smoothie,
-      recipe: {
-        servings: 1,
-        measurements: smoothie.ingredients.map((ing, index) => {
-          // Parse ingredients into measured format
-          const parts = ing.split(' ');
-          if (parts.length >= 2 && !isNaN(parseFloat(parts[0]))) {
-            const amount = parts[0];
-            const unit = parts[1];
-            const item = parts.slice(2).join(' ');
-            return m(amount, unit, item);
-          }
-          return m('1', 'item', ing);
-        }),
-        directions: [
-          'Add all ingredients to blender',
-          'Blend until smooth and creamy',
-          'Pour into glass and serve immediately',
-          'Enjoy your breakfast smoothie!'
-        ]
-      }
-    }));
+    return breakfastSmoothies.map((s) => {
+      const rawList = Array.isArray(s.ingredients) ? s.ingredients : [];
+      
+      // Normalize everything to { amount, unit, item, note }
+      const measurements = rawList.map((ing: any) => {
+        if (typeof ing === 'string') return parseIngredient(ing);
+        // If already measured object, keep as-is
+        const { amount = 1, unit = 'item', item = '', note = '' } = ing || {};
+        return { amount, unit, item, note };
+      });
+
+      return {
+        ...s,
+        recipe: {
+          servings: 1,
+          measurements,
+          directions: [
+            'Add all ingredients to blender',
+            'Blend until smooth and creamy',
+            'Pour into glass and enjoy immediately',
+            'Perfect for busy mornings!'
+          ]
+        }
+      };
+    });
   }, []);
 
   const handleShareSmoothie = async (smoothie: any, servingsOverride?: number) => {
@@ -302,7 +486,7 @@ export default function BreakfastSmoothiesPage() {
       };
       addToRecentlyViewed(drinkData);
       incrementDrinksMade();
-      addPoints(25);
+      addPoints(25); // XP for breakfast smoothies
     }
     setShowKit(false);
     setSelectedRecipe(null);
@@ -312,20 +496,19 @@ export default function BreakfastSmoothiesPage() {
     let filtered = smoothieRecipesWithMeasurements.filter(smoothie => {
       const matchesSearch = smoothie.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            smoothie.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesType = !selectedSmoothieType || smoothie.smoothieType?.toLowerCase().includes(selectedSmoothieType.toLowerCase());
-      const matchesCaffeine = caffeineLevel[0] === 'Any' || 
-        (caffeineLevel[0] === 'Caffeinated' && !smoothie.caffeineFree) ||
-        (caffeineLevel[0] === 'Caffeine-Free' && smoothie.caffeineFree);
-      
-      return matchesSearch && matchesType && matchesCaffeine;
+      const matchesType = !selectedSmoothieType || smoothie.smoothieType === selectedSmoothieType;
+      const matchesBenefit = !selectedBenefit || smoothie.benefits.some((b: string) => b.toLowerCase().includes(selectedBenefit.toLowerCase()));
+      const matchesCalories = maxCalories === 'all' || smoothie.nutrition.calories <= maxCalories;
+      const matchesSweetener = !onlyNaturalSweetener || smoothie.nutrition.added_sugar === 0;
+      return matchesSearch && matchesType && matchesBenefit && matchesCalories && matchesSweetener;
     });
 
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'rating': return (b.rating || 0) - (a.rating || 0);
         case 'protein': return (b.nutrition.protein || 0) - (a.nutrition.protein || 0);
+        case 'cost': return (a.estimatedCost || 0) - (b.estimatedCost || 0);
         case 'calories': return (a.nutrition.calories || 0) - (b.nutrition.calories || 0);
-        case 'time': return (a.prepTime || 0) - (b.prepTime || 0);
         default: return 0;
       }
     });
@@ -336,6 +519,30 @@ export default function BreakfastSmoothiesPage() {
   const filteredSmoothies = getFilteredSmoothies();
   const featuredSmoothies = smoothieRecipesWithMeasurements.filter(s => s.featured);
   const trendingSmoothies = smoothieRecipesWithMeasurements.filter(s => s.trending);
+
+  // Share page handler
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Breakfast Smoothies',
+      text: `Browse ${breakfastSmoothies.length} breakfast smoothies for morning energy and nutrition.`,
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-violet-50 to-indigo-50">
@@ -389,7 +596,7 @@ export default function BreakfastSmoothiesPage() {
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
-                <Sun className="h-6 w-6 text-purple-600" />
+                <Apple className="h-6 w-6 text-purple-600" />
                 <h1 className="text-2xl font-bold text-gray-900">Breakfast Smoothies</h1>
                 <Badge className="bg-purple-100 text-purple-800">Morning Fuel</Badge>
               </div>
@@ -410,7 +617,7 @@ export default function BreakfastSmoothiesPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-purple-600 hover:bg-purple-700">
+              <Button size="sm" className="bg-purple-600 hover:bg-purple-700" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Page
               </Button>
@@ -421,7 +628,7 @@ export default function BreakfastSmoothiesPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         
-        {/* CROSS-HUB NAVIGATION */}
+        {/* CROSS-HUB NAVIGATION - Top Level Drink Categories */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
@@ -445,12 +652,12 @@ export default function BreakfastSmoothiesPage() {
           </CardContent>
         </Card>
 
-        {/* SISTER SUBPAGES NAVIGATION */}
+        {/* SISTER SUBPAGES NAVIGATION - ALL SMOOTHIE TYPES (No Breakfast) */}
         <Card className="bg-gradient-to-r from-purple-50 to-violet-50 border-purple-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Smoothie Types</h3>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-              {smoothieSubcategories.map((subcategory) => {
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              {allSmoothieSubcategories.map((subcategory) => {
                 const Icon = subcategory.icon;
                 return (
                   <Link key={subcategory.id} href={subcategory.path}>
@@ -469,6 +676,30 @@ export default function BreakfastSmoothiesPage() {
           </CardContent>
         </Card>
 
+        {/* Breakfast Advantages */}
+        <Card className="mb-8">
+          <CardContent className="p-6">
+            <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+              <Apple className="h-6 w-6 text-purple-500" />
+              Why Breakfast Smoothies?
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {breakfastAdvantages.map((advantage, index) => {
+                const Icon = advantage.icon as any;
+                return (
+                  <div key={index} className="flex items-start gap-3 p-4 rounded-lg border hover:shadow-md transition-shadow">
+                    <Icon className={`h-6 w-6 ${advantage.color} flex-shrink-0`} />
+                    <div>
+                      <h3 className="font-semibold mb-1">{advantage.title}</h3>
+                      <p className="text-sm text-muted-foreground">{advantage.description}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
@@ -479,13 +710,13 @@ export default function BreakfastSmoothiesPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">15g</div>
+              <div className="text-2xl font-bold text-violet-600">15g</div>
               <div className="text-sm text-gray-600">Avg Protein</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">4.7★</div>
+              <div className="text-2xl font-bold text-indigo-600">4.7★</div>
               <div className="text-sm text-gray-600">Avg Rating</div>
             </CardContent>
           </Card>
@@ -501,15 +732,17 @@ export default function BreakfastSmoothiesPage() {
         <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
+            { id: 'breakfast-types', label: 'Breakfast Types', icon: Apple },
+            { id: 'benefits', label: 'Benefits', icon: Heart },
             { id: 'featured', label: 'Featured', icon: Star },
             { id: 'trending', label: 'Trending', icon: Zap }
           ].map(tab => {
-            const Icon = tab.icon;
+            const Icon = tab.icon as any;
             return (
               <Button
                 key={tab.id}
                 variant={activeTab === tab.id ? "default" : "ghost"}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => setActiveTab(tab.id as any)}
                 className={`flex-1 ${activeTab === tab.id ? 'bg-white shadow-sm' : ''}`}
               >
                 <Icon className="h-4 w-4 mr-2" />
@@ -535,42 +768,62 @@ export default function BreakfastSmoothiesPage() {
                     />
                   </div>
                   
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                       value={selectedSmoothieType}
                       onChange={(e) => setSelectedSmoothieType(e.target.value)}
                     >
-                      <option value="">All Types</option>
-                      <option value="Oat-Based">Oat-Based</option>
-                      <option value="Green">Green</option>
-                      <option value="Coffee">Coffee</option>
-                      <option value="Yogurt">Yogurt</option>
-                      <option value="Tropical">Tropical</option>
-                      <option value="Nut Butter">Nut Butter</option>
-                      <option value="Chocolate">Chocolate</option>
-                      <option value="Citrus">Citrus</option>
+                      <option value="">All Smoothie Types</option>
+                      {breakfastTypes.map(type => (
+                        <option key={type.id} value={type.name}>{type.name}</option>
+                      ))}
                     </select>
-                    
+
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                      value={caffeineLevel[0]}
-                      onChange={(e) => setCaffeineLevel([e.target.value])}
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                      value={selectedBenefit}
+                      onChange={(e) => setSelectedBenefit(e.target.value)}
                     >
-                      <option value="Any">Any Caffeine</option>
-                      <option value="Caffeinated">With Caffeine</option>
-                      <option value="Caffeine-Free">Caffeine-Free</option>
+                      <option value="">All Benefits</option>
+                      {breakfastBenefitsList.map(benefit => (
+                        <option key={benefit.id} value={benefit.name}>{benefit.name}</option>
+                      ))}
                     </select>
                     
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                      value={maxCalories}
+                      onChange={(e) => {
+                        const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
+                        setMaxCalories(v);
+                      }}
+                    >
+                      <option value="all">All Calories</option>
+                      <option value={250}>Under 250 cal</option>
+                      <option value={300}>Under 300 cal</option>
+                      <option value={350}>Under 350 cal</option>
+                      <option value={400}>Under 400 cal</option>
+                    </select>
+                    
+                    <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
+                      <input
+                        type="checkbox"
+                        checked={onlyNaturalSweetener}
+                        onChange={(e) => setOnlyNaturalSweetener(e.target.checked)}
+                      />
+                      Natural Sweeteners
+                    </label>
+
+                    <select 
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                       value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value)}
+                      onChange={(e) => setSortBy(e.target.value as any)}
                     >
                       <option value="rating">Sort by Rating</option>
                       <option value="protein">Sort by Protein</option>
+                      <option value="cost">Sort by Cost</option>
                       <option value="calories">Sort by Calories</option>
-                      <option value="time">Sort by Prep Time</option>
                     </select>
                   </div>
                 </div>
@@ -604,38 +857,39 @@ export default function BreakfastSmoothiesPage() {
                             difficulty: smoothie.difficulty,
                             prepTime: smoothie.prepTime,
                             rating: smoothie.rating,
+                            smoothieType: smoothie.smoothieType,
                             bestTime: smoothie.bestTime
                           })}
-                          className="text-gray-400 hover:text-red-500"
                         >
-                          <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                          <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>
                       </div>
                       
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2">
                         <Badge className="bg-purple-100 text-purple-800">{smoothie.smoothieType}</Badge>
-                        {!smoothie.caffeineFree && <Badge className="bg-amber-100 text-amber-800">Caffeinated</Badge>}
+                        <Badge variant="outline">{smoothie.energyLevel}</Badge>
                         {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
                     </CardHeader>
                     
                     <CardContent>
+                      {/* Nutrition Grid */}
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
                           <div className="font-bold text-purple-600">{smoothie.nutrition.calories}</div>
-                          <div className="text-gray-500">Cal</div>
+                          <div className="text-gray-500">Calories</div>
                         </div>
                         <div>
-                          <div className="font-bold text-purple-600">{smoothie.nutrition.protein}g</div>
+                          <div className="font-bold text-violet-600">{smoothie.nutrition.protein}g</div>
                           <div className="text-gray-500">Protein</div>
                         </div>
                         <div>
-                          <div className="font-bold text-purple-600">{smoothie.prepTime}m</div>
+                          <div className="font-bold text-indigo-600">{smoothie.prepTime}m</div>
                           <div className="text-gray-500">Prep</div>
                         </div>
                       </div>
 
-                      {/* RATING & DIFFICULTY - IMMEDIATELY ABOVE RECIPE CARD */}
+                      {/* RATING & DIFFICULTY - Immediately above recipe card */}
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-1">
                           <Star className="h-4 w-4 text-yellow-400 fill-current" />
@@ -648,7 +902,7 @@ export default function BreakfastSmoothiesPage() {
                       </div>
 
                       {/* RecipeKit Preview */}
-                      {smoothie.recipe?.measurements && (
+                      {Array.isArray(smoothie.recipe?.measurements) && smoothie.recipe.measurements.length > 0 && (
                         <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
                             <div className="text-sm font-semibold text-gray-900">
@@ -768,7 +1022,7 @@ export default function BreakfastSmoothiesPage() {
 
                       {/* Benefits Tags */}
                       <div className="flex flex-wrap gap-1 mb-4">
-                        {smoothie.benefits.slice(0, 3).map((benefit, index) => (
+                        {smoothie.benefits?.slice(0, 3).map((benefit: string, index: number) => (
                           <Badge key={index} variant="secondary" className="text-xs bg-purple-100 text-purple-800 hover:bg-purple-200">
                             {benefit}
                           </Badge>
@@ -793,36 +1047,86 @@ export default function BreakfastSmoothiesPage() {
           </div>
         )}
 
-        {/* Rest of the tabs remain the same structure */}
+        {/* Breakfast Types Tab */}
+        {activeTab === 'breakfast-types' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {breakfastTypes.map(type => {
+              const Icon = type.icon;
+              return (
+                <Card key={type.id} className="hover:shadow-lg transition-shadow">
+                  <CardHeader>
+                    <div className="text-center">
+                      <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <Icon className="h-6 w-6 text-purple-600" />
+                      </div>
+                      <CardTitle className="text-lg">{type.name}</CardTitle>
+                      <p className="text-sm text-gray-600">{type.description}</p>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-center bg-purple-50 p-3 rounded-lg mb-4">
+                      <div className="text-sm font-medium text-gray-700 mb-1">Timing</div>
+                      <div className="text-lg font-bold text-purple-600">{type.timing}</div>
+                    </div>
+                    <Button className="w-full" onClick={() => setActiveTab('browse')}>
+                      Explore {type.name}
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Benefits Tab */}
+        {activeTab === 'benefits' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {breakfastBenefitsList.map(benefit => (
+              <Card key={benefit.id} className="hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-100 rounded-lg">
+                      <Heart className="h-6 w-6 text-purple-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">{benefit.name}</CardTitle>
+                      <p className="text-sm text-gray-600">{benefit.description}</p>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center bg-purple-50 p-3 rounded-lg mb-4">
+                    <div className="text-sm font-medium text-gray-700 mb-1">Morning Focus</div>
+                    <div className="text-lg font-bold text-purple-600">Breakfast Support</div>
+                  </div>
+                  <Button className="w-full" onClick={() => setActiveTab('browse')}>
+                    View {benefit.name}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Featured Tab */}
         {activeTab === 'featured' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {featuredSmoothies.map(smoothie => (
               <Card key={smoothie.id} className="overflow-hidden hover:shadow-xl transition-shadow">
-                <div className="relative">
+                <div className="relative h-48">
                   {smoothie.image && (
                     <img 
                       src={smoothie.image} 
                       alt={smoothie.name}
-                      className="w-full h-48 object-cover"
+                      className="w-full h-full object-cover"
                     />
                   )}
-                  <div className="absolute top-4 left-4">
-                    <Badge className="bg-purple-500 text-white">Featured</Badge>
-                  </div>
+                  <Badge className="absolute top-4 left-4 bg-purple-500 text-white">Featured</Badge>
                 </div>
                 
                 <CardHeader>
-                  <CardTitle className="text-xl">{smoothie.name}</CardTitle>
+                  <CardTitle>{smoothie.name}</CardTitle>
                   <p className="text-gray-600">{smoothie.description}</p>
-                  
-                  <div className="flex items-center gap-2 mt-2">
-                    <Badge className="bg-purple-100 text-purple-800">{smoothie.smoothieType}</Badge>
-                    <div className="flex items-center gap-1 ml-auto">
-                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium text-purple-600">{smoothie.rating}</span>
-                      <span className="text-gray-500 text-sm">({smoothie.reviews})</span>
-                    </div>
-                  </div>
                 </CardHeader>
                 
                 <CardContent>
@@ -831,7 +1135,7 @@ export default function BreakfastSmoothiesPage() {
                     onClick={() => openRecipeModal(smoothie)}
                   >
                     <Apple className="h-4 w-4 mr-2" />
-                    Make This Smoothie
+                    Make This Breakfast Smoothie
                   </Button>
                 </CardContent>
               </Card>
@@ -839,6 +1143,7 @@ export default function BreakfastSmoothiesPage() {
           </div>
         )}
 
+        {/* Trending Tab */}
         {activeTab === 'trending' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {trendingSmoothies.map(smoothie => (
@@ -877,10 +1182,10 @@ export default function BreakfastSmoothiesPage() {
                   <Badge variant="outline" className="text-purple-600">
                     Level {userProgress.level}
                   </Badge>
-                  <Badge variant="outline" className="text-purple-600">
+                  <Badge variant="outline" className="text-violet-600">
                     {userProgress.totalPoints} XP
                   </Badge>
-                  <Badge variant="outline" className="text-purple-600">
+                  <Badge variant="outline" className="text-indigo-600">
                     {userProgress.totalDrinksMade} Drinks Made
                   </Badge>
                 </div>
