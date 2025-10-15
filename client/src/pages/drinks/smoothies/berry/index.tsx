@@ -80,7 +80,7 @@ const parseIngredient = (ingredient: string): Measured => {
   return m(amount, unit, item);
 };
 
-// Enhanced berry smoothies data with proper measurements
+// Enhanced berry smoothies data with ALL recipes from both pages
 const berrySmoothies = [
   {
     id: 'berry-1',
@@ -178,7 +178,13 @@ const berrySmoothies = [
     id: 'berry-5',
     name: 'Blackberry Boost',
     description: 'Rich blackberry nutrition bomb',
-    ingredients: ['1.5 cups blackberries', '1/2 banana', '1/2 cup oat milk', '1 tbsp almond butter', 'Ice'],
+    ingredients: [
+      '1.5 cups blackberries',
+      '1/2 banana',
+      '1/2 cup oat milk',
+      '1 tbsp almond butter',
+      '1 cup ice'
+    ],
     benefits: ['Vitamin K', 'Bone health', 'Antioxidants', 'Healthy fats'],
     nutrition: { calories: 260, protein: 7, carbs: 44, fiber: 13, sugar: 22, added_sugar: 0 },
     difficulty: 'Easy',
@@ -193,7 +199,13 @@ const berrySmoothies = [
     id: 'berry-6',
     name: 'Açaí Power Bowl',
     description: 'Superfood açaí smoothie bowl',
-    ingredients: ['2 açaí packets', '1/2 cup blueberries', '1/2 banana', '1/4 cup granola topping', '1/2 cup apple juice'],
+    ingredients: [
+      '2 açaí packets',
+      '1/2 cup blueberries',
+      '1/2 banana',
+      '1/4 cup granola topping',
+      '1/2 cup apple juice'
+    ],
     benefits: ['Superfood power', 'Energy boost', 'Antioxidants', 'Instagram-worthy'],
     nutrition: { calories: 350, protein: 6, carbs: 62, fiber: 9, sugar: 35, added_sugar: 15 },
     difficulty: 'Medium',
@@ -210,7 +222,13 @@ const berrySmoothies = [
     id: 'berry-7',
     name: 'Berry Green Fusion',
     description: 'Berries meet green nutrition',
-    ingredients: ['1 cup mixed berries', '1 cup spinach', '1/2 avocado', '1 cup coconut water', 'Ice'],
+    ingredients: [
+      '1 cup mixed berries',
+      '1 cup spinach',
+      '1/2 avocado',
+      '1 cup coconut water',
+      '1 cup ice'
+    ],
     benefits: ['Hidden greens', 'Complete nutrition', 'Healthy fats', 'Detoxifying'],
     nutrition: { calories: 240, protein: 5, carbs: 38, fiber: 11, sugar: 20, added_sugar: 0 },
     difficulty: 'Easy',
@@ -225,7 +243,13 @@ const berrySmoothies = [
     id: 'berry-8',
     name: 'Strawberry Banana Classic',
     description: 'The timeless favorite combination',
-    ingredients: ['1.5 cups strawberries', '1 banana', '1 cup milk', '1/2 cup vanilla yogurt', 'Ice'],
+    ingredients: [
+      '1.5 cups strawberries',
+      '1 banana',
+      '1 cup milk',
+      '1/2 cup vanilla yogurt',
+      '1 cup ice'
+    ],
     benefits: ['Classic taste', 'Kid-friendly', 'Potassium', 'Calcium'],
     nutrition: { calories: 290, protein: 11, carbs: 52, fiber: 7, sugar: 38, added_sugar: 10 },
     difficulty: 'Easy',
@@ -240,7 +264,13 @@ const berrySmoothies = [
     id: 'berry-9',
     name: 'Cranberry Citrus Zing',
     description: 'Tart cranberries with orange kick',
-    ingredients: ['1 cup cranberries', '1 orange', '1/2 cup Greek yogurt', '1 tbsp honey', 'Ice'],
+    ingredients: [
+      '1 cup cranberries',
+      '1 orange',
+      '1/2 cup Greek yogurt',
+      '1 tbsp honey',
+      '1 cup ice'
+    ],
     benefits: ['UTI prevention', 'Immune boost', 'Vitamin C', 'Refreshing'],
     nutrition: { calories: 210, protein: 9, carbs: 40, fiber: 6, sugar: 28, added_sugar: 12 },
     difficulty: 'Easy',
@@ -272,15 +302,15 @@ const berryBenefitsList = [
   { id: 'digestive', name: 'Digestive Health', description: 'Improve gut function' }
 ];
 
-// ---------- Cross-nav ----------
+// ---------- Cross-nav - Top Level Drink Categories ----------
 const otherDrinkHubs = [
-  { id: 'juices', name: 'Fresh Juices', route: '/drinks/juices', icon: Droplets, description: 'Cold-pressed nutrition' },
-  { id: 'teas', name: 'Specialty Teas', route: '/drinks/teas', icon: Sun, description: 'Hot & iced teas' },
-  { id: 'coffee', name: 'Coffee Drinks', route: '/drinks/coffee', icon: Zap, description: 'Artisan coffee' },
-  { id: 'protein-shakes', name: 'Protein Shakes', route: '/drinks/protein-shakes', icon: Apple, description: 'Muscle fuel' }
+  { id: 'protein-shakes', name: 'Protein Shakes', icon: Zap, route: '/drinks/protein-shakes', description: 'Muscle building' },
+  { id: 'smoothies', name: 'All Smoothies', icon: Sparkles, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
+  { id: 'potables', name: 'Potent Potables', icon: Wine, route: '/drinks/potent-potables', description: 'Cocktails (21+)' },
+  { id: 'all-drinks', name: 'All Drinks', icon: Flame, route: '/drinks', description: 'Browse everything' }
 ];
 
-// Remove berry from the smoothie subcategories since we're on the berry page
+// Sister smoothie subcategories (excluding berry since we're on berry page)
 const allSmoothieSubcategories = [
   { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Zap, description: 'High-protein blends' },
   { id: 'breakfast', name: 'Breakfast', path: '/drinks/smoothies/breakfast', icon: Crown, description: 'Morning fuel' },
@@ -541,7 +571,7 @@ export default function BerrySmoothiesPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         
-        {/* CROSS-HUB NAVIGATION - Top Level Sites */}
+        {/* CROSS-HUB NAVIGATION - Top Level Drink Categories */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
