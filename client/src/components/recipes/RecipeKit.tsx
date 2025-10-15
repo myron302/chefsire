@@ -6,6 +6,7 @@ import React, {
   useImperativeHandle,
   forwardRef,
 } from 'react';
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RotateCcw, Clipboard, Check, X, Share2 } from 'lucide-react';
 
@@ -73,7 +74,7 @@ const scaleAmount = (baseAmount: number | string, servings: number) => {
 };
 
 const getScaledMeasurements = (list: Measured[], servings: number) =>
-  (Array.isArray(list) ? list : []).map((ing) => ({
+  list.map((ing) => ({
     ...ing,
     amountScaled: scaleAmount(ing.amount, servings),
     amountScaledNum: typeof ing.amount === 'number' ? (Number(ing.amount) * servings) : undefined,
@@ -86,7 +87,6 @@ const toMetric = (unit: string, amount: number) => {
     case 'cup': return { amount: Math.round(amount * mlPerCup), unit: 'ml' };
     case 'tbsp': return { amount: Math.round(amount * mlPerTbsp), unit: 'ml' };
     case 'tsp': return { amount: Math.round(amount * mlPerTsp), unit: 'ml' };
-    case 'oz': return { amount: Math.round(amount * 30), unit: 'ml' };
     case 'scoop (30g)': return { amount: Math.round(amount * gPerScoop30), unit: 'g' };
     case 'scoop (32g)': return { amount: Math.round(amount * 32), unit: 'g' };
     case 'tbsp (~25g)': return { amount: Math.round(amount * 25), unit: 'g' };
@@ -118,7 +118,7 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
     onClose,
     item,
     pointsReward,
-    accent = 'green',
+    accent = 'green', // Default to green if not specified
     id,
     name,
     measurements,
@@ -163,15 +163,12 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
     },
   }), [isControlled, open, onClose]);
 
-  // Load per-recipe state
   useEffect(() => {
     setServings(clamp(safeLoadJSON<number>(LS_SERV, defaultServings || 1)));
     setNotes(safeLoadJSON<string>(LS_NOTES, ''));
     setUseMetric(safeLoadJSON<boolean>(LS_METRIC, false));
-    setShowAllIngredients(false);
-  }, [recipeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [recipeId]);
 
-  // Persist per-recipe state
   useEffect(() => { safeSaveJSON(LS_SERV, servings); }, [LS_SERV, servings]);
   useEffect(() => { safeSaveJSON(LS_NOTES, notes); }, [LS_NOTES, notes]);
   useEffect(() => { safeSaveJSON(LS_METRIC, useMetric); }, [LS_METRIC, useMetric]);
@@ -193,17 +190,66 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
     };
   }, [baseNutrition, servings]);
 
-  // Dynamic accent colors
+  // Dynamic accent colors based on the accent prop
   const accentConfig = useMemo(() => {
     const configs = {
-      amber: { text: 'text-amber-600', bgLight: 'bg-amber-50', textDark: 'text-amber-800', border: 'border-amber-200', button: 'bg-amber-600 hover:bg-amber-700', check: 'text-amber-600' },
-      green: { text: 'text-green-600', bgLight: 'bg-green-50', textDark: 'text-green-800', border: 'border-green-200', button: 'bg-green-600 hover:bg-green-700', check: 'text-green-600' },
-      blue:  { text: 'text-blue-600',  bgLight: 'bg-blue-50',  textDark: 'text-blue-800',  border: 'border-blue-200',  button: 'bg-blue-600 hover:bg-blue-700',  check: 'text-blue-600' },
-      purple:{ text: 'text-purple-600',bgLight: 'bg-purple-50',textDark: 'text-purple-800',border: 'border-purple-200',button: 'bg-purple-600 hover:bg-purple-700',check: 'text-purple-600' },
-      red:   { text: 'text-red-600',   bgLight: 'bg-red-50',   textDark: 'text-red-800',   border: 'border-red-200',   button: 'bg-red-600 hover:bg-red-700',   check: 'text-red-600' },
-      pink:  { text: 'text-pink-600',  bgLight: 'bg-pink-50',  textDark: 'text-pink-800',  border: 'border-pink-200',  button: 'bg-pink-600 hover:bg-pink-700',  check: 'text-pink-600' },
-      cyan:  { text: 'text-cyan-600',  bgLight: 'bg-cyan-50',  textDark: 'text-cyan-800',  border: 'border-cyan-200',  button: 'bg-cyan-600 hover:bg-cyan-700',  check: 'text-cyan-600' },
-    } as const;
+      amber: {
+        text: 'text-amber-600',
+        bgLight: 'bg-amber-50',
+        textDark: 'text-amber-800',
+        border: 'border-amber-200',
+        button: 'bg-amber-600 hover:bg-amber-700',
+        check: 'text-amber-600'
+      },
+      green: {
+        text: 'text-green-600',
+        bgLight: 'bg-green-50',
+        textDark: 'text-green-800',
+        border: 'border-green-200',
+        button: 'bg-green-600 hover:bg-green-700',
+        check: 'text-green-600'
+      },
+      blue: {
+        text: 'text-blue-600',
+        bgLight: 'bg-blue-50',
+        textDark: 'text-blue-800',
+        border: 'border-blue-200',
+        button: 'bg-blue-600 hover:bg-blue-700',
+        check: 'text-blue-600'
+      },
+      purple: {
+        text: 'text-purple-600',
+        bgLight: 'bg-purple-50',
+        textDark: 'text-purple-800',
+        border: 'border-purple-200',
+        button: 'bg-purple-600 hover:bg-purple-700',
+        check: 'text-purple-600'
+      },
+      red: {
+        text: 'text-red-600',
+        bgLight: 'bg-red-50',
+        textDark: 'text-red-800',
+        border: 'border-red-200',
+        button: 'bg-red-600 hover:bg-red-700',
+        check: 'text-red-600'
+      },
+      pink: {
+        text: 'text-pink-600',
+        bgLight: 'bg-pink-50',
+        textDark: 'text-pink-800',
+        border: 'border-pink-200',
+        button: 'bg-pink-600 hover:bg-pink-700',
+        check: 'text-pink-600'
+      },
+      cyan: {
+        text: 'text-cyan-600',
+        bgLight: 'bg-cyan-50',
+        textDark: 'text-cyan-800',
+        border: 'border-cyan-200',
+        button: 'bg-cyan-600 hover:bg-cyan-700',
+        check: 'text-cyan-600'
+      }
+    };
     return configs[accent] || configs.green;
   }, [accent]);
 
@@ -217,7 +263,6 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
     });
     const txt = `${recipeName} (serves ${servings})\n${lines.join('\n')}\n\nNotes: ${notes || '-'}`;
     try {
-      if (typeof navigator === 'undefined' || !navigator.clipboard) throw new Error('no-clipboard');
       await navigator.clipboard.writeText(txt);
       alert('Recipe copied!');
     } catch {
@@ -235,20 +280,15 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
     const url = typeof window !== 'undefined' ? window.location.href : '';
     const data = { title: recipeName, text, url };
     try {
-      if (typeof navigator !== 'undefined' && (navigator as any).share) await (navigator as any).share(data);
+      if (navigator.share) await navigator.share(data);
       else {
-        if (typeof navigator === 'undefined' || !navigator.clipboard) throw new Error('no-clipboard');
         await navigator.clipboard.writeText(`${recipeName}\n${text}\n${url}`);
         alert('Recipe link copied!');
       }
     } catch {
       try {
-        if (typeof navigator !== 'undefined' && navigator.clipboard) {
-          await navigator.clipboard.writeText(`${recipeName}\n${text}\n${url}`);
-          alert('Recipe link copied!');
-        } else {
-          alert('Unable to share on this device.');
-        }
+        await navigator.clipboard.writeText(`${recipeName}\n${text}\n${url}`);
+        alert('Recipe link copied!');
       } catch {
         alert('Unable to share on this device.');
       }
@@ -293,7 +333,6 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
                   }
                 </span>
                 <span className="flex-1">
-                  {/* item + optional note */}
                   {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
                 </span>
               </li>
@@ -353,7 +392,7 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
               </button>
             </div>
 
-            {/* Nutrition Grid */}
+            {/* Nutrition Grid - ALL COLORS NOW USE ACCENT */}
             <div className={`grid grid-cols-3 gap-2 p-3 ${accentConfig.bgLight} rounded-lg mb-4`}>
               <div className="text-center">
                 <div className={`font-bold ${accentConfig.text}`}>
