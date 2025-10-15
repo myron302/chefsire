@@ -846,21 +846,9 @@ export default function DetoxSmoothiesPage() {
                         </Button>
                       </div>
                       
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2">
                         <Badge className="bg-green-100 text-green-800">{smoothie.detoxType}</Badge>
                         {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
-                      </div>
-
-                      {/* RATING & DIFFICULTY - Immediately above recipe card */}
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                          <span className="font-medium">{smoothie.rating}</span>
-                          <span className="text-gray-500 text-sm">({smoothie.reviews})</span>
-                        </div>
-                        <Badge variant="outline" className="text-xs">
-                          {smoothie.difficulty}
-                        </Badge>
                       </div>
                     </CardHeader>
                     
@@ -879,6 +867,18 @@ export default function DetoxSmoothiesPage() {
                           <div className="font-bold text-teal-600">{smoothie.prepTime}m</div>
                           <div className="text-gray-500">Prep</div>
                         </div>
+                      </div>
+
+                      {/* RATING & DIFFICULTY - Immediately above recipe card */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-1">
+                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                          <span className="font-medium">{smoothie.rating}</span>
+                          <span className="text-gray-500 text-sm">({smoothie.reviews})</span>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {smoothie.difficulty}
+                        </Badge>
                       </div>
 
                       {/* RecipeKit Preview */}
