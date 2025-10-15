@@ -92,37 +92,50 @@ export function useNearbyBites(opts: NearbyOpts) {
 
     const params = new URLSearchParams();
     if (q) {
-      // the server accepts any of these; send all for compatibility
       params.set("q", q);
       params.set("query", q);
       params.set("keyword", q);
     }
     if (typeof limit === "number") params.set("limit", String(limit));
 
-    // If GPS is available, prefer it over near (server will do NearbySearch)
     if (ll && ll.includes(",")) {
       params.set("ll", ll);
     } else if (near && near.trim()) {
       params.set("near", near.trim());
       params.set("location", near.trim());
-    } else {
-      // neither provided → the server will fall back to "New York, NY"
     }
 
     try {
       const r = await fetch(`${API_PREFIX}/google/search?${params.toString()}`, {
         signal: ctrl.signal,
       });
-      if (!r.ok) {
-        // Don’t crash UI — show an empty list gracefully
+
+      const js = await r.json();
+
+      // FIXED: Check for API errors in the response body
+      if (!r.ok || js.error) {
+        const errorMsg = js.message || js.error || `HTTP ${r.status}`;
+        console.error("BiteMap API error:", errorMsg, js);
+        setState({ 
+          data: [], 
+          isLoading: false, 
+          error: new Error(errorMsg)
+        });
+        return;
+      }
+
+      // Handle ZERO_RESULTS from Google (not an error, just no results)
+      if (js.status === "ZERO_RESULTS") {
         setState({ data: [], isLoading: false, error: null });
         return;
       }
-      const js = await r.json();
+
       const list = (js?.results || js?.data || js || []).map(mapGoogle);
       setState({ data: list, isLoading: false, error: null });
+      
     } catch (err: any) {
       if (err?.name === "AbortError") return;
+      console.error("BiteMap fetch error:", err);
       setState({ data: null, isLoading: false, error: err });
     }
   }, [q, near, ll, limit]);
@@ -138,14 +151,7 @@ export function useNearbyBites(opts: NearbyOpts) {
   return { data, isLoading: state.isLoading, error: state.error, refetch };
 }
 
-/** ---------- Optional helper hook: “Use my location” button ---------- */
-/**
- * Call request() when the user taps “Use my location”.
- * You’ll get:
- *  - ll as "lat,lng" on success
- *  - status updates: "idle" | "prompting" | "granted" | "denied" | "error"
- *  - error message if something goes wrong
- */
+/** ---------- Optional helper hook: "Use my location" button ---------- */
 export function useUserLocation(timeoutMs: number = 10000) {
   const [ll, setLL] = useState<string | null>(null);
   const [status, setStatus] = useState<
@@ -162,7 +168,6 @@ export function useUserLocation(timeoutMs: number = 10000) {
       return;
     }
 
-    // If the Permissions API exists, peek (don’t rely on it entirely)
     if ("permissions" in navigator && (navigator as any).permissions?.query) {
       (navigator as any).permissions
         .query({ name: "geolocation" as PermissionName })
@@ -199,7 +204,7 @@ export function useUserLocation(timeoutMs: number = 10000) {
       {
         enableHighAccuracy: false,
         timeout: timeoutMs,
-        maximumAge: 60_000, // cached up to 1 min
+        maximumAge: 60_000,
       }
     );
   }, [timeoutMs]);
