@@ -39,8 +39,8 @@ const m = (amount: number | string, unit: string, item: string, note: string = "
   note,
 });
 
-// scaling helpers
 const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+
 const toNiceFraction = (value: number) => {
   const rounded = Math.round(value * 4) / 4;
   const whole = Math.trunc(rounded);
@@ -51,13 +51,13 @@ const toNiceFraction = (value: number) => {
   if (whole && fracStr) return `${whole} ${fracStr}`;
   return `${whole}`;
 };
+
 const scaleAmount = (baseAmount: number | string, servings: number) => {
   const n = typeof baseAmount === "number" ? baseAmount : parseFloat(String(baseAmount));
   if (Number.isNaN(n)) return baseAmount;
   return toNiceFraction(n * servings);
 };
 
-// metric conversion for smoothies
 const toMetric = (unit: string, amount: number) => {
   const mlPerCup = 240,
     mlPerOz = 30;
@@ -75,18 +75,129 @@ const toMetric = (unit: string, amount: number) => {
   }
 };
 
-// Simple (stable) ingredient -> Measured parser (same spirit as Breakfast)
-const toMeasured = (ing: string): Measured => {
-  const parts = ing.trim().split(/\s+/);
-  if (parts.length >= 2 && !isNaN(parseFloat(parts[0]))) {
-    const amount = parts[0];
-    const unit = parts[1];
-    const item = parts.slice(2).join(" ");
-    return m(amount, unit, item || ing);
-  }
-  return m("1", "item", ing);
+// ---- Robust ingredient parser (unicode fractions + mixed numbers + known units) ----
+const unicodeToAsciiFractions: Record<string, string> = {
+  "½": "1/2",
+  "¼": "1/4",
+  "¾": "3/4",
+  "⅓": "1/3",
+  "⅔": "2/3",
+  "⅛": "1/8",
 };
 
+const normalizeFractions = (s: string) =>
+  s.replace(/[½¼¾⅓⅔⅛]/g, (ch) => unicodeToAsciiFractions[ch] || ch);
+
+const fractionToNumber = (s: string): number => {
+  // "1 1/2" or "1/2" or "2"
+  const parts = s.trim().split(" ");
+  let total = 0;
+  for (const p of parts) {
+    if (p.includes("/")) {
+      const [a, b] = p.split("/");
+      const num = parseFloat(a);
+      const den = parseFloat(b);
+      if (!isNaN(num) && !isNaN(den) && den !== 0) total += num / den;
+    } else {
+      const n = parseFloat(p);
+      if (!isNaN(n)) total += n;
+    }
+  }
+  return total;
+};
+
+const KNOWN_UNITS = new Set([
+  "cup",
+  "cups",
+  "tbsp",
+  "tablespoon",
+  "tablespoons",
+  "tsp",
+  "teaspoon",
+  "teaspoons",
+  "oz",
+  "ounce",
+  "ounces",
+  "ml",
+  "milliliter",
+  "milliliters",
+  "l",
+  "liter",
+  "liters",
+  "g",
+  "gram",
+  "grams",
+  "kg",
+  "scoop",
+  "scoops",
+  "pinch",
+  "dash",
+  "clove",
+  "cloves",
+  "slice",
+  "slices",
+]);
+
+const canonicalUnit = (u: string) => {
+  const v = u.toLowerCase();
+  if (["cups", "cup"].includes(v)) return "cup";
+  if (["tablespoon", "tablespoons", "tbsp"].includes(v)) return "tbsp";
+  if (["teaspoon", "teaspoons", "tsp"].includes(v)) return "tsp";
+  if (["ounce", "ounces", "oz"].includes(v)) return "oz";
+  if (["milliliter", "milliliters", "ml"].includes(v)) return "ml";
+  if (["liter", "liters", "l"].includes(v)) return "l";
+  if (["gram", "grams", "g"].includes(v)) return "g";
+  if (["scoop", "scoops"].includes(v)) return "scoop";
+  if (["pinch"].includes(v)) return "pinch";
+  if (["dash"].includes(v)) return "dash";
+  if (["clove", "cloves"].includes(v)) return "clove";
+  if (["slice", "slices"].includes(v)) return "slice";
+  return v;
+};
+
+const parseIngredient = (raw: string): Measured => {
+  if (!raw) return m("1", "item", "");
+  // clean + normalize
+  let s = normalizeFractions(raw.trim().replace(/^[-•]\s*/, "")).replace(/\sof\s/i, " ");
+
+  // match: amount (mixed/fraction/decimal/int) + optional unit + rest
+  const re =
+    /^(\d+(?:\s+\d+\/\d+)?|\d+\/\d+|\d*\.\d+)\s+([A-Za-z()\-]+)?\s*(.*)$/; // 1 1/2 | 1/2 | 0.5 | 2  + unit? + item
+  const m_ = s.match(re);
+
+  if (m_) {
+    const amountStr = m_[1];
+    const maybeUnit = (m_[2] || "").trim();
+    let rest = (m_[3] || "").trim();
+
+    // Pull notes out of parentheses at end -> note
+    let note = "";
+    const noteMatch = rest.match(/\(([^)]+)\)\s*$/);
+    if (noteMatch) {
+      note = noteMatch[1].trim();
+      rest = rest.replace(/\([^)]+\)\s*$/, "").trim();
+    }
+
+    // If the "unit" isn't a known unit, push it back into the item
+    let unit = "item";
+    if (maybeUnit && KNOWN_UNITS.has(maybeUnit.toLowerCase())) {
+      unit = canonicalUnit(maybeUnit);
+    } else if (maybeUnit) {
+      // treat it as a descriptor part of the item
+      rest = [maybeUnit, rest].filter(Boolean).join(" ").trim();
+    }
+
+    const amountNum = fractionToNumber(amountStr);
+    const amount: number | string = isNaN(amountNum) ? amountStr : amountNum;
+
+    return { amount, unit, item: rest || raw, note };
+  }
+
+  // Fallback: no leading amount found
+  return { amount: 1, unit: "item", item: raw };
+};
+
+// ---------- Page ----------
 export default function DessertSmoothiesPage() {
   const {
     addToFavorites,
@@ -114,7 +225,7 @@ export default function DessertSmoothiesPage() {
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
-  // Convert dessert smoothies to RecipeKit format (like Breakfast)
+  // Convert dessert smoothies to RecipeKit format using robust parser
   const smoothieRecipesWithMeasurements = useMemo(() => {
     const list = Array.isArray(dessertSmoothies) ? dessertSmoothies : [];
     return list.map((s: any) => ({
@@ -122,7 +233,7 @@ export default function DessertSmoothiesPage() {
       recipe: {
         servings: 1,
         measurements: Array.isArray(s.ingredients)
-          ? s.ingredients.map((ing: string) => toMeasured(ing))
+          ? s.ingredients.map((ing: string) => parseIngredient(ing))
           : [],
         directions: [
           "Add all ingredients to blender",
@@ -320,7 +431,7 @@ export default function DessertSmoothiesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* CROSS-HUB NAV */}
+        {/* CROSS-HUB NAVIGATION */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">
@@ -419,9 +530,7 @@ export default function DessertSmoothiesPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-pink-600">
-                {filteredSmoothies.length}
-              </div>
+              <div className="text-2xl font-bold text-pink-600">{filteredSmoothies.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -534,7 +643,7 @@ export default function DessertSmoothiesPage() {
               </CardContent>
             </Card>
 
-            {/* Smoothie Grid: shows ALL filtered (so if you have 12, all 12 render) */}
+            {/* Smoothie Grid (renders ALL filtered — e.g., all 12) */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredSmoothies.map((smoothie: any) => {
                 const useMetric = !!metricFlags[smoothie.id];
@@ -619,7 +728,7 @@ export default function DessertSmoothiesPage() {
                         </Badge>
                       </div>
 
-                      {/* RecipeKit Preview */}
+                      {/* Recipe Preview */}
                       {Array.isArray(smoothie.recipe?.measurements) &&
                         smoothie.recipe.measurements.length > 0 && (
                           <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
@@ -676,12 +785,17 @@ export default function DessertSmoothiesPage() {
 
                             <ul className="text-sm leading-6 text-gray-800 space-y-1">
                               {smoothie.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
-                                const isNum = typeof ing.amount === "number" || !isNaN(Number(ing.amount));
-                                const baseNum = typeof ing.amount === "number" ? ing.amount : Number(ing.amount);
+                                const isNum =
+                                  typeof ing.amount === "number" || !isNaN(Number(ing.amount));
+                                const baseNum =
+                                  typeof ing.amount === "number"
+                                    ? ing.amount
+                                    : Number(ing.amount);
                                 const scaledDisplay = isNum ? scaleAmount(baseNum, servings) : ing.amount;
-                                const show = useMetric && isNum
-                                  ? toMetric(ing.unit, Number(baseNum * servings))
-                                  : { amount: scaledDisplay, unit: ing.unit };
+                                const show =
+                                  useMetric && isNum
+                                    ? toMetric(ing.unit, Number(baseNum * servings))
+                                    : { amount: scaledDisplay, unit: ing.unit };
 
                                 return (
                                   <li key={i} className="flex items-start gap-2">
