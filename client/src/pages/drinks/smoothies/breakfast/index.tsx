@@ -192,7 +192,6 @@ const breakfastSmoothies = [
 
 const smoothieSubcategories = [
   { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Zap, description: 'High protein blends' },
-  { id: 'breakfast', name: 'Breakfast', path: '/drinks/smoothies/breakfast', icon: Sun, description: 'Morning fuel' },
   { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Target, description: 'Performance boost' },
   { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Leafy greens' },
   { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Sun, description: 'Island flavors' },
