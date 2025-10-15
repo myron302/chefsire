@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { 
   Heart, Star, Search, Share2, ArrowLeft,
-  Camera, Zap, Sparkles, X, Check, Apple, Sun, Droplets, Leaf,
-  Clipboard, RotateCcw
+  Camera, Zap, Sparkles, X, Check, Crown, Activity, Droplets, Leaf,
+  Clipboard, RotateCcw, Wine, Flame
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -24,7 +24,7 @@ const toNiceFraction = (value: number) => {
   const rounded = Math.round(value * 4) / 4;
   const whole = Math.trunc(rounded);
   const frac = Math.round((rounded - whole) * 4);
-  const fracMap: Record<number, string> = { 0: '', 1: '1/4', 2: '1/2', 3: '3/4' };
+  const fracMap: Record<number, string> = { 0: '', 1: '¼', 2: '½', 3: '¾' };
   const fracStr = fracMap[frac];
   if (!whole && fracStr) return fracStr;
   if (whole && fracStr) return `${whole} ${fracStr}`;
@@ -48,32 +48,78 @@ const toMetric = (unit: string, amount: number) => {
   }
 };
 
-// Berry smoothies data
+// Improved ingredient parser that handles fractions and descriptors properly
+const parseIngredient = (ingredient: string): Measured => {
+  const fractionMap: Record<string, number> = {
+    '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
+  };
+  
+  const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
+  if (parts.length < 2) return m('1', 'item', ingredient);
+
+  let amountStr = parts[0];
+  let amount: number | string = fractionMap[amountStr] ?? 
+    (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
+
+  let unit = parts[1];
+  let item = parts.slice(2).join(' ');
+
+  // If unit looks like a descriptor (not a real unit), fold it back into the item
+  const descriptors = new Set(['low-fat', 'frozen', 'unsweetened', 'natural', 'vanilla', 'plain', 'fresh']);
+  if (descriptors.has(unit)) {
+    item = [unit, item].filter(Boolean).join(' ').trim();
+    unit = 'item'; // generic unit
+  }
+
+  // Handle notes like "(optional)"
+  if (item.includes('(optional)')) {
+    item = item.replace('(optional)', '').trim();
+    return m(amount, unit, item, 'optional');
+  }
+  
+  return m(amount, unit, item);
+};
+
+// Enhanced berry smoothies data with proper measurements
 const berrySmoothies = [
   {
     id: 'berry-1',
     name: 'Triple Berry Blast',
     description: 'Strawberry, blueberry, and raspberry power',
-    ingredients: ['1 cup strawberries', '1/2 cup blueberries', '1/2 cup raspberries', '1/2 banana', '1 cup almond milk', 'Ice'],
+    ingredients: [
+      '1 cup strawberries',
+      '1/2 cup blueberries', 
+      '1/2 cup raspberries',
+      '1/2 banana',
+      '1 cup almond milk',
+      '1 cup ice'
+    ],
     benefits: ['Antioxidant powerhouse', 'Heart health', 'Brain boost', 'Anti-inflammatory'],
-    nutrition: { calories: 220, protein: 5, carbs: 45, fiber: 10, sugar: 28 },
+    nutrition: { calories: 220, protein: 5, carbs: 45, fiber: 10, sugar: 28, added_sugar: 0 },
     difficulty: 'Easy',
     prepTime: 3,
     rating: 4.9,
     reviews: 523,
-    berryType: 'Mixed',
+    berryType: 'Mixed Berries',
     featured: true,
     trending: true,
     bestTime: 'Morning/Afternoon',
-    image: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400&h=300&fit=crop'
+    image: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400&h=300&fit=crop',
+    estimatedCost: 3.20
   },
   {
     id: 'berry-2',
     name: 'Strawberry Fields',
     description: 'Classic strawberry smoothie perfection',
-    ingredients: ['2 cups strawberries', '1/2 cup Greek yogurt', '1/4 cup oats', '1 tbsp honey', 'Ice'],
+    ingredients: [
+      '2 cups strawberries',
+      '1/2 cup Greek yogurt',
+      '1/4 cup oats',
+      '1 tbsp honey',
+      '1 cup ice'
+    ],
     benefits: ['Vitamin C boost', 'Protein rich', 'Sustained energy', 'Heart healthy'],
-    nutrition: { calories: 280, protein: 12, carbs: 48, fiber: 8, sugar: 30 },
+    nutrition: { calories: 280, protein: 12, carbs: 48, fiber: 8, sugar: 30, added_sugar: 12 },
     difficulty: 'Easy',
     prepTime: 4,
     rating: 4.8,
@@ -81,15 +127,22 @@ const berrySmoothies = [
     berryType: 'Strawberry',
     featured: true,
     bestTime: 'Morning',
-    image: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=400&h=300&fit=crop'
+    image: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=400&h=300&fit=crop',
+    estimatedCost: 2.90
   },
   {
     id: 'berry-3',
     name: 'Blueberry Bliss',
     description: 'Brain-boosting blueberry blend',
-    ingredients: ['1.5 cups blueberries', '1/2 cup coconut milk', '1/4 cup cashews', '1 tbsp chia seeds', 'Ice'],
+    ingredients: [
+      '1.5 cups blueberries',
+      '1/2 cup coconut milk',
+      '1/4 cup cashews',
+      '1 tbsp chia seeds',
+      '1 cup ice'
+    ],
     benefits: ['Brain health', 'Memory boost', 'Antioxidants', 'Omega-3s'],
-    nutrition: { calories: 310, protein: 8, carbs: 42, fiber: 11, sugar: 25 },
+    nutrition: { calories: 310, protein: 8, carbs: 42, fiber: 11, sugar: 25, added_sugar: 0 },
     difficulty: 'Easy',
     prepTime: 4,
     rating: 4.7,
@@ -97,128 +150,95 @@ const berrySmoothies = [
     berryType: 'Blueberry',
     trending: true,
     bestTime: 'Morning',
-    image: 'https://images.unsplash.com/photo-1590301157890-4810ed352733?w=400&h=300&fit=crop'
+    image: 'https://images.unsplash.com/photo-1590301157890-4810ed352733?w=400&h=300&fit=crop',
+    estimatedCost: 3.50
   },
   {
     id: 'berry-4',
     name: 'Raspberry Revival',
     description: 'Tart raspberry refreshment',
-    ingredients: ['1.5 cups raspberries', '1/2 cup Greek yogurt', '1/4 cup spinach', '1 tbsp maple syrup', 'Ice'],
+    ingredients: [
+      '1.5 cups raspberries',
+      '1/2 cup Greek yogurt',
+      '1/4 cup spinach',
+      '1 tbsp maple syrup',
+      '1 cup ice'
+    ],
     benefits: ['Digestive health', 'Fiber rich', 'Weight management', 'Vitamin C'],
-    nutrition: { calories: 200, protein: 10, carbs: 35, fiber: 12, sugar: 18 },
+    nutrition: { calories: 200, protein: 10, carbs: 35, fiber: 12, sugar: 18, added_sugar: 8 },
     difficulty: 'Easy',
     prepTime: 3,
     rating: 4.6,
     reviews: 289,
     berryType: 'Raspberry',
-    bestTime: 'Afternoon'
-  },
-  {
-    id: 'berry-5',
-    name: 'Blackberry Boost',
-    description: 'Rich blackberry nutrition bomb',
-    ingredients: ['1.5 cups blackberries', '1/2 banana', '1/2 cup oat milk', '1 tbsp almond butter', 'Ice'],
-    benefits: ['Vitamin K', 'Bone health', 'Antioxidants', 'Healthy fats'],
-    nutrition: { calories: 260, protein: 7, carbs: 44, fiber: 13, sugar: 22 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.7,
-    reviews: 198,
-    berryType: 'Blackberry',
-    bestTime: 'Morning'
-  },
-  {
-    id: 'berry-6',
-    name: 'Açaí Power Bowl',
-    description: 'Superfood açaí smoothie bowl',
-    ingredients: ['2 açaí packets', '1/2 cup blueberries', '1/2 banana', '1/4 cup granola topping', '1/2 cup apple juice'],
-    benefits: ['Superfood power', 'Energy boost', 'Antioxidants', 'Instagram-worthy'],
-    nutrition: { calories: 350, protein: 6, carbs: 62, fiber: 9, sugar: 35 },
-    difficulty: 'Medium',
-    prepTime: 5,
-    rating: 4.9,
-    reviews: 645,
-    berryType: 'Açaí',
-    featured: true,
-    trending: true,
-    bestTime: 'Morning'
-  },
-  {
-    id: 'berry-7',
-    name: 'Berry Green Fusion',
-    description: 'Berries meet green nutrition',
-    ingredients: ['1 cup mixed berries', '1 cup spinach', '1/2 avocado', '1 cup coconut water', 'Ice'],
-    benefits: ['Hidden greens', 'Complete nutrition', 'Healthy fats', 'Detoxifying'],
-    nutrition: { calories: 240, protein: 5, carbs: 38, fiber: 11, sugar: 20 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.5,
-    reviews: 234,
-    berryType: 'Mixed',
-    bestTime: 'Morning'
-  },
-  {
-    id: 'berry-8',
-    name: 'Strawberry Banana Classic',
-    description: 'The timeless favorite combination',
-    ingredients: ['1.5 cups strawberries', '1 banana', '1 cup milk', '1/2 cup vanilla yogurt', 'Ice'],
-    benefits: ['Classic taste', 'Kid-friendly', 'Potassium', 'Calcium'],
-    nutrition: { calories: 290, protein: 11, carbs: 52, fiber: 7, sugar: 38 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.8,
-    reviews: 756,
-    berryType: 'Strawberry',
-    bestTime: 'Anytime'
-  },
-  {
-    id: 'berry-9',
-    name: 'Cranberry Citrus Zing',
-    description: 'Tart cranberries with orange kick',
-    ingredients: ['1 cup cranberries', '1 orange', '1/2 cup Greek yogurt', '1 tbsp honey', 'Ice'],
-    benefits: ['UTI prevention', 'Immune boost', 'Vitamin C', 'Refreshing'],
-    nutrition: { calories: 210, protein: 9, carbs: 40, fiber: 6, sugar: 28 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.4,
-    reviews: 145,
-    berryType: 'Cranberry',
-    bestTime: 'Morning'
+    bestTime: 'Afternoon',
+    estimatedCost: 3.10
   }
 ];
 
-const smoothieSubcategories = [
-  { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Apple, description: 'High protein blends' },
-  { id: 'breakfast', name: 'Breakfast', path: '/drinks/smoothies/breakfast', icon: Sun, description: 'Morning fuel' },
-  { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Zap, description: 'Performance boost' },
-  { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Leafy greens' },
-  { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Sparkles, description: 'Island flavors' },
-  { id: 'berry', name: 'Berry', path: '/drinks/smoothies/berry', icon: Heart, description: 'Antioxidant rich' },
-  { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Droplets, description: 'Cleansing blends' },
-  { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: Sparkles, description: 'Sweet treats' }
+const berryTypes = [
+  { id: 'mixed', name: 'Mixed Berries', description: 'Combination of different berries' },
+  { id: 'strawberry', name: 'Strawberry', description: 'Sweet and vitamin C rich' },
+  { id: 'blueberry', name: 'Blueberry', description: 'Brain-boosting antioxidants' },
+  { id: 'raspberry', name: 'Raspberry', description: 'Tart and fiber-rich' },
+  { id: 'blackberry', name: 'Blackberry', description: 'Dark and nutrient-dense' },
+  { id: 'acai', name: 'Açaí', description: 'Superfood berry power' }
 ];
 
+const berryBenefitsList = [
+  { id: 'antioxidants', name: 'Antioxidants', description: 'Fight free radicals' },
+  { id: 'heart', name: 'Heart Health', description: 'Support cardiovascular function' },
+  { id: 'brain', name: 'Brain Boost', description: 'Improve cognitive function' },
+  { id: 'immune', name: 'Immune Support', description: 'Strengthen immunity' },
+  { id: 'skin', name: 'Skin Health', description: 'Glowing complexion' },
+  { id: 'digestive', name: 'Digestive Health', description: 'Improve gut function' }
+];
+
+// ---------- Cross-nav ----------
 const otherDrinkHubs = [
-  { id: 'juices', name: 'Fresh Juices', route: '/drinks/juices', icon: Droplets, description: 'Cold-pressed nutrition' },
-  { id: 'teas', name: 'Specialty Teas', route: '/drinks/teas', icon: Sun, description: 'Hot & iced teas' },
-  { id: 'coffee', name: 'Coffee Drinks', route: '/drinks/coffee', icon: Zap, description: 'Artisan coffee' },
-  { id: 'protein-shakes', name: 'Protein Shakes', route: '/drinks/protein-shakes', icon: Apple, description: 'Muscle fuel' }
+  { id: 'protein-shakes', name: 'Protein Shakes', icon: Zap, route: '/drinks/protein-shakes', description: 'Muscle building' },
+  { id: 'smoothies', name: 'All Smoothies', icon: Sparkles, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
+  { id: 'potables', name: 'Potent Potables', icon: Wine, route: '/drinks/potent-potables', description: 'Cocktails (21+)' },
+  { id: 'all-drinks', name: 'All Drinks', icon: Flame, route: '/drinks', description: 'Browse everything' }
+];
+
+// Remove berry from the smoothie subcategories since we're on the berry page
+const allSmoothieSubcategories = [
+  { id: 'protein', name: 'Protein', path: '/drinks/smoothies/protein', icon: Zap, description: 'High-protein blends' },
+  { id: 'breakfast', name: 'Breakfast', path: '/drinks/smoothies/breakfast', icon: Crown, description: 'Morning fuel' },
+  { id: 'workout', name: 'Workout', path: '/drinks/smoothies/workout', icon: Activity, description: 'Pre & post workout' },
+  { id: 'green', name: 'Green', path: '/drinks/smoothies/green', icon: Leaf, description: 'Superfood greens' },
+  { id: 'tropical', name: 'Tropical', path: '/drinks/smoothies/tropical', icon: Droplets, description: 'Exotic fruits' },
+  { id: 'detox', name: 'Detox', path: '/drinks/smoothies/detox', icon: Sparkles, description: 'Cleansing blends' },
+  { id: 'dessert', name: 'Dessert', path: '/drinks/smoothies/dessert', icon: Heart, description: 'Healthy treats' }
+];
+
+const berryAdvantages = [
+  { icon: Heart, title: 'Antioxidant Power', description: 'Rich in disease-fighting compounds', color: 'text-pink-600' },
+  { icon: Star, title: 'Vitamin C Boost', description: 'Supports immune system and skin', color: 'text-rose-600' },
+  { icon: Zap, title: 'Brain Health', description: 'Improves memory and cognitive function', color: 'text-fuchsia-600' },
+  { icon: Crown, title: 'Heart Protection', description: 'Supports cardiovascular health', color: 'text-red-600' },
+  { icon: Sparkles, title: 'Anti-Inflammatory', description: 'Reduces inflammation in body', color: 'text-pink-600' },
+  { icon: Flame, title: 'Low Calorie', description: 'Nutrient-dense without excess calories', color: 'text-rose-600' }
 ];
 
 export default function BerrySmoothiesPage() {
   const { 
     addToFavorites, 
-    isFavorite, 
-    addToRecentlyViewed, 
+    isFavorite,
+    addToRecentlyViewed,
     userProgress,
-    addPoints,
-    incrementDrinksMade
+    incrementDrinksMade,
+    addPoints
   } = useDrinks();
 
-  const [activeTab, setActiveTab] = useState('browse');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBerryType, setSelectedBerryType] = useState('');
-  const [sortBy, setSortBy] = useState('rating');
+  const [selectedBenefit, setSelectedBenefit] = useState('');
+  const [maxCalories, setMaxCalories] = useState<number | 'all'>('all');
+  const [onlyNaturalSweetener, setOnlyNaturalSweetener] = useState(false);
+  const [sortBy, setSortBy] = useState<'rating' | 'fiber' | 'cost' | 'calories'>('rating');
+  const [activeTab, setActiveTab] = useState<'browse'|'berry-types'|'benefits'|'featured'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   
   // RecipeKit state
@@ -227,31 +247,33 @@ export default function BerrySmoothiesPage() {
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
-  // Convert berry smoothies to RecipeKit format
+  // Convert berry smoothies to RecipeKit format with robust parsing
   const smoothieRecipesWithMeasurements = useMemo(() => {
-    return berrySmoothies.map(smoothie => ({
-      ...smoothie,
-      recipe: {
-        servings: 1,
-        measurements: smoothie.ingredients.map((ing, index) => {
-          // Parse ingredients into measured format
-          const parts = ing.split(' ');
-          if (parts.length >= 2 && !isNaN(parseFloat(parts[0]))) {
-            const amount = parts[0];
-            const unit = parts[1];
-            const item = parts.slice(2).join(' ');
-            return m(amount, unit, item);
-          }
-          return m('1', 'item', ing);
-        }),
-        directions: [
-          'Add all ingredients to blender',
-          'Blend until smooth and creamy',
-          'Pour into glass and serve immediately',
-          'Enjoy your berry smoothie!'
-        ]
-      }
-    }));
+    return berrySmoothies.map((s) => {
+      const rawList = Array.isArray(s.ingredients) ? s.ingredients : [];
+      
+      // Normalize everything to { amount, unit, item, note }
+      const measurements = rawList.map((ing: any) => {
+        if (typeof ing === 'string') return parseIngredient(ing);
+        // If already measured object, keep as-is
+        const { amount = 1, unit = 'item', item = '', note = '' } = ing || {};
+        return { amount, unit, item, note };
+      });
+
+      return {
+        ...s,
+        recipe: {
+          servings: 1,
+          measurements,
+          directions: [
+            'Add berries and liquid to blender first',
+            'Blend until berries are completely broken down',
+            'Add remaining ingredients and blend until smooth',
+            'Pour into glass and enjoy immediately for maximum flavor'
+          ]
+        }
+      };
+    });
   }, []);
 
   const handleShareSmoothie = async (smoothie: any, servingsOverride?: number) => {
@@ -299,7 +321,7 @@ export default function BerrySmoothiesPage() {
       };
       addToRecentlyViewed(drinkData);
       incrementDrinksMade();
-      addPoints(25);
+      addPoints(25); // XP for berry smoothies
     }
     setShowKit(false);
     setSelectedRecipe(null);
@@ -309,17 +331,19 @@ export default function BerrySmoothiesPage() {
     let filtered = smoothieRecipesWithMeasurements.filter(smoothie => {
       const matchesSearch = smoothie.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            smoothie.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesBerryType = !selectedBerryType || smoothie.berryType.toLowerCase().includes(selectedBerryType.toLowerCase());
-      
-      return matchesSearch && matchesBerryType;
+      const matchesType = !selectedBerryType || smoothie.berryType === selectedBerryType;
+      const matchesBenefit = !selectedBenefit || smoothie.benefits.some((b: string) => b.toLowerCase().includes(selectedBenefit.toLowerCase()));
+      const matchesCalories = maxCalories === 'all' || smoothie.nutrition.calories <= maxCalories;
+      const matchesSweetener = !onlyNaturalSweetener || smoothie.nutrition.added_sugar === 0;
+      return matchesSearch && matchesType && matchesBenefit && matchesCalories && matchesSweetener;
     });
 
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'rating': return (b.rating || 0) - (a.rating || 0);
         case 'fiber': return (b.nutrition.fiber || 0) - (a.nutrition.fiber || 0);
+        case 'cost': return (a.estimatedCost || 0) - (b.estimatedCost || 0);
         case 'calories': return (a.nutrition.calories || 0) - (b.nutrition.calories || 0);
-        case 'time': return (a.prepTime || 0) - (b.prepTime || 0);
         default: return 0;
       }
     });
@@ -331,8 +355,32 @@ export default function BerrySmoothiesPage() {
   const featuredSmoothies = smoothieRecipesWithMeasurements.filter(s => s.featured);
   const trendingSmoothies = smoothieRecipesWithMeasurements.filter(s => s.trending);
 
+  // Share page handler
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Berry Smoothies',
+      text: `Browse ${berrySmoothies.length} berry smoothies for antioxidant power and delicious flavor.`,
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-red-50">
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-rose-50 to-red-50">
       {/* Universal Search Modal */}
       {showUniversalSearch && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
@@ -383,7 +431,7 @@ export default function BerrySmoothiesPage() {
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
-                <Apple className="h-6 w-6 text-pink-600" />
+                <Heart className="h-6 w-6 text-pink-600" />
                 <h1 className="text-2xl font-bold text-gray-900">Berry Smoothies</h1>
                 <Badge className="bg-pink-100 text-pink-800">Antioxidant Rich</Badge>
               </div>
@@ -404,7 +452,7 @@ export default function BerrySmoothiesPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-pink-600 hover:bg-pink-700">
+              <Button size="sm" className="bg-pink-600 hover:bg-pink-700" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Page
               </Button>
@@ -415,7 +463,7 @@ export default function BerrySmoothiesPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         
-        {/* CROSS-HUB NAVIGATION */}
+        {/* CROSS-HUB NAVIGATION - Top Level Sites (No Berry) */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
@@ -439,12 +487,12 @@ export default function BerrySmoothiesPage() {
           </CardContent>
         </Card>
 
-        {/* SISTER SUBPAGES NAVIGATION */}
-        <Card className="bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200">
+        {/* SISTER SUBPAGES NAVIGATION - ALL SMOOTHIE TYPES (No Berry) */}
+        <Card className="bg-gradient-to-r from-pink-50 to-rose-50 border-pink-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Smoothie Types</h3>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-              {smoothieSubcategories.map((subcategory) => {
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              {allSmoothieSubcategories.map((subcategory) => {
                 const Icon = subcategory.icon;
                 return (
                   <Link key={subcategory.id} href={subcategory.path}>
@@ -463,29 +511,53 @@ export default function BerrySmoothiesPage() {
           </CardContent>
         </Card>
 
+        {/* Berry Advantages */}
+        <Card className="mb-8">
+          <CardContent className="p-6">
+            <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+              <Star className="h-6 w-6 text-pink-500" />
+              Why Berry Smoothies?
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {berryAdvantages.map((advantage, index) => {
+                const Icon = advantage.icon as any;
+                return (
+                  <div key={index} className="flex items-start gap-3 p-4 rounded-lg border hover:shadow-md transition-shadow">
+                    <Icon className={`h-6 w-6 ${advantage.color} flex-shrink-0`} />
+                    <div>
+                      <h3 className="font-semibold mb-1">{advantage.title}</h3>
+                      <p className="text-sm text-muted-foreground">{advantage.description}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-pink-600">260</div>
+              <div className="text-2xl font-bold text-pink-600">250</div>
               <div className="text-sm text-gray-600">Avg Calories</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-pink-600">9g</div>
+              <div className="text-2xl font-bold text-rose-600">10g</div>
               <div className="text-sm text-gray-600">Avg Fiber</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-pink-600">4.7★</div>
+              <div className="text-2xl font-bold text-red-600">4.8★</div>
               <div className="text-sm text-gray-600">Avg Rating</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-pink-600">{berrySmoothies.length}</div>
+              <div className="text-2xl font-bold text-fuchsia-600">{berrySmoothies.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -495,15 +567,16 @@ export default function BerrySmoothiesPage() {
         <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
-            { id: 'featured', label: 'Featured', icon: Star },
-            { id: 'trending', label: 'Trending', icon: Zap }
+            { id: 'berry-types', label: 'Berry Types', icon: Heart },
+            { id: 'benefits', label: 'Health Benefits', icon: Star },
+            { id: 'featured', label: 'Featured', icon: Zap }
           ].map(tab => {
-            const Icon = tab.icon;
+            const Icon = tab.icon as any;
             return (
               <Button
                 key={tab.id}
                 variant={activeTab === tab.id ? "default" : "ghost"}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => setActiveTab(tab.id as any)}
                 className={`flex-1 ${activeTab === tab.id ? 'bg-white shadow-sm' : ''}`}
               >
                 <Icon className="h-4 w-4 mr-2" />
@@ -529,30 +602,62 @@ export default function BerrySmoothiesPage() {
                     />
                   </div>
                   
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                       value={selectedBerryType}
                       onChange={(e) => setSelectedBerryType(e.target.value)}
                     >
                       <option value="">All Berry Types</option>
-                      <option value="Mixed">Mixed Berries</option>
-                      <option value="Strawberry">Strawberry</option>
-                      <option value="Blueberry">Blueberry</option>
-                      <option value="Raspberry">Raspberry</option>
-                      <option value="Blackberry">Blackberry</option>
-                      <option value="Açaí">Açaí</option>
+                      {berryTypes.map(type => (
+                        <option key={type.id} value={type.name}>{type.name}</option>
+                      ))}
+                    </select>
+
+                    <select 
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                      value={selectedBenefit}
+                      onChange={(e) => setSelectedBenefit(e.target.value)}
+                    >
+                      <option value="">All Benefits</option>
+                      {berryBenefitsList.map(benefit => (
+                        <option key={benefit.id} value={benefit.name}>{benefit.name}</option>
+                      ))}
                     </select>
                     
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                      value={maxCalories}
+                      onChange={(e) => {
+                        const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
+                        setMaxCalories(v);
+                      }}
+                    >
+                      <option value="all">All Calories</option>
+                      <option value={200}>Under 200 cal</option>
+                      <option value={250}>Under 250 cal</option>
+                      <option value={300}>Under 300 cal</option>
+                      <option value={350}>Under 350 cal</option>
+                    </select>
+                    
+                    <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
+                      <input
+                        type="checkbox"
+                        checked={onlyNaturalSweetener}
+                        onChange={(e) => setOnlyNaturalSweetener(e.target.checked)}
+                      />
+                      Natural Sweeteners
+                    </label>
+
+                    <select 
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                       value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value)}
+                      onChange={(e) => setSortBy(e.target.value as any)}
                     >
                       <option value="rating">Sort by Rating</option>
                       <option value="fiber">Sort by Fiber</option>
+                      <option value="cost">Sort by Cost</option>
                       <option value="calories">Sort by Calories</option>
-                      <option value="time">Sort by Prep Time</option>
                     </select>
                   </div>
                 </div>
@@ -589,35 +694,35 @@ export default function BerrySmoothiesPage() {
                             fitnessGoal: 'Berry Nutrition',
                             bestTime: smoothie.bestTime
                           })}
-                          className="text-gray-400 hover:text-red-500"
                         >
-                          <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                          <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>
                       </div>
                       
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2">
                         <Badge className="bg-pink-100 text-pink-800">{smoothie.berryType}</Badge>
                         {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
                     </CardHeader>
                     
                     <CardContent>
+                      {/* Nutrition Grid */}
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
                           <div className="font-bold text-pink-600">{smoothie.nutrition.calories}</div>
-                          <div className="text-gray-500">Cal</div>
+                          <div className="text-gray-500">Calories</div>
                         </div>
                         <div>
-                          <div className="font-bold text-pink-600">{smoothie.nutrition.fiber}g</div>
+                          <div className="font-bold text-rose-600">{smoothie.nutrition.fiber}g</div>
                           <div className="text-gray-500">Fiber</div>
                         </div>
                         <div>
-                          <div className="font-bold text-pink-600">{smoothie.prepTime}m</div>
+                          <div className="font-bold text-red-600">{smoothie.prepTime}m</div>
                           <div className="text-gray-500">Prep</div>
                         </div>
                       </div>
 
-                      {/* RATING & DIFFICULTY - IMMEDIATELY ABOVE RECIPE CARD */}
+                      {/* RATING & DIFFICULTY - Immediately above recipe card */}
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-1">
                           <Star className="h-4 w-4 text-yellow-400 fill-current" />
@@ -630,7 +735,7 @@ export default function BerrySmoothiesPage() {
                       </div>
 
                       {/* RecipeKit Preview */}
-                      {smoothie.recipe?.measurements && (
+                      {Array.isArray(smoothie.recipe?.measurements) && smoothie.recipe.measurements.length > 0 && (
                         <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
                             <div className="text-sm font-semibold text-gray-900">
@@ -750,7 +855,7 @@ export default function BerrySmoothiesPage() {
 
                       {/* Benefits Tags */}
                       <div className="flex flex-wrap gap-1 mb-4">
-                        {smoothie.benefits.slice(0, 3).map((benefit, index) => (
+                        {smoothie.benefits?.slice(0, 3).map((benefit: string, index: number) => (
                           <Badge key={index} variant="secondary" className="text-xs bg-pink-100 text-pink-800 hover:bg-pink-200">
                             {benefit}
                           </Badge>
@@ -763,7 +868,7 @@ export default function BerrySmoothiesPage() {
                           className="w-full bg-pink-600 hover:bg-pink-700"
                           onClick={() => openRecipeModal(smoothie)}
                         >
-                          <Apple className="h-4 w-4 mr-2" />
+                          <Heart className="h-4 w-4 mr-2" />
                           Make Smoothie (+25 XP)
                         </Button>
                       </div>
@@ -775,42 +880,27 @@ export default function BerrySmoothiesPage() {
           </div>
         )}
 
-        {activeTab === 'featured' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {featuredSmoothies.map(smoothie => (
-              <Card key={smoothie.id} className="overflow-hidden hover:shadow-xl transition-shadow">
-                <div className="relative">
-                  <img 
-                    src={smoothie.image} 
-                    alt={smoothie.name}
-                    className="w-full h-48 object-cover"
-                  />
-                  <div className="absolute top-4 left-4">
-                    <Badge className="bg-pink-500 text-white">Featured Berry</Badge>
-                  </div>
-                </div>
-                
+        {/* Berry Types Tab */}
+        {activeTab === 'berry-types' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {berryTypes.map(type => (
+              <Card key={type.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader>
-                  <CardTitle className="text-xl">{smoothie.name}</CardTitle>
-                  <p className="text-gray-600">{smoothie.description}</p>
-                  
-                  <div className="flex items-center gap-2 mt-2">
-                    <Badge className="bg-pink-100 text-pink-800">{smoothie.berryType}</Badge>
-                    <div className="flex items-center gap-1 ml-auto">
-                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium text-pink-600">{smoothie.rating}</span>
-                      <span className="text-gray-500 text-sm">({smoothie.reviews})</span>
+                  <div className="text-center">
+                    <div className="w-12 h-12 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <Heart className="h-6 w-6 text-pink-600" />
                     </div>
+                    <CardTitle className="text-lg">{type.name}</CardTitle>
+                    <p className="text-sm text-gray-600">{type.description}</p>
                   </div>
                 </CardHeader>
-                
                 <CardContent>
-                  <Button 
-                    className="w-full bg-pink-600 hover:bg-pink-700"
-                    onClick={() => openRecipeModal(smoothie)}
-                  >
-                    <Apple className="h-4 w-4 mr-2" />
-                    Make This Smoothie
+                  <div className="text-center bg-pink-50 p-3 rounded-lg mb-4">
+                    <div className="text-sm font-medium text-gray-700 mb-1">Key Benefit</div>
+                    <div className="text-lg font-bold text-pink-600">Antioxidants</div>
+                  </div>
+                  <Button className="w-full" onClick={() => setActiveTab('browse')}>
+                    Explore {type.name}
                   </Button>
                 </CardContent>
               </Card>
@@ -818,18 +908,51 @@ export default function BerrySmoothiesPage() {
           </div>
         )}
 
-        {activeTab === 'trending' && (
+        {activeTab === 'benefits' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {trendingSmoothies.map(smoothie => (
-              <Card key={smoothie.id} className="hover:shadow-lg transition-shadow border-2 border-pink-200">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-lg mb-1">{smoothie.name}</CardTitle>
-                      <p className="text-sm text-gray-600 mb-2">{smoothie.description}</p>
+            {berryBenefitsList.map(benefit => (
+              <Card key={benefit.id} className="hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-pink-100 rounded-lg">
+                      <Star className="h-6 w-6 text-pink-600" />
                     </div>
-                    <Badge className="bg-red-500 text-white">🔥 Trending</Badge>
+                    <div>
+                      <CardTitle className="text-lg">{benefit.name}</CardTitle>
+                      <p className="text-sm text-gray-600">{benefit.description}</p>
+                    </div>
                   </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center bg-pink-50 p-3 rounded-lg mb-4">
+                    <div className="text-sm font-medium text-gray-700 mb-1">Health Focus</div>
+                    <div className="text-lg font-bold text-pink-600">Wellness</div>
+                  </div>
+                  <Button className="w-full" onClick={() => setActiveTab('browse')}>
+                    View {benefit.name}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'featured' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {featuredSmoothies.map(smoothie => (
+              <Card key={smoothie.id} className="overflow-hidden hover:shadow-xl transition-shadow">
+                <div className="relative h-48">
+                  <img 
+                    src={smoothie.image} 
+                    alt={smoothie.name}
+                    className="w-full h-full object-cover"
+                  />
+                  <Badge className="absolute top-4 left-4 bg-pink-500 text-white">Featured</Badge>
+                </div>
+                
+                <CardHeader>
+                  <CardTitle>{smoothie.name}</CardTitle>
+                  <p className="text-gray-600">{smoothie.description}</p>
                 </CardHeader>
                 
                 <CardContent>
@@ -837,8 +960,8 @@ export default function BerrySmoothiesPage() {
                     className="w-full bg-pink-600 hover:bg-pink-700"
                     onClick={() => openRecipeModal(smoothie)}
                   >
-                    <Apple className="h-4 w-4 mr-2" />
-                    Try This Trend
+                    <Heart className="h-4 w-4 mr-2" />
+                    Make This Berry Smoothie
                   </Button>
                 </CardContent>
               </Card>
@@ -847,7 +970,7 @@ export default function BerrySmoothiesPage() {
         )}
 
         {/* Your Progress */}
-        <Card className="bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200">
+        <Card className="bg-gradient-to-r from-pink-50 to-rose-50 border-pink-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -856,10 +979,10 @@ export default function BerrySmoothiesPage() {
                   <Badge variant="outline" className="text-pink-600">
                     Level {userProgress.level}
                   </Badge>
-                  <Badge variant="outline" className="text-pink-600">
+                  <Badge variant="outline" className="text-rose-600">
                     {userProgress.totalPoints} XP
                   </Badge>
-                  <Badge variant="outline" className="text-pink-600">
+                  <Badge variant="outline" className="text-red-600">
                     {userProgress.totalDrinksMade} Drinks Made
                   </Badge>
                 </div>
