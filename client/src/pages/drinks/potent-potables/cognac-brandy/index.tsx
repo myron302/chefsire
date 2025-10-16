@@ -377,6 +377,7 @@ const sisterPotentPotablesPages = [
   { id: 'whiskey', name: 'Whiskey & Bourbon', path: '/drinks/potent-potables/whiskey-bourbon', icon: Wine, description: 'Kentucky classics' },
   { id: 'tequila', name: 'Tequila & Mezcal', path: '/drinks/potent-potables/tequila-mezcal', icon: Flame, description: 'Agave spirits' },
   { id: 'rum', name: 'Rum', path: '/drinks/potent-potables/rum', icon: GlassWater, description: 'Caribbean vibes' },
+  { id: 'daiquiri', name: 'Daiquiri', path: '/drinks/potent-potables/daiquiri', icon: Droplets, description: 'Rum classics' },
   { id: 'scotch', name: 'Scotch & Irish', path: '/drinks/potent-potables/scotch-irish-whiskey', icon: Wine, description: 'UK whiskeys' },
   { id: 'martinis', name: 'Martinis', path: '/drinks/potent-potables/martinis', icon: Martini, description: 'Elegant classics' },
   { id: 'classic', name: 'Classic Cocktails', path: '/drinks/potent-potables/classic-cocktails', icon: Wine, description: 'Timeless recipes' },
@@ -451,7 +452,7 @@ export default function CognacBrandyPage() {
     } catch {
       try {
         await navigator.clipboard.writeText(`${cocktail.name}\n${text}\n${url}`);
-        alert('Unable to share natively; copied to clipboard.');
+        alert('Recipe copied to clipboard!');
       } catch {
         alert('Unable to share on this device.');
       }
@@ -560,7 +561,7 @@ export default function CognacBrandyPage() {
                   <div className="w-px h-4 bg-gray-300" />
                   <span>{userProgress.totalPoints} XP</span>
                 </div>
-                <Button size="sm" className="bg-orange-600 hover:bg-orange-700" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+                <Button size="sm" className="bg-orange-600 hover:bg-orange-700">
                   <Camera className="h-4 w-4 mr-2" />
                   Share Recipe
                 </Button>
@@ -569,7 +570,6 @@ export default function CognacBrandyPage() {
           </div>
         </div>
 
-        {/* Main Container */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* CROSS-HUB NAVIGATION */}
           <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-orange-300 mb-6">
@@ -883,7 +883,7 @@ export default function CognacBrandyPage() {
                                 e.stopPropagation();
                                 handleShareCocktail(cocktail, servings);
                               }}>
-                                <Share2 className="w-4 h-4 mr-1" /> Share
+                                <Share2 className="w-4 w-4 mr-1" /> Share
                               </Button>
                               <Button
                                 variant="outline"
@@ -1116,9 +1116,10 @@ export default function CognacBrandyPage() {
               </div>
             </CardContent>
           </Card>
+        </div>
 
-          {/* Your Progress Card (kept INSIDE the container) */}
-          <Card className="mt-6 bg-gradient-to-r from-amber-50 to-orange-50 border-orange-300">
+          {/* Your Progress Card */}
+          <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-orange-300">
             <CardContent className="p-6">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
@@ -1160,8 +1161,7 @@ export default function CognacBrandyPage() {
               </div>
             </CardContent>
           </Card>
-        </div> 
-        {/* end .max-w-7xl container */}
+        </div>
       </div>
     </RequireAgeGate>
   );
