@@ -5,11 +5,13 @@ import { storage } from "../storage";
 const r = Router();
 
 /**
- * Posts
+ * Posts - NOTE: All routes are prefixed with /posts by index.ts
+ * So /feed here becomes /api/posts/feed
  */
-r.get("/posts/feed", async (req, res) => {  // Changed from /feed/:userId to /feed (userId via query)
+
+r.get("/feed", async (req, res) => {
   try {
-    const userId = req.query.userId as string;  // Get from query param
+    const userId = req.query.userId as string;
     if (!userId) return res.status(400).json({ message: "userId is required" });
     const offset = Number(req.query.offset ?? 0);
     const limit = Number(req.query.limit ?? 10);
@@ -21,7 +23,7 @@ r.get("/posts/feed", async (req, res) => {  // Changed from /feed/:userId to /fe
   }
 });
 
-r.get("/posts/explore", async (req, res) => {
+r.get("/explore", async (req, res) => {
   try {
     const offset = Number(req.query.offset ?? 0);
     const limit = Number(req.query.limit ?? 10);
@@ -33,7 +35,7 @@ r.get("/posts/explore", async (req, res) => {
   }
 });
 
-r.get("/posts/user/:userId", async (req, res) => {
+r.get("/user/:userId", async (req, res) => {
   try {
     const offset = Number(req.query.offset ?? 0);
     const limit = Number(req.query.limit ?? 10);
@@ -45,7 +47,7 @@ r.get("/posts/user/:userId", async (req, res) => {
   }
 });
 
-r.get("/posts/:id", async (req, res) => {
+r.get("/:id", async (req, res) => {
   try {
     const post = await storage.getPostWithUser(req.params.id);
     if (!post) return res.status(404).json({ message: "Post not found" });
@@ -56,7 +58,7 @@ r.get("/posts/:id", async (req, res) => {
   }
 });
 
-r.post("/posts", async (req, res) => {
+r.post("/", async (req, res) => {
   try {
     const schema = z.object({
       userId: z.string(),
@@ -75,7 +77,7 @@ r.post("/posts", async (req, res) => {
   }
 });
 
-r.delete("/posts/:id", async (req, res) => {
+r.delete("/:id", async (req, res) => {
   try {
     const ok = await storage.deletePost(req.params.id);
     if (!ok) return res.status(404).json({ message: "Post not found" });
@@ -89,7 +91,7 @@ r.delete("/posts/:id", async (req, res) => {
 /**
  * Comments
  */
-r.get("/posts/:postId/comments", async (req, res) => {
+r.get("/:postId/comments", async (req, res) => {
   try {
     const comments = await storage.getPostComments(req.params.postId);
     res.json(comments);
