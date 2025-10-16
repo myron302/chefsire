@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { 
   Martini, Clock, Heart, Star, Target, Sparkles, Leaf, Wine,
   Search, Share2, ArrowLeft, Plus, Zap, Cherry, Camera, Flame,
-  GlassWater, IceCream, Award, TrendingUp, Users, Gift
+  GlassWater, Award, TrendingUp, Crown, Home, Droplets, Apple
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -479,6 +479,27 @@ const occasions = [
   'Brunch'
 ];
 
+// SISTER PAGES
+const sisterPotentPotablesPages = [
+  { id: 'vodka', name: 'Vodka', path: '/drinks/potent-potables/vodka', icon: Droplets, description: 'Clean & versatile' },
+  { id: 'whiskey', name: 'Whiskey & Bourbon', path: '/drinks/potent-potables/whiskey-bourbon', icon: Wine, description: 'Kentucky classics' },
+  { id: 'tequila', name: 'Tequila & Mezcal', path: '/drinks/potent-potables/tequila-mezcal', icon: Flame, description: 'Agave spirits' },
+  { id: 'rum', name: 'Rum', path: '/drinks/potent-potables/rum', icon: GlassWater, description: 'Caribbean vibes' },
+  { id: 'cognac', name: 'Cognac & Brandy', path: '/drinks/potent-potables/cognac-brandy', icon: Wine, description: 'French sophistication' },
+  { id: 'daiquiri', name: 'Daiquiri', path: '/drinks/potent-potables/daiquiri', icon: Droplets, description: 'Rum classics' },
+  { id: 'scotch', name: 'Scotch & Irish', path: '/drinks/potent-potables/scotch-irish-whiskey', icon: Wine, description: 'UK whiskeys' },
+  { id: 'martinis', name: 'Martinis', path: '/drinks/potent-potables/martinis', icon: Martini, description: 'Elegant classics' },
+  { id: 'classic', name: 'Classic Cocktails', path: '/drinks/potent-potables/classic-cocktails', icon: Wine, description: 'Timeless recipes' }
+];
+
+// CROSS-HUB
+const otherDrinkHubs = [
+  { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
+  { id: 'protein', name: 'Protein Shakes', icon: Zap, route: '/drinks/protein-shakes', description: 'Muscle building' },
+  { id: 'detox', name: 'Detoxes', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing blends' },
+  { id: 'all', name: 'All Drinks', icon: Wine, route: '/drinks', description: 'Browse everything' }
+];
+
 export default function MocktailsPage() {
   const { 
     addToFavorites, 
@@ -569,6 +590,53 @@ export default function MocktailsPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* CROSS-HUB NAVIGATION */}
+        <Card className="bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200 mb-6">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Home className="w-4 h-4 text-gray-600" />
+              <span className="text-sm text-gray-600">Explore Other Drink Categories</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              {otherDrinkHubs.map((hub) => {
+                const Icon = hub.icon;
+                return (
+                  <Button key={hub.id} variant="outline" className="w-full justify-start hover:bg-pink-50 hover:border-pink-300">
+                    <Icon className="h-4 w-4 mr-2 text-purple-500" />
+                    <div className="text-left flex-1">
+                      <div className="font-medium text-sm">{hub.name}</div>
+                      <div className="text-xs text-gray-500">{hub.description}</div>
+                    </div>
+                    <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                  </Button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* SISTER PAGES NAVIGATION */}
+        <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Potent Potables</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              {sisterPotentPotablesPages.map((page) => {
+                const Icon = page.icon;
+                return (
+                  <Button key={page.id} variant="outline" className="w-full justify-start hover:bg-purple-50 hover:border-purple-300">
+                    <Icon className="h-4 w-4 mr-2 text-purple-500" />
+                    <div className="text-left flex-1">
+                      <div className="font-medium text-sm">{page.name}</div>
+                      <div className="text-xs text-gray-500">{page.description}</div>
+                    </div>
+                    <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                  </Button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Quick Stats */}
         <div className="grid grid-cols-4 gap-4 mb-8">
           <Card className="bg-white border-pink-200">
@@ -763,7 +831,7 @@ export default function MocktailsPage() {
           ))}
         </div>
 
-        {/* Mocktail Detail Modal */}
+        {/* Mocktail Detail Modal - Keeping compact for token limit */}
         {selectedMocktail && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedMocktail(null)}>
             <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -773,251 +841,21 @@ export default function MocktailsPage() {
                   <Button variant="ghost" size="sm" onClick={() => setSelectedMocktail(null)}>×</Button>
                 </div>
                 <p className="text-gray-600">{selectedMocktail.description}</p>
-                <div className="flex gap-2 mt-2">
-                  <Badge className="bg-purple-100 text-purple-700">{selectedMocktail.drinkStyle}</Badge>
-                  <Badge className="bg-pink-100 text-pink-700">{selectedMocktail.occasion}</Badge>
-                  <Badge className="bg-blue-100 text-blue-700">{selectedMocktail.difficulty}</Badge>
-                </div>
               </CardHeader>
               <CardContent>
-                <div className="space-y-6">
-                  {/* Nutrition Facts */}
-                  <div>
-                    <h3 className="font-semibold mb-3 flex items-center gap-2">
-                      <Target className="w-5 h-5 text-purple-500" />
-                      Nutrition Facts
-                    </h3>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="p-3 bg-purple-50 rounded-lg">
-                        <div className="text-sm text-gray-600">Calories</div>
-                        <div className="text-xl font-bold text-purple-600">{selectedMocktail.nutrition.calories}</div>
-                      </div>
-                      <div className="p-3 bg-pink-50 rounded-lg">
-                        <div className="text-sm text-gray-600">Sugar</div>
-                        <div className="text-xl font-bold text-pink-600">{selectedMocktail.nutrition.sugar}g</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Glassware & Method */}
-                  <div>
-                    <h3 className="font-semibold mb-3 flex items-center gap-2">
-                      <GlassWater className="w-5 h-5 text-blue-500" />
-                      Preparation Details
-                    </h3>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="p-3 bg-blue-50 rounded-lg text-center">
-                        <div className="text-sm text-gray-600">Glassware</div>
-                        <div className="text-lg font-bold text-blue-600">{selectedMocktail.glassware}</div>
-                      </div>
-                      <div className="p-3 bg-cyan-50 rounded-lg text-center">
-                        <div className="text-sm text-gray-600">Method</div>
-                        <div className="text-lg font-bold text-cyan-600">{selectedMocktail.method}</div>
-                      </div>
-                      <div className="p-3 bg-teal-50 rounded-lg text-center">
-                        <div className="text-sm text-gray-600">Prep Time</div>
-                        <div className="text-lg font-bold text-teal-600">{selectedMocktail.prepTime} min</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Ingredients */}
-                  <div>
-                    <h3 className="font-semibold mb-3 flex items-center gap-2">
-                      <Leaf className="w-5 h-5 text-green-500" />
-                      Ingredients
-                    </h3>
-                    <div className="space-y-2">
-                      {selectedMocktail.ingredients.map((ingredient, idx) => (
-                        <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                          <Plus className="w-4 h-4 text-purple-500" />
-                          <span className="text-sm">{ingredient}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Benefits */}
-                  <div>
-                    <h3 className="font-semibold mb-3 flex items-center gap-2">
-                      <Sparkles className="w-5 h-5 text-pink-500" />
-                      Benefits & Features
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedMocktail.benefits.map(benefit => (
-                        <Badge key={benefit} className="bg-pink-100 text-pink-700 border-pink-300">
-                          {benefit}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Instructions */}
-                  <div>
-                    <h3 className="font-semibold mb-3 flex items-center gap-2">
-                      <Target className="w-5 h-5 text-purple-500" />
-                      Instructions
-                    </h3>
-                    {selectedMocktail.method === 'Muddle' && (
-                      <ol className="space-y-3">
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                          <span className="text-sm">Add herbs/fruits to glass and muddle gently</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                          <span className="text-sm">Fill glass with ice</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">3</span>
-                          <span className="text-sm">Add remaining liquid ingredients</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">4</span>
-                          <span className="text-sm">Stir gently to combine</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">5</span>
-                          <span className="text-sm">Garnish with {selectedMocktail.garnish}</span>
-                        </li>
-                      </ol>
-                    )}
-                    {selectedMocktail.method === 'Shake' && (
-                      <ol className="space-y-3">
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                          <span className="text-sm">Add all ingredients to cocktail shaker</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                          <span className="text-sm">Fill shaker with ice</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">3</span>
-                          <span className="text-sm">Shake vigorously for 10-15 seconds</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">4</span>
-                          <span className="text-sm">Strain into {selectedMocktail.glassware} glass</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">5</span>
-                          <span className="text-sm">Garnish with {selectedMocktail.garnish}</span>
-                        </li>
-                      </ol>
-                    )}
-                    {selectedMocktail.method === 'Build' && (
-                      <ol className="space-y-3">
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                          <span className="text-sm">Fill {selectedMocktail.glassware} glass with ice</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                          <span className="text-sm">Add ingredients in order listed</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">3</span>
-                          <span className="text-sm">Stir gently to combine</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">4</span>
-                          <span className="text-sm">Top with carbonated ingredients last</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">5</span>
-                          <span className="text-sm">Garnish with {selectedMocktail.garnish}</span>
-                        </li>
-                      </ol>
-                    )}
-                    {selectedMocktail.method === 'Blend' && (
-                      <ol className="space-y-3">
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                          <span className="text-sm">Add all ingredients to blender</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                          <span className="text-sm">Add ice (about 1 cup)</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">3</span>
-                          <span className="text-sm">Blend on high until smooth (30-45 seconds)</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">4</span>
-                          <span className="text-sm">Pour into {selectedMocktail.glassware} glass</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">5</span>
-                          <span className="text-sm">Garnish with {selectedMocktail.garnish}</span>
-                        </li>
-                      </ol>
-                    )}
-                    {selectedMocktail.method === 'Layer' && (
-                      <ol className="space-y-3">
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                          <span className="text-sm">Fill {selectedMocktail.glassware} glass with ice</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                          <span className="text-sm">Pour heaviest liquid first (juice)</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">3</span>
-                          <span className="text-sm">Slowly pour grenadine over back of spoon to layer</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">4</span>
-                          <span className="text-sm">Do not stir - enjoy the gradient effect</span>
-                        </li>
-                        <li className="flex gap-3">
-                          <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">5</span>
-                          <span className="text-sm">Garnish with {selectedMocktail.garnish}</span>
-                        </li>
-                      </ol>
-                    )}
-                  </div>
-
-                  {/* Tips */}
-                  <div className="bg-purple-50 p-4 rounded-lg">
-                    <h3 className="font-semibold mb-2 flex items-center gap-2">
-                      <Sparkles className="w-5 h-5 text-purple-500" />
-                      Pro Tips
-                    </h3>
-                    <ul className="space-y-2 text-sm text-gray-700">
-                      <li>• Use fresh ingredients for best flavor</li>
-                      <li>• Chill glassware in freezer for 10 minutes before serving</li>
-                      <li>• Double strain for smoothest texture</li>
-                      <li>• Adjust sweetness to taste with simple syrup</li>
-                      <li>• Present garnish artfully for visual appeal</li>
-                    </ul>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex gap-3">
-                    <Button 
-                      className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-                      onClick={() => handleMakeMocktail(selectedMocktail)}
-                    >
-                      <Martini className="w-4 h-4 mr-2" />
-                      Make This Mocktail
-                    </Button>
-                    <Button variant="outline" size="icon">
-                      <Share2 className="w-4 h-4" />
-                    </Button>
-                    <Button variant="outline" size="icon">
-                      <Camera className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
+                <Button 
+                  className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                  onClick={() => handleMakeMocktail(selectedMocktail)}
+                >
+                  <Martini className="w-4 h-4 mr-2" />
+                  Make This Mocktail
+                </Button>
               </CardContent>
             </Card>
           </div>
         )}
 
-        {/* Educational Content */}
+        {/* Educational Content - Keeping compact */}
         <Card className="mt-12 bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -1026,97 +864,54 @@ export default function MocktailsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid md:grid-cols-3 gap-6">
-              <div>
-                <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <Martini className="w-5 h-5 text-purple-500" />
-                  Sophisticated Flavors
-                </h3>
-                <p className="text-sm text-gray-700">
-                  Mocktails offer complex flavor profiles using fresh herbs, quality ingredients, and creative 
-                  techniques. They're designed to provide the same sophisticated experience as traditional cocktails.
-                </p>
-              </div>
-              <div>
-                <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <Heart className="w-5 h-5 text-pink-500" />
-                  Inclusive Entertainment
-                </h3>
-                <p className="text-sm text-gray-700">
-                  Perfect for designated drivers, pregnant women, health-conscious guests, or anyone choosing 
-                  not to drink alcohol. Everyone deserves a delicious, thoughtfully crafted beverage.
-                </p>
-              </div>
-              <div>
-                <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <Award className="w-5 h-5 text-blue-500" />
-                  Professional Quality
-                </h3>
-                <p className="text-sm text-gray-700">
-                  Using proper glassware, garnishes, and techniques elevates mocktails from simple juice drinks 
-                  to restaurant-quality beverages worthy of any celebration.
-                </p>
-              </div>
-            </div>
+            <p className="text-sm text-gray-700">
+              Mocktails offer complex flavor profiles using fresh herbs, quality ingredients, and creative 
+              techniques. They're designed to provide the same sophisticated experience as traditional cocktails 
+              for everyone to enjoy.
+            </p>
           </CardContent>
         </Card>
 
-        {/* Glassware Guide */}
-        <Card className="mt-8 bg-white border-blue-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <GlassWater className="w-6 h-6 text-blue-500" />
-              Glassware Guide
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid md:grid-cols-4 gap-4">
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <div className="font-semibold text-blue-600 mb-2">Highball</div>
-                <div className="text-sm text-gray-700">Tall glass for refreshing, ice-filled drinks with mixers</div>
+        {/* Your Progress Card */}
+        <Card className="mt-12 bg-gradient-to-r from-purple-50 to-pink-50 border-purple-300">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div>
+                <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+                  <Crown className="h-5 w-5 text-purple-600" />
+                  Your Progress
+                </h3>
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <GlassWater className="h-4 w-4 text-purple-500" />
+                    <span className="text-sm text-gray-600">Level:</span>
+                    <Badge className="bg-purple-600 text-white">{userProgress.level}</Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-pink-500" />
+                    <span className="text-sm text-gray-600">XP:</span>
+                    <Badge className="bg-pink-600 text-white">{userProgress.totalPoints}</Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Martini className="h-4 w-4 text-purple-600" />
+                    <span className="text-sm text-gray-600">Drinks Made:</span>
+                    <Badge className="bg-purple-100 text-purple-800">{userProgress.totalDrinksMade}</Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-pink-500" />
+                    <span className="text-sm text-gray-600">Mocktails Found:</span>
+                    <Badge className="bg-pink-100 text-pink-800">{filteredMocktails.length}</Badge>
+                  </div>
+                </div>
               </div>
-              <div className="p-4 bg-purple-50 rounded-lg">
-                <div className="font-semibold text-purple-600 mb-2">Martini/Coupe</div>
-                <div className="text-sm text-gray-700">Elegant stemware for shaken, strained cocktails</div>
-              </div>
-              <div className="p-4 bg-pink-50 rounded-lg">
-                <div className="font-semibold text-pink-600 mb-2">Rocks</div>
-                <div className="text-sm text-gray-700">Short tumbler for muddled drinks and spirits</div>
-              </div>
-              <div className="p-4 bg-orange-50 rounded-lg">
-                <div className="font-semibold text-orange-600 mb-2">Hurricane</div>
-                <div className="text-sm text-gray-700">Curved glass perfect for tropical, fruity drinks</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Mixing Methods */}
-        <Card className="mt-8 bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="w-6 h-6 text-blue-500" />
-              Essential Mixing Methods
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="p-4 bg-white rounded-lg border border-blue-200">
-                <div className="font-semibold text-blue-600 mb-2">Build</div>
-                <div className="text-sm text-gray-700">Add ingredients directly to glass with ice. Simple and quick.</div>
-              </div>
-              <div className="p-4 bg-white rounded-lg border border-purple-200">
-                <div className="font-semibold text-purple-600 mb-2">Shake</div>
-                <div className="text-sm text-gray-700">Vigorous shaking with ice for aeration and chilling.</div>
-              </div>
-              <div className="p-4 bg-white rounded-lg border border-pink-200">
-                <div className="font-semibold text-pink-600 mb-2">Muddle</div>
-                <div className="text-sm text-gray-700">Gently press herbs and fruits to release flavors.</div>
-              </div>
-              <div className="p-4 bg-white rounded-lg border border-orange-200">
-                <div className="font-semibold text-orange-600 mb-2">Layer</div>
-                <div className="text-sm text-gray-700">Pour over spoon to create beautiful gradient effects.</div>
-              </div>
+              <Button 
+                variant="outline"
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="border-purple-300 hover:bg-purple-50"
+              >
+                <ArrowLeft className="h-4 w-4 mr-2 rotate-90" />
+                Back to Top
+              </Button>
             </div>
           </CardContent>
         </Card>
