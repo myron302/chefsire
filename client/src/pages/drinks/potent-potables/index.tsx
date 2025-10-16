@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,23 +9,45 @@ import {
   Sparkles, Clock, Users, Trophy, Heart, Star,
   Target, Flame, Droplets, Wine, ArrowRight,
   GlassWater, Martini, ChefHat, ArrowLeft, Home,
-  FlaskConical, Leaf, Apple
+  FlaskConical, Leaf, Apple, Zap, TrendingUp
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
+import RecipeKit from '@/components/recipes/RecipeKit';
+
+// Helper to parse ingredients
+type Measured = { amount: number | string; unit: string; item: string; note?: string };
+const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+const parseIngredient = (ingredient: string): Measured => {
+  const fractionMap: Record<string, number> = {
+    '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
+  };
+  
+  const parts = ingredient.trim().replace(/\sof\s/i, ' ').replace(/[()]/g, '').split(/\s+/);
+  if (parts.length < 2) return m('1', 'item', ingredient);
+
+  let amountStr = parts[0];
+  let amount: number | string = fractionMap[amountStr] ?? 
+    (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
+
+  let unit = parts[1];
+  let item = parts.slice(2).join(' ');
+
+  return m(amount, unit, item);
+};
 
 const potentPotablesSubcategories = [
-  { id: 'vodka', name: 'Vodka Cocktails', icon: Droplets, count: 12, route: '/drinks/potent-potables/vodka', color: 'from-cyan-500 to-blue-500', description: 'Clean, versatile, and endlessly mixable' },
-  { id: 'whiskey-bourbon', name: 'Whiskey & Bourbon', icon: Wine, count: 12, route: '/drinks/potent-potables/whiskey-bourbon', color: 'from-amber-500 to-orange-500', description: 'From Kentucky bourbon to classic rye whiskey' },
-  { id: 'tequila-mezcal', name: 'Tequila & Mezcal', icon: Flame, count: 12, route: '/drinks/potent-potables/tequila-mezcal', color: 'from-lime-500 to-green-500', description: 'Agave spirits from Mexico' },
-  { id: 'rum', name: 'Rum Cocktails', icon: GlassWater, count: 12, route: '/drinks/potent-potables/rum', color: 'from-orange-500 to-red-500', description: 'Caribbean classics and tropical vibes' },
-  { id: 'cognac-brandy', name: 'Cognac & Brandy', icon: Wine, count: 12, route: '/drinks/potent-potables/cognac-brandy', color: 'from-orange-600 to-red-600', description: 'Sophisticated French spirits' },
-  { id: 'scotch-irish-whiskey', name: 'Scotch & Irish', icon: Wine, count: 12, route: '/drinks/potent-potables/scotch-irish-whiskey', color: 'from-amber-600 to-yellow-700', description: 'Classic whiskeys from the UK and Ireland' },
-  { id: 'martinis', name: 'Martinis', icon: Martini, count: 8, route: '/drinks/potent-potables/martinis', color: 'from-purple-500 to-pink-500', description: 'Elegant and timeless' },
-  { id: 'cocktails', name: 'Classic Cocktails', icon: GlassWater, count: 15, route: '/drinks/potent-potables/cocktails', color: 'from-blue-500 to-indigo-500', description: 'Timeless recipes and favorites' },
-  { id: 'seasonal', name: 'Seasonal Specials', icon: Sparkles, count: 10, route: '/drinks/potent-potables/seasonal', color: 'from-teal-500 to-cyan-500', description: 'Drinks for every season' },
-  { id: 'mocktails', name: 'Mocktails', icon: Sparkles, count: 12, route: '/drinks/potent-potables/mocktails', color: 'from-green-500 to-emerald-500', description: 'Zero-proof sophisticated drinks' },
-  
+  { id: 'vodka', name: 'Vodka', icon: Droplets, count: 12, route: '/drinks/potent-potables/vodka', color: 'from-cyan-500 to-blue-500', description: 'Clean & versatile' },
+  { id: 'whiskey-bourbon', name: 'Whiskey & Bourbon', icon: Wine, count: 12, route: '/drinks/potent-potables/whiskey-bourbon', color: 'from-amber-500 to-orange-500', description: 'Kentucky classics' },
+  { id: 'tequila-mezcal', name: 'Tequila & Mezcal', icon: Flame, count: 12, route: '/drinks/potent-potables/tequila-mezcal', color: 'from-lime-500 to-green-500', description: 'Agave spirits' },
+  { id: 'rum', name: 'Rum', icon: GlassWater, count: 12, route: '/drinks/potent-potables/rum', color: 'from-orange-500 to-red-500', description: 'Caribbean vibes' },
+  { id: 'cognac-brandy', name: 'Cognac & Brandy', icon: Wine, count: 12, route: '/drinks/potent-potables/cognac-brandy', color: 'from-orange-600 to-red-600', description: 'French elegance' },
+  { id: 'martinis', name: 'Martinis', icon: Martini, count: 8, route: '/drinks/potent-potables/martinis', color: 'from-purple-500 to-pink-500', description: 'Timeless classics' },
+  { id: 'scotch-irish-whiskey', name: 'Scotch & Irish', icon: Wine, count: 12, route: '/drinks/potent-potables/scotch-irish-whiskey', color: 'from-amber-600 to-yellow-700', description: 'UK whiskeys' },
+  { id: 'cocktails', name: 'Classic Cocktails', icon: GlassWater, count: 15, route: '/drinks/potent-potables/cocktails', color: 'from-blue-500 to-indigo-500', description: 'Timeless recipes' },
+  { id: 'seasonal', name: 'Seasonal', icon: Sparkles, count: 10, route: '/drinks/potent-potables/seasonal', color: 'from-teal-500 to-cyan-500', description: 'Holiday specials' },
+  { id: 'mocktails', name: 'Mocktails', icon: Sparkles, count: 12, route: '/drinks/potent-potables/mocktails', color: 'from-green-500 to-emerald-500', description: 'Zero-proof' }
 ];
 
 const featuredCocktails = [
@@ -37,8 +59,12 @@ const featuredCocktails = [
     rating: 4.9,
     reviews: 5234,
     time: "5 min",
+    prepTime: 5,
     image: "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop",
-    tags: ['Classic', 'Strong', 'Sophisticated']
+    tags: ['Classic', 'Strong', 'Sophisticated'],
+    ingredients: ['2 oz Bourbon', '1 Sugar Cube', '2 dashes Angostura Bitters', 'Orange Peel', 'Maraschino Cherry', '1 Large Ice Cube'],
+    instructions: 'Muddle sugar cube with bitters in glass. Add bourbon and large ice cube. Stir gently. Express orange peel over drink and garnish with cherry.',
+    description: 'The grandfather of cocktails - bourbon, sugar, and bitters perfection'
   },
   {
     id: 'featured-2',
@@ -48,8 +74,12 @@ const featuredCocktails = [
     rating: 4.8,
     reviews: 4892,
     time: "3 min",
+    prepTime: 3,
     image: "https://images.unsplash.com/photo-1551024601-bec78aea704b?w=400&h=300&fit=crop",
-    tags: ['Citrus', 'Refreshing', 'Party']
+    tags: ['Citrus', 'Refreshing', 'Party'],
+    ingredients: ['2 oz Tequila', '1 oz Fresh Lime Juice', '0.75 oz Triple Sec', '0.5 oz Simple Syrup', 'Salt for rim', 'Lime Wheel'],
+    instructions: 'Rim glass with salt. Shake tequila, lime juice, triple sec, and simple syrup with ice. Strain into glass with fresh ice. Garnish with lime wheel.',
+    description: 'The ultimate party cocktail - tequila, lime, and a salted rim'
   },
   {
     id: 'featured-3',
@@ -59,26 +89,87 @@ const featuredCocktails = [
     rating: 4.7,
     reviews: 3654,
     time: "7 min",
+    prepTime: 7,
     image: "https://images.unsplash.com/photo-1551538827-9c037cb4f32a?w=400&h=300&fit=crop",
-    tags: ['Minty', 'Refreshing', 'Summer']
+    tags: ['Minty', 'Refreshing', 'Summer'],
+    ingredients: ['2 oz White Rum', '10 Fresh Mint Leaves', '0.75 oz Fresh Lime Juice', '0.5 oz Simple Syrup', 'Soda Water', 'Mint Sprig', 'Lime Wedge'],
+    instructions: 'Muddle mint leaves with lime juice and simple syrup. Add rum and ice. Top with soda water. Stir gently. Garnish with mint sprig and lime wedge.',
+    description: 'Cuban classic with fresh mint, lime, and white rum'
   }
 ];
 
 export default function PotentPotablesPage() {
-  const { userProgress, addToFavorites, isFavorite, favorites } = useDrinks();
+  const { userProgress, addToFavorites, isFavorite, favorites, incrementDrinksMade, addPoints } = useDrinks();
+  const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
+  const [showKit, setShowKit] = useState(false);
+
+  // Convert featured cocktails to RecipeKit format
+  const cocktailsWithMeasurements = useMemo(() => {
+    return featuredCocktails.map((c) => {
+      const measurements = c.ingredients.map((ing: string) => parseIngredient(ing));
+      return {
+        ...c,
+        recipe: {
+          servings: 1,
+          measurements,
+          directions: [c.instructions]
+        }
+      };
+    });
+  }, []);
 
   const handleDrinkSelection = (drink) => {
     console.log('Selected drink from universal search:', drink);
   };
 
+  const openRecipeModal = (cocktail: any) => {
+    setSelectedRecipe(cocktail);
+    setShowKit(true);
+  };
+
+  const handleCompleteRecipe = () => {
+    if (selectedRecipe) {
+      incrementDrinksMade();
+      addPoints(35);
+    }
+    setShowKit(false);
+    setSelectedRecipe(null);
+  };
+
   return (
     <RequireAgeGate>
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
+        {/* RecipeKit Modal */}
+        {selectedRecipe && (
+          <RecipeKit
+            open={showKit}
+            onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
+            accent="purple"
+            pointsReward={35}
+            onComplete={handleCompleteRecipe}
+            item={{
+              id: selectedRecipe.id,
+              name: selectedRecipe.name,
+              prepTime: selectedRecipe.prepTime,
+              directions: selectedRecipe.recipe?.directions || [],
+              measurements: selectedRecipe.recipe?.measurements || [],
+              baseNutrition: {},
+              defaultServings: 1
+            }}
+          />
+        )}
+
         <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-8">
           
           {/* UNIFORM HERO SECTION */}
-          <div className="bg-gradient-to-r from-red-700 via-purple-800 to-gray-900 text-white py-12 px-6 rounded-xl shadow-2xl">
-            <div className="max-w-7xl mx-auto">
+          <div className="bg-gradient-to-r from-red-700 via-purple-800 to-gray-900 text-white py-12 px-6 rounded-xl shadow-2xl relative overflow-hidden">
+            {/* Animated background elements */}
+            <div className="absolute inset-0 opacity-10">
+              <div className="absolute top-10 left-10 w-32 h-32 bg-white rounded-full blur-3xl animate-pulse"></div>
+              <div className="absolute bottom-10 right-10 w-40 h-40 bg-pink-500 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+            </div>
+
+            <div className="max-w-7xl mx-auto relative z-10">
               <Link href="/drinks">
                 <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
                   <ArrowLeft className="mr-2 h-4 w-4" />
@@ -87,281 +178,83 @@ export default function PotentPotablesPage() {
               </Link>
               
               <div className="flex items-center gap-4 mb-6">
-                <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
+                <div className="p-4 bg-white/20 rounded-2xl backdrop-blur group-hover:scale-110 transition-transform">
                   <Wine className="h-12 w-12" />
                 </div>
                 <div>
                   <h1 className="text-4xl md:text-5xl font-bold mb-2">Potent Potables 🍸</h1>
-                  <p className="text-xl text-purple-100">Cocktails, mocktails, and specialty beverages</p>
+                  <p className="text-xl text-purple-100">Explore 127 expertly crafted cocktails, mocktails, and specialty beverages</p>
+                  <p className="text-sm text-purple-200 mt-1">From classic martinis to tropical tiki drinks - your mixology journey starts here</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all hover:scale-105 cursor-pointer">
                   <CardContent className="p-4 text-center">
                     <Martini className="h-8 w-8 mx-auto mb-2 text-pink-300" />
                     <div className="text-2xl font-bold">127</div>
                     <div className="text-sm text-purple-100">Total Recipes</div>
+                    <div className="text-xs text-purple-200 mt-1">Always growing</div>
                   </CardContent>
                 </Card>
 
-                <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all hover:scale-105 cursor-pointer">
                   <CardContent className="p-4 text-center">
                     <Star className="h-8 w-8 mx-auto mb-2 text-yellow-300" />
-                    <div className="text-2xl font-bold">4.8</div>
+                    <div className="text-2xl font-bold">4.8★</div>
                     <div className="text-sm text-purple-100">Avg Rating</div>
+                    <div className="text-xs text-purple-200 mt-1">Highly rated</div>
                   </CardContent>
                 </Card>
 
-                <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all hover:scale-105 cursor-pointer">
                   <CardContent className="p-4 text-center">
                     <Trophy className="h-8 w-8 mx-auto mb-2 text-orange-300" />
                     <div className="text-2xl font-bold">{userProgress.totalDrinksMade}</div>
                     <div className="text-sm text-purple-100">Cocktails Made</div>
+                    <div className="text-xs text-purple-200 mt-1">Keep mixing!</div>
                   </CardContent>
                 </Card>
 
-                <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
+                <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all hover:scale-105 cursor-pointer">
                   <CardContent className="p-4 text-center">
                     <Heart className="h-8 w-8 mx-auto mb-2 text-red-300" />
                     <div className="text-2xl font-bold">{favorites.filter(f => f.category === 'potent-potables' || f.category === 'cocktails').length}</div>
                     <div className="text-sm text-purple-100">Favorites</div>
+                    <div className="text-xs text-purple-200 mt-1">Your collection</div>
                   </CardContent>
                 </Card>
               </div>
 
               <div className="max-w-md mx-auto mt-6 text-center">
-                <Badge className="bg-orange-500 text-white text-xs">
-                  21+ Content • Please drink responsibly
+                <Badge className="bg-orange-500 text-white text-xs px-4 py-1">
+                  🔞 21+ Content • Please drink responsibly
                 </Badge>
               </div>
             </div>
           </div>
 
-          {/* Cross-Hub Navigation */}
+          {/* Cross-Hub Navigation - CENTERED */}
           <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Home className="w-4 h-4 text-gray-600" />
-                <span className="text-sm text-gray-600">Explore Other Categories</span>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <Home className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-lg font-bold text-gray-800">Explore Other Drink Categories</h3>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <p className="text-center text-sm text-gray-600 mb-4">
+                Discover healthy smoothies, powerful protein shakes, and cleansing detox drinks
+              </p>
+              <div className="flex flex-wrap gap-3 justify-center">
                 <Link href="/drinks">
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <Sparkles className="w-4 h-4" />
+                  <Button variant="outline" className="gap-2 hover:bg-indigo-50 hover:border-indigo-300">
+                    <Sparkles className="w-4 h-4 text-indigo-500" />
                     All Drinks
+                    <Badge variant="secondary" className="ml-1">400+</Badge>
                   </Button>
                 </Link>
                 <Link href="/drinks/smoothies">
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <Apple className="w-4 h-4" />
+                  <Button variant="outline" className="gap-2 hover:bg-purple-50 hover:border-purple-300">
+                    <Apple className="w-4 h-4 text-purple-500" />
                     Smoothies
-                  </Button>
-                </Link>
-                <Link href="/drinks/protein-shakes">
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <FlaskConical className="w-4 h-4" />
-                    Protein Shakes
-                  </Button>
-                </Link>
-                <Link href="/drinks/detoxes">
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <Leaf className="w-4 h-4" />
-                    Detoxes
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Universal Search */}
-          <div className="max-w-2xl mx-auto">
-            <UniversalSearch 
-              onSelectDrink={handleDrinkSelection}
-              placeholder="Search all drinks or find cocktail inspiration..."
-              className="w-full"
-            />
-          </div>
-
-          {/* Spirit Categories Grid */}
-          <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
-            <CardContent className="p-6">
-              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <GlassWater className="w-5 h-5 text-purple-500" />
-                Explore Spirit Categories
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {potentPotablesSubcategories.map((subcategory) => {
-                  const Icon = subcategory.icon;
-                  return (
-                    <Link key={subcategory.id} href={subcategory.route}>
-                      <Card className="group cursor-pointer hover:shadow-lg transition-all hover:-translate-y-1 overflow-hidden border-2">
-                        <div className={`h-24 bg-gradient-to-br ${subcategory.color} p-4 flex items-center justify-center`}>
-                          <Icon className="h-12 w-12 text-white group-hover:scale-110 transition-transform" />
-                        </div>
-                        <CardContent className="p-3">
-                          <div className="font-medium text-sm mb-1">{subcategory.name}</div>
-                          <div className="text-xs text-gray-600 mb-2">{subcategory.description}</div>
-                          <div className="flex items-center justify-between text-xs text-gray-500">
-                            <span>{subcategory.count} recipes</span>
-                            <ArrowRight className="h-3 w-3 group-hover:translate-x-1 transition-transform" />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Favorites */}
-          {favorites.filter(f => f.category === 'potent-potables' || f.category === 'cocktails').length > 0 && (
-            <Card className="bg-gradient-to-r from-purple-100 to-pink-100 border-purple-200">
-              <CardContent className="p-6">
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                  <Heart className="w-5 h-5 text-purple-500" />
-                  Your Favorite Cocktails ({favorites.filter(f => f.category === 'potent-potables' || f.category === 'cocktails').length})
-                </h3>
-                <div className="flex gap-3 overflow-x-auto pb-2">
-                  {favorites.filter(f => f.category === 'potent-potables' || f.category === 'cocktails').slice(0, 5).map((drink) => (
-                    <div key={drink.id} className="flex-shrink-0 bg-white rounded-lg p-3 shadow-sm min-w-[200px]">
-                      <div className="font-medium text-sm mb-1">{drink.name}</div>
-                      <div className="text-xs text-gray-600 mb-2">Cocktail</div>
-                      <Button size="sm" variant="outline" className="w-full text-xs">
-                        Make Again
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Featured Cocktails */}
-          <div>
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-              <Star className="w-6 h-6 text-yellow-500" />
-              Featured Cocktails
-            </h2>
-            <div className="grid md:grid-cols-3 gap-6">
-              {featuredCocktails.map((cocktail) => (
-                <Card key={cocktail.id} className="overflow-hidden hover:shadow-xl transition-all hover:scale-105">
-                  <div className="relative">
-                    <img src={cocktail.image} alt={cocktail.name} className="w-full h-48 object-cover" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                    <div className="absolute bottom-2 left-2">
-                      <Badge className="bg-purple-500 text-white">{cocktail.spirit}</Badge>
-                    </div>
-                    <div className="absolute top-2 right-2">
-                      <Button variant="ghost" size="sm" className="bg-white/80 hover:bg-white text-gray-600">
-                        <Heart className={`h-4 w-4 ${isFavorite(cocktail.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                      </Button>
-                    </div>
-                  </div>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-xl font-bold">{cocktail.name}</h3>
-                      <div className="flex items-center gap-1">
-                        <Star className="w-4 h-4 text-yellow-500 fill-current" />
-                        <span className="text-sm font-bold">{cocktail.rating}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        <span>{cocktail.time}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Users className="w-4 h-4" />
-                        <span>{cocktail.reviews.toLocaleString()}</span>
-                      </div>
-                      <Badge variant="outline">{cocktail.difficulty}</Badge>
-                    </div>
-                    <div className="flex flex-wrap gap-1 mb-3">
-                      {cocktail.tags.map(tag => (
-                        <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
-                      ))}
-                    </div>
-                    <Button className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600">
-                      View Recipe
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-
-          {/* Education */}
-          <Card className="bg-gradient-to-r from-purple-50 to-orange-50 border-purple-200">
-            <CardContent className="p-6">
-              <h3 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                <ChefHat className="w-6 h-6 text-purple-600" />
-                Mixology 101
-              </h3>
-              <div className="grid md:grid-cols-3 gap-6">
-                <div>
-                  <h4 className="font-semibold mb-2 text-purple-600">Essential Techniques</h4>
-                  <ul className="text-sm text-gray-700 space-y-1">
-                    <li>• Shaking vs Stirring</li>
-                    <li>• Muddling herbs and fruits</li>
-                    <li>• Building in glass</li>
-                    <li>• Proper garnishing</li>
-                  </ul>
-                </div>
-                <div>
-                  <h4 className="font-semibold mb-2 text-orange-600">Bar Essentials</h4>
-                  <ul className="text-sm text-gray-700 space-y-1">
-                    <li>• Quality spirits</li>
-                    <li>• Fresh citrus</li>
-                    <li>• Simple syrup</li>
-                    <li>• Bitters collection</li>
-                  </ul>
-                </div>
-                <div>
-                  <h4 className="font-semibold mb-2 text-pink-600">Pro Tips</h4>
-                  <ul className="text-sm text-gray-700 space-y-1">
-                    <li>• Use fresh ingredients</li>
-                    <li>• Measure accurately</li>
-                    <li>• Chill your glassware</li>
-                    <li>• Taste and adjust</li>
-                  </ul>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Footer */}
-          <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-bold mb-2">Explore More Drinks</h3>
-                  <p className="text-gray-600 mb-4">Discover smoothies, protein shakes, and detoxes</p>
-                  <div className="flex gap-2">
-                    <Link href="/drinks/smoothies">
-                      <Button variant="outline" size="sm">Smoothies</Button>
-                    </Link>
-                    <Link href="/drinks/protein-shakes">
-                      <Button variant="outline" size="sm">Protein Shakes</Button>
-                    </Link>
-                    <Link href="/drinks/detoxes">
-                      <Button variant="outline" size="sm">Detoxes</Button>
-                    </Link>
-                  </div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-purple-600 mb-1">{userProgress.totalDrinksMade}</div>
-                  <div className="text-sm text-gray-600 mb-2">Total Drinks Made</div>
-                  <Progress value={userProgress.dailyGoalProgress} className="w-24" />
-                  <div className="text-xs text-gray-500 mt-1">Daily Goal</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-        </div>
-      </div>
-    </RequireAgeGate>
-  );
-}
+                    <Badge variant="secondary" className="ml-1">132</Badge>
+                  </Button
