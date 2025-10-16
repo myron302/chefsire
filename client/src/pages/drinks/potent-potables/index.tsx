@@ -9,7 +9,7 @@ import {
   Sparkles, Clock, Users, Trophy, Heart, Star,
   Target, Flame, Droplets, Wine, ArrowRight,
   GlassWater, Martini, ChefHat, ArrowLeft, Home,
-  FlaskConical, Leaf, Apple, Zap
+  FlaskConical, Leaf, Apple, Zap, Coffee
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
@@ -31,12 +31,17 @@ const parseIngredient = (ingredient: string): Measured => {
 
 const potentPotablesSubcategories = [
   { id: 'vodka', name: 'Vodka', icon: Droplets, count: 12, route: '/drinks/potent-potables/vodka', color: 'from-cyan-500 to-blue-500', description: 'Clean & versatile' },
+  { id: 'gin', name: 'Gin', icon: Droplets, count: 10, route: '/drinks/potent-potables/gin', color: 'from-blue-400 to-teal-400', description: 'Botanical spirits' },
   { id: 'whiskey-bourbon', name: 'Whiskey & Bourbon', icon: Wine, count: 12, route: '/drinks/potent-potables/whiskey-bourbon', color: 'from-amber-500 to-orange-500', description: 'Kentucky classics' },
   { id: 'tequila-mezcal', name: 'Tequila & Mezcal', icon: Flame, count: 12, route: '/drinks/potent-potables/tequila-mezcal', color: 'from-lime-500 to-green-500', description: 'Agave spirits' },
   { id: 'rum', name: 'Rum', icon: GlassWater, count: 12, route: '/drinks/potent-potables/rum', color: 'from-orange-500 to-red-500', description: 'Caribbean vibes' },
   { id: 'cognac-brandy', name: 'Cognac & Brandy', icon: Wine, count: 12, route: '/drinks/potent-potables/cognac-brandy', color: 'from-orange-600 to-red-600', description: 'French elegance' },
+  { id: 'daiquiri', name: 'Daiquiri', icon: Droplets, count: 8, route: '/drinks/potent-potables/daiquiri', color: 'from-lime-400 to-cyan-400', description: 'Rum classics' },
   { id: 'martinis', name: 'Martinis', icon: Martini, count: 8, route: '/drinks/potent-potables/martinis', color: 'from-purple-500 to-pink-500', description: 'Timeless classics' },
   { id: 'scotch-irish-whiskey', name: 'Scotch & Irish', icon: Wine, count: 12, route: '/drinks/potent-potables/scotch-irish-whiskey', color: 'from-amber-600 to-yellow-700', description: 'UK whiskeys' },
+  { id: 'liqueurs', name: 'Liqueurs', icon: Wine, count: 15, route: '/drinks/potent-potables/liqueurs', color: 'from-purple-600 to-pink-600', description: 'Sweet spirits' },
+  { id: 'spritz', name: 'Spritz & Mimosas', icon: Sparkles, count: 10, route: '/drinks/potent-potables/spritz', color: 'from-yellow-400 to-orange-400', description: 'Bubbly brunch' },
+  { id: 'hot-drinks', name: 'Hot Drinks', icon: Coffee, count: 8, route: '/drinks/potent-potables/hot-drinks', color: 'from-red-700 to-amber-700', description: 'Warm cocktails' },
   { id: 'cocktails', name: 'Classic Cocktails', icon: GlassWater, count: 15, route: '/drinks/potent-potables/cocktails', color: 'from-blue-500 to-indigo-500', description: 'Timeless recipes' },
   { id: 'seasonal', name: 'Seasonal', icon: Sparkles, count: 10, route: '/drinks/potent-potables/seasonal', color: 'from-teal-500 to-cyan-500', description: 'Holiday specials' },
   { id: 'mocktails', name: 'Mocktails', icon: Sparkles, count: 12, route: '/drinks/potent-potables/mocktails', color: 'from-green-500 to-emerald-500', description: 'Zero-proof' }
@@ -125,14 +130,14 @@ export default function PotentPotablesPage() {
                 </div>
                 <div>
                   <h1 className="text-4xl md:text-5xl font-bold mb-2">Potent Potables 🍸</h1>
-                  <p className="text-xl text-purple-100">Explore 127 expertly crafted cocktails, mocktails, and specialty beverages</p>
+                  <p className="text-xl text-purple-100">Explore 168 expertly crafted cocktails, mocktails, and specialty beverages</p>
                   <p className="text-sm text-purple-200 mt-1">From classic martinis to tropical tiki drinks - your mixology journey starts here</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
-                  { icon: Martini, value: '127', label: 'Total Recipes', sublabel: 'Always growing', color: 'text-pink-300' },
+                  { icon: Martini, value: '168', label: 'Total Recipes', sublabel: 'Always growing', color: 'text-pink-300' },
                   { icon: Star, value: '4.8★', label: 'Avg Rating', sublabel: 'Highly rated', color: 'text-yellow-300' },
                   { icon: Trophy, value: userProgress.totalDrinksMade, label: 'Cocktails Made', sublabel: 'Keep mixing!', color: 'text-orange-300' },
                   { icon: Heart, value: favorites.filter(f => f.category === 'potent-potables' || f.category === 'cocktails').length, label: 'Favorites', sublabel: 'Your collection', color: 'text-red-300' }
