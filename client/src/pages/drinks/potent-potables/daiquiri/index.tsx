@@ -6,20 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import RequireAgeGate from "@/components/RequireAgeGate";
 import {
-  GlassWater,
-  Search,
-  Share2,
-  ArrowLeft,
-  Heart,
-  Check,
-  RotateCcw,
-  Crown,
-  Sparkles,
-  Droplets,
-  Apple,      // used for "Fruit"
-  Snowflake,  // used for "Frozen"
-  Flame,
-  Martini
+  GlassWater, Search, Share2, ArrowLeft, Heart, Check, RotateCcw, Crown,
+  Sparkles, Droplets, Apple, Snowflake, Flame, Martini, Wine, Zap, Leaf, Home, Clipboard
 } from "lucide-react";
 import { useDrinks } from "@/contexts/DrinksContext";
 import RecipeKit from "@/components/recipes/RecipeKit";
@@ -70,7 +58,7 @@ const parseIngredient = (ingredient: string): Measured => {
   return { amount, unit, item };
 };
 
-// -------- Data (alcoholic; rum daiquiris) --------
+// -------- Data --------
 const daiquiris = [
   {
     id: "daiquiri-1",
@@ -103,6 +91,7 @@ const daiquiris = [
     difficulty: "Medium",
     rating: 4.7,
     reviews: 3120,
+    featured: true,
     ingredients: [
       "2 oz White Rum",
       "0.5 oz Fresh Lime Juice",
@@ -127,6 +116,7 @@ const daiquiris = [
     difficulty: "Easy",
     rating: 4.6,
     reviews: 2688,
+    trending: true,
     ingredients: [
       "2 oz White Rum",
       "0.75 oz Fresh Lime Juice",
@@ -237,6 +227,7 @@ const daiquiris = [
     difficulty: "Medium",
     rating: 4.5,
     reviews: 862,
+    featured: true,
     ingredients: [
       "2 oz Aged Rum",
       "0.5 oz Crème de Cacao",
@@ -249,26 +240,25 @@ const daiquiris = [
   },
   {
     id: "daiquiri-9",
-    name: "Hotel Nacional (Daiquiri family)",
-    description: "Aged rum, pineapple, apricot; daiquiri DNA.",
-    category: "cuban",
-    era: "1930s",
-    method: "Shake",
+    name: "Frozen Mango Daiquiri",
+    description: "Sunny, smooth, and slushy.",
+    category: "frozen",
+    era: "modern",
+    method: "Blend",
     spiritType: "Rum",
-    abv: "19%",
-    prepTime: 4,
-    difficulty: "Medium",
-    rating: 4.7,
-    reviews: 1333,
+    abv: "14%",
+    prepTime: 3,
+    difficulty: "Easy",
+    rating: 4.5,
+    reviews: 1210,
     ingredients: [
-      "1.5 oz Aged Rum",
-      "1 oz Fresh Pineapple Juice",
-      "0.5 oz Apricot Liqueur",
-      "0.5 oz Fresh Lime Juice",
-      "0.25 oz Simple Syrup",
-      "Ice"
+      "1.5 oz White Rum",
+      "1 oz Fresh Lime Juice",
+      "0.5 oz Simple Syrup",
+      "1 cup Frozen Mango",
+      "1 cup Crushed Ice"
     ],
-    instructions: "Shake all with ice. Fine strain into coupe. Pineapple wedge garnish."
+    instructions: "Blend until smooth. Pour into chilled glass. Mango slice garnish."
   },
   {
     id: "daiquiri-10",
@@ -291,53 +281,36 @@ const daiquiris = [
       "Ice"
     ],
     instructions: "Shake hard with ice. Fine strain into coupe. Express lime."
-  },
-  {
-    id: "daiquiri-11",
-    name: "Gimlet-Style Daiquiri",
-    description: "Swap syrup for lime cordial.",
-    category: "minimal",
-    era: "modern",
-    method: "Shake",
-    spiritType: "Rum",
-    abv: "21%",
-    prepTime: 2,
-    difficulty: "Easy",
-    rating: 4.3,
-    reviews: 501,
-    ingredients: ["2 oz White Rum", "1 oz Lime Cordial", "Ice"],
-    instructions: "Shake with ice. Fine strain into coupe."
-  },
-  {
-    id: "daiquiri-12",
-    name: "Frozen Mango Daiquiri",
-    description: "Sunny, smooth, and slushy.",
-    category: "frozen",
-    era: "modern",
-    method: "Blend",
-    spiritType: "Rum",
-    abv: "14%",
-    prepTime: 3,
-    difficulty: "Easy",
-    rating: 4.5,
-    reviews: 1210,
-    ingredients: [
-      "1.5 oz White Rum",
-      "1 oz Fresh Lime Juice",
-      "0.5 oz Simple Syrup",
-      "1 cup Frozen Mango",
-      "1 cup Crushed Ice"
-    ],
-    instructions: "Blend until smooth. Pour into chilled glass. Mango slice garnish."
   }
 ];
 
 const styleCategories = [
-  { id: "all",    name: "All Styles",     color: "bg-teal-500",    icon: GlassWater, description: "Every daiquiri" },
-  { id: "classic",name: "Classics",       color: "bg-emerald-600", icon: Martini,    description: "Original formulas" },
-  { id: "fruit",  name: "Fruit",          color: "bg-teal-600",    icon: Apple,      description: "Berry & tropical twists" },
-  { id: "frozen", name: "Frozen",         color: "bg-cyan-600",    icon: Snowflake,  description: "Blended favorites" },
-  { id: "cuban",  name: "Cuban Heritage", color: "bg-amber-600",   icon: Flame,      description: "Historic riffs" },
+  { id: "all", name: "All Styles", color: "bg-teal-500", icon: GlassWater, description: "Every daiquiri" },
+  { id: "classic", name: "Classics", color: "bg-emerald-600", icon: Martini, description: "Original formulas" },
+  { id: "fruit", name: "Fruit", color: "bg-teal-600", icon: Apple, description: "Berry & tropical twists" },
+  { id: "frozen", name: "Frozen", color: "bg-cyan-600", icon: Snowflake, description: "Blended favorites" },
+  { id: "cuban", name: "Cuban Heritage", color: "bg-amber-600", icon: Flame, description: "Historic riffs" },
+];
+
+// SISTER PAGES
+const sisterPotentPotablesPages = [
+  { id: 'vodka', name: 'Vodka', path: '/drinks/potent-potables/vodka', icon: Droplets, description: 'Clean & versatile' },
+  { id: 'whiskey', name: 'Whiskey & Bourbon', path: '/drinks/potent-potables/whiskey-bourbon', icon: Wine, description: 'Kentucky classics' },
+  { id: 'tequila', name: 'Tequila & Mezcal', path: '/drinks/potent-potables/tequila-mezcal', icon: Flame, description: 'Agave spirits' },
+  { id: 'rum', name: 'Rum', path: '/drinks/potent-potables/rum', icon: GlassWater, description: 'Caribbean vibes' },
+  { id: 'cognac', name: 'Cognac & Brandy', path: '/drinks/potent-potables/cognac-brandy', icon: Wine, description: 'French sophistication' },
+  { id: 'scotch', name: 'Scotch & Irish', path: '/drinks/potent-potables/scotch-irish-whiskey', icon: Wine, description: 'UK whiskeys' },
+  { id: 'martinis', name: 'Martinis', path: '/drinks/potent-potables/martinis', icon: Martini, description: 'Elegant classics' },
+  { id: 'classic', name: 'Classic Cocktails', path: '/drinks/potent-potables/classic-cocktails', icon: Wine, description: 'Timeless recipes' },
+  { id: 'seasonal', name: 'Seasonal', path: '/drinks/potent-potables/seasonal', icon: Sparkles, description: 'Festive drinks' }
+];
+
+// CROSS-HUB
+const otherDrinkHubs = [
+  { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
+  { id: 'protein', name: 'Protein Shakes', icon: Zap, route: '/drinks/protein-shakes', description: 'Muscle building' },
+  { id: 'detox', name: 'Detoxes', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing blends' },
+  { id: 'all', name: 'All Drinks', icon: Wine, route: '/drinks', description: 'Browse everything' }
 ];
 
 export default function DaiquiriPage() {
@@ -394,9 +367,6 @@ export default function DaiquiriPage() {
 
   const handleShare = async (cocktail: any, servingsOverride?: number) => {
     const url = typeof window !== "undefined" ? window.location.href : "";
-    theServings: {
-      /* keep the const name below simple to avoid shadowing */
-    }
     const servings = servingsOverride ?? servingsById[cocktail.id] ?? 1;
     const preview = cocktail.ingredients.slice(0, 4).join(" • ");
     const text = `${cocktail.name} • ${cocktail.category} • ${cocktail.era}\n${preview}${
@@ -472,6 +442,85 @@ export default function DaiquiriPage() {
 
         {/* Main */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* CROSS-HUB NAVIGATION */}
+          <Card className="bg-gradient-to-r from-teal-50 to-emerald-50 border-teal-200 mb-6">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Home className="w-4 h-4 text-gray-600" />
+                <span className="text-sm text-gray-600">Explore Other Drink Categories</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                {otherDrinkHubs.map((hub) => {
+                  const Icon = hub.icon;
+                  return (
+                    <Link key={hub.id} href={hub.route}>
+                      <Button variant="outline" className="w-full justify-start hover:bg-teal-50 hover:border-teal-300">
+                        <Icon className="h-4 w-4 mr-2 text-teal-500" />
+                        <div className="text-left flex-1">
+                          <div className="font-medium text-sm">{hub.name}</div>
+                          <div className="text-xs text-gray-500">{hub.description}</div>
+                        </div>
+                        <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                      </Button>
+                    </Link>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* SISTER PAGES NAVIGATION */}
+          <Card className="bg-gradient-to-r from-emerald-50 to-cyan-50 border-emerald-200 mb-6">
+            <CardContent className="p-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Potent Potables</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                {sisterPotentPotablesPages.map((page) => {
+                  const Icon = page.icon;
+                  return (
+                    <Link key={page.id} href={page.path}>
+                      <Button variant="outline" className="w-full justify-start hover:bg-emerald-50 hover:border-emerald-300">
+                        <Icon className="h-4 w-4 mr-2 text-emerald-500" />
+                        <div className="text-left flex-1">
+                          <div className="font-medium text-sm">{page.name}</div>
+                          <div className="text-xs text-gray-500">{page.description}</div>
+                        </div>
+                        <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                      </Button>
+                    </Link>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Quick Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <Card>
+              <CardContent className="p-4 text-center">
+                <div className="text-2xl font-bold text-teal-600">18%</div>
+                <div className="text-sm text-gray-600">Avg ABV</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 text-center">
+                <div className="text-2xl font-bold text-emerald-600">4.6★</div>
+                <div className="text-sm text-gray-600">Avg Rating</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 text-center">
+                <div className="text-2xl font-bold text-cyan-600">3.3 min</div>
+                <div className="text-sm text-gray-600">Avg Prep</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 text-center">
+                <div className="text-2xl font-bold text-teal-600">{daiquiris.length}</div>
+                <div className="text-sm text-gray-600">Recipes</div>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Tabs */}
           <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
             {[
@@ -524,7 +573,6 @@ export default function DaiquiriPage() {
                 {filtered.map((c) => {
                   const useMetric = !!metricFlags[c.id];
                   const servings = servingsById[c.id] ?? (c.recipe?.servings || 1);
-                  const color = "text-teal-600";
 
                   return (
                     <Card key={c.id} className="hover:shadow-lg transition-shadow">
@@ -554,10 +602,10 @@ export default function DaiquiriPage() {
                       </CardHeader>
 
                       <CardContent>
-                        {/* Quick row */}
+                        {/* Quick stats */}
                         <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                           <div>
-                            <div className={`font-bold ${color}`}>{c.abv}</div>
+                            <div className="font-bold text-teal-600">{c.abv}</div>
                             <div className="text-gray-500">ABV</div>
                           </div>
                           <div>
@@ -565,7 +613,7 @@ export default function DaiquiriPage() {
                             <div className="text-gray-500">Prep</div>
                           </div>
                           <div>
-                            <div className={`font-bold ${color}`}>{c.method}</div>
+                            <div className="font-bold text-teal-600">{c.method}</div>
                             <div className="text-gray-500">Method</div>
                           </div>
                         </div>
@@ -662,7 +710,7 @@ export default function DaiquiriPage() {
                                   }
                                 }}
                               >
-                                Copy
+                                <Clipboard className="w-4 h-4 mr-1" /> Copy
                               </Button>
                               <Button variant="outline" size="sm" onClick={() => handleShare(c, servings)}>
                                 <Share2 className="w-4 h-4 mr-1" /> Share
@@ -681,6 +729,7 @@ export default function DaiquiriPage() {
                         {/* Actions */}
                         <div className="flex gap-2">
                           <Button className="flex-1 bg-teal-600 hover:bg-teal-700" onClick={() => openRecipeModal(c)}>
+                            <GlassWater className="h-4 w-4 mr-2" />
                             Make Daiquiri
                           </Button>
                           <Button variant="outline" size="sm" onClick={() => handleShare(c)}>
@@ -801,6 +850,7 @@ export default function DaiquiriPage() {
 
                     <div className="flex gap-3">
                       <Button className="flex-1 bg-gradient-to-r from-teal-600 to-emerald-600" onClick={() => openRecipeModal(c)}>
+                        <GlassWater className="h-4 w-4 mr-2" />
                         Make Daiquiri
                       </Button>
                       <Button variant="outline" onClick={() => handleShare(c)}>
@@ -812,6 +862,50 @@ export default function DaiquiriPage() {
               ))}
             </div>
           )}
+
+          {/* Your Progress Card */}
+          <Card className="mt-12 bg-gradient-to-r from-teal-50 to-emerald-50 border-teal-300">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+                    <Crown className="h-5 w-5 text-teal-600" />
+                    Your Progress
+                  </h3>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <GlassWater className="h-4 w-4 text-teal-500" />
+                      <span className="text-sm text-gray-600">Level:</span>
+                      <Badge className="bg-teal-600 text-white">{userProgress.level}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-emerald-500" />
+                      <span className="text-sm text-gray-600">XP:</span>
+                      <Badge className="bg-emerald-600 text-white">{userProgress.totalPoints}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Droplets className="h-4 w-4 text-cyan-600" />
+                      <span className="text-sm text-gray-600">Drinks Made:</span>
+                      <Badge className="bg-cyan-100 text-cyan-800">{userProgress.totalDrinksMade}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <GlassWater className="h-4 w-4 text-teal-500" />
+                      <span className="text-sm text-gray-600">Daiquiris Found:</span>
+                      <Badge className="bg-teal-100 text-teal-800">{filtered.length}</Badge>
+                    </div>
+                  </div>
+                </div>
+                <Button 
+                  variant="outline"
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                  className="border-teal-300 hover:bg-teal-50"
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2 rotate-90" />
+                  Back to Top
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </RequireAgeGate>
