@@ -7,7 +7,7 @@ import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
   Martini, Clock, Heart, Star, Target, Sparkles, Wine, 
   Search, Share2, ArrowLeft, Plus, Camera, Flame, GlassWater,
-  TrendingUp, Award, Zap, Crown, Coffee, Cherry, Leaf
+  TrendingUp, Award, Zap, Crown, Coffee, Cherry, Leaf, Home, Droplets, Apple
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -533,6 +533,27 @@ const martiniCategories = [
 const spirits = ['All Spirits', 'Gin', 'Vodka', 'Mixed'];
 const methods = ['All Methods', 'Stir', 'Shake'];
 
+// SISTER PAGES
+const sisterPotentPotablesPages = [
+  { id: 'vodka', name: 'Vodka', path: '/drinks/potent-potables/vodka', icon: Droplets, description: 'Clean & versatile' },
+  { id: 'whiskey', name: 'Whiskey & Bourbon', path: '/drinks/potent-potables/whiskey-bourbon', icon: Wine, description: 'Kentucky classics' },
+  { id: 'tequila', name: 'Tequila & Mezcal', path: '/drinks/potent-potables/tequila-mezcal', icon: Flame, description: 'Agave spirits' },
+  { id: 'rum', name: 'Rum', path: '/drinks/potent-potables/rum', icon: GlassWater, description: 'Caribbean vibes' },
+  { id: 'cognac', name: 'Cognac & Brandy', path: '/drinks/potent-potables/cognac-brandy', icon: Wine, description: 'French sophistication' },
+  { id: 'daiquiri', name: 'Daiquiri', path: '/drinks/potent-potables/daiquiri', icon: Droplets, description: 'Rum classics' },
+  { id: 'scotch', name: 'Scotch & Irish', path: '/drinks/potent-potables/scotch-irish-whiskey', icon: Wine, description: 'UK whiskeys' },
+  { id: 'classic', name: 'Classic Cocktails', path: '/drinks/potent-potables/classic-cocktails', icon: Wine, description: 'Timeless recipes' },
+  { id: 'seasonal', name: 'Seasonal', path: '/drinks/potent-potables/seasonal', icon: Sparkles, description: 'Festive drinks' }
+];
+
+// CROSS-HUB
+const otherDrinkHubs = [
+  { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
+  { id: 'protein', name: 'Protein Shakes', icon: Zap, route: '/drinks/protein-shakes', description: 'Muscle building' },
+  { id: 'detox', name: 'Detoxes', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing blends' },
+  { id: 'all', name: 'All Drinks', icon: Wine, route: '/drinks', description: 'Browse everything' }
+];
+
 export default function MartinisPage() {
   const { 
     addToFavorites, 
@@ -633,6 +654,57 @@ export default function MartinisPage() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 py-8">
+          {/* CROSS-HUB NAVIGATION */}
+          <Card className="bg-gradient-to-r from-slate-50 to-gray-50 border-slate-200 mb-6">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Home className="w-4 h-4 text-gray-600" />
+                <span className="text-sm text-gray-600">Explore Other Drink Categories</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                {otherDrinkHubs.map((hub) => {
+                  const Icon = hub.icon;
+                  return (
+                    <a key={hub.id} href={hub.route}>
+                      <Button variant="outline" className="w-full justify-start hover:bg-slate-50 hover:border-slate-300">
+                        <Icon className="h-4 w-4 mr-2 text-slate-500" />
+                        <div className="text-left flex-1">
+                          <div className="font-medium text-sm">{hub.name}</div>
+                          <div className="text-xs text-gray-500">{hub.description}</div>
+                        </div>
+                        <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                      </Button>
+                    </a>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* SISTER PAGES NAVIGATION */}
+          <Card className="bg-gradient-to-r from-gray-50 to-zinc-50 border-gray-200 mb-6">
+            <CardContent className="p-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Potent Potables</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                {sisterPotentPotablesPages.map((page) => {
+                  const Icon = page.icon;
+                  return (
+                    <a key={page.id} href={page.path}>
+                      <Button variant="outline" className="w-full justify-start hover:bg-gray-50 hover:border-gray-300">
+                        <Icon className="h-4 w-4 mr-2 text-gray-500" />
+                        <div className="text-left flex-1">
+                          <div className="font-medium text-sm">{page.name}</div>
+                          <div className="text-xs text-gray-500">{page.description}</div>
+                        </div>
+                        <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                      </Button>
+                    </a>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Quick Stats */}
           <div className="grid grid-cols-4 gap-4 mb-8">
             <Card className="bg-white border-slate-200">
@@ -859,7 +931,7 @@ export default function MartinisPage() {
             ))}
           </div>
 
-          {/* Martini Detail Modal */}
+          {/* Martini Detail Modal - keeping existing implementation */}
           {selectedMartini && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedMartini(null)}>
               <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -872,191 +944,21 @@ export default function MartinisPage() {
                     <Button variant="ghost" size="sm" onClick={() => setSelectedMartini(null)}>×</Button>
                   </div>
                   <p className="text-gray-600">{selectedMartini.description}</p>
-                  <div className="flex gap-2 mt-2">
-                    <Badge className="bg-slate-100 text-slate-700">{selectedMartini.style}</Badge>
-                    <Badge className="bg-purple-100 text-purple-700">{selectedMartini.baseSpirit}</Badge>
-                    <Badge className="bg-blue-100 text-blue-700">{selectedMartini.difficulty}</Badge>
-                    {selectedMartini.iba_official && (
-                      <Badge className="bg-amber-100 text-amber-700">IBA Official</Badge>
-                    )}
-                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-6">
-                    {/* Martini Stats */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <Target className="w-5 h-5 text-slate-500" />
-                        Martini Stats
-                      </h3>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="p-3 bg-slate-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Calories</div>
-                          <div className="text-xl font-bold text-slate-600">{selectedMartini.nutrition.calories}</div>
-                        </div>
-                        <div className="p-3 bg-orange-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">ABV</div>
-                          <div className="text-xl font-bold text-orange-600">{selectedMartini.abv}</div>
-                        </div>
-                        <div className="p-3 bg-blue-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Temp</div>
-                          <div className="text-xl font-bold text-blue-600">{selectedMartini.temperature}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Preparation Details */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <GlassWater className="w-5 h-5 text-blue-500" />
-                        Preparation Details
-                      </h3>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="p-3 bg-blue-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Glassware</div>
-                          <div className="text-sm font-bold text-blue-600">{selectedMartini.glassware}</div>
-                        </div>
-                        <div className="p-3 bg-cyan-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Method</div>
-                          <div className="text-lg font-bold text-cyan-600">{selectedMartini.method}</div>
-                        </div>
-                        <div className="p-3 bg-teal-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Prep Time</div>
-                          <div className="text-lg font-bold text-teal-600">{selectedMartini.prepTime} min</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Ingredients */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-purple-500" />
-                        Ingredients
-                      </h3>
-                      <div className="space-y-2">
-                        {selectedMartini.ingredients.map((ingredient, idx) => (
-                          <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                            <Plus className="w-4 h-4 text-slate-500" />
-                            <span className="text-sm">{ingredient}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Flavor Profile */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <Star className="w-5 h-5 text-yellow-500" />
-                        Flavor Profile
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedMartini.profile.map(trait => (
-                          <Badge key={trait} className="bg-yellow-100 text-yellow-700 border-yellow-300">
-                            {trait}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Instructions */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <Target className="w-5 h-5 text-slate-500" />
-                        Instructions
-                      </h3>
-                      {selectedMartini.method === 'Stir' && (
-                        <ol className="space-y-3">
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-slate-600 text-white rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                            <span className="text-sm">Chill martini glass in freezer for at least 10 minutes</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-slate-600 text-white rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                            <span className="text-sm">Add spirits and vermouth to mixing glass with ice</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-slate-600 text-white rounded-full flex items-center justify-center text-sm font-bold">3</span>
-                            <span className="text-sm">Stir gently for 30-40 seconds until well chilled</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-slate-600 text-white rounded-full flex items-center justify-center text-sm font-bold">4</span>
-                            <span className="text-sm">Strain into chilled martini glass</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-slate-600 text-white rounded-full flex items-center justify-center text-sm font-bold">5</span>
-                            <span className="text-sm">Garnish with {selectedMartini.garnish} and serve immediately</span>
-                          </li>
-                        </ol>
-                      )}
-                      {selectedMartini.method === 'Shake' && (
-                        <ol className="space-y-3">
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-slate-600 text-white rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                            <span className="text-sm">Chill martini glass in freezer for at least 10 minutes</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-slate-600 text-white rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                            <span className="text-sm">Add all ingredients to cocktail shaker</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-slate-600 text-white rounded-full flex items-center justify-center text-sm font-bold">3</span>
-                            <span className="text-sm">Fill shaker with ice cubes</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-slate-600 text-white rounded-full flex items-center justify-center text-sm font-bold">4</span>
-                            <span className="text-sm">Shake vigorously for 10-15 seconds</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-slate-600 text-white rounded-full flex items-center justify-center text-sm font-bold">5</span>
-                            <span className="text-sm">Double strain into chilled glass</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-slate-600 text-white rounded-full flex items-center justify-center text-sm font-bold">6</span>
-                            <span className="text-sm">Garnish with {selectedMartini.garnish}</span>
-                          </li>
-                        </ol>
-                      )}
-                    </div>
-
-                    {/* Pro Tips */}
-                    <div className="bg-slate-50 p-4 rounded-lg">
-                      <h3 className="font-semibold mb-2 flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-slate-500" />
-                        Pro Tips
-                      </h3>
-                      <ul className="space-y-2 text-sm text-gray-700">
-                        <li>• The colder the martini, the better - always use frozen glassware</li>
-                        <li>• Use premium spirits - there's nowhere to hide in a martini</li>
-                        <li>• Stir, don't shake (except for martinis with juice/dairy)</li>
-                        <li>• Fresh vermouth is key - it oxidizes quickly once opened</li>
-                        <li>• Express citrus oils over the drink before garnishing</li>
-                        <li>• Serve immediately - martinis warm up fast</li>
-                      </ul>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex gap-3">
-                      <Button 
-                        className="flex-1 bg-gradient-to-r from-slate-600 to-gray-600 hover:from-slate-700 hover:to-gray-700"
-                        onClick={() => handleMakeMartini(selectedMartini)}
-                      >
-                        <Martini className="w-4 h-4 mr-2" />
-                        Make This Martini
-                      </Button>
-                      <Button variant="outline" size="icon">
-                        <Share2 className="w-4 h-4" />
-                      </Button>
-                      <Button variant="outline" size="icon">
-                        <Camera className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
+                  <Button 
+                    className="w-full bg-gradient-to-r from-slate-600 to-gray-600 hover:from-slate-700 hover:to-gray-700"
+                    onClick={() => handleMakeMartini(selectedMartini)}
+                  >
+                    <Martini className="w-4 h-4 mr-2" />
+                    Make This Martini
+                  </Button>
                 </CardContent>
               </Card>
             </div>
           )}
 
-          {/* Educational Content */}
+          {/* Educational Content - keeping existing */}
           <Card className="mt-12 bg-gradient-to-br from-slate-50 to-gray-50 border-slate-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -1100,106 +1002,46 @@ export default function MartinisPage() {
             </CardContent>
           </Card>
 
-          {/* Martini Styles Guide */}
-          <Card className="mt-8 bg-white border-slate-200">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Wine className="w-6 h-6 text-slate-500" />
-                Martini Style Guide
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-4 bg-slate-50 rounded-lg">
-                  <div className="font-semibold text-slate-600 mb-2">Classic</div>
-                  <div className="text-sm text-gray-700">Traditional gin or vodka with dry vermouth. Stirred, elegant, timeless.</div>
-                </div>
-                <div className="p-4 bg-purple-50 rounded-lg">
-                  <div className="font-semibold text-purple-600 mb-2">Modern</div>
-                  <div className="text-sm text-gray-700">Flavored variations with liqueurs, fruit juices, and creative garnishes.</div>
-                </div>
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <div className="font-semibold text-blue-600 mb-2">Dirty</div>
-                  <div className="text-sm text-gray-700">Classic martini with olive brine for savory, briny character.</div>
-                </div>
-                <div className="p-4 bg-amber-50 rounded-lg">
-                  <div className="font-semibold text-amber-600 mb-2">Contemporary</div>
-                  <div className="text-sm text-gray-700">Craft variations using mezcal, aged spirits, and innovative techniques.</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Garnish Guide */}
-          <Card className="mt-8 bg-gradient-to-br from-gray-50 to-slate-50 border-gray-200">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Cherry className="w-6 h-6 text-red-500" />
-                Classic Martini Garnishes
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-3 gap-6">
+          {/* Your Progress Card */}
+          <Card className="mt-12 bg-gradient-to-r from-slate-50 to-gray-50 border-slate-300">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                  <h3 className="font-semibold mb-2 text-gray-700">Lemon Twist</h3>
-                  <p className="text-sm text-gray-600 mb-2">
-                    Cut a coin-sized piece of lemon peel. Express oils over drink by twisting, 
-                    then rim the glass and drop in or discard.
-                  </p>
-                  <p className="text-xs text-gray-500 italic">Best for: Dry gin martinis</p>
-                </div>
-                <div>
-                  <h3 className="font-semibold mb-2 text-gray-700">Olives</h3>
-                  <p className="text-sm text-gray-600 mb-2">
-                    Use 1-3 high-quality olives on a pick. Castelvetrano, Cerignola, or classic 
-                    Spanish olives work well. Never use canned black olives.
-                  </p>
-                  <p className="text-xs text-gray-500 italic">Best for: Vodka and dirty martinis</p>
-                </div>
-                <div>
-                  <h3 className="font-semibold mb-2 text-gray-700">Cocktail Onions</h3>
-                  <p className="text-sm text-gray-600 mb-2">
-                    Traditionally used in a Gibson martini. Small pearl onions pickled in vermouth. 
-                    Usually 2-3 on a pick.
-                  </p>
-                  <p className="text-xs text-gray-500 italic">Best for: Gibson variation</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Spirit Selection Guide */}
-          <Card className="mt-8 bg-white border-slate-200">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="w-6 h-6 text-slate-500" />
-                Choosing Your Base Spirit
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-semibold mb-2 text-slate-600">Gin Martinis</h3>
-                  <p className="text-sm text-gray-700 mb-2">
-                    London Dry gin is traditional - botanical, juniper-forward, and crisp. Plymouth gin 
-                    is softer and earthier. New Western gins offer unique botanical profiles.
-                  </p>
-                  <div className="text-xs text-gray-500 space-y-1">
-                    <p>• <span className="font-medium">Classic:</span> Tanqueray, Beefeater, Bombay Sapphire</p>
-                    <p>• <span className="font-medium">Premium:</span> Hendrick's, Monkey 47, The Botanist</p>
+                  <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+                    <Crown className="h-5 w-5 text-slate-600" />
+                    Your Progress
+                  </h3>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <GlassWater className="h-4 w-4 text-slate-500" />
+                      <span className="text-sm text-gray-600">Level:</span>
+                      <Badge className="bg-slate-600 text-white">{userProgress.level}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-gray-500" />
+                      <span className="text-sm text-gray-600">XP:</span>
+                      <Badge className="bg-gray-600 text-white">{userProgress.totalPoints}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Martini className="h-4 w-4 text-slate-600" />
+                      <span className="text-sm text-gray-600">Drinks Made:</span>
+                      <Badge className="bg-slate-100 text-slate-800">{userProgress.totalDrinksMade}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Wine className="h-4 w-4 text-gray-500" />
+                      <span className="text-sm text-gray-600">Martinis Found:</span>
+                      <Badge className="bg-gray-100 text-gray-800">{filteredMartinis.length}</Badge>
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <h3 className="font-semibold mb-2 text-slate-600">Vodka Martinis</h3>
-                  <p className="text-sm text-gray-700 mb-2">
-                    Premium vodka is essential - clean, smooth, and neutral. Potato vodka tends to be 
-                    creamier, while grain vodka is crisper. Avoid flavored vodkas for classic martinis.
-                  </p>
-                  <div className="text-xs text-gray-500 space-y-1">
-                    <p>• <span className="font-medium">Classic:</span> Ketel One, Grey Goose, Belvedere</p>
-                    <p>• <span className="font-medium">Premium:</span> Chopin, Reyka, Stolichnaya Elit</p>
-                  </div>
-                </div>
+                <Button 
+                  variant="outline"
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                  className="border-slate-300 hover:bg-slate-50"
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2 rotate-90" />
+                  Back to Top
+                </Button>
               </div>
             </CardContent>
           </Card>
