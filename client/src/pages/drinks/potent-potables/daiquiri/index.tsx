@@ -6,12 +6,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import RequireAgeGate from "@/components/RequireAgeGate";
 import {
-  GlassWater, Search, Share2, ArrowLeft, Heart, Check, RotateCcw, Crown, Sparkles, Droplets, Lemon, CupSoda, Flame, Martini
+  GlassWater,
+  Search,
+  Share2,
+  ArrowLeft,
+  Heart,
+  Check,
+  RotateCcw,
+  Crown,
+  Sparkles,
+  Droplets,
+  Apple,      // used for "Fruit"
+  Snowflake,  // used for "Frozen"
+  Flame,
+  Martini
 } from "lucide-react";
 import { useDrinks } from "@/contexts/DrinksContext";
 import RecipeKit from "@/components/recipes/RecipeKit";
 
-// -------- Helpers (same patterns you use elsewhere) --------
+// -------- Helpers --------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
 const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
 const toNiceFraction = (value: number) => {
@@ -32,12 +45,9 @@ const scaleAmount = (base: number | string, servings: number) => {
 const toMetric = (unit: string, amount: number) => {
   const mlPerOz = 30;
   switch (unit) {
-    case "oz":
-      return { amount: Math.round(amount * mlPerOz), unit: "ml" };
-    case "dash":
-      return { amount: Math.round(amount * 1), unit: "dash" };
-    default:
-      return { amount, unit };
+    case "oz": return { amount: Math.round(amount * mlPerOz), unit: "ml" };
+    case "dash": return { amount: Math.round(amount * 1), unit: "dash" };
+    default: return { amount, unit };
   }
 };
 const parseIngredient = (ingredient: string): Measured => {
@@ -60,13 +70,13 @@ const parseIngredient = (ingredient: string): Measured => {
   return { amount, unit, item };
 };
 
-// -------- Data (alcoholic; classic rum daiquiris) --------
+// -------- Data (alcoholic; rum daiquiris) --------
 const daiquiris = [
   {
     id: "daiquiri-1",
     name: "Classic Daiquiri",
     description: "Rum, lime, and sugar—perfectly balanced.",
-    category: "Rum Sour",
+    category: "classic",
     era: "1900s",
     method: "Shake",
     spiritType: "Rum",
@@ -78,14 +88,13 @@ const daiquiris = [
     featured: true,
     trending: true,
     ingredients: ["2 oz White Rum", "1 oz Fresh Lime Juice", "0.75 oz Simple Syrup", "Ice", "Lime Wheel"],
-    instructions:
-      "Shake rum, lime, and syrup with ice. Fine strain into a chilled coupe. Garnish with lime wheel."
+    instructions: "Shake rum, lime, and syrup with ice. Fine strain into a chilled coupe. Garnish with lime wheel."
   },
   {
     id: "daiquiri-2",
     name: "Hemingway Daiquiri",
     description: "Dry, citrusy riff with grapefruit and maraschino.",
-    category: "Rum Sour",
+    category: "classic",
     era: "1930s",
     method: "Shake",
     spiritType: "Rum",
@@ -103,14 +112,13 @@ const daiquiris = [
       "Ice",
       "Grapefruit Peel"
     ],
-    instructions:
-      "Shake all with ice. Fine strain into coupe. Express grapefruit peel."
+    instructions: "Shake all with ice. Fine strain into coupe. Express grapefruit peel."
   },
   {
     id: "daiquiri-3",
     name: "Strawberry Daiquiri (Shaken)",
     description: "Bright berry notes; not frozen.",
-    category: "Fruit",
+    category: "fruit",
     era: "1970s",
     method: "Shake",
     spiritType: "Rum",
@@ -126,14 +134,13 @@ const daiquiris = [
       "3 Fresh Strawberries",
       "Ice"
     ],
-    instructions:
-      "Muddle strawberries with syrup. Add rum, lime, ice. Shake hard. Fine strain into coupe."
+    instructions: "Muddle strawberries with syrup. Add rum, lime, ice. Shake hard. Fine strain into coupe."
   },
   {
     id: "daiquiri-4",
     name: "Frozen Strawberry Daiquiri",
     description: "The frosty crowd-pleaser.",
-    category: "Frozen",
+    category: "frozen",
     era: "1980s",
     method: "Blend",
     spiritType: "Rum",
@@ -149,14 +156,13 @@ const daiquiris = [
       "1 cup Frozen Strawberries",
       "1 cup Crushed Ice"
     ],
-    instructions:
-      "Blend all until smooth. Pour into chilled hurricane or coupe. Garnish with strawberry."
+    instructions: "Blend all until smooth. Pour into chilled hurricane or coupe. Garnish with strawberry."
   },
   {
     id: "daiquiri-5",
     name: "Banana Daiquiri",
     description: "Tropical, creamy texture from fresh banana.",
-    category: "Frozen",
+    category: "frozen",
     era: "1970s",
     method: "Blend",
     spiritType: "Rum",
@@ -172,14 +178,13 @@ const daiquiris = [
       "0.5 small Ripe Banana",
       "1 cup Crushed Ice"
     ],
-    instructions:
-      "Blend until smooth. Pour into glass. Optional nutmeg dust."
+    instructions: "Blend until smooth. Pour into glass. Optional nutmeg dust."
   },
   {
     id: "daiquiri-6",
     name: "Pineapple Daiquiri",
     description: "Juicy tropical twist.",
-    category: "Fruit",
+    category: "fruit",
     era: "1970s",
     method: "Shake",
     spiritType: "Rum",
@@ -195,15 +200,14 @@ const daiquiris = [
       "1 oz Fresh Pineapple Juice",
       "Ice"
     ],
-    instructions:
-      "Shake all with ice. Fine strain into coupe. Garnish with pineapple leaf."
+    instructions: "Shake all with ice. Fine strain into coupe. Garnish with pineapple leaf."
   },
   {
     id: "daiquiri-7",
     name: "Coconut Daiquiri",
     description: "Silky coconut with bright lime.",
-    category: "Tropical",
-    era: "Modern",
+    category: "tropical",
+    era: "modern",
     method: "Shake",
     spiritType: "Rum",
     abv: "17%",
@@ -218,14 +222,13 @@ const daiquiris = [
       "0.5 oz Simple Syrup",
       "Ice"
     ],
-    instructions:
-      "Shake hard with plenty of ice. Fine strain into coupe. Lime wheel garnish."
+    instructions: "Shake hard with plenty of ice. Fine strain into coupe. Lime wheel garnish."
   },
   {
     id: "daiquiri-8",
     name: "Mulata Daiquiri",
     description: "Rum, cacao, and lime—Cuban classic riff.",
-    category: "Cuban",
+    category: "cuban",
     era: "1940s",
     method: "Shake",
     spiritType: "Rum",
@@ -242,14 +245,13 @@ const daiquiris = [
       "1 dash Angostura Bitters",
       "Ice"
     ],
-    instructions:
-      "Shake all with ice. Fine strain into coupe. Optional cocoa dust."
+    instructions: "Shake all with ice. Fine strain into coupe. Optional cocoa dust."
   },
   {
     id: "daiquiri-9",
     name: "Hotel Nacional (Daiquiri family)",
     description: "Aged rum, pineapple, apricot; daiquiri DNA.",
-    category: "Cuban",
+    category: "cuban",
     era: "1930s",
     method: "Shake",
     spiritType: "Rum",
@@ -266,15 +268,14 @@ const daiquiris = [
       "0.25 oz Simple Syrup",
       "Ice"
     ],
-    instructions:
-      "Shake all with ice. Fine strain into coupe. Pineapple wedge garnish."
+    instructions: "Shake all with ice. Fine strain into coupe. Pineapple wedge garnish."
   },
   {
     id: "daiquiri-10",
     name: "Chartreuse Daiquiri",
     description: "Herbal kick with green chartreuse.",
-    category: "Modern",
-    era: "Modern",
+    category: "modern",
+    era: "modern",
     method: "Shake",
     spiritType: "Rum",
     abv: "22%",
@@ -289,15 +290,14 @@ const daiquiris = [
       "0.5 oz Simple Syrup",
       "Ice"
     ],
-    instructions:
-      "Shake hard with ice. Fine strain into coupe. Express lime."
+    instructions: "Shake hard with ice. Fine strain into coupe. Express lime."
   },
   {
     id: "daiquiri-11",
     name: "Gimlet-Style Daiquiri",
     description: "Swap syrup for lime cordial.",
-    category: "Minimal",
-    era: "Modern",
+    category: "minimal",
+    era: "modern",
     method: "Shake",
     spiritType: "Rum",
     abv: "21%",
@@ -305,20 +305,15 @@ const daiquiris = [
     difficulty: "Easy",
     rating: 4.3,
     reviews: 501,
-    ingredients: [
-      "2 oz White Rum",
-      "1 oz Lime Cordial",
-      "Ice"
-    ],
-    instructions:
-      "Shake with ice. Fine strain into coupe."
+    ingredients: ["2 oz White Rum", "1 oz Lime Cordial", "Ice"],
+    instructions: "Shake with ice. Fine strain into coupe."
   },
   {
     id: "daiquiri-12",
     name: "Frozen Mango Daiquiri",
     description: "Sunny, smooth, and slushy.",
-    category: "Frozen",
-    era: "Modern",
+    category: "frozen",
+    era: "modern",
     method: "Blend",
     spiritType: "Rum",
     abv: "14%",
@@ -333,18 +328,16 @@ const daiquiris = [
       "1 cup Frozen Mango",
       "1 cup Crushed Ice"
     ],
-    instructions:
-      "Blend until smooth. Pour into chilled glass. Mango slice garnish."
+    instructions: "Blend until smooth. Pour into chilled glass. Mango slice garnish."
   }
 ];
 
-// Categories for “By Style” tab
 const styleCategories = [
-  { id: "all", name: "All Styles", color: "bg-teal-500", icon: GlassWater, description: "Every daiquiri" },
-  { id: "classic", name: "Classics", color: "bg-emerald-600", icon: Martini, description: "Original formulas" },
-  { id: "fruit", name: "Fruit", color: "bg-teal-600", icon: Lemon, description: "Berry & tropical twists" },
-  { id: "frozen", name: "Frozen", color: "bg-cyan-600", icon: CupSoda, description: "Blended favorites" },
-  { id: "cuban", name: "Cuban Heritage", color: "bg-amber-600", icon: Flame, description: "Historic riffs" },
+  { id: "all",    name: "All Styles",     color: "bg-teal-500",    icon: GlassWater, description: "Every daiquiri" },
+  { id: "classic",name: "Classics",       color: "bg-emerald-600", icon: Martini,    description: "Original formulas" },
+  { id: "fruit",  name: "Fruit",          color: "bg-teal-600",    icon: Apple,      description: "Berry & tropical twists" },
+  { id: "frozen", name: "Frozen",         color: "bg-cyan-600",    icon: Snowflake,  description: "Blended favorites" },
+  { id: "cuban",  name: "Cuban Heritage", color: "bg-amber-600",   icon: Flame,      description: "Historic riffs" },
 ];
 
 export default function DaiquiriPage() {
@@ -359,15 +352,9 @@ export default function DaiquiriPage() {
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
-  // Add measurements for RecipeKit
   const withMeasurements = useMemo(() => {
     return daiquiris.map((d) => {
-      const raw = Array.isArray(d.ingredients) ? d.ingredients : [];
-      const measurements = raw.map((ing: any) => {
-        if (typeof ing === "string") return parseIngredient(ing);
-        const { amount = 1, unit = "item", item = "", note = "" } = ing || {};
-        return { amount, unit, item, note };
-      });
+      const measurements = d.ingredients.map(parseIngredient);
       return { ...d, recipe: { servings: 1, measurements, directions: [d.instructions] } };
     });
   }, []);
@@ -407,6 +394,9 @@ export default function DaiquiriPage() {
 
   const handleShare = async (cocktail: any, servingsOverride?: number) => {
     const url = typeof window !== "undefined" ? window.location.href : "";
+    theServings: {
+      /* keep the const name below simple to avoid shadowing */
+    }
     const servings = servingsOverride ?? servingsById[cocktail.id] ?? 1;
     const preview = cocktail.ingredients.slice(0, 4).join(" • ");
     const text = `${cocktail.name} • ${cocktail.category} • ${cocktail.era}\n${preview}${
@@ -537,10 +527,7 @@ export default function DaiquiriPage() {
                   const color = "text-teal-600";
 
                   return (
-                    <Card
-                      key={c.id}
-                      className="hover:shadow-lg transition-shadow"
-                    >
+                    <Card key={c.id} className="hover:shadow-lg transition-shadow">
                       <CardHeader className="pb-2">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
@@ -589,17 +576,13 @@ export default function DaiquiriPage() {
                             {[...Array(5)].map((_, i) => (
                               <GlassWater
                                 key={i}
-                                className={`w-4 h-4 ${
-                                  i < Math.floor(c.rating) ? "fill-teal-500 text-teal-500" : "text-gray-300"
-                                }`}
+                                className={`w-4 h-4 ${i < Math.floor(c.rating) ? "fill-teal-500 text-teal-500" : "text-gray-300"}`}
                               />
                             ))}
                             <span className="font-medium ml-1">{c.rating}</span>
                             <span className="text-gray-500 text-sm">({c.reviews})</span>
                           </div>
-                          <Badge variant="outline" className="text-xs">
-                            {c.difficulty}
-                          </Badge>
+                          <Badge variant="outline" className="text-xs">{c.difficulty}</Badge>
                         </div>
 
                         {/* RecipeKit preview */}
@@ -612,18 +595,14 @@ export default function DaiquiriPage() {
                               <div className="flex items-center gap-2">
                                 <button
                                   className="px-2 py-1 border rounded text-sm"
-                                  onClick={() =>
-                                    setServingsById((p) => ({ ...p, [c.id]: clamp((p[c.id] ?? 1) - 1) }))
-                                  }
+                                  onClick={() => setServingsById((p) => ({ ...p, [c.id]: clamp((p[c.id] ?? 1) - 1) }))}
                                 >
                                   −
                                 </button>
                                 <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                                 <button
                                   className="px-2 py-1 border rounded text-sm"
-                                  onClick={() =>
-                                    setServingsById((p) => ({ ...p, [c.id]: clamp((p[c.id] ?? 1) + 1) }))
-                                  }
+                                  onClick={() => setServingsById((p) => ({ ...p, [c.id]: clamp((p[c.id] ?? 1) + 1) }))}
                                 >
                                   +
                                 </button>
@@ -642,7 +621,6 @@ export default function DaiquiriPage() {
                               {c.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
                                 const isNum = typeof ing.amount === "number";
                                 const scaled = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount;
-                                const useMetric = !!metricFlags[c.id];
                                 const show = useMetric && isNum
                                   ? toMetric(ing.unit, Number(ing.amount) * servings)
                                   : { amount: scaled, unit: ing.unit };
@@ -715,7 +693,7 @@ export default function DaiquiriPage() {
                 })}
               </div>
 
-              {/* Zero-proof nudge (links out; no AgeGate content here) */}
+              {/* Zero-proof nudge */}
               <Card className="mt-8 bg-gradient-to-r from-teal-50 to-emerald-50 border-teal-300">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -725,8 +703,7 @@ export default function DaiquiriPage() {
                 </CardHeader>
                 <CardContent className="flex items-center justify-between flex-wrap gap-3">
                   <p className="text-sm text-gray-700">
-                    Check out <span className="font-semibold">Virgin Cocktails</span> for a{" "}
-                    <span className="italic">Virgin Daiquiri</span> and more non-alcoholic options.
+                    Check out <span className="font-semibold">Virgin Cocktails</span> for a <span className="italic">Virgin Daiquiri</span> and more non-alcoholic options.
                   </p>
                   <Link href="/drinks/potent-potables/virgin-cocktails">
                     <Button variant="outline" className="border-teal-300 hover:bg-teal-50">
@@ -744,9 +721,7 @@ export default function DaiquiriPage() {
               {styleCategories.map((cat) => {
                 const Icon = cat.icon as any;
                 const list = daiquiris.filter((d) =>
-                  cat.id === "all"
-                    ? true
-                    : (d.category || "").toLowerCase().includes(cat.id)
+                  cat.id === "all" ? true : (d.category || "").toLowerCase().includes(cat.id)
                 );
                 return (
                   <Card
