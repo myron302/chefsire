@@ -1,24 +1,24 @@
-import React, { useState } from 'react';
-import { Card, Badge, Button } from '@/components/ui';
-import { Dog, Bone, Heart, Star, Clock } from 'lucide-react';
+import React from 'react';
+import { Card, CardContent, CardHeader, Badge, Button, Progress } from 'some-ui-library';
+import { Dog, Bone, Heart } from 'lucide-react';
 
-const DogFoodRecipes: React.FC = () => {
-  const [favorites, setFavorites] = useState<string[]>([]);
-
-  const recipes = [
-    // 10 featured dog food recipes with nutrition info
-  ];
-
+const DogsPage = () => {
   return (
     <div>
-      <section className="hero" style={{background: 'linear-gradient(to right, #FFB74D, #FF9800)'}}>
-        <h1><Dog /> Dog Food Recipes</h1>
+      <section style={{ background: 'linear-gradient(to right, #FFCC80, #FF8A65)' }}>
+        <h1>Dogs</h1>
       </section>
-      <div>
-        {/* Age categories and recipes here */}
-      </div>
+      <section>
+        <Card>
+          <CardHeader title="Puppy Recipes" />
+          <CardContent>
+            {/* Puppy recipes content */}
+          </CardContent>
+        </Card>
+        {/* Other sections for Adult, Senior, and Special Diet */}
+      </section>
     </div>
   );
 };
 
-export default DogFoodRecipes;
+export default DogsPage;
