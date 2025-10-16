@@ -1,16 +1,80 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
-  Snowflake, Sun, Leaf, Flower2, Clock, Heart, Star, Target, 
+  Snowflake, Sun, Leaf, Flower2, Clock, Heart, Target, 
   Sparkles, Wine, Search, Share2, ArrowLeft, Plus, Camera, 
-  Flame, GlassWater, TrendingUp, Award, Cherry, Cloud, Zap
+  Flame, GlassWater, TrendingUp, Award, Cherry, Cloud, Zap,
+  Home, Droplets, Apple, Martini, Crown,
+  Clipboard, RotateCcw, Check
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
-import UniversalSearch from '@/components/UniversalSearch';
+import RecipeKit from '@/components/recipes/RecipeKit';
+
+// ---------- Helpers ----------
+type Measured = { amount: number | string; unit: string; item: string; note?: string };
+const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+const toNiceFraction = (value: number) => {
+  const rounded = Math.round(value * 4) / 4;
+  const whole = Math.trunc(rounded);
+  const frac = Math.round((rounded - whole) * 4);
+  const fracMap: Record<number, string> = { 0: '', 1: '¼', 2: '½', 3: '¾' };
+  const fracStr = fracMap[frac];
+  if (!whole && fracStr) return fracStr;
+  if (whole && fracStr) return `${whole} ${fracStr}`;
+  return `${whole}`;
+};
+const scaleAmount = (baseAmount: number | string, servings: number) => {
+  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
+  if (Number.isNaN(n)) return baseAmount;
+  return toNiceFraction(n * servings);
+};
+
+const toMetric = (unit: string, amount: number) => {
+  const mlPerOz = 30;
+  switch (unit) {
+    case 'oz': return { amount: Math.round(amount * mlPerOz), unit: 'ml' };
+    case 'dash': return { amount: Math.round(amount * 1), unit: 'dash' };
+    case 'tbsp': return { amount: Math.round(amount * 15), unit: 'ml' };
+    case 'tsp': return { amount: Math.round(amount * 5), unit: 'ml' };
+    default: return { amount, unit };
+  }
+};
+
+const parseIngredient = (ingredient: string): Measured => {
+  const fractionMap: Record<string, number> = {
+    '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
+  };
+  
+  const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
+  if (parts.length < 2) return m('1', 'item', ingredient);
+
+  let amountStr = parts[0];
+  let amount: number | string = fractionMap[amountStr] ?? 
+    (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
+
+  let unit = parts[1];
+  let item = parts.slice(2).join(' ');
+
+  const descriptors = new Set(['bourbon', 'fresh', 'vodka', 'vanilla', 'blanco', 'hot', 'heavy', 'lightly']);
+  if (descriptors.has(unit.toLowerCase())) {
+    item = [unit, item].filter(Boolean).join(' ').trim();
+    unit = 'item';
+  }
+
+  if (item.includes('(optional)')) {
+    item = item.replace('(optional)', '').trim();
+    return m(amount, unit, item, 'optional');
+  }
+  
+  return m(amount, unit, item);
+};
 
 const seasonalCocktails = [
   // WINTER COCKTAILS
@@ -30,10 +94,10 @@ const seasonalCocktails = [
       alcohol: 10
     },
     ingredients: [
-      'Bourbon or Whiskey (2 oz)',
-      'Honey (1 tbsp)',
-      'Fresh Lemon Juice (0.5 oz)',
-      'Hot Water (4-6 oz)',
+      '2 oz Bourbon or Whiskey',
+      '1 tbsp Honey',
+      '0.5 oz Fresh Lemon Juice',
+      '4-6 oz Hot Water',
       'Cinnamon Stick',
       'Lemon Wheel',
       'Star Anise (optional)'
@@ -53,7 +117,8 @@ const seasonalCocktails = [
     garnish: 'Cinnamon stick, lemon wheel',
     method: 'Build',
     abv: '15-18%',
-    monthsAvailable: [11, 12, 1, 2]
+    monthsAvailable: [11, 12, 1, 2],
+    instructions: 'Add honey, lemon juice, and whiskey to mug. Fill with hot water. Stir to dissolve honey. Garnish with cinnamon stick and lemon wheel.'
   },
   {
     id: 'seasonal-2',
@@ -71,10 +136,10 @@ const seasonalCocktails = [
       alcohol: 12
     },
     ingredients: [
-      'Vodka (2 oz)',
-      'Coffee Liqueur (1 oz)',
-      'Heavy Cream (1 oz)',
-      'Peppermint Schnapps (0.5 oz)',
+      '2 oz Vodka',
+      '1 oz Coffee Liqueur',
+      '1 oz Heavy Cream',
+      '0.5 oz Peppermint Schnapps',
       'Crushed Candy Cane (rim)',
       'Ice'
     ],
@@ -93,7 +158,8 @@ const seasonalCocktails = [
     garnish: 'Candy cane rim',
     method: 'Build',
     abv: '20-25%',
-    monthsAvailable: [12, 1]
+    monthsAvailable: [12, 1],
+    instructions: 'Rim glass with crushed candy cane. Add vodka and coffee liqueur to glass with ice. Float cream on top. Drizzle peppermint schnapps.'
   },
   {
     id: 'seasonal-3',
@@ -111,13 +177,13 @@ const seasonalCocktails = [
       alcohol: 8
     },
     ingredients: [
-      'Red Wine (6 oz)',
-      'Orange Slices (2)',
-      'Cinnamon Sticks (2)',
-      'Star Anise (2)',
-      'Cloves (4)',
-      'Honey (1 tbsp)',
-      'Brandy (1 oz, optional)'
+      '6 oz Red Wine',
+      '2 Orange Slices',
+      '2 Cinnamon Sticks',
+      '2 Star Anise',
+      '4 Cloves',
+      '1 tbsp Honey',
+      '1 oz Brandy (optional)'
     ],
     profile: ['Spiced', 'Warming', 'Aromatic'],
     difficulty: 'Medium',
@@ -134,7 +200,8 @@ const seasonalCocktails = [
     garnish: 'Orange slice, cinnamon stick',
     method: 'Simmer',
     abv: '10-12%',
-    monthsAvailable: [11, 12, 1, 2]
+    monthsAvailable: [11, 12, 1, 2],
+    instructions: 'Combine all ingredients in pot. Heat gently for 15-20 minutes, do not boil. Strain into mugs. Garnish with orange slice and cinnamon stick.'
   },
 
   // SPRING COCKTAILS
@@ -154,10 +221,10 @@ const seasonalCocktails = [
       alcohol: 11
     },
     ingredients: [
-      'Gin (2 oz)',
-      'Elderflower Liqueur (0.75 oz)',
-      'Fresh Lemon Juice (0.75 oz)',
-      'Club Soda (3 oz)',
+      '2 oz Gin',
+      '0.75 oz Elderflower Liqueur',
+      '0.75 oz Fresh Lemon Juice',
+      '3 oz Club Soda',
       'Cucumber Slice',
       'Mint Sprig',
       'Ice'
@@ -177,7 +244,8 @@ const seasonalCocktails = [
     garnish: 'Cucumber, mint sprig',
     method: 'Shake & Top',
     abv: '15-18%',
-    monthsAvailable: [3, 4, 5]
+    monthsAvailable: [3, 4, 5],
+    instructions: 'Shake gin, elderflower liqueur, and lemon juice with ice. Strain into highball glass over ice. Top with club soda. Garnish with cucumber and mint.'
   },
   {
     id: 'seasonal-5',
@@ -195,9 +263,9 @@ const seasonalCocktails = [
       alcohol: 13
     },
     ingredients: [
-      'Vodka (2 oz)',
-      'Lavender Syrup (0.75 oz)',
-      'Fresh Lemon Juice (0.75 oz)',
+      '2 oz Vodka',
+      '0.75 oz Lavender Syrup',
+      '0.75 oz Fresh Lemon Juice',
       'Sugar (for rim)',
       'Lavender Sprig',
       'Ice'
@@ -217,7 +285,8 @@ const seasonalCocktails = [
     garnish: 'Sugar rim, lavender sprig',
     method: 'Shake',
     abv: '22-25%',
-    monthsAvailable: [4, 5, 6]
+    monthsAvailable: [4, 5, 6],
+    instructions: 'Rim martini glass with sugar. Shake vodka, lavender syrup, and lemon juice with ice. Strain into glass. Garnish with lavender sprig.'
   },
   {
     id: 'seasonal-6',
@@ -235,12 +304,12 @@ const seasonalCocktails = [
       alcohol: 12
     },
     ingredients: [
-      'Gin (2 oz)',
-      'Fresh Strawberries (4)',
-      'Fresh Basil (5 leaves)',
-      'Fresh Lemon Juice (0.75 oz)',
-      'Simple Syrup (0.5 oz)',
-      'Club Soda (2 oz)',
+      '2 oz Gin',
+      '4 Fresh Strawberries',
+      '5 Fresh Basil leaves',
+      '0.75 oz Fresh Lemon Juice',
+      '0.5 oz Simple Syrup',
+      '2 oz Club Soda',
       'Ice'
     ],
     profile: ['Fruity', 'Herbal', 'Refreshing'],
@@ -258,7 +327,8 @@ const seasonalCocktails = [
     garnish: 'Strawberry, basil leaf',
     method: 'Muddle',
     abv: '18-20%',
-    monthsAvailable: [4, 5, 6]
+    monthsAvailable: [4, 5, 6],
+    instructions: 'Muddle strawberries and basil in shaker. Add gin, lemon juice, and simple syrup with ice. Shake hard. Strain over ice. Top with club soda. Garnish with strawberry and basil.'
   },
 
   // SUMMER COCKTAILS
@@ -278,11 +348,11 @@ const seasonalCocktails = [
       alcohol: 13
     },
     ingredients: [
-      'Blanco Tequila (2 oz)',
-      'Fresh Watermelon (2 cups)',
-      'Fresh Lime Juice (1 oz)',
-      'Triple Sec (0.5 oz)',
-      'Agave Nectar (0.5 oz)',
+      '2 oz Blanco Tequila',
+      '2 cups Fresh Watermelon',
+      '1 oz Fresh Lime Juice',
+      '0.5 oz Triple Sec',
+      '0.5 oz Agave Nectar',
       'Salt (rim)',
       'Ice'
     ],
@@ -301,7 +371,8 @@ const seasonalCocktails = [
     garnish: 'Watermelon triangle, salt rim',
     method: 'Blend',
     abv: '18-22%',
-    monthsAvailable: [6, 7, 8]
+    monthsAvailable: [6, 7, 8],
+    instructions: 'Rim glass with salt. Blend all ingredients with ice until smooth. Pour into margarita glass. Garnish with watermelon triangle.'
   },
   {
     id: 'seasonal-8',
@@ -319,12 +390,12 @@ const seasonalCocktails = [
       alcohol: 10
     },
     ingredients: [
-      'White Rum (2 oz)',
-      'Coconut Cream (2 oz)',
-      'Fresh Pineapple (1 cup)',
-      'Pineapple Juice (2 oz)',
-      'Lime Juice (0.5 oz)',
-      'Ice (2 cups)'
+      '2 oz White Rum',
+      '2 oz Coconut Cream',
+      '1 cup Fresh Pineapple',
+      '2 oz Pineapple Juice',
+      '0.5 oz Lime Juice',
+      '2 cups Ice'
     ],
     profile: ['Tropical', 'Creamy', 'Sweet'],
     difficulty: 'Easy',
@@ -341,7 +412,8 @@ const seasonalCocktails = [
     garnish: 'Pineapple wedge, cherry',
     method: 'Blend',
     abv: '12-15%',
-    monthsAvailable: [6, 7, 8, 9]
+    monthsAvailable: [6, 7, 8, 9],
+    instructions: 'Blend all ingredients until smooth and slushy. Pour into hurricane glass. Garnish with pineapple wedge and cherry.'
   },
   {
     id: 'seasonal-9',
@@ -359,11 +431,11 @@ const seasonalCocktails = [
       alcohol: 12
     },
     ingredients: [
-      'Gin (2 oz)',
-      'Fresh Cucumber (4 slices)',
-      'Tonic Water (6 oz)',
-      'Fresh Lime (2 wedges)',
-      'Mint Leaves (3)',
+      '2 oz Gin',
+      '4 slices Fresh Cucumber',
+      '6 oz Tonic Water',
+      '2 Lime Wedges',
+      '3 Mint Leaves',
       'Ice'
     ],
     profile: ['Crisp', 'Refreshing', 'Botanical'],
@@ -381,7 +453,8 @@ const seasonalCocktails = [
     garnish: 'Cucumber ribbon, mint',
     method: 'Build',
     abv: '15-18%',
-    monthsAvailable: [6, 7, 8]
+    monthsAvailable: [6, 7, 8],
+    instructions: 'Muddle cucumber in glass. Fill with ice. Add gin and lime. Top with tonic water. Stir gently. Garnish with cucumber ribbon and mint.'
   },
 
   // FALL COCKTAILS
@@ -401,10 +474,10 @@ const seasonalCocktails = [
       alcohol: 13
     },
     ingredients: [
-      'Bourbon (2 oz)',
-      'Apple Cider (3 oz)',
-      'Fresh Lemon Juice (0.5 oz)',
-      'Maple Syrup (0.5 oz)',
+      '2 oz Bourbon',
+      '3 oz Apple Cider',
+      '0.5 oz Fresh Lemon Juice',
+      '0.5 oz Maple Syrup',
       'Cinnamon Stick',
       'Apple Slice',
       'Ice'
@@ -424,7 +497,8 @@ const seasonalCocktails = [
     garnish: 'Apple slice, cinnamon stick',
     method: 'Shake',
     abv: '18-22%',
-    monthsAvailable: [9, 10, 11]
+    monthsAvailable: [9, 10, 11],
+    instructions: 'Shake bourbon, apple cider, lemon juice, and maple syrup with ice. Strain over fresh ice. Garnish with apple slice and cinnamon stick.'
   },
   {
     id: 'seasonal-11',
@@ -442,10 +516,10 @@ const seasonalCocktails = [
       alcohol: 14
     },
     ingredients: [
-      'Vanilla Vodka (2 oz)',
-      'Pumpkin Spice Liqueur (0.5 oz)',
-      'Coffee Liqueur (0.5 oz)',
-      'Espresso (1 oz)',
+      '2 oz Vanilla Vodka',
+      '0.5 oz Pumpkin Spice Liqueur',
+      '0.5 oz Coffee Liqueur',
+      '1 oz Espresso',
       'Pumpkin Spice (sprinkle)',
       'Ice'
     ],
@@ -464,7 +538,8 @@ const seasonalCocktails = [
     garnish: 'Pumpkin spice rim, coffee beans',
     method: 'Shake',
     abv: '22-25%',
-    monthsAvailable: [9, 10, 11]
+    monthsAvailable: [9, 10, 11],
+    instructions: 'Shake all liquids with ice vigorously until frothy. Strain into martini glass. Dust with pumpkin spice. Garnish with coffee beans.'
   },
   {
     id: 'seasonal-12',
@@ -482,10 +557,10 @@ const seasonalCocktails = [
       alcohol: 11
     },
     ingredients: [
-      'Vodka (2 oz)',
-      'Cranberry Juice (2 oz)',
-      'Fresh Lime Juice (0.5 oz)',
-      'Ginger Beer (4 oz)',
+      '2 oz Vodka',
+      '2 oz Cranberry Juice',
+      '0.5 oz Fresh Lime Juice',
+      '4 oz Ginger Beer',
       'Fresh Cranberries',
       'Rosemary Sprig',
       'Ice'
@@ -505,7 +580,8 @@ const seasonalCocktails = [
     garnish: 'Cranberries, rosemary, lime',
     method: 'Build',
     abv: '15-18%',
-    monthsAvailable: [10, 11, 12]
+    monthsAvailable: [10, 11, 12],
+    instructions: 'Fill copper mug with ice. Add vodka, cranberry juice, and lime juice. Top with ginger beer. Stir gently. Garnish with cranberries, rosemary sprig, and lime.'
   }
 ];
 
@@ -545,12 +621,33 @@ const seasons = [
 ];
 
 const getCurrentSeason = () => {
-  const month = new Date().getMonth() + 1; // 1-12
+  const month = new Date().getMonth() + 1;
   if (month >= 3 && month <= 5) return 'Spring';
   if (month >= 6 && month <= 8) return 'Summer';
   if (month >= 9 && month <= 11) return 'Fall';
   return 'Winter';
 };
+
+// SISTER PAGES
+const sisterPotentPotablesPages = [
+  { id: 'vodka', name: 'Vodka', path: '/drinks/potent-potables/vodka', icon: Droplets, description: 'Clean & versatile' },
+  { id: 'whiskey', name: 'Whiskey & Bourbon', path: '/drinks/potent-potables/whiskey-bourbon', icon: Wine, description: 'Kentucky classics' },
+  { id: 'tequila', name: 'Tequila & Mezcal', path: '/drinks/potent-potables/tequila-mezcal', icon: Flame, description: 'Agave spirits' },
+  { id: 'rum', name: 'Rum', path: '/drinks/potent-potables/rum', icon: GlassWater, description: 'Caribbean vibes' },
+  { id: 'cognac', name: 'Cognac & Brandy', path: '/drinks/potent-potables/cognac-brandy', icon: Wine, description: 'French sophistication' },
+  { id: 'scotch', name: 'Scotch & Irish', path: '/drinks/potent-potables/scotch-irish-whiskey', icon: Wine, description: 'UK whiskeys' },
+  { id: 'martinis', name: 'Martinis', path: '/drinks/potent-potables/martinis', icon: Martini, description: 'Elegant classics' },
+  { id: 'classic', name: 'Classic Cocktails', path: '/drinks/potent-potables/cocktails', icon: Wine, description: 'Timeless recipes' },
+  { id: 'mocktails', name: 'Mocktails', path: '/drinks/potent-potables/mocktails', icon: Sparkles, description: 'Zero-proof' }
+];
+
+// CROSS-HUB
+const otherDrinkHubs = [
+  { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
+  { id: 'protein', name: 'Protein Shakes', icon: Zap, route: '/drinks/protein-shakes', description: 'Muscle building' },
+  { id: 'detox', name: 'Detoxes', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing blends' },
+  { id: 'all', name: 'All Drinks', icon: Wine, route: '/drinks', description: 'Browse everything' }
+];
 
 export default function SeasonalCocktailsPage() {
   const { 
@@ -565,11 +662,80 @@ export default function SeasonalCocktailsPage() {
   const [selectedSeason, setSelectedSeason] = useState(getCurrentSeason());
   const [selectedTemperature, setSelectedTemperature] = useState('All');
   const [sortBy, setSortBy] = useState('trending');
-  const [showFilters, setShowFilters] = useState(false);
   const [selectedCocktail, setSelectedCocktail] = useState<typeof seasonalCocktails[0] | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredCocktails = seasonalCocktails.filter(cocktail => {
+  // RecipeKit state
+  const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
+  const [showKit, setShowKit] = useState(false);
+  const [servingsById, setServingsById] = useState<Record<string, number>>({});
+  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
+
+  // Convert cocktails to RecipeKit format
+  const cocktailRecipesWithMeasurements = useMemo(() => {
+    return seasonalCocktails.map((c) => {
+      const rawList = Array.isArray(c.ingredients) ? c.ingredients : [];
+      const measurements = rawList.map((ing: any) => {
+        if (typeof ing === 'string') return parseIngredient(ing);
+        const { amount = 1, unit = 'item', item = '', note = '' } = ing || {};
+        return { amount, unit, item, note };
+      });
+
+      return {
+        ...c,
+        recipe: {
+          servings: 1,
+          measurements,
+          directions: [c.instructions]
+        }
+      };
+    });
+  }, []);
+
+  const handleShareCocktail = async (cocktail: any, servingsOverride?: number) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const servings = servingsOverride ?? servingsById[cocktail.id] ?? 1;
+    const preview = cocktail.ingredients.slice(0, 4).join(' • ');
+    const text = `${cocktail.name} • ${cocktail.season} • ${cocktail.method}\n${preview}${cocktail.ingredients.length > 4 ? ` …plus ${cocktail.ingredients.length - 4} more` : ''}`;
+    const shareData = { title: cocktail.name, text, url };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${cocktail.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${cocktail.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const openRecipeModal = (recipe: any) => {
+    setSelectedRecipe(recipe);
+    setShowKit(true);
+  };
+
+  const handleCompleteRecipe = () => {
+    if (selectedRecipe) {
+      addToRecentlyViewed({
+        id: selectedRecipe.id,
+        name: selectedRecipe.name,
+        category: 'seasonal-cocktails',
+        timestamp: Date.now()
+      });
+      incrementDrinksMade();
+      addPoints(30);
+    }
+    setShowKit(false);
+    setSelectedRecipe(null);
+  };
+
+  const filteredCocktails = cocktailRecipesWithMeasurements.filter(cocktail => {
     if (selectedSeason !== 'All' && cocktail.season !== selectedSeason) {
       return false;
     }
@@ -610,20 +776,35 @@ export default function SeasonalCocktailsPage() {
   return (
     <RequireAgeGate>
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-pink-50 to-orange-50">
-        {/* Universal Search */}
-        <div className="bg-white border-b border-gray-100 sticky top-0 z-40 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 py-3">
-            <UniversalSearch />
-          </div>
-        </div>
+        {/* RecipeKit Modal */}
+        {selectedRecipe && (
+          <RecipeKit
+            open={showKit}
+            onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
+            accent="purple"
+            pointsReward={30}
+            onComplete={handleCompleteRecipe}
+            item={{
+              id: selectedRecipe.id,
+              name: selectedRecipe.name,
+              prepTime: selectedRecipe.prepTime,
+              directions: selectedRecipe.recipe?.directions || [],
+              measurements: selectedRecipe.recipe?.measurements || [],
+              baseNutrition: {},
+              defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+            }}
+          />
+        )}
 
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-500 via-pink-500 to-orange-500 text-white py-8">
           <div className="max-w-7xl mx-auto px-4">
-            <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Potent Potables
-            </Button>
+            <Link href="/drinks/potent-potables">
+              <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Potent Potables
+              </Button>
+            </Link>
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-4xl font-bold mb-2 flex items-center gap-3">
@@ -644,6 +825,57 @@ export default function SeasonalCocktailsPage() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 py-8">
+          {/* CROSS-HUB NAVIGATION */}
+          <Card className="bg-gradient-to-r from-blue-50 to-pink-50 border-blue-300 mb-6">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Home className="w-4 h-4 text-gray-600" />
+                <span className="text-sm text-gray-600">Explore Other Drink Categories</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                {otherDrinkHubs.map((hub) => {
+                  const Icon = hub.icon;
+                  return (
+                    <Link key={hub.id} href={hub.route}>
+                      <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
+                        <Icon className="h-4 w-4 mr-2 text-blue-500" />
+                        <div className="text-left flex-1">
+                          <div className="font-medium text-sm">{hub.name}</div>
+                          <div className="text-xs text-gray-500">{hub.description}</div>
+                        </div>
+                        <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                      </Button>
+                    </Link>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* SISTER PAGES NAVIGATION */}
+          <Card className="bg-gradient-to-r from-pink-50 to-purple-50 border-pink-300 mb-6">
+            <CardContent className="p-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Potent Potables</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                {sisterPotentPotablesPages.map((page) => {
+                  const Icon = page.icon;
+                  return (
+                    <Link key={page.id} href={page.path}>
+                      <Button variant="outline" className="w-full justify-start hover:bg-pink-50 hover:border-pink-300">
+                        <Icon className="h-4 w-4 mr-2 text-pink-500" />
+                        <div className="text-left flex-1">
+                          <div className="font-medium text-sm">{page.name}</div>
+                          <div className="text-xs text-gray-500">{page.description}</div>
+                        </div>
+                        <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                      </Button>
+                    </Link>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Season Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             {seasons.map(season => {
@@ -726,6 +958,8 @@ export default function SeasonalCocktailsPage() {
             {filteredCocktails.map(cocktail => {
               const seasonData = seasons.find(s => s.name === cocktail.season);
               const SeasonIcon = seasonData?.icon || Sparkles;
+              const useMetric = !!metricFlags[cocktail.id];
+              const servings = servingsById[cocktail.id] ?? (cocktail.recipe?.servings || 1);
               
               return (
                 <Card 
@@ -765,7 +999,6 @@ export default function SeasonalCocktailsPage() {
                       )}
                       {cocktail.featured && (
                         <Badge className="bg-amber-500">
-                          <GlassWater className="fill-cyan-500 text-cyan-500" />
                           Featured
                         </Badge>
                       )}
@@ -774,27 +1007,160 @@ export default function SeasonalCocktailsPage() {
                   <CardContent>
                     <p className="text-sm text-gray-600 mb-4">{cocktail.description}</p>
                     
-                    <div className="grid grid-cols-2 gap-2 mb-4 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Flame className="w-4 h-4 text-orange-500" />
-                        <span>{cocktail.nutrition.calories} cal</span>
+                    <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
+                      <div>
+                        <div className="font-bold text-purple-600">{cocktail.abv}</div>
+                        <div className="text-gray-500">ABV</div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-blue-500" />
-                        <span>{cocktail.prepTime} min</span>
+                      <div>
+                        <div className="font-bold text-pink-600">{cocktail.prepTime}min</div>
+                        <div className="text-gray-500">Prep</div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {cocktail.temperature === 'Hot' && <Flame className="w-4 h-4 text-red-500" />}
-                        {cocktail.temperature === 'Cold' && <Snowflake className="w-4 h-4 text-blue-500" />}
-                        {cocktail.temperature === 'Frozen' && <Cloud className="w-4 h-4 text-cyan-500" />}
-                        <span>{cocktail.temperature}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                        <span>{cocktail.rating} ({cocktail.reviews})</span>
+                      <div>
+                        <div className="font-bold text-purple-600">{cocktail.temperature}</div>
+                        <div className="text-gray-500">Temp</div>
                       </div>
                     </div>
 
+                    {/* GLASS RATING */}
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-1">
+                        {[...Array(5)].map((_, i) => (
+                          <GlassWater
+                            key={i}
+                            className={`w-4 h-4 ${
+                              i < Math.floor(cocktail.rating)
+                                ? 'fill-purple-500 text-purple-500'
+                                : 'text-gray-300'
+                            }`}
+                          />
+                        ))}
+                        <span className="font-medium ml-1">{cocktail.rating}</span>
+                        <span className="text-gray-500 text-sm">({cocktail.reviews})</span>
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        {cocktail.difficulty}
+                      </Badge>
+                    </div>
+
+                    {/* RecipeKit Preview */}
+                    {Array.isArray(cocktail.recipe?.measurements) && cocktail.recipe.measurements.length > 0 && (
+                      <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-sm font-semibold text-gray-900">
+                            Recipe (serves {servings})
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="px-2 py-1 border rounded text-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setServingsById(prev => ({ ...prev, [cocktail.id]: clamp((prev[cocktail.id] ?? 1) - 1) }));
+                              }}
+                            >
+                              −
+                            </button>
+                            <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                            <button
+                              className="px-2 py-1 border rounded text-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setServingsById(prev => ({ ...prev, [cocktail.id]: clamp((prev[cocktail.id] ?? 1) + 1) }));
+                              }}
+                            >
+                              +
+                            </button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setServingsById(prev => ({ ...prev, [cocktail.id]: 1 }));
+                              }}
+                              title="Reset servings"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
+                            </Button>
+                          </div>
+                        </div>
+
+                        <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                          {cocktail.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                            const isNum = typeof ing.amount === 'number';
+                            const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount;
+                            const show = useMetric && isNum
+                              ? toMetric(ing.unit, Number(ing.amount) * servings)
+                              : { amount: scaledDisplay, unit: ing.unit };
+
+                            return (
+                              <li key={i} className="flex items-start gap-2">
+                                <Check className="h-4 w-4 text-purple-500 mt-0.5" />
+                                <span>
+                                  <span className="text-purple-600 font-semibold">
+                                    {show.amount} {show.unit}
+                                  </span>{" "}
+                                  {ing.item}
+                                  {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                </span>
+                              </li>
+                            );
+                          })}
+                          {cocktail.recipe.measurements.length > 4 && (
+                            <li className="text-xs text-gray-600">
+                              …plus {cocktail.recipe.measurements.length - 4} more •{" "}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openRecipeModal(cocktail);
+                                }}
+                                className="underline"
+                              >
+                                Show more
+                              </button>
+                            </li>
+                          )}
+                        </ul>
+
+                        <div className="flex gap-2 mt-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const lines = cocktail.ingredients.map((ing: string) => `- ${ing}`);
+                              const txt = `${cocktail.name} (serves ${servings})\n${lines.join('\n')}`;
+                              try {
+                                await navigator.clipboard.writeText(txt);
+                                alert('Recipe copied!');
+                              } catch {
+                                alert('Unable to copy.');
+                              }
+                            }}
+                          >
+                            <Clipboard className="w-4 h-4 mr-1" /> Copy
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={(e) => {
+                            e.stopPropagation();
+                            handleShareCocktail(cocktail, servings);
+                          }}>
+                            <Share2 className="w-4 w-4 mr-1" /> Share
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMetricFlags((prev) => ({ ...prev, [cocktail.id]: !prev[cocktail.id] }));
+                            }}
+                          >
+                            {useMetric ? 'US' : 'Metric'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tags */}
                     <div className="flex flex-wrap gap-1 mb-4">
                       {cocktail.profile.slice(0, 3).map(trait => (
                         <Badge key={trait} variant="outline" className="text-xs">
@@ -803,334 +1169,30 @@ export default function SeasonalCocktailsPage() {
                       ))}
                     </div>
 
-                    <div className="flex items-center justify-between pt-4 border-t">
-                      <span className="text-sm font-medium text-purple-600">{cocktail.spirit}</span>
-                      <span className="text-sm text-gray-500">${cocktail.estimatedCost.toFixed(2)}</span>
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
+                      <Button 
+                        className="flex-1 bg-purple-600 hover:bg-purple-700"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRecipeModal(cocktail);
+                        }}
+                      >
+                        <Wine className="h-4 w-4 mr-2" />
+                        View Recipe
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={(e) => {
+                        e.stopPropagation();
+                        handleShareCocktail(cocktail);
+                      }}>
+                        <Share2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
               );
             })}
           </div>
-
-          {/* Cocktail Detail Modal */}
-          {selectedCocktail && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedCocktail(null)}>
-              <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-2xl">{selectedCocktail.name}</CardTitle>
-                      <p className="text-sm text-gray-500 mt-1">{selectedCocktail.occasion}</p>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedCocktail(null)}>×</Button>
-                  </div>
-                  <p className="text-gray-600">{selectedCocktail.description}</p>
-                  <div className="flex gap-2 mt-2">
-                    {(() => {
-                      const seasonData = seasons.find(s => s.name === selectedCocktail.season);
-                      const SeasonIcon = seasonData?.icon || Sparkles;
-                      return (
-                        <Badge className={seasonData?.color}>
-                          <SeasonIcon className="w-3 h-3 mr-1" />
-                          {selectedCocktail.season}
-                        </Badge>
-                      );
-                    })()}
-                    <Badge className="bg-purple-100 text-purple-700">{selectedCocktail.spirit}</Badge>
-                    <Badge className="bg-blue-100 text-blue-700">{selectedCocktail.difficulty}</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6">
-                    {/* Nutrition & Stats */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <Target className="w-5 h-5 text-purple-500" />
-                        Cocktail Stats
-                      </h3>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="p-3 bg-orange-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Calories</div>
-                          <div className="text-xl font-bold text-orange-600">{selectedCocktail.nutrition.calories}</div>
-                        </div>
-                        <div className="p-3 bg-purple-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">ABV</div>
-                          <div className="text-xl font-bold text-purple-600">{selectedCocktail.abv}</div>
-                        </div>
-                        <div className="p-3 bg-blue-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Temp</div>
-                          <div className="text-xl font-bold text-blue-600">{selectedCocktail.temperature}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Glassware & Method */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <GlassWater className="w-5 h-5 text-blue-500" />
-                        Preparation Details
-                      </h3>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="p-3 bg-blue-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Glassware</div>
-                          <div className="text-lg font-bold text-blue-600">{selectedCocktail.glassware}</div>
-                        </div>
-                        <div className="p-3 bg-cyan-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Method</div>
-                          <div className="text-lg font-bold text-cyan-600">{selectedCocktail.method}</div>
-                        </div>
-                        <div className="p-3 bg-teal-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Prep Time</div>
-                          <div className="text-lg font-bold text-teal-600">{selectedCocktail.prepTime} min</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Ingredients */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <Cherry className="w-5 h-5 text-red-500" />
-                        Ingredients
-                      </h3>
-                      <div className="space-y-2">
-                        {selectedCocktail.ingredients.map((ingredient, idx) => (
-                          <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                            <Plus className="w-4 h-4 text-purple-500" />
-                            <span className="text-sm">{ingredient}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Flavor Profile */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <Star className="w-5 h-5 text-yellow-500" />
-                        Flavor Profile
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedCocktail.profile.map(trait => (
-                          <Badge key={trait} className="bg-yellow-100 text-yellow-700 border-yellow-300">
-                            {trait}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Instructions */}
-                    <div>
-                      <h3 className="font-semibold mb-3 flex items-center gap-2">
-                        <Target className="w-5 h-5 text-purple-500" />
-                        Instructions
-                      </h3>
-                      {selectedCocktail.method === 'Build' && (
-                        <ol className="space-y-3">
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                            <span className="text-sm">Fill {selectedCocktail.glassware} with ice</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                            <span className="text-sm">Add ingredients in order listed</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">3</span>
-                            <span className="text-sm">Stir gently to combine</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">4</span>
-                            <span className="text-sm">Garnish with {selectedCocktail.garnish}</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">5</span>
-                            <span className="text-sm">Serve immediately and enjoy</span>
-                          </li>
-                        </ol>
-                      )}
-                      {selectedCocktail.method === 'Shake' && (
-                        <ol className="space-y-3">
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                            <span className="text-sm">Add all ingredients to cocktail shaker</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                            <span className="text-sm">Fill shaker with ice</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">3</span>
-                            <span className="text-sm">Shake vigorously for 10-15 seconds</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">4</span>
-                            <span className="text-sm">Strain into {selectedCocktail.glassware}</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">5</span>
-                            <span className="text-sm">Garnish with {selectedCocktail.garnish}</span>
-                          </li>
-                        </ol>
-                      )}
-                      {selectedCocktail.method === 'Blend' && (
-                        <ol className="space-y-3">
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                            <span className="text-sm">Add all ingredients to blender</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                            <span className="text-sm">Add ice (about 2 cups)</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">3</span>
-                            <span className="text-sm">Blend on high until smooth (30-60 seconds)</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">4</span>
-                            <span className="text-sm">Pour into {selectedCocktail.glassware}</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">5</span>
-                            <span className="text-sm">Garnish with {selectedCocktail.garnish}</span>
-                          </li>
-                        </ol>
-                      )}
-                      {selectedCocktail.method === 'Muddle' && (
-                        <ol className="space-y-3">
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                            <span className="text-sm">Add fresh ingredients to glass</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                            <span className="text-sm">Muddle gently to release flavors and oils</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">3</span>
-                            <span className="text-sm">Add spirits and remaining ingredients</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">4</span>
-                            <span className="text-sm">Fill with ice and stir gently</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">5</span>
-                            <span className="text-sm">Garnish with {selectedCocktail.garnish}</span>
-                          </li>
-                        </ol>
-                      )}
-                      {selectedCocktail.method === 'Simmer' && (
-                        <ol className="space-y-3">
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                            <span className="text-sm">Add wine and spices to pot</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                            <span className="text-sm">Heat on medium-low, do not boil</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">3</span>
-                            <span className="text-sm">Simmer for 15-20 minutes to infuse flavors</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">4</span>
-                            <span className="text-sm">Strain into heat-safe mugs</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">5</span>
-                            <span className="text-sm">Garnish and serve hot</span>
-                          </li>
-                        </ol>
-                      )}
-                      {selectedCocktail.method === 'Shake & Top' && (
-                        <ol className="space-y-3">
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</span>
-                            <span className="text-sm">Add spirits and citrus to shaker with ice</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</span>
-                            <span className="text-sm">Shake well for 10-15 seconds</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">3</span>
-                            <span className="text-sm">Strain into ice-filled glass</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">4</span>
-                            <span className="text-sm">Top with club soda or tonic</span>
-                          </li>
-                          <li className="flex gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">5</span>
-                            <span className="text-sm">Garnish with {selectedCocktail.garnish}</span>
-                          </li>
-                        </ol>
-                      )}
-                    </div>
-
-                    {/* Seasonal Tips */}
-                    <div className="bg-blue-50 p-4 rounded-lg">
-                      <h3 className="font-semibold mb-2 flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-blue-500" />
-                        Seasonal Tips
-                      </h3>
-                      <ul className="space-y-2 text-sm text-gray-700">
-                        {selectedCocktail.season === 'Winter' && (
-                          <>
-                            <li>• Perfect for cold evenings and holiday gatherings</li>
-                            <li>• Use warm mugs or heat-safe glassware</li>
-                            <li>• Garnish with warming spices for aroma</li>
-                          </>
-                        )}
-                        {selectedCocktail.season === 'Spring' && (
-                          <>
-                            <li>• Best with fresh seasonal flowers and herbs</li>
-                            <li>• Light and refreshing for outdoor occasions</li>
-                            <li>• Use edible flowers for garnish when available</li>
-                          </>
-                        )}
-                        {selectedCocktail.season === 'Summer' && (
-                          <>
-                            <li>• Serve extra cold or frozen for maximum refreshment</li>
-                            <li>• Make ahead and keep in cooler for parties</li>
-                            <li>• Perfect for pool parties and BBQs</li>
-                          </>
-                        )}
-                        {selectedCocktail.season === 'Fall' && (
-                          <>
-                            <li>• Incorporate seasonal spices and flavors</li>
-                            <li>• Perfect for Thanksgiving and harvest celebrations</li>
-                            <li>• Pair with autumn appetizers and desserts</li>
-                          </>
-                        )}
-                        <li>• Always use fresh, seasonal ingredients when possible</li>
-                        <li>• Adjust sweetness to taste preferences</li>
-                      </ul>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex gap-3">
-                      <Button 
-                        className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-                        onClick={() => handleMakeCocktail(selectedCocktail)}
-                      >
-                        <Wine className="w-4 h-4 mr-2" />
-                        Make This Cocktail
-                      </Button>
-                      <Button variant="outline" size="icon">
-                        <Share2 className="w-4 h-4" />
-                      </Button>
-                      <Button variant="outline" size="icon">
-                        <Camera className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
 
           {/* Educational Content */}
           <Card className="mt-12 bg-gradient-to-br from-blue-50 to-orange-50 border-blue-200">
@@ -1163,31 +1225,46 @@ export default function SeasonalCocktailsPage() {
             </CardContent>
           </Card>
 
-          {/* Temperature Guide */}
-          <Card className="mt-8 bg-white border-purple-200">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Flame className="w-6 h-6 text-orange-500" />
-                Temperature & Serving Guide
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-3 gap-4">
-                <div className="p-4 bg-red-50 rounded-lg">
-                  <Flame className="w-6 h-6 text-red-500 mb-2" />
-                  <div className="font-semibold text-red-600 mb-2">Hot Cocktails</div>
-                  <div className="text-sm text-gray-700">Served 160-180°F in heat-safe glassware. Perfect for winter evenings.</div>
+          {/* Your Progress Card */}
+          <Card className="mt-12 bg-gradient-to-r from-purple-50 to-pink-50 border-purple-300">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+                    <Crown className="h-5 w-5 text-purple-600" />
+                    Your Progress
+                  </h3>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <GlassWater className="h-4 w-4 text-purple-500" />
+                      <span className="text-sm text-gray-600">Level:</span>
+                      <Badge className="bg-purple-600 text-white">{userProgress.level}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-pink-500" />
+                      <span className="text-sm text-gray-600">XP:</span>
+                      <Badge className="bg-pink-600 text-white">{userProgress.totalPoints}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Martini className="h-4 w-4 text-purple-600" />
+                      <span className="text-sm text-gray-600">Drinks Made:</span>
+                      <Badge className="bg-purple-100 text-purple-800">{userProgress.totalDrinksMade}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-pink-500" />
+                      <span className="text-sm text-gray-600">Cocktails Found:</span>
+                      <Badge className="bg-pink-100 text-pink-800">{filteredCocktails.length}</Badge>
+                    </div>
+                  </div>
                 </div>
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <Snowflake className="w-6 h-6 text-blue-500 mb-2" />
-                  <div className="font-semibold text-blue-600 mb-2">Cold Cocktails</div>
-                  <div className="text-sm text-gray-700">Served 35-45°F with ice. Most common serving temperature for cocktails.</div>
-                </div>
-                <div className="p-4 bg-cyan-50 rounded-lg">
-                  <Cloud className="w-6 h-6 text-cyan-500 mb-2" />
-                  <div className="font-semibold text-cyan-600 mb-2">Frozen Cocktails</div>
-                  <div className="text-sm text-gray-700">Blended with ice to slushy consistency. Ultimate summer refreshment.</div>
-                </div>
+                <Button 
+                  variant="outline"
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                  className="border-purple-300 hover:bg-purple-50"
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2 rotate-90" />
+                  Back to Top
+                </Button>
               </div>
             </CardContent>
           </Card>
