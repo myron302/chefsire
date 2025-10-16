@@ -1116,10 +1116,9 @@ export default function CognacBrandyPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
 
           {/* Your Progress Card */}
-          <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-orange-300">
+          <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-orange-300 mt-6">
             <CardContent className="p-6">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
