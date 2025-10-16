@@ -1161,7 +1161,7 @@ export default function CognacBrandyPage() {
             </CardContent>
           </Card>
         </div>
-      </div>
-    </RequireAgeGate>
-  );
+      </RequireAgeGate>
+    );
+  }
 }
