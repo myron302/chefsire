@@ -63,7 +63,6 @@ import CaseinProtein from "@/pages/drinks/protein-shakes/casein";
 import CollagenProtein from "@/pages/drinks/protein-shakes/collagen";
 import PlantBasedProtein from "@/pages/drinks/protein-shakes/plant-based";
 import WheyProtein from "@/pages/drinks/protein-shakes/whey";
-// 👇 Add these
 import EggProtein from "@/pages/drinks/protein-shakes/egg";
 import BeefProtein from "@/pages/drinks/protein-shakes/beef";
 
@@ -84,8 +83,12 @@ import TequilaMezcalPage from "@/pages/drinks/potent-potables/tequila-mezcal";
 import VirginCocktailsPage from "@/pages/drinks/potent-potables/virgin-cocktails";
 import VodkaPage from "@/pages/drinks/potent-potables/vodka";
 import WhiskeyBourbonPage from "@/pages/drinks/potent-potables/whiskey-bourbon";
-// ✅ NEW: Daiquiri
 import DaiquiriPage from "@/pages/drinks/potent-potables/daiquiri";
+// ✅ NEW: 4 new pages
+import GinPage from "@/pages/drinks/potent-potables/gin";
+import LiqueursPage from "@/pages/drinks/potent-potables/liqueurs";
+import SpritzPage from "@/pages/drinks/potent-potables/spritz";
+import HotDrinksPage from "@/pages/drinks/potent-potables/hot-drinks";
 
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -137,10 +140,14 @@ function PotentPotablesSection() {
         <Route path="/drinks/potent-potables/scotch-irish-whiskey" component={ScotchIrishWhiskeyPage} />
         <Route path="/drinks/potent-potables/seasonal" component={SeasonalPage} />
         <Route path="/drinks/potent-potables/tequila-mezcal" component={TequilaMezcalPage} />
-        {/* ✅ New Daiquiri route (alcoholic, age-gated) */}
         <Route path="/drinks/potent-potables/daiquiri" component={DaiquiriPage} />
         <Route path="/drinks/potent-potables/vodka" component={VodkaPage} />
         <Route path="/drinks/potent-potables/whiskey-bourbon" component={WhiskeyBourbonPage} />
+        {/* ✅ NEW: 4 new pages */}
+        <Route path="/drinks/potent-potables/gin" component={GinPage} />
+        <Route path="/drinks/potent-potables/liqueurs" component={LiqueursPage} />
+        <Route path="/drinks/potent-potables/spritz" component={SpritzPage} />
+        <Route path="/drinks/potent-potables/hot-drinks" component={HotDrinksPage} />
         <Route path="/drinks/potent-potables" component={PotentPotablesHub} />
         <Route>
           <Redirect to="/drinks/potent-potables" />
@@ -220,11 +227,9 @@ function AppRouter() {
         </Route>
 
         {/* ✅ NEW — Competitions */}
-        {/* Order matters: /new before /:id so 'new' isn't treated as an id */}
         <Route path="/competitions/new" component={CreateCompetitionPage} />
         <Route path="/competitions/library" component={CompetitionLibraryPage} />
         <Route path="/competitions/:id" component={CompetitionRoomPage} />
-        {/* Landing route for /competitions */}
         <Route path="/competitions" component={CompetitionLibraryPage} />
 
         {/* ---------- Recipes ---------- */}
