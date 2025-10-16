@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,11 +6,72 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
-  Martini, Clock, Heart, Star, Target, Sparkles, Wine, 
+  Martini, Clock, Heart, Target, Sparkles, Wine, 
   Search, Share2, ArrowLeft, Plus, Camera, Flame, GlassWater,
-  TrendingUp, Award, Zap, Crown, Cherry, Home, Droplets, Apple, Leaf
+  TrendingUp, Award, Zap, Crown, Cherry, Home, Droplets, Apple, Leaf,
+  Clipboard, RotateCcw, Check
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
+import RecipeKit from '@/components/recipes/RecipeKit';
+
+// ---------- Helpers ----------
+type Measured = { amount: number | string; unit: string; item: string; note?: string };
+const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+const toNiceFraction = (value: number) => {
+  const rounded = Math.round(value * 4) / 4;
+  const whole = Math.trunc(rounded);
+  const frac = Math.round((rounded - whole) * 4);
+  const fracMap: Record<number, string> = { 0: '', 1: '¼', 2: '½', 3: '¾' };
+  const fracStr = fracMap[frac];
+  if (!whole && fracStr) return fracStr;
+  if (whole && fracStr) return `${whole} ${fracStr}`;
+  return `${whole}`;
+};
+const scaleAmount = (baseAmount: number | string, servings: number) => {
+  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
+  if (Number.isNaN(n)) return baseAmount;
+  return toNiceFraction(n * servings);
+};
+
+const toMetric = (unit: string, amount: number) => {
+  const mlPerOz = 30;
+  switch (unit) {
+    case 'oz': return { amount: Math.round(amount * mlPerOz), unit: 'ml' };
+    case 'dash': return { amount: Math.round(amount * 1), unit: 'dash' };
+    default: return { amount, unit };
+  }
+};
+
+const parseIngredient = (ingredient: string): Measured => {
+  const fractionMap: Record<string, number> = {
+    '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
+  };
+  
+  const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
+  if (parts.length < 2) return m('1', 'item', ingredient);
+
+  let amountStr = parts[0];
+  let amount: number | string = fractionMap[amountStr] ?? 
+    (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
+
+  let unit = parts[1];
+  let item = parts.slice(2).join(' ');
+
+  const descriptors = new Set(['fresh', 'large', 'premium', 'london', 'vanilla']);
+  if (descriptors.has(unit.toLowerCase())) {
+    item = [unit, item].filter(Boolean).join(' ').trim();
+    unit = 'item';
+  }
+
+  if (item.includes('(optional)')) {
+    item = item.replace('(optional)', '').trim();
+    return m(amount, unit, item, 'optional');
+  }
+  
+  return m(amount, unit, item);
+};
 
 const martinis = [
   {
@@ -22,7 +83,7 @@ const martinis = [
     glassware: 'Martini Glass',
     servingSize: '3.5 oz',
     nutrition: { calories: 175, carbs: 0, sugar: 0, alcohol: 18 },
-    ingredients: ['London Dry Gin (2.5 oz)', 'Dry Vermouth (0.5 oz)', 'Ice for stirring', 'Lemon Twist or Olives'],
+    ingredients: ['2.5 oz London Dry Gin', '0.5 oz Dry Vermouth', 'Ice for stirring', 'Lemon Twist or Olives'],
     profile: ['Dry', 'Botanical', 'Strong', 'Elegant'],
     difficulty: 'Medium',
     prepTime: 3,
@@ -37,7 +98,8 @@ const martinis = [
     abv: '35-40%',
     iba_official: true,
     ratio: '5:1 (Gin:Vermouth)',
-    temperature: 'Very Cold'
+    temperature: 'Very Cold',
+    instructions: 'Add gin and vermouth to mixing glass with ice. Stir for 30 seconds until very cold. Strain into chilled martini glass. Garnish with lemon twist or olives.'
   },
   {
     id: 'martini-2',
@@ -48,7 +110,7 @@ const martinis = [
     glassware: 'Martini Glass',
     servingSize: '3.5 oz',
     nutrition: { calories: 170, carbs: 0, sugar: 0, alcohol: 18 },
-    ingredients: ['Premium Vodka (2.5 oz)', 'Dry Vermouth (0.5 oz)', 'Ice for stirring', 'Lemon Twist or Olives'],
+    ingredients: ['2.5 oz Premium Vodka', '0.5 oz Dry Vermouth', 'Ice for stirring', 'Lemon Twist or Olives'],
     profile: ['Clean', 'Smooth', 'Strong', 'Crisp'],
     difficulty: 'Medium',
     prepTime: 3,
@@ -63,7 +125,8 @@ const martinis = [
     abv: '35-40%',
     iba_official: false,
     ratio: '5:1 (Vodka:Vermouth)',
-    temperature: 'Very Cold'
+    temperature: 'Very Cold',
+    instructions: 'Add vodka and vermouth to mixing glass with ice. Stir for 30 seconds until very cold. Strain into chilled martini glass. Garnish with lemon twist or olives.'
   },
   {
     id: 'martini-3',
@@ -74,7 +137,7 @@ const martinis = [
     glassware: 'Martini Glass',
     servingSize: '3.5 oz',
     nutrition: { calories: 180, carbs: 1, sugar: 0, alcohol: 17 },
-    ingredients: ['Gin or Vodka (2.5 oz)', 'Dry Vermouth (0.5 oz)', 'Olive Brine (0.5 oz)', 'Ice for stirring', 'Olives (3)'],
+    ingredients: ['2.5 oz Gin or Vodka', '0.5 oz Dry Vermouth', '0.5 oz Olive Brine', 'Ice for stirring', '3 Olives'],
     profile: ['Savory', 'Briny', 'Strong', 'Bold'],
     difficulty: 'Easy',
     prepTime: 3,
@@ -89,7 +152,8 @@ const martinis = [
     abv: '30-35%',
     iba_official: false,
     ratio: '5:1:1',
-    temperature: 'Very Cold'
+    temperature: 'Very Cold',
+    instructions: 'Add gin, vermouth, and olive brine to mixing glass with ice. Stir for 30 seconds. Strain into chilled martini glass. Garnish with 3 olives on a pick.'
   },
   {
     id: 'martini-4',
@@ -100,7 +164,7 @@ const martinis = [
     glassware: 'Martini Glass',
     servingSize: '4 oz',
     nutrition: { calories: 195, carbs: 12, sugar: 10, alcohol: 14 },
-    ingredients: ['Vodka (2 oz)', 'Coffee Liqueur (1 oz)', 'Fresh Espresso (1 oz)', 'Simple Syrup (0.25 oz)', 'Ice', 'Coffee Beans (3)'],
+    ingredients: ['2 oz Vodka', '1 oz Coffee Liqueur', '1 oz Fresh Espresso', '0.25 oz Simple Syrup', 'Ice', '3 Coffee Beans'],
     profile: ['Coffee', 'Sweet', 'Creamy', 'Energizing'],
     difficulty: 'Easy',
     prepTime: 4,
@@ -115,7 +179,8 @@ const martinis = [
     abv: '20-25%',
     iba_official: true,
     ratio: '2:1:1',
-    temperature: 'Cold'
+    temperature: 'Cold',
+    instructions: 'Add vodka, coffee liqueur, fresh espresso, and simple syrup to shaker with ice. Shake vigorously for 15 seconds. Strain into chilled martini glass. Garnish with 3 coffee beans.'
   },
   {
     id: 'martini-5',
@@ -126,7 +191,7 @@ const martinis = [
     glassware: 'Martini Glass',
     servingSize: '4 oz',
     nutrition: { calories: 215, carbs: 16, sugar: 14, alcohol: 13 },
-    ingredients: ['Vanilla Vodka (2 oz)', 'Passion Fruit Liqueur (0.75 oz)', 'Passion Fruit Purée (0.5 oz)', 'Fresh Lime Juice (0.5 oz)', 'Simple Syrup (0.25 oz)', 'Prosecco (shot on side)', 'Passion Fruit Half'],
+    ingredients: ['2 oz Vanilla Vodka', '0.75 oz Passion Fruit Liqueur', '0.5 oz Passion Fruit Purée', '0.5 oz Fresh Lime Juice', '0.25 oz Simple Syrup', 'Prosecco (shot on side)', 'Passion Fruit Half'],
     profile: ['Fruity', 'Tropical', 'Sweet', 'Fun'],
     difficulty: 'Medium',
     prepTime: 5,
@@ -141,7 +206,8 @@ const martinis = [
     abv: '18-22%',
     iba_official: true,
     ratio: 'Complex',
-    temperature: 'Cold'
+    temperature: 'Cold',
+    instructions: 'Add vodka, passion fruit liqueur, purée, lime juice, and syrup to shaker with ice. Shake hard for 10 seconds. Strain into chilled martini glass. Serve with prosecco shot on side. Garnish with passion fruit half.'
   },
   {
     id: 'martini-6',
@@ -152,7 +218,7 @@ const martinis = [
     glassware: 'Martini Glass',
     servingSize: '4 oz',
     nutrition: { calories: 185, carbs: 14, sugar: 12, alcohol: 13 },
-    ingredients: ['Vodka (2 oz)', 'Lychee Liqueur (1 oz)', 'Fresh Lime Juice (0.5 oz)', 'Lychee Syrup (0.5 oz)', 'Ice', 'Lychee Fruit'],
+    ingredients: ['2 oz Vodka', '1 oz Lychee Liqueur', '0.5 oz Fresh Lime Juice', '0.5 oz Lychee Syrup', 'Ice', 'Lychee Fruit'],
     profile: ['Floral', 'Sweet', 'Exotic', 'Delicate'],
     difficulty: 'Easy',
     prepTime: 3,
@@ -167,7 +233,8 @@ const martinis = [
     abv: '20-25%',
     iba_official: false,
     ratio: '2:1',
-    temperature: 'Cold'
+    temperature: 'Cold',
+    instructions: 'Add vodka, lychee liqueur, lime juice, and lychee syrup to shaker with ice. Shake for 10 seconds. Strain into chilled martini glass. Garnish with lychee fruit.'
   },
   {
     id: 'martini-7',
@@ -178,7 +245,7 @@ const martinis = [
     glassware: 'Martini Glass',
     servingSize: '4 oz',
     nutrition: { calories: 205, carbs: 18, sugar: 15, alcohol: 12 },
-    ingredients: ['Vodka (2 oz)', 'Chambord (0.5 oz)', 'Pineapple Juice (1.5 oz)', 'Ice', 'Pineapple Wedge'],
+    ingredients: ['2 oz Vodka', '0.5 oz Chambord', '1.5 oz Pineapple Juice', 'Ice', 'Pineapple Wedge'],
     profile: ['Fruity', 'Sweet', 'Smooth', 'Tropical'],
     difficulty: 'Easy',
     prepTime: 3,
@@ -193,7 +260,8 @@ const martinis = [
     abv: '18-22%',
     iba_official: true,
     ratio: '4:1:3',
-    temperature: 'Cold'
+    temperature: 'Cold',
+    instructions: 'Add vodka, Chambord, and pineapple juice to shaker with ice. Shake for 10 seconds. Strain into chilled martini glass. Garnish with pineapple wedge.'
   },
   {
     id: 'martini-8',
@@ -204,7 +272,7 @@ const martinis = [
     glassware: 'Martini Glass',
     servingSize: '4 oz',
     nutrition: { calories: 195, carbs: 2, sugar: 1, alcohol: 19 },
-    ingredients: ['Gin (3 oz)', 'Vodka (1 oz)', 'Lillet Blanc (0.5 oz)', 'Ice for shaking', 'Lemon Peel'],
+    ingredients: ['3 oz Gin', '1 oz Vodka', '0.5 oz Lillet Blanc', 'Ice for shaking', 'Lemon Peel'],
     profile: ['Strong', 'Complex', 'Sophisticated', 'Iconic'],
     difficulty: 'Medium',
     prepTime: 4,
@@ -219,7 +287,8 @@ const martinis = [
     abv: '35-40%',
     iba_official: true,
     ratio: '6:2:1',
-    temperature: 'Very Cold'
+    temperature: 'Very Cold',
+    instructions: 'Add gin, vodka, and Lillet Blanc to shaker with ice. Shake hard for 10 seconds (Bond style). Strain into chilled martini glass. Express lemon peel over drink and garnish.'
   }
 ];
 
@@ -273,7 +342,77 @@ export default function MartinisPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [onlyIBA, setOnlyIBA] = useState(false);
 
-  const filteredMartinis = martinis.filter(martini => {
+  // RecipeKit state
+  const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
+  const [showKit, setShowKit] = useState(false);
+  const [servingsById, setServingsById] = useState<Record<string, number>>({});
+  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
+
+  // Convert martinis to RecipeKit format
+  const martiniRecipesWithMeasurements = useMemo(() => {
+    return martinis.map((m) => {
+      const rawList = Array.isArray(m.ingredients) ? m.ingredients : [];
+      const measurements = rawList.map((ing: any) => {
+        if (typeof ing === 'string') return parseIngredient(ing);
+        const { amount = 1, unit = 'item', item = '', note = '' } = ing || {};
+        return { amount, unit, item, note };
+      });
+
+      return {
+        ...m,
+        recipe: {
+          servings: 1,
+          measurements,
+          directions: [m.instructions]
+        }
+      };
+    });
+  }, []);
+
+  const handleShareMartini = async (martini: any, servingsOverride?: number) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const servings = servingsOverride ?? servingsById[martini.id] ?? 1;
+    const preview = martini.ingredients.slice(0, 4).join(' • ');
+    const text = `${martini.name} • ${martini.category} • ${martini.method}\n${preview}${martini.ingredients.length > 4 ? ` …plus ${martini.ingredients.length - 4} more` : ''}`;
+    const shareData = { title: martini.name, text, url };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${martini.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${martini.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const openRecipeModal = (recipe: any) => {
+    setSelectedRecipe(recipe);
+    setShowKit(true);
+  };
+
+  const handleCompleteRecipe = () => {
+    if (selectedRecipe) {
+      addToRecentlyViewed({
+        id: selectedRecipe.id,
+        name: selectedRecipe.name,
+        category: 'martinis',
+        timestamp: Date.now()
+      });
+      incrementDrinksMade();
+      addPoints(35);
+    }
+    setShowKit(false);
+    setSelectedRecipe(null);
+  };
+
+  const filteredMartinis = martiniRecipesWithMeasurements.filter(martini => {
     if (selectedCategory !== 'all' && martini.style.toLowerCase() !== selectedCategory) return false;
     if (selectedSpirit !== 'All Spirits' && martini.baseSpirit !== selectedSpirit) return false;
     if (selectedMethod !== 'All Methods' && martini.method !== selectedMethod) return false;
@@ -310,6 +449,26 @@ export default function MartinisPage() {
   return (
     <RequireAgeGate>
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-purple-50">
+        {/* RecipeKit Modal */}
+        {selectedRecipe && (
+          <RecipeKit
+            open={showKit}
+            onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
+            accent="purple"
+            pointsReward={35}
+            onComplete={handleCompleteRecipe}
+            item={{
+              id: selectedRecipe.id,
+              name: selectedRecipe.name,
+              prepTime: selectedRecipe.prepTime,
+              directions: selectedRecipe.recipe?.directions || [],
+              measurements: selectedRecipe.recipe?.measurements || [],
+              baseNutrition: {},
+              defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+            }}
+          />
+        )}
+
         {/* Header */}
         <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -524,177 +683,247 @@ export default function MartinisPage() {
 
           {/* Martinis Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredMartinis.map(martini => (
-              <Card 
-                key={martini.id} 
-                className="hover:shadow-lg transition-all cursor-pointer bg-white border-purple-100 hover:border-purple-300"
-                onClick={() => handleMartiniClick(martini)}
-              >
-                <CardHeader>
-                  <div className="flex items-start justify-between mb-2">
-                    <CardTitle className="text-lg">{martini.name}</CardTitle>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        addToFavorites({
-                          id: martini.id,
-                          name: martini.name,
-                          category: 'Martinis',
-                          timestamp: Date.now()
-                        });
-                      }}
-                    >
-                      <Heart className={`w-4 h-4 ${isFavorite(martini.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                    </Button>
-                  </div>
-                  <div className="flex gap-2 mb-2">
-                    <Badge className="bg-purple-100 text-purple-700">{martini.style}</Badge>
-                    {martini.trending && (
-                      <Badge className="bg-pink-500">
-                        <TrendingUp className="w-3 h-3 mr-1" />
-                        Trending
-                      </Badge>
-                    )}
-                    {martini.featured && (
-                      <Badge className="bg-purple-500">
-                        <GlassWater className="w-3 h-3 mr-1" />
-                        Featured
-                      </Badge>
-                    )}
-                    {martini.iba_official && (
-                      <Badge className="bg-blue-500">
-                        <Award className="w-3 h-3 mr-1" />
-                        IBA
-                      </Badge>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-gray-600 mb-4">{martini.description}</p>
-                  
-                  <div className="grid grid-cols-2 gap-2 mb-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Wine className="w-4 h-4 text-purple-500" />
-                      <span>{martini.baseSpirit}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-blue-500" />
-                      <span>{martini.prepTime} min</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Flame className="w-4 h-4 text-orange-500" />
-                      <span>{martini.abv} ABV</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                      <span>{martini.rating} ({martini.reviews})</span>
-                    </div>
-                  </div>
+            {filteredMartinis.map(martini => {
+              const useMetric = !!metricFlags[martini.id];
+              const servings = servingsById[martini.id] ?? (martini.recipe?.servings || 1);
 
-                  <div className="flex flex-wrap gap-1 mb-4">
-                    {martini.profile.slice(0, 3).map(trait => (
-                      <Badge key={trait} variant="outline" className="text-xs border-purple-300">
-                        {trait}
-                      </Badge>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center justify-between pt-4 border-t">
-                    <span className="text-sm font-medium text-purple-600">{martini.method}</span>
-                    <span className="text-sm text-gray-500">${martini.estimatedCost.toFixed(2)}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* Martini Detail Modal */}
-          {selectedMartini && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedMartini(null)}>
-              <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-2xl">{selectedMartini.name}</CardTitle>
-                      <p className="text-sm text-gray-500 mt-1">{selectedMartini.ratio} Ratio</p>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedMartini(null)}>×</Button>
-                  </div>
-                  <p className="text-gray-600">{selectedMartini.description}</p>
-                  <div className="flex gap-2 mt-2">
-                    <Badge className="bg-purple-100 text-purple-700">{selectedMartini.style}</Badge>
-                    <Badge className="bg-pink-100 text-pink-700">{selectedMartini.baseSpirit}</Badge>
-                    <Badge className="bg-blue-100 text-blue-700">{selectedMartini.difficulty}</Badge>
-                    {selectedMartini.iba_official && (
-                      <Badge className="bg-blue-500 text-white">IBA Official</Badge>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="font-semibold mb-3">Martini Stats</h3>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="p-3 bg-purple-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Calories</div>
-                          <div className="text-xl font-bold text-purple-600">{selectedMartini.nutrition.calories}</div>
-                        </div>
-                        <div className="p-3 bg-pink-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">ABV</div>
-                          <div className="text-xl font-bold text-pink-600">{selectedMartini.abv}</div>
-                        </div>
-                        <div className="p-3 bg-blue-50 rounded-lg text-center">
-                          <div className="text-sm text-gray-600">Temp</div>
-                          <div className="text-xl font-bold text-blue-600">{selectedMartini.temperature}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="font-semibold mb-3">Ingredients</h3>
-                      <div className="space-y-2">
-                        {selectedMartini.ingredients.map((ingredient, idx) => (
-                          <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                            <Plus className="w-4 h-4 text-purple-500" />
-                            <span className="text-sm">{ingredient}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="font-semibold mb-3">Flavor Profile</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedMartini.profile.map(trait => (
-                          <Badge key={trait} className="bg-purple-100 text-purple-700 border-purple-300">
-                            {trait}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3">
-                      <Button 
-                        className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                        onClick={() => handleMakeMartini(selectedMartini)}
+              return (
+                <Card 
+                  key={martini.id} 
+                  className="hover:shadow-lg transition-all cursor-pointer bg-white border-purple-100 hover:border-purple-300"
+                  onClick={() => handleMartiniClick(martini)}
+                >
+                  <CardHeader>
+                    <div className="flex items-start justify-between mb-2">
+                      <CardTitle className="text-lg">{martini.name}</CardTitle>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          addToFavorites({
+                            id: martini.id,
+                            name: martini.name,
+                            category: 'Martinis',
+                            timestamp: Date.now()
+                          });
+                        }}
                       >
-                        <Martini className="w-4 h-4 mr-2" />
-                        Make This Martini
-                      </Button>
-                      <Button variant="outline" size="icon">
-                        <Share2 className="w-4 h-4" />
-                      </Button>
-                      <Button variant="outline" size="icon">
-                        <Camera className="w-4 h-4" />
+                        <Heart className={`w-4 h-4 ${isFavorite(martini.id) ? 'fill-red-500 text-red-500' : ''}`} />
                       </Button>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
+                    <div className="flex gap-2 mb-2">
+                      <Badge className="bg-purple-100 text-purple-700">{martini.style}</Badge>
+                      {martini.trending && (
+                        <Badge className="bg-pink-500">
+                          <TrendingUp className="w-3 h-3 mr-1" />
+                          Trending
+                        </Badge>
+                      )}
+                      {martini.featured && (
+                        <Badge className="bg-purple-500">
+                          <GlassWater className="w-3 h-3 mr-1" />
+                          Featured
+                        </Badge>
+                      )}
+                      {martini.iba_official && (
+                        <Badge className="bg-blue-500">
+                          <Award className="w-3 h-3 mr-1" />
+                          IBA
+                        </Badge>
+                      )}
+                    </div>
+                  </CardHeader>
+                  
+                  <CardContent>
+                    <p className="text-sm text-gray-600 mb-4">{martini.description}</p>
+                    
+                    <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
+                      <div>
+                        <div className="font-bold text-purple-600">{martini.abv}</div>
+                        <div className="text-gray-500">ABV</div>
+                      </div>
+                      <div>
+                        <div className="font-bold text-pink-600">{martini.prepTime}min</div>
+                        <div className="text-gray-500">Prep</div>
+                      </div>
+                      <div>
+                        <div className="font-bold text-purple-600">{martini.method}</div>
+                        <div className="text-gray-500">Method</div>
+                      </div>
+                    </div>
+
+                    {/* GLASS RATING */}
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-1">
+                        {[...Array(5)].map((_, i) => (
+                          <GlassWater
+                            key={i}
+                            className={`w-4 h-4 ${
+                              i < Math.floor(martini.rating)
+                                ? 'fill-purple-500 text-purple-500'
+                                : 'text-gray-300'
+                            }`}
+                          />
+                        ))}
+                        <span className="font-medium ml-1">{martini.rating}</span>
+                        <span className="text-gray-500 text-sm">({martini.reviews})</span>
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        {martini.difficulty}
+                      </Badge>
+                    </div>
+
+                    {/* RecipeKit Preview */}
+                    {Array.isArray(martini.recipe?.measurements) && martini.recipe.measurements.length > 0 && (
+                      <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-sm font-semibold text-gray-900">
+                            Recipe (serves {servings})
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="px-2 py-1 border rounded text-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setServingsById(prev => ({ ...prev, [martini.id]: clamp((prev[martini.id] ?? 1) - 1) }));
+                              }}
+                            >
+                              −
+                            </button>
+                            <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                            <button
+                              className="px-2 py-1 border rounded text-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setServingsById(prev => ({ ...prev, [martini.id]: clamp((prev[martini.id] ?? 1) + 1) }));
+                              }}
+                            >
+                              +
+                            </button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setServingsById(prev => ({ ...prev, [martini.id]: 1 }));
+                              }}
+                              title="Reset servings"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
+                            </Button>
+                          </div>
+                        </div>
+
+                        <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                          {martini.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                            const isNum = typeof ing.amount === 'number';
+                            const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount;
+                            const show = useMetric && isNum
+                              ? toMetric(ing.unit, Number(ing.amount) * servings)
+                              : { amount: scaledDisplay, unit: ing.unit };
+
+                            return (
+                              <li key={i} className="flex items-start gap-2">
+                                <Check className="h-4 w-4 text-purple-500 mt-0.5" />
+                                <span>
+                                  <span className="text-purple-600 font-semibold">
+                                    {show.amount} {show.unit}
+                                  </span>{" "}
+                                  {ing.item}
+                                  {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                </span>
+                              </li>
+                            );
+                          })}
+                          {martini.recipe.measurements.length > 4 && (
+                            <li className="text-xs text-gray-600">
+                              …plus {martini.recipe.measurements.length - 4} more •{" "}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openRecipeModal(martini);
+                                }}
+                                className="underline"
+                              >
+                                Show more
+                              </button>
+                            </li>
+                          )}
+                        </ul>
+
+                        <div className="flex gap-2 mt-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const lines = martini.ingredients.map((ing: string) => `- ${ing}`);
+                              const txt = `${martini.name} (serves ${servings})\n${lines.join('\n')}`;
+                              try {
+                                await navigator.clipboard.writeText(txt);
+                                alert('Recipe copied!');
+                              } catch {
+                                alert('Unable to copy.');
+                              }
+                            }}
+                          >
+                            <Clipboard className="w-4 h-4 mr-1" /> Copy
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={(e) => {
+                            e.stopPropagation();
+                            handleShareMartini(martini, servings);
+                          }}>
+                            <Share2 className="w-4 w-4 mr-1" /> Share
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMetricFlags((prev) => ({ ...prev, [martini.id]: !prev[martini.id] }));
+                            }}
+                          >
+                            {useMetric ? 'US' : 'Metric'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tags */}
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {martini.profile?.slice(0, 3).map((tag: string) => (
+                        <Badge key={tag} variant="secondary" className="text-xs bg-purple-100 text-purple-700">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2">
+                      <Button 
+                        className="flex-1 bg-purple-600 hover:bg-purple-700"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRecipeModal(martini);
+                        }}
+                      >
+                        <Martini className="h-4 w-4 mr-2" />
+                        View Recipe
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={(e) => {
+                        e.stopPropagation();
+                        handleShareMartini(martini);
+                      }}>
+                        <Share2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
 
           {/* Educational Content */}
           <Card className="mt-12 bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
