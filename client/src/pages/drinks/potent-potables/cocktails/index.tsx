@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,15 +6,76 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
-  Wine, Clock, Trophy, Heart, Target, Sparkles,
+  Wine, Clock, Heart, Target, Sparkles,
   CheckCircle, Flame, Droplets, Plus,
-  Search, Share2, ArrowLeft,
+  Search, Share2, ArrowLeft, Check, X,
   Camera, GlassWater, Crown, Gem,
-  BookOpen, Home, Zap, Apple, Leaf, Martini
+  BookOpen, Home, Zap, Apple, Leaf, Martini,
+  Clipboard, RotateCcw
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
+import RecipeKit from '@/components/recipes/RecipeKit';
 
-// Classic cocktail data
+// ---------- Helpers ----------
+type Measured = { amount: number | string; unit: string; item: string; note?: string };
+const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+const toNiceFraction = (value: number) => {
+  const rounded = Math.round(value * 4) / 4;
+  const whole = Math.trunc(rounded);
+  const frac = Math.round((rounded - whole) * 4);
+  const fracMap: Record<number, string> = { 0: '', 1: '¼', 2: '½', 3: '¾' };
+  const fracStr = fracMap[frac];
+  if (!whole && fracStr) return fracStr;
+  if (whole && fracStr) return `${whole} ${fracStr}`;
+  return `${whole}`;
+};
+const scaleAmount = (baseAmount: number | string, servings: number) => {
+  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
+  if (Number.isNaN(n)) return baseAmount;
+  return toNiceFraction(n * servings);
+};
+
+const toMetric = (unit: string, amount: number) => {
+  const mlPerOz = 30;
+  switch (unit) {
+    case 'oz': return { amount: Math.round(amount * mlPerOz), unit: 'ml' };
+    case 'dash': return { amount: Math.round(amount * 1), unit: 'dash' };
+    default: return { amount, unit };
+  }
+};
+
+const parseIngredient = (ingredient: string): Measured => {
+  const fractionMap: Record<string, number> = {
+    '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
+  };
+  
+  const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
+  if (parts.length < 2) return m('1', 'item', ingredient);
+
+  let amountStr = parts[0];
+  let amount: number | string = fractionMap[amountStr] ?? 
+    (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
+
+  let unit = parts[1];
+  let item = parts.slice(2).join(' ');
+
+  const descriptors = new Set(['fresh', 'large', 'sugar', 'simple', 'sweet', 'dry']);
+  if (descriptors.has(unit.toLowerCase())) {
+    item = [unit, item].filter(Boolean).join(' ').trim();
+    unit = 'item';
+  }
+
+  if (item.includes('(optional)')) {
+    item = item.replace('(optional)', '').trim();
+    return m(amount, unit, item, 'optional');
+  }
+  
+  return m(amount, unit, item);
+};
+
+// Classic cocktail data with RecipeKit measurements
 const classicCocktails = [
   {
     id: 'classic-1',
@@ -304,9 +365,79 @@ export default function ClassicCocktailsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
   const [selectedCocktail, setSelectedCocktail] = useState<typeof classicCocktails[0] | null>(null);
+  
+  // RecipeKit state
+  const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
+  const [showKit, setShowKit] = useState(false);
+  const [servingsById, setServingsById] = useState<Record<string, number>>({});
+  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
+
+  // Convert cocktails to RecipeKit format
+  const cocktailRecipesWithMeasurements = useMemo(() => {
+    return classicCocktails.map((c) => {
+      const rawList = Array.isArray(c.ingredients) ? c.ingredients : [];
+      const measurements = rawList.map((ing: any) => {
+        if (typeof ing === 'string') return parseIngredient(ing);
+        const { amount = 1, unit = 'item', item = '', note = '' } = ing || {};
+        return { amount, unit, item, note };
+      });
+
+      return {
+        ...c,
+        recipe: {
+          servings: 1,
+          measurements,
+          directions: [c.instructions]
+        }
+      };
+    });
+  }, []);
+
+  const handleShareCocktail = async (cocktail: any, servingsOverride?: number) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const servings = servingsOverride ?? servingsById[cocktail.id] ?? 1;
+    const preview = cocktail.ingredients.slice(0, 4).join(' • ');
+    const text = `${cocktail.name} • ${cocktail.category} • ${cocktail.era}\n${preview}${cocktail.ingredients.length > 4 ? ` …plus ${cocktail.ingredients.length - 4} more` : ''}`;
+    const shareData = { title: cocktail.name, text, url };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${cocktail.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${cocktail.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const openRecipeModal = (recipe: any) => {
+    setSelectedRecipe(recipe);
+    setShowKit(true);
+  };
+
+  const handleCompleteRecipe = () => {
+    if (selectedRecipe) {
+      addToRecentlyViewed({
+        id: selectedRecipe.id,
+        name: selectedRecipe.name,
+        category: 'potent-potables',
+        timestamp: Date.now()
+      });
+      incrementDrinksMade();
+      addPoints(40);
+    }
+    setShowKit(false);
+    setSelectedRecipe(null);
+  };
 
   const getFilteredCocktails = () => {
-    let filtered = classicCocktails.filter(cocktail => {
+    let filtered = cocktailRecipesWithMeasurements.filter(cocktail => {
       const matchesSearch = cocktail.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            cocktail.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesEra = !selectedEra || cocktail.era.includes(selectedEra);
@@ -332,8 +463,8 @@ export default function ClassicCocktailsPage() {
   };
 
   const filteredCocktails = getFilteredCocktails();
-  const featuredCocktails = classicCocktails.filter(cocktail => cocktail.featured);
-  const trendingCocktails = classicCocktails.filter(cocktail => cocktail.trending);
+  const featuredCocktails = cocktailRecipesWithMeasurements.filter(c => c.featured);
+  const trendingCocktails = cocktailRecipesWithMeasurements.filter(c => c.trending);
 
   const handleCocktailClick = (cocktail: typeof classicCocktails[0]) => {
     setSelectedCocktail(cocktail);
@@ -354,6 +485,26 @@ export default function ClassicCocktailsPage() {
   return (
     <RequireAgeGate>
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+        {/* RecipeKit Modal */}
+        {selectedRecipe && (
+          <RecipeKit
+            open={showKit}
+            onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
+            accent="blue"
+            pointsReward={40}
+            onComplete={handleCompleteRecipe}
+            item={{
+              id: selectedRecipe.id,
+              name: selectedRecipe.name,
+              prepTime: selectedRecipe.prepTime,
+              directions: selectedRecipe.recipe?.directions || [],
+              measurements: selectedRecipe.recipe?.measurements || [],
+              baseNutrition: {},
+              defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+            }}
+          />
+        )}
+
         {/* Header */}
         <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -556,112 +707,252 @@ export default function ClassicCocktailsPage() {
 
               {/* Results */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredCocktails.map(cocktail => (
-                  <Card 
-                    key={cocktail.id} 
-                    className="hover:shadow-lg transition-shadow cursor-pointer"
-                    onClick={() => handleCocktailClick(cocktail)}
-                  >
-                    <CardHeader className="pb-2">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <CardTitle className="text-lg mb-1">{cocktail.name}</CardTitle>
-                          <p className="text-sm text-gray-600 mb-2">{cocktail.description}</p>
+                {filteredCocktails.map(cocktail => {
+                  const useMetric = !!metricFlags[cocktail.id];
+                  const servings = servingsById[cocktail.id] ?? (cocktail.recipe?.servings || 1);
+
+                  return (
+                    <Card 
+                      key={cocktail.id} 
+                      className="hover:shadow-lg transition-shadow cursor-pointer"
+                      onClick={() => handleCocktailClick(cocktail)}
+                    >
+                      <CardHeader className="pb-2">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <CardTitle className="text-lg mb-1">{cocktail.name}</CardTitle>
+                            <p className="text-sm text-gray-600 mb-2">{cocktail.description}</p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addToFavorites({
+                                id: cocktail.id,
+                                name: cocktail.name,
+                                category: 'potent-potables',
+                                timestamp: Date.now()
+                              });
+                            }}
+                            className="text-gray-400 hover:text-blue-500"
+                          >
+                            <Heart className={`h-4 w-4 ${isFavorite(cocktail.id) ? 'fill-blue-500 text-blue-500' : ''}`} />
+                          </Button>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            addToFavorites({
-                              id: cocktail.id,
-                              name: cocktail.name,
-                              category: 'potent-potables',
-                              timestamp: Date.now()
-                            });
-                          }}
-                          className="text-gray-400 hover:text-blue-500"
-                        >
-                          <Heart className={`h-4 w-4 ${isFavorite(cocktail.id) ? 'fill-blue-500 text-blue-500' : ''}`} />
-                        </Button>
-                      </div>
+                        
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge variant="outline">{cocktail.era}</Badge>
+                          <Badge className="bg-blue-100 text-blue-800">{cocktail.category}</Badge>
+                          {cocktail.trending && <Badge className="bg-indigo-100 text-indigo-800">Trending</Badge>}
+                        </div>
+                      </CardHeader>
                       
-                      <div className="flex items-center gap-2 mb-2">
-                        <Badge variant="outline">{cocktail.era}</Badge>
-                        <Badge className="bg-blue-100 text-blue-800">{cocktail.category}</Badge>
-                        {cocktail.trending && <Badge className="bg-indigo-100 text-indigo-800">Trending</Badge>}
-                      </div>
-                    </CardHeader>
-                    
-                    <CardContent>
-                      {/* Key Info Grid */}
-                      <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
-                        <div>
-                          <div className="font-bold text-blue-600">{cocktail.abv}</div>
-                          <div className="text-gray-500">ABV</div>
+                      <CardContent>
+                        {/* Key Info Grid */}
+                        <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
+                          <div>
+                            <div className="font-bold text-blue-600">{cocktail.abv}</div>
+                            <div className="text-gray-500">ABV</div>
+                          </div>
+                          <div>
+                            <div className="font-bold text-indigo-600">{cocktail.prepTime}min</div>
+                            <div className="text-gray-500">Prep</div>
+                          </div>
+                          <div>
+                            <div className="font-bold text-purple-600">{cocktail.method}</div>
+                            <div className="text-gray-500">Method</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="font-bold text-indigo-600">{cocktail.prepTime}min</div>
-                          <div className="text-gray-500">Prep</div>
-                        </div>
-                        <div>
-                          <div className="font-bold text-purple-600">{cocktail.method}</div>
-                          <div className="text-gray-500">Method</div>
-                        </div>
-                      </div>
 
-                      {/* Details */}
-                      <div className="space-y-2 mb-4 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Glassware:</span>
-                          <span className="font-medium text-xs">{cocktail.glassware}</span>
+                        {/* Details */}
+                        <div className="space-y-2 mb-4 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Glassware:</span>
+                            <span className="font-medium text-xs">{cocktail.glassware}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Origin:</span>
+                            <span className="font-medium">{cocktail.origin}</span>
+                          </div>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Origin:</span>
-                          <span className="font-medium">{cocktail.origin}</span>
-                        </div>
-                      </div>
 
-                      {/* GLASS RATING */}
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-1">
-                          {[...Array(5)].map((_, i) => (
-                            <GlassWater
-                              key={i}
-                              className={`w-4 h-4 ${
-                                i < Math.floor(cocktail.rating)
-                                  ? 'fill-blue-500 text-blue-500'
-                                  : 'text-gray-300'
-                              }`}
-                            />
+                        {/* GLASS RATING */}
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-1">
+                            {[...Array(5)].map((_, i) => (
+                              <GlassWater
+                                key={i}
+                                className={`w-4 h-4 ${
+                                  i < Math.floor(cocktail.rating)
+                                    ? 'fill-blue-500 text-blue-500'
+                                    : 'text-gray-300'
+                                }`}
+                              />
+                            ))}
+                            <span className="font-medium ml-1">{cocktail.rating}</span>
+                            <span className="text-gray-500 text-sm">({cocktail.reviews})</span>
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            {cocktail.difficulty}
+                          </Badge>
+                        </div>
+
+                        {/* RecipeKit Preview */}
+                        {Array.isArray(cocktail.recipe?.measurements) && cocktail.recipe.measurements.length > 0 && (
+                          <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="text-sm font-semibold text-gray-900">
+                                Recipe (serves {servings})
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  className="px-2 py-1 border rounded text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setServingsById(prev => ({ ...prev, [cocktail.id]: clamp((prev[cocktail.id] ?? 1) - 1) }));
+                                  }}
+                                  aria-label="decrease servings"
+                                >
+                                  −
+                                </button>
+                                <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                                <button
+                                  className="px-2 py-1 border rounded text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setServingsById(prev => ({ ...prev, [cocktail.id]: clamp((prev[cocktail.id] ?? 1) + 1) }));
+                                  }}
+                                  aria-label="increase servings"
+                                >
+                                  +
+                                </button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setServingsById(prev => {
+                                      const next = { ...prev };
+                                      next[cocktail.id] = 1;
+                                      return next;
+                                    });
+                                  }}
+                                  title="Reset servings"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
+                                </Button>
+                              </div>
+                            </div>
+
+                            <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                              {cocktail.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                                const isNum = typeof ing.amount === 'number';
+                                const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount;
+                                const show = useMetric && isNum
+                                  ? toMetric(ing.unit, Number(ing.amount) * servings)
+                                  : { amount: scaledDisplay, unit: ing.unit };
+
+                                return (
+                                  <li key={i} className="flex items-start gap-2">
+                                    <Check className="h-4 w-4 text-blue-500 mt-0.5" />
+                                    <span>
+                                      <span className="text-blue-600 font-semibold">
+                                        {show.amount} {show.unit}
+                                      </span>{" "}
+                                      {ing.item}
+                                      {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                              {cocktail.recipe.measurements.length > 4 && (
+                                <li className="text-xs text-gray-600">
+                                  …plus {cocktail.recipe.measurements.length - 4} more •{" "}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openRecipeModal(cocktail);
+                                    }}
+                                    className="underline underline-offset-2"
+                                  >
+                                    Show more
+                                  </button>
+                                </li>
+                              )}
+                            </ul>
+
+                            <div className="flex gap-2 mt-3">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const lines = cocktail.ingredients.map((ing: string) => `- ${ing}`);
+                                  const txt = `${cocktail.name} (serves ${servings})\n${lines.join('\n')}`;
+                                  try {
+                                    await navigator.clipboard.writeText(txt);
+                                    alert('Recipe copied!');
+                                  } catch {
+                                    alert('Unable to copy on this device.');
+                                  }
+                                }}
+                              >
+                                <Clipboard className="w-4 h-4 mr-1" /> Copy
+                              </Button>
+                              <Button variant="outline" size="sm" onClick={(e) => {
+                                e.stopPropagation();
+                                handleShareCocktail(cocktail, servings);
+                              }}>
+                                <Share2 className="w-4 h-4 mr-1" /> Share
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMetricFlags((prev) => ({ ...prev, [cocktail.id]: !prev[cocktail.id] }));
+                                }}
+                              >
+                                {useMetric ? 'US' : 'Metric'}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Tags */}
+                        <div className="flex flex-wrap gap-1 mb-4">
+                          {cocktail.tags?.slice(0, 3).map((tag: string, index: number) => (
+                            <Badge key={index} variant="secondary" className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-200">
+                              {tag}
+                            </Badge>
                           ))}
-                          <span className="font-medium ml-1">{cocktail.rating}</span>
-                          <span className="text-gray-500 text-sm">({cocktail.reviews})</span>
                         </div>
-                        <Badge variant="outline" className="text-xs">
-                          {cocktail.difficulty}
-                        </Badge>
-                      </div>
 
-                      {/* Actions */}
-                      <div className="flex gap-2">
-                        <Button 
-                          className="flex-1 bg-blue-600 hover:bg-blue-700"
-                          onClick={(e) => {
+                        {/* Actions */}
+                        <div className="flex gap-2">
+                          <Button 
+                            className="flex-1 bg-blue-600 hover:bg-blue-700"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openRecipeModal(cocktail);
+                            }}
+                          >
+                            <Wine className="h-4 w-4 mr-2" />
+                            View Recipe
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={(e) => {
                             e.stopPropagation();
-                            handleCocktailClick(cocktail);
-                          }}
-                        >
-                          <Wine className="h-4 w-4 mr-2" />
-                          View Recipe
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={(e) => e.stopPropagation()}>
-                          <Share2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                            handleShareCocktail(cocktail);
+                          }}>
+                            <Share2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -824,13 +1115,11 @@ export default function ClassicCocktailsPage() {
                   </CardHeader>
                   
                   <CardContent>
-                    {/* Historical Info */}
                     <div className="bg-blue-50 p-4 rounded-lg mb-6">
                       <h4 className="font-medium text-blue-900 mb-2">Historical Note:</h4>
                       <p className="text-sm text-blue-800">{cocktail.history}</p>
                     </div>
 
-                    {/* Enhanced details display */}
                     <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
                       <div className="text-center">
                         <div className="text-xl font-bold text-blue-600">{cocktail.abv}</div>
@@ -850,7 +1139,6 @@ export default function ClassicCocktailsPage() {
                       </div>
                     </div>
 
-                    {/* Ingredients */}
                     <div className="mb-4">
                       <h4 className="font-medium text-gray-900 mb-2">Ingredients:</h4>
                       <ul className="space-y-1">
@@ -863,25 +1151,26 @@ export default function ClassicCocktailsPage() {
                       </ul>
                     </div>
 
-                    {/* Instructions */}
                     <div className="mb-6">
                       <h4 className="font-medium text-gray-900 mb-2">Instructions:</h4>
                       <p className="text-sm text-gray-700">{cocktail.instructions}</p>
                     </div>
 
-                    {/* Action buttons */}
                     <div className="flex gap-3">
                       <Button 
                         className="flex-1 bg-blue-600 hover:bg-blue-700"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleCocktailClick(cocktail);
+                          openRecipeModal(cocktail);
                         }}
                       >
                         <Wine className="h-4 w-4 mr-2" />
                         View Full Recipe
                       </Button>
-                      <Button variant="outline" onClick={(e) => e.stopPropagation()}>
+                      <Button variant="outline" onClick={(e) => {
+                        e.stopPropagation();
+                        handleShareCocktail(cocktail);
+                      }}>
                         <Share2 className="h-4 w-4 mr-2" />
                         Share
                       </Button>
@@ -913,7 +1202,6 @@ export default function ClassicCocktailsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-6">
-                    {/* Historical Note */}
                     <div className="bg-blue-50 p-4 rounded-lg">
                       <h4 className="font-medium text-blue-900 mb-2 flex items-center gap-2">
                         <BookOpen className="w-5 h-5" />
@@ -922,7 +1210,6 @@ export default function ClassicCocktailsPage() {
                       <p className="text-sm text-blue-800">{selectedCocktail.history}</p>
                     </div>
 
-                    {/* Cocktail Stats */}
                     <div>
                       <h3 className="font-semibold mb-3 flex items-center gap-2">
                         <Target className="w-5 h-5 text-blue-500" />
@@ -944,7 +1231,6 @@ export default function ClassicCocktailsPage() {
                       </div>
                     </div>
 
-                    {/* Glassware & Garnish */}
                     <div>
                       <h3 className="font-semibold mb-3 flex items-center gap-2">
                         <GlassWater className="w-5 h-5 text-blue-500" />
@@ -962,7 +1248,6 @@ export default function ClassicCocktailsPage() {
                       </div>
                     </div>
 
-                    {/* Ingredients */}
                     <div>
                       <h3 className="font-semibold mb-3 flex items-center gap-2">
                         <Sparkles className="w-5 h-5 text-indigo-500" />
@@ -978,7 +1263,6 @@ export default function ClassicCocktailsPage() {
                       </div>
                     </div>
 
-                    {/* Flavor Profile */}
                     <div>
                       <h3 className="font-semibold mb-3 flex items-center gap-2">
                         <GlassWater className="w-5 h-5 text-blue-500" />
@@ -993,7 +1277,6 @@ export default function ClassicCocktailsPage() {
                       </div>
                     </div>
 
-                    {/* Instructions */}
                     <div>
                       <h3 className="font-semibold mb-3 flex items-center gap-2">
                         <Target className="w-5 h-5 text-blue-500" />
@@ -1004,7 +1287,6 @@ export default function ClassicCocktailsPage() {
                       </div>
                     </div>
 
-                    {/* Pro Tips */}
                     <div className="bg-blue-50 p-4 rounded-lg">
                       <h3 className="font-semibold mb-2 flex items-center gap-2">
                         <Sparkles className="w-5 h-5 text-blue-500" />
@@ -1019,7 +1301,6 @@ export default function ClassicCocktailsPage() {
                       </ul>
                     </div>
 
-                    {/* GLASS Rating */}
                     <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                       <div className="flex items-center gap-2">
                         {[...Array(5)].map((_, i) => (
@@ -1038,7 +1319,6 @@ export default function ClassicCocktailsPage() {
                       <Badge variant="outline">{selectedCocktail.difficulty}</Badge>
                     </div>
 
-                    {/* Action Buttons */}
                     <div className="flex gap-3">
                       <Button 
                         className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
@@ -1061,7 +1341,6 @@ export default function ClassicCocktailsPage() {
           )}
         </div>
 
-        {/* Floating Action Button */}
         <div className="fixed bottom-6 right-6 z-50">
           <Button 
             size="lg" 
@@ -1072,7 +1351,6 @@ export default function ClassicCocktailsPage() {
           </Button>
         </div>
 
-        {/* Bottom Stats Bar */}
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-6 text-sm">
