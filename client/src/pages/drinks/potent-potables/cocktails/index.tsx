@@ -337,7 +337,7 @@ const sisterPotentPotablesPages = [
   { id: 'martinis', name: 'Martinis', path: '/drinks/potent-potables/martinis', icon: Martini, description: 'Elegant classics' },
   { id: 'seasonal', name: 'Seasonal', path: '/drinks/potent-potables/seasonal', icon: Sparkles, description: 'Festive drinks' },
   { id: 'mocktails', name: 'Mocktails', path: '/drinks/potent-potables/mocktails', icon: Sparkles, description: 'Zero-proof' },
-  { id: 'virgin', name: 'Virgin Cocktails', path: '/drinks/potent-potables/virgin-cocktails', icon: Sparkles, description: 'Alcohol-free' }
+  { id: 'daiquiri', name: 'Daiquiri', path: '/drinks/potent-potables/daiquiri', icon: Droplets, description: 'Rum classics' },
 ];
 
 // CROSS-HUB - Top level drink categories
