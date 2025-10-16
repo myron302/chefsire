@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
-  Flame, Clock, Heart, Star, Target, Sparkles, Sun, 
-  Search, Share2, ArrowLeft, Plus, Camera, GlassWater,
-  TrendingUp, Award, Crown, Coffee, Leaf, Zap, Cherry, Citrus,
+  Palmtree, Clock, Heart, Star, Target, Sparkles, Sun, 
+  Search, Share2, ArrowLeft, Plus, Camera, Flame, GlassWater,
+  TrendingUp, Award, Crown, Coffee, Leaf, Zap, Cherry, Waves,
   Droplets, BookOpen, Home, Apple, Wine, Martini,
   Clipboard, RotateCcw, Check
 } from 'lucide-react';
@@ -60,7 +60,7 @@ const parseIngredient = (ingredient: string): Measured => {
   let unit = parts[1];
   let item = parts.slice(2).join(' ');
 
-  const descriptors = new Set(['fresh', 'blanco', 'reposado', 'añejo', 'vanilla']);
+  const descriptors = new Set(['fresh', 'white', 'dark', 'gold', 'aged', 'light']);
   if (descriptors.has(unit.toLowerCase())) {
     item = [unit, item].filter(Boolean).join(' ').trim();
     unit = 'item';
@@ -74,230 +74,483 @@ const parseIngredient = (ingredient: string): Measured => {
   return m(amount, unit, item);
 };
 
-const tequilaMezcalCocktails = [
+const rumCocktails = [
   {
-    id: 'tequila-1',
-    name: 'Classic Margarita',
-    description: 'The perfect balance of tequila, lime, and orange liqueur',
-    spiritType: 'Blanco Tequila',
-    origin: 'Mexico',
-    glassware: 'Margarita Glass',
-    servingSize: '5 oz',
-    nutrition: { calories: 195, carbs: 12, sugar: 10, alcohol: 14 },
-    ingredients: ['2 oz Blanco Tequila', '1 oz Fresh Lime Juice', '1 oz Triple Sec', 'Salt (for rim)', 'Lime Wheel', 'Ice'],
-    profile: ['Citrus', 'Refreshing', 'Balanced', 'Classic'],
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.8,
-    reviews: 8234,
-    trending: true,
-    featured: true,
-    estimatedCost: 4.50,
-    bestTime: 'Evening',
-    occasion: 'Party',
-    allergens: [],
-    category: 'Classic Tequila',
-    garnish: 'Salt rim, lime wheel',
-    method: 'Shake',
-    abv: '18-22%',
-    iba_official: true,
-    instructions: 'Rim glass with salt. Shake tequila, lime juice, and triple sec with ice. Strain into prepared glass over fresh ice. Garnish with lime wheel.'
-  },
-  {
-    id: 'tequila-2',
-    name: 'Paloma',
-    description: 'Mexico\'s most popular cocktail with grapefruit soda',
-    spiritType: 'Blanco Tequila',
-    origin: 'Mexico',
+    id: 'rum-1',
+    name: 'Mojito',
+    description: 'Refreshing Cuban classic with mint and lime',
+    spiritType: 'White Rum',
+    origin: 'Havana, Cuba',
     glassware: 'Highball Glass',
     servingSize: '10 oz',
-    nutrition: { calories: 185, carbs: 16, sugar: 14, alcohol: 12 },
-    ingredients: ['2 oz Blanco Tequila', '0.5 oz Fresh Lime Juice', '4 oz Grapefruit Soda', 'Salt (for rim)', 'Grapefruit Slice', 'Ice'],
-    profile: ['Citrus', 'Refreshing', 'Light', 'Popular'],
-    difficulty: 'Very Easy',
-    prepTime: 2,
-    rating: 4.7,
-    reviews: 5678,
-    trending: true,
-    featured: true,
-    estimatedCost: 3.50,
-    bestTime: 'Afternoon',
-    occasion: 'Casual',
-    allergens: [],
-    category: 'Classic Tequila',
-    garnish: 'Salt rim, grapefruit slice',
-    method: 'Build',
-    abv: '10-12%',
-    iba_official: false,
-    instructions: 'Rim highball glass with salt and fill with ice. Add tequila and lime juice. Top with grapefruit soda. Stir gently and garnish with grapefruit slice.'
-  },
-  {
-    id: 'tequila-3',
-    name: 'Tequila Sunrise',
-    description: 'Layered sunrise effect with tequila and grenadine',
-    spiritType: 'Blanco Tequila',
-    origin: 'California, USA',
-    glassware: 'Highball Glass',
-    servingSize: '8 oz',
-    nutrition: { calories: 215, carbs: 22, sugar: 20, alcohol: 12 },
-    ingredients: ['2 oz Blanco Tequila', '4 oz Orange Juice', '0.5 oz Grenadine', 'Orange Slice', 'Cherry', 'Ice'],
-    profile: ['Fruity', 'Sweet', 'Colorful', 'Easy'],
-    difficulty: 'Very Easy',
-    prepTime: 2,
-    rating: 4.5,
-    reviews: 4321,
-    trending: false,
-    featured: false,
-    estimatedCost: 3.50,
-    bestTime: 'Brunch',
-    occasion: 'Poolside',
-    allergens: [],
-    category: 'Classic Tequila',
-    garnish: 'Orange slice, cherry',
-    method: 'Build & Layer',
-    abv: '10-12%',
-    iba_official: true,
-    instructions: 'Fill glass with ice. Add tequila and orange juice, stir. Slowly pour grenadine down the side to create sunrise effect. Garnish with orange slice and cherry.'
-  },
-  {
-    id: 'tequila-4',
-    name: 'Tommy\'s Margarita',
-    description: 'Agave-sweetened margarita without triple sec',
-    spiritType: 'Blanco Tequila',
-    origin: 'San Francisco, USA',
-    glassware: 'Rocks Glass',
-    servingSize: '4 oz',
-    nutrition: { calories: 175, carbs: 10, sugar: 9, alcohol: 15 },
-    ingredients: ['2 oz Blanco Tequila', '1 oz Fresh Lime Juice', '0.5 oz Agave Nectar', 'Salt (for rim)', 'Lime Wheel', 'Ice'],
-    profile: ['Pure', 'Agave-forward', 'Citrus', 'Refined'],
+    nutrition: {
+      calories: 217,
+      carbs: 24,
+      sugar: 20,
+      alcohol: 13
+    },
+    ingredients: [
+      '2 oz White Rum',
+      '1 oz Fresh Lime Juice',
+      '0.75 oz Simple Syrup',
+      '8-10 Fresh Mint Leaves',
+      'Soda Water (top)',
+      'Ice'
+    ],
+    profile: ['Refreshing', 'Minty', 'Citrus', 'Tropical'],
     difficulty: 'Easy',
-    prepTime: 3,
+    prepTime: 5,
     rating: 4.8,
-    reviews: 3456,
+    reviews: 5642,
     trending: true,
     featured: true,
     estimatedCost: 4.50,
+    bestTime: 'Afternoon',
+    occasion: 'Beach',
+    allergens: [],
+    category: 'Classic Rum',
+    garnish: 'Mint sprig, lime wheel',
+    method: 'Muddle & Build',
+    abv: '10-12%',
+    iba_official: true,
+    instructions: 'Muddle mint leaves with lime juice and simple syrup in glass. Add rum and ice. Top with soda water. Stir gently and garnish with mint sprig and lime wheel.'
+  },
+  {
+    id: 'rum-2',
+    name: 'Daiquiri',
+    description: 'Perfect balance of rum, lime, and sugar',
+    spiritType: 'White Rum',
+    origin: 'Santiago de Cuba',
+    glassware: 'Coupe Glass',
+    servingSize: '4 oz',
+    nutrition: {
+      calories: 186,
+      carbs: 9,
+      sugar: 7,
+      alcohol: 15
+    },
+    ingredients: [
+      '2 oz White Rum',
+      '1 oz Fresh Lime Juice',
+      '0.75 oz Simple Syrup',
+      'Ice'
+    ],
+    profile: ['Clean', 'Citrus', 'Balanced', 'Classic'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.7,
+    reviews: 4328,
+    trending: true,
+    featured: true,
+    estimatedCost: 3.50,
     bestTime: 'Evening',
     occasion: 'Sophisticated',
     allergens: [],
-    category: 'Classic Tequila',
-    garnish: 'Salt rim, lime wheel',
+    category: 'Classic Rum',
+    garnish: 'Lime wheel',
     method: 'Shake',
-    abv: '22-26%',
-    iba_official: false,
-    instructions: 'Rim glass with salt. Shake tequila, lime juice, and agave nectar with ice. Strain over fresh ice. Garnish with lime wheel.'
+    abv: '20-24%',
+    iba_official: true,
+    instructions: 'Shake all ingredients vigorously with ice. Double strain into chilled coupe glass. Garnish with lime wheel.'
   },
   {
-    id: 'mezcal-1',
-    name: 'Mezcal Margarita',
-    description: 'Smoky twist on the classic margarita',
-    spiritType: 'Mezcal',
-    origin: 'Mexico',
-    glassware: 'Rocks Glass',
-    servingSize: '5 oz',
-    nutrition: { calories: 195, carbs: 12, sugar: 10, alcohol: 14 },
-    ingredients: ['2 oz Mezcal', '1 oz Fresh Lime Juice', '0.75 oz Agave Nectar', 'Salt (for rim)', 'Lime Wheel', 'Ice'],
-    profile: ['Smoky', 'Citrus', 'Complex', 'Bold'],
+    id: 'rum-3',
+    name: 'Piña Colada',
+    description: 'Creamy tropical paradise in a glass',
+    spiritType: 'White Rum',
+    origin: 'San Juan, Puerto Rico',
+    glassware: 'Hurricane Glass',
+    servingSize: '12 oz',
+    nutrition: {
+      calories: 490,
+      carbs: 58,
+      sugar: 52,
+      alcohol: 16
+    },
+    ingredients: [
+      '2 oz White Rum',
+      '3 oz Coconut Cream',
+      '3 oz Pineapple Juice',
+      'Pineapple Chunks (optional)',
+      'Crushed Ice'
+    ],
+    profile: ['Creamy', 'Tropical', 'Sweet', 'Indulgent'],
     difficulty: 'Easy',
-    prepTime: 3,
+    prepTime: 4,
+    rating: 4.6,
+    reviews: 6234,
+    trending: false,
+    featured: true,
+    estimatedCost: 5.00,
+    bestTime: 'Beach',
+    occasion: 'Vacation',
+    allergens: ['Coconut'],
+    category: 'Tropical Rum',
+    garnish: 'Pineapple wedge, cherry',
+    method: 'Blend',
+    abv: '12-15%',
+    iba_official: true,
+    instructions: 'Blend all ingredients with crushed ice until smooth. Pour into hurricane glass. Garnish with pineapple wedge and cherry.'
+  },
+  {
+    id: 'rum-4',
+    name: 'Mai Tai',
+    description: 'Complex tiki classic with almond and citrus notes',
+    spiritType: 'Dark Rum',
+    origin: 'Oakland, California',
+    glassware: 'Old Fashioned Glass',
+    servingSize: '6 oz',
+    nutrition: {
+      calories: 254,
+      carbs: 18,
+      sugar: 15,
+      alcohol: 17
+    },
+    ingredients: [
+      '2 oz Dark Rum',
+      '0.5 oz Orange Curaçao',
+      '0.5 oz Orgeat Syrup',
+      '1 oz Fresh Lime Juice',
+      '0.25 oz Simple Syrup',
+      'Crushed Ice'
+    ],
+    profile: ['Complex', 'Nutty', 'Citrus', 'Tropical'],
+    difficulty: 'Medium',
+    prepTime: 5,
     rating: 4.8,
     reviews: 3987,
     trending: true,
     featured: true,
-    estimatedCost: 6.00,
+    estimatedCost: 6.50,
     bestTime: 'Evening',
-    occasion: 'Sophisticated',
-    allergens: [],
-    category: 'Mezcal Cocktails',
-    garnish: 'Salt rim, lime wheel',
+    occasion: 'Tiki Bar',
+    allergens: ['Almonds'],
+    category: 'Tiki Rum',
+    garnish: 'Mint sprig, lime shell, pineapple',
     method: 'Shake',
-    abv: '18-22%',
-    iba_official: false,
-    instructions: 'Rim glass with salt. Shake mezcal, lime juice, and agave nectar with ice. Strain over fresh ice. Garnish with lime wheel.'
+    abv: '20-24%',
+    iba_official: true,
+    instructions: 'Shake all ingredients with ice. Strain over crushed ice in rocks glass. Garnish elaborately with mint sprig, spent lime shell, and pineapple.'
   },
   {
-    id: 'mezcal-2',
-    name: 'Oaxaca Old Fashioned',
-    description: 'Mezcal and tequila old fashioned variation',
-    spiritType: 'Mezcal',
-    origin: 'New York City, USA',
-    glassware: 'Old Fashioned Glass',
-    servingSize: '3 oz',
-    nutrition: { calories: 175, carbs: 5, sugar: 4, alcohol: 17 },
-    ingredients: ['1.5 oz Reposado Tequila', '0.5 oz Mezcal', '0.25 oz Agave Nectar', '2 dashes Angostura Bitters', 'Orange Peel', 'Large Ice Cube'],
-    profile: ['Smoky', 'Rich', 'Complex', 'Bold'],
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.9,
-    reviews: 2876,
+    id: 'rum-5',
+    name: 'Dark and Stormy',
+    description: 'Bold ginger beer and dark rum combination',
+    spiritType: 'Dark Rum',
+    origin: 'Bermuda',
+    glassware: 'Highball Glass',
+    servingSize: '10 oz',
+    nutrition: {
+      calories: 235,
+      carbs: 26,
+      sugar: 23,
+      alcohol: 13
+    },
+    ingredients: [
+      '2 oz Dark Rum',
+      '4 oz Ginger Beer',
+      '0.5 oz Fresh Lime Juice',
+      'Lime Wedge',
+      'Ice'
+    ],
+    profile: ['Spicy', 'Bold', 'Refreshing', 'Gingery'],
+    difficulty: 'Very Easy',
+    prepTime: 2,
+    rating: 4.5,
+    reviews: 3456,
+    trending: false,
+    featured: false,
+    estimatedCost: 4.00,
+    bestTime: 'Afternoon',
+    occasion: 'Casual',
+    allergens: [],
+    category: 'Classic Rum',
+    garnish: 'Lime wedge',
+    method: 'Build',
+    abv: '10-12%',
+    iba_official: false,
+    instructions: 'Fill highball glass with ice. Add rum and lime juice. Top with ginger beer. Stir gently and garnish with lime wedge.'
+  },
+  {
+    id: 'rum-6',
+    name: 'Zombie',
+    description: 'Powerful tiki drink with multiple rums',
+    spiritType: 'Mixed Rum',
+    origin: 'Hollywood, California',
+    glassware: 'Tiki Mug',
+    servingSize: '8 oz',
+    nutrition: {
+      calories: 315,
+      carbs: 24,
+      sugar: 20,
+      alcohol: 22
+    },
+    ingredients: [
+      '1.5 oz White Rum',
+      '1.5 oz Gold Rum',
+      '1 oz Overproof Rum',
+      '0.75 oz Lime Juice',
+      '1 oz Pineapple Juice',
+      '0.5 oz Passion Fruit Syrup',
+      '0.5 oz Grenadine',
+      '1 dash Angostura Bitters',
+      'Ice'
+    ],
+    profile: ['Strong', 'Complex', 'Fruity', 'Intense'],
+    difficulty: 'Hard',
+    prepTime: 7,
+    rating: 4.7,
+    reviews: 2145,
     trending: true,
     featured: true,
-    estimatedCost: 7.00,
-    bestTime: 'Evening',
-    occasion: 'Sophisticated',
+    estimatedCost: 8.00,
+    bestTime: 'Night',
+    occasion: 'Party',
     allergens: [],
-    category: 'Mezcal Cocktails',
-    garnish: 'Orange peel, flamed',
-    method: 'Stir',
-    abv: '32-36%',
-    iba_official: false,
-    instructions: 'Add agave nectar and bitters to glass. Add large ice cube, tequila, and mezcal. Stir until chilled. Flame orange peel over drink and garnish.'
+    category: 'Tiki Rum',
+    garnish: 'Mint sprig, cherry, pineapple',
+    method: 'Shake',
+    abv: '28-32%',
+    iba_official: true,
+    instructions: 'Shake all three rums, juices, syrups, and bitters with ice. Strain over crushed ice in tiki mug. Garnish elaborately with mint, cherry, and pineapple.'
   },
   {
-    id: 'tequila-5',
-    name: 'Spicy Margarita',
-    description: 'Jalapeño-infused margarita with heat',
-    spiritType: 'Blanco Tequila',
-    origin: 'Modern',
-    glassware: 'Rocks Glass',
-    servingSize: '5 oz',
-    nutrition: { calories: 195, carbs: 13, sugar: 11, alcohol: 14 },
-    ingredients: ['2 oz Blanco Tequila', '1 oz Fresh Lime Juice', '0.75 oz Triple Sec', '3-4 Jalapeño Slices', '0.25 oz Agave Nectar', 'Salt (for rim)', 'Ice'],
-    profile: ['Spicy', 'Citrus', 'Bold', 'Heat'],
+    id: 'rum-7',
+    name: 'Cuba Libre',
+    description: 'Rum and coke elevated with fresh lime',
+    spiritType: 'White Rum',
+    origin: 'Havana, Cuba',
+    glassware: 'Highball Glass',
+    servingSize: '10 oz',
+    nutrition: {
+      calories: 185,
+      carbs: 18,
+      sugar: 17,
+      alcohol: 12
+    },
+    ingredients: [
+      '2 oz White Rum',
+      '4 oz Coca-Cola',
+      '0.5 oz Fresh Lime Juice',
+      'Lime Wedge',
+      'Ice'
+    ],
+    profile: ['Sweet', 'Refreshing', 'Easy', 'Classic'],
+    difficulty: 'Very Easy',
+    prepTime: 2,
+    rating: 4.3,
+    reviews: 4567,
+    trending: false,
+    featured: false,
+    estimatedCost: 3.00,
+    bestTime: 'Anytime',
+    occasion: 'Casual',
+    allergens: [],
+    category: 'Classic Rum',
+    garnish: 'Lime wedge',
+    method: 'Build',
+    abv: '9-11%',
+    iba_official: true,
+    instructions: 'Fill highball glass with ice. Squeeze lime wedge and drop in. Add rum and top with Coca-Cola. Stir gently.'
+  },
+  {
+    id: 'rum-8',
+    name: 'Hurricane',
+    description: 'New Orleans party drink with passion fruit',
+    spiritType: 'Dark Rum',
+    origin: 'New Orleans, Louisiana',
+    glassware: 'Hurricane Glass',
+    servingSize: '10 oz',
+    nutrition: {
+      calories: 325,
+      carbs: 38,
+      sugar: 34,
+      alcohol: 16
+    },
+    ingredients: [
+      '2 oz White Rum',
+      '2 oz Dark Rum',
+      '1 oz Passion Fruit Syrup',
+      '2 oz Orange Juice',
+      '1 oz Lime Juice',
+      '0.5 oz Simple Syrup',
+      'Grenadine (splash)',
+      'Ice'
+    ],
+    profile: ['Fruity', 'Strong', 'Party', 'Tropical'],
+    difficulty: 'Medium',
+    prepTime: 5,
+    rating: 4.6,
+    reviews: 2876,
+    trending: false,
+    featured: true,
+    estimatedCost: 6.00,
+    bestTime: 'Night',
+    occasion: 'Party',
+    allergens: [],
+    category: 'Tropical Rum',
+    garnish: 'Orange slice, cherry',
+    method: 'Shake',
+    abv: '14-18%',
+    iba_official: false,
+    instructions: 'Shake both rums, passion fruit syrup, juices, and simple syrup with ice. Strain into hurricane glass over ice. Float grenadine. Garnish with orange slice and cherry.'
+  },
+  {
+    id: 'rum-9',
+    name: 'Ti\' Punch',
+    description: 'Simple Martinique rum cocktail',
+    spiritType: 'Rhum Agricole',
+    origin: 'Martinique',
+    glassware: 'Old Fashioned Glass',
+    servingSize: '3 oz',
+    nutrition: {
+      calories: 165,
+      carbs: 8,
+      sugar: 7,
+      alcohol: 16
+    },
+    ingredients: [
+      '2 oz Rhum Agricole',
+      '1 disc Lime',
+      '1 barspoon Cane Syrup',
+      'Ice (optional)'
+    ],
+    profile: ['Grassy', 'Bright', 'Simple', 'Authentic'],
+    difficulty: 'Easy',
+    prepTime: 2,
+    rating: 4.4,
+    reviews: 987,
+    trending: true,
+    featured: false,
+    estimatedCost: 5.00,
+    bestTime: 'Afternoon',
+    occasion: 'Authentic',
+    allergens: [],
+    category: 'Contemporary Rum',
+    garnish: 'Lime disc',
+    method: 'Build',
+    abv: '30-35%',
+    iba_official: false,
+    instructions: 'Add lime disc and cane syrup to glass. Muddle gently. Add rhum agricole. Stir. Add ice if desired.'
+  },
+  {
+    id: 'rum-10',
+    name: 'Painkiller',
+    description: 'Pusser\'s rum tropical blend from BVI',
+    spiritType: 'Dark Rum',
+    origin: 'British Virgin Islands',
+    glassware: 'Hurricane Glass',
+    servingSize: '10 oz',
+    nutrition: {
+      calories: 425,
+      carbs: 48,
+      sugar: 42,
+      alcohol: 15
+    },
+    ingredients: [
+      '2 oz Pusser\'s Rum',
+      '4 oz Pineapple Juice',
+      '1 oz Orange Juice',
+      '1 oz Cream of Coconut',
+      'Crushed Ice'
+    ],
+    profile: ['Creamy', 'Tropical', 'Sweet', 'Beach'],
     difficulty: 'Easy',
     prepTime: 4,
     rating: 4.7,
-    reviews: 3214,
-    trending: true,
+    reviews: 2134,
+    trending: false,
     featured: true,
-    estimatedCost: 5.00,
-    bestTime: 'Evening',
-    occasion: 'Party',
-    allergens: [],
-    category: 'Modern Tequila',
-    garnish: 'Salt rim, jalapeño slice',
-    method: 'Shake & Muddle',
-    abv: '18-22%',
+    estimatedCost: 5.50,
+    bestTime: 'Beach',
+    occasion: 'Vacation',
+    allergens: ['Coconut'],
+    category: 'Tropical Rum',
+    garnish: 'Nutmeg, orange slice, cherry',
+    method: 'Shake',
+    abv: '12-15%',
     iba_official: false,
-    instructions: 'Muddle jalapeño slices in shaker. Add tequila, lime juice, triple sec, and agave nectar with ice. Shake vigorously. Strain over fresh ice in salt-rimmed glass. Garnish with jalapeño slice.'
+    instructions: 'Shake all ingredients with ice. Strain into hurricane glass over crushed ice. Top with freshly grated nutmeg. Garnish with orange slice and cherry.'
   },
   {
-    id: 'tequila-6',
-    name: 'Tequila Old Fashioned',
-    description: 'Classic old fashioned with aged tequila',
-    spiritType: 'Añejo Tequila',
+    id: 'rum-11',
+    name: 'Jungle Bird',
+    description: 'Bitter-sweet tiki drink with Campari',
+    spiritType: 'Dark Rum',
+    origin: 'Kuala Lumpur, Malaysia',
+    glassware: 'Old Fashioned Glass',
+    servingSize: '6 oz',
+    nutrition: {
+      calories: 235,
+      carbs: 22,
+      sugar: 18,
+      alcohol: 15
+    },
+    ingredients: [
+      '1.5 oz Dark Rum',
+      '0.75 oz Campari',
+      '1.5 oz Pineapple Juice',
+      '0.5 oz Lime Juice',
+      '0.5 oz Simple Syrup',
+      'Ice'
+    ],
+    profile: ['Bitter', 'Sweet', 'Tropical', 'Complex'],
+    difficulty: 'Medium',
+    prepTime: 4,
+    rating: 4.6,
+    reviews: 1654,
+    trending: true,
+    featured: true,
+    estimatedCost: 6.00,
+    bestTime: 'Evening',
+    occasion: 'Adventurous',
+    allergens: [],
+    category: 'Contemporary Rum',
+    garnish: 'Pineapple wedge',
+    method: 'Shake',
+    abv: '18-22%',
+    iba_official: false,
+    instructions: 'Shake all ingredients with ice. Strain over fresh ice in rocks glass. Garnish with pineapple wedge.'
+  },
+  {
+    id: 'rum-12',
+    name: 'Rum Old Fashioned',
+    description: 'Classic old fashioned with aged rum',
+    spiritType: 'Aged Rum',
     origin: 'Modern',
     glassware: 'Old Fashioned Glass',
     servingSize: '3 oz',
-    nutrition: { calories: 165, carbs: 5, sugar: 4, alcohol: 17 },
-    ingredients: ['2 oz Añejo Tequila', '0.25 oz Agave Nectar', '2 dashes Angostura Bitters', '1 dash Orange Bitters', 'Orange Peel', 'Large Ice Cube'],
-    profile: ['Rich', 'Smooth', 'Complex', 'Sophisticated'],
+    nutrition: {
+      calories: 175,
+      carbs: 5,
+      sugar: 4,
+      alcohol: 18
+    },
+    ingredients: [
+      '2 oz Aged Rum',
+      '0.25 oz Demerara Syrup',
+      '2 dashes Angostura Bitters',
+      '1 dash Orange Bitters',
+      'Orange Peel',
+      'Ice'
+    ],
+    profile: ['Rich', 'Complex', 'Smooth', 'Sophisticated'],
     difficulty: 'Easy',
     prepTime: 4,
     rating: 4.7,
     reviews: 1876,
     trending: true,
-    featured: true,
+    featured: false,
     estimatedCost: 6.50,
     bestTime: 'Evening',
     occasion: 'Sophisticated',
     allergens: [],
-    category: 'Modern Tequila',
+    category: 'Contemporary Rum',
     garnish: 'Orange peel',
     method: 'Stir',
     abv: '32-36%',
     iba_official: false,
-    instructions: 'Add agave nectar and bitters to rocks glass. Add large ice cube and tequila. Stir until well chilled. Express orange peel over drink and garnish.'
+    instructions: 'Add demerara syrup and bitters to rocks glass. Add large ice cube and rum. Stir until well chilled. Express orange peel over drink and garnish.'
   }
 ];
 
@@ -305,7 +558,7 @@ const tequilaMezcalCocktails = [
 const sisterPotentPotablesPages = [
   { id: 'vodka', name: 'Vodka', path: '/drinks/potent-potables/vodka', icon: Droplets, description: 'Clean & versatile' },
   { id: 'whiskey', name: 'Whiskey & Bourbon', path: '/drinks/potent-potables/whiskey-bourbon', icon: Wine, description: 'Kentucky classics' },
-  { id: 'rum', name: 'Rum', path: '/drinks/potent-potables/rum', icon: GlassWater, description: 'Caribbean vibes' },
+  { id: 'tequila', name: 'Tequila & Mezcal', path: '/drinks/potent-potables/tequila-mezcal', icon: Flame, description: 'Agave spirits' },
   { id: 'cognac', name: 'Cognac & Brandy', path: '/drinks/potent-potables/cognac-brandy', icon: Wine, description: 'French sophistication' },
   { id: 'daiquiri', name: 'Daiquiri', path: '/drinks/potent-potables/daiquiri', icon: Droplets, description: 'Rum classics' },
   { id: 'scotch', name: 'Scotch & Irish', path: '/drinks/potent-potables/scotch-irish-whiskey', icon: Wine, description: 'UK whiskeys' },
@@ -323,7 +576,7 @@ const otherDrinkHubs = [
   { id: 'all', name: 'All Drinks', icon: Wine, route: '/drinks', description: 'Browse everything' }
 ];
 
-export default function TequilaMezcalPage() {
+export default function RumCocktailsPage() {
   const { 
     addToFavorites,
     isFavorite,
@@ -336,7 +589,7 @@ export default function TequilaMezcalPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
-  const [selectedCocktail, setSelectedCocktail] = useState<typeof tequilaMezcalCocktails[0] | null>(null);
+  const [selectedCocktail, setSelectedCocktail] = useState<typeof rumCocktails[0] | null>(null);
 
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
@@ -344,12 +597,12 @@ export default function TequilaMezcalPage() {
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
-  const categories = ['Classic Tequila', 'Modern Tequila', 'Mezcal Cocktails'];
-  const difficulties = ['Very Easy', 'Easy', 'Medium'];
+  const categories = ['Classic Rum', 'Tropical Rum', 'Tiki Rum', 'Contemporary Rum'];
+  const difficulties = ['Very Easy', 'Easy', 'Medium', 'Hard'];
 
   // Convert cocktails to RecipeKit format
   const cocktailRecipesWithMeasurements = useMemo(() => {
-    return tequilaMezcalCocktails.map((c) => {
+    return rumCocktails.map((c) => {
       const rawList = Array.isArray(c.ingredients) ? c.ingredients : [];
       const measurements = rawList.map((ing: any) => {
         if (typeof ing === 'string') return parseIngredient(ing);
@@ -372,7 +625,7 @@ export default function TequilaMezcalPage() {
     const url = typeof window !== 'undefined' ? window.location.href : '';
     const servings = servingsOverride ?? servingsById[cocktail.id] ?? 1;
     const preview = cocktail.ingredients.slice(0, 4).join(' • ');
-    const text = `${cocktail.name} • ${cocktail.category}\n${preview}${cocktail.ingredients.length > 4 ? ` …plus ${cocktail.ingredients.length - 4} more` : ''}`;
+    const text = `${cocktail.name} • ${cocktail.category} • ${cocktail.method}\n${preview}${cocktail.ingredients.length > 4 ? ` …plus ${cocktail.ingredients.length - 4} more` : ''}`;
     const shareData = { title: cocktail.name, text, url };
     try {
       if (navigator.share) {
@@ -401,7 +654,7 @@ export default function TequilaMezcalPage() {
       addToRecentlyViewed({
         id: selectedRecipe.id,
         name: selectedRecipe.name,
-        category: 'tequila-mezcal',
+        category: 'rum-cocktails',
         timestamp: Date.now()
       });
       incrementDrinksMade();
@@ -419,31 +672,31 @@ export default function TequilaMezcalPage() {
     return matchesSearch && matchesCategory && matchesDifficulty;
   });
 
-  const handleCocktailClick = (cocktail: typeof tequilaMezcalCocktails[0]) => {
+  const handleCocktailClick = (cocktail: typeof rumCocktails[0]) => {
     setSelectedCocktail(cocktail);
     addToRecentlyViewed({
       id: cocktail.id,
       name: cocktail.name,
-      category: 'tequila-mezcal',
+      category: 'rum-cocktails',
       timestamp: Date.now()
     });
   };
 
-  const handleMakeCocktail = (cocktail: typeof tequilaMezcalCocktails[0]) => {
+  const handleMakeCocktail = (cocktail: typeof rumCocktails[0]) => {
     incrementDrinksMade();
-    addPoints(40, 'Made a tequila/mezcal cocktail');
+    addPoints(40, 'Made a rum cocktail');
     setSelectedCocktail(null);
   };
 
   return (
     <RequireAgeGate>
-      <div className="min-h-screen bg-gradient-to-br from-lime-50 via-green-50 to-emerald-50">
+      <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50">
         {/* RecipeKit Modal */}
         {selectedRecipe && (
           <RecipeKit
             open={showKit}
             onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
-            accent="green"
+            accent="orange"
             pointsReward={40}
             onComplete={handleCompleteRecipe}
             item={{
@@ -459,7 +712,7 @@ export default function TequilaMezcalPage() {
         )}
 
         {/* Hero Section */}
-        <div className="bg-gradient-to-r from-lime-600 via-green-600 to-emerald-600 text-white py-16 px-4">
+        <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 text-white py-16 px-4">
           <div className="max-w-7xl mx-auto">
             <div className="flex items-center gap-3 mb-4">
               <Link href="/drinks/potent-potables">
@@ -475,10 +728,10 @@ export default function TequilaMezcalPage() {
             </div>
             
             <div className="flex items-center gap-4 mb-6">
-              <Flame className="w-12 h-12" />
+              <Palmtree className="w-12 h-12" />
               <div>
-                <h1 className="text-4xl md:text-5xl font-bold mb-2">Tequila & Mezcal</h1>
-                <p className="text-xl text-white/90">From smooth blanco to smoky mezcal</p>
+                <h1 className="text-4xl md:text-5xl font-bold mb-2">Rum Cocktails</h1>
+                <p className="text-xl text-white/90">From Caribbean classics to tiki treasures</p>
               </div>
             </div>
 
@@ -488,7 +741,7 @@ export default function TequilaMezcalPage() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <Input
                   type="text"
-                  placeholder="Search tequila & mezcal cocktails..."
+                  placeholder="Search rum cocktails..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 py-6 text-lg bg-white/95 border-0"
@@ -499,7 +752,7 @@ export default function TequilaMezcalPage() {
             {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
               <div className="bg-white/10 backdrop-blur rounded-lg p-4">
-                <div className="text-3xl font-bold">{tequilaMezcalCocktails.length}</div>
+                <div className="text-3xl font-bold">{rumCocktails.length}</div>
                 <div className="text-white/80 text-sm">Cocktails</div>
               </div>
               <div className="bg-white/10 backdrop-blur rounded-lg p-4">
@@ -507,12 +760,12 @@ export default function TequilaMezcalPage() {
                 <div className="text-white/80 text-sm">Categories</div>
               </div>
               <div className="bg-white/10 backdrop-blur rounded-lg p-4">
-                <div className="text-3xl font-bold">{tequilaMezcalCocktails.filter(c => c.trending).length}</div>
+                <div className="text-3xl font-bold">{rumCocktails.filter(c => c.trending).length}</div>
                 <div className="text-white/80 text-sm">Trending</div>
               </div>
               <div className="bg-white/10 backdrop-blur rounded-lg p-4">
-                <div className="text-3xl font-bold">{tequilaMezcalCocktails.filter(c => c.spiritType === 'Mezcal').length}</div>
-                <div className="text-white/80 text-sm">Mezcal</div>
+                <div className="text-3xl font-bold">{rumCocktails.filter(c => c.iba_official).length}</div>
+                <div className="text-white/80 text-sm">IBA Official</div>
               </div>
             </div>
           </div>
@@ -520,7 +773,7 @@ export default function TequilaMezcalPage() {
 
         <div className="max-w-7xl mx-auto px-4 py-8">
           {/* CROSS-HUB NAVIGATION */}
-          <Card className="bg-gradient-to-r from-lime-50 to-green-50 border-green-300 mb-6">
+          <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-orange-300 mb-6">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Home className="w-4 h-4 text-gray-600" />
@@ -531,8 +784,8 @@ export default function TequilaMezcalPage() {
                   const Icon = hub.icon;
                   return (
                     <Link key={hub.id} href={hub.route}>
-                      <Button variant="outline" className="w-full justify-start hover:bg-green-50 hover:border-green-300">
-                        <Icon className="h-4 w-4 mr-2 text-green-500" />
+                      <Button variant="outline" className="w-full justify-start hover:bg-orange-50 hover:border-orange-300">
+                        <Icon className="h-4 w-4 mr-2 text-orange-500" />
                         <div className="text-left flex-1">
                           <div className="font-medium text-sm">{hub.name}</div>
                           <div className="text-xs text-gray-500">{hub.description}</div>
@@ -547,7 +800,7 @@ export default function TequilaMezcalPage() {
           </Card>
 
           {/* SISTER PAGES NAVIGATION */}
-          <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-emerald-300 mb-6">
+          <Card className="bg-gradient-to-r from-orange-50 to-red-50 border-red-300 mb-6">
             <CardContent className="p-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Potent Potables</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -555,8 +808,8 @@ export default function TequilaMezcalPage() {
                   const Icon = page.icon;
                   return (
                     <Link key={page.id} href={page.path}>
-                      <Button variant="outline" className="w-full justify-start hover:bg-emerald-50 hover:border-emerald-300">
-                        <Icon className="h-4 w-4 mr-2 text-emerald-500" />
+                      <Button variant="outline" className="w-full justify-start hover:bg-red-50 hover:border-red-300">
+                        <Icon className="h-4 w-4 mr-2 text-red-500" />
                         <div className="text-left flex-1">
                           <div className="font-medium text-sm">{page.name}</div>
                           <div className="text-xs text-gray-500">{page.description}</div>
@@ -580,7 +833,7 @@ export default function TequilaMezcalPage() {
                     variant={selectedCategory === null ? "default" : "outline"}
                     size="sm"
                     onClick={() => setSelectedCategory(null)}
-                    className={selectedCategory === null ? "bg-green-600" : ""}
+                    className={selectedCategory === null ? "bg-orange-600" : ""}
                   >
                     All
                   </Button>
@@ -590,7 +843,7 @@ export default function TequilaMezcalPage() {
                       variant={selectedCategory === category ? "default" : "outline"}
                       size="sm"
                       onClick={() => setSelectedCategory(category)}
-                      className={selectedCategory === category ? "bg-green-600" : ""}
+                      className={selectedCategory === category ? "bg-orange-600" : ""}
                     >
                       {category}
                     </Button>
@@ -605,7 +858,7 @@ export default function TequilaMezcalPage() {
                     variant={selectedDifficulty === null ? "default" : "outline"}
                     size="sm"
                     onClick={() => setSelectedDifficulty(null)}
-                    className={selectedDifficulty === null ? "bg-green-600" : ""}
+                    className={selectedDifficulty === null ? "bg-orange-600" : ""}
                   >
                     All Levels
                   </Button>
@@ -615,7 +868,7 @@ export default function TequilaMezcalPage() {
                       variant={selectedDifficulty === diff ? "default" : "outline"}
                       size="sm"
                       onClick={() => setSelectedDifficulty(diff)}
-                      className={selectedDifficulty === diff ? "bg-green-600" : ""}
+                      className={selectedDifficulty === diff ? "bg-orange-600" : ""}
                     >
                       {diff}
                     </Button>
@@ -627,7 +880,7 @@ export default function TequilaMezcalPage() {
 
           {/* Results Count */}
           <div className="mb-4 text-gray-600">
-            Showing {filteredCocktails.length} of {tequilaMezcalCocktails.length} cocktails
+            Showing {filteredCocktails.length} of {rumCocktails.length} cocktails
           </div>
 
           {/* Cocktails Grid */}
@@ -642,18 +895,18 @@ export default function TequilaMezcalPage() {
                   className="hover:shadow-lg transition-all duration-300 overflow-hidden group cursor-pointer"
                   onClick={() => handleCocktailClick(cocktail)}
                 >
-                  <div className="relative bg-gradient-to-br from-lime-100 to-green-100 p-6 h-48 flex items-center justify-center">
-                    <Flame className="w-20 h-20 text-green-600 group-hover:scale-110 transition-transform" />
+                  <div className="relative bg-gradient-to-br from-amber-100 to-orange-100 p-6 h-48 flex items-center justify-center">
+                    <Palmtree className="w-20 h-20 text-orange-600 group-hover:scale-110 transition-transform" />
                     {cocktail.trending && (
-                      <Badge className="absolute top-3 left-3 bg-emerald-500">
+                      <Badge className="absolute top-3 left-3 bg-red-500">
                         <TrendingUp className="w-3 h-3 mr-1" />
                         Trending
                       </Badge>
                     )}
-                    {cocktail.spiritType === 'Mezcal' && (
-                      <Badge className="absolute top-3 right-3 bg-orange-600">
-                        <Flame className="w-3 h-3 mr-1" />
-                        Mezcal
+                    {cocktail.iba_official && (
+                      <Badge className="absolute top-3 right-3 bg-blue-600">
+                        <Award className="w-3 h-3 mr-1" />
+                        IBA
                       </Badge>
                     )}
                     <Button
@@ -665,7 +918,7 @@ export default function TequilaMezcalPage() {
                         addToFavorites({
                           id: cocktail.id,
                           name: cocktail.name,
-                          category: 'tequila-mezcal',
+                          category: 'rum-cocktails',
                           timestamp: Date.now()
                         });
                       }}
@@ -694,15 +947,15 @@ export default function TequilaMezcalPage() {
                     {/* Key Info */}
                     <div className="grid grid-cols-3 gap-2 text-center text-sm">
                       <div>
-                        <div className="font-bold text-green-600">{cocktail.abv}</div>
+                        <div className="font-bold text-orange-600">{cocktail.abv}</div>
                         <div className="text-gray-500">ABV</div>
                       </div>
                       <div>
-                        <div className="font-bold text-lime-600">{cocktail.prepTime}min</div>
+                        <div className="font-bold text-red-600">{cocktail.prepTime}min</div>
                         <div className="text-gray-500">Prep</div>
                       </div>
                       <div>
-                        <div className="font-bold text-green-600">{cocktail.method}</div>
+                        <div className="font-bold text-orange-600">{cocktail.method}</div>
                         <div className="text-gray-500">Method</div>
                       </div>
                     </div>
@@ -715,7 +968,7 @@ export default function TequilaMezcalPage() {
                             key={i}
                             className={`w-4 h-4 ${
                               i < Math.floor(cocktail.rating)
-                                ? 'fill-lime-500 text-lime-500'
+                                ? 'fill-orange-500 text-orange-500'
                                 : 'text-gray-300'
                             }`}
                           />
@@ -779,9 +1032,9 @@ export default function TequilaMezcalPage() {
 
                             return (
                               <li key={i} className="flex items-start gap-2">
-                                <Check className="h-4 w-4 text-green-500 mt-0.5" />
+                                <Check className="h-4 w-4 text-orange-500 mt-0.5" />
                                 <span>
-                                  <span className="text-green-600 font-semibold">
+                                  <span className="text-orange-600 font-semibold">
                                     {show.amount} {show.unit}
                                   </span>{" "}
                                   {ing.item}
@@ -848,7 +1101,7 @@ export default function TequilaMezcalPage() {
                     {/* Tags */}
                     <div className="flex flex-wrap gap-1 mb-4">
                       {cocktail.profile?.slice(0, 3).map((tag: string) => (
-                        <Badge key={tag} variant="secondary" className="text-xs bg-green-100 text-green-700">
+                        <Badge key={tag} variant="secondary" className="text-xs bg-orange-100 text-orange-700">
                           {tag}
                         </Badge>
                       ))}
@@ -857,13 +1110,13 @@ export default function TequilaMezcalPage() {
                     {/* Action Buttons */}
                     <div className="flex gap-2 pt-3">
                       <Button 
-                        className="flex-1 bg-green-600 hover:bg-green-700"
+                        className="flex-1 bg-orange-600 hover:bg-orange-700"
                         onClick={(e) => {
                           e.stopPropagation();
                           openRecipeModal(cocktail);
                         }}
                       >
-                        <Flame className="h-4 w-4 mr-2" />
+                        <Palmtree className="h-4 w-4 mr-2" />
                         View Recipe
                       </Button>
                       <Button variant="outline" size="sm" onClick={(e) => {
@@ -880,53 +1133,59 @@ export default function TequilaMezcalPage() {
           </div>
 
           {/* Educational Section */}
-          <Card className="mt-12 bg-gradient-to-br from-lime-50 to-green-50 border-green-200">
+          <Card className="mt-12 bg-gradient-to-br from-amber-50 to-orange-50 border-orange-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-2xl">
-                <Flame className="w-7 h-7 text-green-600" />
-                About Tequila & Mezcal
+                <Palmtree className="w-7 h-7 text-orange-600" />
+                About Rum
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-semibold text-lg mb-3 text-lime-700">Tequila</h3>
-                  <p className="text-gray-700 text-sm leading-relaxed mb-4">
-                    Tequila is made exclusively from blue agave in specific regions of Mexico, primarily Jalisco. 
-                    It must contain at least 51% blue agave (100% agave tequilas are premium). The production 
-                    involves harvesting mature agave plants (8-12 years old), cooking the piñas, fermenting, 
-                    and distilling the liquid.
-                  </p>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-lg mb-3 text-green-700">Mezcal</h3>
-                  <p className="text-gray-700 text-sm leading-relaxed mb-4">
-                    Mezcal can be made from over 30 types of agave across nine Mexican states, primarily Oaxaca. 
-                    The distinctive smoky flavor comes from roasting agave hearts in underground pits. Often 
-                    produced in small batches using traditional methods, mezcal offers complex, artisanal flavors.
-                  </p>
+              <p className="text-gray-700 leading-relaxed">
+                Rum is a spirit distilled from sugarcane byproducts such as molasses or directly from sugarcane juice. 
+                Originating in the Caribbean, rum has become one of the world's most versatile spirits, ranging from light 
+                and crisp to dark and full-bodied. The diversity of rum makes it perfect for everything from refreshing 
+                tropical drinks to complex aged sipping spirits.
+              </p>
+
+              {/* Rum Types */}
+              <div>
+                <h3 className="font-semibold text-lg mb-3 text-orange-700">Types of Rum</h3>
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="p-4 bg-white rounded-lg border border-orange-200">
+                    <div className="font-semibold text-amber-600 mb-2">White/Light Rum</div>
+                    <div className="text-sm text-gray-700">Clear, mild flavor. Perfect for mojitos and daiquiris.</div>
+                  </div>
+                  <div className="p-4 bg-white rounded-lg border border-orange-200">
+                    <div className="font-semibold text-yellow-700 mb-2">Gold/Amber Rum</div>
+                    <div className="text-sm text-gray-700">Aged briefly, medium-bodied. Great for mixing.</div>
+                  </div>
+                  <div className="p-4 bg-white rounded-lg border border-orange-200">
+                    <div className="font-semibold text-amber-800 mb-2">Dark Rum</div>
+                    <div className="text-sm text-gray-700">Rich, full-bodied. Ideal for tropical drinks and sipping.</div>
+                  </div>
+                  <div className="p-4 bg-white rounded-lg border border-orange-200">
+                    <div className="font-semibold text-green-700 mb-2">Rhum Agricole</div>
+                    <div className="text-sm text-gray-700">Made from fresh cane juice. Grassy, complex flavor.</div>
+                  </div>
                 </div>
               </div>
 
-              {/* Tequila Types */}
+              {/* Regions */}
               <div>
-                <h3 className="font-semibold text-lg mb-3 text-lime-700">Tequila Classifications</h3>
-                <div className="grid md:grid-cols-4 gap-4">
-                  <div className="p-4 bg-white rounded-lg border border-lime-200">
-                    <div className="font-semibold text-lime-600 mb-2">Blanco (Silver)</div>
-                    <div className="text-sm text-gray-700">Unaged or aged up to 2 months. Pure agave flavor, crisp and clean.</div>
+                <h3 className="font-semibold text-lg mb-3 text-orange-700">Rum Regions</h3>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div className="p-4 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg">
+                    <div className="font-semibold text-blue-700 mb-2">Caribbean</div>
+                    <div className="text-sm text-gray-700">Jamaica, Barbados, Trinidad. Rich, funky, traditional styles.</div>
                   </div>
-                  <div className="p-4 bg-white rounded-lg border border-lime-200">
-                    <div className="font-semibold text-yellow-600 mb-2">Reposado</div>
-                    <div className="text-sm text-gray-700">Aged 2-12 months. Golden color, smooth with oak notes.</div>
+                  <div className="p-4 bg-gradient-to-br from-orange-50 to-red-50 rounded-lg">
+                    <div className="font-semibold text-orange-700 mb-2">Latin America</div>
+                    <div className="text-sm text-gray-700">Cuba, Dominican Republic, Puerto Rico. Light, smooth rums.</div>
                   </div>
-                  <div className="p-4 bg-white rounded-lg border border-lime-200">
-                    <div className="font-semibold text-amber-600 mb-2">Añejo</div>
-                    <div className="text-sm text-gray-700">Aged 1-3 years. Dark amber, complex, sipping quality.</div>
-                  </div>
-                  <div className="p-4 bg-white rounded-lg border border-lime-200">
-                    <div className="font-semibold text-orange-700 mb-2">Extra Añejo</div>
-                    <div className="text-sm text-gray-700">Aged 3+ years. Ultra-premium, rich and smooth.</div>
+                  <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg">
+                    <div className="font-semibold text-green-700 mb-2">French Islands</div>
+                    <div className="text-sm text-gray-700">Martinique, Guadeloupe. Agricole-style, grassy notes.</div>
                   </div>
                 </div>
               </div>
@@ -934,41 +1193,41 @@ export default function TequilaMezcalPage() {
           </Card>
 
           {/* Your Progress Card */}
-          <Card className="bg-gradient-to-r from-lime-50 to-green-50 border-green-300 mt-6">
+          <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-orange-300 mt-6">
             <CardContent className="p-6">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
                   <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
-                    <Crown className="h-5 w-5 text-green-600" />
+                    <Crown className="h-5 w-5 text-orange-600" />
                     Your Progress
                   </h3>
                   <div className="flex items-center gap-4 flex-wrap">
                     <div className="flex items-center gap-2">
-                      <GlassWater className="h-4 w-4 text-green-500" />
+                      <GlassWater className="h-4 w-4 text-orange-500" />
                       <span className="text-sm text-gray-600">Level:</span>
-                      <Badge className="bg-green-600 text-white">{userProgress.level}</Badge>
+                      <Badge className="bg-orange-600 text-white">{userProgress.level}</Badge>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Zap className="h-4 w-4 text-lime-500" />
+                      <Zap className="h-4 w-4 text-red-500" />
                       <span className="text-sm text-gray-600">XP:</span>
-                      <Badge className="bg-lime-600 text-white">{userProgress.totalPoints}</Badge>
+                      <Badge className="bg-red-600 text-white">{userProgress.totalPoints}</Badge>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Flame className="h-4 w-4 text-green-600" />
+                      <Palmtree className="h-4 w-4 text-orange-600" />
                       <span className="text-sm text-gray-600">Drinks Made:</span>
-                      <Badge className="bg-green-100 text-green-800">{userProgress.totalDrinksMade}</Badge>
+                      <Badge className="bg-orange-100 text-orange-800">{userProgress.totalDrinksMade}</Badge>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Wine className="h-4 w-4 text-lime-500" />
+                      <Wine className="h-4 w-4 text-red-500" />
                       <span className="text-sm text-gray-600">Cocktails Found:</span>
-                      <Badge className="bg-lime-100 text-lime-800">{filteredCocktails.length}</Badge>
+                      <Badge className="bg-red-100 text-red-800">{filteredCocktails.length}</Badge>
                     </div>
                   </div>
                 </div>
                 <Button 
                   variant="outline"
                   onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                  className="border-green-300 hover:bg-green-50"
+                  className="border-orange-300 hover:bg-orange-50"
                 >
                   <ArrowLeft className="h-4 w-4 mr-2 rotate-90" />
                   Back to Top
