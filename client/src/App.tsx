@@ -41,6 +41,13 @@ import BabyFoodMashed from "@/pages/recipes/baby-food/mashed";
 import BabyFoodFingerFoods from "@/pages/recipes/baby-food/finger-foods";
 import BabyFoodToddler from "@/pages/recipes/baby-food/toddler";
 
+// ========== PET FOOD PAGES ==========
+import PetFoodHub from "@/pages/pet-food";
+import DogsPage from "@/pages/pet-food/dogs";
+import CatsPage from "@/pages/pet-food/cats";
+import BirdsPage from "@/pages/pet-food/birds";
+import SmallPetsPage from "@/pages/pet-food/small-pets";
+
 // ========== DRINKS HUB PAGES ==========
 import DrinksHubPage from "@/pages/drinks";
 import SmoothiesHub from "@/pages/drinks/smoothies";
@@ -244,6 +251,13 @@ function AppRouter() {
         <Route path="/explore/filters">
           <Redirect to="/recipes/filters" />
         </Route>
+
+        {/* ---------- Pet Food ---------- */}
+        <Route path="/pet-food/dogs" component={DogsPage} />
+        <Route path="/pet-food/cats" component={CatsPage} />
+        <Route path="/pet-food/birds" component={BirdsPage} />
+        <Route path="/pet-food/small-pets" component={SmallPetsPage} />
+        <Route path="/pet-food" component={PetFoodHub} />
 
         {/* ---------- Misc ---------- */}
         <Route path="/create" component={CreatePost} />
