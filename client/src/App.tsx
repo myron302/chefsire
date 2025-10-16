@@ -84,6 +84,8 @@ import TequilaMezcalPage from "@/pages/drinks/potent-potables/tequila-mezcal";
 import VirginCocktailsPage from "@/pages/drinks/potent-potables/virgin-cocktails";
 import VodkaPage from "@/pages/drinks/potent-potables/vodka";
 import WhiskeyBourbonPage from "@/pages/drinks/potent-potables/whiskey-bourbon";
+import DaiquiriPage from "@/pages/drinks/potent-potables/daiquiri";
+
 
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -131,6 +133,9 @@ function PotentPotablesSection() {
         <Route path="/drinks/potent-potables/scotch-irish-whiskey" component={ScotchIrishWhiskeyPage} />
         <Route path="/drinks/potent-potables/seasonal" component={SeasonalPage} />
         <Route path="/drinks/potent-potables/tequila-mezcal" component={TequilaMezcalPage} />
+        <Route path="/drinks/potent-potables/daiquiri" component={DaiquiriPage} />
+        <Route path="/drinks/potent-potables/daiquiri" component={DaiquiriPage} />
+
         {/* ✅ Virgin routes */}
         <Route path="/drinks/potent-potables/virgin" component={VirginCocktailsPage} />
         <Route path="/drinks/potent-potables/virgin-cocktails" component={VirginCocktailsPage} />
