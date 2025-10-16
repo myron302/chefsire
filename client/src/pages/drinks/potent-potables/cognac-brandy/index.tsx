@@ -513,7 +513,7 @@ export default function CognacBrandyPage() {
 
   return (
     <RequireAgeGate>
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-orange-50">
+      <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50">
         {/* RecipeKit Modal */}
         {selectedRecipe && (
           <RecipeKit
@@ -571,7 +571,7 @@ export default function CognacBrandyPage() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* CROSS-HUB NAVIGATION */}
-          <Card className="bg-gradient-to-r from-orange-50 to-red-50 border-orange-200 mb-6">
+          <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-orange-300 mb-6">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Home className="w-4 h-4 text-gray-600" />
@@ -598,7 +598,7 @@ export default function CognacBrandyPage() {
           </Card>
 
           {/* SISTER PAGES NAVIGATION */}
-          <Card className="bg-gradient-to-r from-red-50 to-orange-50 border-red-200 mb-6">
+          <Card className="bg-gradient-to-r from-orange-50 to-red-50 border-red-300 mb-6">
             <CardContent className="p-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Potent Potables</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -1076,7 +1076,7 @@ export default function CognacBrandyPage() {
           )}
 
           {/* Educational Content */}
-          <Card className="mt-12 bg-gradient-to-br from-orange-50 to-red-50 border-orange-200">
+          <Card className="mt-12 bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 border-orange-300">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Crown className="w-6 h-6 text-orange-500" />
@@ -1117,44 +1117,49 @@ export default function CognacBrandyPage() {
           </Card>
         </div>
 
-        <div className="fixed bottom-6 right-6 z-50">
-          <Button 
-            size="lg" 
-            className="rounded-full w-14 h-14 bg-orange-600 hover:bg-orange-700 shadow-lg"
-            onClick={() => setActiveTab('browse')}
-          >
-            <Plus className="h-6 w-6" />
-          </Button>
-        </div>
-
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-40">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-6 text-sm">
-              <div className="flex items-center gap-2">
-                <Grape className="h-4 w-4 text-orange-600" />
-                <span className="text-gray-600">Cocktails Found:</span>
-                <span className="font-bold text-orange-600">{filteredCocktails.length}</span>
+          {/* Your Progress Card */}
+          <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-orange-300">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+                    <Crown className="h-5 w-5 text-orange-600" />
+                    Your Progress
+                  </h3>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <GlassWater className="h-4 w-4 text-orange-500" />
+                      <span className="text-sm text-gray-600">Level:</span>
+                      <Badge className="bg-orange-600 text-white">{userProgress.level}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-red-500" />
+                      <span className="text-sm text-gray-600">XP:</span>
+                      <Badge className="bg-red-600 text-white">{userProgress.totalPoints}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Grape className="h-4 w-4 text-orange-600" />
+                      <span className="text-sm text-gray-600">Drinks Made:</span>
+                      <Badge className="bg-orange-100 text-orange-800">{userProgress.totalDrinksMade}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Wine className="h-4 w-4 text-red-500" />
+                      <span className="text-sm text-gray-600">Cocktails Found:</span>
+                      <Badge className="bg-red-100 text-red-800">{filteredCocktails.length}</Badge>
+                    </div>
+                  </div>
+                </div>
+                <Button 
+                  variant="outline"
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                  className="border-orange-300 hover:bg-orange-50"
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2 rotate-90" />
+                  Back to Top
+                </Button>
               </div>
-              <div className="flex items-center gap-2">
-                <GlassWater className="h-4 w-4 text-red-500" />
-                <span className="text-gray-600">Your Level:</span>
-                <span className="font-bold text-red-600">{userProgress.level}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Zap className="h-4 w-4 text-orange-500" />
-                <span className="text-gray-600">XP:</span>
-                <span className="font-bold text-orange-600">{userProgress.totalPoints}</span>
-              </div>
-            </div>
-            
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            >
-              Back to Top
-            </Button>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </RequireAgeGate>
