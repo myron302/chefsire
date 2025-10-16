@@ -26,7 +26,6 @@
     "gen:shims": "node tools/generate-import-shims.js",
     "fix:filenames": "node tools/fix-filenames.js",
     "env:print": "tsx server/scripts/print-env.ts"
-
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
