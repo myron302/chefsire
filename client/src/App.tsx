@@ -84,8 +84,8 @@ import TequilaMezcalPage from "@/pages/drinks/potent-potables/tequila-mezcal";
 import VirginCocktailsPage from "@/pages/drinks/potent-potables/virgin-cocktails";
 import VodkaPage from "@/pages/drinks/potent-potables/vodka";
 import WhiskeyBourbonPage from "@/pages/drinks/potent-potables/whiskey-bourbon";
+// ✅ NEW: Daiquiri
 import DaiquiriPage from "@/pages/drinks/potent-potables/daiquiri";
-
 
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -121,6 +121,10 @@ function RecipesSection() {
   );
 }
 
+/**
+ * Alcoholic "Potent Potables" sub-routes — behind AgeGate only.
+ * NOTE: Zero-proof/virgin routes are handled OUTSIDE of this component (see DrinksSection).
+ */
 function PotentPotablesSection() {
   return (
     <RequireAgeGate>
@@ -133,12 +137,8 @@ function PotentPotablesSection() {
         <Route path="/drinks/potent-potables/scotch-irish-whiskey" component={ScotchIrishWhiskeyPage} />
         <Route path="/drinks/potent-potables/seasonal" component={SeasonalPage} />
         <Route path="/drinks/potent-potables/tequila-mezcal" component={TequilaMezcalPage} />
+        {/* ✅ New Daiquiri route (alcoholic, age-gated) */}
         <Route path="/drinks/potent-potables/daiquiri" component={DaiquiriPage} />
-        <Route path="/drinks/potent-potables/daiquiri" component={DaiquiriPage} />
-
-        {/* ✅ Virgin routes */}
-        <Route path="/drinks/potent-potables/virgin" component={VirginCocktailsPage} />
-        <Route path="/drinks/potent-potables/virgin-cocktails" component={VirginCocktailsPage} />
         <Route path="/drinks/potent-potables/vodka" component={VodkaPage} />
         <Route path="/drinks/potent-potables/whiskey-bourbon" component={WhiskeyBourbonPage} />
         <Route path="/drinks/potent-potables" component={PotentPotablesHub} />
@@ -153,6 +153,7 @@ function PotentPotablesSection() {
 function DrinksSection() {
   return (
     <Switch>
+      {/* ---------- Smoothies ---------- */}
       <Route path="/drinks/smoothies/breakfast" component={BreakfastSmoothies} />
       <Route path="/drinks/smoothies/dessert" component={DessertSmoothies} />
       <Route path="/drinks/smoothies/green" component={GreenSmoothies} />
@@ -163,27 +164,32 @@ function DrinksSection() {
       <Route path="/drinks/smoothies/detox" component={DetoxSmoothies} />
       <Route path="/drinks/smoothies" component={SmoothiesHub} />
 
+      {/* ---------- Protein Shakes ---------- */}
       <Route path="/drinks/protein-shakes/casein" component={CaseinProtein} />
       <Route path="/drinks/protein-shakes/collagen" component={CollagenProtein} />
       <Route path="/drinks/protein-shakes/plant-based" component={PlantBasedProtein} />
       <Route path="/drinks/protein-shakes/whey" component={WheyProtein} />
-
-      {/* 👇 Added missing protein pages */}
       <Route path="/drinks/protein-shakes/egg" component={EggProtein} />
       <Route path="/drinks/protein-shakes/beef" component={BeefProtein} />
-
       <Route path="/drinks/protein-shakes" component={ProteinShakesHub} />
 
+      {/* ---------- Detoxes ---------- */}
       <Route path="/drinks/detoxes/juice" component={DetoxJuices} />
       <Route path="/drinks/detoxes/tea" component={DetoxTeas} />
       <Route path="/drinks/detoxes/water" component={DetoxWaters} />
       <Route path="/drinks/detoxes" component={DetoxesHub} />
 
+      {/* ---------- Zero-proof (NOT age-gated) ---------- */}
+      <Route path="/drinks/potent-potables/virgin" component={VirginCocktailsPage} />
+      <Route path="/drinks/potent-potables/virgin-cocktails" component={VirginCocktailsPage} />
+
+      {/* ---------- Potent Potables (age-gated) ---------- */}
       <Route path="/drinks/potent-potables/:rest*">
         {() => <PotentPotablesSection />}
       </Route>
       <Route path="/drinks/potent-potables" component={PotentPotablesSection} />
 
+      {/* ---------- Drinks hub fallback ---------- */}
       <Route path="/drinks" component={DrinksHubPage} />
       <Route>
         <Redirect to="/drinks" />
@@ -218,9 +224,10 @@ function AppRouter() {
         <Route path="/competitions/new" component={CreateCompetitionPage} />
         <Route path="/competitions/library" component={CompetitionLibraryPage} />
         <Route path="/competitions/:id" component={CompetitionRoomPage} />
-        {/* 👇 Add the landing route for /competitions */}
+        {/* Landing route for /competitions */}
         <Route path="/competitions" component={CompetitionLibraryPage} />
 
+        {/* ---------- Recipes ---------- */}
         <Route path="/recipes/baby-food/:rest*">
           {() => <RecipesSection />}
         </Route>
@@ -233,6 +240,7 @@ function AppRouter() {
           <Redirect to="/recipes/filters" />
         </Route>
 
+        {/* ---------- Misc ---------- */}
         <Route path="/create" component={CreatePost} />
         <Route path="/pantry">
           <ErrorBoundary>
@@ -249,7 +257,7 @@ function AppRouter() {
         <Route path="/nutrition" component={NutritionMealPlanner} />
         <Route path="/substitutions" component={SubstitutionsPage} />
 
-        {/* Drinks section branches */}
+        {/* ---------- Drinks branches ---------- */}
         <Route path="/drinks/smoothies/:rest*">
           {() => <DrinksSection />}
         </Route>
@@ -267,12 +275,10 @@ function AppRouter() {
         </Route>
         <Route path="/drinks" component={DrinksSection} />
 
-        {/* Misc */}
+        {/* ---------- 404 fallback ---------- */}
         <Route path="/saved" component={NotFound} />
         <Route path="/following" component={NotFound} />
         <Route path="/settings" component={NotFound} />
-
-        {/* 404 fallback */}
         <Route component={NotFound} />
       </Switch>
     </Layout>
