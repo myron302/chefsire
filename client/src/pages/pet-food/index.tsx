@@ -3,389 +3,265 @@ import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
 import { 
-  Dog, Cat, Bird, Rabbit, Heart, Star, Leaf, Apple, 
-  Clock, Users, Award, Sparkles, Target, Calendar,
-  AlertCircle, CheckCircle, Info, ArrowRight, PlayCircle,
-  Utensils, Snowflake, Thermometer, Scale, Fish, Flame,
-  Eye, Plus, BookOpen, Share2, ShieldAlert, Bone
+  Dog, Cat, Bird, Rabbit, Clock, Heart, Target, Shield, 
+  Search, Share2, ArrowLeft, Home, Sparkles, Award,
+  TrendingUp, Zap, Crown, ChevronRight, Star, Leaf, Apple
 } from 'lucide-react';
 
 const petCategories = [
   {
     id: 'dogs',
-    name: 'Dog Recipes',
-    route: '/pet-food/dogs',
+    name: 'Dogs',
+    path: '/pet-food/dogs',
     icon: Dog,
-    color: 'from-amber-400 to-orange-500',
-    bgColor: 'bg-amber-50',
-    textColor: 'text-amber-600',
-    borderColor: 'border-amber-200',
-    description: 'Nutritious homemade meals for your canine companion',
-    recipeCount: 156,
-    featured: true,
-    ageGroups: ['Puppy', 'Adult', 'Senior'],
-    popularRecipes: ['Chicken & Rice', 'Beef Stew', 'Turkey Meatballs'],
-    image: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=400&h=300&fit=crop'
+    description: 'Nutritious homemade meals for your best friend',
+    tagline: 'From puppy to senior',
+    gradient: 'from-amber-500 to-orange-500',
+    bgGradient: 'from-amber-50 to-orange-50',
+    recipeCount: 8,
+    image: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=800',
+    badges: ['High Protein', 'All Ages', 'Balanced']
   },
   {
     id: 'cats',
-    name: 'Cat Recipes',
-    route: '/pet-food/cats',
+    name: 'Cats',
+    path: '/pet-food/cats',
     icon: Cat,
-    color: 'from-purple-400 to-pink-500',
-    bgColor: 'bg-purple-50',
-    textColor: 'text-purple-600',
-    borderColor: 'border-purple-200',
-    description: 'Healthy homemade food for your feline friend',
-    recipeCount: 98,
-    featured: true,
-    ageGroups: ['Kitten', 'Adult', 'Senior'],
-    popularRecipes: ['Salmon Pate', 'Chicken Liver', 'Tuna Medley'],
-    image: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=400&h=300&fit=crop'
+    description: 'High-protein, taurine-rich meals for felines',
+    tagline: 'Kitten to senior care',
+    gradient: 'from-purple-500 to-pink-500',
+    bgGradient: 'from-purple-50 to-pink-50',
+    recipeCount: 8,
+    image: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800',
+    badges: ['Taurine-Rich', 'Low Carb', 'Essential']
   },
   {
     id: 'birds',
-    name: 'Bird Recipes',
-    route: '/pet-food/birds',
+    name: 'Birds',
+    path: '/pet-food/birds',
     icon: Bird,
-    color: 'from-blue-400 to-cyan-500',
-    bgColor: 'bg-blue-50',
-    textColor: 'text-blue-600',
-    borderColor: 'border-blue-200',
-    description: 'Nutritious mixes for parrots, canaries, and more',
-    recipeCount: 45,
-    featured: false,
-    ageGroups: ['Chick', 'Adult'],
-    popularRecipes: ['Seed Mix', 'Fruit Blend', 'Veggie Medley'],
-    image: 'https://images.unsplash.com/photo-1552728089-57bdde30beb3?w=400&h=300&fit=crop'
+    description: 'Seed mixes, fruits, and treats for feathered friends',
+    tagline: 'All bird species',
+    gradient: 'from-cyan-500 to-blue-500',
+    bgGradient: 'from-cyan-50 to-blue-50',
+    recipeCount: 8,
+    image: 'https://images.unsplash.com/photo-1552728089-57bdde30beb3?w=800',
+    badges: ['Seed Blends', 'Fresh Fruits', 'Variety']
   },
   {
     id: 'small-pets',
     name: 'Small Pets',
-    route: '/pet-food/small-pets',
+    path: '/pet-food/small-pets',
     icon: Rabbit,
-    color: 'from-green-400 to-emerald-500',
-    bgColor: 'bg-green-50',
-    textColor: 'text-green-600',
-    borderColor: 'border-green-200',
-    description: 'Recipes for rabbits, guinea pigs, hamsters, and more',
-    recipeCount: 62,
-    featured: false,
-    ageGroups: ['Young', 'Adult'],
-    popularRecipes: ['Veggie Mix', 'Hay Blend', 'Pellet Plus'],
-    image: 'https://images.unsplash.com/photo-1585110396000-c9ffd4e4b308?w=400&h=300&fit=crop'
+    description: 'Hay-based diets and veggie mixes for small animals',
+    tagline: 'Rabbits, guinea pigs & more',
+    gradient: 'from-emerald-500 to-green-500',
+    bgGradient: 'from-emerald-50 to-green-50',
+    recipeCount: 8,
+    image: 'https://images.unsplash.com/photo-1585110396000-c9ffd4e4b308?w=800',
+    badges: ['High Fiber', 'Fresh Veggies', 'Hay-Based']
   }
 ];
 
 const featuredRecipes = [
   {
-    id: 'pf-1',
-    name: 'Chicken & Sweet Potato Delight',
-    petType: 'Dogs',
-    description: 'Protein-rich meal perfect for active dogs',
-    image: 'https://images.unsplash.com/photo-1567529692333-de9fd6772897?w=400&h=300&fit=crop',
-    prepTime: 35,
-    servings: 8,
-    organic: true,
+    id: 1,
+    name: 'Puppy Growth Formula',
+    category: 'Dogs',
+    categoryColor: 'amber',
+    image: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=800',
+    prepTime: '25 min',
     difficulty: 'Easy',
     rating: 4.9,
-    reviews: 892,
-    ingredients: ['Chicken Breast', 'Sweet Potato', 'Carrots', 'Green Beans', 'Brown Rice'],
-    nutrition: {
-      calories: 285,
-      protein: 24,
-      fat: 8,
-      carbs: 32,
-      fiber: 4
-    },
-    suitableFor: ['Puppy', 'Adult', 'Senior'],
-    specialDiet: ['Grain-Free Option']
+    calories: 425
   },
   {
-    id: 'pf-2',
-    name: 'Salmon & Tuna Pate',
-    petType: 'Cats',
-    description: 'Omega-3 rich recipe for healthy coat and skin',
-    image: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?w=400&h=300&fit=crop',
-    prepTime: 20,
-    servings: 6,
-    organic: false,
+    id: 2,
+    name: 'Adult Salmon & Tuna Bowl',
+    category: 'Cats',
+    categoryColor: 'purple',
+    image: 'https://images.unsplash.com/photo-1606214174585-fe31582dc6ee?w=800',
+    prepTime: '25 min',
     difficulty: 'Easy',
     rating: 4.8,
-    reviews: 654,
-    ingredients: ['Wild Salmon', 'Tuna', 'Chicken Liver', 'Fish Oil', 'Taurine Supplement'],
-    nutrition: {
-      calories: 180,
-      protein: 18,
-      fat: 12,
-      carbs: 2,
-      taurine: 'High'
-    },
-    suitableFor: ['Kitten', 'Adult', 'Senior'],
-    specialDiet: ['High Protein', 'Low Carb']
+    calories: 360
   },
   {
-    id: 'pf-3',
-    name: 'Beef & Vegetable Stew',
-    petType: 'Dogs',
-    description: 'Hearty meal packed with vitamins and minerals',
-    image: 'https://images.unsplash.com/photo-1606193309091-8f0b45328815?w=400&h=300&fit=crop',
-    prepTime: 45,
-    servings: 10,
-    organic: true,
-    difficulty: 'Medium',
-    rating: 4.7,
-    reviews: 523,
-    ingredients: ['Ground Beef', 'Pumpkin', 'Spinach', 'Blueberries', 'Quinoa'],
-    nutrition: {
-      calories: 310,
-      protein: 22,
-      fat: 14,
-      carbs: 28,
-      fiber: 5
-    },
-    suitableFor: ['Adult', 'Senior'],
-    specialDiet: ['High Fiber', 'Weight Management']
+    id: 3,
+    name: 'Parrot Power Mix',
+    category: 'Birds',
+    categoryColor: 'cyan',
+    image: 'https://images.unsplash.com/photo-1552728089-57bdde30beb3?w=800',
+    prepTime: '15 min',
+    difficulty: 'Easy',
+    rating: 4.9,
+    calories: 180
+  },
+  {
+    id: 4,
+    name: 'Guinea Pig Vitamin C Feast',
+    category: 'Small Pets',
+    categoryColor: 'emerald',
+    image: 'https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=800',
+    prepTime: '15 min',
+    difficulty: 'Easy',
+    rating: 4.8,
+    calories: 180
   }
 ];
-
-const safetyWarnings = [
-  {
-    icon: ShieldAlert,
-    title: 'Toxic Foods to Avoid',
-    items: [
-      'Chocolate, coffee, and caffeine',
-      'Grapes and raisins',
-      'Onions, garlic, and chives',
-      'Xylitol (artificial sweetener)',
-      'Avocado (for dogs)',
-      'Alcohol and raw yeast dough'
-    ],
-    color: 'bg-red-50 border-red-200 text-red-800'
-  },
-  {
-    icon: AlertCircle,
-    title: 'Safe Preparation',
-    items: [
-      'Cook meat thoroughly to kill bacteria',
-      'Remove bones that can splinter',
-      'Wash all fruits and vegetables',
-      'Cool food to room temperature before serving',
-      'Use clean utensils and bowls',
-      'Store properly to prevent spoilage'
-    ],
-    color: 'bg-yellow-50 border-yellow-200 text-yellow-800'
-  },
-  {
-    icon: Heart,
-    title: 'Nutritional Balance',
-    items: [
-      'Consult your vet before switching diets',
-      'Ensure proper protein levels',
-      'Include essential vitamins and minerals',
-      'Monitor portion sizes based on weight',
-      'Provide fresh water at all times',
-      'Gradual diet transitions over 7-10 days'
-    ],
-    color: 'bg-green-50 border-green-200 text-green-800'
-  }
-];
-
-const nutritionGuidelines = [
-  {
-    icon: Scale,
-    title: 'Portion Control',
-    description: 'Feed based on your pet\'s weight, age, and activity level. Typical adult dog: 2-3% of body weight daily.'
-  },
-  {
-    icon: Thermometer,
-    title: 'Food Temperature',
-    description: 'Serve food at room temperature. Never feed frozen or very hot food to prevent digestive issues.'
-  },
-  {
-    icon: Snowflake,
-    title: 'Storage Guidelines',
-    description: 'Refrigerate for up to 3 days or freeze for up to 3 months. Label containers with date and contents.'
-  },
-  {
-    icon: Target,
-    title: 'Balanced Diet',
-    description: 'Include proteins (40-50%), vegetables (30-40%), and grains (10-20%). Add supplements as recommended by vet.'
-  }
-];
-
-const userStats = {
-  recipesAvailable: 361,
-  vetApproved: 248,
-  communityFavorites: 89,
-  avgRating: 4.8
-};
 
 export default function PetFoodHub() {
-  const [selectedPetType, setSelectedPetType] = useState('all');
-  const [showOrganic, setShowOrganic] = useState(false);
-
-  const filteredRecipes = featuredRecipes.filter(recipe => {
-    const matchesPetType = selectedPetType === 'all' || recipe.petType.toLowerCase().includes(selectedPetType);
-    const matchesOrganic = !showOrganic || recipe.organic;
-    return matchesPetType && matchesOrganic;
-  });
+  const [searchQuery, setSearchQuery] = useState('');
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50">
-      {/* Hero Section */}
-      <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 text-white py-12 px-6 shadow-2xl">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
-                <Bone className="h-12 w-12" />
-              </div>
-              <h1 className="text-4xl md:text-5xl font-bold">Pet Food Recipes</h1>
-            </div>
-            <p className="text-xl text-orange-100 mb-6">
-              Healthy, homemade meals for your beloved pets
-            </p>
-            
-            <div className="flex items-center justify-center gap-4 mb-6 flex-wrap">
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium">Pet Type:</label>
-                <select 
-                  value={selectedPetType}
-                  onChange={(e) => setSelectedPetType(e.target.value)}
-                  className="px-4 py-2 border border-white/30 rounded-md bg-white/10 backdrop-blur text-white"
-                >
-                  <option value="all">All Pets</option>
-                  <option value="dogs">Dogs</option>
-                  <option value="cats">Cats</option>
-                  <option value="birds">Birds</option>
-                  <option value="small">Small Pets</option>
-                </select>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <input 
-                  type="checkbox"
-                  id="organic-toggle"
-                  checked={showOrganic}
-                  onChange={(e) => setShowOrganic(e.target.checked)}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="organic-toggle" className="text-sm font-medium flex items-center gap-1">
-                  <Leaf className="h-4 w-4" />
-                  Organic Only
-                </label>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
-              <Card className="bg-white/10 backdrop-blur border-white/20">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-bold">{userStats.recipesAvailable}</div>
-                  <div className="text-sm text-orange-100">Total Recipes</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-white/10 backdrop-blur border-white/20">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-bold">{userStats.vetApproved}</div>
-                  <div className="text-sm text-orange-100">Vet Approved</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-white/10 backdrop-blur border-white/20">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-bold">{userStats.communityFavorites}</div>
-                  <div className="text-sm text-orange-100">Community Favs</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-white/10 backdrop-blur border-white/20">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-bold">{userStats.avgRating}</div>
-                  <div className="text-sm text-orange-100">Avg Rating</div>
-                </CardContent>
-              </Card>
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-purple-50 to-emerald-50">
+      {/* HEADER */}
+      <div className="bg-gradient-to-r from-amber-600 via-purple-600 to-emerald-600 text-white shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between">
+            <Link href="/">
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Home
+              </Button>
+            </Link>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+                <Share2 className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+                <Heart className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        {/* Pet Categories Navigation */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-orange-600" />
-            Choose Your Pet Type
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {petCategories.map(category => {
+      {/* HERO */}
+      <div className="bg-gradient-to-br from-amber-600 via-purple-600 to-emerald-600 text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+          <div className="text-center mb-12">
+            <div className="flex justify-center gap-4 mb-6">
+              <div className="p-3 bg-white/20 rounded-xl backdrop-blur">
+                <Dog className="h-8 w-8" />
+              </div>
+              <div className="p-3 bg-white/20 rounded-xl backdrop-blur">
+                <Cat className="h-8 w-8" />
+              </div>
+              <div className="p-3 bg-white/20 rounded-xl backdrop-blur">
+                <Bird className="h-8 w-8" />
+              </div>
+              <div className="p-3 bg-white/20 rounded-xl backdrop-blur">
+                <Rabbit className="h-8 w-8" />
+              </div>
+            </div>
+            <h1 className="text-6xl font-bold mb-4">Pet Food Recipes</h1>
+            <p className="text-2xl text-white/90 mb-8">Nutritious homemade meals for your beloved companions</p>
+            
+            <div className="flex justify-center gap-4">
+              <Button className="bg-white text-purple-600 hover:bg-white/90 gap-2">
+                <Sparkles className="h-4 w-4" />
+                Explore Recipes
+              </Button>
+              <Button variant="outline" className="border-white text-white hover:bg-white/20">
+                Safety Guidelines
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4 text-center">
+              <Home className="h-8 w-8 mb-2 mx-auto" />
+              <div className="text-3xl font-bold">4</div>
+              <div className="text-sm text-white/80">Pet Categories</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4 text-center">
+              <Target className="h-8 w-8 mb-2 mx-auto" />
+              <div className="text-3xl font-bold">32</div>
+              <div className="text-sm text-white/80">Total Recipes</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4 text-center">
+              <Shield className="h-8 w-8 mb-2 mx-auto" />
+              <div className="text-3xl font-bold">100%</div>
+              <div className="text-sm text-white/80">Vet-Approved</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4 text-center">
+              <Heart className="h-8 w-8 mb-2 mx-auto" />
+              <div className="text-3xl font-bold">Safe</div>
+              <div className="text-sm text-white/80">Ingredients Only</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {/* SEARCH BAR */}
+        <div className="mb-12">
+          <div className="relative max-w-2xl mx-auto">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-6 w-6" />
+            <Input
+              type="text"
+              placeholder="Search pet food recipes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-12 h-14 text-lg bg-white border-2 border-purple-200 focus:border-purple-400 rounded-xl"
+            />
+          </div>
+        </div>
+
+        {/* PET CATEGORIES */}
+        <div className="mb-16">
+          <div className="text-center mb-8">
+            <h2 className="text-4xl font-bold text-gray-900 mb-3">Choose Your Pet</h2>
+            <p className="text-lg text-gray-600">Find the perfect recipes for your furry, feathered, or fuzzy friend</p>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {petCategories.map((category) => {
               const Icon = category.icon;
-              
               return (
-                <Link key={category.id} href={category.route}>
-                  <Card className={`cursor-pointer transition-all hover:shadow-xl hover:-translate-y-1 border-2 ${category.borderColor}`}> 
-                    <div className={`h-2 bg-gradient-to-r ${category.color}`} />
-                    <div className="relative h-40 overflow-hidden">
+                <Link key={category.id} href={category.path}>
+                  <Card className="group cursor-pointer hover:shadow-2xl transition-all duration-300 border-2 border-gray-200 hover:border-transparent overflow-hidden h-full">
+                    <div className="relative h-48 overflow-hidden">
                       <img 
                         src={category.image} 
                         alt={category.name}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                      <div className={`absolute bottom-3 right-3 p-3 rounded-full ${category.bgColor}`}> 
-                        <Icon className={`h-8 w-8 ${category.textColor}`} />
+                      <div className={`absolute inset-0 bg-gradient-to-br ${category.gradient} opacity-20 group-hover:opacity-30 transition-opacity`} />
+                      <div className="absolute top-4 right-4">
+                        <Badge className={`bg-gradient-to-r ${category.gradient} text-white`}>
+                          {category.recipeCount} Recipes
+                        </Badge>
                       </div>
                     </div>
+                    
                     <CardContent className="p-6">
-                      <div className="flex items-start justify-between mb-4">
-                        <h3 className="text-lg font-bold">{category.name}</h3>
-                        {category.featured && (
-                          <Badge className="bg-orange-500">
-                            <Star className="h-3 w-3 mr-1" />
-                            Popular
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className={`p-3 bg-gradient-to-br ${category.gradient} rounded-xl text-white`}>
+                          <Icon className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <h3 className="text-2xl font-bold text-gray-900">{category.name}</h3>
+                          <p className="text-sm text-gray-500">{category.tagline}</p>
+                        </div>
+                      </div>
+                      
+                      <p className="text-gray-600 mb-4">{category.description}</p>
+                      
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {category.badges.map((badge) => (
+                          <Badge key={badge} variant="outline" className="text-xs">
+                            {badge}
                           </Badge>
-                        )}
-                      </div>
-                      
-                      <p className="text-sm text-gray-600 mb-3">{category.description}</p>
-                      
-                      <div className="mb-4">
-                        <div className="text-xs font-medium text-gray-700 mb-2">Age Groups:</div>
-                        <div className="flex flex-wrap gap-1">
-                          {category.ageGroups.map((age, idx) => (
-                            <Badge key={idx} variant="outline" className="text-xs">
-                              {age}
-                            </Badge>
-                          ))}
-                        </div>
+                        ))}
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 mb-4">
-                        <div className="text-center p-2 bg-gray-50 rounded">
-                          <div className="font-bold text-lg">{category.recipeCount}</div>
-                          <div className="text-xs text-gray-600">Recipes</div>
-                        </div>
-                        <div className="text-center p-2 bg-gray-50 rounded">
-                          <div className="flex items-center justify-center gap-1">
-                            <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                            <span className="font-bold text-lg">4.8</span>
-                          </div>
-                          <div className="text-xs text-gray-600">Rating</div>
-                        </div>
-                      </div>
-
-                      <div className="mb-4">
-                        <div className="text-xs font-medium text-gray-700 mb-1">Popular:</div>
-                        <div className="text-xs text-gray-600">
-                          {category.popularRecipes.slice(0, 2).join(', ')}...
-                        </div>
-                      </div>
-                      
-                      <Button className={`w-full bg-gradient-to-r ${category.color} text-white`}> 
-                        <ArrowRight className="h-4 w-4 mr-2" />
-                        Explore Recipes
+                      <Button className={`w-full bg-gradient-to-r ${category.gradient} hover:opacity-90 text-white`}>
+                        Explore {category.name} Recipes
+                        <ChevronRight className="h-4 w-4 ml-2" />
                       </Button>
                     </CardContent>
                   </Card>
@@ -395,157 +271,228 @@ export default function PetFoodHub() {
           </div>
         </div>
 
-        {/* Featured Recipes */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-            <Star className="h-6 w-6 text-yellow-500" />
-            Featured Recipes
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {filteredRecipes.map(recipe => (
-              <Card key={recipe.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                <div className="relative h-48 bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center">
+        {/* FEATURED RECIPES */}
+        <div className="mb-16">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h2 className="text-4xl font-bold text-gray-900 mb-2">Featured Recipes</h2>
+              <p className="text-lg text-gray-600">Popular picks across all pet categories</p>
+            </div>
+            <Button variant="outline" className="gap-2">
+              <Star className="h-4 w-4" />
+              View All
+            </Button>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {featuredRecipes.map((recipe) => (
+              <Card key={recipe.id} className="group hover:shadow-xl transition-all duration-300 border-gray-200 hover:border-purple-300 overflow-hidden">
+                <div className="relative h-40 overflow-hidden">
                   <img 
                     src={recipe.image} 
                     alt={recipe.name}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                   />
-                  {recipe.organic && (
-                    <div className="absolute top-3 left-3">
-                      <Badge className="bg-green-500 text-white">
-                        <Leaf className="h-3 w-3 mr-1" />
-                        Organic
-                      </Badge>
-                    </div>
-                  )}
                   <div className="absolute top-3 right-3">
-                    <Badge className="bg-white text-gray-900">
-                      {recipe.petType}
+                    <Badge className={`bg-${recipe.categoryColor}-600 text-white`}>
+                      {recipe.category}
                     </Badge>
                   </div>
                 </div>
                 
                 <CardContent className="p-4">
-                  <h3 className="font-bold text-lg mb-2">{recipe.name}</h3>
-                  <p className="text-sm text-gray-600 mb-3">{recipe.description}</p>
+                  <h3 className="font-bold text-lg text-gray-900 mb-2">{recipe.name}</h3>
                   
-                  <div className="grid grid-cols-3 gap-2 mb-3 text-center text-xs">
-                    <div>
-                      <div className="font-bold text-orange-600">{recipe.nutrition.calories}</div>
-                      <div className="text-gray-500">Cal</div>
-                    </div>
-                    <div>
-                      <div className="font-bold text-blue-600">{recipe.prepTime}m</div>
-                      <div className="text-gray-500">Prep</div>
-                    </div>
-                    <div>
-                      <div className="font-bold text-green-600">{recipe.servings}</div>
-                      <div className="text-gray-500">Servings</div>
-                    </div>
+                  <div className="flex items-center justify-between text-sm text-gray-600 mb-3">
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-4 w-4" />
+                      {recipe.prepTime}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                      {recipe.rating}
+                    </span>
                   </div>
 
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium text-sm">{recipe.rating}</span>
-                      <span className="text-gray-500 text-sm">({recipe.reviews})</span>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm">
+                      <span className="text-gray-500">Calories:</span>
+                      <span className="font-bold text-gray-900 ml-1">{recipe.calories}</span>
                     </div>
                     <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
                   </div>
-
-                  <div className="mb-4">
-                    <div className="text-xs font-medium text-gray-700 mb-1">Suitable for:</div>
-                    <div className="flex flex-wrap gap-1">
-                      {recipe.suitableFor.map((age, idx) => (
-                        <Badge key={idx} variant="outline" className="text-xs">
-                          {age}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  <Button className="w-full bg-orange-600 hover:bg-orange-700">
-                    <PlayCircle className="h-4 w-4 mr-2" />
-                    View Recipe
-                  </Button>
                 </CardContent>
               </Card>
             ))}
           </div>
         </div>
 
-        {/* Safety Warnings */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-            <ShieldAlert className="h-6 w-6 text-red-500" />
-            Important Safety Information
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {safetyWarnings.map((warning, idx) => {
-              const Icon = warning.icon;
-              return (
-                <Card key={idx} className={`border-2 ${warning.color}`}> 
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                      <Icon className="h-8 w-8" />
-                      <h3 className="font-bold text-lg">{warning.title}</h3>
-                    </div>
-                    <ul className="space-y-2">
-                      {warning.items.map((item, itemIdx) => (
-                        <li key={itemIdx} className="flex items-start gap-2 text-sm">
-                          <CheckCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
+        {/* WHY HOMEMADE */}
+        <Card className="mb-12 border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50">
+          <CardHeader>
+            <CardTitle className="text-3xl flex items-center gap-3 text-purple-900">
+              <Sparkles className="h-8 w-8" />
+              Why Homemade Pet Food?
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="flex gap-4">
+                <div className="flex-shrink-0">
+                  <div className="p-3 bg-purple-600 rounded-xl text-white">
+                    <Shield className="h-6 w-6" />
+                  </div>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-purple-900 mb-2">Quality Control</h3>
+                  <p className="text-gray-700">Know exactly what goes into your pet's bowl. No mystery ingredients or fillers.</p>
+                </div>
+              </div>
+              
+              <div className="flex gap-4">
+                <div className="flex-shrink-0">
+                  <div className="p-3 bg-pink-600 rounded-xl text-white">
+                    <Heart className="h-6 w-6" />
+                  </div>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-purple-900 mb-2">Better Health</h3>
+                  <p className="text-gray-700">Fresh, whole ingredients provide superior nutrition and can help prevent health issues.</p>
+                </div>
+              </div>
+              
+              <div className="flex gap-4">
+                <div className="flex-shrink-0">
+                  <div className="p-3 bg-purple-600 rounded-xl text-white">
+                    <Leaf className="h-6 w-6" />
+                  </div>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-purple-900 mb-2">Customizable</h3>
+                  <p className="text-gray-700">Tailor recipes to your pet's specific needs, allergies, and preferences.</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Nutrition Guidelines */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-            <Target className="h-6 w-6 text-green-600" />
-            Nutrition Guidelines
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {nutritionGuidelines.map((guideline, idx) => {
-              const Icon = guideline.icon;
-              return (
-                <Card key={idx} className="hover:shadow-lg transition-shadow">
-                  <CardContent className="p-6">
-                    <Icon className="h-10 w-10 text-orange-600 mb-3" />
-                    <h3 className="font-bold mb-2">{guideline.title}</h3>
-                    <p className="text-sm text-gray-600">{guideline.description}</p>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
+        {/* SAFETY FIRST */}
+        <Card className="mb-12 border-2 border-red-200 bg-gradient-to-br from-red-50 to-orange-50">
+          <CardHeader>
+            <CardTitle className="text-3xl flex items-center gap-3 text-red-900">
+              <Shield className="h-8 w-8" />
+              Safety First - Important Guidelines
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-2 gap-6 text-gray-800">
+              <div>
+                <h3 className="font-bold text-lg text-red-900 mb-3">Before You Start:</h3>
+                <ul className="space-y-2">
+                  <li className="flex items-start gap-2">
+                    <ChevronRight className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <span><strong>Consult your veterinarian</strong> before switching to homemade food</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <ChevronRight className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <span><strong>Transition gradually</strong> over 7-10 days to avoid digestive upset</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <ChevronRight className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <span><strong>Add supplements</strong> as needed (calcium, vitamins, taurine for cats)</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <ChevronRight className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <span><strong>Monitor your pet's health</strong> closely during the transition</span>
+                  </li>
+                </ul>
+              </div>
+              
+              <div>
+                <h3 className="font-bold text-lg text-red-900 mb-3">Universal No-No's:</h3>
+                <ul className="space-y-2">
+                  <li className="flex items-start gap-2">
+                    <span className="text-red-600 font-bold">✗</span>
+                    <span><strong>Chocolate, caffeine, alcohol</strong> - toxic to all pets</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-red-600 font-bold">✗</span>
+                    <span><strong>Grapes, raisins</strong> - can cause kidney failure</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-red-600 font-bold">✗</span>
+                    <span><strong>Onions, garlic, chives</strong> - damage red blood cells</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-red-600 font-bold">✗</span>
+                    <span><strong>Xylitol</strong> - artificial sweetener, extremely toxic</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+            
+            <div className="mt-6 p-4 bg-red-100 border border-red-300 rounded-lg">
+              <p className="text-sm text-red-900 font-semibold">
+                ⚠️ Each pet category page has detailed safety information specific to that animal. Always check before preparing any recipe.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Bottom CTA */}
-        <Card className="bg-gradient-to-r from-orange-600 to-red-600 text-white border-0">
-          <CardContent className="p-8 text-center">
-            <h2 className="text-3xl font-bold mb-4">Ready to Cook for Your Pet?</h2>
-            <p className="text-xl opacity-90 mb-6">
-              Join thousands of pet parents making healthy, homemade meals
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button size="lg" className="bg-white text-orange-600 hover:bg-gray-100">
-                <Sparkles className="h-5 w-5 mr-2" />
-                Browse All Recipes
-              </Button>
-              <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10">
-                <BookOpen className="h-5 w-5 mr-2" />
-                Read Guide
-              </Button>
+        {/* YOUR PROGRESS */}
+        <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-emerald-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-purple-900 text-2xl">
+              <Award className="h-6 w-6" />
+              Your Pet Food Journey
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-4 gap-6">
+              <div className="text-center">
+                <div className="w-20 h-20 bg-gradient-to-br from-amber-500 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <Dog className="h-10 w-10 text-white" />
+                </div>
+                <div className="font-bold text-2xl text-gray-900">3/8</div>
+                <div className="text-sm text-gray-600">Dog Recipes</div>
+              </div>
+              
+              <div className="text-center">
+                <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <Cat className="h-10 w-10 text-white" />
+                </div>
+                <div className="font-bold text-2xl text-gray-900">2/8</div>
+                <div className="text-sm text-gray-600">Cat Recipes</div>
+              </div>
+              
+              <div className="text-center">
+                <div className="w-20 h-20 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <Bird className="h-10 w-10 text-white" />
+                </div>
+                <div className="font-bold text-2xl text-gray-900">4/8</div>
+                <div className="text-sm text-gray-600">Bird Recipes</div>
+              </div>
+              
+              <div className="text-center">
+                <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-green-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <Rabbit className="h-10 w-10 text-white" />
+                </div>
+                <div className="font-bold text-2xl text-gray-900">5/8</div>
+                <div className="text-sm text-gray-600">Small Pet Recipes</div>
+              </div>
+            </div>
+            
+            <div className="mt-6 pt-6 border-t border-purple-200">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <Crown className="h-6 w-6 text-purple-600" />
+                  <span className="font-bold text-lg text-gray-900">Overall Level: 3</span>
+                </div>
+                <span className="text-sm text-gray-600">14/32 recipes completed</span>
+              </div>
+              <div className="w-full bg-purple-200 rounded-full h-3">
+                <div className="bg-gradient-to-r from-amber-600 via-purple-600 to-emerald-600 h-3 rounded-full" style={{ width: '43.75%' }} />
+              </div>
             </div>
           </CardContent>
         </Card>
