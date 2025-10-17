@@ -5,8 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Bird, Dog, Cat, Rabbit, Clock, Heart, Star, Shield, AlertTriangle,
-  Search, Share2, ArrowLeft, Check, Clipboard, RotateCcw, Zap, Award, ArrowRight, X, Home, Crown, Leaf, Target
+  Bird, Dog, Cat, Rabbit, Clock, Heart, Star, Shield,
+  Search, Share2, ArrowLeft, Check, Clipboard, RotateCcw, Award, ArrowRight, Home, Crown, Leaf, Target
 } from 'lucide-react';
 import RecipeKit from '@/components/recipes/RecipeKit';
 
@@ -48,7 +48,7 @@ const sisterPetFoodPages = [
   { id: 'small-pets', name: 'Small Pets', path: '/pet-food/small-pets', icon: Rabbit, description: 'Rabbits & rodents' }
 ];
 
-// Bird recipes - 9 total
+// Bird recipes - 9 total with images
 const birdRecipes = [
   {
     id: 'bird-1',
@@ -58,6 +58,7 @@ const birdRecipes = [
     prepTime: 15,
     rating: 4.9,
     reviews: 287,
+    image: 'https://images.unsplash.com/photo-1552728089-57bdde30beb3?w=800',
     nutrition: { calories: 180, protein: 12, fat: 15, carbs: 38 },
     badges: ['High Energy', 'Nut-Rich', 'Parrots'],
     recipe: {
@@ -89,6 +90,7 @@ const birdRecipes = [
     prepTime: 10,
     rating: 4.8,
     reviews: 342,
+    image: 'https://images.unsplash.com/photo-1550670256-6d2e5e8d6f28?w=800',
     nutrition: { calories: 140, protein: 14, fat: 12, carbs: 32 },
     badges: ['Seed Mix', 'Singing Support', 'Canaries'],
     recipe: {
@@ -120,6 +122,7 @@ const birdRecipes = [
     prepTime: 12,
     rating: 4.7,
     reviews: 198,
+    image: 'https://images.unsplash.com/photo-1582845512747-e42001c95638?w=800',
     nutrition: { calories: 125, protein: 10, fat: 8, carbs: 28 },
     badges: ['Fruit & Seed', 'Small Birds', 'Finches'],
     recipe: {
@@ -151,6 +154,7 @@ const birdRecipes = [
     prepTime: 15,
     rating: 4.9,
     reviews: 423,
+    image: 'https://images.unsplash.com/photo-1589666564459-93cdd3ab856a?w=800',
     nutrition: { calories: 95, protein: 8, fat: 5, carbs: 22 },
     badges: ['Fresh Veggies', 'Low Fat', 'Budgies'],
     recipe: {
@@ -182,6 +186,7 @@ const birdRecipes = [
     prepTime: 20,
     rating: 4.8,
     reviews: 312,
+    image: 'https://images.unsplash.com/photo-1563281746-3e5c80b1cd19?w=800',
     nutrition: { calories: 165, protein: 11, fat: 13, carbs: 35 },
     badges: ['Balanced Diet', 'Nutrient-Rich', 'Cockatiels'],
     recipe: {
@@ -213,6 +218,7 @@ const birdRecipes = [
     prepTime: 18,
     rating: 4.9,
     reviews: 267,
+    image: 'https://images.unsplash.com/photo-1444464666168-49d633b86797?w=800',
     nutrition: { calories: 155, protein: 10, fat: 11, carbs: 32 },
     badges: ['Tropical Fruits', 'Colorful', 'Lovebirds'],
     recipe: {
@@ -244,6 +250,7 @@ const birdRecipes = [
     prepTime: 25,
     rating: 4.7,
     reviews: 189,
+    image: 'https://images.unsplash.com/photo-1580156783729-1e93a8e90b78?w=800',
     nutrition: { calories: 195, protein: 13, fat: 16, carbs: 40 },
     badges: ['High Energy', 'Active Birds', 'Conures'],
     recipe: {
@@ -275,6 +282,7 @@ const birdRecipes = [
     prepTime: 20,
     rating: 4.8,
     reviews: 156,
+    image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800',
     nutrition: { calories: 220, protein: 15, fat: 18, carbs: 42 },
     badges: ['Large Birds', 'Nut-Heavy', 'Macaws'],
     recipe: {
@@ -306,6 +314,7 @@ const birdRecipes = [
     prepTime: 10,
     rating: 4.9,
     reviews: 534,
+    image: 'https://images.unsplash.com/photo-1568390811907-0ca2f0eff400?w=800',
     nutrition: { calories: 110, protein: 9, fat: 7, carbs: 25 },
     badges: ['Pellet Topper', 'Universal', 'Daily Use'],
     recipe: {
@@ -425,22 +434,60 @@ export default function BirdsPage() {
       )}
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/pet-food">
-                <Button variant="ghost" size="sm" className="text-gray-500">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Pet Food
-                </Button>
-              </Link>
-              <div className="h-6 w-px bg-gray-300" />
-              <div className="flex items-center gap-2">
-                <Bird className="h-6 w-6 text-cyan-600" />
-                <h1 className="text-2xl font-bold text-gray-900">Bird Food Recipes</h1>
-                <Badge className="bg-cyan-100 text-cyan-800">9 Recipes</Badge>
-              </div>
+      <div className="bg-gradient-to-r from-cyan-600 via-blue-600 to-sky-600 text-white shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between">
+            <Link href="/pet-food">
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Pet Food
+              </Button>
+            </Link>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+                <Share2 className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+                <Heart className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Hero */}
+      <div className="bg-gradient-to-br from-cyan-600 via-blue-600 to-sky-600 text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
+              <Bird className="h-12 w-12" />
+            </div>
+            <div>
+              <h1 className="text-5xl font-bold mb-2">Bird Food Recipes</h1>
+              <p className="text-xl text-cyan-100">Nutritious seed mixes, fruits, and treats for your feathered friends</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
+              <Leaf className="h-8 w-8 mb-2" />
+              <div className="text-2xl font-bold">9</div>
+              <div className="text-sm text-cyan-100">Recipes</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
+              <Clock className="h-8 w-8 mb-2" />
+              <div className="text-2xl font-bold">10-25min</div>
+              <div className="text-sm text-cyan-100">Prep Time</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
+              <Target className="h-8 w-8 mb-2" />
+              <div className="text-2xl font-bold">All Species</div>
+              <div className="text-sm text-cyan-100">Bird Types</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
+              <Shield className="h-8 w-8 mb-2" />
+              <div className="text-2xl font-bold">Fresh & Safe</div>
+              <div className="text-sm text-cyan-100">Quality Ingredients</div>
             </div>
           </div>
         </div>
@@ -471,14 +518,6 @@ export default function BirdsPage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-cyan-600">11g+</div><div className="text-sm text-gray-600">Avg Protein</div></CardContent></Card>
-          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-blue-600">4.8★</div><div className="text-sm text-gray-600">Avg Rating</div></CardContent></Card>
-          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-cyan-600">16 min</div><div className="text-sm text-gray-600">Avg Prep</div></CardContent></Card>
-          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-blue-600">9</div><div className="text-sm text-gray-600">Recipes</div></CardContent></Card>
-        </div>
 
         {/* Search and Filters */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -548,16 +587,33 @@ export default function BirdsPage() {
             const servings = servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
 
             return (
-              <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
+              <Card key={recipe.id} className="hover:shadow-lg transition-shadow overflow-hidden">
+                {/* Recipe Image */}
+                {recipe.image && (
+                  <div className="relative h-48 overflow-hidden">
+                    <img 
+                      src={recipe.image} 
+                      alt={recipe.name}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                    />
+                    <div className="absolute top-3 right-3 flex flex-col gap-2">
+                      {recipe.badges.slice(0, 2).map((badge: string) => (
+                        <Badge key={badge} className="bg-cyan-600 text-white text-xs">{badge}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
                       <CardTitle className="text-lg mb-1">{recipe.name}</CardTitle>
                       <div className="flex items-center gap-2 mb-2">
                         <Badge variant="outline" className="text-xs">{recipe.category}</Badge>
-                        {recipe.badges.slice(0, 2).map((badge: string) => (
-                          <Badge key={badge} className="bg-cyan-100 text-cyan-800 text-xs">{badge}</Badge>
-                        ))}
+                        <div className="flex items-center gap-1 text-sm text-gray-600">
+                          <Clock className="h-3 w-3" />
+                          {recipe.prepTime}min
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -638,10 +694,11 @@ export default function BirdsPage() {
                     ))}
                   </div>
 
-                  {/* Action */}
+                  {/* Action - BIRD ICON */}
                   <div className="mt-3">
                     <Button className="w-full bg-cyan-600 hover:bg-cyan-700" onClick={() => openRecipeModal(recipe)}>
-                      <Zap className="h-4 w-4 mr-2" />Make Recipe (+40 XP)
+                      <Bird className="h-4 w-4 mr-2" />
+                      Make Recipe (+40 XP)
                     </Button>
                   </div>
                 </CardContent>
