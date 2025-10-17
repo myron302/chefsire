@@ -8,7 +8,8 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
   Target, Heart, Star, Zap, Flame, Leaf, Sparkles, Moon, Wine,
-  Search, ArrowLeft, ArrowRight, Camera, X, Plus, Dumbbell
+  Search, ArrowLeft, ArrowRight, Camera, X, Plus, Dumbbell,
+  Check, Clipboard, Share2, RotateCcw
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
@@ -18,6 +19,24 @@ import type { RecipeKitHandle } from '@/components/recipes/RecipeKit';
 // ---------- Helpers ----------
 type Nutrition = { calories?: number; protein?: number; carbs?: number; fat?: number; fiber?: number };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+// Scaling helpers to match Whey page
+const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+const toNiceFraction = (value: number) => {
+  const rounded = Math.round(value * 4) / 4;
+  const whole = Math.trunc(rounded);
+  const frac = Math.round((rounded - whole) * 4);
+  const fracMap: Record<number, string> = { 0: '', 1: '1/4', 2: '1/2', 3: '3/4' };
+  const fracStr = fracMap[frac];
+  if (!whole && fracStr) return fracStr;
+  if (whole && fracStr) return `${whole} ${fracStr}`;
+  return `${whole}`;
+};
+const scaleAmount = (baseAmount: number | string, servings: number) => {
+  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
+  if (Number.isNaN(n)) return baseAmount;
+  return toNiceFraction(n * servings);
+};
 
 // ---------- Cross-nav ----------
 const otherDrinkHubs = [
@@ -51,6 +70,9 @@ const eggProteinRecipes = [
     tags: ['Lactose-Free', 'Post-Workout', 'Muscle Building'],
     benefits: ['Complete amino acids', 'Easy digestion', 'No lactose'],
     ingredients: ['Egg White Protein', 'Banana', 'Oats', 'Cinnamon', 'Almond Milk'],
+    absorptionTime: '60-90 minutes',
+    leucineContent: '2.8g',
+    bestTime: 'Post-workout or morning',
     recipe: {
       servings: 1,
       measurements: [
@@ -83,6 +105,9 @@ const eggProteinRecipes = [
     tags: ['High Protein', 'Morning Boost', 'Muscle Recovery'],
     benefits: ['Sustained energy', 'Rich in BCAAs', 'Smooth texture'],
     ingredients: ['Egg Protein', 'Vanilla', 'Greek Yogurt', 'Honey', 'Ice'],
+    absorptionTime: '60-90 minutes',
+    leucineContent: '3.0g',
+    bestTime: 'Morning or post-workout',
     recipe: {
       servings: 1,
       measurements: [
@@ -115,6 +140,9 @@ const eggProteinRecipes = [
     tags: ['Antioxidants', 'Recovery', 'Lactose-Free'],
     benefits: ['Antioxidant rich', 'Anti-inflammatory', 'Heart health'],
     ingredients: ['Egg Protein', 'Mixed Berries', 'Spinach', 'Chia', 'Coconut Water'],
+    absorptionTime: '60-90 minutes',
+    leucineContent: '2.6g',
+    bestTime: 'Post-workout or snack',
     recipe: {
       servings: 1,
       measurements: [
@@ -146,6 +174,9 @@ const eggProteinRecipes = [
     tags: ['Indulgent', 'Post-Workout', 'Strength'],
     benefits: ['Muscle growth', 'Energy boost', 'Great taste'],
     ingredients: ['Egg Protein', 'Cocoa', 'Peanut Butter', 'Banana', 'Milk'],
+    absorptionTime: '60-90 minutes',
+    leucineContent: '3.2g',
+    bestTime: 'Post-workout or meal replacement',
     recipe: {
       servings: 1,
       measurements: [
@@ -177,6 +208,9 @@ const eggProteinRecipes = [
     tags: ['Detox', 'Nutrient-Dense', 'Alkalizing'],
     benefits: ['Nutrient-dense', 'Digestive health', 'Clean protein'],
     ingredients: ['Egg Protein', 'Kale', 'Avocado', 'Apple', 'Lemon'],
+    absorptionTime: '60-90 minutes',
+    leucineContent: '2.7g',
+    bestTime: 'Morning or pre-workout',
     recipe: {
       servings: 1,
       measurements: [
@@ -208,6 +242,9 @@ const eggProteinRecipes = [
     tags: ['Tropical', 'Anti-Inflammatory', 'Recovery'],
     benefits: ['Tropical flavor', 'Anti-inflammatory', 'Immune boost'],
     ingredients: ['Egg Protein', 'Mango', 'Pineapple', 'Coconut Milk', 'Turmeric'],
+    absorptionTime: '60-90 minutes',
+    leucineContent: '2.9g',
+    bestTime: 'Post-workout or breakfast',
     recipe: {
       servings: 1,
       measurements: [
@@ -239,6 +276,9 @@ const eggProteinRecipes = [
     tags: ['Morning Boost', 'Energy', 'Focus'],
     benefits: ['Caffeine boost', 'Mental focus', 'Sustained energy'],
     ingredients: ['Egg Protein', 'Coffee', 'Cocoa', 'Milk', 'Vanilla'],
+    absorptionTime: '60-90 minutes',
+    leucineContent: '3.1g',
+    bestTime: 'Morning or pre-workout',
     recipe: {
       servings: 1,
       measurements: [
@@ -271,6 +311,9 @@ const eggProteinRecipes = [
     tags: ['Seasonal', 'Comfort', 'Fiber Rich'],
     benefits: ['Seasonal flavor', 'High fiber', 'Vitamin A'],
     ingredients: ['Egg Protein', 'Pumpkin', 'Spices', 'Yogurt', 'Oats'],
+    absorptionTime: '60-90 minutes',
+    leucineContent: '2.8g',
+    bestTime: 'Morning or snack',
     recipe: {
       servings: 1,
       measurements: [
@@ -303,6 +346,9 @@ const eggProteinRecipes = [
     tags: ['Antioxidants', 'Energy', 'Metabolism'],
     benefits: ['Antioxidant boost', 'Metabolism support', 'Calm energy'],
     ingredients: ['Egg Protein', 'Matcha', 'Spinach', 'Avocado', 'Coconut Water'],
+    absorptionTime: '60-90 minutes',
+    leucineContent: '2.7g',
+    bestTime: 'Morning or afternoon',
     recipe: {
       servings: 1,
       measurements: [
@@ -341,6 +387,7 @@ export default function EggProteinPage() {
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [showKit, setShowKit] = useState(false);
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
+  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
   // RecipeKit refs
   const kitRefs = useRef<Record<string, RecipeKitHandle | null>>({});
@@ -396,6 +443,64 @@ export default function EggProteinPage() {
         alert('Unable to share on this device.');
       }
     }
+  };
+
+  const handleShareShake = async (shake: any, servingsOverride?: number) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const servings = servingsOverride ?? servingsById[shake.id] ?? (shake.recipe?.servings || 1);
+    const preview = (shake?.recipe?.measurements || [])
+      .slice(0, 4)
+      .map((r: Measured) => {
+        const scaled =
+          typeof r.amount === 'number'
+            ? `${scaleAmount(r.amount, servings)} ${r.unit}`
+            : `${r.amount} ${r.unit}`;
+        return `${scaled} ${r.item}`;
+      })
+      .join(' · ');
+    const text = `${shake.name} • ${shake.flavor} • Egg Protein\n${preview || (shake.ingredients?.slice(0,4)?.join(', ') ?? '')}`;
+    const shareData = { title: shake.name, text, url };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shake.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shake.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const openRecipeModal = (recipe: any) => {
+    setSelectedRecipe(recipe);
+    setShowKit(true);
+  };
+
+  const handleCompleteRecipe = () => {
+    if (selectedRecipe) {
+      const drinkData = {
+        id: selectedRecipe.id,
+        name: selectedRecipe.name,
+        category: 'protein-shakes' as const,
+        description: `${selectedRecipe.flavor || ''} egg protein shake`,
+        ingredients: selectedRecipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || selectedRecipe.ingredients,
+        nutrition: { calories: selectedRecipe.calories, protein: selectedRecipe.protein, carbs: selectedRecipe.carbs, fat: 5 },
+        difficulty: selectedRecipe.difficulty as 'Easy' | 'Medium' | 'Hard',
+        prepTime: selectedRecipe.prepTime,
+        rating: selectedRecipe.rating
+      };
+      addToRecentlyViewed(drinkData);
+      incrementDrinksMade();
+      addPoints(100);
+    }
+    setShowKit(false);
+    setSelectedRecipe(null);
   };
 
   return (
@@ -578,90 +683,231 @@ export default function EggProteinPage() {
 
         {/* Recipe Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredRecipes.map((recipe) => (
-            <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg mb-1">{recipe.name}</CardTitle>
-                    <p className="text-sm text-gray-600 mb-2">{recipe.flavor}</p>
+          {filteredRecipes.map((recipe) => {
+            const useMetric = !!metricFlags[recipe.id];
+            const servings = servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
+
+            return (
+              <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="text-lg mb-1">{recipe.name}</CardTitle>
+                      <p className="text-sm text-gray-600 mb-2">{recipe.flavor}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const drinkData = {
+                          id: recipe.id,
+                          name: recipe.name,
+                          category: 'protein-shakes' as const,
+                          description: `${recipe.flavor || ''} egg protein shake`,
+                          ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
+                          nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
+                          difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
+                          prepTime: recipe.prepTime,
+                          rating: recipe.rating
+                        };
+                        addToFavorites(drinkData);
+                      }}
+                      className="text-gray-400 hover:text-red-500"
+                    >
+                      <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                    </Button>
                   </div>
+
+                  {/* Tags at top with different colors */}
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    <Badge className="bg-amber-100 text-amber-800">Egg Protein</Badge>
+                    <Badge variant="outline">{recipe.flavor}</Badge>
+                    {recipe.tags.includes('Post-Workout') && <Badge className="bg-red-100 text-red-800">Post-Workout</Badge>}
+                    {recipe.tags.includes('Lactose-Free') && <Badge className="bg-blue-100 text-blue-800">Lactose-Free</Badge>}
+                  </div>
+                </CardHeader>
+
+                <CardContent>
+                  {/* Nutrition Grid */}
+                  <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
+                    <div>
+                      <div className="text-xl font-bold text-amber-600">{recipe.protein}g</div>
+                      <div className="text-gray-500">Protein</div>
+                    </div>
+                    <div>
+                      <div className="text-xl font-bold text-blue-600">{recipe.calories}</div>
+                      <div className="text-gray-500">Calories</div>
+                    </div>
+                    <div>
+                      <div className="text-xl font-bold text-green-600">{recipe.prepTime}m</div>
+                      <div className="text-gray-500">Prep Time</div>
+                    </div>
+                  </div>
+
+                  {/* MOVED: Rating and Difficulty just above recipe box */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-1">
+                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                      <span className="font-medium">{recipe.rating}</span>
+                      <span className="text-gray-500 text-sm">({recipe.reviews})</span>
+                    </div>
+                    <Badge variant="outline">{recipe.difficulty}</Badge>
+                  </div>
+
+                  {/* Compact measured recipe preview + inline actions (Whey pattern) */}
+                  {recipe.recipe?.measurements && (
+                    <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-semibold text-gray-900">
+                          Recipe (serves {servings})
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="px-2 py-1 border rounded text-sm"
+                            onClick={() =>
+                              setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? (recipe.recipe?.servings || 1)) - 1) }))
+                            }
+                            aria-label="decrease servings"
+                          >
+                            −
+                          </button>
+                          <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                          <button
+                            className="px-2 py-1 border rounded text-sm"
+                            onClick={() =>
+                              setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? (recipe.recipe?.servings || 1)) + 1) }))
+                            }
+                            aria-label="increase servings"
+                          >
+                            +
+                          </button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setServingsById(prev => {
+                              const next = { ...prev };
+                              next[recipe.id] = recipe.recipe?.servings || 1;
+                              return next;
+                            })}
+                            title="Reset servings"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
+                          </Button>
+                        </div>
+                      </div>
+
+                      <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                        {recipe.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                          const isNum = typeof ing.amount === 'number';
+                          const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount;
+                          const show = useMetric && isNum
+                            ? { amount: Math.round(Number(ing.amount) * servings), unit: 'g' } // Simplified metric conversion
+                            : { amount: scaledDisplay, unit: ing.unit };
+
+                          return (
+                            <li key={i} className="flex items-start gap-2">
+                              <Check className="h-4 w-4 text-amber-600 mt-0.5" />
+                              <span>
+                                <span className="text-amber-700 font-semibold">
+                                  {show.amount} {show.unit}
+                                </span>{" "}
+                                {ing.item}
+                                {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                              </span>
+                            </li>
+                          );
+                        })}
+                        {recipe.recipe.measurements.length > 4 && (
+                          <li className="text-xs text-gray-600">
+                            …plus {recipe.recipe.measurements.length - 4} more •{" "}
+                            <button
+                              type="button"
+                              onClick={() => openRecipeModal(recipe)}
+                              className="underline underline-offset-2"
+                            >
+                              Show more
+                            </button>
+                          </li>
+                        )}
+                      </ul>
+
+                      <div className="flex gap-2 mt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            const lines = (recipe.recipe?.measurements || []).map((ing: Measured) => {
+                              if (useMetric && typeof ing.amount === 'number') {
+                                return `- ${Math.round(Number(ing.amount) * servings)}g ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
+                              }
+                              const scaled = typeof ing.amount === 'number' ? scaleAmount(ing.amount, servings) : ing.amount;
+                              return `- ${scaled} ${ing.unit} ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
+                            });
+                            const txt = `${recipe.name} (serves ${servings})\n${lines.join('\n')}`;
+                            try {
+                              await navigator.clipboard.writeText(txt);
+                              alert('Recipe copied!');
+                            } catch {
+                              alert('Unable to copy on this device.');
+                            }
+                          }}
+                        >
+                          <Clipboard className="w-4 h-4 mr-1" /> Copy
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleShareShake(recipe, servings)}>
+                          <Share2 className="w-4 h-4 mr-1" /> Share
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setMetricFlags((prev) => ({ ...prev, [recipe.id]: !prev[recipe.id] }))
+                          }
+                        >
+                          {useMetric ? 'US' : 'Metric'}
+                        </Button>
+                      </div>
+
+                      {/* ADDED: Absorption content below recipe box */}
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div className="text-center">
+                            <div className="font-semibold text-gray-700">Absorption:</div>
+                            <div className="text-blue-600 font-medium">{recipe.absorptionTime}</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="font-semibold text-gray-700">Leucine:</div>
+                            <div className="text-green-600 font-medium">{recipe.leucineContent}</div>
+                          </div>
+                        </div>
+                        <div className="text-center mt-2">
+                          <div className="font-semibold text-gray-700">Best Time:</div>
+                          <div className="text-purple-600 font-medium text-sm">{recipe.bestTime}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Benefits tags with Egg color scheme */}
+                  <div className="flex flex-wrap gap-1 mb-4">
+                    {recipe.benefits.map((benefit: string, index: number) => (
+                      <Badge key={index} variant="secondary" className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-200">
+                        {benefit}
+                      </Badge>
+                    ))}
+                  </div>
+
+                  {/* Full-width CTA — Make Shake with lighter amber */}
                   <Button
-                    variant="ghost"
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-white"
                     size="sm"
                     onClick={() => {
-                      const drinkData = {
-                        id: recipe.id,
-                        name: recipe.name,
-                        category: 'protein-shakes' as const,
-                        description: `${recipe.flavor || ''} egg protein shake`,
-                        ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
-                        nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
-                        difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
-                        prepTime: recipe.prepTime,
-                        rating: recipe.rating
-                      };
-                      addToFavorites(drinkData);
-                    }}
-                    className="text-gray-400 hover:text-red-500"
-                  >
-                    <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                  </Button>
-                </div>
-
-                {/* Tags at top with different colors */}
-                <div className="flex flex-wrap gap-1 mb-2">
-                  <Badge className="bg-amber-100 text-amber-800">Egg Protein</Badge>
-                  <Badge variant="outline">{recipe.flavor}</Badge>
-                  {recipe.tags.includes('Post-Workout') && <Badge className="bg-red-100 text-red-800">Post-Workout</Badge>}
-                  {recipe.tags.includes('Lactose-Free') && <Badge className="bg-blue-100 text-blue-800">Lactose-Free</Badge>}
-                </div>
-
-                {/* Rating and Difficulty just above recipe box */}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-1">
-                    <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                    <span className="font-medium">{recipe.rating}</span>
-                    <span className="text-gray-500 text-sm">({recipe.reviews})</span>
-                  </div>
-                  <Badge variant="outline">{recipe.difficulty}</Badge>
-                </div>
-              </CardHeader>
-
-              <CardContent>
-                {/* Nutrition Grid */}
-                <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
-                  <div>
-                    <div className="text-xl font-bold text-amber-600">{recipe.protein}g</div>
-                    <div className="text-gray-500">Protein</div>
-                  </div>
-                  <div>
-                    <div className="text-xl font-bold text-blue-600">{recipe.calories}</div>
-                    <div className="text-gray-500">Calories</div>
-                  </div>
-                  <div>
-                    <div className="text-xl font-bold text-green-600">{recipe.prepTime}m</div>
-                    <div className="text-gray-500">Prep Time</div>
-                  </div>
-                </div>
-
-                {/* RecipeKit (preview + modal) */}
-                {recipe.recipe?.measurements && (
-                  <RecipeKit
-                    ref={(el) => { kitRefs.current[recipe.id] = el; }}
-                    id={recipe.id}
-                    name={recipe.name}
-                    measurements={recipe.recipe.measurements}
-                    directions={recipe.recipe.directions}
-                    nutrition={{ calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 }}
-                    prepTime={recipe.prepTime}
-                    onComplete={() => {
                       addToRecentlyViewed({
                         id: recipe.id,
                         name: recipe.name,
                         category: 'protein-shakes',
                         description: recipe.flavor,
-                        ingredients: recipe.recipe.measurements.map((x: Measured) => x.item),
+                        ingredients: recipe.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
                         nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
                         difficulty: recipe.difficulty,
                         prepTime: recipe.prepTime,
@@ -671,48 +917,16 @@ export default function EggProteinPage() {
                       });
                       incrementDrinksMade();
                       addPoints(100);
+                      kitRefs.current[recipe.id]?.open?.();
                     }}
-                  />
-                )}
-
-                {/* Benefits tags with Egg color scheme */}
-                <div className="flex flex-wrap gap-1 mb-4">
-                  {recipe.benefits.map((benefit: string, index: number) => (
-                    <Badge key={index} variant="secondary" className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-200">
-                      {benefit}
-                    </Badge>
-                  ))}
-                </div>
-
-                {/* Full-width CTA — Make Shake with lighter amber */}
-                <Button
-                  className="w-full bg-amber-500 hover:bg-amber-600 text-white"
-                  size="sm"
-                  onClick={() => {
-                    addToRecentlyViewed({
-                      id: recipe.id,
-                      name: recipe.name,
-                      category: 'protein-shakes',
-                      description: recipe.flavor,
-                      ingredients: recipe.recipe?.measurements?.map((x: Measured) => x.item) ?? [],
-                      nutrition: { calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: 5 },
-                      difficulty: recipe.difficulty,
-                      prepTime: recipe.prepTime,
-                      rating: recipe.rating,
-                      fitnessGoal: 'Muscle Building',
-                      bestTime: 'Post-Workout'
-                    });
-                    incrementDrinksMade();
-                    addPoints(100);
-                    kitRefs.current[recipe.id]?.open?.();
-                  }}
-                >
-                  <Dumbbell className="h-4 w-4 mr-1" />
-                  Make Shake (+100 XP)
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+                  >
+                    <Dumbbell className="h-4 w-4 mr-1" />
+                    Make Shake (+100 XP)
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
         {/* Your Progress */}
@@ -741,6 +955,26 @@ export default function EggProteinPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* RecipeKit Modal */}
+      {selectedRecipe && (
+        <RecipeKit
+          open={showKit}
+          onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
+          accent="amber"
+          pointsReward={100}
+          onComplete={handleCompleteRecipe}
+          item={{
+            id: selectedRecipe.id,
+            name: selectedRecipe.name,
+            prepTime: selectedRecipe.prepTime,
+            directions: selectedRecipe.recipe?.directions || [],
+            measurements: selectedRecipe.recipe?.measurements || [],
+            baseNutrition: { calories: selectedRecipe.calories, protein: selectedRecipe.protein, carbs: selectedRecipe.carbs, fat: 5 } || {},
+            defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+          }}
+        />
+      )}
     </div>
   );
 }
