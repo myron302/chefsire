@@ -1,3 +1,4 @@
+// client/src/App.tsx
 import * as React from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -10,6 +11,9 @@ import Layout from "@/components/layout";
 import RequireAgeGate from "@/components/RequireAgeGate";
 
 import { DrinksProvider } from "@/contexts/DrinksContext";
+
+// ✅ Mobile kit (site-wide mobile fixes)
+import { MobileKitProvider } from "@/mobile/MobileKit";
 
 // Pages (existing)
 import Feed from "@/pages/feed";
@@ -329,13 +333,15 @@ function AppRouter() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <DrinksProvider>
-        <TooltipProvider>
-          <Toaster />
-          <AppRouter />
-        </TooltipProvider>
-      </DrinksProvider>
-    </QueryClientProvider>
+    <MobileKitProvider>
+      <QueryClientProvider client={queryClient}>
+        <DrinksProvider>
+          <TooltipProvider>
+            <Toaster />
+            <AppRouter />
+          </TooltipProvider>
+        </DrinksProvider>
+      </QueryClientProvider>
+    </MobileKitProvider>
   );
 }
