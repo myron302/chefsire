@@ -5,9 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { 
-  Dog, Cat, Bird, Rabbit, Clock, Heart, Target, Shield, 
+  Dog, Cat, Bird, Rabbit,
+  Clock, Heart, Target, Shield, 
   Search, Share2, ArrowLeft, Home, Sparkles, Award,
-  TrendingUp, Zap, Crown, ChevronRight, Star, Leaf, Apple
+  Crown, ChevronRight, Star, Leaf
 } from 'lucide-react';
 
 const petCategories = [
