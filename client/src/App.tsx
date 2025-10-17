@@ -90,6 +90,13 @@ import LiqueursPage from "@/pages/drinks/potent-potables/liqueurs";
 import SpritzPage from "@/pages/drinks/potent-potables/spritz";
 import HotDrinksPage from "@/pages/drinks/potent-potables/hot-drinks";
 
+// ========== PET FOOD PAGES ==========
+import PetFoodHub from "@/pages/pet-food";
+import DogsPage from "@/pages/pet-food/dogs";
+import CatsPage from "@/pages/pet-food/cats";
+import BirdsPage from "@/pages/pet-food/birds";
+import SmallPetsPage from "@/pages/pet-food/small-pets";
+
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole";
@@ -205,6 +212,21 @@ function DrinksSection() {
   );
 }
 
+function PetFoodSection() {
+  return (
+    <Switch>
+      <Route path="/pet-food/dogs" component={DogsPage} />
+      <Route path="/pet-food/cats" component={CatsPage} />
+      <Route path="/pet-food/birds" component={BirdsPage} />
+      <Route path="/pet-food/small-pets" component={SmallPetsPage} />
+      <Route path="/pet-food" component={PetFoodHub} />
+      <Route>
+        <Redirect to="/pet-food" />
+      </Route>
+    </Switch>
+  );
+}
+
 function AppRouter() {
   return (
     <Layout>
@@ -279,6 +301,12 @@ function AppRouter() {
           {() => <DrinksSection />}
         </Route>
         <Route path="/drinks" component={DrinksSection} />
+
+        {/* ---------- Pet Food branches ---------- */}
+        <Route path="/pet-food/:rest*">
+          {() => <PetFoodSection />}
+        </Route>
+        <Route path="/pet-food" component={PetFoodSection} />
 
         {/* ---------- 404 fallback ---------- */}
         <Route path="/saved" component={NotFound} />
