@@ -13,13 +13,8 @@ type NavItemBase = {
 };
 
 type NavItem =
-  | (NavItemBase & {
-      hasSubmenu?: false;
-    })
-  | (NavItemBase & {
-      hasSubmenu: true;
-      submenu: NavItem[];
-    });
+  | (NavItemBase & { hasSubmenu?: false })
+  | (NavItemBase & { hasSubmenu: true; submenu: NavItem[] });
 
 const NAV: NavItem[] = [
   { name: "🏠 Feed", href: "/feed" },
@@ -28,12 +23,12 @@ const NAV: NavItem[] = [
 
   {
     name: "🏆 Cookoff Arena",
-    href: "/competitions/library", // 🔧 point parent to Library
+    href: "/competitions/library",
     hasSubmenu: true,
     submenu: [
-      { name: "📚 Browse All Cookoffs", href: "/competitions/library" }, // 🔧 library
+      { name: "📚 Browse All Cookoffs", href: "/competitions/library" },
       { name: "🔥 Live Battles", href: "/competitions/live" },
-      { name: "➕ Create Cookoff", href: "/competitions/new" }, // 🔧 create
+      { name: "➕ Create Cookoff", href: "/competitions/new" },
     ],
   },
 
@@ -65,6 +60,8 @@ const NAV: NavItem[] = [
           { name: "💪 Protein", href: "/drinks/smoothies/protein" },
           { name: "🍨 Dessert", href: "/drinks/smoothies/dessert" },
           { name: "🏋️ Workout", href: "/drinks/smoothies/workout" },
+          { name: "🍓 Berry", href: "/drinks/smoothies/berry" },       // ✅ added
+          { name: "🏝️ Tropical", href: "/drinks/smoothies/tropical" }, // ✅ added
         ],
       },
       {
@@ -76,6 +73,8 @@ const NAV: NavItem[] = [
           { name: "🌱 Plant-Based", href: "/drinks/protein-shakes/plant-based" },
           { name: "🧀 Casein", href: "/drinks/protein-shakes/casein" },
           { name: "✨ Collagen", href: "/drinks/protein-shakes/collagen" },
+          { name: "🥚 Egg", href: "/drinks/protein-shakes/egg" },       // ✅ added
+          { name: "🐄 Beef", href: "/drinks/protein-shakes/beef" },     // ✅ added
         ],
       },
       {
@@ -97,25 +96,41 @@ const NAV: NavItem[] = [
           { name: "🥃 Whiskey & Bourbon", href: "/drinks/potent-potables/whiskey-bourbon" },
           { name: "🌵 Tequila & Mezcal", href: "/drinks/potent-potables/tequila-mezcal" },
           { name: "🏝️ Rum", href: "/drinks/potent-potables/rum" },
-          { name: "🍾 Cognac & Brandy", href: "/drinks/potent-potables/cognac-brandy" },
-          { name: "🏴 Scotch & Irish", href: "/drinks/potent-potables/scotch-irish-whiskey" },
+          { name: "🍓 Daiquiri", href: "/drinks/potent-potables/daiquiri" }, // ✅ added earlier
           { name: "🍸 Martinis", href: "/drinks/potent-potables/martinis" },
           { name: "🍹 Cocktails", href: "/drinks/potent-potables/cocktails" },
-          { name: "🧃 Virgin Cocktails", href: "/drinks/potent-potables/virgin-cocktails" },
+          { name: "🍸 Gin", href: "/drinks/potent-potables/gin" },           // ✅ new
+          { name: "🔥 Hot Drinks", href: "/drinks/potent-potables/hot-drinks" }, // ✅ new
+          { name: "🥃 Liqueurs", href: "/drinks/potent-potables/liqueurs" }, // ✅ new
+          { name: "🥂 Spritz", href: "/drinks/potent-potables/spritz" },     // ✅ new
+          { name: "🍾 Cognac & Brandy", href: "/drinks/potent-potables/cognac-brandy" },
+          { name: "🏴 Scotch & Irish", href: "/drinks/potent-potables/scotch-irish-whiskey" },
+          { name: "🗓️ Seasonal", href: "/drinks/potent-potables/seasonal" },
+          // ❌ Virgin Cocktails removed (merged into Mocktails)
+          { name: "🧃 Mocktails (Zero-Proof)", href: "/drinks/potent-potables/mocktails" }, // zero-proof, not age-gated
         ],
       },
     ],
   },
 
+  // ✅ New top-level Pet Food section
   {
-    name: "🍽️ Catering",
-    href: "/catering",
+    name: "🐾 Pet Food",
+    href: "/pet-food",
     hasSubmenu: true,
     submenu: [
-      { name: "👨‍🍳 Browse Caterers", href: "/catering" },
-      { name: "💒 Wedding Planning", href: "/catering/wedding-planning" },
+      { name: "🐶 Dogs", href: "/pet-food/dogs" },
+      { name: "🐱 Cats", href: "/pet-food/cats" },
+      { name: "🦜 Birds", href: "/pet-food/birds" },
+      { name: "🐹 Small Pets", href: "/pet-food/small-pets" },
     ],
   },
+
+  { name: "🍽️ Catering", href: "/catering", hasSubmenu: true, submenu: [
+    { name: "👨‍🍳 Browse Caterers", href: "/catering" },
+    { name: "💒 Wedding Planning", href: "/catering/wedding-planning" },
+  ]},
+
   { name: "🛒 Marketplace", href: "/marketplace" },
   { name: "💪 Nutrition", href: "/nutrition", isPremium: true },
   { name: "👤 Profile", href: "/profile" },
@@ -137,13 +152,11 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
             isActive(item.href) ||
             item.submenu.some((s) => {
               if ("hasSubmenu" in s && s.hasSubmenu) {
-                return isActive(s.href) || s.submenu.some((nested) => isActive(nested.href));
+                return isActive(s.href) || s.submenu.some((n) => isActive(n.href));
               }
               return isActive(s.href);
             });
-          if (anyActive) {
-            map[[...parentTrail, item.name].join(" / ")] = true;
-          }
+          if (anyActive) map[[...parentTrail, item.name].join(" / ")] = true;
           walk(item.submenu, [...parentTrail, item.name]);
         }
       });
@@ -153,10 +166,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
   }, [location]);
 
   const keyFor = (trail: string[]) => trail.join(" / ");
-
-  const isOpen = (trail: string[]) =>
-    openSections[keyFor(trail)] ?? autoOpen[keyFor(trail)] ?? false;
-
+  const isOpen = (trail: string[]) => openSections[keyFor(trail)] ?? autoOpen[keyFor(trail)] ?? false;
   const toggle = (trail: string[]) =>
     setOpenSections((prev) => {
       const k = keyFor(trail);
@@ -165,7 +175,6 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
 
   const Row = ({ item, trail = [] as string[], depth = 0 }) => {
     const currentTrail = [...trail, item.name];
-
     if ("hasSubmenu" in item && item.hasSubmenu) {
       return (
         <div className="select-none">
@@ -183,15 +192,11 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
                 <span>{item.name}</span>
               </div>
             </Link>
-
             <button
               aria-label={`Toggle ${item.name} submenu`}
               aria-expanded={isOpen(currentTrail)}
               onClick={() => toggle(currentTrail)}
-              className={[
-                "ml-2 p-1 rounded hover:bg-muted transition-transform",
-                isOpen(currentTrail) ? "rotate-90" : "",
-              ].join(" ")}
+              className={["ml-2 p-1 rounded hover:bg-muted transition-transform", isOpen(currentTrail) ? "rotate-90" : ""].join(" ")}
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -209,7 +214,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
     }
 
     const handleClick = (e: React.MouseEvent) => {
-      if (item.href.includes('?')) {
+      if (item.href.includes("?")) {
         e.preventDefault();
         (window as any).location.href = item.href;
       }
