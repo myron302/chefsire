@@ -920,6 +920,24 @@ export default function WheyProteinShakesPage() {
                               {useMetric ? 'US' : 'Metric'}
                             </Button>
                           </div>
+
+                          {/* MOVED ABSORPTION CONTENT HERE - below recipe card, above tags */}
+                          <div className="mt-4 pt-4 border-t border-gray-200">
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div className="text-center">
+                                <div className="font-semibold text-gray-700">Absorption:</div>
+                                <div className="text-blue-600 font-medium">{shake.absorptionTime}</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="font-semibold text-gray-700">Leucine:</div>
+                                <div className="text-green-600 font-medium">{shake.leucineContent}</div>
+                              </div>
+                            </div>
+                            <div className="text-center mt-2">
+                              <div className="font-semibold text-gray-700">Best Time:</div>
+                              <div className="text-purple-600 font-medium text-sm">{shake.bestTime}</div>
+                            </div>
+                          </div>
                         </div>
                       )}
 
@@ -1264,6 +1282,24 @@ export default function WheyProteinShakesPage() {
                           >
                             {useMetric ? 'US' : 'Metric'}
                           </Button>
+                        </div>
+
+                        {/* MOVED ABSORPTION CONTENT HERE - below recipe card, above tags */}
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="text-center">
+                              <div className="font-semibold text-gray-700">Absorption:</div>
+                              <div className="text-blue-600 font-medium">{shake.absorptionTime}</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="font-semibold text-gray-700">Leucine:</div>
+                              <div className="text-green-600 font-medium">{shake.leucineContent}</div>
+                            </div>
+                          </div>
+                          <div className="text-center mt-2">
+                            <div className="font-semibold text-gray-700">Best Time:</div>
+                            <div className="text-purple-600 font-medium text-sm">{shake.bestTime}</div>
+                          </div>
                         </div>
                       </div>
                     )}
