@@ -778,21 +778,7 @@ export default function WheyProteinShakesPage() {
                         </div>
                       </div>
 
-                      {/* Key Info */}
-                      <div className="space-y-2 mb-4 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Absorption:</span>
-                          <span className="font-medium">{shake.absorptionTime}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Leucine:</span>
-                          <span className="font-medium">{shake.leucineContent}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Best Time:</span>
-                          <span className="font-medium text-xs">{shake.bestTime}</span>
-                        </div>
-                      </div>
+                      {/* REMOVED Key Info section with absorption content */}
 
                       {/* Rating / Difficulty (leave placement as-is) */}
                       <div className="flex items-center justify-between mb-4">
@@ -1154,21 +1140,7 @@ export default function WheyProteinShakesPage() {
                       </div>
                     </div>
 
-                    {/* Detailed info */}
-                    <div className="space-y-3 mb-6">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Absorption Time:</span>
-                        <span className="font-medium">{shake.absorptionTime}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Leucine Content:</span>
-                        <span className="font-medium">{shake.leucineContent}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Best Time:</span>
-                        <span className="font-medium">{shake.bestTime}</span>
-                      </div>
-                    </div>
+                    {/* REMOVED Detailed info section with absorption content */}
 
                     {/* Compact measured recipe preview (with serving controls, same as browse) */}
                     {shake.recipe?.measurements && (
