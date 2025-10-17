@@ -5,8 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Cat, Dog, Bird, Rabbit, Clock, Heart, Star, Shield, Sparkles,
-  Search, Share2, ArrowLeft, Check, Clipboard, RotateCcw, Zap, Award, ArrowRight, X, Home, Crown, Fish, Target
+  Cat, Dog, Bird, Rabbit, Clock, Heart, Star, Shield, Sparkles, Fish, Target,
+  Search, Share2, ArrowLeft, Check, Clipboard, RotateCcw, Award, ArrowRight, Home, Crown
 } from 'lucide-react';
 import RecipeKit from '@/components/recipes/RecipeKit';
 
@@ -50,7 +50,7 @@ const sisterPetFoodPages = [
   { id: 'small-pets', name: 'Small Pets', path: '/pet-food/small-pets', icon: Rabbit, description: 'Rabbits & rodents' }
 ];
 
-// Cat recipes - 9 total
+// Cat recipes - 9 total with images
 const catRecipes = [
   {
     id: 'cat-1',
@@ -60,6 +60,7 @@ const catRecipes = [
     prepTime: 20,
     rating: 4.9,
     reviews: 428,
+    image: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800',
     nutrition: { calories: 385, protein: 35, fat: 18, carbs: 12 },
     taurine: 'High',
     badges: ['High Protein', 'Taurine-Rich', 'Kitten'],
@@ -92,6 +93,7 @@ const catRecipes = [
     prepTime: 25,
     rating: 4.8,
     reviews: 612,
+    image: 'https://images.unsplash.com/photo-1606214174585-fe31582dc6ee?w=800',
     nutrition: { calories: 360, protein: 32, fat: 16, carbs: 8 },
     taurine: 'Very High',
     badges: ['High Protein', 'Omega-3', 'Adult'],
@@ -124,6 +126,7 @@ const catRecipes = [
     prepTime: 30,
     rating: 4.9,
     reviews: 389,
+    image: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?w=800',
     nutrition: { calories: 320, protein: 30, fat: 14, carbs: 10 },
     taurine: 'High',
     badges: ['Senior', 'Easy Digest', 'Kidney Support'],
@@ -156,6 +159,7 @@ const catRecipes = [
     prepTime: 25,
     rating: 4.7,
     reviews: 334,
+    image: 'https://images.unsplash.com/photo-1495360010541-f48722b34f7d?w=800',
     nutrition: { calories: 395, protein: 38, fat: 20, carbs: 6 },
     taurine: 'Very High',
     badges: ['Very High Protein', 'Low Carb', 'Muscle Building'],
@@ -188,6 +192,7 @@ const catRecipes = [
     prepTime: 30,
     rating: 4.8,
     reviews: 267,
+    image: 'https://images.unsplash.com/photo-1615789591457-74a63395c990?w=800',
     nutrition: { calories: 350, protein: 34, fat: 17, carbs: 4 },
     taurine: 'High',
     badges: ['Low Carb', 'Diabetic-Friendly', 'Weight Control'],
@@ -220,6 +225,7 @@ const catRecipes = [
     prepTime: 25,
     rating: 4.6,
     reviews: 298,
+    image: 'https://images.unsplash.com/photo-1513360371669-4adf3dd7dff8?w=800',
     nutrition: { calories: 340, protein: 31, fat: 15, carbs: 12 },
     taurine: 'High',
     badges: ['Hairball Control', 'High Fiber', 'Indoor Cats'],
@@ -252,6 +258,7 @@ const catRecipes = [
     prepTime: 30,
     rating: 4.9,
     reviews: 412,
+    image: 'https://images.unsplash.com/photo-1526336024174-e58f5cdd8e13?w=800',
     nutrition: { calories: 330, protein: 33, fat: 16, carbs: 8 },
     taurine: 'Very High',
     badges: ['Urinary Health', 'High Moisture', 'pH Balanced'],
@@ -284,6 +291,7 @@ const catRecipes = [
     prepTime: 35,
     rating: 4.7,
     reviews: 245,
+    image: 'https://images.unsplash.com/photo-1543852786-1cf6624b9987?w=800',
     nutrition: { calories: 310, protein: 29, fat: 13, carbs: 14 },
     taurine: 'High',
     badges: ['Limited Ingredient', 'Easy Digest', 'Sensitive Stomach'],
@@ -316,6 +324,7 @@ const catRecipes = [
     prepTime: 30,
     rating: 4.8,
     reviews: 356,
+    image: 'https://images.unsplash.com/photo-1517331156700-3c241d2b4d83?w=800',
     nutrition: { calories: 370, protein: 33, fat: 18, carbs: 9 },
     taurine: 'Very High',
     badges: ['Balanced', 'Omega-Rich', 'Complete Nutrition'],
@@ -436,22 +445,60 @@ export default function CatsPage() {
       )}
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/pet-food">
-                <Button variant="ghost" size="sm" className="text-gray-500">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Pet Food
-                </Button>
-              </Link>
-              <div className="h-6 w-px bg-gray-300" />
-              <div className="flex items-center gap-2">
-                <Cat className="h-6 w-6 text-purple-600" />
-                <h1 className="text-2xl font-bold text-gray-900">Cat Food Recipes</h1>
-                <Badge className="bg-purple-100 text-purple-800">9 Recipes</Badge>
-              </div>
+      <div className="bg-gradient-to-r from-purple-600 via-pink-600 to-fuchsia-600 text-white shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between">
+            <Link href="/pet-food">
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Pet Food
+              </Button>
+            </Link>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+                <Share2 className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+                <Heart className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Hero */}
+      <div className="bg-gradient-to-br from-purple-600 via-pink-600 to-fuchsia-600 text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
+              <Cat className="h-12 w-12" />
+            </div>
+            <div>
+              <h1 className="text-5xl font-bold mb-2">Cat Food Recipes</h1>
+              <p className="text-xl text-purple-100">High-protein, taurine-rich meals for your feline friend</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
+              <Fish className="h-8 w-8 mb-2" />
+              <div className="text-2xl font-bold">9</div>
+              <div className="text-sm text-purple-100">Recipes</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
+              <Clock className="h-8 w-8 mb-2" />
+              <div className="text-2xl font-bold">20-35min</div>
+              <div className="text-sm text-purple-100">Prep Time</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
+              <Target className="h-8 w-8 mb-2" />
+              <div className="text-2xl font-bold">All Ages</div>
+              <div className="text-sm text-purple-100">Life Stages</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
+              <Shield className="h-8 w-8 mb-2" />
+              <div className="text-2xl font-bold">Taurine+</div>
+              <div className="text-sm text-purple-100">Essential Amino Acid</div>
             </div>
           </div>
         </div>
@@ -482,14 +529,6 @@ export default function CatsPage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-purple-600">32g+</div><div className="text-sm text-gray-600">Avg Protein</div></CardContent></Card>
-          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-pink-600">4.8★</div><div className="text-sm text-gray-600">Avg Rating</div></CardContent></Card>
-          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-purple-600">27 min</div><div className="text-sm text-gray-600">Avg Prep</div></CardContent></Card>
-          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-pink-600">9</div><div className="text-sm text-gray-600">Recipes</div></CardContent></Card>
-        </div>
 
         {/* Search and Filters */}
         <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -559,16 +598,33 @@ export default function CatsPage() {
             const servings = servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
 
             return (
-              <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
+              <Card key={recipe.id} className="hover:shadow-lg transition-shadow overflow-hidden">
+                {/* Recipe Image */}
+                {recipe.image && (
+                  <div className="relative h-48 overflow-hidden">
+                    <img 
+                      src={recipe.image} 
+                      alt={recipe.name}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                    />
+                    <div className="absolute top-3 right-3 flex flex-col gap-2">
+                      {recipe.badges.slice(0, 2).map((badge: string) => (
+                        <Badge key={badge} className="bg-purple-600 text-white text-xs">{badge}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
                       <CardTitle className="text-lg mb-1">{recipe.name}</CardTitle>
                       <div className="flex items-center gap-2 mb-2">
                         <Badge variant="outline" className="text-xs">{recipe.category}</Badge>
-                        {recipe.badges.slice(0, 2).map((badge: string) => (
-                          <Badge key={badge} className="bg-purple-100 text-purple-800 text-xs">{badge}</Badge>
-                        ))}
+                        <div className="flex items-center gap-1 text-sm text-gray-600">
+                          <Clock className="h-3 w-3" />
+                          {recipe.prepTime}min
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -657,10 +713,11 @@ export default function CatsPage() {
                     ))}
                   </div>
 
-                  {/* Action */}
+                  {/* Action - CAT ICON instead of Zap */}
                   <div className="mt-3">
                     <Button className="w-full bg-purple-600 hover:bg-purple-700" onClick={() => openRecipeModal(recipe)}>
-                      <Zap className="h-4 w-4 mr-2" />Make Recipe (+40 XP)
+                      <Cat className="h-4 w-4 mr-2" />
+                      Make Recipe (+40 XP)
                     </Button>
                   </div>
                 </CardContent>
