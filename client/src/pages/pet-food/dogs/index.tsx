@@ -7,9 +7,65 @@ import { Input } from "@/components/ui/input";
 import { 
   Dog, Cat, Bird, Rabbit,
   Clock, Heart, Target, Bone, Shield, 
-  Search, Share2, ArrowLeft, Home,
-  Award, Crown, Activity
+  Search, Share2, ArrowLeft, Home, Award, Crown,
+  Check, Clipboard, RotateCcw, Plus
 } from 'lucide-react';
+import RecipeKit from '@/components/recipes/RecipeKit';
+
+// ---------- Helpers ----------
+type Measured = { amount: number | string; unit: string; item: string; note?: string };
+const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+const toNiceFraction = (value: number) => {
+  const rounded = Math.round(value * 4) / 4;
+  const whole = Math.trunc(rounded);
+  const frac = Math.round((rounded - whole) * 4);
+  const fracMap: Record<number, string> = { 0: '', 1: '¼', 2: '½', 3: '¾' };
+  const fracStr = fracMap[frac];
+  if (!whole && fracStr) return fracStr;
+  if (whole && fracStr) return `${whole} ${fracStr}`;
+  return `${whole}`;
+};
+const scaleAmount = (baseAmount: number | string, servings: number) => {
+  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
+  if (Number.isNaN(n)) return baseAmount;
+  return toNiceFraction(n * servings);
+};
+
+const toMetric = (unit: string, amount: number) => {
+  const gramsPerCup = 240;
+  const gramsPerTbsp = 15;
+  const gramsPerTsp = 5;
+  switch (unit) {
+    case 'cup':
+    case 'cups': return { amount: Math.round(amount * gramsPerCup), unit: 'g' };
+    case 'tbsp': return { amount: Math.round(amount * gramsPerTbsp), unit: 'g' };
+    case 'tsp': return { amount: Math.round(amount * gramsPerTsp), unit: 'g' };
+    case 'lb':
+    case 'lbs': return { amount: Math.round(amount * 453.592), unit: 'g' };
+    case 'oz': return { amount: Math.round(amount * 28.35), unit: 'g' };
+    default: return { amount, unit };
+  }
+};
+
+const parseIngredient = (ingredient: string): Measured => {
+  const parts = ingredient.trim().split(/\s+/);
+  if (parts.length < 2) return m(1, 'item', ingredient);
+
+  let amountStr = parts[0];
+  let amount: number | string = isNaN(Number(amountStr)) ? amountStr : Number(amountStr);
+
+  let unit = parts[1];
+  let item = parts.slice(2).join(' ');
+
+  if (item.includes('(optional)')) {
+    item = item.replace('(optional)', '').trim();
+    return m(amount, unit, item, 'optional');
+  }
+  
+  return m(amount, unit, item);
+};
 
 // SISTER PAGES
 const sisterPetFoodPages = [
@@ -24,8 +80,8 @@ const dogRecipes = [
     id: 'puppy-chicken-rice',
     name: 'Puppy Growth Formula',
     category: 'Puppy',
-    prepTime: '25 min',
-    servings: '4 cups',
+    prepTime: 25,
+    servings: 4,
     difficulty: 'Easy',
     rating: 4.9,
     reviews: 342,
@@ -35,15 +91,7 @@ const dogRecipes = [
     fat: 15,
     carbs: 42,
     badges: ['High Protein', 'Grain-Inclusive', 'Puppy'],
-    ingredients: [
-      '2 lbs ground chicken breast',
-      '2 cups brown rice',
-      '1 cup sweet potato, diced',
-      '1 cup carrots, finely chopped',
-      '1/2 cup green beans',
-      '2 tbsp fish oil',
-      '1 tsp calcium powder'
-    ],
+    ingredients: ['2 lbs ground chicken breast', '2 cups brown rice', '1 cup sweet potato, diced', '1 cup carrots, finely chopped', '0.5 cups green beans', '2 tbsp fish oil', '1 tsp calcium powder'],
     instructions: [
       'Cook brown rice according to package directions',
       'Brown ground chicken in large skillet until fully cooked',
@@ -58,8 +106,8 @@ const dogRecipes = [
     id: 'adult-beef-veggie',
     name: 'Adult Maintenance Bowl',
     category: 'Adult',
-    prepTime: '30 min',
-    servings: '6 cups',
+    prepTime: 30,
+    servings: 6,
     difficulty: 'Easy',
     rating: 4.8,
     reviews: 567,
@@ -69,15 +117,7 @@ const dogRecipes = [
     fat: 12,
     carbs: 38,
     badges: ['Balanced', 'Adult', 'Heart Health'],
-    ingredients: [
-      '2 lbs lean ground beef',
-      '2 cups quinoa',
-      '1 cup pumpkin puree',
-      '1 cup spinach, chopped',
-      '1/2 cup blueberries',
-      '2 eggs, hard boiled',
-      '1 tbsp coconut oil'
-    ],
+    ingredients: ['2 lbs lean ground beef', '2 cups quinoa', '1 cup pumpkin puree', '1 cup spinach, chopped', '0.5 cups blueberries', '2 eggs, hard boiled', '1 tbsp coconut oil'],
     instructions: [
       'Cook quinoa according to package directions',
       'Brown ground beef, drain excess fat',
@@ -92,8 +132,8 @@ const dogRecipes = [
     id: 'senior-turkey-gentle',
     name: 'Senior Gentle Digest',
     category: 'Senior',
-    prepTime: '35 min',
-    servings: '5 cups',
+    prepTime: 35,
+    servings: 5,
     difficulty: 'Easy',
     rating: 4.9,
     reviews: 423,
@@ -103,15 +143,7 @@ const dogRecipes = [
     fat: 10,
     carbs: 35,
     badges: ['Senior', 'Easy Digest', 'Joint Support'],
-    ingredients: [
-      '2 lbs ground turkey',
-      '2 cups white rice',
-      '1 cup zucchini, finely diced',
-      '1/2 cup cottage cheese',
-      '1/4 cup bone broth',
-      '1 tbsp glucosamine powder',
-      '1 tsp turmeric'
-    ],
+    ingredients: ['2 lbs ground turkey', '2 cups white rice', '1 cup zucchini, finely diced', '0.5 cups cottage cheese', '0.25 cups bone broth', '1 tbsp glucosamine powder', '1 tsp turmeric'],
     instructions: [
       'Cook white rice until very soft',
       'Cook ground turkey thoroughly',
@@ -126,8 +158,8 @@ const dogRecipes = [
     id: 'grain-free-salmon',
     name: 'Grain-Free Salmon Power',
     category: 'Special Diet',
-    prepTime: '30 min',
-    servings: '5 cups',
+    prepTime: 30,
+    servings: 5,
     difficulty: 'Medium',
     rating: 4.7,
     reviews: 289,
@@ -137,15 +169,7 @@ const dogRecipes = [
     fat: 18,
     carbs: 28,
     badges: ['Grain-Free', 'Omega-3', 'Skin & Coat'],
-    ingredients: [
-      '2 lbs fresh salmon fillet',
-      '2 cups sweet potato',
-      '1 cup green peas',
-      '1/2 cup carrots',
-      '1/4 cup flaxseed meal',
-      '2 tbsp olive oil',
-      '1 tsp kelp powder'
-    ],
+    ingredients: ['2 lbs fresh salmon fillet', '2 cups sweet potato', '1 cup green peas', '0.5 cups carrots', '0.25 cups flaxseed meal', '2 tbsp olive oil', '1 tsp kelp powder'],
     instructions: [
       'Bake salmon at 375°F until cooked through',
       'Boil sweet potato until fork-tender',
@@ -160,8 +184,8 @@ const dogRecipes = [
     id: 'weight-management',
     name: 'Lean & Green Weight Loss',
     category: 'Special Diet',
-    prepTime: '25 min',
-    servings: '6 cups',
+    prepTime: 25,
+    servings: 6,
     difficulty: 'Easy',
     rating: 4.6,
     reviews: 234,
@@ -171,15 +195,7 @@ const dogRecipes = [
     fat: 8,
     carbs: 30,
     badges: ['Low Fat', 'High Fiber', 'Weight Management'],
-    ingredients: [
-      '2 lbs chicken breast',
-      '2 cups green beans',
-      '1 cup broccoli',
-      '1 cup cauliflower',
-      '1 cup pumpkin puree',
-      '1/2 cup oat bran',
-      '1 tbsp fish oil'
-    ],
+    ingredients: ['2 lbs chicken breast', '2 cups green beans', '1 cup broccoli', '1 cup cauliflower', '1 cup pumpkin puree', '0.5 cups oat bran', '1 tbsp fish oil'],
     instructions: [
       'Boil chicken breast until fully cooked',
       'Steam all vegetables until tender',
@@ -194,8 +210,8 @@ const dogRecipes = [
     id: 'allergy-sensitive',
     name: 'Allergy-Friendly Lamb',
     category: 'Special Diet',
-    prepTime: '35 min',
-    servings: '5 cups',
+    prepTime: 35,
+    servings: 5,
     difficulty: 'Medium',
     rating: 4.8,
     reviews: 198,
@@ -205,15 +221,7 @@ const dogRecipes = [
     fat: 16,
     carbs: 36,
     badges: ['Limited Ingredient', 'Novel Protein', 'Allergy-Friendly'],
-    ingredients: [
-      '2 lbs ground lamb',
-      '2 cups white potato',
-      '1 cup parsnips',
-      '1/2 cup pears, diced',
-      '2 tbsp sunflower oil',
-      '1 tsp zinc supplement',
-      '1 tsp vitamin E'
-    ],
+    ingredients: ['2 lbs ground lamb', '2 cups white potato', '1 cup parsnips', '0.5 cups pears, diced', '2 tbsp sunflower oil', '1 tsp zinc supplement', '1 tsp vitamin E'],
     instructions: [
       'Cook ground lamb thoroughly',
       'Boil white potato and parsnips until soft',
@@ -228,8 +236,8 @@ const dogRecipes = [
     id: 'high-energy-athlete',
     name: 'Athlete Performance Fuel',
     category: 'Special Diet',
-    prepTime: '30 min',
-    servings: '6 cups',
+    prepTime: 30,
+    servings: 6,
     difficulty: 'Medium',
     rating: 4.9,
     reviews: 276,
@@ -239,15 +247,7 @@ const dogRecipes = [
     fat: 20,
     carbs: 45,
     badges: ['High Energy', 'Performance', 'Working Dogs'],
-    ingredients: [
-      '2 lbs beef heart',
-      '2 cups oatmeal',
-      '1 cup liver',
-      '1 cup sweet potato',
-      '3 eggs',
-      '1/4 cup coconut oil',
-      '2 tbsp blackstrap molasses'
-    ],
+    ingredients: ['2 lbs beef heart', '2 cups oatmeal', '1 cup liver', '1 cup sweet potato', '3 eggs', '0.25 cups coconut oil', '2 tbsp blackstrap molasses'],
     instructions: [
       'Cook beef heart and liver until done',
       'Prepare oatmeal with extra water',
@@ -262,8 +262,8 @@ const dogRecipes = [
     id: 'dental-health',
     name: 'Dental Health Crunch',
     category: 'Special Diet',
-    prepTime: '40 min',
-    servings: '4 cups',
+    prepTime: 40,
+    servings: 4,
     difficulty: 'Medium',
     rating: 4.7,
     reviews: 167,
@@ -273,15 +273,7 @@ const dogRecipes = [
     fat: 14,
     carbs: 32,
     badges: ['Dental Health', 'Crunchy', 'Fresh Breath'],
-    ingredients: [
-      '2 lbs ground turkey',
-      '1 cup carrots, large chunks',
-      '1 cup apples, sliced thick',
-      '1/2 cup parsley',
-      '1/4 cup mint leaves',
-      '1 cup rolled oats',
-      '2 tbsp coconut oil'
-    ],
+    ingredients: ['2 lbs ground turkey', '1 cup carrots, large chunks', '1 cup apples, sliced thick', '0.5 cups parsley', '0.25 cups mint leaves', '1 cup rolled oats', '2 tbsp coconut oil'],
     instructions: [
       'Form turkey into small meatballs, bake until done',
       'Cut carrots and apples into chewable chunks',
@@ -297,20 +289,89 @@ const dogRecipes = [
 export default function DogsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
+  const [showKit, setShowKit] = useState(false);
+  const [servingsById, setServingsById] = useState<Record<string, number>>({});
+  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
   const categories = ['All', 'Puppy', 'Adult', 'Senior', 'Special Diet'];
 
+  // Convert recipes to RecipeKit format
+  const recipesWithMeasurements = useMemo(() => {
+    return dogRecipes.map((recipe) => {
+      const measurements = recipe.ingredients.map(ing => parseIngredient(ing));
+      return {
+        ...recipe,
+        recipe: {
+          servings: recipe.servings,
+          measurements,
+          directions: recipe.instructions
+        }
+      };
+    });
+  }, []);
+
   const filteredRecipes = useMemo(() => {
-    return dogRecipes.filter(recipe => {
+    return recipesWithMeasurements.filter(recipe => {
       const matchesSearch = recipe.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           recipe.badges.some(b => b.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchesCategory = !selectedCategory || selectedCategory === 'All' || recipe.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
-  }, [searchQuery, selectedCategory]);
+  }, [searchQuery, selectedCategory, recipesWithMeasurements]);
+
+  const openRecipeModal = (recipe: any) => {
+    setSelectedRecipe(recipe);
+    setShowKit(true);
+  };
+
+  const handleCompleteRecipe = () => {
+    setShowKit(false);
+    setSelectedRecipe(null);
+  };
+
+  const handleShareRecipe = async (recipe: any) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const text = `${recipe.name} - Dog Food Recipe\n${recipe.description || ''}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: recipe.name, text, url });
+      } else {
+        await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50">
+      {/* RecipeKit Modal */}
+      {selectedRecipe && (
+        <RecipeKit
+          open={showKit}
+          onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
+          accent="amber"
+          pointsReward={40}
+          onComplete={handleCompleteRecipe}
+          item={{
+            id: selectedRecipe.id,
+            name: selectedRecipe.name,
+            prepTime: selectedRecipe.prepTime,
+            directions: selectedRecipe.recipe?.directions || [],
+            measurements: selectedRecipe.recipe?.measurements || [],
+            baseNutrition: {},
+            defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+          }}
+        />
+      )}
+
       {/* HEADER */}
       <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -442,78 +503,187 @@ export default function DogsPage() {
 
         {/* RECIPES GRID */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-          {filteredRecipes.map((recipe) => (
-            <Card key={recipe.id} className="group hover:shadow-xl transition-all duration-300 border-amber-200 hover:border-amber-400 overflow-hidden">
-              <div className="relative h-48 overflow-hidden">
-                <img 
-                  src={recipe.image} 
-                  alt={recipe.name}
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                />
-                <div className="absolute top-3 right-3 flex gap-2">
-                  {recipe.badges.slice(0, 2).map((badge) => (
-                    <Badge key={badge} className="bg-amber-600 text-white">
-                      {badge}
-                    </Badge>
-                  ))}
+          {filteredRecipes.map((recipe) => {
+            const useMetric = !!metricFlags[recipe.id];
+            const servings = servingsById[recipe.id] ?? recipe.servings;
+
+            return (
+              <Card key={recipe.id} className="group hover:shadow-xl transition-all duration-300 border-amber-200 hover:border-amber-400 overflow-hidden">
+                <div className="relative h-48 overflow-hidden">
+                  <img 
+                    src={recipe.image} 
+                    alt={recipe.name}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                  />
+                  <div className="absolute top-3 right-3 flex gap-2">
+                    {recipe.badges.slice(0, 2).map((badge) => (
+                      <Badge key={badge} className="bg-amber-600 text-white">
+                        {badge}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-bold text-lg text-gray-900 mb-1">{recipe.name}</h3>
-                    <div className="flex items-center gap-3 text-sm text-gray-600">
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-4 w-4" />
-                        {recipe.prepTime}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Dog className="h-4 w-4" />
-                        {recipe.servings}
-                      </span>
+                
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h3 className="font-bold text-lg text-gray-900 mb-1">{recipe.name}</h3>
+                      <div className="flex items-center gap-3 text-sm text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-4 w-4" />
+                          {recipe.prepTime}min
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Dog className="h-4 w-4" />
+                          {recipe.servings} cups
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="flex text-yellow-500">
-                    {'★'.repeat(Math.floor(recipe.rating))}
+                  {/* DOG RATING */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="flex items-center gap-1">
+                      {[...Array(5)].map((_, i) => (
+                        <Dog
+                          key={i}
+                          className={`w-4 h-4 ${
+                            i < Math.floor(recipe.rating)
+                              ? 'fill-amber-500 text-amber-500'
+                              : 'text-gray-300'
+                          }`}
+                        />
+                      ))}
+                      <span className="font-medium ml-1">{recipe.rating}</span>
+                      <span className="text-gray-500 text-sm">({recipe.reviews})</span>
+                    </div>
                   </div>
-                  <span className="text-sm font-medium text-gray-700">{recipe.rating}</span>
-                  <span className="text-sm text-gray-500">({recipe.reviews})</span>
-                </div>
 
-                <div className="grid grid-cols-4 gap-2 mb-4 text-center">
-                  <div className="bg-amber-50 rounded p-2">
-                    <div className="text-xs text-gray-600">Calories</div>
-                    <div className="font-bold text-amber-700">{recipe.calories}</div>
+                  <div className="grid grid-cols-4 gap-2 mb-4 text-center">
+                    <div className="bg-amber-50 rounded p-2">
+                      <div className="text-xs text-gray-600">Calories</div>
+                      <div className="font-bold text-amber-700">{recipe.calories}</div>
+                    </div>
+                    <div className="bg-orange-50 rounded p-2">
+                      <div className="text-xs text-gray-600">Protein</div>
+                      <div className="font-bold text-orange-700">{recipe.protein}g</div>
+                    </div>
+                    <div className="bg-amber-50 rounded p-2">
+                      <div className="text-xs text-gray-600">Fat</div>
+                      <div className="font-bold text-amber-700">{recipe.fat}g</div>
+                    </div>
+                    <div className="bg-orange-50 rounded p-2">
+                      <div className="text-xs text-gray-600">Carbs</div>
+                      <div className="font-bold text-orange-700">{recipe.carbs}g</div>
+                    </div>
                   </div>
-                  <div className="bg-orange-50 rounded p-2">
-                    <div className="text-xs text-gray-600">Protein</div>
-                    <div className="font-bold text-orange-700">{recipe.protein}g</div>
-                  </div>
-                  <div className="bg-amber-50 rounded p-2">
-                    <div className="text-xs text-gray-600">Fat</div>
-                    <div className="font-bold text-amber-700">{recipe.fat}g</div>
-                  </div>
-                  <div className="bg-orange-50 rounded p-2">
-                    <div className="text-xs text-gray-600">Carbs</div>
-                    <div className="font-bold text-orange-700">{recipe.carbs}g</div>
-                  </div>
-                </div>
 
-                <div className="flex gap-2">
-                  <Button className="flex-1 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700">
-                    View Recipe
-                  </Button>
-                  <Button variant="outline" size="icon" className="border-amber-200 hover:border-amber-400">
-                    <Heart className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  {/* RecipeKit Preview */}
+                  {recipe.recipe?.measurements && recipe.recipe.measurements.length > 0 && (
+                    <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-semibold text-gray-900">
+                          Ingredients (serves {servings})
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="px-2 py-1 border rounded text-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? recipe.servings) - 1) }));
+                            }}
+                          >
+                            −
+                          </button>
+                          <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                          <button
+                            className="px-2 py-1 border rounded text-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? recipe.servings) + 1) }));
+                            }}
+                          >
+                            +
+                          </button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setServingsById(prev => ({ ...prev, [recipe.id]: recipe.servings }));
+                            }}
+                            title="Reset"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                        {recipe.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                          const isNum = typeof ing.amount === 'number';
+                          const scaledAmount = isNum ? (ing.amount as number) * servings / recipe.servings : ing.amount;
+                          const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings / recipe.servings) : ing.amount;
+                          const show = useMetric && isNum
+                            ? toMetric(ing.unit, scaledAmount as number)
+                            : { amount: scaledDisplay, unit: ing.unit };
+
+                          return (
+                            <li key={i} className="flex items-start gap-2">
+                              <Check className="h-4 w-4 text-amber-500 mt-0.5" />
+                              <span>
+                                <span className="text-amber-600 font-semibold">
+                                  {show.amount} {show.unit}
+                                </span>{" "}
+                                {ing.item}
+                                {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                              </span>
+                            </li>
+                          );
+                        })}
+                        {recipe.recipe.measurements.length > 4 && (
+                          <li className="text-xs text-gray-600">
+                            …plus {recipe.recipe.measurements.length - 4} more
+                          </li>
+                        )}
+                      </ul>
+
+                      <div className="flex gap-2 mt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMetricFlags((prev) => ({ ...prev, [recipe.id]: !prev[recipe.id] }));
+                          }}
+                        >
+                          {useMetric ? 'US' : 'Metric'}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={(e) => {
+                          e.stopPropagation();
+                          handleShareRecipe(recipe);
+                        }}>
+                          <Share2 className="w-4 h-4 mr-1" /> Share
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button 
+                      className="flex-1 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700"
+                      onClick={() => openRecipeModal(recipe)}
+                    >
+                      View Recipe
+                    </Button>
+                    <Button variant="outline" size="icon" className="border-amber-200 hover:border-amber-400">
+                      <Heart className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
         {/* SISTER PAGES NAVIGATION */}
