@@ -7,9 +7,62 @@ import { Input } from "@/components/ui/input";
 import { 
   Bird, Dog, Cat, Rabbit,
   Clock, Heart, Target, Leaf, Shield, 
-  Search, Share2, ArrowLeft, Home,
-  Award, Crown
+  Search, Share2, ArrowLeft, Home, Award, Crown,
+  Check, Clipboard, RotateCcw
 } from 'lucide-react';
+import RecipeKit from '@/components/recipes/RecipeKit';
+
+// ---------- Helpers ----------
+type Measured = { amount: number | string; unit: string; item: string; note?: string };
+const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+const toNiceFraction = (value: number) => {
+  const rounded = Math.round(value * 4) / 4;
+  const whole = Math.trunc(rounded);
+  const frac = Math.round((rounded - whole) * 4);
+  const fracMap: Record<number, string> = { 0: '', 1: '¼', 2: '½', 3: '¾' };
+  const fracStr = fracMap[frac];
+  if (!whole && fracStr) return fracStr;
+  if (whole && fracStr) return `${whole} ${fracStr}`;
+  return `${whole}`;
+};
+const scaleAmount = (baseAmount: number | string, servings: number) => {
+  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
+  if (Number.isNaN(n)) return baseAmount;
+  return toNiceFraction(n * servings);
+};
+
+const toMetric = (unit: string, amount: number) => {
+  const gramsPerCup = 240;
+  const gramsPerTbsp = 15;
+  const gramsPerTsp = 5;
+  switch (unit) {
+    case 'cup':
+    case 'cups': return { amount: Math.round(amount * gramsPerCup), unit: 'g' };
+    case 'tbsp': return { amount: Math.round(amount * gramsPerTbsp), unit: 'g' };
+    case 'tsp': return { amount: Math.round(amount * gramsPerTsp), unit: 'g' };
+    default: return { amount, unit };
+  }
+};
+
+const parseIngredient = (ingredient: string): Measured => {
+  const parts = ingredient.trim().split(/\s+/);
+  if (parts.length < 2) return m(1, 'item', ingredient);
+
+  let amountStr = parts[0];
+  let amount: number | string = isNaN(Number(amountStr)) ? amountStr : Number(amountStr);
+
+  let unit = parts[1];
+  let item = parts.slice(2).join(' ');
+
+  if (item.includes('(optional)')) {
+    item = item.replace('(optional)', '').trim();
+    return m(amount, unit, item, 'optional');
+  }
+  
+  return m(amount, unit, item);
+};
 
 // SISTER PAGES
 const sisterPetFoodPages = [
@@ -24,8 +77,8 @@ const birdRecipes = [
     id: 'parrot-power-mix',
     name: 'Parrot Power Mix',
     category: 'Parrots',
-    prepTime: '15 min',
-    servings: '2 cups',
+    prepTime: 15,
+    servings: 2,
     difficulty: 'Easy',
     rating: 4.9,
     reviews: 287,
@@ -35,15 +88,7 @@ const birdRecipes = [
     fat: 15,
     carbs: 38,
     badges: ['High Energy', 'Nut-Rich', 'Parrots'],
-    ingredients: [
-      '1/2 cup raw almonds',
-      '1/4 cup raw walnuts',
-      '1/4 cup dried papaya',
-      '1/4 cup dried mango',
-      '2 tbsp sunflower seeds',
-      '2 tbsp pumpkin seeds',
-      '1 tbsp chia seeds'
-    ],
+    ingredients: ['0.5 cups raw almonds', '0.25 cups raw walnuts', '0.25 cups dried papaya', '0.25 cups dried mango', '2 tbsp sunflower seeds', '2 tbsp pumpkin seeds', '1 tbsp chia seeds'],
     instructions: [
       'Chop almonds and walnuts into smaller pieces',
       'Dice dried fruits into bite-sized pieces',
@@ -58,8 +103,8 @@ const birdRecipes = [
     id: 'canary-seed-blend',
     name: 'Canary Premium Seed Blend',
     category: 'Canaries',
-    prepTime: '10 min',
-    servings: '3 cups',
+    prepTime: 10,
+    servings: 3,
     difficulty: 'Easy',
     rating: 4.8,
     reviews: 342,
@@ -69,15 +114,7 @@ const birdRecipes = [
     fat: 12,
     carbs: 32,
     badges: ['Seed Mix', 'Singing Support', 'Canaries'],
-    ingredients: [
-      '1 cup canary grass seed',
-      '1/2 cup millet (white and red)',
-      '1/4 cup rapeseed',
-      '1/4 cup niger seed',
-      '2 tbsp flax seeds',
-      '2 tbsp hemp seeds',
-      '1 tbsp sesame seeds'
-    ],
+    ingredients: ['1 cup canary grass seed', '0.5 cups millet (white and red)', '0.25 cups rapeseed', '0.25 cups niger seed', '2 tbsp flax seeds', '2 tbsp hemp seeds', '1 tbsp sesame seeds'],
     instructions: [
       'Mix all seeds in large bowl',
       'Ensure even distribution',
@@ -92,8 +129,8 @@ const birdRecipes = [
     id: 'finch-fruit-delight',
     name: 'Finch Fruit & Seed Delight',
     category: 'Finches',
-    prepTime: '12 min',
-    servings: '2 cups',
+    prepTime: 12,
+    servings: 2,
     difficulty: 'Easy',
     rating: 4.7,
     reviews: 198,
@@ -103,15 +140,7 @@ const birdRecipes = [
     fat: 8,
     carbs: 28,
     badges: ['Fruit & Seed', 'Small Birds', 'Finches'],
-    ingredients: [
-      '1/2 cup millet',
-      '1/4 cup canary seed',
-      '1/4 cup dried currants',
-      '2 tbsp dried cranberries, chopped',
-      '2 tbsp oat groats',
-      '1 tbsp niger seed',
-      '1 tbsp dried apple, finely diced'
-    ],
+    ingredients: ['0.5 cups millet', '0.25 cups canary seed', '0.25 cups dried currants', '2 tbsp dried cranberries, chopped', '2 tbsp oat groats', '1 tbsp niger seed', '1 tbsp dried apple, finely diced'],
     instructions: [
       'Mix all seeds together',
       'Chop dried fruits into tiny pieces',
@@ -126,8 +155,8 @@ const birdRecipes = [
     id: 'budgie-veggie-bowl',
     name: 'Budgie Veggie Garden Bowl',
     category: 'Budgies',
-    prepTime: '15 min',
-    servings: '1 cup',
+    prepTime: 15,
+    servings: 1,
     difficulty: 'Easy',
     rating: 4.9,
     reviews: 423,
@@ -137,15 +166,7 @@ const birdRecipes = [
     fat: 5,
     carbs: 22,
     badges: ['Fresh Veggies', 'Low Fat', 'Budgies'],
-    ingredients: [
-      '1/4 cup finely chopped broccoli',
-      '1/4 cup grated carrot',
-      '2 tbsp chopped spinach',
-      '2 tbsp millet',
-      '1 tbsp quinoa (cooked)',
-      '1 tsp sesame seeds',
-      '1 small piece apple (no seeds)'
-    ],
+    ingredients: ['0.25 cups finely chopped broccoli', '0.25 cups grated carrot', '2 tbsp chopped spinach', '2 tbsp millet', '1 tbsp quinoa (cooked)', '1 tsp sesame seeds', '1 small piece apple (no seeds)'],
     instructions: [
       'Wash all vegetables thoroughly',
       'Chop broccoli into tiny florets',
@@ -160,8 +181,8 @@ const birdRecipes = [
     id: 'cockatiel-breakfast',
     name: 'Cockatiel Morning Feast',
     category: 'Cockatiels',
-    prepTime: '20 min',
-    servings: '2 cups',
+    prepTime: 20,
+    servings: 2,
     difficulty: 'Medium',
     rating: 4.8,
     reviews: 312,
@@ -171,15 +192,7 @@ const birdRecipes = [
     fat: 13,
     carbs: 35,
     badges: ['Balanced Diet', 'Nutrient-Rich', 'Cockatiels'],
-    ingredients: [
-      '1/2 cup millet spray',
-      '1/4 cup safflower seeds',
-      '1/4 cup oat groats',
-      '2 tbsp dried banana chips',
-      '2 tbsp pumpkin seeds',
-      '1 tbsp flax seeds',
-      '1 tbsp dried coconut'
-    ],
+    ingredients: ['0.5 cups millet spray', '0.25 cups safflower seeds', '0.25 cups oat groats', '2 tbsp dried banana chips', '2 tbsp pumpkin seeds', '1 tbsp flax seeds', '1 tbsp dried coconut'],
     instructions: [
       'Break up millet spray into smaller pieces',
       'Chop banana chips into small bits',
@@ -194,8 +207,8 @@ const birdRecipes = [
     id: 'lovebird-tropical',
     name: 'Lovebird Tropical Paradise',
     category: 'Lovebirds',
-    prepTime: '18 min',
-    servings: '2 cups',
+    prepTime: 18,
+    servings: 2,
     difficulty: 'Easy',
     rating: 4.9,
     reviews: 267,
@@ -205,15 +218,7 @@ const birdRecipes = [
     fat: 11,
     carbs: 32,
     badges: ['Tropical Fruits', 'Colorful', 'Lovebirds'],
-    ingredients: [
-      '1/4 cup dried papaya',
-      '1/4 cup dried pineapple',
-      '1/4 cup dried mango',
-      '1/4 cup sunflower seeds',
-      '2 tbsp pumpkin seeds',
-      '2 tbsp millet',
-      '1 tbsp dried hibiscus flowers'
-    ],
+    ingredients: ['0.25 cups dried papaya', '0.25 cups dried pineapple', '0.25 cups dried mango', '0.25 cups sunflower seeds', '2 tbsp pumpkin seeds', '2 tbsp millet', '1 tbsp dried hibiscus flowers'],
     instructions: [
       'Dice all dried fruits into small pieces',
       'Mix fruits with seeds',
@@ -228,8 +233,8 @@ const birdRecipes = [
     id: 'conure-power-pellet',
     name: 'Conure Energy Blend',
     category: 'Conures',
-    prepTime: '25 min',
-    servings: '3 cups',
+    prepTime: 25,
+    servings: 3,
     difficulty: 'Medium',
     rating: 4.7,
     reviews: 189,
@@ -239,15 +244,7 @@ const birdRecipes = [
     fat: 16,
     carbs: 40,
     badges: ['High Energy', 'Active Birds', 'Conures'],
-    ingredients: [
-      '1/2 cup raw cashews',
-      '1/4 cup raw pistachios',
-      '1/4 cup dried berries',
-      '1/4 cup whole oats',
-      '2 tbsp pepitas',
-      '2 tbsp flax seeds',
-      '1 tbsp bee pollen'
-    ],
+    ingredients: ['0.5 cups raw cashews', '0.25 cups raw pistachios', '0.25 cups dried berries', '0.25 cups whole oats', '2 tbsp pepitas', '2 tbsp flax seeds', '1 tbsp bee pollen'],
     instructions: [
       'Chop nuts into smaller pieces',
       'Mix nuts with dried berries',
@@ -262,8 +259,8 @@ const birdRecipes = [
     id: 'macaw-mega-mix',
     name: 'Macaw Mega Nut Mix',
     category: 'Macaws',
-    prepTime: '20 min',
-    servings: '4 cups',
+    prepTime: 20,
+    servings: 4,
     difficulty: 'Easy',
     rating: 4.8,
     reviews: 156,
@@ -273,15 +270,7 @@ const birdRecipes = [
     fat: 18,
     carbs: 42,
     badges: ['Large Birds', 'Nut-Heavy', 'Macaws'],
-    ingredients: [
-      '1/2 cup brazil nuts',
-      '1/2 cup raw almonds',
-      '1/4 cup raw macadamias',
-      '1/4 cup dried papaya chunks',
-      '1/4 cup dried coconut chunks',
-      '2 tbsp pumpkin seeds',
-      '2 tbsp sunflower seeds'
-    ],
+    ingredients: ['0.5 cups brazil nuts', '0.5 cups raw almonds', '0.25 cups raw macadamias', '0.25 cups dried papaya chunks', '0.25 cups dried coconut chunks', '2 tbsp pumpkin seeds', '2 tbsp sunflower seeds'],
     instructions: [
       'Use whole or halved nuts for large beaks',
       'Cut dried fruits into larger chunks',
@@ -297,20 +286,89 @@ const birdRecipes = [
 export default function BirdsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
+  const [showKit, setShowKit] = useState(false);
+  const [servingsById, setServingsById] = useState<Record<string, number>>({});
+  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
   const categories = ['All', 'Parrots', 'Canaries', 'Finches', 'Budgies', 'Cockatiels', 'Lovebirds', 'Conures', 'Macaws'];
 
+  // Convert recipes to RecipeKit format
+  const recipesWithMeasurements = useMemo(() => {
+    return birdRecipes.map((recipe) => {
+      const measurements = recipe.ingredients.map(ing => parseIngredient(ing));
+      return {
+        ...recipe,
+        recipe: {
+          servings: recipe.servings,
+          measurements,
+          directions: recipe.instructions
+        }
+      };
+    });
+  }, []);
+
   const filteredRecipes = useMemo(() => {
-    return birdRecipes.filter(recipe => {
+    return recipesWithMeasurements.filter(recipe => {
       const matchesSearch = recipe.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           recipe.badges.some(b => b.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchesCategory = !selectedCategory || selectedCategory === 'All' || recipe.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
-  }, [searchQuery, selectedCategory]);
+  }, [searchQuery, selectedCategory, recipesWithMeasurements]);
+
+  const openRecipeModal = (recipe: any) => {
+    setSelectedRecipe(recipe);
+    setShowKit(true);
+  };
+
+  const handleCompleteRecipe = () => {
+    setShowKit(false);
+    setSelectedRecipe(null);
+  };
+
+  const handleShareRecipe = async (recipe: any) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const text = `${recipe.name} - Bird Food Recipe`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: recipe.name, text, url });
+      } else {
+        await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-blue-50 to-sky-50">
+      {/* RecipeKit Modal */}
+      {selectedRecipe && (
+        <RecipeKit
+          open={showKit}
+          onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
+          accent="cyan"
+          pointsReward={40}
+          onComplete={handleCompleteRecipe}
+          item={{
+            id: selectedRecipe.id,
+            name: selectedRecipe.name,
+            prepTime: selectedRecipe.prepTime,
+            directions: selectedRecipe.recipe?.directions || [],
+            measurements: selectedRecipe.recipe?.measurements || [],
+            baseNutrition: {},
+            defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+          }}
+        />
+      )}
+
       {/* HEADER */}
       <div className="bg-gradient-to-r from-cyan-600 via-blue-600 to-sky-600 text-white shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -447,78 +505,187 @@ export default function BirdsPage() {
 
         {/* RECIPES GRID */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-          {filteredRecipes.map((recipe) => (
-            <Card key={recipe.id} className="group hover:shadow-xl transition-all duration-300 border-cyan-200 hover:border-cyan-400 overflow-hidden">
-              <div className="relative h-48 overflow-hidden">
-                <img 
-                  src={recipe.image} 
-                  alt={recipe.name}
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                />
-                <div className="absolute top-3 right-3 flex flex-col gap-2">
-                  {recipe.badges.slice(0, 2).map((badge) => (
-                    <Badge key={badge} className="bg-cyan-600 text-white">
-                      {badge}
-                    </Badge>
-                  ))}
+          {filteredRecipes.map((recipe) => {
+            const useMetric = !!metricFlags[recipe.id];
+            const servings = servingsById[recipe.id] ?? recipe.servings;
+
+            return (
+              <Card key={recipe.id} className="group hover:shadow-xl transition-all duration-300 border-cyan-200 hover:border-cyan-400 overflow-hidden">
+                <div className="relative h-48 overflow-hidden">
+                  <img 
+                    src={recipe.image} 
+                    alt={recipe.name}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                  />
+                  <div className="absolute top-3 right-3 flex flex-col gap-2">
+                    {recipe.badges.slice(0, 2).map((badge) => (
+                      <Badge key={badge} className="bg-cyan-600 text-white">
+                        {badge}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-bold text-lg text-gray-900 mb-1">{recipe.name}</h3>
-                    <div className="flex items-center gap-3 text-sm text-gray-600">
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-4 w-4" />
-                        {recipe.prepTime}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Bird className="h-4 w-4" />
-                        {recipe.servings}
-                      </span>
+                
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h3 className="font-bold text-lg text-gray-900 mb-1">{recipe.name}</h3>
+                      <div className="flex items-center gap-3 text-sm text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-4 w-4" />
+                          {recipe.prepTime}min
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Bird className="h-4 w-4" />
+                          {recipe.servings} cups
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="flex text-yellow-500">
-                    {'★'.repeat(Math.floor(recipe.rating))}
+                  {/* BIRD RATING */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="flex items-center gap-1">
+                      {[...Array(5)].map((_, i) => (
+                        <Bird
+                          key={i}
+                          className={`w-4 h-4 ${
+                            i < Math.floor(recipe.rating)
+                              ? 'fill-cyan-500 text-cyan-500'
+                              : 'text-gray-300'
+                          }`}
+                        />
+                      ))}
+                      <span className="font-medium ml-1">{recipe.rating}</span>
+                      <span className="text-gray-500 text-sm">({recipe.reviews})</span>
+                    </div>
                   </div>
-                  <span className="text-sm font-medium text-gray-700">{recipe.rating}</span>
-                  <span className="text-sm text-gray-500">({recipe.reviews})</span>
-                </div>
 
-                <div className="grid grid-cols-4 gap-2 mb-4 text-center">
-                  <div className="bg-cyan-50 rounded p-2">
-                    <div className="text-xs text-gray-600">Calories</div>
-                    <div className="font-bold text-cyan-700">{recipe.calories}</div>
+                  <div className="grid grid-cols-4 gap-2 mb-4 text-center">
+                    <div className="bg-cyan-50 rounded p-2">
+                      <div className="text-xs text-gray-600">Calories</div>
+                      <div className="font-bold text-cyan-700">{recipe.calories}</div>
+                    </div>
+                    <div className="bg-blue-50 rounded p-2">
+                      <div className="text-xs text-gray-600">Protein</div>
+                      <div className="font-bold text-blue-700">{recipe.protein}g</div>
+                    </div>
+                    <div className="bg-cyan-50 rounded p-2">
+                      <div className="text-xs text-gray-600">Fat</div>
+                      <div className="font-bold text-cyan-700">{recipe.fat}g</div>
+                    </div>
+                    <div className="bg-blue-50 rounded p-2">
+                      <div className="text-xs text-gray-600">Carbs</div>
+                      <div className="font-bold text-blue-700">{recipe.carbs}g</div>
+                    </div>
                   </div>
-                  <div className="bg-blue-50 rounded p-2">
-                    <div className="text-xs text-gray-600">Protein</div>
-                    <div className="font-bold text-blue-700">{recipe.protein}g</div>
-                  </div>
-                  <div className="bg-cyan-50 rounded p-2">
-                    <div className="text-xs text-gray-600">Fat</div>
-                    <div className="font-bold text-cyan-700">{recipe.fat}g</div>
-                  </div>
-                  <div className="bg-blue-50 rounded p-2">
-                    <div className="text-xs text-gray-600">Carbs</div>
-                    <div className="font-bold text-blue-700">{recipe.carbs}g</div>
-                  </div>
-                </div>
 
-                <div className="flex gap-2">
-                  <Button className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700">
-                    View Recipe
-                  </Button>
-                  <Button variant="outline" size="icon" className="border-cyan-200 hover:border-cyan-400">
-                    <Heart className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  {/* RecipeKit Preview */}
+                  {recipe.recipe?.measurements && recipe.recipe.measurements.length > 0 && (
+                    <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-semibold text-gray-900">
+                          Ingredients (serves {servings})
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="px-2 py-1 border rounded text-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? recipe.servings) - 1) }));
+                            }}
+                          >
+                            −
+                          </button>
+                          <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                          <button
+                            className="px-2 py-1 border rounded text-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? recipe.servings) + 1) }));
+                            }}
+                          >
+                            +
+                          </button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setServingsById(prev => ({ ...prev, [recipe.id]: recipe.servings }));
+                            }}
+                            title="Reset"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                        {recipe.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                          const isNum = typeof ing.amount === 'number';
+                          const scaledAmount = isNum ? (ing.amount as number) * servings / recipe.servings : ing.amount;
+                          const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings / recipe.servings) : ing.amount;
+                          const show = useMetric && isNum
+                            ? toMetric(ing.unit, scaledAmount as number)
+                            : { amount: scaledDisplay, unit: ing.unit };
+
+                          return (
+                            <li key={i} className="flex items-start gap-2">
+                              <Check className="h-4 w-4 text-cyan-500 mt-0.5" />
+                              <span>
+                                <span className="text-cyan-600 font-semibold">
+                                  {show.amount} {show.unit}
+                                </span>{" "}
+                                {ing.item}
+                                {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                              </span>
+                            </li>
+                          );
+                        })}
+                        {recipe.recipe.measurements.length > 4 && (
+                          <li className="text-xs text-gray-600">
+                            …plus {recipe.recipe.measurements.length - 4} more
+                          </li>
+                        )}
+                      </ul>
+
+                      <div className="flex gap-2 mt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMetricFlags((prev) => ({ ...prev, [recipe.id]: !prev[recipe.id] }));
+                          }}
+                        >
+                          {useMetric ? 'US' : 'Metric'}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={(e) => {
+                          e.stopPropagation();
+                          handleShareRecipe(recipe);
+                        }}>
+                          <Share2 className="w-4 h-4 mr-1" /> Share
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button 
+                      className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700"
+                      onClick={() => openRecipeModal(recipe)}
+                    >
+                      View Recipe
+                    </Button>
+                    <Button variant="outline" size="icon" className="border-cyan-200 hover:border-cyan-400">
+                      <Heart className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
         {/* SISTER PAGES NAVIGATION */}
