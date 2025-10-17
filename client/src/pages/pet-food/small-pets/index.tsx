@@ -5,11 +5,64 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { 
-  Rabbit, Dog, Cat, Bird,
+  Bird, Dog, Cat, Rabbit,
   Clock, Heart, Target, Leaf, Shield, 
-  Search, Share2, ArrowLeft, Home,
-  Award, Crown
+  Search, Share2, ArrowLeft, Home, Award, Crown,
+  Check, Clipboard, RotateCcw
 } from 'lucide-react';
+import RecipeKit from '@/components/recipes/RecipeKit';
+
+// ---------- Helpers ----------
+type Measured = { amount: number | string; unit: string; item: string; note?: string };
+const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
+
+const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+const toNiceFraction = (value: number) => {
+  const rounded = Math.round(value * 4) / 4;
+  const whole = Math.trunc(rounded);
+  const frac = Math.round((rounded - whole) * 4);
+  const fracMap: Record<number, string> = { 0: '', 1: '¼', 2: '½', 3: '¾' };
+  const fracStr = fracMap[frac];
+  if (!whole && fracStr) return fracStr;
+  if (whole && fracStr) return `${whole} ${fracStr}`;
+  return `${whole}`;
+};
+const scaleAmount = (baseAmount: number | string, servings: number) => {
+  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
+  if (Number.isNaN(n)) return baseAmount;
+  return toNiceFraction(n * servings);
+};
+
+const toMetric = (unit: string, amount: number) => {
+  const gramsPerCup = 240;
+  const gramsPerTbsp = 15;
+  const gramsPerTsp = 5;
+  switch (unit) {
+    case 'cup':
+    case 'cups': return { amount: Math.round(amount * gramsPerCup), unit: 'g' };
+    case 'tbsp': return { amount: Math.round(amount * gramsPerTbsp), unit: 'g' };
+    case 'tsp': return { amount: Math.round(amount * gramsPerTsp), unit: 'g' };
+    default: return { amount, unit };
+  }
+};
+
+const parseIngredient = (ingredient: string): Measured => {
+  const parts = ingredient.trim().split(/\s+/);
+  if (parts.length < 2) return m(1, 'item', ingredient);
+
+  let amountStr = parts[0];
+  let amount: number | string = isNaN(Number(amountStr)) ? amountStr : Number(amountStr);
+
+  let unit = parts[1];
+  let item = parts.slice(2).join(' ');
+
+  if (item.includes('(optional)')) {
+    item = item.replace('(optional)', '').trim();
+    return m(amount, unit, item, 'optional');
+  }
+  
+  return m(amount, unit, item);
+};
 
 // SISTER PAGES
 const sisterPetFoodPages = [
@@ -19,300 +72,305 @@ const sisterPetFoodPages = [
   { id: 'small-pets', name: 'Small Pets', path: '/pet-food/small-pets', icon: Rabbit, description: 'Rabbits & rodents' }
 ];
 
-const smallPetRecipes = [
+const birdRecipes = [
   {
-    id: 'rabbit-hay-blend',
-    name: 'Rabbit Premium Hay Mix',
-    category: 'Rabbits',
-    prepTime: '10 min',
-    servings: '4 cups',
+    id: 'parrot-power-mix',
+    name: 'Parrot Power Mix',
+    category: 'Parrots',
+    prepTime: 15,
+    servings: 2,
     difficulty: 'Easy',
     rating: 4.9,
-    reviews: 456,
-    image: 'https://images.unsplash.com/photo-1585110396000-c9ffd4e4b308?w=800',
-    calories: 220,
-    protein: 14,
-    fat: 2,
-    fiber: 28,
-    badges: ['High Fiber', 'Hay-Based', 'Rabbits'],
-    ingredients: [
-      '2 cups timothy hay',
-      '1 cup orchard grass hay',
-      '1/2 cup oat hay',
-      '1/4 cup dried dandelion leaves',
-      '2 tbsp dried rose petals',
-      '1 tbsp dried chamomile',
-      '1 tbsp dried plantain leaves'
-    ],
+    reviews: 287,
+    image: 'https://images.unsplash.com/photo-1552728089-57bdde30beb3?w=800',
+    calories: 180,
+    protein: 12,
+    fat: 15,
+    carbs: 38,
+    badges: ['High Energy', 'Nut-Rich', 'Parrots'],
+    ingredients: ['0.5 cups raw almonds', '0.25 cups raw walnuts', '0.25 cups dried papaya', '0.25 cups dried mango', '2 tbsp sunflower seeds', '2 tbsp pumpkin seeds', '1 tbsp chia seeds'],
     instructions: [
-      'Mix all types of hay together',
-      'Add dried herbs evenly throughout',
-      'Store in dry, ventilated container',
-      'Provide unlimited access to hay',
-      'Supplement with fresh vegetables daily',
-      'Always ensure fresh water is available',
-      'Hay should make up 80% of diet'
+      'Chop almonds and walnuts into smaller pieces',
+      'Dice dried fruits into bite-sized pieces',
+      'Mix all seeds together',
+      'Combine nuts, fruits, and seeds thoroughly',
+      'Store in airtight container',
+      'Serve 2-3 tablespoons per day for medium parrots',
+      'Adjust portions based on bird size'
     ]
   },
   {
-    id: 'guinea-pig-veggie-feast',
-    name: 'Guinea Pig Vitamin C Feast',
-    category: 'Guinea Pigs',
-    prepTime: '15 min',
-    servings: '2 cups',
+    id: 'canary-seed-blend',
+    name: 'Canary Premium Seed Blend',
+    category: 'Canaries',
+    prepTime: 10,
+    servings: 3,
     difficulty: 'Easy',
     rating: 4.8,
-    reviews: 389,
-    image: 'https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=800',
-    calories: 180,
-    protein: 10,
-    fat: 3,
-    fiber: 22,
-    badges: ['Vitamin C', 'Fresh Veggies', 'Guinea Pigs'],
-    ingredients: [
-      '1/2 cup red bell pepper, diced',
-      '1/2 cup romaine lettuce, chopped',
-      '1/4 cup cilantro',
-      '1/4 cup parsley',
-      '2 tbsp carrot, grated',
-      '2 cherry tomatoes, halved',
-      '1 small slice orange (occasional treat)'
-    ],
+    reviews: 342,
+    image: 'https://images.unsplash.com/photo-1550670256-6d2e5e8d6f28?w=800',
+    calories: 140,
+    protein: 14,
+    fat: 12,
+    carbs: 32,
+    badges: ['Seed Mix', 'Singing Support', 'Canaries'],
+    ingredients: ['1 cup canary grass seed', '0.5 cups millet (white and red)', '0.25 cups rapeseed', '0.25 cups niger seed', '2 tbsp flax seeds', '2 tbsp hemp seeds', '1 tbsp sesame seeds'],
     instructions: [
-      'Wash all vegetables thoroughly',
-      'Dice bell pepper into small pieces',
-      'Chop leafy greens',
-      'Grate carrot finely',
-      'Mix all ingredients together',
-      'Serve fresh daily',
-      'Remove uneaten food after 4 hours'
+      'Mix all seeds in large bowl',
+      'Ensure even distribution',
+      'Store in cool, dry place',
+      'Provide 1-2 teaspoons per day',
+      'Supplement with fresh greens',
+      'Always provide fresh water',
+      'Rotate with fresh fruits weekly'
     ]
   },
   {
-    id: 'hamster-seed-mix',
-    name: 'Hamster Wholesome Seed Blend',
-    category: 'Hamsters',
-    prepTime: '12 min',
-    servings: '3 cups',
+    id: 'finch-fruit-delight',
+    name: 'Finch Fruit & Seed Delight',
+    category: 'Finches',
+    prepTime: 12,
+    servings: 2,
     difficulty: 'Easy',
     rating: 4.7,
-    reviews: 312,
-    image: 'https://images.unsplash.com/photo-1425082661705-1834bfd09dca?w=800',
-    calories: 165,
-    protein: 16,
+    reviews: 198,
+    image: 'https://images.unsplash.com/photo-1582845512747-e42001c95638?w=800',
+    calories: 125,
+    protein: 10,
     fat: 8,
-    fiber: 12,
-    badges: ['Balanced Mix', 'Seed Variety', 'Hamsters'],
-    ingredients: [
-      '1/2 cup whole oats',
-      '1/4 cup millet',
-      '1/4 cup wheat',
-      '2 tbsp sunflower seeds',
-      '2 tbsp pumpkin seeds',
-      '1 tbsp flax seeds',
-      '1 tbsp dried peas'
-    ],
+    carbs: 28,
+    badges: ['Fruit & Seed', 'Small Birds', 'Finches'],
+    ingredients: ['0.5 cups millet', '0.25 cups canary seed', '0.25 cups dried currants', '2 tbsp dried cranberries, chopped', '2 tbsp oat groats', '1 tbsp niger seed', '1 tbsp dried apple, finely diced'],
     instructions: [
-      'Combine all seeds and grains',
-      'Mix thoroughly to distribute evenly',
-      'Store in airtight container',
-      'Provide 1-2 tablespoons daily',
-      'Supplement with fresh vegetables',
-      'Offer occasional protein (mealworms, eggs)',
-      'Remove uneaten fresh food daily'
+      'Mix all seeds together',
+      'Chop dried fruits into tiny pieces',
+      'Combine seeds and fruits',
+      'Store in sealed container',
+      'Offer 1 teaspoon per finch daily',
+      'Provide cuttlebone for calcium',
+      'Fresh greens 2-3 times per week'
     ]
   },
   {
-    id: 'gerbil-complete-diet',
-    name: 'Gerbil Complete Nutrition Mix',
-    category: 'Gerbils',
-    prepTime: '15 min',
-    servings: '3 cups',
-    difficulty: 'Easy',
-    rating: 4.8,
-    reviews: 234,
-    image: 'https://images.unsplash.com/photo-1619734086067-24bf8889ea7d?w=800',
-    calories: 155,
-    protein: 14,
-    fat: 6,
-    fiber: 14,
-    badges: ['Complete Diet', 'Varied Mix', 'Gerbils'],
-    ingredients: [
-      '1/2 cup whole oats',
-      '1/4 cup barley',
-      '1/4 cup millet',
-      '2 tbsp sunflower seeds',
-      '2 tbsp pumpkin seeds',
-      '1 tbsp dried mealworms',
-      '1 tbsp dried vegetables'
-    ],
-    instructions: [
-      'Mix all grains together',
-      'Add seeds and dried protein',
-      'Include dried vegetables for variety',
-      'Store in cool, dry place',
-      'Feed 1-2 tablespoons daily',
-      'Provide small amounts of fresh produce',
-      'Always have fresh water available'
-    ]
-  },
-  {
-    id: 'rabbit-veggie-garden',
-    name: 'Rabbit Garden Harvest Bowl',
-    category: 'Rabbits',
-    prepTime: '20 min',
-    servings: '3 cups',
+    id: 'budgie-veggie-bowl',
+    name: 'Budgie Veggie Garden Bowl',
+    category: 'Budgies',
+    prepTime: 15,
+    servings: 1,
     difficulty: 'Easy',
     rating: 4.9,
-    reviews: 498,
-    image: 'https://images.unsplash.com/photo-1535241749838-299277b6305f?w=800',
+    reviews: 423,
+    image: 'https://images.unsplash.com/photo-1589666564459-93cdd3ab856a?w=800',
     calories: 95,
     protein: 8,
-    fat: 1,
-    fiber: 18,
-    badges: ['Fresh Veggies', 'Low Calorie', 'Rabbits'],
-    ingredients: [
-      '1 cup romaine lettuce',
-      '1/2 cup kale',
-      '1/4 cup cilantro',
-      '1/4 cup parsley',
-      '3 baby carrots',
-      '2 radish tops',
-      '1 small piece broccoli'
-    ],
+    fat: 5,
+    carbs: 22,
+    badges: ['Fresh Veggies', 'Low Fat', 'Budgies'],
+    ingredients: ['0.25 cups finely chopped broccoli', '0.25 cups grated carrot', '2 tbsp chopped spinach', '2 tbsp millet', '1 tbsp quinoa (cooked)', '1 tsp sesame seeds', '1 small piece apple (no seeds)'],
     instructions: [
       'Wash all vegetables thoroughly',
-      'Tear lettuce and kale into pieces',
-      'Chop herbs',
-      'Slice carrots thinly',
-      'Mix all greens and vegetables',
-      'Serve fresh alongside unlimited hay',
-      'Feed 2 cups per 5 lbs body weight daily'
+      'Chop broccoli into tiny florets',
+      'Grate carrot finely',
+      'Cook quinoa and let cool',
+      'Mix all ingredients together',
+      'Serve fresh daily',
+      'Remove uneaten portions after 2 hours'
     ]
   },
   {
-    id: 'guinea-pig-pellet-mix',
-    name: 'Guinea Pig Fortified Pellet Mix',
-    category: 'Guinea Pigs',
-    prepTime: '10 min',
-    servings: '4 cups',
-    difficulty: 'Easy',
-    rating: 4.7,
-    reviews: 356,
-    image: 'https://images.unsplash.com/photo-1612535854692-419d8e4f9d19?w=800',
-    calories: 240,
-    protein: 18,
-    fat: 4,
-    fiber: 16,
-    badges: ['Vitamin C', 'Pellets', 'Guinea Pigs'],
-    ingredients: [
-      '2 cups timothy hay pellets',
-      '1 cup alfalfa pellets (for young GPs)',
-      '1/2 cup oat groats',
-      '1/4 cup dried bell pepper',
-      '2 tbsp rose hips (vitamin C)',
-      '2 tbsp dried parsley',
-      '1 tbsp flax seeds'
-    ],
-    instructions: [
-      'Mix pellets together',
-      'Add dried vegetables and herbs',
-      'Include rose hips for vitamin C boost',
-      'Store in airtight container away from light',
-      'Feed 1/8 cup per guinea pig daily',
-      'Must supplement with fresh vitamin C sources',
-      'Never replace fresh veggies with pellets'
-    ]
-  },
-  {
-    id: 'hamster-protein-boost',
-    name: 'Hamster Protein Power Mix',
-    category: 'Hamsters',
-    prepTime: '15 min',
-    servings: '2 cups',
+    id: 'cockatiel-breakfast',
+    name: 'Cockatiel Morning Feast',
+    category: 'Cockatiels',
+    prepTime: 20,
+    servings: 2,
     difficulty: 'Medium',
     rating: 4.8,
-    reviews: 267,
-    image: 'https://images.unsplash.com/photo-1452857297128-d9c29adba80b?w=800',
-    calories: 195,
-    protein: 22,
-    fat: 10,
-    fiber: 10,
-    badges: ['High Protein', 'Nursing/Young', 'Hamsters'],
-    ingredients: [
-      '1/2 cup whole oats',
-      '1/4 cup millet',
-      '2 tbsp sunflower seeds',
-      '2 tbsp dried mealworms',
-      '1 tbsp pumpkin seeds',
-      '1 tbsp hemp seeds',
-      '1 hard-boiled egg, chopped (fresh)'
-    ],
+    reviews: 312,
+    image: 'https://images.unsplash.com/photo-1563281746-3e5c80b1cd19?w=800',
+    calories: 165,
+    protein: 11,
+    fat: 13,
+    carbs: 35,
+    badges: ['Balanced Diet', 'Nutrient-Rich', 'Cockatiels'],
+    ingredients: ['0.5 cups millet spray', '0.25 cups safflower seeds', '0.25 cups oat groats', '2 tbsp dried banana chips', '2 tbsp pumpkin seeds', '1 tbsp flax seeds', '1 tbsp dried coconut'],
     instructions: [
-      'Mix all dry ingredients together',
-      'Add dried mealworms for protein',
-      'Prepare hard-boiled egg separately',
-      'Offer 1 tablespoon of dry mix daily',
-      'Add small amount of egg 2-3x per week',
-      'Great for pregnant, nursing, or young hamsters',
-      'Remove fresh protein after 2 hours'
+      'Break up millet spray into smaller pieces',
+      'Chop banana chips into small bits',
+      'Mix all seeds together',
+      'Add dried fruits and coconut',
+      'Store in airtight container',
+      'Serve 2 tablespoons per bird daily',
+      'Supplement with fresh vegetables'
     ]
   },
   {
-    id: 'chinchilla-dust-free',
-    name: 'Chinchilla Safe Treat Mix',
-    category: 'Chinchillas',
-    prepTime: '12 min',
-    servings: '2 cups',
+    id: 'lovebird-tropical',
+    name: 'Lovebird Tropical Paradise',
+    category: 'Lovebirds',
+    prepTime: 18,
+    servings: 2,
     difficulty: 'Easy',
     rating: 4.9,
-    reviews: 198,
-    image: 'https://images.unsplash.com/photo-1553481187-be93c21490a9?w=800',
-    calories: 135,
-    protein: 12,
-    fat: 3,
-    fiber: 24,
-    badges: ['Low Fat', 'High Fiber', 'Chinchillas'],
-    ingredients: [
-      '1 cup timothy hay pellets',
-      '1/2 cup dried rose hips',
-      '1/4 cup dried apple (no seeds)',
-      '2 tbsp dried hibiscus flowers',
-      '2 tbsp rolled oats',
-      '1 tbsp dried dandelion leaves',
-      '1 tbsp dried rose petals'
-    ],
+    reviews: 267,
+    image: 'https://images.unsplash.com/photo-1552728089-57bdde30beb3?w=800',
+    calories: 155,
+    protein: 10,
+    fat: 11,
+    carbs: 32,
+    badges: ['Tropical Fruits', 'Colorful', 'Lovebirds'],
+    ingredients: ['0.25 cups dried papaya', '0.25 cups dried pineapple', '0.25 cups dried mango', '0.25 cups sunflower seeds', '2 tbsp pumpkin seeds', '2 tbsp millet', '1 tbsp dried hibiscus flowers'],
     instructions: [
-      'Crush pellets slightly for variety',
-      'Mix all dried ingredients',
-      'Ensure no added sugar or oils',
-      'Store in moisture-free container',
-      'Treats only - 1-2 tablespoons weekly',
-      'Main diet should be hay and pellets',
-      'Never feed fatty or sugary foods'
+      'Dice all dried fruits into small pieces',
+      'Mix fruits with seeds',
+      'Add crushed hibiscus flowers',
+      'Combine thoroughly',
+      'Store away from moisture',
+      'Offer 1-2 tablespoons daily',
+      'Rotate with fresh tropical fruits when available'
+    ]
+  },
+  {
+    id: 'conure-power-pellet',
+    name: 'Conure Energy Blend',
+    category: 'Conures',
+    prepTime: 25,
+    servings: 3,
+    difficulty: 'Medium',
+    rating: 4.7,
+    reviews: 189,
+    image: 'https://images.unsplash.com/photo-1580156783729-1e93a8e90b78?w=800',
+    calories: 195,
+    protein: 13,
+    fat: 16,
+    carbs: 40,
+    badges: ['High Energy', 'Active Birds', 'Conures'],
+    ingredients: ['0.5 cups raw cashews', '0.25 cups raw pistachios', '0.25 cups dried berries', '0.25 cups whole oats', '2 tbsp pepitas', '2 tbsp flax seeds', '1 tbsp bee pollen'],
+    instructions: [
+      'Chop nuts into smaller pieces',
+      'Mix nuts with dried berries',
+      'Add oats and seeds',
+      'Sprinkle bee pollen on top',
+      'Mix well to distribute',
+      'Serve 2-3 tablespoons per bird',
+      'Great for active, playful conures'
+    ]
+  },
+  {
+    id: 'macaw-mega-mix',
+    name: 'Macaw Mega Nut Mix',
+    category: 'Macaws',
+    prepTime: 20,
+    servings: 4,
+    difficulty: 'Easy',
+    rating: 4.8,
+    reviews: 156,
+    image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800',
+    calories: 220,
+    protein: 15,
+    fat: 18,
+    carbs: 42,
+    badges: ['Large Birds', 'Nut-Heavy', 'Macaws'],
+    ingredients: ['0.5 cups brazil nuts', '0.5 cups raw almonds', '0.25 cups raw macadamias', '0.25 cups dried papaya chunks', '0.25 cups dried coconut chunks', '2 tbsp pumpkin seeds', '2 tbsp sunflower seeds'],
+    instructions: [
+      'Use whole or halved nuts for large beaks',
+      'Cut dried fruits into larger chunks',
+      'Mix all ingredients',
+      'Store in large airtight container',
+      'Serve 1/4 cup per large macaw daily',
+      'Monitor for selective eating',
+      'Supplement with fresh vegetables and fruits'
     ]
   }
 ];
 
-export default function SmallPetsPage() {
+export default function BirdsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
+  const [showKit, setShowKit] = useState(false);
+  const [servingsById, setServingsById] = useState<Record<string, number>>({});
+  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
-  const categories = ['All', 'Rabbits', 'Guinea Pigs', 'Hamsters', 'Gerbils', 'Chinchillas'];
+  const categories = ['All', 'Parrots', 'Canaries', 'Finches', 'Budgies', 'Cockatiels', 'Lovebirds', 'Conures', 'Macaws'];
+
+  // Convert recipes to RecipeKit format
+  const recipesWithMeasurements = useMemo(() => {
+    return birdRecipes.map((recipe) => {
+      const measurements = recipe.ingredients.map(ing => parseIngredient(ing));
+      return {
+        ...recipe,
+        recipe: {
+          servings: recipe.servings,
+          measurements,
+          directions: recipe.instructions
+        }
+      };
+    });
+  }, []);
 
   const filteredRecipes = useMemo(() => {
-    return smallPetRecipes.filter(recipe => {
+    return recipesWithMeasurements.filter(recipe => {
       const matchesSearch = recipe.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           recipe.badges.some(b => b.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchesCategory = !selectedCategory || selectedCategory === 'All' || recipe.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
-  }, [searchQuery, selectedCategory]);
+  }, [searchQuery, selectedCategory, recipesWithMeasurements]);
+
+  const openRecipeModal = (recipe: any) => {
+    setSelectedRecipe(recipe);
+    setShowKit(true);
+  };
+
+  const handleCompleteRecipe = () => {
+    setShowKit(false);
+    setSelectedRecipe(null);
+  };
+
+  const handleShareRecipe = async (recipe: any) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const text = `${recipe.name} - Bird Food Recipe`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: recipe.name, text, url });
+      } else {
+        await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${recipe.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-green-50 to-lime-50">
+    <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-blue-50 to-sky-50">
+      {/* RecipeKit Modal */}
+      {selectedRecipe && (
+        <RecipeKit
+          open={showKit}
+          onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
+          accent="cyan"
+          pointsReward={40}
+          onComplete={handleCompleteRecipe}
+          item={{
+            id: selectedRecipe.id,
+            name: selectedRecipe.name,
+            prepTime: selectedRecipe.prepTime,
+            directions: selectedRecipe.recipe?.directions || [],
+            measurements: selectedRecipe.recipe?.measurements || [],
+            baseNutrition: {},
+            defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+          }}
+        />
+      )}
+
       {/* HEADER */}
-      <div className="bg-gradient-to-r from-emerald-600 via-green-600 to-lime-600 text-white shadow-lg">
+      <div className="bg-gradient-to-r from-cyan-600 via-blue-600 to-sky-600 text-white shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <Link href="/pet-food">
@@ -334,15 +392,15 @@ export default function SmallPetsPage() {
       </div>
 
       {/* HERO */}
-      <div className="bg-gradient-to-br from-emerald-600 via-green-600 to-lime-600 text-white">
+      <div className="bg-gradient-to-br from-cyan-600 via-blue-600 to-sky-600 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="flex items-center gap-4 mb-6">
             <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
-              <Rabbit className="h-12 w-12" />
+              <Bird className="h-12 w-12" />
             </div>
             <div>
-              <h1 className="text-5xl font-bold mb-2">Small Pet Food Recipes</h1>
-              <p className="text-xl text-emerald-100">Nutritious hay-based diets and veggie mixes for small animals</p>
+              <h1 className="text-5xl font-bold mb-2">Bird Food Recipes</h1>
+              <p className="text-xl text-cyan-100">Nutritious seed mixes, fruits, and treats for your feathered friends</p>
             </div>
           </div>
 
@@ -350,22 +408,22 @@ export default function SmallPetsPage() {
             <div className="bg-white/10 backdrop-blur rounded-xl p-4">
               <Leaf className="h-8 w-8 mb-2" />
               <div className="text-2xl font-bold">8</div>
-              <div className="text-sm text-emerald-100">Recipes</div>
+              <div className="text-sm text-cyan-100">Recipes</div>
             </div>
             <div className="bg-white/10 backdrop-blur rounded-xl p-4">
               <Clock className="h-8 w-8 mb-2" />
-              <div className="text-2xl font-bold">10-20min</div>
-              <div className="text-sm text-emerald-100">Prep Time</div>
+              <div className="text-2xl font-bold">10-25min</div>
+              <div className="text-sm text-cyan-100">Prep Time</div>
             </div>
             <div className="bg-white/10 backdrop-blur rounded-xl p-4">
               <Target className="h-8 w-8 mb-2" />
-              <div className="text-2xl font-bold">5 Species</div>
-              <div className="text-sm text-emerald-100">Small Pets</div>
+              <div className="text-2xl font-bold">All Species</div>
+              <div className="text-sm text-cyan-100">Bird Types</div>
             </div>
             <div className="bg-white/10 backdrop-blur rounded-xl p-4">
               <Shield className="h-8 w-8 mb-2" />
-              <div className="text-2xl font-bold">High Fiber</div>
-              <div className="text-sm text-emerald-100">Digestive Health</div>
+              <div className="text-2xl font-bold">Fresh & Safe</div>
+              <div className="text-sm text-cyan-100">Quality Ingredients</div>
             </div>
           </div>
         </div>
@@ -381,7 +439,7 @@ export default function SmallPetsPage() {
               placeholder="Search recipes..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-white border-emerald-200 focus:border-emerald-400"
+              className="pl-10 bg-white border-cyan-200 focus:border-cyan-400"
             />
           </div>
 
@@ -392,8 +450,8 @@ export default function SmallPetsPage() {
                 variant={selectedCategory === cat || (!selectedCategory && cat === 'All') ? 'default' : 'outline'}
                 onClick={() => setSelectedCategory(cat === 'All' ? null : cat)}
                 className={selectedCategory === cat || (!selectedCategory && cat === 'All') 
-                  ? 'bg-gradient-to-r from-emerald-600 to-green-600 text-white'
-                  : 'border-emerald-200 hover:border-emerald-400'}
+                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white'
+                  : 'border-cyan-200 hover:border-cyan-400'}
               >
                 {cat}
               </Button>
@@ -402,134 +460,238 @@ export default function SmallPetsPage() {
         </div>
 
         {/* SAFETY TIPS */}
-        <Card className="mb-8 border-emerald-200 bg-emerald-50/50">
+        <Card className="mb-8 border-cyan-200 bg-cyan-50/50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-emerald-900">
+            <CardTitle className="flex items-center gap-2 text-cyan-900">
               <Shield className="h-5 w-5" />
-              Important Safety Tips for Small Pets
+              Important Safety Tips for Birds
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid md:grid-cols-2 gap-4 text-sm text-emerald-800">
+            <div className="grid md:grid-cols-2 gap-4 text-sm text-cyan-800">
               <div>
-                <div className="font-semibold mb-2">✓ Safe for Small Pets:</div>
+                <div className="font-semibold mb-2">✓ Safe for Birds:</div>
                 <ul className="space-y-1 ml-4">
-                  <li>• Timothy hay, orchard grass, oat hay (unlimited)</li>
-                  <li>• Leafy greens (romaine, kale, cilantro, parsley)</li>
-                  <li>• Bell peppers, carrots, broccoli (small amounts)</li>
-                  <li>• Whole grains (oats, millet, barley)</li>
-                  <li>• Small amounts of fruits as treats</li>
-                  <li>• Species-appropriate pellets</li>
+                  <li>• Fresh fruits (apples, berries, mango, papaya)</li>
+                  <li>• Fresh vegetables (carrots, broccoli, spinach)</li>
+                  <li>• Seeds (millet, sunflower, pumpkin, flax)</li>
+                  <li>• Nuts (almonds, walnuts, cashews - unsalted)</li>
+                  <li>• Grains (oats, quinoa, brown rice)</li>
+                  <li>• Flowers (hibiscus, rose petals, dandelion)</li>
                 </ul>
               </div>
               <div>
-                <div className="font-semibold mb-2 text-red-700">✗ Toxic for Small Pets:</div>
+                <div className="font-semibold mb-2 text-red-700">✗ Toxic for Birds:</div>
                 <ul className="space-y-1 ml-4 text-red-700">
+                  <li>• Avocado (highly toxic)</li>
                   <li>• Chocolate, caffeine, alcohol</li>
-                  <li>• Avocado, potato leaves/sprouts</li>
-                  <li>• Onions, garlic, chives, leeks</li>
-                  <li>• Rhubarb leaves (toxic)</li>
-                  <li>• Apple seeds, cherry pits</li>
-                  <li>• Iceberg lettuce (low nutrition, can cause diarrhea)</li>
+                  <li>• Salt, sugar (in large amounts)</li>
+                  <li>• Onions, garlic, chives</li>
+                  <li>• Apple seeds, cherry pits, peach pits</li>
+                  <li>• Raw beans, mushrooms</li>
                 </ul>
               </div>
             </div>
-            <div className="mt-4 p-3 bg-green-100 rounded-lg border border-green-300">
-              <p className="text-sm text-green-900 font-semibold mb-2">
-                ⚠️ Species-Specific Notes:
+            <div className="mt-4 p-3 bg-blue-100 rounded-lg border border-blue-300">
+              <p className="text-sm text-blue-900 font-semibold">
+                ⚠️ IMPORTANT: Remove all fruit pits and apple seeds before feeding. Always provide fresh water. Avoid teflon/non-stick cookware around birds (toxic fumes).
               </p>
-              <ul className="text-sm text-green-800 space-y-1 ml-4">
-                <li>• <strong>Rabbits & Guinea Pigs:</strong> Need unlimited hay (80%+ of diet) and fresh vitamin C sources daily</li>
-                <li>• <strong>Hamsters & Gerbils:</strong> Need protein sources (mealworms, eggs) 2-3x per week</li>
-                <li>• <strong>Chinchillas:</strong> Need very low-fat, high-fiber diet; treats sparingly</li>
-              </ul>
             </div>
-            <p className="mt-3 text-xs text-emerald-700 italic">
-              Always consult a small animal veterinarian for species-specific dietary needs. Introduce new foods gradually.
+            <p className="mt-3 text-xs text-cyan-700 italic">
+              Different bird species have different nutritional needs. Consult an avian veterinarian for species-specific dietary requirements.
             </p>
           </CardContent>
         </Card>
 
         {/* RECIPES GRID */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-          {filteredRecipes.map((recipe) => (
-            <Card key={recipe.id} className="group hover:shadow-xl transition-all duration-300 border-emerald-200 hover:border-emerald-400 overflow-hidden">
-              <div className="relative h-48 overflow-hidden">
-                <img 
-                  src={recipe.image} 
-                  alt={recipe.name}
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                />
-                <div className="absolute top-3 right-3 flex flex-col gap-2">
-                  {recipe.badges.slice(0, 2).map((badge) => (
-                    <Badge key={badge} className="bg-emerald-600 text-white">
-                      {badge}
-                    </Badge>
-                  ))}
+          {filteredRecipes.map((recipe) => {
+            const useMetric = !!metricFlags[recipe.id];
+            const servings = servingsById[recipe.id] ?? recipe.servings;
+
+            return (
+              <Card key={recipe.id} className="group hover:shadow-xl transition-all duration-300 border-cyan-200 hover:border-cyan-400 overflow-hidden">
+                <div className="relative h-48 overflow-hidden">
+                  <img 
+                    src={recipe.image} 
+                    alt={recipe.name}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                  />
+                  <div className="absolute top-3 right-3 flex flex-col gap-2">
+                    {recipe.badges.slice(0, 2).map((badge) => (
+                      <Badge key={badge} className="bg-cyan-600 text-white">
+                        {badge}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-bold text-lg text-gray-900 mb-1">{recipe.name}</h3>
-                    <div className="flex items-center gap-3 text-sm text-gray-600">
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-4 w-4" />
-                        {recipe.prepTime}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Rabbit className="h-4 w-4" />
-                        {recipe.servings}
-                      </span>
+                
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h3 className="font-bold text-lg text-gray-900 mb-1">{recipe.name}</h3>
+                      <div className="flex items-center gap-3 text-sm text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-4 w-4" />
+                          {recipe.prepTime}min
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Bird className="h-4 w-4" />
+                          {recipe.servings} cups
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="flex text-yellow-500">
-                    {'★'.repeat(Math.floor(recipe.rating))}
+                  {/* BIRD RATING */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="flex items-center gap-1">
+                      {[...Array(5)].map((_, i) => (
+                        <Bird
+                          key={i}
+                          className={`w-4 h-4 ${
+                            i < Math.floor(recipe.rating)
+                              ? 'fill-cyan-500 text-cyan-500'
+                              : 'text-gray-300'
+                          }`}
+                        />
+                      ))}
+                      <span className="font-medium ml-1">{recipe.rating}</span>
+                      <span className="text-gray-500 text-sm">({recipe.reviews})</span>
+                    </div>
                   </div>
-                  <span className="text-sm font-medium text-gray-700">{recipe.rating}</span>
-                  <span className="text-sm text-gray-500">({recipe.reviews})</span>
-                </div>
 
-                <div className="grid grid-cols-4 gap-2 mb-4 text-center">
-                  <div className="bg-emerald-50 rounded p-2">
-                    <div className="text-xs text-gray-600">Calories</div>
-                    <div className="font-bold text-emerald-700">{recipe.calories}</div>
+                  <div className="grid grid-cols-4 gap-2 mb-4 text-center">
+                    <div className="bg-cyan-50 rounded p-2">
+                      <div className="text-xs text-gray-600">Calories</div>
+                      <div className="font-bold text-cyan-700">{recipe.calories}</div>
+                    </div>
+                    <div className="bg-blue-50 rounded p-2">
+                      <div className="text-xs text-gray-600">Protein</div>
+                      <div className="font-bold text-blue-700">{recipe.protein}g</div>
+                    </div>
+                    <div className="bg-cyan-50 rounded p-2">
+                      <div className="text-xs text-gray-600">Fat</div>
+                      <div className="font-bold text-cyan-700">{recipe.fat}g</div>
+                    </div>
+                    <div className="bg-blue-50 rounded p-2">
+                      <div className="text-xs text-gray-600">Carbs</div>
+                      <div className="font-bold text-blue-700">{recipe.carbs}g</div>
+                    </div>
                   </div>
-                  <div className="bg-green-50 rounded p-2">
-                    <div className="text-xs text-gray-600">Protein</div>
-                    <div className="font-bold text-green-700">{recipe.protein}g</div>
-                  </div>
-                  <div className="bg-emerald-50 rounded p-2">
-                    <div className="text-xs text-gray-600">Fat</div>
-                    <div className="font-bold text-emerald-700">{recipe.fat}g</div>
-                  </div>
-                  <div className="bg-green-50 rounded p-2">
-                    <div className="text-xs text-gray-600">Fiber</div>
-                    <div className="font-bold text-green-700">{recipe.fiber}g</div>
-                  </div>
-                </div>
 
-                <div className="flex gap-2">
-                  <Button className="flex-1 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700">
-                    View Recipe
-                  </Button>
-                  <Button variant="outline" size="icon" className="border-emerald-200 hover:border-emerald-400">
-                    <Heart className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  {/* RecipeKit Preview */}
+                  {recipe.recipe?.measurements && recipe.recipe.measurements.length > 0 && (
+                    <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-semibold text-gray-900">
+                          Ingredients (serves {servings})
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="px-2 py-1 border rounded text-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? recipe.servings) - 1) }));
+                            }}
+                          >
+                            −
+                          </button>
+                          <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                          <button
+                            className="px-2 py-1 border rounded text-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? recipe.servings) + 1) }));
+                            }}
+                          >
+                            +
+                          </button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setServingsById(prev => ({ ...prev, [recipe.id]: recipe.servings }));
+                            }}
+                            title="Reset"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                        {recipe.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                          const isNum = typeof ing.amount === 'number';
+                          const scaledAmount = isNum ? (ing.amount as number) * servings / recipe.servings : ing.amount;
+                          const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings / recipe.servings) : ing.amount;
+                          const show = useMetric && isNum
+                            ? toMetric(ing.unit, scaledAmount as number)
+                            : { amount: scaledDisplay, unit: ing.unit };
+
+                          return (
+                            <li key={i} className="flex items-start gap-2">
+                              <Check className="h-4 w-4 text-cyan-500 mt-0.5" />
+                              <span>
+                                <span className="text-cyan-600 font-semibold">
+                                  {show.amount} {show.unit}
+                                </span>{" "}
+                                {ing.item}
+                                {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                              </span>
+                            </li>
+                          );
+                        })}
+                        {recipe.recipe.measurements.length > 4 && (
+                          <li className="text-xs text-gray-600">
+                            …plus {recipe.recipe.measurements.length - 4} more
+                          </li>
+                        )}
+                      </ul>
+
+                      <div className="flex gap-2 mt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMetricFlags((prev) => ({ ...prev, [recipe.id]: !prev[recipe.id] }));
+                          }}
+                        >
+                          {useMetric ? 'US' : 'Metric'}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={(e) => {
+                          e.stopPropagation();
+                          handleShareRecipe(recipe);
+                        }}>
+                          <Share2 className="w-4 h-4 mr-1" /> Share
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button 
+                      className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700"
+                      onClick={() => openRecipeModal(recipe)}
+                    >
+                      View Recipe
+                    </Button>
+                    <Button variant="outline" size="icon" className="border-cyan-200 hover:border-cyan-400">
+                      <Heart className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
         {/* SISTER PAGES NAVIGATION */}
-        <Card className="mb-8 border-emerald-200 bg-gradient-to-br from-white to-emerald-50/30">
+        <Card className="mb-8 border-cyan-200 bg-gradient-to-br from-white to-cyan-50/30">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-emerald-900">
+            <CardTitle className="flex items-center gap-2 text-cyan-900">
               <Home className="h-5 w-5" />
               Explore Other Pet Food Categories
             </CardTitle>
@@ -538,20 +700,20 @@ export default function SmallPetsPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {sisterPetFoodPages.map((page) => {
                 const Icon = page.icon;
-                const isActive = page.id === 'small-pets';
+                const isActive = page.id === 'birds';
                 return (
                   <Link key={page.id} href={page.path}>
                     <Card className={`cursor-pointer transition-all hover:shadow-lg ${
                       isActive 
-                        ? 'border-2 border-emerald-500 bg-emerald-50' 
-                        : 'border-gray-200 hover:border-emerald-300'
+                        ? 'border-2 border-cyan-500 bg-cyan-50' 
+                        : 'border-gray-200 hover:border-cyan-300'
                     }`}>
                       <CardContent className="p-4 text-center">
                         <Icon className={`h-8 w-8 mx-auto mb-2 ${
-                          isActive ? 'text-emerald-600' : 'text-gray-600'
+                          isActive ? 'text-cyan-600' : 'text-gray-600'
                         }`} />
                         <div className={`font-semibold mb-1 ${
-                          isActive ? 'text-emerald-900' : 'text-gray-900'
+                          isActive ? 'text-cyan-900' : 'text-gray-900'
                         }`}>
                           {page.name}
                         </div>
@@ -566,42 +728,42 @@ export default function SmallPetsPage() {
         </Card>
 
         {/* YOUR PROGRESS CARD */}
-        <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-green-50">
+        <Card className="border-cyan-200 bg-gradient-to-br from-cyan-50 to-blue-50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-emerald-900">
+            <CardTitle className="flex items-center gap-2 text-cyan-900">
               <Award className="h-5 w-5" />
-              Your Small Pet Food Journey
+              Your Bird Food Journey
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid md:grid-cols-3 gap-6">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-emerald-900">Recipes Tried</span>
-                  <span className="text-sm font-bold text-emerald-700">5/8</span>
+                  <span className="text-sm font-medium text-cyan-900">Recipes Tried</span>
+                  <span className="text-sm font-bold text-cyan-700">4/8</span>
                 </div>
-                <div className="w-full bg-emerald-200 rounded-full h-2">
-                  <div className="bg-gradient-to-r from-emerald-600 to-green-600 h-2 rounded-full" style={{ width: '62.5%' }} />
+                <div className="w-full bg-cyan-200 rounded-full h-2">
+                  <div className="bg-gradient-to-r from-cyan-600 to-blue-600 h-2 rounded-full" style={{ width: '50%' }} />
                 </div>
               </div>
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-emerald-900">Pet Level</span>
-                  <span className="text-sm font-bold text-emerald-700">Level 3</span>
+                  <span className="text-sm font-medium text-cyan-900">Bird Level</span>
+                  <span className="text-sm font-bold text-cyan-700">Level 2</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Crown className="h-5 w-5 text-emerald-600" />
-                  <span className="text-xs text-gray-600">Almost to Level 4!</span>
+                  <Crown className="h-5 w-5 text-cyan-600" />
+                  <span className="text-xs text-gray-600">Halfway to Level 3!</span>
                 </div>
               </div>
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-emerald-900">Achievements</span>
-                  <span className="text-sm font-bold text-emerald-700">4</span>
+                  <span className="text-sm font-medium text-cyan-900">Achievements</span>
+                  <span className="text-sm font-bold text-cyan-700">3</span>
                 </div>
                 <div className="flex gap-2">
-                  <Badge className="bg-emerald-600">Hay Master</Badge>
-                  <Badge className="bg-green-600">Veggie Pro</Badge>
+                  <Badge className="bg-cyan-600">First Mix</Badge>
+                  <Badge className="bg-blue-600">Variety</Badge>
                 </div>
               </div>
             </div>
