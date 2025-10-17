@@ -75,16 +75,15 @@ import DetoxWaters from "@/pages/drinks/detoxes/water";
 import CocktailsPage from "@/pages/drinks/potent-potables/cocktails";
 import CognacBrandyPage from "@/pages/drinks/potent-potables/cognac-brandy";
 import MartinisPage from "@/pages/drinks/potent-potables/martinis";
+// NOTE: Virgin removed per requirements; merged into Mocktails
 import MocktailsPage from "@/pages/drinks/potent-potables/mocktails";
 import RumPage from "@/pages/drinks/potent-potables/rum";
 import ScotchIrishWhiskeyPage from "@/pages/drinks/potent-potables/scotch-irish-whiskey";
 import SeasonalPage from "@/pages/drinks/potent-potables/seasonal";
 import TequilaMezcalPage from "@/pages/drinks/potent-potables/tequila-mezcal";
-import VirginCocktailsPage from "@/pages/drinks/potent-potables/virgin-cocktails";
 import VodkaPage from "@/pages/drinks/potent-potables/vodka";
 import WhiskeyBourbonPage from "@/pages/drinks/potent-potables/whiskey-bourbon";
 import DaiquiriPage from "@/pages/drinks/potent-potables/daiquiri";
-// ✅ NEW: 4 new pages
 import GinPage from "@/pages/drinks/potent-potables/gin";
 import LiqueursPage from "@/pages/drinks/potent-potables/liqueurs";
 import SpritzPage from "@/pages/drinks/potent-potables/spritz";
@@ -133,7 +132,7 @@ function RecipesSection() {
 
 /**
  * Alcoholic "Potent Potables" sub-routes — behind AgeGate only.
- * NOTE: Zero-proof/virgin routes are handled OUTSIDE of this component (see DrinksSection).
+ * NOTE: Mocktails (zero-proof) is handled OUTSIDE of this component (see DrinksSection).
  */
 function PotentPotablesSection() {
   return (
@@ -142,7 +141,7 @@ function PotentPotablesSection() {
         <Route path="/drinks/potent-potables/cocktails" component={CocktailsPage} />
         <Route path="/drinks/potent-potables/cognac-brandy" component={CognacBrandyPage} />
         <Route path="/drinks/potent-potables/martinis" component={MartinisPage} />
-        <Route path="/drinks/potent-potables/mocktails" component={MocktailsPage} />
+        {/* Mocktails intentionally NOT here (zero-proof, outside gate) */}
         <Route path="/drinks/potent-potables/rum" component={RumPage} />
         <Route path="/drinks/potent-potables/scotch-irish-whiskey" component={ScotchIrishWhiskeyPage} />
         <Route path="/drinks/potent-potables/seasonal" component={SeasonalPage} />
@@ -150,7 +149,6 @@ function PotentPotablesSection() {
         <Route path="/drinks/potent-potables/daiquiri" component={DaiquiriPage} />
         <Route path="/drinks/potent-potables/vodka" component={VodkaPage} />
         <Route path="/drinks/potent-potables/whiskey-bourbon" component={WhiskeyBourbonPage} />
-        {/* ✅ NEW: 4 new pages */}
         <Route path="/drinks/potent-potables/gin" component={GinPage} />
         <Route path="/drinks/potent-potables/liqueurs" component={LiqueursPage} />
         <Route path="/drinks/potent-potables/spritz" component={SpritzPage} />
@@ -194,8 +192,7 @@ function DrinksSection() {
       <Route path="/drinks/detoxes" component={DetoxesHub} />
 
       {/* ---------- Zero-proof (NOT age-gated) ---------- */}
-      <Route path="/drinks/potent-potables/virgin" component={VirginCocktailsPage} />
-      <Route path="/drinks/potent-potables/virgin-cocktails" component={VirginCocktailsPage} />
+      <Route path="/drinks/potent-potables/mocktails" component={MocktailsPage} />
 
       {/* ---------- Potent Potables (age-gated) ---------- */}
       <Route path="/drinks/potent-potables/:rest*">
@@ -233,6 +230,18 @@ function AppRouter() {
       {shouldShowDebugConsole() && <DebugConsole />}
 
       <Switch>
+        {/* Shortlinks (optional nice-to-have) */}
+        <Route path="/daiquiri"><Redirect to="/drinks/potent-potables/daiquiri" /></Route>
+        <Route path="/daquiri"><Redirect to="/drinks/potent-potables/daiquiri" /></Route>
+
+        {/* Legacy redirects: Virgin → Mocktails */}
+        <Route path="/drinks/potent-potables/virgin">
+          <Redirect to="/drinks/potent-potables/mocktails" />
+        </Route>
+        <Route path="/drinks/potent-potables/virgin-cocktails">
+          <Redirect to="/drinks/potent-potables/mocktails" />
+        </Route>
+
         {/* NEW: Signup and Login routes */}
         <Route path="/signup" component={Signup} />
         <Route path="/login" component={Login} />
