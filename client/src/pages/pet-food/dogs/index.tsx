@@ -5,10 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { 
-  Dog, Clock, Heart, Target, Bone, Shield, 
-  Search, Share2, ArrowLeft, Plus, Camera, Flame,
-  TrendingUp, Award, Zap, Crown, Home, Apple, Leaf,
-  Activity
+  Dog, Cat, Bird, Rabbit,
+  Clock, Heart, Target, Bone, Shield, 
+  Search, Share2, ArrowLeft, Home,
+  Award, Crown, Activity
 } from 'lucide-react';
 
 // SISTER PAGES
