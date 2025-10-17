@@ -9,7 +9,8 @@ import {
   Settings, LogOut, Plus,
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
-import MobileNav from "@/components/mobile-nav";
+// Replaces MobileNav with a consistent BottomTabBar from the Mobile Kit
+import { SafeArea, BottomTabBar } from "@/mobile/MobileKit";
 import chefLogo from "../asset/logo.jpg";
 
 interface LayoutProps {
@@ -45,6 +46,15 @@ export default function Layout({ children }: LayoutProps) {
     { href: "/store", label: "Store" },
   ];
 
+  // Bottom mobile tabs (keep it 4–5 items for clarity)
+  const bottomTabs = [
+    { href: "/feed", label: "Feed" },
+    { href: "/bitemap", label: "BiteMap" },
+    { href: "/recipes", label: "Recipes" },
+    { href: "/drinks", label: "Drinks" },
+    { href: "/pet-food", label: "Pet Food" },
+  ];
+
   const handleCreatePost = () => {
     console.log("Create post clicked");
   };
@@ -64,9 +74,9 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
+    <div className="flex min-h-screen h-screen-mobile flex-col bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
+      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border safe-top">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Brand */}
@@ -127,7 +137,7 @@ export default function Layout({ children }: LayoutProps) {
                 className="p-2 hover:bg-muted rounded-full"
                 aria-label="Messages"
               >
-                <MessageCircle className="h-5 h-5 text-muted-foreground" />
+                <MessageCircle className="h-5 w-5 text-muted-foreground" />
               </Button>
 
               {/* User menu */}
@@ -526,30 +536,34 @@ export default function Layout({ children }: LayoutProps) {
       {/* Body */}
       <div className="flex flex-1">
         <Sidebar onCreatePost={handleCreatePost} />
-        <main className="flex-1 lg:ml-64 pb-16 lg:pb-0">{children}</main>
+        {/* pad bottom so content isn't hidden by the tab bar on mobile */}
+        <main className="flex-1 lg:ml-64 pb-24 lg:pb-0">{children}</main>
       </div>
 
-      {/* Mobile search */}
-      <div className="md:hidden px-4 py-2 bg-background border-t border-border">
-        <form onSubmit={onSearchSubmit} className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              type="text"
-              placeholder="Search recipes..."
-              className="w-full pl-10 bg-muted border-border rounded-full"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              aria-label="Search site (mobile)"
-            />
-          </div>
-          <Button type="submit" size="sm" className="shrink-0 rounded-full px-3">
-            Go
-          </Button>
-        </form>
-      </div>
+      {/* Mobile search (above tab bar, with safe bottom) */}
+      <SafeArea edge="bottom" className="md:hidden bg-background border-t border-border">
+        <div className="px-4 py-2">
+          <form onSubmit={onSearchSubmit} className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <Input
+                type="text"
+                placeholder="Search recipes..."
+                className="w-full pl-10 bg-muted border-border rounded-full"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                aria-label="Search site (mobile)"
+              />
+            </div>
+            <Button type="submit" size="sm" className="shrink-0 rounded-full px-3">
+              Go
+            </Button>
+          </form>
+        </div>
+      </SafeArea>
 
-      <MobileNav onCreatePost={handleCreatePost} />
+      {/* Bottom mobile tabs (use SafeArea inside) */}
+      <BottomTabBar items={bottomTabs} />
     </div>
   );
 }
