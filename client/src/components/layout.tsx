@@ -33,13 +33,14 @@ export default function Layout({ children }: LayoutProps) {
     };
   }, []);
 
-  // 🔧 make the top rail go to the Library explicitly
+  // Top rail quick links
   const secondaryLinks = [
     { href: "/", label: "Home" },
     { href: "/bitemap", label: "BiteMap" },
     { href: "/competitions/library", label: "Competitions" },
     { href: "/recipes", label: "Recipes" },
     { href: "/drinks", label: "Drinks" },
+    { href: "/pet-food", label: "Pet Food" },
     { href: "/catering", label: "Catering" },
     { href: "/store", label: "Store" },
   ];
@@ -64,9 +65,11 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
+      {/* Header */}
       <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
+            {/* Brand */}
             <Link href="/" className="flex items-center space-x-3">
               <div className="w-9 h-9 rounded-full overflow-hidden shadow-lg flex items-center justify-center bg-white">
                 <img
@@ -83,6 +86,7 @@ export default function Layout({ children }: LayoutProps) {
               </h1>
             </Link>
 
+            {/* Search */}
             <div className="hidden md:flex flex-1 max-w-lg mx-8">
               <form className="relative w-full" onSubmit={onSearchSubmit}>
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
@@ -97,8 +101,8 @@ export default function Layout({ children }: LayoutProps) {
               </form>
             </div>
 
+            {/* Actions */}
             <div className="flex items-center space-x-4">
-              {/* 🔧 Create button stays on /competitions/new */}
               <Link href="/competitions/new">
                 <Button
                   size="sm"
@@ -123,9 +127,10 @@ export default function Layout({ children }: LayoutProps) {
                 className="p-2 hover:bg-muted rounded-full"
                 aria-label="Messages"
               >
-                <MessageCircle className="h-5 w-5 text-muted-foreground" />
+                <MessageCircle className="h-5 h-5 text-muted-foreground" />
               </Button>
 
+              {/* User menu */}
               <div
                 className="relative"
                 onMouseLeave={() => {
@@ -157,6 +162,7 @@ export default function Layout({ children }: LayoutProps) {
                       }}
                     />
                     <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-20 overflow-hidden max-h-[calc(100vh-5rem)] overflow-y-auto">
+                      {/* Header */}
                       <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-b px-4 py-3">
                         <div className="flex items-center space-x-3">
                           <div className="w-7 h-7 rounded-full overflow-hidden bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-md">
@@ -173,6 +179,7 @@ export default function Layout({ children }: LayoutProps) {
                         </div>
                       </div>
 
+                      {/* Body */}
                       <div className="py-2">
                         <div className="px-4 py-2">
                           <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
@@ -204,7 +211,7 @@ export default function Layout({ children }: LayoutProps) {
                               🗺️ BiteMap
                             </Link>
 
-                            {/* 🔧 Competitions with submenu */}
+                            {/* Competitions */}
                             <div>
                               <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                                 <Link
@@ -250,7 +257,7 @@ export default function Layout({ children }: LayoutProps) {
                               )}
                             </div>
 
-                            {/* Recipes with submenu */}
+                            {/* Recipes */}
                             <div>
                               <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                                 <Link
@@ -303,7 +310,7 @@ export default function Layout({ children }: LayoutProps) {
                               )}
                             </div>
 
-                            {/* Drinks with submenu */}
+                            {/* Drinks */}
                             <div>
                               <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                                 <Link
@@ -355,44 +362,76 @@ export default function Layout({ children }: LayoutProps) {
                                       21+
                                     </span>
                                   </Link>
+
+                                  {/* Zero-proof now lives here */}
+                                  <Link
+                                    href="/drinks/potent-potables/mocktails"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    🧃 Mocktails (Zero-Proof)
+                                  </Link>
+
+                                  {/* Quick link to Daiquiri page */}
+                                  <Link
+                                    href="/drinks/potent-potables/daiquiri"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    🍓 Daiquiri
+                                  </Link>
                                 </div>
                               )}
                             </div>
 
-                            {/* Catering with submenu */}
+                            {/* Pet Food */}
                             <div>
                               <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                                 <Link
-                                  href="/catering"
+                                  href="/pet-food"
                                   onClick={() => setIsDropdownOpen(false)}
                                   className="flex items-center flex-1 font-semibold"
                                 >
-                                  🍽️ Catering
+                                  🐾 Pet Food
                                 </Link>
                                 <button
-                                  onClick={(e) => toggleSubmenu("catering", e)}
+                                  onClick={(e) => toggleSubmenu("petfood", e)}
                                   className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
                                 >
                                   <ChevronRight
-                                    className={`w-3 h-3 transition-transform ${expandedMenus.catering ? "rotate-90" : ""}`}
+                                    className={`w-3 h-3 transition-transform ${expandedMenus.petfood ? "rotate-90" : ""}`}
                                   />
                                 </button>
                               </div>
-                              {expandedMenus.catering && (
+                              {expandedMenus.petfood && (
                                 <div className="ml-6 space-y-1">
                                   <Link
-                                    href="/catering"
+                                    href="/pet-food/dogs"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    👨‍🍳 Browse Caterers
+                                    🐶 Dogs
                                   </Link>
                                   <Link
-                                    href="/catering/wedding-planning"
+                                    href="/pet-food/cats"
                                     onClick={() => setIsDropdownOpen(false)}
                                     className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                   >
-                                    💒 Wedding Planning
+                                    🐱 Cats
+                                  </Link>
+                                  <Link
+                                    href="/pet-food/birds"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    🦜 Birds
+                                  </Link>
+                                  <Link
+                                    href="/pet-food/small-pets"
+                                    onClick={() => setIsDropdownOpen(false)}
+                                    className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                  >
+                                    🐹 Small Pets
                                   </Link>
                                 </div>
                               )}
@@ -420,6 +459,7 @@ export default function Layout({ children }: LayoutProps) {
 
                         <div className="border-t my-2" />
 
+                        {/* Profile / Settings / Sign out */}
                         <Link
                           href="/profile"
                           onClick={() => setIsDropdownOpen(false)}
@@ -454,6 +494,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
           </div>
 
+          {/* Sub-rail */}
           <nav className="border-t border-border bg-background">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <ul className="flex flex-nowrap gap-4 overflow-x-auto no-scrollbar py-2 px-1 touch-pan-x">
@@ -482,11 +523,13 @@ export default function Layout({ children }: LayoutProps) {
         </div>
       </header>
 
+      {/* Body */}
       <div className="flex flex-1">
         <Sidebar onCreatePost={handleCreatePost} />
         <main className="flex-1 lg:ml-64 pb-16 lg:pb-0">{children}</main>
       </div>
 
+      {/* Mobile search */}
       <div className="md:hidden px-4 py-2 bg-background border-t border-border">
         <form onSubmit={onSearchSubmit} className="flex gap-2">
           <div className="relative flex-1">
