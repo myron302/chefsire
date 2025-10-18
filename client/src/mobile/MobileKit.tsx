@@ -6,7 +6,94 @@ import React, {
   useEffect,
   useLayoutEffect,
   useMemo,
-  useRef,
+  useRef,// client/src/mobile/MobileKit.tsx
+import React from "react";
+import { useLocation } from "wouter";
+
+type Props = { children?: React.ReactNode };
+
+export function MobileKitProvider({ children }: Props) {
+  const [pathname] = useLocation();
+
+  React.useEffect(() => {
+    // Tag body so we can limit any future CSS if needed
+    document.body.setAttribute("data-route", pathname || "");
+
+    // Only act on drinks pages
+    if (!pathname?.startsWith("/drinks")) return;
+
+    // Limit our search to the main content area to avoid header/nav
+    const mainEl =
+      document.querySelector("main") ||
+      document.querySelector('main[role="main"]') ||
+      document.body;
+
+    // Heuristic: find a gradient hero, then the first row that contains an H1
+    // We try a few gradient containers commonly used across your drink pages
+    const heroContainers = Array.from(
+      mainEl.querySelectorAll(
+        [
+          // the common gradient hero in your pages
+          '.bg-gradient-to-r.text-white',
+          '.bg-gradient-to-r .text-white',
+          // any gradient hero near top of page
+          '.bg-gradient-to-r'
+        ].join(",")
+      )
+    ) as HTMLElement[];
+
+    const styledNodes: Array<{ row: HTMLElement; h1?: HTMLElement }> = [];
+
+    heroContainers.some((hero) => {
+      // find a flex row containing an h1
+      const candidateRows = Array.from(
+        hero.querySelectorAll('div.flex.items-center, div.flex')
+      ) as HTMLElement[];
+
+      for (const row of candidateRows) {
+        const h1 = row.querySelector("h1") as HTMLElement | null;
+        if (h1) {
+          // Apply safe, minimal inline styles for mobile wrap
+          // We don't change display type; we only let it wrap and add small gap
+          row.style.flexWrap = "wrap";
+          row.style.rowGap = "0.5rem";
+          row.style.columnGap = "0.5rem";
+          // Make the title break to its own line when needed
+          h1.style.flexBasis = "100%";
+          h1.style.minWidth = "0";
+          h1.style.whiteSpace = "normal";
+          h1.style.overflow = "hidden";
+          h1.style.textOverflow = "ellipsis";
+
+          styledNodes.push({ row, h1 });
+          return true; // stop after styling the first hero row we find
+        }
+      }
+      return false;
+    });
+
+    // Cleanup on route change
+    return () => {
+      styledNodes.forEach(({ row, h1 }) => {
+        if (row) {
+          row.style.flexWrap = "";
+          row.style.rowGap = "";
+          row.style.columnGap = "";
+        }
+        if (h1) {
+          h1.style.flexBasis = "";
+          h1.style.minWidth = "";
+          h1.style.whiteSpace = "";
+          h1.style.overflow = "";
+          h1.style.textOverflow = "";
+        }
+      });
+    };
+  }, [pathname]);
+
+  return <>{children}</>;
+}
+
   useState,
   PropsWithChildren,
 } from "react";
