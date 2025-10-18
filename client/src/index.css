@@ -136,43 +136,35 @@
   .secondary-tabs { white-space: nowrap; }
   .secondary-tabs > * + * { margin-left: 0.75rem; } /* ~space-x-3 */
 
-  /* ---------- Global mobile fix for drink page hero/title rows ---------- */
+  /* ---------- Bulletproof mobile fix for Drinks title rows ---------- */
   @media (max-width: 640px) {
-    .bg-gradient-to-r.text-white .flex.items-center.gap-4.mb-6,
-    .bg-gradient-to-br.text-white .flex.items-center.gap-4.mb-6,
-    .bg-gradient-to-l.text-white .flex.items-center.gap-4.mb-6,
-    .bg-gradient-to-r.text-white .flex.items-center.mb-6,
-    .bg-gradient-to-br.text-white .flex.items-center.mb-6,
-    .bg-gradient-to-l.text-white .flex.items-center.mb-6 {
+    /* Any gradient hero area within Drinks */
+    .drinks-root [class*="bg-gradient-to"] .items-center {
       flex-wrap: wrap !important;
       row-gap: 0.5rem !important;
       column-gap: 0.75rem !important;
     }
 
-    .bg-gradient-to-r.text-white .flex.items-center.mb-6 > .flex-1,
-    .bg-gradient-to-br.text-white .flex.items-center.mb-6 > .flex-1,
-    .bg-gradient-to-l.text-white .flex.items-center.mb-6 > .flex-1 {
+    /* Kill flex spacers that force single line */
+    .drinks-root [class*="bg-gradient-to"] .items-center > .flex-1 {
       display: none !important;
     }
 
-    .bg-gradient-to-r.text-white h1,
-    .bg-gradient-to-br.text-white h1,
-    .bg-gradient-to-l.text-white h1 {
+    /* Long H1s don't collide with badges/search */
+    .drinks-root [class*="bg-gradient-to"] h1 {
       max-width: 100%;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
-    .bg-gradient-to-r.text-white .basis-full,
-    .bg-gradient-to-br.text-white .basis-full,
-    .bg-gradient-to-l.text-white .basis-full {
-      width: 100%;
+    /* If a "basis-full" block is present near the title row, give it full width */
+    .drinks-root [class*="bg-gradient-to"] .basis-full {
+      width: 100% !important;
     }
 
-    .bg-gradient-to-r.text-white .flex.flex-wrap.items-center.gap-2,
-    .bg-gradient-to-br.text-white .flex.flex-wrap.items-center.gap-2,
-    .bg-gradient-to-l.text-white .flex.flex-wrap.items-center.gap-2 {
+    /* Badge/search clusters can wrap */
+    .drinks-root [class*="bg-gradient-to"] .flex.flex-wrap {
       flex-wrap: wrap !important;
     }
   }
