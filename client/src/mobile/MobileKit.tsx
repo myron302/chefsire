@@ -3,10 +3,10 @@ import React from "react";
 import { Link, useLocation } from "wouter";
 import {
   Home,
-  Map as MapIcon,
-  Martini,
+  MapPin,      // safe alternative to Map
+  Wine,         // safe alternative to Martini across versions
   BookOpen,
-  User2,
+  User,         // safe alternative to User2
 } from "lucide-react";
 
 type ProviderProps = { children?: React.ReactNode };
@@ -108,7 +108,7 @@ export const SafeArea: React.FC<SafeAreaProps> = ({
 }) => {
   const style: React.CSSProperties = {
     paddingTop: top ? "env(safe-area-inset-top)" : undefined,
-    paddingBottom: bottom ? "calc(env(safe-area-inset-bottom))" : undefined,
+    paddingBottom: bottom ? "env(safe-area-inset-bottom)" : undefined,
   };
   return (
     <div style={style} className={className}>
@@ -119,8 +119,7 @@ export const SafeArea: React.FC<SafeAreaProps> = ({
 
 /**
  * BottomTabBar
- * Mobile-only fixed bottom tab bar. If you already render your own mobile nav,
- * you can still import this to satisfy the export, or use it directly.
+ * Mobile-only fixed bottom tab bar.
  */
 type TabItem = { href: string; label: string; icon: React.ComponentType<any> };
 
@@ -131,10 +130,10 @@ type BottomTabBarProps = {
 
 const defaultItems: TabItem[] = [
   { href: "/", label: "Home", icon: Home },
-  { href: "/bitemap", label: "BiteMap", icon: MapIcon },
-  { href: "/drinks", label: "Drinks", icon: Martini },
+  { href: "/bitemap", label: "BiteMap", icon: MapPin },
+  { href: "/drinks", label: "Drinks", icon: Wine },
   { href: "/recipes", label: "Recipes", icon: BookOpen },
-  { href: "/profile", label: "Profile", icon: User2 },
+  { href: "/profile", label: "Profile", icon: User },
 ];
 
 export const BottomTabBar: React.FC<BottomTabBarProps> = ({
@@ -157,17 +156,17 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
         <ul className="grid grid-cols-5 gap-1 px-2 py-1.5">
           {items.map(({ href, label, icon: Icon }) => (
             <li key={href} className="flex">
-              <Link href={href} className="flex-1">
-                <a
-                  className={[
-                    "w-full flex flex-col items-center justify-center rounded-md",
-                    "px-2 py-2 text-xs font-medium text-gray-700 dark:text-gray-200",
-                    "hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors",
-                  ].join(" ")}
-                >
-                  <Icon className="h-5 w-5 mb-0.5" />
-                  <span className="leading-none">{label}</span>
-                </a>
+              {/* Correct wouter usage: no nested <a> */}
+              <Link
+                href={href}
+                className={[
+                  "w-full flex flex-col items-center justify-center rounded-md",
+                  "px-2 py-2 text-xs font-medium text-gray-700 dark:text-gray-200",
+                  "hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors",
+                ].join(" ")}
+              >
+                <Icon className="h-5 w-5 mb-0.5" />
+                <span className="leading-none">{label}</span>
               </Link>
             </li>
           ))}
