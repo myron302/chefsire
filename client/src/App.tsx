@@ -167,8 +167,9 @@ function PotentPotablesSection() {
 }
 
 function DrinksSection() {
+  // ⛳ Wrap all Drinks pages so we can scope global CSS fixes (e.g., mobile title rows)
   return (
-    <div className="drinks-root">{/* <-- single hook for global CSS */}
+    <div className="drinks-root">
       <Switch>
         {/* ---------- Smoothies ---------- */}
         <Route path="/drinks/smoothies/breakfast" component={BreakfastSmoothies} />
@@ -237,8 +238,12 @@ function AppRouter() {
 
       <Switch>
         {/* Shortlinks (optional nice-to-have) */}
-        <Route path="/daiquiri"><Redirect to="/drinks/potent-potables/daiquiri" /></Route>
-        <Route path="/daquiri"><Redirect to="/drinks/potent-potables/daiquiri" /></Route>
+        <Route path="/daiquiri">
+          <Redirect to="/drinks/potent-potables/daiquiri" />
+        </Route>
+        <Route path="/daquiri">
+          <Redirect to="/drinks/potent-potables/daiquiri" />
+        </Route>
 
         {/* Legacy redirects: Virgin → Mocktails */}
         <Route path="/drinks/potent-potables/virgin">
@@ -326,4 +331,24 @@ function AppRouter() {
         {/* ---------- 404 fallback ---------- */}
         <Route path="/saved" component={NotFound} />
         <Route path="/following" component={NotFound} />
-        <Route path="/set
+        <Route path="/settings" component={NotFound} />
+        <Route component={NotFound} />
+      </Switch>
+    </Layout>
+  );
+}
+
+export default function App() {
+  return (
+    <MobileKitProvider>
+      <QueryClientProvider client={queryClient}>
+        <DrinksProvider>
+          <TooltipProvider>
+            <Toaster />
+            <AppRouter />
+          </TooltipProvider>
+        </DrinksProvider>
+      </QueryClientProvider>
+    </MobileKitProvider>
+  );
+}
