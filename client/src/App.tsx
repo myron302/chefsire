@@ -167,52 +167,49 @@ function PotentPotablesSection() {
 }
 
 function DrinksSection() {
-  // ⛳ Wrap all Drinks pages so we can scope global CSS fixes (e.g., mobile title rows)
   return (
-    <div className="drinks-root">
-      <Switch>
-        {/* ---------- Smoothies ---------- */}
-        <Route path="/drinks/smoothies/breakfast" component={BreakfastSmoothies} />
-        <Route path="/drinks/smoothies/dessert" component={DessertSmoothies} />
-        <Route path="/drinks/smoothies/green" component={GreenSmoothies} />
-        <Route path="/drinks/smoothies/protein" component={ProteinSmoothies} />
-        <Route path="/drinks/smoothies/workout" component={WorkoutSmoothies} />
-        <Route path="/drinks/smoothies/tropical" component={TropicalSmoothies} />
-        <Route path="/drinks/smoothies/berry" component={BerrySmoothies} />
-        <Route path="/drinks/smoothies/detox" component={DetoxSmoothies} />
-        <Route path="/drinks/smoothies" component={SmoothiesHub} />
+    <Switch>
+      {/* ---------- Smoothies ---------- */}
+      <Route path="/drinks/smoothies/breakfast" component={BreakfastSmoothies} />
+      <Route path="/drinks/smoothies/dessert" component={DessertSmoothies} />
+      <Route path="/drinks/smoothies/green" component={GreenSmoothies} />
+      <Route path="/drinks/smoothies/protein" component={ProteinSmoothies} />
+      <Route path="/drinks/smoothies/workout" component={WorkoutSmoothies} />
+      <Route path="/drinks/smoothies/tropical" component={TropicalSmoothies} />
+      <Route path="/drinks/smoothies/berry" component={BerrySmoothies} />
+      <Route path="/drinks/smoothies/detox" component={DetoxSmoothies} />
+      <Route path="/drinks/smoothies" component={SmoothiesHub} />
 
-        {/* ---------- Protein Shakes ---------- */}
-        <Route path="/drinks/protein-shakes/casein" component={CaseinProtein} />
-        <Route path="/drinks/protein-shakes/collagen" component={CollagenProtein} />
-        <Route path="/drinks/protein-shakes/plant-based" component={PlantBasedProtein} />
-        <Route path="/drinks/protein-shakes/whey" component={WheyProtein} />
-        <Route path="/drinks/protein-shakes/egg" component={EggProtein} />
-        <Route path="/drinks/protein-shakes/beef" component={BeefProtein} />
-        <Route path="/drinks/protein-shakes" component={ProteinShakesHub} />
+      {/* ---------- Protein Shakes ---------- */}
+      <Route path="/drinks/protein-shakes/casein" component={CaseinProtein} />
+      <Route path="/drinks/protein-shakes/collagen" component={CollagenProtein} />
+      <Route path="/drinks/protein-shakes/plant-based" component={PlantBasedProtein} />
+      <Route path="/drinks/protein-shakes/whey" component={WheyProtein} />
+      <Route path="/drinks/protein-shakes/egg" component={EggProtein} />
+      <Route path="/drinks/protein-shakes/beef" component={BeefProtein} />
+      <Route path="/drinks/protein-shakes" component={ProteinShakesHub} />
 
-        {/* ---------- Detoxes ---------- */}
-        <Route path="/drinks/detoxes/juice" component={DetoxJuices} />
-        <Route path="/drinks/detoxes/tea" component={DetoxTeas} />
-        <Route path="/drinks/detoxes/water" component={DetoxWaters} />
-        <Route path="/drinks/detoxes" component={DetoxesHub} />
+      {/* ---------- Detoxes ---------- */}
+      <Route path="/drinks/detoxes/juice" component={DetoxJuices} />
+      <Route path="/drinks/detoxes/tea" component={DetoxTeas} />
+      <Route path="/drinks/detoxes/water" component={DetoxWaters} />
+      <Route path="/drinks/detoxes" component={DetoxesHub} />
 
-        {/* ---------- Zero-proof (NOT age-gated) ---------- */}
-        <Route path="/drinks/potent-potables/mocktails" component={MocktailsPage} />
+      {/* ---------- Zero-proof (NOT age-gated) ---------- */}
+      <Route path="/drinks/potent-potables/mocktails" component={MocktailsPage} />
 
-        {/* ---------- Potent Potables (age-gated) ---------- */}
-        <Route path="/drinks/potent-potables/:rest*">
-          {() => <PotentPotablesSection />}
-        </Route>
-        <Route path="/drinks/potent-potables" component={PotentPotablesSection} />
+      {/* ---------- Potent Potables (age-gated) ---------- */}
+      <Route path="/drinks/potent-potables/:rest*">
+        {() => <PotentPotablesSection />}
+      </Route>
+      <Route path="/drinks/potent-potables" component={PotentPotablesSection} />
 
-        {/* ---------- Drinks hub fallback ---------- */}
-        <Route path="/drinks" component={DrinksHubPage} />
-        <Route>
-          <Redirect to="/drinks" />
-        </Route>
-      </Switch>
-    </div>
+      {/* ---------- Drinks hub fallback ---------- */}
+      <Route path="/drinks" component={DrinksHubPage} />
+      <Route>
+        <Redirect to="/drinks" />
+      </Route>
+    </Switch>
   );
 }
 
@@ -238,12 +235,8 @@ function AppRouter() {
 
       <Switch>
         {/* Shortlinks (optional nice-to-have) */}
-        <Route path="/daiquiri">
-          <Redirect to="/drinks/potent-potables/daiquiri" />
-        </Route>
-        <Route path="/daquiri">
-          <Redirect to="/drinks/potent-potables/daiquiri" />
-        </Route>
+        <Route path="/daiquiri"><Redirect to="/drinks/potent-potables/daiquiri" /></Route>
+        <Route path="/daquiri"><Redirect to="/drinks/potent-potables/daiquiri" /></Route>
 
         {/* Legacy redirects: Virgin → Mocktails */}
         <Route path="/drinks/potent-potables/virgin">
