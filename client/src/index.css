@@ -140,7 +140,7 @@
   
   /* Target headers directly - works with existing code */
   @media (max-width: 768px) {
-    /* Allow header to wrap - REMOVED extra padding that was pushing content down */
+    /* Keep header compact without pushing down */
     .sticky.top-0.z-40 > div > div {
       min-height: 3.5rem !important;
       height: auto !important;
@@ -148,10 +148,10 @@
       padding-bottom: 0.5rem !important;
     }
     
-    /* Make ALL h1 titles smaller on mobile - REMOVED margin/position that covered icon */
+    /* Make ALL h1 titles smaller - let them center naturally */
     h1 {
-      font-size: 1.125rem !important;
-      line-height: 1.5rem !important;
+      font-size: 1rem !important;
+      line-height: 1.25rem !important;
     }
     
     /* Hide vertical dividers in headers */
@@ -161,37 +161,38 @@
     
     /* Smaller gap between header items */
     .sticky.top-0 .gap-4 {
-      gap: 0.5rem !important;
+      gap: 0.375rem !important;
     }
     
-    /* Make all badges in header wider with more padding and better centering */
+    /* Make all badges in header wider with better centering */
     .sticky.top-0 [class*="badge"],
     .sticky.top-0 span[class*="inline-flex"],
     .sticky.top-0 div[class*="rounded"] {
-      padding-left: 1.25rem !important;
-      padding-right: 1.25rem !important;
-      padding-top: 0.5rem !important;
-      padding-bottom: 0.5rem !important;
-      min-width: 110px !important;
+      padding-left: 1rem !important;
+      padding-right: 1rem !important;
+      padding-top: 0.375rem !important;
+      padding-bottom: 0.375rem !important;
+      min-width: 100px !important;
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
       text-align: center !important;
+      font-size: 0.75rem !important;
     }
     
-    /* Reduce button padding and ensure perfect centering */
+    /* Make buttons wider and ensure text fits */
     .sticky.top-0 button {
-      padding-left: 1rem !important;
-      padding-right: 1rem !important;
-      padding-top: 0.625rem !important;
-      padding-bottom: 0.625rem !important;
-      font-size: 0.75rem !important;
+      padding-left: 1.25rem !important;
+      padding-right: 1.25rem !important;
+      padding-top: 0.5rem !important;
+      padding-bottom: 0.5rem !important;
+      font-size: 0.7rem !important;
       display: flex !important;
       align-items: center !important;
       justify-content: center !important;
       white-space: nowrap !important;
       min-width: fit-content !important;
-      min-height: 2.5rem !important;
+      min-height: 2.25rem !important;
       text-align: center !important;
       line-height: 1.2 !important;
     }
@@ -207,20 +208,21 @@
   /* Landscape mode - make buttons even wider for breathing room */
   @media (min-width: 641px) and (max-width: 900px) and (orientation: landscape) {
     .sticky.top-0 button {
-      padding-left: 1.5rem !important;
-      padding-right: 1.5rem !important;
+      padding-left: 1.75rem !important;
+      padding-right: 1.75rem !important;
     }
   }
   
-  /* Portrait mode - make buttons fuller width and better spacing */
+  /* Portrait mode - make buttons fuller and ensure labels show */
   @media (max-width: 640px) and (orientation: portrait) {
-    /* Make buttons take more space on second row */
+    /* Make buttons wider to show full text */
     .sticky.top-0 button {
       flex: 1 !important;
       min-width: 0 !important;
       max-width: 48% !important;
-      padding-left: 1rem !important;
-      padding-right: 1rem !important;
+      padding-left: 1.25rem !important;
+      padding-right: 1.25rem !important;
+      font-size: 0.7rem !important;
     }
     
     /* Ensure the button row has proper spacing */
