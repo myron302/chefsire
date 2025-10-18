@@ -148,12 +148,13 @@
       padding-bottom: 0.75rem !important;
     }
     
-    /* Make ALL h1 titles smaller on mobile and shift left */
+    /* Make ALL h1 titles smaller on mobile and nudge slightly left */
     h1 {
       font-size: 1.125rem !important;
       line-height: 1.5rem !important;
-      margin-right: auto !important;
-      text-align: left !important;
+      margin-left: -1rem !important;
+      position: relative !important;
+      left: -0.5rem !important;
     }
     
     /* Hide vertical dividers in headers */
