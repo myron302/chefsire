@@ -22,23 +22,22 @@ import { Link, useLocation } from "wouter";
  *  - StickyBottomBar: a themeable sticky bar (actions, CTA, totals, etc.)
  *  - BottomTabBar: opinionated 3–5 tab mobile nav (uses Wouter <Link/>)
  *  - MobileSheet: light-weight bottom sheet for filters, pickers, etc.
- *  - TouchButton: bigger hit target + ripple (optional), still works with your Tailwind styles
+ *  - TouchButton: bigger hit targets; works with your Tailwind styles
  *  - Hooks: useViewport(), useIsKeyboardOpen(), useScrollLock()
  *
  * HOW TO INSTALL (3 steps):
- *  1) Drop this file at: client/src/mobile/MobileKit.tsx
+ *  1) Place this file at: client/src/mobile/MobileKit.tsx
  *  2) Wrap your app root with <MobileKitProvider> (usually in client/src/App.tsx):
  *
  *     export default function App() {
  *       return (
  *         <MobileKitProvider>
- *           {/* your providers, layout, routes, etc. */}
+ *           ...providers, layout, routes...
  *         </MobileKitProvider>
  *       );
  *     }
  *
- *  3) OPTIONAL: Use <BottomTabBar/> in your Layout footer (mobile only),
- *     wrap problematic forms with <KeyboardAvoidingView/>,
+ *  3) OPTIONAL: Use <BottomTabBar/> in Layout, wrap bottom forms with <KeyboardAvoidingView/>,
  *     and use <SafeArea edge="bottom"/> where you have sticky elements.
  *
  * No external deps; Tailwind friendly.
@@ -237,7 +236,7 @@ export function MobileKitProvider({ children }: PropsWithChildren<{}>) {
     document.documentElement.style.setProperty("--vh", `${vh}px`);
   }, [vh]);
 
-  // Recompute safe-area on mount (optional read, keeps future CSS env usage correct)
+  // Recompute safe-area on mount
   useEffect(() => {
     const top = getSafeAreaInset("top");
     const bottom = getSafeAreaInset("bottom");
@@ -517,14 +516,12 @@ export function Screen({
 /**
  * ExampleBottomTabs
  * Small helper you can use immediately; replace icons/routes as you like.
- * (You can delete this if you already have a nav.)
  */
 export function ExampleBottomTabs({
   items,
 }: {
   items?: TabItem[];
 }) {
-  // Fallback demo items if none supplied
   const demo = useMemo<TabItem[]>(
     () =>
       items ?? [
