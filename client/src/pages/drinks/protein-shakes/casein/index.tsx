@@ -884,3 +884,774 @@ export default function CaseinProteinPage() {
                 return (
                   <Link key={hub.id} href={hub.route}>
                     <Button
+                      variant="outline"
+                      className="w-full justify-start hover:bg-blue-50 hover:border-blue-300 bg-transparent"
+                    >
+                      <Icon className="h-4 w-4 mr-2 text-blue-600" />
+                      <div className="text-left flex-1">
+                        <div className="font-medium text-sm">{hub.name}</div>
+                        <div className="text-xs text-gray-500">{hub.description}</div>
+                      </div>
+                      <ArrowRight className="h-3 w-3 ml-auto" />
+                    </Button>
+                  </Link>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Sister Subpages Navigation */}
+        <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mb-6">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Protein Types</h3>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              {proteinSubcategories.map((subcategory) => {
+                const Icon = subcategory.icon
+                return (
+                  <Link key={subcategory.id} href={subcategory.path}>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start hover:bg-purple-50 hover:border-purple-300 bg-transparent"
+                    >
+                      <Icon className="h-4 w-4 mr-2 text-purple-600" />
+                      <div className="text-left flex-1">
+                        <div className="font-medium text-sm">{subcategory.name}</div>
+                        <div className="text-xs text-gray-500">{subcategory.description}</div>
+                      </div>
+                      <ArrowRight className="h-3 w-3 ml-auto" />
+                    </Button>
+                  </Link>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-purple-600">7hrs</div>
+              <div className="text-sm text-gray-600">Avg Release</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-blue-600">26g</div>
+              <div className="text-sm text-gray-600">Avg Protein</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-green-600">330mg</div>
+              <div className="text-sm text-gray-600">Avg Calcium</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-amber-600">9</div>
+              <div className="text-sm text-gray-600">Night Formulas</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
+          {[
+            { id: "browse", label: "Browse All", icon: Search },
+            { id: "protein-types", label: "Protein Types", icon: Moon },
+            { id: "goals", label: "Sleep Goals", icon: Bed },
+            { id: "featured", label: "Featured", icon: Star },
+          ].map((tab) => {
+            const Icon = tab.icon
+            return (
+              <Button
+                key={tab.id}
+                variant={activeTab === tab.id ? "default" : "ghost"}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex-1 ${activeTab === tab.id ? "bg-white shadow-sm" : ""}`}
+              >
+                <Icon className="h-4 w-4 mr-2" />
+                {tab.label}
+              </Button>
+            )
+          })}
+        </div>
+
+        {/* Browse Tab */}
+        {activeTab === "browse" && (
+          <div>
+            {/* Search and Filters */}
+            <div className="flex flex-col md:flex-row gap-4 mb-6">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search casein proteins..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <select
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={selectedProteinType}
+                  onChange={(e) => setSelectedProteinType(e.target.value)}
+                >
+                  <option value="">All Casein Types</option>
+                  {proteinTypes.map(type => (
+                    <option key={type.id} value={type.id}>{type.name}</option>
+                  ))}
+                </select>
+
+                <select
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={selectedGoal}
+                  onChange={(e) => setSelectedGoal(e.target.value)}
+                >
+                  <option value="">All Goals</option>
+                  {sleepGoals.map(goal => (
+                    <option key={goal.id} value={goal.name}>{goal.name}</option>
+                  ))}
+                </select>
+
+                <select
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                >
+                  <option value="rating">Sort by Rating</option>
+                  <option value="protein">Sort by Protein</option>
+                  <option value="price">Sort by Price</option>
+                  <option value="release-time">Sort by Release Time</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Results */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredShakes.map((shake) => {
+                const useMetric = !!metricFlags[shake.id]
+                const servings = servingsById[shake.id] ?? (shake.recipe?.servings || 1)
+
+                return (
+                  <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <CardTitle className="text-lg mb-1">{shake.name}</CardTitle>
+                          <p className="text-sm text-gray-600 mb-2">{shake.description}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            addToFavorites({
+                              id: shake.id,
+                              name: shake.name,
+                              category: "protein-shakes",
+                              description: shake.description,
+                              ingredients: shake.recipe?.measurements?.map((m: Measured) => m.item) ?? [],
+                              nutrition: shake.nutrition,
+                              difficulty: shake.difficulty,
+                              prepTime: shake.prepTime,
+                              rating: shake.rating,
+                              fitnessGoal: shake.fitnessGoal,
+                              bestTime: shake.bestTime,
+                            })
+                          }
+                          className="text-gray-400 hover:text-red-500"
+                        >
+                          <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? "fill-red-500 text-red-500" : ""}`} />
+                        </Button>
+                      </div>
+
+                      {/* Tags at top with different colors */}
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        <Badge className="bg-purple-100 text-purple-800">{shake.caseinType}</Badge>
+                        <Badge variant="outline">{shake.flavor}</Badge>
+                        {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        <Badge className="bg-blue-100 text-blue-800">{shake.releaseTime}</Badge>
+                      </div>
+                    </CardHeader>
+
+                    <CardContent>
+                      {/* Nutrition Grid */}
+                      <div className="grid grid-cols-4 gap-2 mb-4 text-center text-sm">
+                        <div>
+                          <div className="text-xl font-bold text-purple-600">{shake.nutrition.protein}g</div>
+                          <div className="text-gray-500">Protein</div>
+                        </div>
+                        <div>
+                          <div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div>
+                          <div className="text-gray-500">Cal</div>
+                        </div>
+                        <div>
+                          <div className="text-xl font-bold text-green-600">{shake.nutrition.calcium}mg</div>
+                          <div className="text-gray-500">Calcium</div>
+                        </div>
+                        <div>
+                          <div className="text-xl font-bold text-amber-600">${shake.price}</div>
+                          <div className="text-gray-500">Price</div>
+                        </div>
+                      </div>
+
+                      {/* MOVED: Rating and Difficulty just above recipe box */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-1">
+                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                          <span className="font-medium">{shake.rating}</span>
+                          <span className="text-gray-500 text-sm">({shake.reviews})</span>
+                        </div>
+                        <Badge variant="outline">{shake.difficulty}</Badge>
+                      </div>
+
+                      {/* Compact recipe preview with serving controls (Plant-Based pattern) */}
+                      {shake.recipe?.measurements && (
+                        <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-sm font-semibold text-gray-900">
+                              Recipe (serves {servings})
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                className="px-2 py-1 border rounded text-sm"
+                                onClick={() =>
+                                  setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) - 1) }))
+                                }
+                                aria-label="decrease servings"
+                              >
+                                −
+                              </button>
+                              <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                              <button
+                                className="px-2 py-1 border rounded text-sm"
+                                onClick={() =>
+                                  setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) + 1) }))
+                                }
+                                aria-label="increase servings"
+                              >
+                                +
+                              </button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setServingsById(prev => {
+                                  const next = { ...prev }
+                                  next[shake.id] = shake.recipe?.servings || 1
+                                  return next
+                                })}
+                                title="Reset servings"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
+                              </Button>
+                            </div>
+                          </div>
+
+                          <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                            {shake.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                              const isNum = typeof ing.amount === 'number'
+                              const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount
+                              const show = useMetric && isNum
+                                ? { amount: Math.round(Number(ing.amount) * servings), unit: 'g' } // Simplified metric conversion
+                                : { amount: scaledDisplay, unit: ing.unit }
+
+                              return (
+                                <li key={i} className="flex items-start gap-2">
+                                  <Check className="h-4 w-4 text-purple-600 mt-0.5" />
+                                  <span>
+                                    <span className="text-purple-700 font-semibold">
+                                      {show.amount} {show.unit}
+                                    </span>{" "}
+                                    {ing.item}
+                                    {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                  </span>
+                                </li>
+                              )
+                            })}
+                            {shake.recipe.measurements.length > 4 && (
+                              <li className="text-xs text-gray-600">
+                                …plus {shake.recipe.measurements.length - 4} more •{" "}
+                                <button
+                                  type="button"
+                                  onClick={() => openRecipeModal(shake)}
+                                  className="underline underline-offset-2"
+                                >
+                                  Show more
+                                </button>
+                              </li>
+                            )}
+                          </ul>
+
+                          <div className="flex gap-2 mt-3">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                const lines = (shake.recipe?.measurements || []).map((ing: Measured) => {
+                                  if (useMetric && typeof ing.amount === 'number') {
+                                    return `- ${Math.round(Number(ing.amount) * servings)}g ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`
+                                  }
+                                  const scaled = typeof ing.amount === 'number' ? scaleAmount(ing.amount, servings) : ing.amount
+                                  return `- ${scaled} ${ing.unit} ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`
+                                })
+                                const txt = `${shake.name} (serves ${servings})\n${lines.join('\n')}`
+                                try {
+                                  await navigator.clipboard.writeText(txt)
+                                  alert('Recipe copied!')
+                                } catch {
+                                  alert('Unable to copy on this device.')
+                                }
+                              }}
+                            >
+                              <Clipboard className="w-4 h-4 mr-1" /> Copy
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleShareShake(shake, servings)}>
+                              <Share2 className="w-4 h-4 mr-1" /> Share
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setMetricFlags((prev) => ({ ...prev, [shake.id]: !prev[shake.id] }))
+                              }
+                            >
+                              {useMetric ? 'US' : 'Metric'}
+                            </Button>
+                          </div>
+
+                          {/* ADDED: Absorption content below recipe box */}
+                          <div className="mt-4 pt-4 border-t border-gray-200">
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div className="text-center">
+                                <div className="font-semibold text-gray-700">Absorption:</div>
+                                <div className="text-blue-600 font-medium">{shake.absorptionTime}</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="font-semibold text-gray-700">Leucine:</div>
+                                <div className="text-purple-600 font-medium">{shake.leucineContent}</div>
+                              </div>
+                            </div>
+                            <div className="text-center mt-2">
+                              <div className="font-semibold text-gray-700">Best Time:</div>
+                              <div className="text-purple-600 font-medium text-sm">{shake.bestTime}</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Benefits tags with Night Time color scheme */}
+                      <div className="flex flex-wrap gap-1 mb-4">
+                        {shake.benefits.map((benefit: string, index: number) => (
+                          <Badge key={index} variant="secondary" className="text-xs bg-purple-100 text-purple-800 hover:bg-purple-200">
+                            {benefit}
+                          </Badge>
+                        ))}
+                      </div>
+
+                      {/* Full-width CTA */}
+                      <div className="mt-3">
+                        <Button
+                          className="w-full bg-purple-500 hover:bg-purple-600 text-white"
+                          size="sm"
+                          onClick={() => openRecipeModal(shake)}
+                        >
+                          <Moon className="h-4 w-4 mr-1" />
+                          Make Shake (+30 XP)
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Protein Types Tab */}
+        {activeTab === "protein-types" && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {proteinTypes.map((type) => {
+              const Icon = type.icon
+              const typeShakes = caseinShakes.filter((shake) => shake.proteinType === type.id)
+
+              return (
+                <Card key={type.id} className="hover:shadow-lg transition-shadow">
+                  <CardHeader>
+                    <div className="text-center">
+                      <Icon className={`h-8 w-8 mx-auto mb-2 ${type.color}`} />
+                      <CardTitle className="text-lg">{type.name}</CardTitle>
+                      <p className="text-sm text-gray-600">{type.description}</p>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent>
+                    <div className="space-y-3 mb-4">
+                      <div className="text-center bg-gray-50 p-3 rounded-lg">
+                        <div className="text-sm font-medium text-gray-700 mb-1">Release Time</div>
+                        <div className="text-2xl font-bold text-purple-600">{type.releaseTime}</div>
+                      </div>
+
+                      <div>
+                        <h4 className="font-semibold text-sm mb-2">Key Benefits:</h4>
+                        <div className="flex flex-wrap gap-1">
+                          {type.benefits.map((benefit, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {benefit}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="bg-blue-50 p-3 rounded-lg">
+                        <div className="text-sm font-medium text-gray-700 mb-1">Best For:</div>
+                        <div className="text-sm text-blue-800">{type.bestFor}</div>
+                      </div>
+                    </div>
+
+                    <div className="text-center">
+                      <div className={`text-2xl font-bold ${type.color} mb-1`}>{typeShakes.length}</div>
+                      <div className="text-sm text-gray-600 mb-3">Available Options</div>
+                      <Button
+                        className="w-full"
+                        onClick={() => {
+                          setSelectedProteinType(type.id)
+                          setActiveTab("browse")
+                        }}
+                      >
+                        Explore {type.name}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Sleep Goals Tab */}
+        {activeTab === "goals" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {sleepGoals.map((goal) => {
+              const Icon = goal.icon
+              const goalShakes = caseinShakes.filter((shake) =>
+                shake.fitnessGoal.toLowerCase().includes(goal.name.toLowerCase().split(" ")[0]),
+              )
+
+              return (
+                <Card key={goal.id} className="hover:shadow-lg transition-shadow">
+                  <CardHeader>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className={`p-2 ${goal.color.replace("bg-", "bg-").replace("-500", "-100")} rounded-lg`}>
+                        <Icon className={`h-6 w-6 ${goal.color.replace("bg-", "text-")}`} />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">{goal.name}</CardTitle>
+                        <p className="text-sm text-gray-600">{goal.description}</p>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent>
+                    <div className="space-y-3 mb-4">
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <div className="text-sm font-medium text-gray-700 mb-1">Timing:</div>
+                        <div className="text-sm text-purple-800">{goal.recommendedTiming}</div>
+                      </div>
+
+                      <div>
+                        <h4 className="font-semibold text-sm mb-2">Key Nutrients:</h4>
+                        <div className="flex flex-wrap gap-1">
+                          {goal.keyNutrients.map((nutrient, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {nutrient}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-center">
+                      <div className={`text-2xl font-bold ${goal.color.replace("bg-", "text-")} mb-1`}>
+                        {goalShakes.length}
+                      </div>
+                      <div className="text-sm text-gray-600 mb-3">Perfect Matches</div>
+                      <Button
+                        className="w-full"
+                        onClick={() => {
+                          setSelectedGoal(goal.name.split(" ")[0])
+                          setActiveTab("browse")
+                        }}
+                      >
+                        View {goal.name} Options
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Featured Tab */}
+        {activeTab === "featured" && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {featuredShakes.map((shake) => {
+              const useMetric = !!metricFlags[shake.id]
+              const servings = servingsById[shake.id] ?? (shake.recipe?.servings || 1)
+
+              return (
+                <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow">
+                  <div className="relative">
+                    <img
+                      src={shake.image || "/placeholder.svg"}
+                      alt={shake.name}
+                      className="w-full h-48 object-cover"
+                      onError={(e) => {
+                        e.currentTarget.src =
+                          "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=300&fit=crop"
+                      }}
+                    />
+                    <div className="absolute top-4 left-4">
+                      <Badge className="bg-purple-500 text-white">Featured Casein</Badge>
+                    </div>
+                    <div className="absolute top-4 right-4">
+                      <Badge className="bg-white text-purple-800">{shake.releaseTime}</Badge>
+                    </div>
+                  </div>
+
+                  <CardHeader>
+                    <CardTitle className="text-xl">{shake.name}</CardTitle>
+                    <p className="text-gray-600">{shake.description}</p>
+
+                    {/* Tags at top with different colors */}
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      <Badge className="bg-purple-100 text-purple-800">{shake.caseinType}</Badge>
+                      <Badge variant="outline">{shake.flavor}</Badge>
+                      <Badge className="bg-blue-100 text-blue-800">{shake.releaseTime}</Badge>
+                      {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                    </div>
+                  </CardHeader>
+
+                  <CardContent>
+                    {/* Enhanced nutrition display */}
+                    <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-purple-50 rounded-lg">
+                      <div className="text-center">
+                        <div className="text-xl font-bold text-purple-600">{shake.nutrition.protein}g</div>
+                        <div className="text-xs text-gray-600">Protein</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xl font-bold text-blue-600">{shake.nutrition.calories}</div>
+                        <div className="text-xs text-gray-600">Calories</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xl font-bold text-green-600">{shake.nutrition.calcium}mg</div>
+                        <div className="text-xs text-gray-600">Calcium</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xl font-bold text-amber-600">${shake.price}</div>
+                        <div className="text-xs text-gray-600">Price</div>
+                      </div>
+                    </div>
+
+                    {/* MOVED: Rating and Difficulty just above recipe box */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-1">
+                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                        <span className="font-medium">{shake.rating}</span>
+                        <span className="text-gray-500 text-sm">({shake.reviews})</span>
+                      </div>
+                      <Badge variant="outline">{shake.difficulty}</Badge>
+                    </div>
+
+                    {/* Compact recipe preview for featured cards */}
+                    {shake.recipe?.measurements && (
+                      <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-sm font-semibold text-gray-900">
+                            Recipe (serves {servings})
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="px-2 py-1 border rounded text-sm"
+                              onClick={() =>
+                                setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) - 1) }))
+                              }
+                              aria-label="decrease servings"
+                            >
+                              −
+                            </button>
+                            <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                            <button
+                              className="px-2 py-1 border rounded text-sm"
+                              onClick={() =>
+                                setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) + 1) }))
+                              }
+                              aria-label="increase servings"
+                            >
+                              +
+                            </button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setServingsById(prev => {
+                                const next = { ...prev }
+                                next[shake.id] = shake.recipe?.servings || 1
+                                return next
+                              })}
+                              title="Reset servings"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
+                            </Button>
+                          </div>
+                        </div>
+
+                        <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                          {shake.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                            const isNum = typeof ing.amount === 'number'
+                            const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount
+                            const show = useMetric && isNum
+                              ? { amount: Math.round(Number(ing.amount) * servings), unit: 'g' }
+                              : { amount: scaledDisplay, unit: ing.unit }
+
+                            return (
+                              <li key={i} className="flex items-start gap-2">
+                                <Check className="h-4 w-4 text-purple-600 mt-0.5" />
+                                <span>
+                                  <span className="text-purple-700 font-semibold">
+                                    {show.amount} {show.unit}
+                                  </span>{" "}
+                                  {ing.item}
+                                  {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                </span>
+                              </li>
+                            )
+                          })}
+                          {shake.recipe.measurements.length > 4 && (
+                            <li className="text-xs text-gray-600">
+                              …plus {shake.recipe.measurements.length - 4} more •{" "}
+                              <button
+                                type="button"
+                                onClick={() => openRecipeModal(shake)}
+                                className="underline underline-offset-2"
+                              >
+                                Show more
+                              </button>
+                            </li>
+                          )}
+                        </ul>
+
+                        <div className="flex gap-2 mt-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              const lines = (shake.recipe?.measurements || []).map((ing: Measured) => {
+                                if (useMetric && typeof ing.amount === 'number') {
+                                  return `- ${Math.round(Number(ing.amount) * servings)}g ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`
+                                }
+                                const scaled = typeof ing.amount === 'number' ? scaleAmount(ing.amount, servings) : ing.amount
+                                return `- ${scaled} ${ing.unit} ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`
+                              })
+                              const txt = `${shake.name} (serves ${servings})\n${lines.join('\n')}`
+                              try {
+                                await navigator.clipboard.writeText(txt)
+                                alert('Recipe copied!')
+                              } catch {
+                                alert('Unable to copy on this device.')
+                              }
+                            }}
+                          >
+                            <Clipboard className="w-4 h-4 mr-1" /> Copy
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleShareShake(shake, servings)}>
+                            <Share2 className="w-4 h-4 mr-1" /> Share
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setMetricFlags((prev) => ({ ...prev, [shake.id]: !prev[shake.id] }))
+                            }
+                          >
+                            {useMetric ? 'US' : 'Metric'}
+                          </Button>
+                        </div>
+
+                        {/* ADDED: Absorption content below recipe box */}
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="text-center">
+                              <div className="font-semibold text-gray-700">Absorption:</div>
+                              <div className="text-blue-600 font-medium">{shake.absorptionTime}</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="font-semibold text-gray-700">Leucine:</div>
+                              <div className="text-purple-600 font-medium">{shake.leucineContent}</div>
+                            </div>
+                          </div>
+                          <div className="text-center mt-2">
+                            <div className="font-semibold text-gray-700">Best Time:</div>
+                            <div className="text-purple-600 font-medium text-sm">{shake.bestTime}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Benefits tags with Night Time color scheme */}
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {shake.benefits.map((benefit: string, index: number) => (
+                        <Badge key={index} variant="secondary" className="text-xs bg-purple-100 text-purple-800 hover:bg-purple-200">
+                          {benefit}
+                        </Badge>
+                      ))}
+                    </div>
+
+                    {/* Full-width CTA */}
+                    <div className="mt-3">
+                      <Button
+                        className="w-full bg-purple-500 hover:bg-purple-600 text-white"
+                        onClick={() => openRecipeModal(shake)}
+                      >
+                        <Moon className="h-4 w-4 mr-2" />
+                        Make Shake (+30 XP)
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Your Progress */}
+        <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mt-8">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold mb-2">Your Progress</h3>
+                <div className="flex items-center gap-4">
+                  <Badge variant="outline" className="text-purple-600">
+                    Level {userProgress.level}
+                  </Badge>
+                  <Badge variant="outline" className="text-blue-600">
+                    {userProgress.totalPoints} XP
+                  </Badge>
+                  <Badge variant="outline" className="text-green-600">
+                    {userProgress.totalDrinksMade} Drinks Made
+                  </Badge>
+                </div>
+              </div>
+              <div className="text-center">
+                <Progress value={userProgress.dailyGoalProgress} className="w-32 mb-2" />
+                <div className="text-xs text-gray-500">Daily Goal Progress</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
