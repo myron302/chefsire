@@ -177,12 +177,23 @@
     }
   }
   
-  /* Portrait mode - make buttons even wider */
+  /* Portrait mode - make buttons fuller width and better spacing */
   @media (max-width: 640px) and (orientation: portrait) {
+    /* Make buttons take more space */
     .sticky.top-0 button {
+      flex: 1 !important;
+      min-width: 0 !important;
+      max-width: 48% !important;
       padding-left: 1rem !important;
       padding-right: 1rem !important;
-      min-width: 140px !important;
+    }
+    
+    /* Ensure the button row has proper spacing */
+    .sticky.top-0 > div > div > div:last-child {
+      width: 100% !important;
+      display: flex !important;
+      gap: 0.5rem !important;
+      margin-top: 0.5rem !important;
     }
   }
   
