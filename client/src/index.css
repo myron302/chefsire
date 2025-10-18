@@ -148,10 +148,12 @@
       padding-bottom: 0.75rem !important;
     }
     
-    /* Make ALL h1 titles smaller on mobile */
+    /* Make ALL h1 titles smaller on mobile and shift left */
     h1 {
       font-size: 1.125rem !important;
       line-height: 1.5rem !important;
+      margin-right: auto !important;
+      text-align: left !important;
     }
     
     /* Hide vertical dividers in headers */
@@ -164,25 +166,43 @@
       gap: 0.5rem !important;
     }
     
-    /* Make all badges in header wider with more padding */
+    /* Make all badges in header wider with more padding and better centering */
     .sticky.top-0 [class*="badge"],
     .sticky.top-0 span[class*="inline-flex"],
     .sticky.top-0 div[class*="rounded"] {
       padding-left: 1.25rem !important;
       padding-right: 1.25rem !important;
+      padding-top: 0.5rem !important;
+      padding-bottom: 0.5rem !important;
       min-width: 110px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      text-align: center !important;
     }
     
-    /* Reduce button padding and ensure vertical centering */
+    /* Reduce button padding and ensure perfect centering */
     .sticky.top-0 button {
       padding-left: 1rem !important;
       padding-right: 1rem !important;
+      padding-top: 0.625rem !important;
+      padding-bottom: 0.625rem !important;
       font-size: 0.75rem !important;
       display: flex !important;
       align-items: center !important;
       justify-content: center !important;
       white-space: nowrap !important;
       min-width: fit-content !important;
+      min-height: 2.5rem !important;
+      text-align: center !important;
+      line-height: 1.2 !important;
+    }
+    
+    /* Center button text and icons perfectly */
+    .sticky.top-0 button > * {
+      display: inline-flex !important;
+      align-items: center !important;
+      vertical-align: middle !important;
     }
   }
   
@@ -232,5 +252,11 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    text-align: center;
+  }
+  
+  button svg {
+    flex-shrink: 0;
+    vertical-align: middle;
   }
 }
