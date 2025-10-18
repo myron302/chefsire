@@ -140,21 +140,18 @@
   
   /* Target headers directly - works with existing code */
   @media (max-width: 768px) {
-    /* Allow header to wrap */
+    /* Allow header to wrap - REMOVED extra padding that was pushing content down */
     .sticky.top-0.z-40 > div > div {
-      min-height: 4rem !important;
+      min-height: 3.5rem !important;
       height: auto !important;
-      padding-top: 0.75rem !important;
-      padding-bottom: 0.75rem !important;
+      padding-top: 0.5rem !important;
+      padding-bottom: 0.5rem !important;
     }
     
-    /* Make ALL h1 titles smaller on mobile and nudge slightly left */
+    /* Make ALL h1 titles smaller on mobile - REMOVED margin/position that covered icon */
     h1 {
       font-size: 1.125rem !important;
       line-height: 1.5rem !important;
-      margin-left: -1rem !important;
-      position: relative !important;
-      left: -0.5rem !important;
     }
     
     /* Hide vertical dividers in headers */
