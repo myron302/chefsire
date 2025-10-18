@@ -166,12 +166,23 @@
     
     /* Reduce button padding and ensure vertical centering */
     .sticky.top-0 button {
-      padding-left: 0.5rem !important;
-      padding-right: 0.5rem !important;
+      padding-left: 0.75rem !important;
+      padding-right: 0.75rem !important;
       font-size: 0.75rem !important;
       display: flex !important;
       align-items: center !important;
       justify-content: center !important;
+      white-space: nowrap !important;
+      min-width: fit-content !important;
+    }
+  }
+  
+  /* Portrait mode - make buttons even wider */
+  @media (max-width: 640px) and (orientation: portrait) {
+    .sticky.top-0 button {
+      padding-left: 1rem !important;
+      padding-right: 1rem !important;
+      min-width: 140px !important;
     }
   }
   
