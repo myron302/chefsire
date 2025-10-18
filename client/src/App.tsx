@@ -100,6 +100,11 @@ import SmallPetsPage from "@/pages/pet-food/small-pets";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole";
 
+// 🚀 NEW — Competitions pages
+import CreateCompetitionPage from "@/pages/competitions/CreateCompetitionPage";
+import CompetitionRoomPage from "@/pages/competitions/CompetitionRoomPage";
+import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage";
+
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
   React.useEffect(() => setLocation(to), [to, setLocation]);
