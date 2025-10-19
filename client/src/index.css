@@ -138,125 +138,106 @@
 
   /* ========== MOBILE HEADER FIXES ========== */
   
-  /* Target headers directly - works with existing code */
+  /* Mobile (all) - Keep header height reasonable, don't push down */
   @media (max-width: 768px) {
-    /* Keep header compact without pushing down */
-    .sticky.top-0.z-40 > div > div {
-      min-height: 3.5rem !important;
+    /* Keep header at normal h-16 height in landscape, allow wrapping in portrait */
+    .sticky.top-0.z-40 > div > div.h-16 {
       height: auto !important;
-      padding-top: 0.5rem !important;
-      padding-bottom: 0.5rem !important;
+      min-height: 4rem !important;
+      padding-top: 0.75rem !important;
+      padding-bottom: 0.75rem !important;
     }
     
-    /* Make ALL h1 titles smaller - let them center naturally */
+    /* Make h1 slightly smaller but readable */
     h1 {
-      font-size: 1rem !important;
-      line-height: 1.25rem !important;
+      font-size: 1.125rem !important;
+      line-height: 1.5rem !important;
     }
     
-    /* Hide vertical dividers in headers */
+    /* Hide dividers on mobile */
     .sticky.top-0 .w-px {
       display: none !important;
     }
     
-    /* Smaller gap between header items */
+    /* Reduce gaps */
     .sticky.top-0 .gap-4 {
-      gap: 0.375rem !important;
+      gap: 0.5rem !important;
     }
     
-    /* Make all badges in header wider with better centering */
-    .sticky.top-0 [class*="badge"],
-    .sticky.top-0 span[class*="inline-flex"],
-    .sticky.top-0 div[class*="rounded"] {
-      padding-left: 1rem !important;
-      padding-right: 1rem !important;
-      padding-top: 0.375rem !important;
-      padding-bottom: 0.375rem !important;
-      min-width: 100px !important;
+    /* Make badges slightly smaller with good centering */
+    .sticky.top-0 [class*="Badge"],
+    .sticky.top-0 [class*="badge"] {
+      font-size: 0.75rem !important;
+      padding: 0.25rem 0.75rem !important;
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
-      text-align: center !important;
-      font-size: 0.75rem !important;
     }
     
-    /* Make buttons wider and ensure text fits */
+    /* Button sizing for mobile - wider to fit text */
+    .sticky.top-0 button {
+      padding-left: 0.75rem !important;
+      padding-right: 0.75rem !important;
+      padding-top: 0.5rem !important;
+      padding-bottom: 0.5rem !important;
+      font-size: 0.75rem !important;
+      white-space: nowrap !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+  }
+  
+  /* Landscape mobile - Make buttons WIDER so text fits */
+  @media (min-width: 641px) and (max-width: 900px) and (orientation: landscape) {
     .sticky.top-0 button {
       padding-left: 1.25rem !important;
       padding-right: 1.25rem !important;
-      padding-top: 0.5rem !important;
-      padding-bottom: 0.5rem !important;
-      font-size: 0.7rem !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      white-space: nowrap !important;
-      min-width: fit-content !important;
-      min-height: 2.25rem !important;
-      text-align: center !important;
-      line-height: 1.2 !important;
+      min-width: 150px !important;
+    }
+  }
+  
+  /* Portrait mobile - Allow wrapping to 2 rows */
+  @media (max-width: 640px) and (orientation: portrait) {
+    /* Allow the header container to wrap */
+    .sticky.top-0 > div > div.h-16 {
+      flex-wrap: wrap !important;
+      gap: 0.5rem !important;
     }
     
-    /* Center button text and icons perfectly */
-    .sticky.top-0 button > * {
-      display: inline-flex !important;
-      align-items: center !important;
-      vertical-align: middle !important;
+    /* Left side takes full width on first row */
+    .sticky.top-0 > div > div > div:first-child {
+      width: 100% !important;
+      justify-content: flex-start !important;
     }
-  }
-  
-  /* Landscape mode - make buttons even wider for breathing room */
-  @media (min-width: 641px) and (max-width: 900px) and (orientation: landscape) {
-    .sticky.top-0 button {
-      padding-left: 1.75rem !important;
-      padding-right: 1.75rem !important;
+    
+    /* Right side (buttons) takes full width on second row */
+    .sticky.top-0 > div > div > div:last-child {
+      width: 100% !important;
+      justify-content: space-between !important;
     }
-  }
-  
-  /* Portrait mode - make buttons fuller and ensure labels show */
-  @media (max-width: 640px) and (orientation: portrait) {
-    /* Make buttons wider to show full text */
+    
+    /* Make buttons in portrait mode wider */
     .sticky.top-0 button {
       flex: 1 !important;
       min-width: 0 !important;
       max-width: 48% !important;
-      padding-left: 1.25rem !important;
-      padding-right: 1.25rem !important;
-      font-size: 0.7rem !important;
     }
     
-    /* Ensure the button row has proper spacing */
-    .sticky.top-0 > div > div > div:last-child {
-      width: 100% !important;
-      display: flex !important;
-      gap: 0.5rem !important;
-      margin-top: 0.5rem !important;
-    }
-  }
-  
-  /* Very small screens */
-  @media (max-width: 640px) {
-    /* Hide user stats on small mobile */
+    /* Hide Level/XP stats in portrait */
     .sticky.top-0 .text-sm.text-gray-600 {
       display: none !important;
     }
-    
-    /* Allow wrapping */
-    .sticky.top-0 > div > div {
-      flex-wrap: wrap !important;
-    }
   }
   
-  /* Fix button icon and text alignment globally */
+  /* Fix button and badge alignment globally */
   button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    text-align: center;
   }
   
   button svg {
     flex-shrink: 0;
-    vertical-align: middle;
   }
 }
