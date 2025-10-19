@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Editor, Frame, Element } from '@craftjs/core';
 import { RenderNode } from '@craftjs/utils';
 import { Search, Filter, ShoppingCart, Star, MapPin, Package, Plus, TrendingUp, Users, DollarSign } from 'lucide-react';
-import { Button as UIButton, Card as UICard, Input as UIInput } from '@/components/ui'; // Assuming these exist in your UI library
+import { Button as UIButton } from '@/components/ui/button';
+import { Card as UICard } from '@/components/ui/card';
+import { Input as UIInput } from '@/components/ui/input';
 
 // Custom store components for the builder
 const Container = ({ children }) => (
