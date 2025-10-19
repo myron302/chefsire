@@ -1,5 +1,5 @@
 // pages/drinks/protein-shakes/beef.tsx
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,8 +8,8 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import {
   Target, Heart, Star, Zap, Flame, Leaf, Sparkles, Moon, Wine,
-  Search, ArrowLeft, ArrowRight, Camera, X, Plus, Dumbbell, Trophy, 
-  Activity, Shield, Copy, Share2, BarChart3
+  Search, ArrowLeft, ArrowRight, Camera, X, Dumbbell, Trophy, 
+  Activity, Shield, Copy, Share2, BarChart3, Check, Clipboard, RotateCcw
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
@@ -20,9 +20,22 @@ import type { RecipeKitHandle } from '@/components/recipes/RecipeKit';
 type Nutrition = { calories?: number; protein?: number; carbs?: number; fat?: number; creatine?: number; iron?: number };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
 
-const scaleAmount = (amt: number | string, factor: number): number | string => {
-  if (typeof amt === 'number') return Math.round((amt * factor + Number.EPSILON) * 100) / 100;
-  return amt;
+// Scaling helpers to match Plant-Based/Casein pages
+const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+const toNiceFraction = (value: number) => {
+  const rounded = Math.round(value * 4) / 4;
+  const whole = Math.trunc(rounded);
+  const frac = Math.round((rounded - whole) * 4);
+  const fracMap: Record<number, string> = { 0: '', 1: '1/4', 2: '1/2', 3: '3/4' };
+  const fracStr = fracMap[frac];
+  if (!whole && fracStr) return fracStr;
+  if (whole && fracStr) return `${whole} ${fracStr}`;
+  return `${whole}`;
+};
+const scaleAmount = (baseAmount: number | string, servings: number) => {
+  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
+  if (Number.isNaN(n)) return baseAmount;
+  return toNiceFraction(n * servings);
 };
 
 // ---------- Cross-nav ----------
@@ -41,11 +54,12 @@ const proteinSubcategories = [
   { id: 'egg', name: 'Egg Protein', icon: Target, path: '/drinks/protein-shakes/egg', description: 'Complete amino' }
 ];
 
-// ---------- Data (Beef) ----------
+// ---------- Data (Beef) - UPDATED WITH ABSORPTION INFO ----------
 const beefProteinShakes = [
   {
     id: 'beef-1',
     name: 'Carnivore Power Blast',
+    description: 'Slow-digesting micellar casein for 8-hour muscle feeding',
     flavor: 'Natural Beef',
     protein: 28,
     carbs: 2,
@@ -56,6 +70,13 @@ const beefProteinShakes = [
     prepTime: 2,
     rating: 4.7,
     reviews: 523,
+    trending: true,
+    featured: true,
+    price: 45.99,
+    bestTime: 'Post-Workout',
+    fitnessGoal: 'Muscle Building',
+    absorptionTime: '60-90 minutes',
+    leucineContent: '2.3g',
     tags: ['Grass-Fed', 'Paleo-Friendly', 'Muscle Building', 'Natural Creatine'],
     benefits: ['Natural Creatine', 'High Iron', 'Complete Amino Profile', 'Paleo-Friendly'],
     ingredients: ['Grass-Fed Beef Protein Isolate', 'Natural Flavors', 'Sea Salt', 'Digestive Enzymes'],
@@ -78,6 +99,7 @@ const beefProteinShakes = [
   {
     id: 'beef-2',
     name: 'Primal Strength Formula',
+    description: 'Rich chocolate casein for evening muscle repair',
     flavor: 'Chocolate Beef',
     protein: 26,
     carbs: 3,
@@ -88,6 +110,13 @@ const beefProteinShakes = [
     prepTime: 2,
     rating: 4.6,
     reviews: 445,
+    trending: false,
+    featured: true,
+    price: 42.99,
+    bestTime: 'Post-Workout',
+    fitnessGoal: 'Strength',
+    absorptionTime: '45-75 minutes',
+    leucineContent: '2.1g',
     tags: ['Hydrolyzed', 'Joint Support', 'Keto-Friendly', 'Strength'],
     benefits: ['Joint Support', 'Muscle Recovery', 'Gut Health', 'Keto-Friendly'],
     ingredients: ['Hydrolyzed Beef Protein', 'Beef Collagen', 'Cocoa Powder', 'Monk Fruit', 'MCT Oil'],
@@ -110,6 +139,7 @@ const beefProteinShakes = [
   {
     id: 'beef-3',
     name: 'Paleo Performance Shake',
+    description: 'Natural banana with tryptophan for better sleep',
     flavor: 'Vanilla Bean',
     protein: 27,
     carbs: 2,
@@ -120,6 +150,13 @@ const beefProteinShakes = [
     prepTime: 2,
     rating: 4.5,
     reviews: 367,
+    trending: false,
+    featured: false,
+    price: 39.99,
+    bestTime: 'Morning',
+    fitnessGoal: 'General Wellness',
+    absorptionTime: '50-80 minutes',
+    leucineContent: '2.0g',
     tags: ['Paleo Certified', 'Clean Ingredients', 'Iron Rich', 'General Wellness'],
     benefits: ['Paleo Approved', 'Clean Ingredients', 'Natural Energy', 'Iron Rich'],
     ingredients: ['Grass-Fed Beef Protein', 'Vanilla Bean Extract', 'Stevia', 'Himalayan Salt'],
@@ -142,6 +179,7 @@ const beefProteinShakes = [
   {
     id: 'beef-4',
     name: 'Beef & Berry Recovery',
+    description: 'Antioxidant-rich blueberry casein for overnight repair',
     flavor: 'Mixed Berry',
     protein: 25,
     carbs: 8,
@@ -152,6 +190,13 @@ const beefProteinShakes = [
     prepTime: 3,
     rating: 4.4,
     reviews: 289,
+    trending: false,
+    featured: false,
+    price: 46.99,
+    bestTime: 'Post-Workout',
+    fitnessGoal: 'Recovery',
+    absorptionTime: '55-85 minutes',
+    leucineContent: '1.9g',
     tags: ['Antioxidant Boost', 'Muscle Recovery', 'Fiber Rich', 'Immune Support'],
     benefits: ['Antioxidant Boost', 'Muscle Recovery', 'Fiber Rich', 'Immune Support'],
     ingredients: ['Grass-Fed Beef Protein', 'Mixed Berry Blend', 'Acai Powder', 'Chia Seeds', 'Natural Berry Flavor'],
@@ -175,6 +220,7 @@ const beefProteinShakes = [
   {
     id: 'beef-5',
     name: 'Coffee Beef Energizer',
+    description: 'Decaf coffee casein for evening caffeine lovers',
     flavor: 'Mocha',
     protein: 26,
     carbs: 4,
@@ -185,6 +231,13 @@ const beefProteinShakes = [
     prepTime: 3,
     rating: 4.6,
     reviews: 412,
+    trending: true,
+    featured: false,
+    price: 44.99,
+    bestTime: 'Pre-Workout',
+    fitnessGoal: 'Mental Performance',
+    absorptionTime: '40-70 minutes',
+    leucineContent: '2.2g',
     tags: ['Pre-Workout', 'Sustained Energy', 'Mental Focus', 'Keto'],
     benefits: ['Sustained Energy', 'Mental Focus', 'Pre-Workout Boost', 'Mood Support'],
     ingredients: ['Hydrolyzed Beef Protein', 'Coffee Extract', 'Cocoa Powder', 'L-Theanine', 'Natural Mocha Flavor'],
@@ -207,6 +260,7 @@ const beefProteinShakes = [
   {
     id: 'beef-6',
     name: 'Tropical Beef Fusion',
+    description: 'Creamy peanut butter casein for sustained nourishment',
     flavor: 'Pina Colada',
     protein: 24,
     carbs: 7,
@@ -217,6 +271,13 @@ const beefProteinShakes = [
     prepTime: 2,
     rating: 4.3,
     reviews: 198,
+    trending: false,
+    featured: true,
+    price: 49.99,
+    bestTime: 'Any Time',
+    fitnessGoal: 'General Wellness',
+    absorptionTime: '60-90 minutes',
+    leucineContent: '1.8g',
     tags: ['Electrolyte Balance', 'Hydration', 'Tropical Taste', 'Digestive Support'],
     benefits: ['Electrolyte Balance', 'Digestive Support', 'Tropical Taste', 'Hydration'],
     ingredients: ['Beef Protein Isolate', 'Pineapple Extract', 'Coconut Cream Powder', 'Natural Flavors', 'Sea Salt'],
@@ -247,7 +308,7 @@ const beefProteinBenefits = [
   { icon: Heart, title: 'No Dairy Allergens', description: 'Lactose-free alternative to whey', color: 'text-pink-600' }
 ];
 
-// ---------- Component ----------
+// ---------- Component - UPDATED TO MATCH STRUCTURE ----------
 export default function BeefProteinPage() {
   const {
     userProgress,
@@ -258,88 +319,28 @@ export default function BeefProteinPage() {
     addToRecentlyViewed
   } = useDrinks();
 
+  const [activeTab, setActiveTab] = useState<'browse'|'benefits'|'featured'>('browse');
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [filterTag, setFilterTag] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'calories' | 'creatine'>('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [showKit, setShowKit] = useState(false);
-
-  // Serving incrementer (inline, per card)
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
+  const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
-  const allTags = ['All', ...new Set(beefProteinShakes.flatMap(r => r.tags))];
+  // RecipeKit refs
+  const kitRefs = useRef<Record<string, RecipeKitHandle | null>>({});
 
-  // Filter + sort
-  const filteredRecipes = useMemo(() => {
-    let filtered = beefProteinShakes.filter(recipe => {
-      const q = searchQuery.trim().toLowerCase();
-      const matchesSearch =
-        !q ||
-        recipe.name.toLowerCase().includes(q) ||
-        recipe.ingredients.some((ing: string) => ing.toLowerCase().includes(q)) ||
-        (recipe.flavor || '').toLowerCase().includes(q) ||
-        recipe.tags.some(t => t.toLowerCase().includes(q)) ||
-        (recipe.benefits || []).some((b: string) => b.toLowerCase().includes(q));
-      const matchesTag = filterTag === 'All' || recipe.tags.includes(filterTag);
-      return matchesSearch && matchesTag;
-    });
-
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
-        case 'protein': return (b.protein || 0) - (a.protein || 0);
-        case 'calories': return (a.calories || 0) - (b.calories || 0);
-        case 'creatine': return (b.creatine || 0) - (a.creatine || 0);
-        default: return 0;
-      }
-    });
-
-    return filtered;
-  }, [searchQuery, filterTag, sortBy]);
-
-  const getServings = (recipe: any) => servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
-  const incrementServings = (recipe: any, dir: 1 | -1) => {
-    setServingsById(prev => {
-      const current = prev[recipe.id] ?? (recipe.recipe?.servings || 1);
-      const next = Math.min(12, Math.max(1, current + dir));
-      return { ...prev, [recipe.id]: next };
-    });
-  };
-
-  const openRecipeModal = (recipe: any) => {
-    setSelectedRecipe(recipe);
-    setShowKit(true);
-  };
-
-  const handleCompleteRecipe = () => {
-    if (selectedRecipe) {
-      const drinkData = {
-        id: selectedRecipe.id,
-        name: selectedRecipe.name,
-        category: 'protein-shakes' as const,
-        description: `${selectedRecipe.flavor || ''} beef protein shake`,
-        ingredients: selectedRecipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || selectedRecipe.ingredients,
-        nutrition: {
-          calories: selectedRecipe.calories,
-          protein: selectedRecipe.protein,
-          carbs: selectedRecipe.carbs,
-          fat: 0.5,
-          creatine: selectedRecipe.creatine,
-          iron: selectedRecipe.iron
-        } as Nutrition,
-        difficulty: selectedRecipe.difficulty as 'Easy' | 'Medium' | 'Hard',
-        prepTime: selectedRecipe.prepTime,
-        rating: selectedRecipe.rating,
-        tags: selectedRecipe.tags
-      };
-      addToRecentlyViewed(drinkData);
-      incrementDrinksMade();
-      addPoints(100);
+  // deep-link (?id=beef-1) — scroll card into view
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    if (id) {
+      const el = document.getElementById(`card-${id}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-    setShowKit(false);
-    setSelectedRecipe(null);
-  };
+  }, []);
 
   const handleSharePage = async () => {
     const shareData = {
@@ -364,48 +365,104 @@ export default function BeefProteinPage() {
     }
   };
 
-  const handleCopyRecipe = (recipe: any) => {
-    const recipeText = `
-${recipe.name}
-${recipe.flavor}
-
-Ingredients:
-${recipe.recipe.measurements.map((m: Measured) => `• ${m.amount} ${m.unit} ${m.item}${m.note ? ` (${m.note})` : ''}`).join('\n')}
-
-Directions:
-${recipe.recipe.directions.map((d: string, i: number) => `${i + 1}. ${d}`).join('\n')}
-
-Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.creatine}g creatine
-    `.trim();
-
-    navigator.clipboard.writeText(recipeText);
-    alert('Recipe copied to clipboard!');
-  };
-
-  const handleShareRecipe = async (recipe: any) => {
-    const shareData = {
-      title: recipe.name,
-      text: `${recipe.flavor} - ${recipe.protein}g protein, ${recipe.creatine}g natural creatine`,
-      url: typeof window !== 'undefined' ? window.location.href + `#${recipe.id}` : ''
-    };
-    
+  const handleShareShake = async (shake: any, servingsOverride?: number) => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    const servings = servingsOverride ?? servingsById[shake.id] ?? (shake.recipe?.servings || 1);
+    const preview = (shake?.recipe?.measurements || [])
+      .slice(0, 4)
+      .map((r: Measured) => {
+        const scaled =
+          typeof r.amount === 'number'
+            ? `${scaleAmount(r.amount, servings)} ${r.unit}`
+            : `${r.amount} ${r.unit}`;
+        return `${scaled} ${r.item}`;
+      })
+      .join(' · ');
+    const text = `${shake.name} • ${shake.flavor} • ${shake.protein}g Protein\n${preview || (shake.ingredients?.slice(0,4)?.join(', ') ?? '')}`;
+    const shareData = { title: shake.name, text, url };
     try {
       if (navigator.share) {
         await navigator.share(shareData);
       } else {
-        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
-        alert('Recipe link copied to clipboard!');
+        await navigator.clipboard.writeText(`${shake.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
       }
     } catch {
-      await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
-      alert('Recipe link copied to clipboard!');
+      try {
+        await navigator.clipboard.writeText(`${shake.name}\n${text}\n${url}`);
+        alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
     }
   };
 
-  const handleShowMetric = (recipe: any) => {
-    // This would typically open a detailed Metric modal
-    alert(`Detailed Metric for ${recipe.name}:\n\nProtein: ${recipe.protein}g\nCalories: ${recipe.calories}\nCreatine: ${recipe.creatine}g\nIron: ${recipe.iron}mg\nRating: ${recipe.rating}/5 (${recipe.reviews} reviews)`);
+  const openRecipeModal = (recipe: any) => {
+    setSelectedRecipe(recipe);
+    setShowKit(true);
   };
+
+  const handleCompleteRecipe = () => {
+    if (selectedRecipe) {
+      const drinkData = {
+        id: selectedRecipe.id,
+        name: selectedRecipe.name,
+        category: 'protein-shakes' as const,
+        description: selectedRecipe.description,
+        ingredients: selectedRecipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || selectedRecipe.ingredients,
+        nutrition: {
+          calories: selectedRecipe.calories,
+          protein: selectedRecipe.protein,
+          carbs: selectedRecipe.carbs,
+          fat: 0.5,
+          creatine: selectedRecipe.creatine,
+          iron: selectedRecipe.iron
+        } as Nutrition,
+        difficulty: selectedRecipe.difficulty as 'Easy' | 'Medium' | 'Hard',
+        prepTime: selectedRecipe.prepTime,
+        rating: selectedRecipe.rating,
+        fitnessGoal: selectedRecipe.fitnessGoal,
+        bestTime: selectedRecipe.bestTime
+      };
+      addToRecentlyViewed(drinkData);
+      incrementDrinksMade();
+      addPoints(100);
+    }
+    setShowKit(false);
+    setSelectedRecipe(null);
+  };
+
+  // Filter and sort
+  const getFilteredShakes = () => {
+    let filtered = beefProteinShakes.filter(recipe => {
+      const q = searchQuery.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        recipe.name.toLowerCase().includes(q) ||
+        recipe.description.toLowerCase().includes(q) ||
+        (recipe.flavor || '').toLowerCase().includes(q) ||
+        recipe.tags.some(t => t.toLowerCase().includes(q)) ||
+        (recipe.benefits || []).some((b: string) => b.toLowerCase().includes(q));
+      const matchesTag = filterTag === 'All' || recipe.tags.includes(filterTag);
+      return matchesSearch && matchesTag;
+    });
+
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'protein': return (b.protein || 0) - (a.protein || 0);
+        case 'calories': return (a.calories || 0) - (b.calories || 0);
+        case 'creatine': return (b.creatine || 0) - (a.creatine || 0);
+        default: return 0;
+      }
+    });
+
+    return filtered;
+  };
+
+  const filteredShakes = getFilteredShakes();
+  const featuredShakes = beefProteinShakes.filter(shake => shake.featured);
+  const allTags = ['All', ...new Set(beefProteinShakes.flatMap(r => r.tags))];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-orange-50">
@@ -426,7 +483,7 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
         </div>
       )}
 
-      {/* Controlled RecipeKit Modal (popup) */}
+      {/* Controlled RecipeKit Modal */}
       {selectedRecipe && (
         <RecipeKit
           open={showKit}
@@ -446,7 +503,7 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
               creatine: selectedRecipe.creatine,
               iron: selectedRecipe.iron
             },
-            defaultServings: selectedRecipe.recipe?.servings || 1
+            defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
           }}
         />
       )}
@@ -465,7 +522,7 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
                 <Flame className="h-6 w-6 text-red-600" />
-                <h1 className="text-2xl font-bold text-gray-900">Beef Protein Shakes</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Beef Protein</h1>
                 <Badge className="bg-red-100 text-red-800">Natural Creatine</Badge>
               </div>
             </div>
@@ -595,19 +652,43 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
           </Card>
         </div>
 
-        {/* Filters */}
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <div className="flex flex-col md:flex-row gap-4">
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
+          {[
+            { id: 'browse', label: 'Browse All', icon: Search },
+            { id: 'benefits', label: 'Benefits', icon: Shield },
+            { id: 'featured', label: 'Featured', icon: Star },
+          ].map((tab) => {
+            const Icon = tab.icon as any;
+            return (
+              <Button
+                key={tab.id}
+                variant={activeTab === tab.id ? "default" : "ghost"}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex-1 ${activeTab === tab.id ? "bg-white shadow-sm" : ""}`}
+              >
+                <Icon className="h-4 w-4 mr-2" />
+                {tab.label}
+              </Button>
+            );
+          })}
+        </div>
+
+        {/* Browse Tab */}
+        {activeTab === "browse" && (
+          <div>
+            {/* Search and Filters */}
+            <div className="flex flex-col md:flex-row gap-4 mb-6">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
-                  placeholder="Search beef protein recipes..."
+                  placeholder="Search beef proteins..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
                 />
               </div>
+
               <div className="flex gap-2">
                 <select
                   className="px-3 py-2 border border-gray-300 rounded-md text-sm"
@@ -631,197 +712,483 @@ Nutrition: ${recipe.protein}g protein, ${recipe.calories} calories, ${recipe.cre
                 </select>
               </div>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Recipe Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredRecipes.map((recipe) => {
-            const servings = getServings(recipe);
-            const factor = (servings || 1) / (recipe.recipe?.servings || 1);
-            const hasMoreThan5Ingredients = recipe.recipe?.measurements?.length > 5;
+            {/* Recipe Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredShakes.map((shake) => {
+                const useMetric = !!metricFlags[shake.id];
+                const servings = servingsById[shake.id] ?? (shake.recipe?.servings || 1);
 
-            return (
-              <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-lg mb-1">{recipe.name}</CardTitle>
-
-                      {/* Benefits directly below the title */}
-                      {Array.isArray(recipe.benefits) && recipe.benefits.length > 0 && (
-                        <div className="mt-0.5 mb-2 text-xs text-gray-600">
-                          Benefits: {recipe.benefits.join(' · ')}
+                return (
+                  <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <CardTitle className="text-lg mb-1">{shake.name}</CardTitle>
+                          <p className="text-sm text-gray-600 mb-2">{shake.description}</p>
                         </div>
-                      )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const drinkData = {
+                              id: shake.id,
+                              name: shake.name,
+                              category: 'protein-shakes' as const,
+                              description: shake.description,
+                              ingredients: shake.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || shake.ingredients,
+                              nutrition: { 
+                                calories: shake.calories, 
+                                protein: shake.protein, 
+                                carbs: shake.carbs, 
+                                fat: 0.5,
+                                creatine: shake.creatine,
+                                iron: shake.iron
+                              },
+                              difficulty: shake.difficulty as 'Easy' | 'Medium' | 'Hard',
+                              prepTime: shake.prepTime,
+                              rating: shake.rating,
+                              fitnessGoal: shake.fitnessGoal,
+                              bestTime: shake.bestTime
+                            };
+                            addToFavorites(drinkData);
+                          }}
+                          className="text-gray-400 hover:text-red-500"
+                        >
+                          <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                        </Button>
+                      </div>
 
-                      <p className="text-sm text-gray-600">{recipe.flavor}</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const drinkData = {
-                          id: recipe.id,
-                          name: recipe.name,
-                          category: 'protein-shakes' as const,
-                          description: `${recipe.flavor || ''} beef protein shake`,
-                          ingredients: recipe.recipe?.measurements?.map((x: Measured) => `${x.amount} ${x.unit} ${x.item}`) || recipe.ingredients,
-                          nutrition: { 
-                            calories: recipe.calories, 
-                            protein: recipe.protein, 
-                            carbs: recipe.carbs, 
-                            fat: 0.5,
-                            creatine: recipe.creatine,
-                            iron: recipe.iron
-                          },
-                          difficulty: recipe.difficulty as 'Easy' | 'Medium' | 'Hard',
-                          prepTime: recipe.prepTime,
-                          rating: recipe.rating
-                        };
-                        addToFavorites(drinkData);
-                      }}
-                      className="text-gray-400 hover:text-red-500"
-                    >
-                      <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
-                    </Button>
-                  </div>
-                </CardHeader>
+                      {/* Tags at top */}
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        <Badge className="bg-red-100 text-red-800">Beef Protein</Badge>
+                        <Badge variant="outline">{shake.flavor}</Badge>
+                        {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                      </div>
+                    </CardHeader>
 
-                <CardContent>
-                  {/* Quick stats */}
-                  <div className="grid grid-cols-4 gap-2 text-center mb-4">
-                    <div>
-                      <div className="font-bold text-red-600">{recipe.protein}g</div>
-                      <div className="text-xs text-gray-500">Protein</div>
-                    </div>
-                    <div>
-                      <div className="font-bold text-blue-600">{recipe.calories}</div>
-                      <div className="text-xs text-gray-500">Calories</div>
-                    </div>
-                    <div>
-                      <div className="font-bold text-orange-600">{recipe.creatine}g</div>
-                      <div className="text-xs text-gray-500">Creatine</div>
-                    </div>
-                    <div>
-                      <div className="font-bold text-amber-600">{recipe.iron}mg</div>
-                      <div className="text-xs text-gray-500">Iron</div>
-                    </div>
-                  </div>
-
-                  {/* Rating + Difficulty row */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium">{recipe.rating}</span>
-                      <span className="text-gray-500 text-sm">({recipe.reviews})</span>
-                    </div>
-                    <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
-                  </div>
-
-                  {/* Inline serving incrementer + compact measured preview */}
-                  {recipe.recipe?.measurements && (
-                    <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm font-semibold text-gray-900">
-                          Recipe (serves {servings})
+                    <CardContent>
+                      {/* Nutrition Grid */}
+                      <div className="grid grid-cols-4 gap-2 mb-4 text-center text-sm">
+                        <div>
+                          <div className="text-xl font-bold text-red-600">{shake.protein}g</div>
+                          <div className="text-gray-500">Protein</div>
                         </div>
-                        <div className="flex items-center rounded-md border border-gray-300 overflow-hidden">
-                          <button
-                            aria-label="decrease servings"
-                            onClick={() => incrementServings(recipe, -1)}
-                            className="px-2 py-1 text-sm hover:bg-gray-100"
-                          >−</button>
-                          <div className="px-3 py-1 text-sm border-l border-r border-gray-300">{servings}</div>
-                          <button
-                            aria-label="increase servings"
-                            onClick={() => incrementServings(recipe, +1)}
-                            className="px-2 py-1 text-sm hover:bg-gray-100"
-                          >+</button>
+                        <div>
+                          <div className="text-xl font-bold text-blue-600">{shake.calories}</div>
+                          <div className="text-gray-500">Cal</div>
+                        </div>
+                        <div>
+                          <div className="text-xl font-bold text-orange-600">{shake.creatine}g</div>
+                          <div className="text-gray-500">Creatine</div>
+                        </div>
+                        <div>
+                          <div className="text-xl font-bold text-amber-600">{shake.iron}mg</div>
+                          <div className="text-gray-500">Iron</div>
                         </div>
                       </div>
 
-                      <ul className="text-sm leading-6 text-gray-800 space-y-1">
-                        {recipe.recipe.measurements.slice(0, 5).map((ing: Measured, i: number) => (
-                          <li key={i} className="flex gap-2">
-                            <span className="text-red-500 font-medium min-w-[90px]">
-                              {scaleAmount(ing.amount, factor)} {ing.unit}
-                            </span>
-                            <span className="flex-1">
-                              {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
-                            </span>
-                          </li>
+                      {/* MOVED: Rating and Difficulty just above recipe box */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-1">
+                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                          <span className="font-medium">{shake.rating}</span>
+                          <span className="text-gray-500 text-sm">({shake.reviews})</span>
+                        </div>
+                        <Badge variant="outline">{shake.difficulty}</Badge>
+                      </div>
+
+                      {/* Compact recipe preview with serving controls */}
+                      {shake.recipe?.measurements && (
+                        <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-sm font-semibold text-gray-900">
+                              Recipe (serves {servings})
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                className="px-2 py-1 border rounded text-sm"
+                                onClick={() =>
+                                  setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) - 1) }))
+                                }
+                                aria-label="decrease servings"
+                              >
+                                −
+                              </button>
+                              <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                              <button
+                                className="px-2 py-1 border rounded text-sm"
+                                onClick={() =>
+                                  setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) + 1) }))
+                                }
+                                aria-label="increase servings"
+                              >
+                                +
+                              </button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setServingsById(prev => {
+                                  const next = { ...prev };
+                                  next[shake.id] = shake.recipe?.servings || 1;
+                                  return next;
+                                })}
+                                title="Reset servings"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
+                              </Button>
+                            </div>
+                          </div>
+
+                          <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                            {shake.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                              const isNum = typeof ing.amount === 'number';
+                              const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount;
+                              const show = useMetric && isNum
+                                ? { amount: Math.round(Number(ing.amount) * servings), unit: 'g' }
+                                : { amount: scaledDisplay, unit: ing.unit };
+
+                              return (
+                                <li key={i} className="flex items-start gap-2">
+                                  <Check className="h-4 w-4 text-red-600 mt-0.5" />
+                                  <span>
+                                    <span className="text-red-700 font-semibold">
+                                      {show.amount} {show.unit}
+                                    </span>{" "}
+                                    {ing.item}
+                                    {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                            {shake.recipe.measurements.length > 4 && (
+                              <li className="text-xs text-gray-600">
+                                …plus {shake.recipe.measurements.length - 4} more •{" "}
+                                <button
+                                  type="button"
+                                  onClick={() => openRecipeModal(shake)}
+                                  className="underline underline-offset-2"
+                                >
+                                  Show more
+                                </button>
+                              </li>
+                            )}
+                          </ul>
+
+                          <div className="flex gap-2 mt-3">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                const lines = (shake.recipe?.measurements || []).map((ing: Measured) => {
+                                  if (useMetric && typeof ing.amount === 'number') {
+                                    return `- ${Math.round(Number(ing.amount) * servings)}g ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
+                                  }
+                                  const scaled = typeof ing.amount === 'number' ? scaleAmount(ing.amount, servings) : ing.amount;
+                                  return `- ${scaled} ${ing.unit} ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
+                                });
+                                const txt = `${shake.name} (serves ${servings})\n${lines.join('\n')}`;
+                                try {
+                                  await navigator.clipboard.writeText(txt);
+                                  alert('Recipe copied!');
+                                } catch {
+                                  alert('Unable to copy on this device.');
+                                }
+                              }}
+                            >
+                              <Clipboard className="w-4 h-4 mr-1" /> Copy
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleShareShake(shake, servings)}>
+                              <Share2 className="w-4 h-4 mr-1" /> Share
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setMetricFlags((prev) => ({ ...prev, [shake.id]: !prev[shake.id] }))
+                              }
+                            >
+                              {useMetric ? 'US' : 'Metric'}
+                            </Button>
+                          </div>
+
+                          {/* ADDED: Absorption content below recipe box */}
+                          <div className="mt-4 pt-4 border-t border-gray-200">
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div className="text-center">
+                                <div className="font-semibold text-gray-700">Absorption:</div>
+                                <div className="text-blue-600 font-medium">{shake.absorptionTime}</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="font-semibold text-gray-700">Leucine:</div>
+                                <div className="text-red-600 font-medium">{shake.leucineContent}</div>
+                              </div>
+                            </div>
+                            <div className="text-center mt-2">
+                              <div className="font-semibold text-gray-700">Best Time:</div>
+                              <div className="text-red-600 font-medium text-sm">{shake.bestTime}</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Benefits tags */}
+                      <div className="flex flex-wrap gap-1 mb-4">
+                        {shake.benefits.map((benefit: string, index: number) => (
+                          <Badge key={index} variant="secondary" className="text-xs bg-red-100 text-red-800 hover:bg-red-200">
+                            {benefit}
+                          </Badge>
                         ))}
-                      </ul>
-                      
-                      {/* Show More button that opens the popup modal */}
-                      {hasMoreThan5Ingredients && (
-                        <div className="text-xs text-gray-600 mt-1">
-                          <button
-                            type="button"
-                            onClick={() => openRecipeModal(recipe)}
-                            className="underline underline-offset-2 hover:text-red-500"
-                          >
-                            Show more ({recipe.recipe.measurements.length - 5} more ingredients)
-                          </button>
-                        </div>
-                      )}
+                      </div>
 
-                      {/* Copy, Share, Metric buttons moved inside recipe div */}
-                      <div className="flex gap-2 mt-3">
+                      {/* Full-width CTA */}
+                      <div className="mt-3">
                         <Button
-                          variant="outline"
+                          className="w-full bg-red-500 hover:bg-red-600 text-white"
                           size="sm"
-                          className="flex-1"
-                          onClick={() => handleCopyRecipe(recipe)}
+                          onClick={() => openRecipeModal(shake)}
                         >
-                          <Copy className="h-3 w-3 mr-1" />
-                          Copy
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1"
-                          onClick={() => handleShareRecipe(recipe)}
-                        >
-                          <Share2 className="h-3 w-3 mr-1" />
-                          Share
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1"
-                          onClick={() => handleShowMetric(recipe)}
-                        >
-                          <BarChart3 className="h-3 w-3 mr-1" />
-                          Metric
+                          <Flame className="h-4 w-4 mr-1" />
+                          Make Shake (+100 XP)
                         </Button>
                       </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Benefits Tab */}
+        {activeTab === "benefits" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {beefProteinBenefits.map((benefit, index) => {
+              const Icon = benefit.icon as any;
+              return (
+                <Card key={index} className="hover:shadow-lg transition-shadow">
+                  <CardHeader>
+                    <div className="text-center">
+                      <Icon className={`h-8 w-8 mx-auto mb-2 ${benefit.color}`} />
+                      <CardTitle className="text-lg">{benefit.title}</CardTitle>
+                      <p className="text-sm text-gray-600">{benefit.description}</p>
                     </div>
-                  )}
+                  </CardHeader>
+                </Card>
+              );
+            })}
+          </div>
+        )}
 
-                  {/* Tags (full list) with Natural Creatine color scheme */}
-                  <div className="flex flex-wrap gap-1 mb-4">
-                    {recipe.tags.map((tag: string) => (
-                      <Badge key={tag} variant="secondary" className="text-xs bg-red-100 text-red-800 hover:bg-red-200">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
+        {/* Featured Tab */}
+        {activeTab === "featured" && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {featuredShakes.map((shake) => {
+              const useMetric = !!metricFlags[shake.id];
+              const servings = servingsById[shake.id] ?? (shake.recipe?.servings || 1);
 
-                  {/* Full-width CTA — Make Shake with lighter red */}
-                  <Button
-                    className="w-full bg-red-500 hover:bg-red-600 text-white"
-                    onClick={() => openRecipeModal(recipe)}
-                  >
-                    <Flame className="h-4 w-4 mr-2" />
-                    Make Shake (+100 XP)
-                  </Button>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+              return (
+                <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle className="text-xl">{shake.name}</CardTitle>
+                    <p className="text-gray-600">{shake.description}</p>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      <Badge className="bg-red-100 text-red-800">Beef Protein</Badge>
+                      <Badge variant="outline">{shake.flavor}</Badge>
+                      {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                    </div>
+                  </CardHeader>
+
+                  <CardContent>
+                    {/* Enhanced nutrition display */}
+                    <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-red-50 rounded-lg">
+                      <div className="text-center">
+                        <div className="text-xl font-bold text-red-600">{shake.protein}g</div>
+                        <div className="text-xs text-gray-600">Protein</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xl font-bold text-blue-600">{shake.calories}</div>
+                        <div className="text-xs text-gray-600">Calories</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xl font-bold text-orange-600">{shake.creatine}g</div>
+                        <div className="text-xs text-gray-600">Creatine</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xl font-bold text-amber-600">{shake.iron}mg</div>
+                        <div className="text-xs text-gray-600">Iron</div>
+                      </div>
+                    </div>
+
+                    {/* MOVED: Rating and Difficulty just above recipe box */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-1">
+                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                        <span className="font-medium">{shake.rating}</span>
+                        <span className="text-gray-500 text-sm">({shake.reviews})</span>
+                      </div>
+                      <Badge variant="outline">{shake.difficulty}</Badge>
+                    </div>
+
+                    {/* Compact recipe preview for featured cards */}
+                    {shake.recipe?.measurements && (
+                      <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-sm font-semibold text-gray-900">
+                            Recipe (serves {servings})
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="px-2 py-1 border rounded text-sm"
+                              onClick={() =>
+                                setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) - 1) }))
+                              }
+                              aria-label="decrease servings"
+                            >
+                              −
+                            </button>
+                            <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                            <button
+                              className="px-2 py-1 border rounded text-sm"
+                              onClick={() =>
+                                setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) + 1) }))
+                              }
+                              aria-label="increase servings"
+                            >
+                              +
+                            </button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setServingsById(prev => {
+                                const next = { ...prev };
+                                next[shake.id] = shake.recipe?.servings || 1;
+                                return next;
+                              })}
+                              title="Reset servings"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
+                            </Button>
+                          </div>
+                        </div>
+
+                        <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                          {shake.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                            const isNum = typeof ing.amount === 'number';
+                            const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount;
+                            const show = useMetric && isNum
+                              ? { amount: Math.round(Number(ing.amount) * servings), unit: 'g' }
+                              : { amount: scaledDisplay, unit: ing.unit };
+
+                            return (
+                              <li key={i} className="flex items-start gap-2">
+                                <Check className="h-4 w-4 text-red-600 mt-0.5" />
+                                <span>
+                                  <span className="text-red-700 font-semibold">
+                                    {show.amount} {show.unit}
+                                  </span>{" "}
+                                  {ing.item}
+                                  {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                </span>
+                              </li>
+                            );
+                          })}
+                          {shake.recipe.measurements.length > 4 && (
+                            <li className="text-xs text-gray-600">
+                              …plus {shake.recipe.measurements.length - 4} more •{" "}
+                              <button
+                                type="button"
+                                onClick={() => openRecipeModal(shake)}
+                                className="underline underline-offset-2"
+                              >
+                                Show more
+                              </button>
+                            </li>
+                          )}
+                        </ul>
+
+                        <div className="flex gap-2 mt-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              const lines = (shake.recipe?.measurements || []).map((ing: Measured) => {
+                                if (useMetric && typeof ing.amount === 'number') {
+                                  return `- ${Math.round(Number(ing.amount) * servings)}g ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
+                                }
+                                const scaled = typeof ing.amount === 'number' ? scaleAmount(ing.amount, servings) : ing.amount;
+                                return `- ${scaled} ${ing.unit} ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
+                              });
+                              const txt = `${shake.name} (serves ${servings})\n${lines.join('\n')}`;
+                              try {
+                                await navigator.clipboard.writeText(txt);
+                                alert('Recipe copied!');
+                              } catch {
+                                alert('Unable to copy on this device.');
+                              }
+                            }}
+                          >
+                            <Clipboard className="w-4 h-4 mr-1" /> Copy
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleShareShake(shake, servings)}>
+                            <Share2 className="w-4 h-4 mr-1" /> Share
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setMetricFlags((prev) => ({ ...prev, [shake.id]: !prev[shake.id] }))
+                            }
+                          >
+                            {useMetric ? 'US' : 'Metric'}
+                          </Button>
+                        </div>
+
+                        {/* ADDED: Absorption content below recipe box */}
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="text-center">
+                              <div className="font-semibold text-gray-700">Absorption:</div>
+                              <div className="text-blue-600 font-medium">{shake.absorptionTime}</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="font-semibold text-gray-700">Leucine:</div>
+                              <div className="text-red-600 font-medium">{shake.leucineContent}</div>
+                            </div>
+                          </div>
+                          <div className="text-center mt-2">
+                            <div className="font-semibold text-gray-700">Best Time:</div>
+                            <div className="text-red-600 font-medium text-sm">{shake.bestTime}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Benefits tags */}
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {shake.benefits.map((benefit: string, index: number) => (
+                        <Badge key={index} variant="secondary" className="text-xs bg-red-100 text-red-800 hover:bg-red-200">
+                          {benefit}
+                        </Badge>
+                      ))}
+                    </div>
+
+                    {/* Full-width CTA */}
+                    <div className="mt-3">
+                      <Button
+                        className="w-full bg-red-500 hover:bg-red-600 text-white"
+                        onClick={() => openRecipeModal(shake)}
+                      >
+                        <Flame className="h-4 w-4 mr-2" />
+                        Make Shake (+100 XP)
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
 
         {/* Your Progress */}
         <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mt-8">
