@@ -41,7 +41,7 @@ const scaleAmount = (amt: number | string, factor: number): number | string => {
   return amt;
 };
 
-// Collagen protein shake data
+// Collagen protein shake data - Updated with absorptionTime and leucineContent
 const collagenShakes = [
   {
     id: 'collagen-1',
@@ -64,6 +64,8 @@ const collagenShakes = [
     ingredients: ['Hydrolyzed Collagen Peptides', 'Natural Berry Flavors', 'Vitamin C', 'Biotin', 'Hyaluronic Acid'],
     benefits: ['Skin Elasticity', 'Hair Growth', 'Nail Strength', 'Anti-Aging'],
     absorption: 'Fast',
+    absorptionTime: '15-30 minutes',
+    leucineContent: 1.2,
     bioavailability: 95,
     difficulty: 'Easy',
     prepTime: 1,
@@ -112,6 +114,8 @@ const collagenShakes = [
     ingredients: ['Type II Collagen', 'Glucosamine Sulfate', 'Chondroitin Sulfate', 'MSM', 'Natural Vanilla'],
     benefits: ['Joint Health', 'Cartilage Support', 'Mobility', 'Flexibility'],
     absorption: 'Moderate',
+    absorptionTime: '30-45 minutes',
+    leucineContent: 0.8,
     bioavailability: 87,
     difficulty: 'Easy',
     prepTime: 2,
@@ -160,6 +164,8 @@ const collagenShakes = [
     ingredients: ['Marine Collagen Peptides', 'Mango Extract', 'Omega-3 Fatty Acids', 'Selenium', 'Coconut Water Powder'],
     benefits: ['Premium Absorption', 'Skin Hydration', 'Antioxidants', 'Sustainable'],
     absorption: 'Very Fast',
+    absorptionTime: '10-20 minutes',
+    leucineContent: 1.1,
     bioavailability: 98,
     difficulty: 'Easy',
     prepTime: 1,
@@ -207,6 +213,8 @@ const collagenShakes = [
     ingredients: ['Bovine Collagen', 'Chicken Collagen', 'Fish Collagen', 'Eggshell Membrane', 'Bone Broth Powder'],
     benefits: ['Complete Spectrum', 'Versatile Use', 'Maximum Coverage', 'All-in-One'],
     absorption: 'Fast',
+    absorptionTime: '20-35 minutes',
+    leucineContent: 1.4,
     bioavailability: 92,
     difficulty: 'Easy',
     prepTime: 1,
@@ -255,6 +263,8 @@ const collagenShakes = [
     ingredients: ['Pea Protein', 'Vitamin C', 'Silica from Bamboo', 'L-Lysine', 'L-Proline', 'Cucumber Extract'],
     benefits: ['Vegan-Friendly', 'Collagen Support', 'Amino Precursors', 'Plant-Based'],
     absorption: 'Moderate',
+    absorptionTime: '45-60 minutes',
+    leucineContent: 2.1,
     bioavailability: 78,
     difficulty: 'Easy',
     prepTime: 2,
@@ -303,6 +313,8 @@ const collagenShakes = [
     ingredients: ['Hydrolyzed Collagen', 'Turmeric Extract', 'Resveratrol', 'CoQ10', 'Gold Leaf Extract'],
     benefits: ['Anti-Inflammatory', 'Antioxidant Rich', 'Premium Quality', 'Luxury Formula'],
     absorption: 'Fast',
+    absorptionTime: '15-25 minutes',
+    leucineContent: 1.3,
     bioavailability: 96,
     difficulty: 'Easy',
     prepTime: 2,
@@ -380,6 +392,7 @@ const collagenTypes = [
   }
 ];
 
+// Updated collagen sources with absorption and leucine info
 const collagenSources = [
   {
     id: 'marine',
@@ -389,6 +402,8 @@ const collagenSources = [
     color: 'bg-blue-500',
     bioavailability: '98%',
     absorption: 'Very Fast',
+    absorptionTime: '10-20 minutes',
+    leucineContent: 'High',
     benefits: ['Premium Absorption', 'Sustainable', 'Type I Rich', 'Clean Source'],
     bestFor: 'Skin & Beauty'
   },
@@ -400,6 +415,8 @@ const collagenSources = [
     color: 'bg-green-500',
     bioavailability: '95%',
     absorption: 'Fast',
+    absorptionTime: '15-30 minutes',
+    leucineContent: 'Medium-High',
     benefits: ['Complete Amino Profile', 'Cost Effective', 'Versatile', 'Well Researched'],
     bestFor: 'General Health'
   },
@@ -411,6 +428,8 @@ const collagenSources = [
     color: 'bg-amber-500',
     bioavailability: '87%',
     absorption: 'Moderate',
+    absorptionTime: '30-45 minutes',
+    leucineContent: 'Medium',
     benefits: ['Joint Specific', 'Type II Rich', 'Cartilage Support', 'Mobility'],
     bestFor: 'Joint Health'
   },
@@ -422,6 +441,8 @@ const collagenSources = [
     color: 'bg-emerald-500',
     bioavailability: '78%',
     absorption: 'Moderate',
+    absorptionTime: '45-60 minutes',
+    leucineContent: 'High (Added)',
     benefits: ['Vegan Friendly', 'Precursor Support', 'Sustainable', 'Ethical'],
     bestFor: 'Vegan Lifestyle'
   }
@@ -737,6 +758,36 @@ export default function CollagenProteinPage() {
           </CardContent>
         </Card>
 
+        {/* Leucine & Absorption Info Section */}
+        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 mb-8">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="bg-amber-100 p-3 rounded-lg">
+                <Zap className="h-6 w-6 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold mb-2">About Leucine & Collagen Absorption</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <h4 className="font-semibold mb-1">Leucine Content</h4>
+                    <p className="text-gray-600">
+                      Collagen is lower in leucine than whey but higher in glycine and proline. 
+                      Optimal for connective tissue support rather than pure muscle building.
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold mb-1">Absorption Timing</h4>
+                    <p className="text-gray-600">
+                      Hydrolyzed collagen peptides absorb quickly. Best taken with vitamin C 
+                      for optimal collagen synthesis and on an empty stomach for fastest absorption.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Quick Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card>
@@ -901,34 +952,40 @@ export default function CollagenProteinPage() {
                     </CardHeader>
 
                     <CardContent>
-                      {/* Quick stats */}
+                      {/* Updated Quick stats with absorption and leucine */}
                       <div className="grid grid-cols-4 gap-2 text-center mb-4">
                         <div>
                           <div className="font-bold text-pink-600">{shake.nutrition.collagen}g</div>
                           <div className="text-xs text-gray-500">Collagen</div>
                         </div>
                         <div>
-                          <div className="font-bold text-blue-600">{shake.nutrition.calories}</div>
-                          <div className="text-xs text-gray-500">Calories</div>
-                        </div>
-                        <div>
-                          <div className="font-bold text-purple-600">{shake.bioavailability}%</div>
+                          <div className="font-bold text-blue-600">{shake.bioavailability}%</div>
                           <div className="text-xs text-gray-500">Bio</div>
                         </div>
                         <div>
-                          <div className="font-bold text-amber-600">${shake.price}</div>
-                          <div className="text-xs text-gray-500">Price</div>
+                          <div className="font-bold text-purple-600">{shake.leucineContent}g</div>
+                          <div className="text-xs text-gray-500">Leucine</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-amber-600">{shake.absorptionTime}</div>
+                          <div className="text-xs text-gray-500">Absorption</div>
                         </div>
                       </div>
 
-                      {/* Rating + Difficulty row */}
+                      {/* Updated Rating + Difficulty + Best Time row */}
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-1">
                           <Star className="h-4 w-4 text-yellow-400 fill-current" />
                           <span className="font-medium">{shake.rating}</span>
                           <span className="text-gray-500 text-sm">({shake.reviews})</span>
                         </div>
-                        <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
+                          <div className="flex items-center gap-1 text-xs text-gray-500">
+                            <Clock className="h-3 w-3" />
+                            {shake.bestTime}
+                          </div>
+                        </div>
                       </div>
 
                       {/* RecipeKit component - handles both preview and modal */}
@@ -1079,6 +1136,11 @@ export default function CollagenProteinPage() {
                         </div>
                       </div>
                       
+                      <div className="bg-purple-50 p-2 rounded text-center">
+                        <div className="text-sm font-medium text-gray-700">Absorption Time</div>
+                        <div className="text-sm font-semibold text-purple-600">{source.absorptionTime}</div>
+                      </div>
+                      
                       <div>
                         <h4 className="font-semibold text-sm mb-2">Benefits:</h4>
                         <div className="flex flex-wrap gap-1">
@@ -1207,34 +1269,40 @@ export default function CollagenProteinPage() {
                 </CardHeader>
                 
                 <CardContent>
-                  {/* Quick stats */}
+                  {/* Updated Quick stats with absorption and leucine */}
                   <div className="grid grid-cols-4 gap-2 text-center mb-4">
                     <div>
                       <div className="font-bold text-pink-600">{shake.nutrition.collagen}g</div>
                       <div className="text-xs text-gray-500">Collagen</div>
                     </div>
                     <div>
-                      <div className="font-bold text-blue-600">{shake.nutrition.calories}</div>
-                      <div className="text-xs text-gray-500">Calories</div>
-                    </div>
-                    <div>
-                      <div className="font-bold text-purple-600">{shake.bioavailability}%</div>
+                      <div className="font-bold text-blue-600">{shake.bioavailability}%</div>
                       <div className="text-xs text-gray-500">Bio</div>
                     </div>
                     <div>
-                      <div className="font-bold text-amber-600">${shake.price}</div>
-                      <div className="text-xs text-gray-500">Price</div>
+                      <div className="font-bold text-purple-600">{shake.leucineContent}g</div>
+                      <div className="text-xs text-gray-500">Leucine</div>
+                    </div>
+                    <div>
+                      <div className="font-bold text-amber-600">{shake.absorptionTime}</div>
+                      <div className="text-xs text-gray-500">Absorption</div>
                     </div>
                   </div>
 
-                  {/* Rating + Difficulty row */}
+                  {/* Updated Rating + Difficulty + Best Time row */}
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-1">
                       <Star className="h-4 w-4 text-yellow-400 fill-current" />
                       <span className="font-medium">{shake.rating}</span>
                       <span className="text-gray-500 text-sm">({shake.reviews})</span>
                     </div>
-                    <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
+                      <div className="flex items-center gap-1 text-xs text-gray-500">
+                        <Clock className="h-3 w-3" />
+                        {shake.bestTime}
+                      </div>
+                    </div>
                   </div>
 
                   {/* RecipeKit component */}
