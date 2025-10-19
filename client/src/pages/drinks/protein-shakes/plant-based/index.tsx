@@ -97,8 +97,353 @@ const plantBasedShakes = [
       ]
     }
   },
-  // ... (other plant-based shakes remain the same)
-]
+  {
+    id: 'plant-2',
+    name: 'Hemp Heart Hero',
+    description: 'Omega-rich hemp protein with natural nutty flavor',
+    proteinSource: 'Hemp Protein Powder',
+    proteinType: 'hemp',
+    flavor: 'Natural Nutty',
+    servingSize: '30g',
+    nutrition: { calories: 110, protein: 20, carbs: 4, fat: 3, fiber: 8 },
+    certifications: ['Organic', 'Raw', 'Vegan', 'Non-GMO'],
+    difficulty: 'Easy',
+    prepTime: 2,
+    rating: 4.4,
+    reviews: 623,
+    trending: false,
+    featured: true,
+    price: 29.99,
+    allergenFree: ['Dairy', 'Soy', 'Gluten'],
+    sustainability: 'Regenerative',
+    fitnessGoal: 'General Wellness',
+    bestTime: 'Morning',
+    absorptionTime: '90-120 minutes',
+    leucineContent: '1.8g',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (30g)', 'hemp protein'),
+        m(1, 'cup', 'oat milk'),
+        m(1, 'tbsp', 'chia seeds'),
+        m(1, 'tsp', 'maple syrup', 'optional'),
+        m(0.25, 'tsp', 'cinnamon'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Soak chia in oat milk for 5 minutes (optional thicker body).',
+        'Blend with hemp protein, cinnamon, sweetener, and ice.',
+        'Pulse to desired texture.'
+      ]
+    }
+  },
+  {
+    id: 'plant-3',
+    name: 'Rice & Quinoa Complete',
+    description: 'Hypoallergenic blend with ancient grains',
+    proteinSource: 'Brown Rice + Quinoa',
+    proteinType: 'rice-quinoa',
+    flavor: 'Chocolate Cacao',
+    servingSize: '32g',
+    nutrition: { calories: 125, protein: 24, carbs: 5, fat: 1, fiber: 3 },
+    certifications: ['Organic', 'Fair Trade', 'Vegan', 'Sprouted'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.5,
+    reviews: 734,
+    trending: true,
+    featured: false,
+    price: 34.99,
+    allergenFree: ['Dairy', 'Soy', 'Gluten', 'Nuts', 'Legumes'],
+    sustainability: 'Water Efficient',
+    fitnessGoal: 'Weight Management',
+    bestTime: 'Meal Replacement',
+    absorptionTime: '90-120 minutes',
+    leucineContent: '2.0g',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (32g)', 'rice–quinoa protein'),
+        m(1, 'cup', 'unsweetened almond milk'),
+        m(1, 'tbsp', 'raw cacao powder'),
+        m(1, 'tsp', 'coconut sugar', 'or monk fruit to taste'),
+        m(0.5, 'tsp', 'vanilla extract'),
+        m(1, 'pinch', 'sea salt'),
+        m(5, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Combine all; blend until creamy.',
+        'Add extra cacao or sweetener to taste.'
+      ]
+    }
+  },
+  {
+    id: 'plant-4',
+    name: 'Soy Supreme Classic',
+    description: 'Traditional complete protein with all essential amino acids',
+    proteinSource: 'Soy Protein Isolate',
+    proteinType: 'soy',
+    flavor: 'Strawberry Vanilla',
+    servingSize: '28g',
+    nutrition: { calories: 105, protein: 25, carbs: 2, fat: 0.5, fiber: 1 },
+    certifications: ['Non-GMO', 'Vegan', 'Organic'],
+    difficulty: 'Easy',
+    prepTime: 2,
+    rating: 4.3,
+    reviews: 956,
+    trending: false,
+    featured: true,
+    price: 28.99,
+    allergenFree: ['Dairy', 'Gluten', 'Nuts'],
+    sustainability: 'Nitrogen Fixing',
+    fitnessGoal: 'Muscle Building',
+    bestTime: 'Post-Workout',
+    absorptionTime: '90-120 minutes',
+    leucineContent: '2.2g',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (28g)', 'soy protein isolate'),
+        m(1, 'cup', 'soy milk or almond milk'),
+        m(0.5, 'cup', 'frozen strawberries'),
+        m(0.5, 'tsp', 'vanilla extract'),
+        m(1, 'tsp', 'honey or stevia to taste'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend milk + protein first 10 seconds.',
+        'Add strawberries, vanilla, sweetener; blend smooth.'
+      ]
+    }
+  },
+  {
+    id: 'plant-5',
+    name: 'Pumpkin Seed Power',
+    description: 'Mineral-rich protein from organic pumpkin seeds',
+    proteinSource: 'Pumpkin Seed Protein',
+    proteinType: 'seed',
+    flavor: 'Cinnamon Spice',
+    servingSize: '30g',
+    nutrition: { calories: 115, protein: 18, carbs: 6, fat: 2, fiber: 4 },
+    certifications: ['Organic', 'Raw', 'Vegan', 'Sprouted'],
+    difficulty: 'Easy',
+    prepTime: 2,
+    rating: 4.2,
+    reviews: 445,
+    trending: false,
+    featured: false,
+    price: 36.99,
+    allergenFree: ['Dairy', 'Soy', 'Gluten', 'Nuts', 'Legumes'],
+    sustainability: 'Upcycled',
+    fitnessGoal: 'General Wellness',
+    bestTime: 'Afternoon',
+    absorptionTime: '90-120 minutes',
+    leucineContent: '1.6g',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (30g)', 'pumpkin seed protein'),
+        m(1, 'cup', 'cashew milk or water'),
+        m(0.5, 'tsp', 'Ceylon cinnamon'),
+        m(0.125, 'tsp', 'fresh nutmeg', 'optional'),
+        m(1, 'tsp', 'monk fruit or maple syrup'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend all until frothy; spice to taste.',
+        'Great warm: gently heat milk first, then blend briefly.'
+      ]
+    }
+  },
+  {
+    id: 'plant-6',
+    name: 'Algae Omega Fusion',
+    description: 'Spirulina and chlorella for complete nutrition',
+    proteinSource: 'Spirulina + Chlorella',
+    proteinType: 'algae',
+    flavor: 'Tropical Green',
+    servingSize: '25g',
+    nutrition: { calories: 95, protein: 16, carbs: 8, fat: 1, fiber: 2 },
+    certifications: ['Organic', 'Raw', 'Vegan', 'Superfood'],
+    difficulty: 'Medium',
+    prepTime: 3,
+    rating: 4.1,
+    reviews: 367,
+    trending: true,
+    featured: false,
+    price: 42.99,
+    allergenFree: ['Dairy', 'Soy', 'Gluten', 'Nuts', 'Legumes'],
+    sustainability: 'Ocean Positive',
+    fitnessGoal: 'Detox',
+    bestTime: 'Morning',
+    absorptionTime: '90-120 minutes',
+    leucineContent: '1.4g',
+    recipe: {
+      measurements: [
+        m(2, 'tbsp (~25g)', 'algae protein blend (spirulina/chlorella)'),
+        m(0.75, 'cup', 'coconut water'),
+        m(0.25, 'cup', 'frozen pineapple'),
+        m(0.5, 'banana', 'ripe'),
+        m(1, 'tsp', 'lime juice'),
+        m(5, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend until bright green and smooth.',
+        'Add extra pineapple if you prefer sweeter.'
+      ]
+    }
+  },
+  {
+    id: 'plant-7',
+    name: 'Matcha Pea Energizer',
+    description: 'Clean caffeine + pea protein for focused energy',
+    proteinSource: 'Pea Protein Isolate',
+    proteinType: 'pea',
+    flavor: 'Matcha Vanilla',
+    servingSize: '30g',
+    nutrition: { calories: 140, protein: 26, carbs: 6, fat: 2, fiber: 2 },
+    certifications: ['Vegan', 'Non-GMO', 'Gluten-Free'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.7,
+    reviews: 512,
+    trending: true,
+    featured: true,
+    price: 33.99,
+    allergenFree: ['Dairy', 'Soy', 'Gluten', 'Nuts'],
+    sustainability: 'Carbon Neutral',
+    fitnessGoal: 'General Wellness',
+    bestTime: 'Morning',
+    absorptionTime: '90-120 minutes',
+    leucineContent: '2.1g',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (30g)', 'pea protein'),
+        m(1, 'tsp', 'matcha powder'),
+        m(1, 'cup', 'unsweetened almond milk'),
+        m(1, 'whole', 'Medjool date', 'pitted (or 1 tsp honey)'),
+        m(0.5, 'tsp', 'vanilla extract'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend milk + matcha first to fully disperse.',
+        'Add remaining, blend until smooth.'
+      ]
+    }
+  },
+  {
+    id: 'plant-8',
+    name: 'PB Oat Recovery',
+    description: 'Comfort classic with oats and peanut butter',
+    proteinSource: 'Oat + Peanut',
+    proteinType: 'seed',
+    flavor: 'Peanut Butter',
+    servingSize: '35g',
+    nutrition: { calories: 260, protein: 24, carbs: 20, fat: 9, fiber: 5 },
+    certifications: ['Vegan', 'Non-GMO'],
+    difficulty: 'Easy',
+    prepTime: 2,
+    rating: 4.6,
+    reviews: 389,
+    trending: false,
+    featured: false,
+    price: 27.99,
+    allergenFree: ['Dairy', 'Soy', 'Gluten'],
+    sustainability: 'Low Water',
+    fitnessGoal: 'Muscle Building',
+    bestTime: 'Post-Workout',
+    absorptionTime: '90-120 minutes',
+    leucineContent: '2.0g',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (30–35g)', 'plant protein (neutral)'),
+        m(1, 'cup', 'oat milk'),
+        m(1, 'tbsp', 'natural peanut butter'),
+        m(0.5, 'banana', 'ripe, frozen preferred'),
+        m(0.5, 'tsp', 'vanilla extract'),
+        m(1, 'pinch', 'sea salt'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend until creamy; add splash of milk if too thick.',
+        'Top with oat crumble or cacao nibs (optional).'
+      ]
+    }
+  },
+  {
+    id: 'plant-9',
+    name: 'Berry Antioxidant Blend',
+    description: 'Polyphenol-rich berries with rice–quinoa protein',
+    proteinSource: 'Rice + Quinoa',
+    proteinType: 'rice-quinoa',
+    flavor: 'Mixed Berry',
+    servingSize: '32g',
+    nutrition: { calories: 180, protein: 24, carbs: 22, fat: 2, fiber: 6 },
+    certifications: ['Vegan', 'Gluten-Free'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.5,
+    reviews: 271,
+    trending: true,
+    featured: false,
+    price: 31.99,
+    allergenFree: ['Dairy', 'Soy', 'Nuts* (swap milk if needed)'],
+    sustainability: 'Water Efficient',
+    fitnessGoal: 'Weight Management',
+    bestTime: 'Snack',
+    absorptionTime: '90-120 minutes',
+    leucineContent: '2.0g',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (32g)', 'rice–quinoa protein'),
+        m(0.75, 'cup', 'almond milk'),
+        m(0.75, 'cup', 'frozen mixed berries'),
+        m(1, 'tbsp', 'ground flaxseed'),
+        m(1, 'tsp', 'honey or agave', 'optional'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend milk + protein first; add berries + flax.',
+        'Pulse to keep texture or blend fully smooth.'
+      ]
+    }
+  },
+  {
+    id: 'plant-10',
+    name: 'Golden Turmeric Hemp',
+    description: 'Anti-inflammatory golden milk meets hemp protein',
+    proteinSource: 'Hemp Protein',
+    proteinType: 'hemp',
+    flavor: 'Golden Spice',
+    servingSize: '30g',
+    nutrition: { calories: 170, protein: 21, carbs: 12, fat: 5, fiber: 7 },
+    certifications: ['Vegan', 'Non-GMO', 'Gluten-Free'],
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.4,
+    reviews: 198,
+    trending: false,
+    featured: true,
+    price: 30.99,
+    allergenFree: ['Dairy', 'Soy', 'Gluten', 'Nuts'],
+    sustainability: 'Regenerative',
+    fitnessGoal: 'General Wellness',
+    bestTime: 'Evening',
+    absorptionTime: '90-120 minutes',
+    leucineContent: '1.8g',
+    recipe: {
+      measurements: [
+        m(1, 'scoop (30g)', 'hemp protein'),
+        m(1, 'cup', 'coconut milk (light)'),
+        m(0.5, 'tsp', 'ground turmeric'),
+        m(0.25, 'tsp', 'ground ginger'),
+        m(1, 'pinch', 'black pepper', 'bioavailability'),
+        m(1, 'tsp', 'maple syrup', 'to taste'),
+        m(4, 'ice cubes', 'ice'),
+      ],
+      directions: [
+        'Blend all; for latte vibe, warm milk first and blend briefly.',
+        'Adjust sweetness/spice to taste.'
+      ]
+    }
+  }
+];
 
 // meta cards
 const proteinTypes = [
