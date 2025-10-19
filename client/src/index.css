@@ -136,37 +136,37 @@
   .secondary-tabs { white-space: nowrap; }
   .secondary-tabs > * + * { margin-left: 0.75rem; }
 
-  /* ========== MOBILE HEADER FIXES ========== */
+  /* ========== PAGE-SPECIFIC HEADER FIXES (z-40 only, NOT main site header z-50) ========== */
   
-  /* Mobile (all) - Keep header height reasonable, don't push down */
-  @media (max-width: 900px) {
-    /* Keep header at normal h-16 height in landscape, allow wrapping in portrait */
-    .sticky.top-0.z-40 > div > div.h-16 {
+  /* Target ONLY page-specific headers with z-40 */
+  @media (max-width: 768px) {
+    /* Allow page header to wrap - targets z-40 only */
+    .z-40.sticky.top-0 > div > div.h-16 {
       height: auto !important;
       min-height: 4rem !important;
       padding-top: 0.75rem !important;
       padding-bottom: 0.75rem !important;
     }
     
-    /* Make h1 slightly smaller but readable */
-    h1 {
+    /* Make h1 in page headers slightly smaller */
+    .z-40.sticky h1 {
       font-size: 1.125rem !important;
       line-height: 1.5rem !important;
     }
     
-    /* Hide dividers on mobile */
-    .sticky.top-0 .w-px {
+    /* Hide dividers in page headers only */
+    .z-40.sticky .w-px {
       display: none !important;
     }
     
-    /* Reduce gaps */
-    .sticky.top-0 .gap-4 {
+    /* Reduce gaps in page headers */
+    .z-40.sticky .gap-4 {
       gap: 0.5rem !important;
     }
     
-    /* Make badges slightly smaller with good centering */
-    .sticky.top-0 [class*="Badge"],
-    .sticky.top-0 [class*="badge"] {
+    /* Make badges in page headers better */
+    .z-40.sticky [class*="Badge"],
+    .z-40.sticky [class*="badge"] {
       font-size: 0.75rem !important;
       padding: 0.25rem 0.75rem !important;
       display: inline-flex !important;
@@ -174,63 +174,58 @@
       justify-content: center !important;
     }
     
-    /* Button sizing for mobile - wider to fit text */
-    .sticky.top-0 button {
+    /* Button sizing for page headers */
+    .z-40.sticky button {
       padding-left: 0.75rem !important;
       padding-right: 0.75rem !important;
       padding-top: 0.5rem !important;
       padding-bottom: 0.5rem !important;
       font-size: 0.75rem !important;
-      white-space: normal !important;
+      white-space: nowrap !important;
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
     }
-
-    /* Hide Level/XP stats in mobile */
-    .sticky.top-0 .text-sm.text-gray-600 {
-      display: none !important;
-    }
   }
   
-  /* Landscape mobile - Make buttons WIDER so text fits */
+  /* Landscape mobile - Make page header buttons WIDER */
   @media (min-width: 641px) and (max-width: 900px) and (orientation: landscape) {
-    .sticky.top-0 button {
-      padding-left: 1rem !important;
-      padding-right: 1rem !important;
-      min-width: 120px !important;
+    .z-40.sticky button {
+      padding-left: 1.25rem !important;
+      padding-right: 1.25rem !important;
+      min-width: 150px !important;
     }
   }
   
-  /* Portrait mobile - Allow wrapping to 2 rows */
+  /* Portrait mobile - Page headers wrap to 2 rows */
   @media (max-width: 640px) and (orientation: portrait) {
-    /* Allow the header container to wrap */
-    .sticky.top-0 > div > div.h-16 {
+    .z-40.sticky > div > div.h-16 {
       flex-wrap: wrap !important;
       gap: 0.5rem !important;
     }
     
-    /* Left side takes full width on first row */
-    .sticky.top-0 > div > div > div:first-child {
+    .z-40.sticky > div > div > div:first-child {
       width: 100% !important;
       justify-content: flex-start !important;
     }
     
-    /* Right side (buttons) takes full width on second row */
-    .sticky.top-0 > div > div > div:last-child {
+    .z-40.sticky > div > div > div:last-child {
       width: 100% !important;
       justify-content: space-between !important;
     }
     
-    /* Make buttons in portrait mode wider */
-    .sticky.top-0 button {
+    .z-40.sticky button {
       flex: 1 !important;
       min-width: 0 !important;
       max-width: 48% !important;
     }
+    
+    .z-40.sticky .text-sm.text-gray-600 {
+      display: none !important;
+    }
   }
   
-  /* Fix button and badge alignment globally */
+  /* Fix button alignment globally */
   button {
     display: inline-flex;
     align-items: center;
