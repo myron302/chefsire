@@ -136,11 +136,10 @@
   .secondary-tabs { white-space: nowrap; }
   .secondary-tabs > * + * { margin-left: 0.75rem; }
 
-  /* ========== PAGE-SPECIFIC HEADER FIXES (z-40 only, NOT main site header z-50) ========== */
+  /* ========== PAGE-SPECIFIC HEADER FIXES (z-40 only) ========== */
   
-  /* Target ONLY page-specific headers with z-40 */
+  /* Mobile base styles */
   @media (max-width: 768px) {
-    /* Allow page header to wrap - targets z-40 only */
     .z-40.sticky.top-0 > div > div.h-16 {
       height: auto !important;
       min-height: 4rem !important;
@@ -148,23 +147,19 @@
       padding-bottom: 0.75rem !important;
     }
     
-    /* Make h1 in page headers slightly smaller */
     .z-40.sticky h1 {
       font-size: 1.125rem !important;
       line-height: 1.5rem !important;
     }
     
-    /* Hide dividers in page headers only */
     .z-40.sticky .w-px {
       display: none !important;
     }
     
-    /* Reduce gaps in page headers */
     .z-40.sticky .gap-4 {
       gap: 0.5rem !important;
     }
     
-    /* Make badges in page headers better */
     .z-40.sticky [class*="Badge"],
     .z-40.sticky [class*="badge"] {
       font-size: 0.75rem !important;
@@ -174,7 +169,6 @@
       justify-content: center !important;
     }
     
-    /* Button sizing for page headers */
     .z-40.sticky button {
       padding-left: 0.75rem !important;
       padding-right: 0.75rem !important;
@@ -188,16 +182,62 @@
     }
   }
   
-  /* Landscape mobile - Make page header buttons WIDER */
+  /* Landscape mobile - SUPER COMPACT */
   @media (min-width: 641px) and (max-width: 900px) and (orientation: landscape) {
+    /* Reduce ALL gaps drastically */
+    .z-40.sticky .gap-4,
+    .z-40.sticky .gap-2 {
+      gap: 0.25rem !important;
+    }
+    
+    /* Make everything smaller */
+    .z-40.sticky h1 {
+      font-size: 0.875rem !important;
+      line-height: 1.25rem !important;
+    }
+    
+    /* Shrink icons */
+    .z-40.sticky svg {
+      width: 0.875rem !important;
+      height: 0.875rem !important;
+    }
+    
+    /* Compact badges */
+    .z-40.sticky [class*="Badge"],
+    .z-40.sticky [class*="badge"] {
+      font-size: 0.625rem !important;
+      padding: 0.125rem 0.5rem !important;
+      min-width: auto !important;
+    }
+    
+    /* Compact buttons - smaller padding, smaller font */
     .z-40.sticky button {
-      padding-left: 1.25rem !important;
-      padding-right: 1.25rem !important;
-      min-width: 150px !important;
+      padding-left: 0.5rem !important;
+      padding-right: 0.5rem !important;
+      padding-top: 0.375rem !important;
+      padding-bottom: 0.375rem !important;
+      font-size: 0.625rem !important;
+      min-width: auto !important;
+    }
+    
+    /* Make Back button just an icon or very short */
+    .z-40.sticky button svg + * {
+      margin-left: 0.25rem !important;
+    }
+    
+    /* Reduce container padding */
+    .z-40.sticky > div {
+      padding-left: 0.5rem !important;
+      padding-right: 0.5rem !important;
+    }
+    
+    /* Hide Level/XP text, show just numbers */
+    .z-40.sticky .text-sm.text-gray-600 span {
+      font-size: 0.625rem !important;
     }
   }
   
-  /* Portrait mobile - Page headers wrap to 2 rows */
+  /* Portrait mobile - 2 rows */
   @media (max-width: 640px) and (orientation: portrait) {
     .z-40.sticky > div > div.h-16 {
       flex-wrap: wrap !important;
@@ -211,28 +251,4 @@
     
     .z-40.sticky > div > div > div:last-child {
       width: 100% !important;
-      justify-content: space-between !important;
-    }
-    
-    .z-40.sticky button {
-      flex: 1 !important;
-      min-width: 0 !important;
-      max-width: 48% !important;
-    }
-    
-    .z-40.sticky .text-sm.text-gray-600 {
-      display: none !important;
-    }
-  }
-  
-  /* Fix button alignment globally */
-  button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-  
-  button svg {
-    flex-shrink: 0;
-  }
-}
+      justify-content: space
