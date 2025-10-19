@@ -5,6 +5,12 @@ import { Search, Filter, ShoppingCart, Star, MapPin, Package, Plus, TrendingUp, 
 import { Button as UIButton } from '@/components/ui/button';
 import { Card as UICard } from '@/components/ui/card';
 import { Input as UIInput } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { useUser } from '@/contexts/UserContext'; // Assume this exists for user data
+import { loadStripe } from '@stripe/stripe-js';
+
+// Initialize Stripe (do this in app entry or here for demo)
+const stripePromise = loadStripe('your-stripe-publishable-key'); // Replace with actual key
 
 // Custom store components for the builder
 const Container = ({ children }) => (
@@ -385,8 +391,29 @@ const Marketplace = () => {
 };
 
 const SellerDashboard = ({ onBack }) => {
+  const { user, updateUser } = useUser(); // Assume { subscription: 'free' | 'pro' | 'enterprise', productCount: number, trialEndDate: Date | null }
   const [activeTab, setActiveTab] = useState('products');
   const [showBuilder, setShowBuilder] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(user.subscription === 'free' || (user.trialEndDate && new Date(user.trialEndDate) < new Date()));
+
+  const handleUpgrade = async (tier, isTrial = false) => {
+    const stripe = await stripePromise;
+    const response = await fetch('/api/stripe/create-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier, userId: user.id, isTrial }),
+    });
+    if (isTrial) {
+      // Backend handles setting trialEndDate = now + 30 days
+      updateUser({ ...user, subscription: tier, trialEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) });
+    } else {
+      const { sessionId } = await response.json();
+      await stripe.redirectToCheckout({ sessionId });
+    }
+  };
+
+  const canAddProduct = user.subscription !== 'free' || user.productCount < 5;
+  const trialDaysLeft = user.trialEndDate ? Math.ceil((new Date(user.trialEndDate) - new Date()) / (24 * 60 * 60 * 1000)) : 0;
 
   if (showBuilder) {
     return <StoreBuilder onBack={() => setShowBuilder(false)} />;
@@ -395,6 +422,7 @@ const SellerDashboard = ({ onBack }) => {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <button
@@ -411,6 +439,24 @@ const SellerDashboard = ({ onBack }) => {
             Add Product
           </button>
         </div>
+
+        {/* Upgrade/Trial Modal */}
+        {showUpgradeModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg max-w-md">
+              <h3 className="text-xl font-bold mb-4">Start Your 30-Day Trial</h3>
+              <p className="mb-4">Try Pro features free for 30 days. No card required.</p>
+              <div className="flex gap-4">
+                <button onClick={() => handleUpgrade('pro', true)} className="bg-orange-500 text-white px-4 py-2 rounded">
+                  Start 30-Day Trial
+                </button>
+                <button onClick={() => setShowUpgradeModal(false)} className="border px-4 py-2 rounded">
+                  Later
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -539,6 +585,9 @@ const SellerDashboard = ({ onBack }) => {
             {activeTab === 'subscription' && (
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-6">Seller Subscription</h3>
+                {user.trialEndDate && (
+                  <p className="mb-4 text-green-600">Trial active - Ends in {trialDaysLeft} days</p>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="border border-gray-200 rounded-lg p-6">
                     <h4 className="text-lg font-semibold mb-2">Free</h4>
@@ -563,7 +612,7 @@ const SellerDashboard = ({ onBack }) => {
                       <li>• Advanced analytics</li>
                       <li>• Priority support</li>
                     </ul>
-                    <button className="w-full bg-orange-500 text-white py-2 rounded-lg hover:bg-orange-600">
+                    <button onClick={() => handleUpgrade('pro')} className="w-full bg-orange-500 text-white py-2 rounded-lg hover:bg-orange-600">
                       Upgrade Now
                     </button>
                   </div>
@@ -577,7 +626,7 @@ const SellerDashboard = ({ onBack }) => {
                       <li>• Custom storefront</li>
                       <li>• Dedicated support</li>
                     </ul>
-                    <button className="w-full border border-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-50">
+                    <button onClick={() => handleUpgrade('enterprise')} className="w-full border border-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-50">
                       Learn More
                     </button>
                   </div>
