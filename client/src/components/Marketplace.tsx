@@ -1,5 +1,98 @@
 import React, { useState, useEffect } from 'react';
+import { Editor, Frame, Element } from '@craftjs/core';
+import { RenderNode } from '@craftjs/utils';
 import { Search, Filter, ShoppingCart, Star, MapPin, Package, Plus, TrendingUp, Users, DollarSign } from 'lucide-react';
+import { Button as UIButton, Card as UICard, Input as UIInput } from '@/components/ui'; // Assuming these exist in your UI library
+
+// Custom store components for the builder
+const Container = ({ children }) => (
+  <div className="p-4 border border-gray-200 rounded">{children}</div>
+);
+
+const Text = ({ text }) => <p className="text-gray-800">{text}</p>;
+
+const Banner = () => (
+  <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white p-6 rounded-lg">
+    <h3>Welcome to My Culinary Store!</h3>
+  </div>
+);
+
+const ProductCard = ({ product }) => (
+  <UICard className="w-64">
+    <UICard.Header>{product.name}</UICard.Header>
+    <UICard.Content>${product.price}</UICard.Content>
+    <UIButton>Add to Cart</UIButton>
+  </UICard>
+);
+
+const resolver = { Container, Text, Banner, ProductCard };
+
+const customRenderNode = ({ render }) => (
+  <div className="relative group">
+    {render}
+    <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100">
+      <UIButton size="sm" variant="outline">Edit</UIButton>
+    </div>
+  </div>
+);
+
+const StoreBuilder = ({ onBack }) => {
+  const [layout, setLayout] = useState(null); // Load from backend on mount
+
+  const handleSave = () => {
+    // Implement save logic: serialize and send to API
+    console.log('Store layout saved');
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <button
+              onClick={onBack}
+              className="text-gray-600 hover:text-gray-900 mb-4 flex items-center"
+            >
+              ← Back to Dashboard
+            </button>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Store Builder</h1>
+            <p className="text-gray-600">Customize your storefront with drag-and-drop</p>
+          </div>
+          <UIButton onClick={handleSave} className="bg-orange-500 text-white hover:bg-orange-600">
+            Save & Publish
+          </UIButton>
+        </div>
+
+        <Editor resolver={resolver} onRender={customRenderNode}>
+          <div className="flex gap-4">
+            {/* Sidebar: Draggable components */}
+            <div className="w-64 bg-white p-4 rounded-lg shadow">
+              <h2 className="text-lg font-bold mb-4">Add Elements</h2>
+              <div className="space-y-2">
+                <Element is={Container} canvas><UIButton variant="ghost">Drag Container</UIButton></Element>
+                <Element is={Text} text="Drag Text" canvas><UIButton variant="ghost">Drag Text</UIButton></Element>
+                <Element is={Banner} canvas><UIButton variant="ghost">Drag Banner</UIButton></Element>
+                <Element is={ProductCard} product={{ name: 'Sample Product', price: 9.99 }} canvas>
+                  <UIButton variant="ghost">Drag Product Card</UIButton>
+                </Element>
+              </div>
+            </div>
+
+            {/* Canvas: Build area */}
+            <div className="flex-1 bg-white p-4 rounded-lg shadow">
+              <h2 className="text-lg font-bold mb-4">Your Store Preview</h2>
+              <Frame json={layout}>
+                <Element is={Container} canvas className="min-h-[500px] border border-dashed border-gray-300">
+                  <Text text="Drop elements here to build your store" />
+                </Element>
+              </Frame>
+            </div>
+          </div>
+        </Editor>
+      </div>
+    </div>
+  );
+};
 
 const Marketplace = () => {
   const [products, setProducts] = useState([]);
@@ -7,7 +100,7 @@ const Marketplace = () => {
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState('browse'); // browse, sell, analytics
+  const [view, setView] = useState('browse'); // browse, sell
 
   const categoryList = [
     { id: 'all', name: 'All Products', icon: Package },
@@ -291,11 +384,15 @@ const Marketplace = () => {
 
 const SellerDashboard = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState('products');
-  
+  const [showBuilder, setShowBuilder] = useState(false);
+
+  if (showBuilder) {
+    return <StoreBuilder onBack={() => setShowBuilder(false)} />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <button
@@ -376,6 +473,7 @@ const SellerDashboard = ({ onBack }) => {
                 { id: 'products', name: 'My Products', count: 12 },
                 { id: 'orders', name: 'Orders', count: 5 },
                 { id: 'analytics', name: 'Analytics', count: null },
+                { id: 'store-builder', name: 'Store Builder', count: null },
                 { id: 'subscription', name: 'Subscription', count: null }
               ].map((tab) => (
                 <button
@@ -421,6 +519,18 @@ const SellerDashboard = ({ onBack }) => {
                   <ShoppingCart className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                   <p>Orders from customers will appear here</p>
                 </div>
+              </div>
+            )}
+            
+            {activeTab === 'store-builder' && (
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-6">Build Your Store</h3>
+                <button 
+                  onClick={() => setShowBuilder(true)}
+                  className="bg-orange-500 text-white px-6 py-3 rounded-lg font-medium hover:bg-orange-600 transition-colors"
+                >
+                  Launch Store Builder
+                </button>
               </div>
             )}
             
