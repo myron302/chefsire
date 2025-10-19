@@ -139,7 +139,7 @@
   /* ========== MOBILE HEADER FIXES ========== */
   
   /* Mobile (all) - Keep header height reasonable, don't push down */
-  @media (max-width: 768px) {
+  @media (max-width: 900px) {
     /* Keep header at normal h-16 height in landscape, allow wrapping in portrait */
     .sticky.top-0.z-40 > div > div.h-16 {
       height: auto !important;
@@ -181,19 +181,24 @@
       padding-top: 0.5rem !important;
       padding-bottom: 0.5rem !important;
       font-size: 0.75rem !important;
-      white-space: nowrap !important;
+      white-space: normal !important;
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
+    }
+
+    /* Hide Level/XP stats in mobile */
+    .sticky.top-0 .text-sm.text-gray-600 {
+      display: none !important;
     }
   }
   
   /* Landscape mobile - Make buttons WIDER so text fits */
   @media (min-width: 641px) and (max-width: 900px) and (orientation: landscape) {
     .sticky.top-0 button {
-      padding-left: 1.25rem !important;
-      padding-right: 1.25rem !important;
-      min-width: 150px !important;
+      padding-left: 1rem !important;
+      padding-right: 1rem !important;
+      min-width: 120px !important;
     }
   }
   
@@ -222,11 +227,6 @@
       flex: 1 !important;
       min-width: 0 !important;
       max-width: 48% !important;
-    }
-    
-    /* Hide Level/XP stats in portrait */
-    .sticky.top-0 .text-sm.text-gray-600 {
-      display: none !important;
     }
   }
   
