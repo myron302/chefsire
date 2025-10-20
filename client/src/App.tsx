@@ -10,7 +10,7 @@ import Layout from "@/components/layout";
 import RequireAgeGate from "@/components/RequireAgeGate";
 
 import { DrinksProvider } from "@/contexts/DrinksContext";
-import { UserProvider, useUser } from "@/contexts/UserContext"; // ✅ ensure this exists
+import { UserProvider } from "@/contexts/UserContext";
 
 // Pages (existing)
 import Feed from "@/pages/feed";
@@ -21,21 +21,21 @@ import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
 import Profile from "@/pages/profile";
 import CreatePost from "@/pages/create-post";
 import Pantry from "@/components/Pantry";
-import Marketplace from "@/pages/marketplace/Marketplace"; // ✅ moved from components to pages
+import Marketplace from "@/components/Marketplace";              // ✅ Correct path
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import CateringMarketplace from "@/pages/catering";
 import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 
-// NEW: Signup and Login pages
+// Auth
 import Signup from "@/pages/signup";
 import Login from "@/pages/login";
 
-// ✅ Store Viewer (public)
-import StoreViewer from "@/pages/store/StoreViewer"; // ✅ points to pages/store
+// Store Viewer (public storefronts)
+import StoreViewer from "@/components/StoreViewer";
 
-// ✅ BiteMap page — IMPORTANT: point to the file, not the folder
+// BiteMap page
 import BiteMapPage from "@/pages/bitemap/index.tsx";
 
 // ========== BABY FOOD PAGES ==========
@@ -104,7 +104,7 @@ import SmallPetsPage from "@/pages/pet-food/small-pets";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole";
 
-// 🚀 NEW — Competitions pages
+// Competitions
 import CreateCompetitionPage from "@/pages/competitions/CreateCompetitionPage";
 import CompetitionRoomPage from "@/pages/competitions/CompetitionRoomPage";
 import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage";
@@ -112,37 +112,6 @@ import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage"
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
   React.useEffect(() => setLocation(to), [to, setLocation]);
-  return null;
-}
-
-/** 🔁 Resolve the current user's store handle, then redirect to /store/:handle */
-function RedirectToMyStore() {
-  const { user } = useUser();
-  const [, setLocation] = useLocation();
-
-  React.useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        if (!user?.id) return;
-        const res = await fetch(`/api/stores/by-user/${user.id}`);
-        if (!mounted) return;
-        if (res.ok) {
-          const data = await res.json();
-          const handle = data?.store?.handle;
-          setLocation(handle ? `/store/${handle}` : "/store"); // if no store yet, go to marketplace/store
-        } else {
-          setLocation("/store");
-        }
-      } catch {
-        setLocation("/store");
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [user?.id, setLocation]);
-
   return null;
 }
 
@@ -277,34 +246,29 @@ function AppRouter() {
           <Redirect to="/drinks/potent-potables/mocktails" />
         </Route>
 
-        {/* NEW: Signup and Login routes */}
+        {/* Auth */}
         <Route path="/signup" component={Signup} />
         <Route path="/login" component={Login} />
 
         <Route path="/profile/:userId?" component={Profile} />
-
-        {/* 🆕 Store routes */}
-        <Route path="/store/me" component={RedirectToMyStore} />
-        <Route path="/store/:handle" component={StoreViewer} />
-
-        {/* Home / Explore */}
+        <Route path="/store/:username" component={StoreViewer} />
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
         <Route path="/explore" component={ExplorePage} />
 
-        {/* ✅ BiteMap Route */}
+        {/* BiteMap */}
         <Route path="/bitemap" component={BiteMapPage} />
         <Route path="/restaurants">
           <Redirect to="/bitemap" />
         </Route>
 
-        {/* ✅ NEW — Competitions */}
+        {/* Competitions */}
         <Route path="/competitions/new" component={CreateCompetitionPage} />
         <Route path="/competitions/library" component={CompetitionLibraryPage} />
         <Route path="/competitions/:id" component={CompetitionRoomPage} />
         <Route path="/competitions" component={CompetitionLibraryPage} />
 
-        {/* ---------- Recipes ---------- */}
+        {/* Recipes */}
         <Route path="/recipes/baby-food/:rest*">
           {() => <RecipesSection />}
         </Route>
@@ -317,15 +281,18 @@ function AppRouter() {
           <Redirect to="/recipes/filters" />
         </Route>
 
-        {/* ---------- Misc ---------- */}
+        {/* Misc */}
         <Route path="/create" component={CreatePost} />
         <Route path="/pantry">
           <ErrorBoundary>
             <Pantry />
           </ErrorBoundary>
         </Route>
-        <Route path="/store" component={Marketplace} /> {/* marketplace home */}
+
+        {/* ✅ Marketplace routes */}
+        <Route path="/store" component={Marketplace} />
         <Route path="/marketplace" component={Marketplace} />
+
         <Route path="/catering" component={CateringMarketplace} />
         <Route path="/catering/wedding-planning" component={WeddingPlanning} />
         <Route path="/potent-potables">
@@ -334,7 +301,7 @@ function AppRouter() {
         <Route path="/nutrition" component={NutritionMealPlanner} />
         <Route path="/substitutions" component={SubstitutionsPage} />
 
-        {/* ---------- Drinks branches ---------- */}
+        {/* Drinks branches */}
         <Route path="/drinks/smoothies/:rest*">
           {() => <DrinksSection />}
         </Route>
@@ -352,13 +319,13 @@ function AppRouter() {
         </Route>
         <Route path="/drinks" component={DrinksSection} />
 
-        {/* ---------- Pet Food branches ---------- */}
+        {/* Pet Food branches */}
         <Route path="/pet-food/:rest*">
           {() => <PetFoodSection />}
         </Route>
         <Route path="/pet-food" component={PetFoodSection} />
 
-        {/* ---------- 404 fallback ---------- */}
+        {/* 404 fallback */}
         <Route path="/saved" component={NotFound} />
         <Route path="/following" component={NotFound} />
         <Route path="/settings" component={NotFound} />
