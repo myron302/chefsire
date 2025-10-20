@@ -32,6 +32,9 @@ import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 import Signup from "@/pages/signup";
 import Login from "@/pages/login";
 
+// NEW: Store Viewer
+import StoreViewer from "@/components/StoreViewer";
+
 // ✅ BiteMap page — IMPORTANT: point to the file, not the folder
 import BiteMapPage from "@/pages/bitemap/index.tsx";
 
@@ -248,6 +251,7 @@ function AppRouter() {
         <Route path="/login" component={Login} />
 
         <Route path="/profile/:userId?" component={Profile} />
+        <Route path="/store/:username" component={StoreViewer} /> {/* NEW: Store Viewer route */}
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
         <Route path="/explore" component={ExplorePage} />
