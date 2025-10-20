@@ -18,6 +18,9 @@ import { googleRouter } from "./google";
 // Competitions
 import competitionsRouter from "./competitions";
 
+// 🆕 Stores (user storefronts)
+import storesRouter from "./stores";
+
 const r = Router();
 
 /**
@@ -59,6 +62,9 @@ r.use("/google", googleRouter);
 // Competitions
 r.use("/competitions", competitionsRouter);
 
+// 🆕 Stores (public viewer + owner writes)
+r.use("/stores", storesRouter);
+
 // Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {
   r.get("/_routes", (_req, res) => {
@@ -78,6 +84,7 @@ if (process.env.NODE_ENV !== "production") {
         "/export/*",
         "/google/*",        // <-- BiteMap uses this
         "/competitions/*",
+        "/stores/*",        // 🆕 Storefront API
       ],
     });
   });
