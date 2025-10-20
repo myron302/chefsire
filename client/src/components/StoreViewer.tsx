@@ -1,142 +1,110 @@
-// src/components/StoreViewer.tsx
-import React, { useState, useEffect } from 'react';
-import { Frame } from '@craftjs/core';
-import { useLocation } from 'wouter';
-import { useUser } from '@/contexts/UserContext';
-import { ShoppingCart, Package } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Container, Text, Banner, ProductCard } from './Marketplace'; // Reuse from Marketplace
+// client/src/pages/store/StoreViewer.tsx
+import * as React from "react";
+import { useEffect, useState } from "react";
+import { useRoute } from "wouter";
+import { Editor, Frame, Element } from "@craftjs/core";
+import { Button as UIButton } from "@/components/ui/button";
+import { Card as UICard } from "@/components/ui/card";
+import { Package } from "lucide-react";
 
+// --- Public read-only resolver (same parts as builder) ---
+const Container = ({ children }) => (
+  <div className="p-4 border border-gray-200 rounded">{children}</div>
+);
+const Text = ({ text }) => <p className="text-gray-800">{text}</p>;
+const Banner = () => (
+  <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white p-6 rounded-lg">
+    <h3>Welcome to My Culinary Store!</h3>
+  </div>
+);
+const ProductCard = ({ product }) => (
+  <UICard className="w-64">
+    <div className="p-4">
+      <h4 className="font-semibold">{product?.name ?? "Sample Product"}</h4>
+      <p className="text-gray-600">${product?.price ?? 9.99}</p>
+      <UIButton className="mt-3">Add to Cart</UIButton>
+    </div>
+  </UICard>
+);
 const resolver = { Container, Text, Banner, ProductCard };
 
+type Store = {
+  id: string;
+  userId: string;
+  handle: string;
+  name: string;
+  bio: string;
+  theme: Record<string, unknown>;
+  layout: unknown | null;
+  published: boolean;
+};
+
 export default function StoreViewer() {
-  const [, params] = useLocation();
-  const storeUsername = params?.username || 'demo';
-  const { user } = useUser();
-  const [layout, setLayout] = useState(null);
-  const [sellerInfo, setSellerInfo] = useState(null);
+  const [, params] = useRoute("/store/:handle");
+  const handle = params?.handle ?? "";
+  const [store, setStore] = useState<Store | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const fetchStore = async () => {
+    let mounted = true;
+    (async () => {
       try {
-        const [layoutRes, sellerRes] = await Promise.all([
-          fetch(`/api/store/${storeUsername}/layout`),
-          fetch(`/api/store/${storeUsername}/seller`),
-        ]);
-
-        if (!layoutRes.ok) throw new Error('Store layout not found');
-        if (!sellerRes.ok) throw new Error('Seller info not found');
-
-        const layoutData = await layoutRes.json();
-        const sellerData = await sellerRes.json();
-
-        setLayout(layoutData.layout);
-        setSellerInfo(sellerData);
-      } catch (err) {
-        setError(err.message || 'Error loading store');
+        const res = await fetch(`/api/stores/${handle}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (mounted) setStore(data.store ?? null);
+        } else {
+          if (mounted) setStore(null);
+        }
+      } catch (e) {
+        console.error("load store", e);
+        if (mounted) setStore(null);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
+    })();
+    return () => {
+      mounted = false;
     };
-
-    if (storeUsername) fetchStore();
-  }, [storeUsername]);
+  }, [handle]);
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading {storeUsername}'s store...</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center text-gray-600">
+        Loading store…
       </div>
     );
   }
 
-  if (error) {
+  if (!store || (!store.published && !store.layout)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">{error}</h3>
-          <p className="text-gray-600 mb-4">The store may not exist or is private.</p>
-          <Button onClick={() => window.history.back()} className="bg-orange-500 text-white hover:bg-orange-600">
-            Go Back
-          </Button>
-        </div>
+      <div className="min-h-screen flex flex-col items-center justify-center text-gray-600 p-6">
+        <Package className="w-12 h-12 mb-4 text-gray-400" />
+        <p>This store is not available.</p>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Store Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              {sellerInfo?.avatar && (
-                <img 
-                  src={sellerInfo.avatar} 
-                  alt={storeUsername} 
-                  className="w-12 h-12 rounded-full" 
-                />
-              )}
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">{storeUsername}'s Culinary Store</h1>
-                {sellerInfo?.bio && <p className="text-gray-600">{sellerInfo.bio}</p>}
-                {sellerInfo?.subscription && (
-                  <Badge variant="secondary" className="mt-1">
-                    {sellerInfo.subscription} Seller
-                  </Badge>
-                )}
-              </div>
-            </div>
-            <div className="flex space-x-2">
-              <Button className="bg-orange-500 text-white hover:bg-orange-600 flex items-center">
-                <ShoppingCart className="w-4 h-4 mr-2" />
-                View Cart
-              </Button>
-              {user?.username === storeUsername && (
-                <Button variant="outline" onClick={() => {/* Navigate to dashboard */}}>
-                  Edit Store
-                </Button>
-              )}
-            </div>
-          </div>
+      <header className="bg-white border-b">
+        <div className="max-w-6xl mx-auto px-4 py-6">
+          <h1 className="text-2xl font-bold text-gray-900">{store.name}</h1>
+          {store.bio && <p className="text-gray-600 mt-1">{store.bio}</p>}
         </div>
       </header>
 
-      {/* Render the saved layout */}
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {layout ? (
-          <Frame resolver={resolver} json={layout}>
-            <Container className="min-h-[600px] border border-dashed border-gray-300 rounded-lg flex items-center justify-center">
-              <Text text={`${storeUsername} hasn't built their store yet. Check back soon!`} />
-            </Container>
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        {/* Read-only CraftJS render */}
+        <Editor enabled={false} resolver={resolver}>
+          <Frame json={store.layout}>
+            {/* Fallback if no layout */}
+            <Element is={Container} canvas className="min-h-[400px] border border-dashed border-gray-300 bg-white">
+              <Text text="Store is empty. Check back soon!" />
+            </Element>
           </Frame>
-        ) : (
-          <div className="text-center py-12">
-            <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">No products yet—{storeUsername} is just getting started.</p>
-          </div>
-        )}
-      </div>
-
-      {/* Store Footer */}
-      <footer className="bg-white border-t mt-8">
-        <div className="max-w-7xl mx-auto px-4 py-6 text-center">
-          <p className="text-gray-600 mb-2">Secure payments via Stripe. 30-day returns on most items.</p>
-          <div className="flex justify-center space-x-4 text-sm text-gray-500">
-            <a href="/privacy" className="hover:underline">Privacy</a>
-            <a href="/terms" className="hover:underline">Terms</a>
-            <a href="/contact" className="hover:underline">Contact</a>
-          </div>
-        </div>
-      </footer>
+        </Editor>
+      </main>
     </div>
   );
 }
