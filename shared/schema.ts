@@ -191,6 +191,41 @@ export const orders = pgTable(
   })
 );
 
+/* ===== STORES (user storefronts) ===== */
+export const stores = pgTable(
+  "stores",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    /**
+     * Public handle for the store URL: /store/:username
+     * Keep it lowercase + unique so each user has 1 public storefront.
+     */
+    username: text("username").notNull(),
+    name: text("name").notNull(),
+
+    /** simple theme flag for now; expand as needed */
+    theme: text("theme").default("light"),
+
+    /** Craft.js (or any) layout JSON */
+    layout: jsonb("layout").$type<Record<string, unknown>>(),
+
+    /** publish gate: only public when true */
+    published: boolean("published").default(false),
+
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => ({
+    // 1 store per user (enforced)
+    userUniqueIdx: uniqueIndex("stores_user_unique_idx").on(t.userId),
+    // public handle must be unique
+    usernameUniqueIdx: uniqueIndex("stores_username_unique_idx").on(t.username),
+    // helpful for queries
+    publishedIdx: index("stores_published_idx").on(t.published),
+  })
+);
+
 /* ===== SUBSCRIPTION ===== */
 export const subscriptionHistory = pgTable("subscription_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -500,6 +535,13 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
   createdAt: true,
 });
 
+/** 🆕 Stores insert schema */
+export const insertStoreSchema = createInsertSchema(stores).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertSubscriptionHistorySchema = createInsertSchema(subscriptionHistory).omit({
   id: true,
   createdAt: true,
@@ -577,6 +619,8 @@ export type Product = typeof products.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
+export type Store = typeof stores.$inferSelect;                 /** 🆕 */
+export type InsertStore = z.infer<typeof insertStoreSchema>;     /** 🆕 */
 export type SubscriptionHistory = typeof subscriptionHistory.$inferSelect;
 export type InsertSubscriptionHistory = z.infer<typeof insertSubscriptionHistorySchema>;
 export type MealPlan = typeof mealPlans.$inferSelect;
