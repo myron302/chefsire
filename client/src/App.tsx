@@ -10,7 +10,7 @@ import Layout from "@/components/layout";
 import RequireAgeGate from "@/components/RequireAgeGate";
 
 import { DrinksProvider } from "@/contexts/DrinksContext";
-import { UserProvider } from "@/contexts/UserContext"; // NEW: Import UserProvider
+import { UserProvider, useUser } from "@/contexts/UserContext"; // ✅ ensure this exists
 
 // Pages (existing)
 import Feed from "@/pages/feed";
@@ -21,7 +21,7 @@ import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
 import Profile from "@/pages/profile";
 import CreatePost from "@/pages/create-post";
 import Pantry from "@/components/Pantry";
-import Marketplace from "@/components/Marketplace";
+import Marketplace from "@/pages/marketplace/Marketplace"; // ✅ moved from components to pages
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import CateringMarketplace from "@/pages/catering";
 import WeddingPlanning from "@/pages/wedding-planning";
@@ -32,8 +32,8 @@ import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 import Signup from "@/pages/signup";
 import Login from "@/pages/login";
 
-// NEW: Store Viewer
-import StoreViewer from "@/components/StoreViewer";
+// ✅ Store Viewer (public)
+import StoreViewer from "@/pages/store/StoreViewer"; // ✅ points to pages/store
 
 // ✅ BiteMap page — IMPORTANT: point to the file, not the folder
 import BiteMapPage from "@/pages/bitemap/index.tsx";
@@ -112,6 +112,37 @@ import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage"
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
   React.useEffect(() => setLocation(to), [to, setLocation]);
+  return null;
+}
+
+/** 🔁 Resolve the current user's store handle, then redirect to /store/:handle */
+function RedirectToMyStore() {
+  const { user } = useUser();
+  const [, setLocation] = useLocation();
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        if (!user?.id) return;
+        const res = await fetch(`/api/stores/by-user/${user.id}`);
+        if (!mounted) return;
+        if (res.ok) {
+          const data = await res.json();
+          const handle = data?.store?.handle;
+          setLocation(handle ? `/store/${handle}` : "/store"); // if no store yet, go to marketplace/store
+        } else {
+          setLocation("/store");
+        }
+      } catch {
+        setLocation("/store");
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id, setLocation]);
+
   return null;
 }
 
@@ -251,7 +282,12 @@ function AppRouter() {
         <Route path="/login" component={Login} />
 
         <Route path="/profile/:userId?" component={Profile} />
-        <Route path="/store/:username" component={StoreViewer} /> {/* NEW: Store Viewer route */}
+
+        {/* 🆕 Store routes */}
+        <Route path="/store/me" component={RedirectToMyStore} />
+        <Route path="/store/:handle" component={StoreViewer} />
+
+        {/* Home / Explore */}
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
         <Route path="/explore" component={ExplorePage} />
@@ -288,7 +324,7 @@ function AppRouter() {
             <Pantry />
           </ErrorBoundary>
         </Route>
-        <Route path="/store" component={Marketplace} />
+        <Route path="/store" component={Marketplace} /> {/* marketplace home */}
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/catering" component={CateringMarketplace} />
         <Route path="/catering/wedding-planning" component={WeddingPlanning} />
@@ -335,7 +371,7 @@ function AppRouter() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <UserProvider> {/* NEW: Wrap with UserProvider */}
+      <UserProvider>
         <DrinksProvider>
           <TooltipProvider>
             <Toaster />
