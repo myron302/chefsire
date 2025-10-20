@@ -10,6 +10,7 @@ import Layout from "@/components/layout";
 import RequireAgeGate from "@/components/RequireAgeGate";
 
 import { DrinksProvider } from "@/contexts/DrinksContext";
+import { UserProvider } from "@/contexts/UserContext"; // NEW: Import UserProvider
 
 // Pages (existing)
 import Feed from "@/pages/feed";
@@ -330,12 +331,14 @@ function AppRouter() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <DrinksProvider>
-        <TooltipProvider>
-          <Toaster />
-          <AppRouter />
-        </TooltipProvider>
-      </DrinksProvider>
+      <UserProvider> {/* NEW: Wrap with UserProvider */}
+        <DrinksProvider>
+          <TooltipProvider>
+            <Toaster />
+            <AppRouter />
+          </TooltipProvider>
+        </DrinksProvider>
+      </UserProvider>
     </QueryClientProvider>
   );
 }
