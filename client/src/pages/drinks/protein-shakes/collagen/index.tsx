@@ -392,7 +392,6 @@ const collagenTypes = [
   }
 ];
 
-// Updated collagen sources with absorption and leucine info
 const collagenSources = [
   {
     id: 'marine',
@@ -402,8 +401,6 @@ const collagenSources = [
     color: 'bg-blue-500',
     bioavailability: '98%',
     absorption: 'Very Fast',
-    absorptionTime: '10-20 minutes',
-    leucineContent: 'High',
     benefits: ['Premium Absorption', 'Sustainable', 'Type I Rich', 'Clean Source'],
     bestFor: 'Skin & Beauty'
   },
@@ -415,8 +412,6 @@ const collagenSources = [
     color: 'bg-green-500',
     bioavailability: '95%',
     absorption: 'Fast',
-    absorptionTime: '15-30 minutes',
-    leucineContent: 'Medium-High',
     benefits: ['Complete Amino Profile', 'Cost Effective', 'Versatile', 'Well Researched'],
     bestFor: 'General Health'
   },
@@ -428,8 +423,6 @@ const collagenSources = [
     color: 'bg-amber-500',
     bioavailability: '87%',
     absorption: 'Moderate',
-    absorptionTime: '30-45 minutes',
-    leucineContent: 'Medium',
     benefits: ['Joint Specific', 'Type II Rich', 'Cartilage Support', 'Mobility'],
     bestFor: 'Joint Health'
   },
@@ -441,8 +434,6 @@ const collagenSources = [
     color: 'bg-emerald-500',
     bioavailability: '78%',
     absorption: 'Moderate',
-    absorptionTime: '45-60 minutes',
-    leucineContent: 'High (Added)',
     benefits: ['Vegan Friendly', 'Precursor Support', 'Sustainable', 'Ethical'],
     bestFor: 'Vegan Lifestyle'
   }
@@ -952,40 +943,34 @@ export default function CollagenProteinPage() {
                     </CardHeader>
 
                     <CardContent>
-                      {/* Updated Quick stats with absorption and leucine */}
+                      {/* Quick stats */}
                       <div className="grid grid-cols-4 gap-2 text-center mb-4">
                         <div>
                           <div className="font-bold text-pink-600">{shake.nutrition.collagen}g</div>
                           <div className="text-xs text-gray-500">Collagen</div>
                         </div>
                         <div>
-                          <div className="font-bold text-blue-600">{shake.bioavailability}%</div>
+                          <div className="font-bold text-blue-600">{shake.nutrition.calories}</div>
+                          <div className="text-xs text-gray-500">Calories</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-purple-600">{shake.bioavailability}%</div>
                           <div className="text-xs text-gray-500">Bio</div>
                         </div>
                         <div>
-                          <div className="font-bold text-purple-600">{shake.leucineContent}g</div>
-                          <div className="text-xs text-gray-500">Leucine</div>
-                        </div>
-                        <div>
-                          <div className="font-bold text-amber-600">{shake.absorptionTime}</div>
-                          <div className="text-xs text-gray-500">Absorption</div>
+                          <div className="font-bold text-amber-600">${shake.price}</div>
+                          <div className="text-xs text-gray-500">Price</div>
                         </div>
                       </div>
 
-                      {/* Updated Rating + Difficulty + Best Time row */}
+                      {/* Rating + Difficulty row */}
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-1">
                           <Star className="h-4 w-4 text-yellow-400 fill-current" />
                           <span className="font-medium">{shake.rating}</span>
                           <span className="text-gray-500 text-sm">({shake.reviews})</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
-                          <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <Clock className="h-3 w-3" />
-                            {shake.bestTime}
-                          </div>
-                        </div>
+                        <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
                       </div>
 
                       {/* RecipeKit component - handles both preview and modal */}
@@ -1006,6 +991,30 @@ export default function CollagenProteinPage() {
                           />
                         </div>
                       )}
+
+                      {/* Absorption & Leucine Info Section Below Recipe Card */}
+                      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 mb-4">
+                        <CardContent className="p-4">
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <Timer className="h-4 w-4 text-blue-600" />
+                                <span className="font-semibold">Absorption</span>
+                              </div>
+                              <div className="text-blue-700">{shake.absorptionTime}</div>
+                              <div className="text-xs text-gray-600 mt-1">{shake.absorption} absorption</div>
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <Zap className="h-4 w-4 text-purple-600" />
+                                <span className="font-semibold">Leucine</span>
+                              </div>
+                              <div className="text-purple-700">{shake.leucineContent}g per serving</div>
+                              <div className="text-xs text-gray-600 mt-1">Essential amino acid</div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
 
                       {/* Tags (certifications) */}
                       <div className="flex flex-wrap gap-1 mb-4">
@@ -1136,11 +1145,6 @@ export default function CollagenProteinPage() {
                         </div>
                       </div>
                       
-                      <div className="bg-purple-50 p-2 rounded text-center">
-                        <div className="text-sm font-medium text-gray-700">Absorption Time</div>
-                        <div className="text-sm font-semibold text-purple-600">{source.absorptionTime}</div>
-                      </div>
-                      
                       <div>
                         <h4 className="font-semibold text-sm mb-2">Benefits:</h4>
                         <div className="flex flex-wrap gap-1">
@@ -1269,40 +1273,34 @@ export default function CollagenProteinPage() {
                 </CardHeader>
                 
                 <CardContent>
-                  {/* Updated Quick stats with absorption and leucine */}
+                  {/* Quick stats */}
                   <div className="grid grid-cols-4 gap-2 text-center mb-4">
                     <div>
                       <div className="font-bold text-pink-600">{shake.nutrition.collagen}g</div>
                       <div className="text-xs text-gray-500">Collagen</div>
                     </div>
                     <div>
-                      <div className="font-bold text-blue-600">{shake.bioavailability}%</div>
+                      <div className="font-bold text-blue-600">{shake.nutrition.calories}</div>
+                      <div className="text-xs text-gray-500">Calories</div>
+                    </div>
+                    <div>
+                      <div className="font-bold text-purple-600">{shake.bioavailability}%</div>
                       <div className="text-xs text-gray-500">Bio</div>
                     </div>
                     <div>
-                      <div className="font-bold text-purple-600">{shake.leucineContent}g</div>
-                      <div className="text-xs text-gray-500">Leucine</div>
-                    </div>
-                    <div>
-                      <div className="font-bold text-amber-600">{shake.absorptionTime}</div>
-                      <div className="text-xs text-gray-500">Absorption</div>
+                      <div className="font-bold text-amber-600">${shake.price}</div>
+                      <div className="text-xs text-gray-500">Price</div>
                     </div>
                   </div>
 
-                  {/* Updated Rating + Difficulty + Best Time row */}
+                  {/* Rating + Difficulty row */}
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-1">
                       <Star className="h-4 w-4 text-yellow-400 fill-current" />
                       <span className="font-medium">{shake.rating}</span>
                       <span className="text-gray-500 text-sm">({shake.reviews})</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
-                      <div className="flex items-center gap-1 text-xs text-gray-500">
-                        <Clock className="h-3 w-3" />
-                        {shake.bestTime}
-                      </div>
-                    </div>
+                    <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
                   </div>
 
                   {/* RecipeKit component */}
@@ -1323,6 +1321,30 @@ export default function CollagenProteinPage() {
                       />
                     </div>
                   )}
+
+                  {/* Absorption & Leucine Info Section Below Recipe Card */}
+                  <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 mb-4">
+                    <CardContent className="p-4">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <Timer className="h-4 w-4 text-blue-600" />
+                            <span className="font-semibold">Absorption</span>
+                          </div>
+                          <div className="text-blue-700">{shake.absorptionTime}</div>
+                          <div className="text-xs text-gray-600 mt-1">{shake.absorption} absorption</div>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <Zap className="h-4 w-4 text-purple-600" />
+                            <span className="font-semibold">Leucine</span>
+                          </div>
+                          <div className="text-purple-700">{shake.leucineContent}g per serving</div>
+                          <div className="text-xs text-gray-600 mt-1">Essential amino acid</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
 
                   {/* Tags (certifications) */}
                   <div className="flex flex-wrap gap-1 mb-4">
