@@ -7,8 +7,42 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import PostCard from "@/components/post-card";
-import { Image, ChefHat, Sparkles, Trophy, Star, Users, Heart, Bookmark, MapPin, Link as LinkIcon, Calendar, GlassWater, Flame, Award, TrendingUp, Apple, Timer, Crown, Target, Zap, Plus } from "lucide-react";
+import {
+  Image,
+  ChefHat,
+  Sparkles,
+  Trophy,
+  Star,
+  Users,
+  Heart,
+  Bookmark,
+  MapPin,
+  Link as LinkIcon,
+  Calendar,
+  GlassWater,
+  Flame,
+  Award,
+  TrendingUp,
+  Apple,
+  Timer,
+  Crown,
+  Target,
+  Zap,
+  Plus,
+} from "lucide-react";
 import type { User, PostWithUser } from "@shared/schema";
+
+/** Store type for the Store tab */
+type Store = {
+  id: string;
+  userId: string;
+  handle: string;
+  name: string;
+  bio: string;
+  layout: unknown | null;
+  published: boolean;
+  updatedAt?: string;
+};
 
 export default function Profile() {
   const { userId } = useParams<{ userId?: string }>();
@@ -49,12 +83,12 @@ export default function Profile() {
             level: 5,
             totalPoints: 2350,
             currentStreak: 4,
-            badges: ['early-bird', 'smoothie-master', 'health-guru'],
+            badges: ["early-bird", "smoothie-master", "health-guru"],
             smoothiesMade: 18,
             proteinShakesMade: 12,
             detoxesMade: 9,
-            cocktailsMade: 8
-          }
+            cocktailsMade: 8,
+          },
         };
       }
       return response.json();
@@ -80,38 +114,48 @@ export default function Profile() {
       const response = await fetch(`/api/competitions/user/${profileUserId}`);
       if (!response.ok) {
         // Mock data if endpoint doesn't exist yet
-        return { 
+        return {
           competitions: [
             {
-              id: '1',
-              title: 'Midnight Pasta Showdown',
-              themeName: 'Italian Night',
-              status: 'completed',
+              id: "1",
+              title: "Midnight Pasta Showdown",
+              themeName: "Italian Night",
+              status: "completed",
               placement: 1,
               participants: 6,
-              createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+              createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
             },
             {
-              id: '2',
-              title: 'Taco Fiesta Challenge',
-              themeName: 'Taco Tuesday',
-              status: 'judging',
+              id: "2",
+              title: "Taco Fiesta Challenge",
+              themeName: "Taco Tuesday",
+              status: "judging",
               placement: 2,
               participants: 8,
-              createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
+              createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
             },
             {
-              id: '3',
-              title: 'Quick 30-Min Sprint',
-              themeName: 'Quick 30-Min',
-              status: 'live',
+              id: "3",
+              title: "Quick 30-Min Sprint",
+              themeName: "Quick 30-Min",
+              status: "live",
               participants: 5,
-              createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
-            }
-          ]
+              createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+            },
+          ],
         };
       }
       return response.json();
+    },
+  });
+
+  // ✅ Fetch this user's Storefront
+  const { data: storeData, isLoading: storeLoading } = useQuery<{ store: Store | null }>({
+    queryKey: ["/api/stores/by-user", profileUserId],
+    queryFn: async () => {
+      const res = await fetch(`/api/stores/by-user/${profileUserId}`);
+      if (!res.ok) return { store: null };
+      return res.json();
     },
   });
 
@@ -145,8 +189,8 @@ export default function Profile() {
     );
   }
 
-  const userPosts = posts?.filter(post => !post.isRecipe) || [];
-  const userRecipes = posts?.filter(post => post.isRecipe) || [];
+  const userPosts = posts?.filter((post) => !post.isRecipe) || [];
+  const userRecipes = posts?.filter((post) => post.isRecipe) || [];
   const customDrinks = drinksData?.drinks || [];
   const savedDrinks = savedDrinksData?.drinks || [];
   const drinkStats = statsData?.stats;
@@ -154,10 +198,10 @@ export default function Profile() {
 
   const getStatusBadge = (status: string) => {
     const styles = {
-      live: 'bg-gradient-to-r from-green-500 to-emerald-500 text-white animate-pulse',
-      judging: 'bg-gradient-to-r from-amber-500 to-orange-500 text-white',
-      completed: 'bg-gradient-to-r from-blue-500 to-purple-500 text-white',
-      upcoming: 'bg-gradient-to-r from-gray-500 to-slate-500 text-white',
+      live: "bg-gradient-to-r from-green-500 to-emerald-500 text-white animate-pulse",
+      judging: "bg-gradient-to-r from-amber-500 to-orange-500 text-white",
+      completed: "bg-gradient-to-r from-blue-500 to-purple-500 text-white",
+      upcoming: "bg-gradient-to-r from-gray-500 to-slate-500 text-white",
     };
     return styles[status as keyof typeof styles] || styles.upcoming;
   };
@@ -179,11 +223,17 @@ export default function Profile() {
               </h1>
               <p className="text-muted-foreground">@{user.username}</p>
             </div>
-            
+
             {isOwnProfile ? (
-              <Button variant="outline" data-testid="button-edit-profile">
-                Edit Profile
-              </Button>
+              <div className="flex flex-col items-end gap-2">
+                <Button variant="outline" data-testid="button-edit-profile">
+                  Edit Profile
+                </Button>
+                {/* Optional quick link to the user's store */}
+                <Button variant="ghost" className="mt-0" onClick={() => (window.location.href = "/store/me")}>
+                  View My Store
+                </Button>
+              </div>
             ) : (
               <Button className="bg-primary text-primary-foreground" data-testid={`button-follow-user-${user.id}`}>
                 Follow
@@ -213,16 +263,12 @@ export default function Profile() {
             </div>
             {drinkStats && (
               <div className="text-center">
-                <span className="font-semibold block">
-                  {drinkStats.totalDrinksMade}
-                </span>
+                <span className="font-semibold block">{drinkStats.totalDrinksMade}</span>
                 <span className="text-muted-foreground">Drinks</span>
               </div>
             )}
             <div className="text-center">
-              <span className="font-semibold block">
-                {userCompetitions.length}
-              </span>
+              <span className="font-semibold block">{userCompetitions.length}</span>
               <span className="text-muted-foreground">Cookoffs</span>
             </div>
           </div>
@@ -242,9 +288,7 @@ export default function Profile() {
                 Chef
               </Badge>
             )}
-            {user.specialty && (
-              <Badge variant="outline">{user.specialty}</Badge>
-            )}
+            {user.specialty && <Badge variant="outline">{user.specialty}</Badge>}
             {drinkStats && drinkStats.level > 1 && (
               <Badge variant="secondary" className="bg-purple-100 text-purple-800">
                 <Sparkles className="w-3 h-3 mr-1" />
@@ -257,7 +301,8 @@ export default function Profile() {
 
       {/* Content Tabs */}
       <Tabs defaultValue="posts" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        {/* 👇 grid-cols bumped from 5 → 6 to fit the Store tab */}
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="posts" className="flex items-center space-x-2" data-testid="tab-posts">
             <Image className="h-4 w-4" />
             <span className="hidden sm:inline">Posts</span>
@@ -278,8 +323,14 @@ export default function Profile() {
             <Star className="h-4 w-4" />
             <span className="hidden sm:inline">Saved</span>
           </TabsTrigger>
+          {/* 🆕 Store tab trigger */}
+          <TabsTrigger value="store" className="flex items-center space-x-2" data-testid="tab-store">
+            <LinkIcon className="h-4 w-4" />
+            <span className="hidden sm:inline">Store</span>
+          </TabsTrigger>
         </TabsList>
 
+        {/* POSTS TAB */}
         <TabsContent value="posts" className="mt-6">
           {postsLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -325,6 +376,7 @@ export default function Profile() {
           )}
         </TabsContent>
 
+        {/* RECIPES TAB */}
         <TabsContent value="recipes" className="mt-6">
           {postsLoading ? (
             <div className="space-y-8">
@@ -346,11 +398,7 @@ export default function Profile() {
                 <Card key={post.id} className="overflow-hidden">
                   <div className="relative">
                     {post.imageUrl ? (
-                      <img
-                        src={post.imageUrl}
-                        alt={post.caption || "Recipe"}
-                        className="w-full h-64 object-cover"
-                      />
+                      <img src={post.imageUrl} alt={post.caption || "Recipe"} className="w-full h-64 object-cover" />
                     ) : (
                       <div className="w-full h-64 bg-gray-200 flex items-center justify-center">
                         <Heart className="w-8 h-8 text-gray-400" />
@@ -380,6 +428,7 @@ export default function Profile() {
           )}
         </TabsContent>
 
+        {/* DRINKS TAB */}
         <TabsContent value="drinks" className="mt-6">
           {drinksLoading ? (
             <div className="space-y-6">
@@ -404,47 +453,29 @@ export default function Profile() {
                     </h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="text-center">
-                        <div className="text-2xl font-bold text-purple-600">
-                          {drinkStats.totalDrinksMade}
-                        </div>
+                        <div className="text-2xl font-bold text-purple-600">{drinkStats.totalDrinksMade}</div>
                         <div className="text-sm text-gray-600">Drinks Made</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-2xl font-bold text-orange-600">
-                          Level {drinkStats.level}
-                        </div>
+                        <div className="text-2xl font-bold text-orange-600">Level {drinkStats.level}</div>
                         <div className="text-sm text-gray-600 font-semibold">{drinkStats.totalPoints} XP</div>
-                        <Progress 
-                          value={(drinkStats.totalPoints % 1000) / 10} 
-                          className="mt-2 h-2" 
-                        />
+                        <Progress value={(drinkStats.totalPoints % 1000) / 10} className="mt-2 h-2" />
                       </div>
                       <div className="text-center">
-                        <div className="text-2xl font-bold text-blue-600">
-                          {drinkStats.currentStreak} 🔥
-                        </div>
+                        <div className="text-2xl font-bold text-blue-600">{drinkStats.currentStreak} 🔥</div>
                         <div className="text-sm text-gray-600">Day Streak</div>
                         <div className="flex justify-center gap-1 mt-2">
                           {[...Array(7)].map((_, i) => (
-                            <div
-                              key={i}
-                              className={`w-4 h-4 rounded ${
-                                i < drinkStats.currentStreak
-                                  ? 'bg-orange-400'
-                                  : 'bg-gray-200'
-                              }`}
-                            />
+                            <div key={i} className={`w-4 h-4 rounded ${i < drinkStats.currentStreak ? "bg-orange-400" : "bg-gray-200"}`} />
                           ))}
                         </div>
                       </div>
                       <div className="text-center">
-                        <div className="text-2xl font-bold text-green-600">
-                          {drinkStats.badges?.length || 0} 🏅
-                        </div>
+                        <div className="text-2xl font-bold text-green-600">{drinkStats.badges?.length || 0} 🏅</div>
                         <div className="text-sm text-gray-600">Badges Earned</div>
                       </div>
                     </div>
-                    
+
                     {/* Category Breakdown */}
                     <div className="mt-6 pt-6 border-t border-purple-200">
                       <h4 className="font-semibold mb-3 text-sm">Drinks by Category</h4>
@@ -484,11 +515,7 @@ export default function Profile() {
                       <Card key={drink.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                         {drink.imageUrl && (
                           <div className="relative h-48">
-                            <img
-                              src={drink.imageUrl}
-                              alt={drink.name}
-                              className="w-full h-full object-cover"
-                            />
+                            <img src={drink.imageUrl} alt={drink.name} className="w-full h-full object-cover" />
                           </div>
                         )}
                         <CardContent className="p-4">
@@ -498,9 +525,7 @@ export default function Profile() {
                               {drink.category}
                             </Badge>
                           </div>
-                          {drink.description && (
-                            <p className="text-sm text-gray-600 mb-3">{drink.description}</p>
-                          )}
+                          {drink.description && <p className="text-sm text-gray-600 mb-3">{drink.description}</p>}
                           <div className="grid grid-cols-3 gap-2 text-xs text-center py-2 bg-gray-50 rounded">
                             <div>
                               <div className="font-semibold text-orange-600">{drink.calories}</div>
@@ -537,11 +562,7 @@ export default function Profile() {
                   <p className="text-muted-foreground mb-4">
                     {isOwnProfile ? "Start creating your signature drinks!" : "No drinks to show."}
                   </p>
-                  {isOwnProfile && (
-                    <Button onClick={() => window.location.href = '/drinks/smoothies'}>
-                      Create Your First Drink
-                    </Button>
-                  )}
+                  {isOwnProfile && <Button onClick={() => (window.location.href = "/drinks/smoothies")}>Create Your First Drink</Button>}
                 </div>
               )}
             </div>
@@ -581,9 +602,7 @@ export default function Profile() {
                 <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200">
                   <CardContent className="p-4 text-center">
                     <Flame className="w-8 h-8 mx-auto mb-2 text-purple-600" />
-                    <div className="text-2xl font-bold text-purple-600">
-                      {userCompetitions.length}
-                    </div>
+                    <div className="text-2xl font-bold text-purple-600">{userCompetitions.length}</div>
                     <div className="text-xs text-gray-600">Total Battles</div>
                   </CardContent>
                 </Card>
@@ -594,18 +613,23 @@ export default function Profile() {
                 <h3 className="text-lg font-bold mb-4">Competition History</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {userCompetitions.map((comp: any) => (
-                    <Card 
-                      key={comp.id} 
+                    <Card
+                      key={comp.id}
                       className="overflow-hidden hover:shadow-lg transition-all duration-300 hover:scale-[1.02] cursor-pointer"
-                      onClick={() => window.location.href = `/competitions/${comp.id}`}
+                      onClick={() => (window.location.href = `/competitions/${comp.id}`)}
                     >
-                      <div className={`h-2 bg-gradient-to-r ${
-                        comp.status === 'live' ? 'from-green-500 to-emerald-500' :
-                        comp.status === 'judging' ? 'from-amber-500 to-orange-500' :
-                        comp.status === 'completed' ? 'from-blue-500 to-purple-500' :
-                        'from-gray-400 to-slate-500'
-                      }`}></div>
-                      
+                      <div
+                        className={`h-2 bg-gradient-to-r ${
+                          comp.status === "live"
+                            ? "from-green-500 to-emerald-500"
+                            : comp.status === "judging"
+                            ? "from-amber-500 to-orange-500"
+                            : comp.status === "completed"
+                            ? "from-blue-500 to-purple-500"
+                            : "from-gray-400 to-slate-500"
+                        }`}
+                      ></div>
+
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1">
@@ -613,14 +637,22 @@ export default function Profile() {
                             <p className="text-sm text-gray-600">{comp.themeName}</p>
                           </div>
                           {comp.placement && comp.placement <= 3 && (
-                            <div className={`flex items-center gap-1 px-2 py-1 rounded-full ${
-                              comp.placement === 1 ? 'bg-yellow-100 text-yellow-700' :
-                              comp.placement === 2 ? 'bg-gray-100 text-gray-700' :
-                              'bg-orange-100 text-orange-700'
-                            }`}>
-                              {comp.placement === 1 ? <Crown className="w-4 h-4" /> :
-                               comp.placement === 2 ? <Award className="w-4 h-4" /> :
-                               <Target className="w-4 h-4" />}
+                            <div
+                              className={`flex items-center gap-1 px-2 py-1 rounded-full ${
+                                comp.placement === 1
+                                  ? "bg-yellow-100 text-yellow-700"
+                                  : comp.placement === 2
+                                  ? "bg-gray-100 text-gray-700"
+                                  : "bg-orange-100 text-orange-700"
+                              }`}
+                            >
+                              {comp.placement === 1 ? (
+                                <Crown className="w-4 h-4" />
+                              ) : comp.placement === 2 ? (
+                                <Award className="w-4 h-4" />
+                              ) : (
+                                <Target className="w-4 h-4" />
+                              )}
                               <span className="text-xs font-bold">#{comp.placement}</span>
                             </div>
                           )}
@@ -632,7 +664,7 @@ export default function Profile() {
                             <span>{comp.participants} chefs</span>
                           </div>
                           <div className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadge(comp.status)}`}>
-                            {comp.status === 'live' && <Zap className="inline w-3 h-3 mr-1" />}
+                            {comp.status === "live" && <Zap className="inline w-3 h-3 mr-1" />}
                             {comp.status.toUpperCase()}
                           </div>
                         </div>
@@ -642,9 +674,7 @@ export default function Profile() {
                             <Calendar className="w-3 h-3" />
                             {new Date(comp.createdAt).toLocaleDateString()}
                           </div>
-                          <span className="text-purple-600 font-semibold hover:underline">
-                            View Details →
-                          </span>
+                          <span className="text-purple-600 font-semibold hover:underline">View Details →</span>
                         </div>
                       </CardContent>
                     </Card>
@@ -661,16 +691,10 @@ export default function Profile() {
               </p>
               {isOwnProfile && (
                 <div className="flex justify-center gap-3">
-                  <Button 
-                    onClick={() => window.location.href = '/competitions'}
-                    variant="outline"
-                  >
+                  <Button onClick={() => (window.location.href = "/competitions")} variant="outline">
                     Browse Cookoffs
                   </Button>
-                  <Button 
-                    onClick={() => window.location.href = '/competitions/new'}
-                    className="bg-gradient-to-r from-purple-500 to-pink-500"
-                  >
+                  <Button onClick={() => (window.location.href = "/competitions/new")} className="bg-gradient-to-r from-purple-500 to-pink-500">
                     <Plus className="w-4 h-4 mr-2" />
                     Create Cookoff
                   </Button>
@@ -680,6 +704,7 @@ export default function Profile() {
           )}
         </TabsContent>
 
+        {/* SAVED TAB */}
         <TabsContent value="saved" className="mt-6">
           {savedDrinksLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -695,11 +720,7 @@ export default function Profile() {
                   <Card key={drink.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                     {drink.imageUrl && (
                       <div className="relative h-48">
-                        <img
-                          src={drink.imageUrl}
-                          alt={drink.name}
-                          className="w-full h-full object-cover"
-                        />
+                        <img src={drink.imageUrl} alt={drink.name} className="w-full h-full object-cover" />
                       </div>
                     )}
                     <CardContent className="p-4">
@@ -736,6 +757,69 @@ export default function Profile() {
               <p className="text-muted-foreground">
                 {isOwnProfile ? "Your saved posts and drinks will appear here." : "This section is private."}
               </p>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* 🆕 STORE TAB */}
+        <TabsContent value="store" className="mt-6">
+          {storeLoading ? (
+            <div className="h-40 bg-muted rounded-lg animate-pulse" />
+          ) : storeData?.store ? (
+            <Card className="overflow-hidden">
+              <CardContent className="p-6">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                  <div>
+                    <h3 className="text-xl font-semibold mb-1">{storeData.store.name}</h3>
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <LinkIcon className="w-4 h-4" />
+                      <a href={`/store/${storeData.store.handle}`} className="underline hover:no-underline">
+                        /store/{storeData.store.handle}
+                      </a>
+                    </div>
+                    {storeData.store.bio && <p className="text-sm text-gray-600 mt-3">{storeData.store.bio}</p>}
+                  </div>
+
+                  <div className="flex flex-col items-start sm:items-end gap-2">
+                    <Badge
+                      variant={storeData.store.published ? "default" : "secondary"}
+                      className={storeData.store.published ? "bg-green-600 text-white" : "bg-gray-200 text-gray-800"}
+                    >
+                      {storeData.store.published ? "Published" : "Unpublished"}
+                    </Badge>
+
+                    {storeData.store.updatedAt && (
+                      <span className="text-xs text-gray-500">
+                        Updated {new Date(storeData.store.updatedAt).toLocaleDateString()}
+                      </span>
+                    )}
+
+                    <div className="flex gap-2 mt-2">
+                      <Button variant="outline" onClick={() => (window.location.href = `/store/${storeData.store.handle}`)}>
+                        View Store
+                      </Button>
+                      {isOwnProfile && (
+                        <Button className="bg-orange-500 text-white hover:bg-orange-600" onClick={() => (window.location.href = "/store")}>
+                          Edit Store
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="text-center py-12">
+              <LinkIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+              <h3 className="text-lg font-semibold mb-2">No store yet</h3>
+              <p className="text-muted-foreground mb-4">
+                {isOwnProfile ? "Create your storefront to showcase products and services." : "This user hasn’t created a store yet."}
+              </p>
+              {isOwnProfile && (
+                <Button className="bg-orange-500 text-white hover:bg-orange-600" onClick={() => (window.location.href = "/store")}>
+                  Create Your Store
+                </Button>
+              )}
             </div>
           )}
         </TabsContent>
