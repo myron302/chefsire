@@ -21,6 +21,9 @@ import competitionsRouter from "./competitions";
 // 🆕 Stores (user storefronts)
 import storesRouter from "./stores";
 
+// 🆕 Square (subscriptions / checkout links)
+import squareRouter from "./square";
+
 const r = Router();
 
 /**
@@ -65,6 +68,9 @@ r.use("/competitions", competitionsRouter);
 // 🆕 Stores (public viewer + owner writes)
 r.use("/stores", storesRouter);
 
+// 🆕 Square (payments/subscriptions)
+r.use("/square", squareRouter);
+
 // Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {
   r.get("/_routes", (_req, res) => {
@@ -85,6 +91,7 @@ if (process.env.NODE_ENV !== "production") {
         "/google/*",        // <-- BiteMap uses this
         "/competitions/*",
         "/stores/*",        // 🆕 Storefront API
+        "/square/*",        // 🆕 Square subscription/checkout API
       ],
     });
   });
