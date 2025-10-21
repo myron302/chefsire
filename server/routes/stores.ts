@@ -4,6 +4,10 @@ import express from "express";
 import { Client, Environment, WebhooksHelper } from "square";
 import { randomUUID } from "node:crypto";
 
+// ✅ DB + schema
+import { db } from "../db";
+import { users } from "../db/schema"; // this is from your big monolithic schema.ts
+
 const router = Router();
 
 /**
@@ -13,16 +17,15 @@ const router = Router();
  * SQUARE_ACCESS_TOKEN=xxx
  * SQUARE_LOCATION_ID=xxx
  *
- * # Subscription plan VARIATION IDs (Catalog variation IDs)
+ * # Subscription plan VARIATION IDs
  * SQUARE_PLAN_PRO
  * SQUARE_PLAN_PRO_TRIAL
  * SQUARE_PLAN_ENTERPRISE
  * SQUARE_PLAN_ENTERPRISE_TRIAL
  *
  * # Webhooks
- * SQUARE_WEBHOOK_SIGNATURE_KEY   <-- from your Square Webhook subscription
- * SQUARE_WEBHOOK_URL             <-- must match EXACTLY the Notification URL in Square
- *                                  e.g. https://chefsire.com/api/square/webhook
+ * SQUARE_WEBHOOK_SIGNATURE_KEY
+ * SQUARE_WEBHOOK_URL   e.g. https://chefsire.com/api/square/webhook (must EXACTLY match Dashboard)
  */
 
 const {
@@ -35,32 +38,98 @@ const {
   SQUARE_PLAN_ENTERPRISE_TRIAL,
   SQUARE_WEBHOOK_SIGNATURE_KEY,
   SQUARE_WEBHOOK_URL,
+  APP_BASE_URL,
 } = process.env;
 
-if (!SQUARE_ACCESS_TOKEN) {
-  console.warn("[square] Missing SQUARE_ACCESS_TOKEN");
-}
-if (!SQUARE_LOCATION_ID) {
-  console.warn("[square] Missing SQUARE_LOCATION_ID");
-}
-if (!SQUARE_WEBHOOK_SIGNATURE_KEY) {
-  console.warn("[square] Missing SQUARE_WEBHOOK_SIGNATURE_KEY (webhook verification will fail)");
-}
-if (!SQUARE_WEBHOOK_URL) {
-  console.warn("[square] Missing SQUARE_WEBHOOK_URL (webhook verification will fail)");
-}
+if (!SQUARE_ACCESS_TOKEN) console.warn("[square] Missing SQUARE_ACCESS_TOKEN");
+if (!SQUARE_LOCATION_ID) console.warn("[square] Missing SQUARE_LOCATION_ID");
+if (!SQUARE_WEBHOOK_SIGNATURE_KEY) console.warn("[square] Missing SQUARE_WEBHOOK_SIGNATURE_KEY");
+if (!SQUARE_WEBHOOK_URL) console.warn("[square] Missing SQUARE_WEBHOOK_URL");
 
 const client = new Client({
   accessToken: SQUARE_ACCESS_TOKEN,
   environment: SQUARE_ENV === "production" ? Environment.Production : Environment.Sandbox,
 });
 
+/* ---------------------------------------------------------------------------------------
+ * Helpers
+ * -------------------------------------------------------------------------------------*/
+
 /**
- * POST /api/square/subscription-link
+ * Try to extract { userId, tier, trial } we stuffed in metadata when creating the link.
+ * Square’s webhook payloads differ a bit by event; we probe common places safely.
+ */
+function extractMeta(evt: any): { userId?: string; tier?: string; trial?: string } {
+  const obj =
+    evt?.data?.object?.subscription ??
+    evt?.data?.object?.order ??
+    evt?.data?.object ??
+    {};
+
+  const meta =
+    obj?.metadata ??
+    obj?.customAttributes ??
+    obj?.source?.metadata ??
+    {};
+
+  return {
+    userId: String(meta?.userId ?? "").trim() || undefined,
+    tier: String(meta?.tier ?? "").trim() || undefined,
+    trial: String(meta?.trial ?? "").trim() || undefined,
+  };
+}
+
+/**
+ * Extract a reasonable “renews/ends at” date from Square’s subscription object if present.
+ * Not all events include it; we treat it as optional.
+ */
+function extractSubscriptionEndsAt(evt: any): Date | null {
+  const sub = evt?.data?.object?.subscription ?? {};
+  const iso =
+    sub?.chargedThroughDate ||
+    sub?.invoicedThroughDate ||
+    sub?.currentPhase?.endDate ||
+    sub?.phases?.[0]?.endDate ||
+    null;
+
+  if (!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Update a single user’s subscription fields.
+ */
+async function setUserSubscription({
+  userId,
+  tier,
+  status,
+  endsAt,
+}: {
+  userId: string;
+  tier: "pro" | "enterprise";
+  status: "active" | "canceled" | "paused" | "trialing";
+  endsAt: Date | null;
+}) {
+  const { sql } = await import("drizzle-orm");
+  await db
+    .update(users)
+    .set({
+      subscriptionTier: tier,
+      subscriptionStatus: status,
+      subscriptionEndsAt: endsAt ?? null,
+    })
+    .where(sql`${users.id} = ${userId}`);
+}
+
+/* ---------------------------------------------------------------------------------------
+ * Routes
+ * -------------------------------------------------------------------------------------*/
+
+/**
+ * Create hosted checkout for a subscription plan variation.
  * Body: { tier: "pro" | "enterprise", trial?: boolean, userId?: string, email?: string }
  * Returns: { ok: true, url: string }
- *
- * Creates a hosted checkout for a subscription plan variation.
  */
 router.post("/subscription-link", async (req, res) => {
   try {
@@ -87,25 +156,21 @@ router.post("/subscription-link", async (req, res) => {
 
     const idempotencyKey = `sub_${tier}_${trial ? "trial" : "paid"}_${userId || "anon"}_${Date.now()}`;
 
-    // Square Checkout: subscription link via plan variation id
+    // We put metadata here so it can flow into webhooks later.
     const { result } = await client.checkoutApi.createPaymentLink({
       idempotencyKey,
       subscriptionPlanId: planVariationId,
       checkoutOptions: {
-        redirectUrl: process.env.APP_BASE_URL
-          ? `${process.env.APP_BASE_URL}/store`
-          : undefined,
+        redirectUrl: APP_BASE_URL ? `${APP_BASE_URL}/store` : undefined,
         askForShippingAddress: false,
         allowTipping: false,
       },
       prePopulatedData: email ? { buyerEmail: email } : undefined,
       metadata: {
+        userId: userId || "",
         tier,
         trial: String(trial),
-        userId: userId || "",
       },
-      // locationId optional here for subscriptions; harmless to include:
-      // locationId: SQUARE_LOCATION_ID,
     });
 
     if (!result?.paymentLink?.url) {
@@ -123,9 +188,8 @@ router.post("/subscription-link", async (req, res) => {
 });
 
 /**
- * OPTIONAL: One-time payment link for a single charge (non-subscription)
- * POST /api/square/checkout-link
- * Body: { name: string, amount: number|string, currency?: string, referenceId?: string, redirectUrl?: string, note?: string }
+ * One-time payment link (non-subscription)
+ * Body: { name, amount, currency?, referenceId?, redirectUrl?, note? }
  */
 router.post("/checkout-link", async (req, res) => {
   try {
@@ -179,7 +243,6 @@ router.post("/checkout-link", async (req, res) => {
 });
 
 /**
- * GET /api/square/locations
  * Dev sanity check.
  */
 router.get("/locations", async (_req, res) => {
@@ -192,13 +255,7 @@ router.get("/locations", async (_req, res) => {
 });
 
 /**
- * POST /api/square/webhook
- * Verifies Square webhook signatures using the SDK helper.
- *
- * IMPORTANT:
- *  - We use express.raw({ type: 'application/json' }) on THIS route only
- *    so we can access the raw body for signature verification.
- *  - SQUARE_WEBHOOK_URL must EXACTLY match your Square subscription's Notification URL.
+ * Webhook — verifies signature and updates user on subscription events.
  */
 router.post(
   "/webhook",
@@ -206,7 +263,7 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const sigHeader = req.header("x-square-hmacsha256-signature");
-      const envHeader = req.header("square-environment"); // "Sandbox" or "Production" (informational)
+      const envHeader = req.header("square-environment"); // "Sandbox" | "Production"
 
       if (!SQUARE_WEBHOOK_SIGNATURE_KEY || !SQUARE_WEBHOOK_URL) {
         console.error("[square] webhook missing env vars");
@@ -224,28 +281,69 @@ router.post(
         SQUARE_WEBHOOK_URL,
         rawBody
       );
-
       if (!isValid) {
         console.warn("[square] webhook signature INVALID");
         return res.status(400).send("Invalid signature");
       }
 
-      // At this point the event is trusted. Parse JSON and handle.
       const event = JSON.parse(rawBody.toString("utf8"));
+      const type: string = event?.type ?? "";
 
-      // Minimal safe logging (no PII)
       console.log("[square] webhook OK", {
-        type: event?.type,
+        type,
         env: envHeader,
         created_at: event?.created_at,
         id: event?.event_id,
       });
 
-      // TODO: handle event types your app needs (payments, subscriptions, orders, etc.)
-      // Example:
-      // if (event.type === "subscription.created") { ... }
-      // if (event.type === "payment.updated") { ... }
+      // ----- Handle subscription lifecycle -----
+      if (type.startsWith("subscription.")) {
+        const meta = extractMeta(event);
+        const endsAt = extractSubscriptionEndsAt(event);
 
+        // Determine status mapping
+        let status: "active" | "canceled" | "paused" | "trialing" | undefined;
+        if (type === "subscription.activated") status = meta.trial === "true" ? "trialing" : "active";
+        if (type === "subscription.canceled" || type === "subscription.terminated") status = "canceled";
+        if (type === "subscription.paused") status = "paused";
+        if (type === "subscription.resumed") status = "active";
+
+        // Determine tier
+        const trialFlag = meta.trial === "true";
+        let tier: "pro" | "enterprise" | undefined;
+        if (meta.tier === "pro" || meta.tier === "enterprise") tier = meta.tier as any;
+
+        if (!meta.userId || !tier || !status) {
+          // We can’t safely update without these; just log and ack.
+          console.warn("[square] subscription event missing meta (userId/tier/status). Skipping update.", {
+            userId: meta.userId,
+            tier: meta.tier,
+            status,
+            type,
+          });
+        } else {
+          try {
+            await setUserSubscription({
+              userId: meta.userId,
+              tier,
+              status,
+              endsAt,
+            });
+            console.log("[square] user subscription updated", {
+              userId: meta.userId,
+              tier,
+              status,
+              endsAt,
+              trialFlag,
+            });
+          } catch (dbErr) {
+            console.error("[square] DB update failed", dbErr);
+            // still 200 to stop retries; optionally alert/log for manual fix
+          }
+        }
+      }
+
+      // Acknowledge to Square
       return res.status(200).send("ok");
     } catch (err) {
       console.error("[square] webhook handler error", err);
