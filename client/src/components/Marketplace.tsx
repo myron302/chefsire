@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Editor, Frame, Element } from "@craftjs/core";
-import { Search, Filter, ShoppingCart, Star, MapPin, Package, Plus, TrendingUp, Users, DollarSign } from "lucide-react";
+import { Search, Filter, ShoppingCart, Star, MapPin, Package, Plus, TrendingUp, Users, DollarSign, Store } from "lucide-react";
 import { Button as UIButton } from "@/components/ui/button";
 import { Card as UICard } from "@/components/ui/card";
 import { useUser } from "@/contexts/UserContext";
@@ -99,6 +99,7 @@ const Marketplace = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"browse" | "sell">("browse");
+  const { user } = useUser();
 
   const categoryList = [
     { id: "all", name: "All Products", icon: Package },
@@ -155,6 +156,35 @@ const Marketplace = () => {
     return "Contact Seller";
   };
 
+  // Check if user can sell (has store or can create one)
+  const canSell = user?.subscription !== "free" || 
+    (user?.trialEndDate && new Date(user.trialEndDate) > new Date());
+
+  const handleStartSelling = () => {
+    if (!canSell) {
+      // Redirect to subscription page or show upgrade modal
+      setView("sell");
+      return;
+    }
+    
+    // Check if user already has a store
+    fetch(`/api/stores/by-user/${user.id}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.store) {
+          // User has a store, go to seller dashboard
+          setView("sell");
+        } else {
+          // User needs to create a store first
+          window.location.href = "/store/create";
+        }
+      })
+      .catch(() => {
+        // If API fails, redirect to store creation
+        window.location.href = "/store/create";
+      });
+  };
+
   if (view === "sell") return <SellerDashboard onBack={() => setView("browse")} />;
 
   return (
@@ -169,10 +199,10 @@ const Marketplace = () => {
             </div>
             <div className="flex space-x-3">
               <button
-                onClick={() => setView("sell")}
+                onClick={handleStartSelling}
                 className="bg-orange-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors flex items-center"
               >
-                <Plus className="w-4 h-4 mr-2" />
+                <Store className="w-4 h-4 mr-2" />
                 Start Selling
               </button>
             </div>
@@ -280,7 +310,7 @@ const Marketplace = () => {
             <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
             <p className="text-gray-600 mb-4">{searchQuery ? `No products match "${searchQuery}"` : "No products in this category yet"}</p>
             <button
-              onClick={() => setView("sell")}
+              onClick={handleStartSelling}
               className="bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors"
             >
               Be the first to sell here
@@ -359,13 +389,34 @@ const Marketplace = () => {
 
 const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
   const { user, updateUser } = useUser(); // { subscription, productCount, trialEndDate }
-  const [activeTab, setActiveTab] = useState<"products" | "orders" | "analytics" | "store-builder" | "subscription">(
+  const [activeTab, setActiveTab] = useState<"products" | "orders" | "analytics" | "store-builder" | "subscription" | "store">(
     "products"
   );
   const [showBuilder, setShowBuilder] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(
     user.subscription === "free" || (user.trialEndDate && new Date(user.trialEndDate) < new Date())
   );
+  const [userStore, setUserStore] = useState<any>(null);
+  const [storeLoading, setStoreLoading] = useState(true);
+
+  // Load user's store
+  useEffect(() => {
+    loadUserStore();
+  }, [user.id]);
+
+  const loadUserStore = async () => {
+    try {
+      const response = await fetch(`/api/stores/by-user/${user.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setUserStore(data.store);
+      }
+    } catch (error) {
+      console.error('Failed to load store:', error);
+    } finally {
+      setStoreLoading(false);
+    }
+  };
 
   // 🔁 Square upgrade flow — creates a hosted checkout link and navigates there
   const handleUpgrade = async (tier: "pro" | "enterprise", isTrial = false) => {
@@ -411,10 +462,17 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Seller Dashboard</h1>
             <p className="text-gray-600">Manage your products and track your sales</p>
           </div>
-          <button className="bg-orange-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors flex items-center">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Product
-          </button>
+          
+          {/* Store creation button if no store exists */}
+          {!userStore && !storeLoading && (
+            <button 
+              onClick={() => window.location.href = '/store/create'}
+              className="bg-orange-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors flex items-center"
+            >
+              <Store className="w-4 h-4 mr-2" />
+              Create Store
+            </button>
+          )}
         </div>
 
         {/* Upgrade/Trial Modal */}
@@ -490,7 +548,7 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
           </div>
         </div>
 
-        {/* Tabs */}
+        {/* Tabs - Added Store Tab */}
         <div className="bg-white rounded-lg shadow-sm">
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-8 px-6">
@@ -499,6 +557,7 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
                 { id: "orders", name: "Orders", count: 5 },
                 { id: "analytics", name: "Analytics", count: null },
                 { id: "store-builder", name: "Store Builder", count: null },
+                { id: "store", name: "My Store", count: null },
                 { id: "subscription", name: "Subscription", count: null },
               ].map((tab) => (
                 <button
@@ -543,6 +602,96 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
                 >
                   Launch Store Builder
                 </button>
+              </div>
+            )}
+
+            {/* NEW STORE TAB CONTENT */}
+            {activeTab === "store" && (
+              <div>
+                {storeLoading ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-4" />
+                    <p className="text-gray-600">Loading store...</p>
+                  </div>
+                ) : userStore ? (
+                  <div className="space-y-6">
+                    {/* Store Overview Card */}
+                    <div className="bg-white border border-gray-200 rounded-lg p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-xl font-semibold">{userStore.name}</h3>
+                          <p className="text-gray-600">artisana.app/store/{userStore.handle}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              userStore.is_published ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
+                            }`}>
+                              {userStore.is_published ? "Published" : "Draft"}
+                            </span>
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              {userStore.subscription_tier} Tier
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => window.location.href = `/store/${userStore.handle}`}
+                            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                          >
+                            View Store
+                          </button>
+                          <button 
+                            onClick={() => setShowBuilder(true)}
+                            className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                          >
+                            Customize Store
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Actions */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <button 
+                        onClick={() => window.location.href = `/vendor/dashboard?tab=products`}
+                        className="bg-white border border-gray-200 rounded-lg p-4 text-left hover:border-orange-300 transition-colors"
+                      >
+                        <Package className="w-8 h-8 text-orange-500 mb-2" />
+                        <h4 className="font-semibold">Manage Products</h4>
+                        <p className="text-sm text-gray-600 mt-1">Add, edit, or remove products</p>
+                      </button>
+                      
+                      <button 
+                        onClick={() => setShowBuilder(true)}
+                        className="bg-white border border-gray-200 rounded-lg p-4 text-left hover:border-orange-300 transition-colors"
+                      >
+                        <Store className="w-8 h-8 text-orange-500 mb-2" />
+                        <h4 className="font-semibold">Customize Design</h4>
+                        <p className="text-sm text-gray-600 mt-1">Change your store's appearance</p>
+                      </button>
+                      
+                      <button 
+                        onClick={() => window.location.href = `/vendor/dashboard?tab=analytics`}
+                        className="bg-white border border-gray-200 rounded-lg p-4 text-left hover:border-orange-300 transition-colors"
+                      >
+                        <TrendingUp className="w-8 h-8 text-orange-500 mb-2" />
+                        <h4 className="font-semibold">View Analytics</h4>
+                        <p className="text-sm text-gray-600 mt-1">Track your store performance</p>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Store className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                    <h3 className="text-lg font-semibold mb-2">No store yet</h3>
+                    <p className="text-gray-600 mb-4">Create your storefront to start selling products</p>
+                    <button 
+                      onClick={() => window.location.href = '/store/create'}
+                      className="bg-orange-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors"
+                    >
+                      Create Your Store
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
