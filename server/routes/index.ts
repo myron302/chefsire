@@ -19,10 +19,10 @@ import { googleRouter } from "./google";
 import competitionsRouter from "./competitions";
 
 // 🆕 Stores (user storefronts)
-import storesRouter from "./stores";
+import storesRouter from "./stores-crud";
 
 // 🆕 Square (subscriptions / checkout links)
-import squareRouter from "./square";
+import squareRouter from "./stores";
 
 const r = Router();
 
