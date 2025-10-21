@@ -15,7 +15,7 @@ if (!DATABASE_URL) {
     const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
     for (const line of lines) {
       const m = line.match(/^\s*DATABASE_URL\s*=\s*(.+)\s*$/);
-      if (m) {
+      if (m) {package.json
         DATABASE_URL = m[1].trim();
         break;
       }
