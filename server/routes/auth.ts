@@ -9,13 +9,31 @@ const router = Router();
  * POST /auth/signup
  */
 router.post("/auth/signup", async (req, res) => {
-  const { name, email, password } = req.body ?? {};
+  const { name, email, password, recaptchaToken } = req.body ?? {};
 
   if (!name || !email || !password) {
     return res.status(400).json({ error: "Missing required fields" });
   }
   if (typeof password !== "string" || password.length < 6) {
     return res.status(400).json({ error: "Password must be at least 6 characters" });
+  }
+
+  // Verify reCAPTCHA token if configured
+  if (process.env.RECAPTCHA_SECRET_KEY && recaptchaToken) {
+    try {
+      const recaptchaResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`
+      });
+      const recaptchaData = await recaptchaResponse.json();
+      if (!recaptchaData.success) {
+        return res.status(400).json({ error: 'reCAPTCHA verification failed. Please try again.' });
+      }
+    } catch (error) {
+      console.error('reCAPTCHA verification error:', error);
+      return res.status(500).json({ error: 'reCAPTCHA verification failed' });
+    }
   }
 
   try {
