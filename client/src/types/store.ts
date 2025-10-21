@@ -7,6 +7,10 @@ export interface Store {
   logo: string | null;
   theme: string;
   is_published: boolean;
+  subscription_tier: 'free' | 'pro' | 'enterprise';
+  product_limit: number;
+  current_products: number;
+  trial_ends_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -24,15 +28,4 @@ export interface Product {
   tags: string[];
   created_at: string;
   updated_at: string;
-}
-
-export interface StoreTheme {
-  id: string;
-  name: string;
-  colors: {
-    primary: string;
-    secondary: string;
-    background: string;
-    text: string;
-  };
 }
