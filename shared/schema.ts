@@ -440,6 +440,31 @@ export const userDrinkStats = pgTable("user_drink_stats", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+/* ===== STORES TABLE ===== */
+export const stores = pgTable(
+  "stores",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id")
+      .references(() => users.id)
+      .notNull()
+      .unique(),
+    handle: text("handle").notNull().unique(),
+    name: text("name").notNull(),
+    bio: text("bio"),
+    theme: jsonb("theme").$type<Record<string, any>>().default(sql`'{}'::jsonb`),
+    layout: jsonb("layout").$type<Record<string, any>>(),
+    published: boolean("published").default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => ({
+    handleIdx: index("stores_handle_idx").on(t.handle),
+    userIdIdx: index("stores_user_id_idx").on(t.userId),
+    publishedIdx: index("stores_published_idx").on(t.published),
+  })
+);
+
 /* =========================================================================
    ===== INSERT SCHEMAS
    ========================================================================= */
@@ -554,6 +579,12 @@ export const insertUserDrinkStatsSchema = createInsertSchema(userDrinkStats).omi
   updatedAt: true,
 });
 
+export const insertStoreSchema = createInsertSchema(stores).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 /* =========================================================================
    ===== TYPES
    ========================================================================= */
@@ -597,6 +628,8 @@ export type DrinkSave = typeof drinkSaves.$inferSelect;
 export type InsertDrinkSave = z.infer<typeof insertDrinkSaveSchema>;
 export type UserDrinkStats = typeof userDrinkStats.$inferSelect;
 export type InsertUserDrinkStats = z.infer<typeof insertUserDrinkStatsSchema>;
+export type Store = typeof stores.$inferSelect;
+export type InsertStore = z.infer<typeof insertStoreSchema>;
 
 /* =========================================================================
    ===== Extended types
@@ -615,4 +648,4 @@ export type CustomDrinkWithUser = CustomDrink & {
   isLiked?: boolean;
   isSaved?: boolean;
   photos?: DrinkPhoto[];
-}
+};
