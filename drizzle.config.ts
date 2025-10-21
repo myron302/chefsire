@@ -12,7 +12,7 @@ let DATABASE_URL = (process.env.DATABASE_URL ?? "").trim();
 
 // 2) Fallback to /httpdocs/server/.env if scripts don't get env vars
 if (!DATABASE_URL) {
-  const envPath = path.resolve(__dirname, "server/.env"); // -> /httpdocs/server/.env
+  const envPath = path.resolve(__dirname, "server/.env");
   if (fs.existsSync(envPath)) {
     const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
     for (const line of lines) {
@@ -38,7 +38,6 @@ if (!/[?&]sslmode=/.test(DATABASE_URL)) {
 }
 
 export default defineConfig({
-  // 👇 Point to all modular schema files (FIXED from "./server/db/schema.ts")
   schema: "./server/db/schema/**/*.ts",
   out: "./server/drizzle",
   dialect: "postgresql",
