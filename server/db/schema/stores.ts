@@ -12,6 +12,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { users } from "./users"; // FIXED: Import from correct file
 
+// ===== STORES (user storefronts) =====
 export const stores = pgTable(
   "stores",
   {
@@ -27,7 +28,7 @@ export const stores = pgTable(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (t) => ({
-    handleIdx: index("stores_handle_idx").on(t.handle), // ADDED
+    handleIdx: index("stores_handle_idx").on(t.handle), // ADDED: Index for lookups
     publishedIdx: index("stores_published_idx").on(t.published),
   })
 );
