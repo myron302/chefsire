@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { createStore } from '../lib/stores';
 import { Upload, Store, Palette, Check } from 'lucide-react';
+import { Store as StoreType } from '../types/store';
 
-// Using any existing Store type you might have
 interface StoreFormData {
   handle: string;
   name: string;
@@ -41,13 +41,14 @@ export const StoreSetup: React.FC = () => {
     
     setLoading(true);
     try {
-      // This will use your actual createStore function
       const store = await createStore({
         ...formData,
         owner_id: user.id,
         is_published: false
       });
-      navigate(`/dashboard/store/${store.id}`);
+      
+      // Navigate to the vendor dashboard which now includes store management
+      navigate(`/vendor/dashboard?tab=store`);
     } catch (error) {
       console.error('Failed to create store:', error);
     } finally {
@@ -55,4 +56,5 @@ export const StoreSetup: React.FC = () => {
     }
   };
 
-  // ... rest of the component remains the same
+  // ... (rest of the component implementation remains the same as previous)
+  // Step1, Step2, and JSX structure
