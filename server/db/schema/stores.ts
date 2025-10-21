@@ -10,23 +10,24 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { users } from "./schema"; // re-use existing users table from your current schema.ts
+import { users } from "./users"; // FIXED: Import from correct file
 
-// ===== STORES (user storefronts) =====
 export const stores = pgTable(
   "stores",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     userId: varchar("user_id").references(() => users.id).notNull().unique(),
-    username: text("username").notNull().unique(), // public handle for /store/:username
+    handle: text("handle").notNull().unique(), // FIXED: Renamed from username
     name: text("name").notNull(),
-    theme: text("theme").default("light"),
+    bio: text("bio"), // ADDED: For store description
+    theme: jsonb("theme").$type<Record<string, any>>().default(sql`'{}'::jsonb`),
     layout: jsonb("layout").$type<Record<string, any>>(),
     published: boolean("published").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (t) => ({
+    handleIdx: index("stores_handle_idx").on(t.handle), // ADDED
     publishedIdx: index("stores_published_idx").on(t.published),
   })
 );
