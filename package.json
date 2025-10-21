@@ -13,8 +13,12 @@
     "start": "NODE_ENV=production node server/dist/index.js",
     "check": "tsc",
     "db:ping": "tsx server/scripts/db-ping.ts",
-    "db:push": "drizzle-kit push --config=drizzle.config.cjs",
+
+    /* ✅ Fixed Drizzle commands for Plesk + TypeScript config */
+    "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
+    "db:push": "drizzle-kit push --config=drizzle.config.ts",
     "db:push:accept": "drizzle-kit push --force",
+
     "db:seed": "tsx server/seed.ts",
     "db:seed:subs": "tsx server/seed-substitutions.ts",
     "db:seed:subs:full": "node --import tsx server/scripts/build-and-seed-substitutions.ts",
@@ -26,7 +30,6 @@
     "gen:shims": "node tools/generate-import-shims.js",
     "fix:filenames": "node tools/fix-filenames.js",
     "env:print": "tsx server/scripts/print-env.ts"
-
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
