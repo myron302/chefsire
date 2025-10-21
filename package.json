@@ -16,6 +16,7 @@
     "db:generate": "dotenv -e server/.env -- drizzle-kit generate",
     "db:push": "dotenv -e server/.env -- drizzle-kit push",
     "db:push:accept": "dotenv -e server/.env -- drizzle-kit push --force",
+    "db:apply": "node apply-migration.js",
     "db:seed": "tsx server/seed.ts",
     "db:seed:subs": "tsx server/seed-substitutions.ts",
     "db:seed:subs:full": "node --import tsx server/scripts/build-and-seed-substitutions.ts",
