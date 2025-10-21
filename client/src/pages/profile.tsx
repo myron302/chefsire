@@ -29,6 +29,9 @@ import {
   Target,
   Zap,
   Plus,
+  Store,
+  ShoppingBag,
+  Eye,
 } from "lucide-react";
 import type { User, PostWithUser } from "@shared/schema";
 
@@ -39,6 +42,13 @@ type Store = {
   handle: string;
   name: string;
   bio: string;
+  logo: string | null;
+  theme: string;
+  is_published: boolean;
+  subscription_tier: 'free' | 'pro' | 'enterprise';
+  product_limit: number;
+  current_products: number;
+  trial_ends_at?: string;
   layout: unknown | null;
   published: boolean;
   updatedAt?: string;
@@ -149,7 +159,7 @@ export default function Profile() {
     },
   });
 
-  // ✅ Fetch this user's Storefront
+  // ✅ Fetch this user's Storefront with enhanced data
   const { data: storeData, isLoading: storeLoading } = useQuery<{ store: Store | null }>({
     queryKey: ["/api/stores/by-user", profileUserId],
     queryFn: async () => {
@@ -157,6 +167,18 @@ export default function Profile() {
       if (!res.ok) return { store: null };
       return res.json();
     },
+  });
+
+  // Fetch store products count
+  const { data: storeProductsData, isLoading: productsLoading } = useQuery({
+    queryKey: ["/api/stores/products/count", profileUserId],
+    queryFn: async () => {
+      if (!storeData?.store) return { count: 0 };
+      const res = await fetch(`/api/stores/${storeData.store.id}/products/count`);
+      if (!res.ok) return { count: 0 };
+      return res.json();
+    },
+    enabled: !!storeData?.store,
   });
 
   const isOwnProfile = profileUserId === currentUserId;
@@ -195,6 +217,7 @@ export default function Profile() {
   const savedDrinks = savedDrinksData?.drinks || [];
   const drinkStats = statsData?.stats;
   const userCompetitions = competitionsData?.competitions || [];
+  const storeProductsCount = storeProductsData?.count || 0;
 
   const getStatusBadge = (status: string) => {
     const styles = {
@@ -229,10 +252,16 @@ export default function Profile() {
                 <Button variant="outline" data-testid="button-edit-profile">
                   Edit Profile
                 </Button>
-                {/* Optional quick link to the user's store */}
-                <Button variant="ghost" className="mt-0" onClick={() => (window.location.href = "/store/me")}>
-                  View My Store
-                </Button>
+                {/* Show store management button if user has a store */}
+                {storeData?.store && (
+                  <Button 
+                    variant="ghost" 
+                    className="mt-0" 
+                    onClick={() => window.location.href = "/vendor/dashboard?tab=store"}
+                  >
+                    Manage My Store
+                  </Button>
+                )}
               </div>
             ) : (
               <Button className="bg-primary text-primary-foreground" data-testid={`button-follow-user-${user.id}`}>
@@ -241,7 +270,7 @@ export default function Profile() {
             )}
           </div>
 
-          {/* Stats */}
+          {/* Stats - Added Store Count */}
           <div className="flex space-x-6 mb-4 text-sm">
             <div className="text-center">
               <span className="font-semibold block" data-testid={`text-posts-count-${user.id}`}>
@@ -271,6 +300,12 @@ export default function Profile() {
               <span className="font-semibold block">{userCompetitions.length}</span>
               <span className="text-muted-foreground">Cookoffs</span>
             </div>
+            {storeData?.store && (
+              <div className="text-center">
+                <span className="font-semibold block">{storeProductsCount}</span>
+                <span className="text-muted-foreground">Products</span>
+              </div>
+            )}
           </div>
 
           {/* Bio */}
@@ -295,13 +330,18 @@ export default function Profile() {
                 Level {drinkStats.level} • {drinkStats.totalPoints} XP
               </Badge>
             )}
+            {storeData?.store && (
+              <Badge variant="secondary" className="bg-orange-100 text-orange-800">
+                <Store className="w-3 h-3 mr-1" />
+                Shop Owner
+              </Badge>
+            )}
           </div>
         </div>
       </div>
 
       {/* Content Tabs */}
       <Tabs defaultValue="posts" className="w-full">
-        {/* 👇 grid-cols bumped from 5 → 6 to fit the Store tab */}
         <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="posts" className="flex items-center space-x-2" data-testid="tab-posts">
             <Image className="h-4 w-4" />
@@ -323,9 +363,9 @@ export default function Profile() {
             <Star className="h-4 w-4" />
             <span className="hidden sm:inline">Saved</span>
           </TabsTrigger>
-          {/* 🆕 Store tab trigger */}
+          {/* 🆕 Enhanced Store tab trigger */}
           <TabsTrigger value="store" className="flex items-center space-x-2" data-testid="tab-store">
-            <LinkIcon className="h-4 w-4" />
+            <Store className="h-4 w-4" />
             <span className="hidden sm:inline">Store</span>
           </TabsTrigger>
         </TabsList>
@@ -761,64 +801,192 @@ export default function Profile() {
           )}
         </TabsContent>
 
-        {/* 🆕 STORE TAB */}
+        {/* 🆕 ENHANCED STORE TAB */}
         <TabsContent value="store" className="mt-6">
           {storeLoading ? (
             <div className="h-40 bg-muted rounded-lg animate-pulse" />
           ) : storeData?.store ? (
-            <Card className="overflow-hidden">
-              <CardContent className="p-6">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                  <div>
-                    <h3 className="text-xl font-semibold mb-1">{storeData.store.name}</h3>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <LinkIcon className="w-4 h-4" />
-                      <a href={`/store/${storeData.store.handle}`} className="underline hover:no-underline">
-                        /store/{storeData.store.handle}
-                      </a>
+            <div className="space-y-6">
+              {/* Store Overview Card */}
+              <Card className="overflow-hidden border-2 border-orange-100">
+                <CardContent className="p-6">
+                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+                    {/* Store Info */}
+                    <div className="flex-1">
+                      <div className="flex items-start gap-4">
+                        {storeData.store.logo ? (
+                          <img 
+                            src={storeData.store.logo} 
+                            alt={storeData.store.name}
+                            className="w-16 h-16 rounded-full object-cover border"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center border">
+                            <Store className="w-8 h-8 text-orange-500" />
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <h3 className="text-xl font-semibold">{storeData.store.name}</h3>
+                          <div className="flex items-center gap-2 text-sm text-gray-600 mt-1">
+                            <LinkIcon className="w-4 h-4" />
+                            <a 
+                              href={`/store/${storeData.store.handle}`} 
+                              className="underline hover:no-underline text-orange-600"
+                            >
+                              artisana.app/store/{storeData.store.handle}
+                            </a>
+                          </div>
+                          {storeData.store.bio && (
+                            <p className="text-sm text-gray-600 mt-3">{storeData.store.bio}</p>
+                          )}
+                          
+                          {/* Store Stats */}
+                          <div className="flex items-center gap-4 mt-4 text-sm">
+                            <div className="flex items-center gap-1">
+                              <ShoppingBag className="w-4 h-4 text-gray-500" />
+                              <span className="font-medium">{storeProductsCount} products</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Eye className="w-4 h-4 text-gray-500" />
+                              <span className="font-medium">1.2k views</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Star className="w-4 h-4 text-yellow-500" />
+                              <span className="font-medium">4.8 (24)</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    {storeData.store.bio && <p className="text-sm text-gray-600 mt-3">{storeData.store.bio}</p>}
-                  </div>
 
-                  <div className="flex flex-col items-start sm:items-end gap-2">
-                    <Badge
-                      variant={storeData.store.published ? "default" : "secondary"}
-                      className={storeData.store.published ? "bg-green-600 text-white" : "bg-gray-200 text-gray-800"}
-                    >
-                      {storeData.store.published ? "Published" : "Unpublished"}
-                    </Badge>
+                    {/* Store Status & Actions */}
+                    <div className="flex flex-col items-start lg:items-end gap-3">
+                      <div className="flex gap-2">
+                        <Badge
+                          variant={storeData.store.is_published ? "default" : "secondary"}
+                          className={
+                            storeData.store.is_published 
+                              ? "bg-green-600 text-white" 
+                              : "bg-gray-200 text-gray-800"
+                          }
+                        >
+                          {storeData.store.is_published ? "Published" : "Unpublished"}
+                        </Badge>
+                        <Badge variant="outline" className="capitalize">
+                          {storeData.store.subscription_tier} Store
+                        </Badge>
+                      </div>
 
-                    {storeData.store.updatedAt && (
-                      <span className="text-xs text-gray-500">
-                        Updated {new Date(storeData.store.updatedAt).toLocaleDateString()}
-                      </span>
-                    )}
-
-                    <div className="flex gap-2 mt-2">
-                      <Button variant="outline" onClick={() => (window.location.href = `/store/${storeData.store.handle}`)}>
-                        View Store
-                      </Button>
-                      {isOwnProfile && (
-                        <Button className="bg-orange-500 text-white hover:bg-orange-600" onClick={() => (window.location.href = "/store")}>
-                          Edit Store
-                        </Button>
+                      {storeData.store.updatedAt && (
+                        <span className="text-xs text-gray-500">
+                          Updated {new Date(storeData.store.updatedAt).toLocaleDateString()}
+                        </span>
                       )}
+
+                      <div className="flex gap-2 mt-2">
+                        <Button 
+                          variant="outline" 
+                          onClick={() => window.location.href = `/store/${storeData.store.handle}`}
+                          className="flex items-center gap-2"
+                        >
+                          <Eye className="w-4 h-4" />
+                          View Store
+                        </Button>
+                        {isOwnProfile && (
+                          <Button 
+                            className="bg-orange-500 text-white hover:bg-orange-600 flex items-center gap-2" 
+                            onClick={() => window.location.href = "/vendor/dashboard?tab=store"}
+                          >
+                            <Store className="w-4 h-4" />
+                            Manage Store
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* Quick Actions for Store Owners */}
+              {isOwnProfile && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card className="hover:shadow-lg transition-shadow cursor-pointer" 
+                    onClick={() => window.location.href = "/vendor/dashboard?tab=products"}>
+                    <CardContent className="p-6 text-center">
+                      <ShoppingBag className="w-8 h-8 text-orange-500 mx-auto mb-3" />
+                      <h4 className="font-semibold mb-2">Manage Products</h4>
+                      <p className="text-sm text-gray-600">Add, edit, or remove products from your store</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="hover:shadow-lg transition-shadow cursor-pointer"
+                    onClick={() => window.location.href = "/vendor/dashboard?tab=store-builder"}>
+                    <CardContent className="p-6 text-center">
+                      <Store className="w-8 h-8 text-orange-500 mx-auto mb-3" />
+                      <h4 className="font-semibold mb-2">Customize Design</h4>
+                      <p className="text-sm text-gray-600">Change your store's appearance and layout</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="hover:shadow-lg transition-shadow cursor-pointer"
+                    onClick={() => window.location.href = "/vendor/dashboard?tab=analytics"}>
+                    <CardContent className="p-6 text-center">
+                      <TrendingUp className="w-8 h-8 text-orange-500 mx-auto mb-3" />
+                      <h4 className="font-semibold mb-2">View Analytics</h4>
+                      <p className="text-sm text-gray-600">Track your store performance and sales</p>
+                    </CardContent>
+                  </Card>
                 </div>
-              </CardContent>
-            </Card>
+              )}
+
+              {/* Featured Products Preview */}
+              {storeProductsCount > 0 && (
+                <Card>
+                  <CardContent className="p-6">
+                    <h4 className="font-semibold mb-4 flex items-center gap-2">
+                      <ShoppingBag className="w-5 h-5 text-orange-500" />
+                      Featured Products
+                    </h4>
+                    <div className="text-center py-8 text-gray-500">
+                      <ShoppingBag className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                      <p>Visit the store to see all {storeProductsCount} products</p>
+                      <Button 
+                        variant="outline" 
+                        className="mt-3"
+                        onClick={() => window.location.href = `/store/${storeData.store.handle}`}
+                      >
+                        Browse All Products
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           ) : (
             <div className="text-center py-12">
-              <LinkIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+              <Store className="w-16 h-16 mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-semibold mb-2">No store yet</h3>
               <p className="text-muted-foreground mb-4">
-                {isOwnProfile ? "Create your storefront to showcase products and services." : "This user hasn’t created a store yet."}
+                {isOwnProfile 
+                  ? "Create your storefront to showcase products and services." 
+                  : "This user hasn't created a store yet."
+                }
               </p>
               {isOwnProfile && (
-                <Button className="bg-orange-500 text-white hover:bg-orange-600" onClick={() => (window.location.href = "/store")}>
-                  Create Your Store
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <Button 
+                    className="bg-orange-500 text-white hover:bg-orange-600" 
+                    onClick={() => window.location.href = "/store/create"}
+                  >
+                    Create Your Store
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    onClick={() => window.location.href = "/vendor/dashboard?tab=subscription"}
+                  >
+                    View Subscription Plans
+                  </Button>
+                </div>
               )}
             </div>
           )}
