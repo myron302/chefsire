@@ -15,7 +15,7 @@
     "db:ping": "tsx server/scripts/db-ping.ts",
     "db:generate": "dotenv -e server/.env -- drizzle-kit generate",
     "db:push": "dotenv -e server/.env -- drizzle-kit push",
-    "db:push:accept": "drizzle-kit push --force",
+    "db:push:accept": "dotenv -e server/.env -- drizzle-kit push --force",
     "db:seed": "tsx server/seed.ts",
     "db:seed:subs": "tsx server/seed-substitutions.ts",
     "db:seed:subs:full": "node --import tsx server/scripts/build-and-seed-substitutions.ts",
