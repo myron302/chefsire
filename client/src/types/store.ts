@@ -1,6 +1,6 @@
 export interface Store {
   id: string;
-  owner_id: string; // This would be the vendor id
+  owner_id: string;
   handle: string;
   name: string;
   bio: string;
@@ -34,9 +34,5 @@ export interface StoreTheme {
     secondary: string;
     background: string;
     text: string;
-  };
-  fonts: {
-    heading: string;
-    body: string;
   };
 }
