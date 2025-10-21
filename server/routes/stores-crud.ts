@@ -1,35 +1,18 @@
 import { Router } from "express";
 import { db } from "../db";
-import { stores } from "../db/schema";
+import { stores } from "../db";
 import { eq } from "drizzle-orm";
 
 const router = Router();
 
-// GET /api/stores/:handle - Public view of a store
-router.get("/:handle", async (req, res) => {
-  try {
-    const { handle } = req.params;
-    const store = await db.query.stores.findFirst({
-      where: eq(stores.handle, handle),
-    });
+/**
+ * STORE CRUD ROUTER
+ * -----------------
+ * Handles create, update, publish, and layout editing for user storefronts.
+ * Private (requires authentication).
+ */
 
-    if (!store) {
-      return res.status(404).json({ ok: false, error: "Store not found" });
-    }
-
-    // Only show published stores to public
-    if (!store.published) {
-      return res.status(404).json({ ok: false, error: "Store not available" });
-    }
-
-    res.json({ ok: true, store });
-  } catch (error) {
-    console.error("Error fetching store:", error);
-    res.status(500).json({ ok: false, error: "Failed to fetch store" });
-  }
-});
-
-// GET /api/stores/user/:userId - Get user's store (for owner)
+// GET /api/stores-crud/user/:userId - Get user's store (for owner)
 router.get("/user/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -44,7 +27,7 @@ router.get("/user/:userId", async (req, res) => {
   }
 });
 
-// POST /api/stores - Create a store
+// POST /api/stores-crud - Create a store
 router.post("/", async (req, res) => {
   try {
     if (!req.user) {
@@ -52,7 +35,6 @@ router.post("/", async (req, res) => {
     }
 
     const { handle, name, bio } = req.body;
-
     if (!handle || !name) {
       return res.status(400).json({ ok: false, error: "Handle and name required" });
     }
@@ -77,7 +59,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// PATCH /api/stores/:id - Update store details
+// PATCH /api/stores-crud/:id - Update store details
 router.patch("/:id", async (req, res) => {
   try {
     if (!req.user) {
@@ -87,7 +69,6 @@ router.patch("/:id", async (req, res) => {
     const { id } = req.params;
     const { name, bio, theme } = req.body;
 
-    // Check ownership
     const existing = await db.query.stores.findFirst({
       where: eq(stores.id, id),
     });
@@ -114,7 +95,7 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-// PATCH /api/stores/:id/layout - Update store layout
+// PATCH /api/stores-crud/:id/layout - Update store layout
 router.patch("/:id/layout", async (req, res) => {
   try {
     if (!req.user) {
@@ -148,7 +129,7 @@ router.patch("/:id/layout", async (req, res) => {
   }
 });
 
-// PATCH /api/stores/:id/publish - Toggle published status
+// PATCH /api/stores-crud/:id/publish - Toggle published status
 router.patch("/:id/publish", async (req, res) => {
   try {
     if (!req.user) {
