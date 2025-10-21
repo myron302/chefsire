@@ -1,5 +1,12 @@
-// Aggregate all schema pieces here so the rest of the app can do:
-//   import { users, posts, stores, ... } from "../db/schema";
+// server/db/schema/index.ts
+// This is your main schema aggregator
 
-export * from "./schema";   // your existing big file (users, posts, products, etc.)
-export * from "./stores";   // new stores domain
+// Export the main schema (users, posts, products, etc.)
+export * from "./main";
+
+// Export stores schema
+export * from "./stores";
+
+// Add other domain schemas here as you create them
+// export * from "./orders";
+// export * from "./reviews";
