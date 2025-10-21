@@ -1,8 +1,8 @@
 // server/db/index.ts
 import "../lib/load-env"; // <-- hydrate env from Plesk or server/.env before reading it
-
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool } from "@neondatabase/serverless";
+import * as schema from "./schema";
 
 /**
  * Drizzle + Neon connection (ESM friendly)
@@ -23,44 +23,12 @@ if (!/[?&]sslmode=/.test(DATABASE_URL)) {
 }
 
 export const pool = new Pool({ connectionString: DATABASE_URL });
-export const db = drizzle(pool);
+export const db = drizzle(pool, { schema });
 
 // Optional: graceful shutdown in scripts or when Plesk restarts
 process.on("beforeExit", () => {
   try { pool.end(); } catch {}
 });
-// ===== STORES TABLE (user storefronts) =====
-// Add this to the bottom of your existing server/db/schema.ts file
 
-export const stores = pgTable(
-  "stores",
-  {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    userId: varchar("user_id")
-      .references(() => users.id)
-      .notNull()
-      .unique(),
-    handle: text("handle").notNull().unique(),
-    name: text("name").notNull(),
-    bio: text("bio"),
-    theme: jsonb("theme").$type<Record<string, any>>().default(sql`'{}'::jsonb`),
-    layout: jsonb("layout").$type<Record<string, any>>(),
-    published: boolean("published").default(false),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
-  },
-  (t) => ({
-    handleIdx: index("stores_handle_idx").on(t.handle),
-    userIdIdx: index("stores_user_id_idx").on(t.userId),
-    publishedIdx: index("stores_published_idx").on(t.published),
-  })
-);
-
-export const insertStoreSchema = createInsertSchema(stores).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export type Store = typeof stores.$inferSelect;
-export type InsertStore = z.infer<typeof insertStoreSchema>;
+// Re-export all schema tables and types
+export * from "./schema";
