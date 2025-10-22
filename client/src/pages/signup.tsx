@@ -78,8 +78,8 @@ export default function SignupPage() {
 
     try {
       if (name && email && password) {
-        // Update the signup function call to include the title
-        const success = await signup(name, email, password);
+        // Now passing the royal title to the signup function
+        const success = await signup(name, email, password, selectedTitle);
         if (success) {
           alert('Your kingdom awaits! Registration successful!');
           setLocation('/feed');
