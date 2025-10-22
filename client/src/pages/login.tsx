@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { useLocation } from 'wouter'; // For redirect after login
+import { useLocation } from 'wouter';
+import { useUser } from '@/contexts/UserContext';
 
 export default function LoginPage() {
   const [errors, setErrors] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
-  const [, setLocation] = useLocation(); // Wouter router for redirect
+  const [, setLocation] = useLocation();
+  const { login } = useUser();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -30,20 +32,14 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        localStorage.setItem('user', JSON.stringify(data.user));
-        alert('Logged in! Redirecting...');
-        setLocation('/feed'); // Wouter redirect
-      } else {
-        alert(data.error || 'Login failed—check credentials.');
+      if (email && password) {
+        const success = await login(email, password);
+        if (success) {
+          alert('Logged in! Redirecting...');
+          setLocation('/feed');
+        } else {
+          alert('Login failed—check credentials.');
+        }
       }
     } catch (error) {
       alert('Network error.');
