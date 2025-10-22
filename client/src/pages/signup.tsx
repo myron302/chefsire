@@ -57,7 +57,7 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      // Send to API
+      // Send to API - FIXED: Changed from /api/auth/signup to /auth/signup
       const response = await fetch('/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
