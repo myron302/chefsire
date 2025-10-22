@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Editor, Frame, Element } from "@craftjs/core";
-import { Search, Filter, ShoppingCart, Star, MapPin, Package, Plus, TrendingUp, Users, DollarSign, Store } from "lucide-react";
+import { Search, Filter, ShoppingCart, Star, MapPin, Package, Plus, TrendingUp, Users, DollarSign, Store, Crown, AlertCircle } from "lucide-react";
 import { Button as UIButton } from "@/components/ui/button";
 import { Card as UICard } from "@/components/ui/card";
 import { useUser } from "@/contexts/UserContext";
+import { Badge } from "@/components/ui/badge";
 
 // Custom store components for the builder
 const Container = ({ children }) => <div className="p-4 border border-gray-200 rounded">{children}</div>;
@@ -125,7 +126,22 @@ const Marketplace = () => {
       const response = await fetch(`/api/marketplace/products?${params}`);
       if (response.ok) {
         const data = await response.json();
-        setProducts(data.products || []);
+        // Enhance products with store information
+        const productsWithStores = await Promise.all(
+          (data.products || []).map(async (product: any) => {
+            try {
+              const storeResponse = await fetch(`/api/stores/by-user/${product.sellerId}`);
+              if (storeResponse.ok) {
+                const storeData = await storeResponse.json();
+                return { ...product, store: storeData.store };
+              }
+            } catch (e) {
+              console.error('Error fetching store:', e);
+            }
+            return product;
+          })
+        );
+        setProducts(productsWithStores);
       }
     } catch (e) {
       console.error("Error fetching products:", e);
@@ -156,21 +172,28 @@ const Marketplace = () => {
     return "Contact Seller";
   };
 
-  // Check if user can sell (has store or can create one)
+  // Check if user can sell (has subscription or active trial)
   const canSell = user?.subscription !== "free" || 
     (user?.trialEndDate && new Date(user.trialEndDate) > new Date());
 
-  const handleStartSelling = () => {
+  const handleStartSelling = async () => {
+    if (!user) {
+      // Redirect to login
+      window.location.href = "/login";
+      return;
+    }
+
     if (!canSell) {
-      // Redirect to subscription page or show upgrade modal
+      // Show upgrade modal or redirect to subscription
       setView("sell");
       return;
     }
     
     // Check if user already has a store
-    fetch(`/api/stores/by-user/${user.id}`)
-      .then(res => res.json())
-      .then(data => {
+    try {
+      const response = await fetch(`/api/stores/by-user/${user.id}`);
+      if (response.ok) {
+        const data = await response.json();
         if (data.store) {
           // User has a store, go to seller dashboard
           setView("sell");
@@ -178,11 +201,32 @@ const Marketplace = () => {
           // User needs to create a store first
           window.location.href = "/store/create";
         }
-      })
-      .catch(() => {
-        // If API fails, redirect to store creation
-        window.location.href = "/store/create";
-      });
+      }
+    } catch (error) {
+      console.error('Error checking store:', error);
+      // If API fails, redirect to store creation
+      window.location.href = "/store/create";
+    }
+  };
+
+  // Handle seller click - navigate to their store
+  const handleSellerClick = (product: any) => {
+    if (product.store) {
+      window.location.href = `/store/${product.store.handle}`;
+    } else {
+      // Fallback to user profile
+      window.location.href = `/profile/${product.sellerId}`;
+    }
+  };
+
+  // Handle product click - navigate to product page in store
+  const handleProductClick = (product: any) => {
+    if (product.store) {
+      window.location.href = `/store/${product.store.handle}/product/${product.id}`;
+    } else {
+      // Fallback to product details page
+      window.location.href = `/product/${product.id}`;
+    }
   };
 
   if (view === "sell") return <SellerDashboard onBack={() => setView("browse")} />;
@@ -319,7 +363,11 @@ const Marketplace = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {products.map((product) => (
-              <div key={product.id} className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-lg transition-shadow">
+              <div 
+                key={product.id} 
+                className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={() => handleProductClick(product)}
+              >
                 {product.images?.length ? (
                   <img src={product.images[0]} alt={product.name} className="w-full h-48 object-cover" />
                 ) : (
@@ -349,16 +397,31 @@ const Marketplace = () => {
                     </span>
                   </div>
 
+                  {/* Enhanced Seller Info with Store Badge */}
                   <div className="flex items-center mb-4">
-                    <div className="flex items-center space-x-2 text-sm text-gray-600">
+                    <div 
+                      className="flex items-center space-x-2 text-sm text-gray-600 cursor-pointer hover:text-orange-600 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSellerClick(product);
+                      }}
+                    >
                       <img
                         src={product.seller?.avatar || "https://images.unsplash.com/photo-1566554273541-37a9ca77b91f"}
                         alt={product.seller?.displayName}
                         className="w-6 h-6 rounded-full"
                       />
-                      <span>{product.seller?.displayName}</span>
+                      <span className="font-medium">{product.seller?.displayName}</span>
                       {product.seller?.isChef && (
-                        <span className="text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full">Chef</span>
+                        <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full">
+                          Chef
+                        </Badge>
+                      )}
+                      {product.store && (
+                        <Badge variant="outline" className="text-xs">
+                          <Store className="w-3 h-3 mr-1" />
+                          Store
+                        </Badge>
                       )}
                     </div>
                   </div>
@@ -369,11 +432,23 @@ const Marketplace = () => {
                   </div>
 
                   <div className="flex space-x-2">
-                    <button className="flex-1 bg-orange-500 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-orange-600 transition-colors flex items-center justify-center">
+                    <button 
+                      className="flex-1 bg-orange-500 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-orange-600 transition-colors flex items-center justify-center"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Add to cart logic
+                      }}
+                    >
                       <ShoppingCart className="w-4 h-4 mr-2" />
                       Add to Cart
                     </button>
-                    <button className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+                    <button 
+                      className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Favorite logic
+                      }}
+                    >
                       <Star className="w-4 h-4" />
                     </button>
                   </div>
@@ -473,14 +548,26 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
               Create Store
             </button>
           )}
+          {userStore && (
+            <button 
+              onClick={() => window.location.href = `/store/${userStore.handle}`}
+              className="bg-green-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center"
+            >
+              <Store className="w-4 h-4 mr-2" />
+              View My Store
+            </button>
+          )}
         </div>
 
         {/* Upgrade/Trial Modal */}
         {showUpgradeModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white p-6 rounded-lg max-w-md">
-              <h3 className="text-xl font-bold mb-4">Start Your 30-Day Trial</h3>
-              <p className="mb-4">Try Pro features free for 30 days.</p>
+              <div className="flex items-center mb-4">
+                <Crown className="w-8 h-8 text-orange-500 mr-3" />
+                <h3 className="text-xl font-bold">Unlock Your Store</h3>
+              </div>
+              <p className="mb-4">Start your 30-day free trial to create your store and sell products.</p>
               <div className="flex gap-4">
                 <button onClick={() => handleUpgrade("pro", true)} className="bg-orange-500 text-white px-4 py-2 rounded">
                   Start 30-Day Trial
@@ -583,6 +670,14 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
               <div className="text-center py-12 text-gray-500">
                 <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                 <p>Your products will appear here once you start selling</p>
+                {!userStore && (
+                  <button 
+                    onClick={() => window.location.href = '/store/create'}
+                    className="mt-4 bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors"
+                  >
+                    Create Store to Start Selling
+                  </button>
+                )}
               </div>
             )}
 
@@ -593,15 +688,38 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
               </div>
             )}
 
+            {activeTab === "analytics" && (
+              <div className="text-center py-12 text-gray-500">
+                <TrendingUp className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                <p>Sales analytics and performance metrics will appear here</p>
+              </div>
+            )}
+
             {activeTab === "store-builder" && (
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-6">Build Your Store</h3>
-                <button
-                  onClick={() => setShowBuilder(true)}
-                  className="bg-orange-500 text-white px-6 py-3 rounded-lg font-medium hover:bg-orange-600 transition-colors"
-                >
-                  Launch Store Builder
-                </button>
+                {userStore ? (
+                  <div className="text-center">
+                    <button
+                      onClick={() => setShowBuilder(true)}
+                      className="bg-orange-500 text-white px-6 py-3 rounded-lg font-medium hover:bg-orange-600 transition-colors"
+                    >
+                      Launch Store Builder
+                    </button>
+                    <p className="text-gray-600 mt-4">Customize your storefront layout and design</p>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Store className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                    <p className="text-gray-600 mb-4">Create a store first to use the store builder</p>
+                    <button 
+                      onClick={() => window.location.href = '/store/create'}
+                      className="bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors"
+                    >
+                      Create Store
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -652,7 +770,7 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
                     {/* Quick Actions */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <button 
-                        onClick={() => window.location.href = `/vendor/dashboard?tab=products`}
+                        onClick={() => setActiveTab("products")}
                         className="bg-white border border-gray-200 rounded-lg p-4 text-left hover:border-orange-300 transition-colors"
                       >
                         <Package className="w-8 h-8 text-orange-500 mb-2" />
@@ -670,7 +788,7 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
                       </button>
                       
                       <button 
-                        onClick={() => window.location.href = `/vendor/dashboard?tab=analytics`}
+                        onClick={() => setActiveTab("analytics")}
                         className="bg-white border border-gray-200 rounded-lg p-4 text-left hover:border-orange-300 transition-colors"
                       >
                         <TrendingUp className="w-8 h-8 text-orange-500 mb-2" />
