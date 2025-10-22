@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useUser } from '@/contexts/UserContext';
-import { Crown, Castle, Shield } from 'lucide-react';
+import { Crown, Castle, Shield, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
-  const [errors, setErrors] = useState({ email: '', password: '' });
+  const [errors, setErrors] = useState({ email: '', password: '', general: '' });
   const [loading, setLoading] = useState(false);
   const [, setLocation] = useLocation();
   const { login } = useUser();
@@ -15,8 +15,11 @@ export default function LoginPage() {
     const email = formData.get('email')?.toString().trim();
     const password = formData.get('password')?.toString();
 
-    let newErrors = { email: '', password: '' };
+    let newErrors = { email: '', password: '', general: '' };
     let isValid = true;
+
+    // Clear previous errors
+    setErrors(newErrors);
 
     if (!email || !/\S+@\S+\.\S+/.test(email)) {
       newErrors.email = 'Please enter a valid royal decree address.';
@@ -27,8 +30,10 @@ export default function LoginPage() {
       isValid = false;
     }
 
-    setErrors(newErrors);
-    if (!isValid) return;
+    if (!isValid) {
+      setErrors(newErrors);
+      return;
+    }
 
     setLoading(true);
 
@@ -39,25 +44,37 @@ export default function LoginPage() {
           alert('Welcome back to your kingdom!');
           setLocation('/feed');
         } else {
-          // More specific error messages
+          // Check what type of error we have
           const existingUser = localStorage.getItem('user');
           if (!existingUser) {
             setErrors({ 
-              email: 'No kingdom found. Please claim your throne first!', 
-              password: '' 
+              email: '', 
+              password: '',
+              general: 'No kingdom found with this royal decree. Please claim your throne first!' 
             });
           } else {
-            setErrors({ 
-              email: 'Invalid royal credentials.', 
-              password: 'Check your royal seal and try again.' 
-            });
+            const userData = JSON.parse(existingUser);
+            if (userData.email !== email) {
+              setErrors({ 
+                email: 'This royal decree does not match our records.', 
+                password: '',
+                general: '' 
+              });
+            } else {
+              setErrors({ 
+                email: '',
+                password: 'Invalid royal seal.', 
+                general: '' 
+              });
+            }
           }
         }
       }
     } catch (error) {
       setErrors({ 
-        email: 'Royal courier unavailable.', 
-        password: 'Check your connection to the kingdom.' 
+        email: '',
+        password: '',
+        general: 'Royal courier unavailable. Check your connection to the kingdom.' 
       });
     }
 
@@ -96,6 +113,14 @@ export default function LoginPage() {
             <h2 className="text-2xl font-bold text-white mb-2">Enter Your Castle</h2>
             <p className="text-blue-100">Welcome back, your highness</p>
           </div>
+
+          {/* General Error Message */}
+          {errors.general && (
+            <div className="mb-4 p-3 bg-red-500/20 border border-red-400 rounded-xl flex items-center space-x-2">
+              <AlertCircle className="w-5 h-5 text-red-300 flex-shrink-0" />
+              <span className="text-red-200 text-sm">{errors.general}</span>
+            </div>
+          )}
 
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div className="space-y-4">
