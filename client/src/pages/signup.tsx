@@ -1,84 +1,64 @@
 import { useState } from 'react';
-import { useLocation } from 'wouter'; // For redirect after signup
+import { useLocation } from 'wouter';
+import { useUser } from '@/contexts/UserContext';
 
 export default function SignupPage() {
-  // State for errors (shows red messages if something's wrong)
   const [errors, setErrors] = useState({ name: '', email: '', password: '' });
-  // State for loading (disables button while submitting)
   const [loading, setLoading] = useState(false);
-  // Wouter router for redirect
   const [, setLocation] = useLocation();
+  const { signup } = useUser();
 
-  // Handle form submit
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    // Stop page from refreshing
     e.preventDefault();
     
-    // Get form values
     const formData = new FormData(e.currentTarget);
     const name = formData.get('fullName')?.toString().trim();
     const email = formData.get('email')?.toString().trim();
     const password = formData.get('password')?.toString();
     const terms = (e.currentTarget as HTMLFormElement).querySelector('#terms') as HTMLInputElement;
 
-    // Reset errors
     let newErrors = { name: '', email: '', password: '' };
     let isValid = true;
 
-    // Check name
     if (!name) { 
       newErrors.name = 'Please enter your full name.'; 
       isValid = false; 
     }
 
-    // Check email
     if (!email || !/\S+@\S+\.\S+/.test(email)) { 
       newErrors.email = 'Please enter a valid email.'; 
       isValid = false; 
     }
 
-    // Check password
-    if (password?.length < 6) { 
+    if (password && password.length < 6) { 
       newErrors.password = 'Password must be at least 6 characters.'; 
       isValid = false; 
     }
 
-    // Check terms checkbox
-    if (!terms.checked) { 
+    if (!terms?.checked) { 
       alert('You must agree to the terms.'); 
       isValid = false; 
     }
 
-    // Update errors on screen
     setErrors(newErrors);
-    if (!isValid) return; // Stop if invalid
+    if (!isValid) return;
 
-    // Show loading
     setLoading(true);
 
     try {
-      // Send to API
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        // Success! Save user to localStorage (simple session for now)
-        localStorage.setItem('user', JSON.stringify(data.user));
-        alert('Sign-up successful! Redirecting to feed...');
-        setLocation('/feed'); // Wouter redirect
-      } else {
-        alert(data.error || 'Sign-up failed—try again!');
+      if (name && email && password) {
+        const success = await signup(name, email, password);
+        if (success) {
+          alert('Sign-up successful! Redirecting to feed...');
+          setLocation('/feed');
+        } else {
+          alert('Sign-up failed—please try again!');
+        }
       }
     } catch (error) {
       alert('Network error—check your connection.');
     }
 
-    // Hide loading
     setLoading(false);
   };
 
