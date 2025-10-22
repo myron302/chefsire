@@ -4,6 +4,7 @@ import { Link, useLocation } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useUser } from "@/contexts/UserContext";
 import {
   Search, Bell, MessageCircle, User, ChevronDown, ChevronRight,
   Settings, LogOut, Plus,
@@ -21,6 +22,7 @@ export default function Layout({ children }: LayoutProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
+  const { user, logout } = useUser();
 
   useEffect(() => {
     const link = document.createElement("link");
@@ -61,6 +63,12 @@ export default function Layout({ children }: LayoutProps) {
     e.preventDefault();
     e.stopPropagation();
     setExpandedMenus(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleLogout = () => {
+    logout();
+    setIsDropdownOpen(false);
+    setLocation('/');
   };
 
   return (
@@ -146,8 +154,8 @@ export default function Layout({ children }: LayoutProps) {
                   aria-label="User menu"
                 >
                   <Avatar className="w-8 h-8">
-                    <AvatarImage src="https://images.unsplash.com/photo-1566554273541-37a9ca77b91f" />
-                    <AvatarFallback>CA</AvatarFallback>
+                    <AvatarImage src={user?.avatar || "https://images.unsplash.com/photo-1566554273541-37a9ca77b91f"} />
+                    <AvatarFallback>{user?.displayName?.[0] || 'U'}</AvatarFallback>
                   </Avatar>
                   <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 </button>
@@ -165,15 +173,16 @@ export default function Layout({ children }: LayoutProps) {
                       {/* Header */}
                       <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-b px-4 py-3">
                         <div className="flex items-center space-x-3">
-                          <div className="w-7 h-7 rounded-full overflow-hidden bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-md">
-                            <img src={chefLogo} alt="ChefSire Logo" />
-                          </div>
+                          <Avatar className="w-7 h-7">
+                            <AvatarImage src={user?.avatar} />
+                            <AvatarFallback>{user?.displayName?.[0] || 'U'}</AvatarFallback>
+                          </Avatar>
                           <div>
                             <span className="font-bold text-orange-900 dark:text-orange-100 text-base">
-                              Chef's Corner
+                              {user?.displayName || 'User'}
                             </span>
                             <div className="text-xs text-orange-700 dark:text-orange-300">
-                              Your culinary kingdom awaits
+                              @{user?.username}
                             </div>
                           </div>
                         </div>
@@ -461,7 +470,7 @@ export default function Layout({ children }: LayoutProps) {
 
                         {/* Profile / Settings / Sign out */}
                         <Link
-                          href="/profile"
+                          href={`/profile/${user?.id}`}
                           onClick={() => setIsDropdownOpen(false)}
                           className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
                         >
@@ -477,10 +486,7 @@ export default function Layout({ children }: LayoutProps) {
                         </Link>
 
                         <button
-                          onClick={() => {
-                            setIsDropdownOpen(false);
-                            console.log("Logging out...");
-                          }}
+                          onClick={handleLogout}
                           className="flex items-center w-full px-4 py-3 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 text-left"
                         >
                           <LogOut className="w-5 h-5 mr-3" />
