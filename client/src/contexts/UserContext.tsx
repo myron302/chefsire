@@ -8,6 +8,7 @@ interface User {
   royalTitle?: string;
   avatar?: string;
   bio?: string;
+  email: string; // Make email required for validation
   subscription: 'free' | 'pro' | 'enterprise';
   productCount: number;
   trialEndDate?: Date | null;
@@ -16,7 +17,7 @@ interface User {
   followingCount: number;
   isChef: boolean;
   specialty?: string;
-  email?: string; // Add email to track login
+  password?: string; // Store password for demo (in real app, this would be hashed)
 }
 
 interface UserContextType {
@@ -78,52 +79,31 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     try {
       setLoading(true);
       
-      // Get stored users from localStorage
+      // Get stored user from localStorage
       const savedUser = localStorage.getItem('user');
       
       if (!savedUser) {
-        // No user exists - require signup first
-        console.log('No existing user found - please sign up first');
+        console.log('No user found - please sign up first');
         return false;
       }
 
-      const existingUser = JSON.parse(savedUser);
+      const existingUser: User = JSON.parse(savedUser);
       
-      // Check if this is the demo user or a real registered user
-      // For demo purposes, we'll check if the user has an email property
-      // In a real app, you'd check against your backend
-      if (existingUser.email && existingUser.email !== email) {
+      // Validate email matches
+      if (existingUser.email !== email) {
         console.log('Email does not match registered user');
         return false;
       }
 
-      // Basic password check (in real app, this would be hashed password check)
-      // For now, we'll just require password to be at least 6 chars
-      // and check if it matches the stored user's expected password pattern
-      if (password.length < 6) {
-        console.log('Password too short');
+      // Validate password matches (in real app, this would compare hashes)
+      if (existingUser.password !== password) {
+        console.log('Password does not match');
         return false;
       }
 
-      // If we have a matching user, log them in
-      const mockUser: User = {
-        id: existingUser.id || 'user-1',
-        username: existingUser.username || email.split('@')[0],
-        displayName: existingUser.displayName || email.split('@')[0],
-        royalTitle: existingUser.royalTitle || 'Knight',
-        avatar: existingUser.avatar || 'https://images.unsplash.com/photo-1566554273541-37a9ca77b91f',
-        bio: existingUser.bio || 'Food enthusiast and recipe creator',
-        email: email, // Store the email used to login
-        subscription: existingUser.subscription || 'free',
-        productCount: existingUser.productCount || 0,
-        postsCount: existingUser.postsCount || 0,
-        followersCount: existingUser.followersCount || 0,
-        followingCount: existingUser.followingCount || 0,
-        isChef: existingUser.isChef || false
-      };
-      
-      setUser(mockUser);
-      localStorage.setItem('user', JSON.stringify(mockUser));
+      // If validation passes, set the user (without password for security)
+      const { password: _, ...userWithoutPassword } = existingUser;
+      setUser(userWithoutPassword as User);
       return true;
       
     } catch (error) {
@@ -141,14 +121,14 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       // Check if user already exists
       const existingUser = localStorage.getItem('user');
       if (existingUser) {
-        const userData = JSON.parse(existingUser);
+        const userData: User = JSON.parse(existingUser);
         if (userData.email === email) {
           console.log('User already exists with this email');
           return false;
         }
       }
 
-      // Mock signup - replace with real API call
+      // Create new user with actual password storage (for demo)
       if (name && email && password.length >= 6) {
         const mockUser: User = {
           id: 'user-' + Date.now(),
@@ -157,7 +137,8 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
           royalTitle: royalTitle || 'Knight',
           avatar: 'https://images.unsplash.com/photo-1566554273541-37a9ca77b91f',
           bio: 'New food enthusiast!',
-          email: email, // Store email for login validation
+          email: email,
+          password: password, // Store password for validation (in real app, this would be hashed)
           subscription: 'free',
           productCount: 0,
           postsCount: 0,
@@ -165,8 +146,14 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
           followingCount: 0,
           isChef: false
         };
-        setUser(mockUser);
+        
+        // Store user with password for login validation
         localStorage.setItem('user', JSON.stringify(mockUser));
+        
+        // Set user without password for security
+        const { password: _, ...userWithoutPassword } = mockUser;
+        setUser(userWithoutPassword as User);
+        
         return true;
       }
       return false;
