@@ -46,6 +46,10 @@ export const users = pgTable(
     dailyCalorieGoal: integer("daily_calorie_goal"),
     macroGoals: jsonb("macro_goals").$type<{ protein: number; carbs: number; fat: number }>(),
     dietaryRestrictions: jsonb("dietary_restrictions").$type<string[]>().default(sql`'[]'::jsonb`),
+
+    // ✅ NEW: will be set upon clicking verification link
+    emailVerifiedAt: timestamp("email_verified_at"),
+
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
@@ -465,6 +469,36 @@ export const stores = pgTable(
   })
 );
 
+/* ===== ✅ NEW: EMAIL VERIFICATION TOKENS ===== */
+export const emailVerificationTokens = pgTable(
+  "email_verification_tokens",
+  {
+    // keep consistent with your string UUID style
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+
+    // references users.id (varchar UUID)
+    userId: varchar("user_id").references(() => users.id).notNull(),
+
+    // SHA-256 hex string (64 chars)
+    tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+
+    // email being verified
+    email: varchar("email", { length: 255 }).notNull(),
+
+    // 30 minute default expiry
+    expiresAt: timestamp("expires_at").notNull().default(sql`now() + interval '30 minutes'`),
+
+    // set once used
+    consumedAt: timestamp("consumed_at"),
+
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    userIdx: index("evt_user_idx").on(t.userId),
+    tokenIdx: index("evt_token_hash_idx").on(t.tokenHash),
+  })
+);
+
 /* =========================================================================
    ===== INSERT SCHEMAS
    ========================================================================= */
@@ -475,6 +509,9 @@ export const insertUserSchema = createInsertSchema(users).omit({
   postsCount: true,
   monthlyRevenue: true,
   createdAt: true,
+
+  // ✅ Don’t require this on insert
+  emailVerifiedAt: true,
 });
 
 export const insertPostSchema = createInsertSchema(posts).omit({
@@ -630,6 +667,9 @@ export type UserDrinkStats = typeof userDrinkStats.$inferSelect;
 export type InsertUserDrinkStats = z.infer<typeof insertUserDrinkStatsSchema>;
 export type Store = typeof stores.$inferSelect;
 export type InsertStore = z.infer<typeof insertStoreSchema>;
+
+/* ===== NEW TYPE ===== */
+export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
 
 /* =========================================================================
    ===== Extended types
