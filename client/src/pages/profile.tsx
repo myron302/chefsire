@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import PostCard from "@/components/post-card";
+import { useUser } from "@/contexts/UserContext";
 import {
   Image,
   ChefHat,
@@ -56,15 +57,17 @@ type Store = {
 
 export default function Profile() {
   const { userId } = useParams<{ userId?: string }>();
-  const currentUserId = "user-1"; // Updated to match Alexandra
-  const profileUserId = userId || currentUserId;
+  const { user: currentUser } = useUser();
+  const profileUserId = userId || currentUser?.id;
 
   const { data: user, isLoading: userLoading } = useQuery<User>({
     queryKey: ["/api/users", profileUserId],
+    enabled: !!profileUserId,
   });
 
   const { data: posts, isLoading: postsLoading } = useQuery<PostWithUser[]>({
     queryKey: ["/api/posts/user", profileUserId],
+    enabled: !!profileUserId,
   });
 
   // Fetch user's custom drinks
@@ -78,6 +81,7 @@ export default function Profile() {
       }
       return response.json();
     },
+    enabled: !!profileUserId,
   });
 
   // Fetch user drink stats with fallback mock data
@@ -103,6 +107,7 @@ export default function Profile() {
       }
       return response.json();
     },
+    enabled: !!profileUserId,
   });
 
   // Fetch saved drinks
@@ -115,6 +120,7 @@ export default function Profile() {
       }
       return response.json();
     },
+    enabled: !!profileUserId,
   });
 
   // Fetch user's competitions/cookoffs
@@ -157,6 +163,7 @@ export default function Profile() {
       }
       return response.json();
     },
+    enabled: !!profileUserId,
   });
 
   // ✅ Fetch this user's Storefront with enhanced data
@@ -167,6 +174,7 @@ export default function Profile() {
       if (!res.ok) return { store: null };
       return res.json();
     },
+    enabled: !!profileUserId,
   });
 
   // Fetch store products count
@@ -181,7 +189,7 @@ export default function Profile() {
     enabled: !!storeData?.store,
   });
 
-  const isOwnProfile = profileUserId === currentUserId;
+  const isOwnProfile = profileUserId === currentUser?.id;
 
   if (userLoading) {
     return (
