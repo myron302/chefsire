@@ -2,7 +2,6 @@
 import { Crown, CheckCircle2, Sparkles, ArrowRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { Button } from '@/components/ui/button';
 
 export default function VerifySuccessPage() {
   const [, setLocation] = useLocation();
@@ -83,16 +82,14 @@ export default function VerifySuccessPage() {
             </div>
 
             {/* Manual Login Button */}
-            <Button
+            <button
               onClick={() => setLocation('/login')}
-              className="w-full mt-6 bg-gradient-to-r from-purple-600 via-red-500 to-orange-500 hover:from-purple-700 hover:via-red-600 hover:to-orange-600 text-white font-semibold py-6 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
+              className="w-full mt-6 bg-gradient-to-r from-purple-600 via-red-500 to-orange-500 hover:from-purple-700 hover:via-red-600 hover:to-orange-600 text-white font-semibold py-6 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center justify-center gap-2"
             >
-              <div className="flex items-center justify-center gap-2">
-                <Crown className="w-5 h-5" />
-                Go to Login
-                <ArrowRight className="w-5 h-5" />
-              </div>
-            </Button>
+              <Crown className="w-5 h-5" />
+              Go to Login
+              <ArrowRight className="w-5 h-5" />
+            </button>
           </div>
 
           {/* Decorative Elements */}
