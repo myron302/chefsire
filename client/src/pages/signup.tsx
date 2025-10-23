@@ -2,7 +2,6 @@
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
-import { useUser } from '@/contexts/UserContext';
 import {
   Crown, ChevronDown, Sparkles, Castle, Shield, Gem,
   Eye, EyeOff, Phone, Mail, CheckCircle2, XCircle
@@ -54,7 +53,6 @@ function slugify(raw: string) {
 
 export default function SignupPage() {
   const [, setLocation] = useLocation();
-  const { signup } = useUser();
 
   // Core state
   const [loading, setLoading] = useState(false);
@@ -234,6 +232,7 @@ export default function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
 
     // Reset errors
     setErrors({
@@ -255,19 +254,6 @@ export default function SignupPage() {
     if (!password) newErrors.password = 'Password is required';
     else if (password.length < 6) newErrors.password = 'Password must be at least 6 characters';
 
-    if (verifyMethod === 'email' && !emailLinkSent) {
-      newErrors.verify = 'Please send and verify your email';
-    } else if (verifyMethod === 'sms') {
-      if (!phone.trim()) {
-        newErrors.phone = 'Phone number is required for SMS verification';
-      } else if (!isPhoneValid) {
-        newErrors.phone = 'Invalid phone number';
-      }
-      if (!otpVerified) {
-        newErrors.verify = 'Please verify your phone';
-      }
-    }
-
     // Captcha
     const sum = captchaA + captchaB;
     if (!captchaAnswer.trim() || parseInt(captchaAnswer, 10) !== sum) {
@@ -288,13 +274,26 @@ export default function SignupPage() {
     // --- All good, attempt signup ---
     setLoading(true);
     try {
-      await signup({
-        name: `${firstName} ${lastName}`,
-        email,
-        password,
-        username,
-        selectedTitle,
+      const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+      
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: fullName,
+          email: email.trim(),
+          password,
+          username: username.trim(),
+          selectedTitle,
+        }),
       });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Signup failed');
+      }
+
       // Redirect to verify email page
       setLocation('/verify-email');
     } catch (err: any) {
