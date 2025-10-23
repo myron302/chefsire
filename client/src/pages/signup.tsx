@@ -306,6 +306,8 @@ export default function SignupPage() {
       }
 
       if (success) {
+        // Store email for resend functionality
+        sessionStorage.setItem('pendingVerificationEmail', email.trim());
         // Redirect to verify email page
         setLocation('/verify-email');
       } else {
