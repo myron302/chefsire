@@ -90,7 +90,8 @@ router.post("/auth/signup", async (req, res) => {
     });
 
     // Send verification email
-    await sendVerificationEmail(email, token);
+    const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
+    await sendVerificationEmail(email, verificationLink);
 
     res.status(201).json({
       message: "Account created! Please check your email to verify your account.",
@@ -270,7 +271,8 @@ router.post("/auth/resend-verification", async (req, res) => {
     });
 
     // Send verification email
-    await sendVerificationEmail(email, token);
+    const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
+    await sendVerificationEmail(email, verificationLink);
 
     res.json({ message: "Verification email sent" });
   } catch (error) {
