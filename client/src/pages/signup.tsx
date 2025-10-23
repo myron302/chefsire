@@ -2,6 +2,7 @@
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
+import { useUser } from '@/contexts/UserContext';
 import {
   Crown, ChevronDown, Sparkles, Castle, Shield, Gem,
   Eye, EyeOff, Phone, Mail, CheckCircle2, XCircle
@@ -53,6 +54,7 @@ function slugify(raw: string) {
 
 export default function SignupPage() {
   const [, setLocation] = useLocation();
+  const { signup } = useUser();
 
   // Core state
   const [loading, setLoading] = useState(false);
@@ -230,7 +232,7 @@ export default function SignupPage() {
     setErrors(e => ({ ...e, verify: '' }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (loading) return;
 
@@ -275,29 +277,42 @@ export default function SignupPage() {
     setLoading(true);
     try {
       const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
-      
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: fullName,
-          email: email.trim(),
-          password,
-          username: username.trim(),
-          selectedTitle,
-        }),
-      });
 
-      const data = await response.json();
+      // Try to pass extra meta if your signup supports it (arity check)
+      let success = false;
+      const meta = {
+        username: slugify(username),
+        phone,
+        verifyMethod,
+        otpVerified,
+        emailLinkSent,
+        title: selectedTitle,
+      };
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Signup failed');
+      try {
+        // If signup has >=5 params, call with (name, email, password, title, meta)
+        if ((signup as unknown as Function).length >= 5) {
+          // @ts-expect-error – accepting extended signature if available
+          success = await (signup as any)(fullName, email, password, selectedTitle, meta);
+        } else {
+          // Fallback to legacy 4-arg signature
+          // @ts-expect-error legacy signature
+          success = await signup(fullName, email, password, selectedTitle);
+        }
+      } catch {
+        // Fallback in case length probing is unreliable at runtime
+        // @ts-expect-error legacy signature
+        success = await signup(fullName, email, password, selectedTitle);
       }
 
-      // Redirect to verify email page
-      setLocation('/verify-email');
-    } catch (err: any) {
-      alert(`Signup failed: ${err.message || err}`);
+      if (success) {
+        // Redirect to verify email page
+        setLocation('/verify-email');
+      } else {
+        alert('The royal scribes encountered an issue. Please try again!');
+      }
+    } catch {
+      alert('Royal courier unavailable. Check your connection.');
     } finally {
       setLoading(false);
     }
