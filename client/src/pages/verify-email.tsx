@@ -1,6 +1,6 @@
 // client/src/pages/verify-email.tsx
-import { Crown, Mail, CheckCircle2, RefreshCw, AlertCircle } from 'lucide-react';
 import { useState } from 'react';
+import { Crown, Mail, CheckCircle2, Sparkles, ArrowRight } from 'lucide-react';
 import { useLocation } from 'wouter';
 
 export default function VerifyEmailPage() {
@@ -8,14 +8,11 @@ export default function VerifyEmailPage() {
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
 
-  // In a real app, you'd get email from query params or context
-  // For now, we'll show a generic message
   const handleResendEmail = async () => {
     setResending(true);
     try {
-      // You'll need to implement this endpoint or store user info to resend
-      // const res = await fetch('/api/auth/resend-verification', { method: 'POST' });
-      // For now, just simulate
+      // TODO: Implement actual resend logic
+      // For now, just simulate a delay
       await new Promise(resolve => setTimeout(resolve, 1000));
       setResent(true);
       setTimeout(() => setResent(false), 5000);
@@ -27,8 +24,26 @@ export default function VerifyEmailPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-red-800 to-orange-600 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-red-800 to-orange-600 py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-32 w-80 h-80 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
+        <div className="absolute -bottom-40 -left-32 w-80 h-80 bg-green-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse delay-75"></div>
+        <div className="absolute top-40 left-1/2 w-80 h-80 bg-purple-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse delay-150"></div>
+
+        {/* Floating crowns */}
+        <div className="absolute top-20 left-20 animate-bounce">
+          <Crown className="w-8 h-8 text-yellow-300 opacity-40" />
+        </div>
+        <div className="absolute bottom-20 right-20 animate-bounce delay-100">
+          <Crown className="w-6 h-6 text-yellow-200 opacity-40" />
+        </div>
+        <div className="absolute top-1/2 right-40 animate-bounce delay-200">
+          <Sparkles className="w-4 h-4 text-white opacity-30" />
+        </div>
+      </div>
+
+      <div className="max-w-md w-full space-y-8 relative z-10">
         {/* Royal Header */}
         <div className="text-center">
           <div className="flex justify-center items-center mb-6">
@@ -111,32 +126,32 @@ export default function VerifyEmailPage() {
               >
                 {resending ? (
                   <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-100 mr-2"></div>
                     Sending...
                   </>
                 ) : (
                   <>
                     <Mail className="w-4 h-4 mr-2" />
-                    Resend Verification Email
+                    Resend Email
                   </>
                 )}
               </button>
             </div>
 
-            {/* Warning */}
-            <div className="bg-orange-500/20 border border-orange-400 rounded-2xl p-4 flex items-start space-x-3">
-              <AlertCircle className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
-              <p className="text-orange-300 text-sm">
-                You must verify your email before you can log in to your account. The verification link expires in 30 minutes.
+            {/* Important Note */}
+            <div className="bg-orange-500/20 border border-orange-400 rounded-2xl p-4">
+              <p className="text-orange-200 text-xs text-center">
+                ⚠️ You must verify your email before you can log in to your account. The link expires in 24 hours.
               </p>
             </div>
 
-            {/* Go to Login Button */}
+            {/* Go to Login */}
             <button
               onClick={() => setLocation('/login')}
-              className="w-full py-4 px-6 text-lg font-bold rounded-2xl text-purple-900 bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-300 hover:to-orange-300 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105"
+              className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-300 hover:to-orange-300 text-purple-900 font-bold rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl"
             >
-              Go to Login Page
+              Already Verified? Enter Your Castle
+              <ArrowRight className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -144,9 +159,9 @@ export default function VerifyEmailPage() {
         {/* Footer */}
         <div className="text-center">
           <p className="text-yellow-200/70 text-xs">
-            Need help? Contact our{' '}
+            Need help?{' '}
             <a href="/contact" className="text-yellow-300 hover:text-yellow-200 underline">
-              Royal Support
+              Contact our Royal Support
             </a>
           </p>
         </div>
