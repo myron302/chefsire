@@ -38,6 +38,10 @@ const TITLE_SUFFIX_MAP: Record<string, string> = {
   'dame': 'dame',
   'royal-chef': 'royalchef',
   'court-master': 'courtsage',
+  'noble-chef': 'noblechef',
+  'imperial-chef': 'imperialchef',
+  'majestic-chef': 'majesticchef',
+  'chef': 'chef',
 };
 
 function slugify(raw: string) {
@@ -89,7 +93,7 @@ export default function SignupPage() {
   const [captchaB, setCaptchaB] = useState(0);
   const [captchaAnswer, setCaptchaAnswer] = useState('');
 
-  // Royal Titles
+  // Royal Titles - WITH 4 NEW TITLES ADDED
   const royalTitles = useMemo(() => ([
     { value: 'king', label: 'King', emoji: '👑', description: 'Ruler of the Kitchen' },
     { value: 'queen', label: 'Queen', emoji: '👑', description: 'Ruler of the Kitchen' },
@@ -106,6 +110,10 @@ export default function SignupPage() {
     { value: 'dame', label: 'Dame', emoji: '🌟', description: 'Culinary Knight' },
     { value: 'royal-chef', label: 'Royal Chef', emoji: '🍳', description: 'Palace Chef' },
     { value: 'court-master', label: 'Court Master', emoji: '🎭', description: 'Royal Court' },
+    { value: 'noble-chef', label: 'Noble Chef', emoji: '🌟', description: 'Distinguished Cook' },
+    { value: 'imperial-chef', label: 'Imperial Chef', emoji: '👨‍🍳', description: 'Supreme Chef' },
+    { value: 'majestic-chef', label: 'Majestic Chef', emoji: '✨', description: 'Extraordinary Chef' },
+    { value: 'chef', label: 'Chef', emoji: '👨‍🍳', description: 'Master of Cuisine' },
   ]), []);
 
   const selectedTitleData = useMemo(
@@ -184,210 +192,215 @@ export default function SignupPage() {
     if (/[a-z]/.test(p)) s++;
     if (/\d/.test(p)) s++;
     if (/[^A-Za-z0-9]/.test(p)) s++;
-    return Math.min(s, 4);
+    return s;
   }, [password]);
 
-  const passwordLabel = ['Very weak', 'Weak', 'Okay', 'Good', 'Strong'][passwordScore] ?? 'Very weak';
+  const passwordStrength = useMemo(() => {
+    if (passwordScore === 0) return { text: 'None', color: 'text-red-400' };
+    if (passwordScore <= 2) return { text: 'Weak', color: 'text-red-400' };
+    if (passwordScore === 3) return { text: 'Fair', color: 'text-yellow-400' };
+    if (passwordScore === 4) return { text: 'Good', color: 'text-green-400' };
+    return { text: 'Strong', color: 'text-green-500' };
+  }, [passwordScore]);
 
-  // Mock API helpers (replace with real endpoints if available)
-  async function requestSmsCode(phoneNumber: string) {
-    // Example: await fetch('/api/auth/request-otp', { method: 'POST', body: JSON.stringify({ phone: phoneNumber }) })
-    await new Promise(res => setTimeout(res, 500));
-    return { ok: true };
-  }
-  async function verifySmsCode(phoneNumber: string, code: string) {
-    // Example: await fetch('/api/auth/verify-otp', { method: 'POST', body: JSON.stringify({ phone: phoneNumber, code }) })
-    await new Promise(res => setTimeout(res, 400));
-    // Accept 6-digit demo code "123456" in this mock:
-    return { ok: code === '123456' };
-  }
-  async function sendEmailVerification(emailAddr: string) {
-    // Example: await fetch('/api/auth/send-email-verification', { method: 'POST', body: JSON.stringify({ email: emailAddr }) })
-    await new Promise(res => setTimeout(res, 500));
-    return { ok: true };
-  }
+  // --- Handlers ---
+  const handleSendEmailLink = async () => {
+    // Placeholder: call backend or mock
+    await new Promise(r => setTimeout(r, 500));
+    setEmailLinkSent(true);
+  };
 
-  const validate = (): boolean => {
+  const handleSendOtp = async () => {
+    if (!isPhoneValid) {
+      setErrors(e => ({ ...e, phone: 'Invalid phone number' }));
+      return;
+    }
+    setErrors(e => ({ ...e, phone: '' }));
+    // Placeholder
+    await new Promise(r => setTimeout(r, 500));
+    setOtpSent(true);
+  };
+
+  const handleVerifyOtp = async () => {
+    if (otpCode.length !== 6) {
+      setErrors(e => ({ ...e, verify: 'Code must be 6 digits' }));
+      return;
+    }
+    // Placeholder
+    await new Promise(r => setTimeout(r, 500));
+    setOtpVerified(true);
+    setErrors(e => ({ ...e, verify: '' }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Reset errors
+    setErrors({
+      firstName: '', lastName: '', username: '', email: '', password: '',
+      title: '', phone: '', captcha: '', verify: ''
+    });
+
+    // Validate
     const newErrors: Errors = {
       firstName: '', lastName: '', username: '', email: '', password: '',
       title: '', phone: '', captcha: '', verify: ''
     };
-    let ok = true;
 
-    if (!firstName.trim()) { newErrors.firstName = 'Please enter your given royal name.'; ok = false; }
-    if (!lastName.trim())  { newErrors.lastName  = 'Please enter your family name.'; ok = false; }
+    if (!firstName.trim()) newErrors.firstName = 'First name is required';
+    if (!lastName.trim()) newErrors.lastName = 'Last name is required';
+    if (!username.trim()) newErrors.username = 'Username is required';
+    if (!email.trim()) newErrors.email = 'Email is required';
+    else if (!isEmailValid) newErrors.email = 'Email is not valid';
+    if (!password) newErrors.password = 'Password is required';
+    else if (password.length < 6) newErrors.password = 'Password must be at least 6 characters';
 
-    const uname = slugify(username);
-    if (!uname) { newErrors.username = 'Choose a kingdom handle.'; ok = false; }
-
-    if (!isEmailValid) { newErrors.email = 'Enter a valid royal decree address.'; ok = false; }
-    if (!password || password.length < 6) { newErrors.password = 'Royal seal must be at least 6 characters.'; ok = false; }
-    if (!selectedTitle) { newErrors.title = 'Choose your royal title.'; ok = false; }
-
-    if (verifyMethod === 'sms' && !isPhoneValid) {
-      newErrors.phone = 'Enter a valid phone number (include country code if outside US).';
-      ok = false;
+    if (verifyMethod === 'email' && !emailLinkSent) {
+      newErrors.verify = 'Please send and verify your email';
+    } else if (verifyMethod === 'sms') {
+      if (!phone.trim()) {
+        newErrors.phone = 'Phone number is required for SMS verification';
+      } else if (!isPhoneValid) {
+        newErrors.phone = 'Invalid phone number';
+      }
+      if (!otpVerified) {
+        newErrors.verify = 'Please verify your phone';
+      }
     }
 
+    // Captcha
     const sum = captchaA + captchaB;
-    if (String(sum) !== captchaAnswer.trim()) {
-      newErrors.captcha = 'Solve the royal riddle correctly.';
-      ok = false;
+    if (!captchaAnswer.trim() || parseInt(captchaAnswer, 10) !== sum) {
+      newErrors.captcha = 'Incorrect answer. Try again.';
     }
 
     if (!agree) {
-      alert('You must agree to the royal charter.');
-      ok = false;
-    }
-
-    setErrors(newErrors);
-    return ok;
-  };
-
-  const handleSendOtp = async () => {
-    setErrors(e => ({ ...e, phone: '', verify: '' }));
-    if (!isPhoneValid) {
-      setErrors(e => ({ ...e, phone: 'Enter a valid phone number first.' }));
-      return;
-    }
-    const r = await requestSmsCode(phone);
-    if (r.ok) setOtpSent(true);
-  };
-
-  const handleVerifyOtp = async () => {
-    setErrors(e => ({ ...e, verify: '' }));
-    if (!otpCode || otpCode.length < 4) {
-      setErrors(e => ({ ...e, verify: 'Enter the 6-digit code.' }));
-      return;
-    }
-    const r = await verifySmsCode(phone, otpCode);
-    if (r.ok) {
-      setOtpVerified(true);
-    } else {
-      setOtpVerified(false);
-      setErrors(e => ({ ...e, verify: 'Invalid code. Try 123456 for demo.' }));
-    }
-  };
-
-  const handleSendEmailLink = async () => {
-    setErrors(e => ({ ...e, verify: '' }));
-    if (!isEmailValid) {
-      setErrors(e => ({ ...e, email: 'Enter a valid email first.' }));
-      return;
-    }
-    const r = await sendEmailVerification(email);
-    if (r.ok) setEmailLinkSent(true);
-  };
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (loading) return;
-
-    if (!validate()) return;
-
-    // If SMS verify chosen, require successful OTP verification before signup
-    if (verifyMethod === 'sms' && !otpVerified) {
-      setErrors(e => ({ ...e, verify: 'Verify your phone before continuing.' }));
+      alert('You must agree to the Royal Charter to proceed.');
       return;
     }
 
+    // Show errors if any
+    if (Object.values(newErrors).some(x => x !== '')) {
+      setErrors(newErrors);
+      return;
+    }
+
+    // --- All good, attempt signup ---
     setLoading(true);
     try {
-      // Build convenience name for legacy signup signature
-      const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
-
-      // Try to pass extra meta if your signup supports it (arity check)
-      let success = false;
-      const meta = {
-        username: slugify(username),
-        phone,
-        verifyMethod,
-        otpVerified,
-        emailLinkSent,
-        title: selectedTitle,
-      };
-
-      try {
-        // If signup has >=5 params, call with (name, email, password, title, meta)
-        if ((signup as unknown as Function).length >= 5) {
-          // @ts-expect-error – accepting extended signature if available
-          success = await (signup as any)(fullName, email, password, selectedTitle, meta);
-        } else {
-          // Fallback to legacy 4-arg signature
-          // @ts-expect-error legacy signature
-          success = await signup(fullName, email, password, selectedTitle);
-        }
-      } catch {
-        // Fallback in case length probing is unreliable at runtime
-        // @ts-expect-error legacy signature
-        success = await signup(fullName, email, password, selectedTitle);
-      }
-
-      if (success) {
-        alert('Your kingdom awaits! Registration successful!');
-        setLocation('/feed');
-      } else {
-        alert('The royal scribes encountered an issue. Please try again!');
-      }
-    } catch {
-      alert('Royal courier unavailable. Check your connection.');
+      await signup({
+        name: `${firstName} ${lastName}`,
+        email,
+        password,
+        username,
+        selectedTitle,
+      });
+      // Redirect to verify email page
+      setLocation('/verify-email');
+    } catch (err: any) {
+      alert(`Signup failed: ${err.message || err}`);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-red-800 to-orange-600 py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
-      {/* Animated Background Elements */}
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-red-800 to-orange-600 py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Animated background circles */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-32 w-80 h-80 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-        <div className="absolute -bottom-40 -left-32 w-80 h-80 bg-red-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse delay-75"></div>
-        <div className="absolute top-40 left-1/2 w-80 h-80 bg-purple-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse delay-150"></div>
-
-        <div className="absolute top-20 left-20 animate-bounce">
-          <Crown className="w-8 h-8 text-yellow-300 opacity-40" />
-        </div>
-        <div className="absolute bottom-20 right-20 animate-bounce delay-100">
-          <Crown className="w-6 h-6 text-yellow-200 opacity-40" />
-        </div>
-        <div className="absolute top-1/2 right-40 animate-bounce delay-200">
-          <Sparkles className="w-4 h-4 text-white opacity-30" />
-        </div>
+        <div className="absolute -top-40 -right-32 w-80 h-80 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse" />
+        <div className="absolute -bottom-40 -left-32 w-80 h-80 bg-green-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse animation-delay-75" />
+        <div className="absolute top-40 left-1/2 w-80 h-80 bg-purple-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse animation-delay-150" />
       </div>
 
-      <div className="max-w-xl w-full space-y-8 relative z-10">
-        {/* Royal Header */}
-        <div className="text-center">
-          <div className="flex justify-center items-center mb-4">
-            <div className="relative">
-              <div className="w-20 h-20 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center shadow-2xl border-4 border-yellow-300">
-                <Crown className="w-10 h-10 text-white" />
-              </div>
-              <Sparkles className="absolute -top-2 -right-2 w-6 h-6 text-yellow-300 animate-pulse" />
+      {/* Floating icons */}
+      <div className="absolute inset-0 pointer-events-none">
+        <Crown className="absolute top-10 left-10 w-8 h-8 text-yellow-300 opacity-30 animate-bounce animation-delay-100" />
+        <Shield className="absolute top-32 right-16 w-6 h-6 text-yellow-200 opacity-25 animate-bounce animation-delay-200" />
+        <Sparkles className="absolute bottom-20 left-20 w-5 h-5 text-orange-300 opacity-30 animate-pulse animation-delay-300" />
+        <Castle className="absolute bottom-40 right-32 w-10 h-10 text-purple-300 opacity-20 animate-bounce animation-delay-400" />
+        <Gem className="absolute top-1/2 left-12 w-4 h-4 text-pink-300 opacity-25 animate-pulse animation-delay-500" />
+      </div>
+
+      {/* Main Card */}
+      <div className="max-w-2xl mx-auto relative z-10">
+        <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-8 sm:p-10 border border-yellow-300/30">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full mb-4 shadow-lg">
+              <Crown className="w-10 h-10 text-white" />
             </div>
+            <h2 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-orange-200 to-yellow-300 mb-2">
+              Join the Royal Court
+            </h2>
+            <p className="text-yellow-100 text-lg">
+              Claim your title and enter the culinary kingdom
+            </p>
           </div>
 
-          <h1 className="text-5xl font-bold bg-gradient-to-r from-yellow-300 to-orange-300 bg-clip-text text-transparent mb-2">
-            ChefSire
-          </h1>
-          <p className="text-yellow-100 text-lg mb-1">Join the Royal Culinary Court</p>
-          <div className="flex justify-center items-center space-x-2 text-yellow-200">
-            <Castle className="w-4 h-4" />
-            <span className="text-sm">Where Every Chef Reigns Supreme</span>
-            <Gem className="w-4 h-4" />
-          </div>
-        </div>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Title Selector */}
+            <div>
+              <label htmlFor="title" className="block text-sm font-medium text-yellow-100 mb-2">
+                Royal Title (Optional)
+              </label>
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  ref={titleBtnRef}
+                  type="button"
+                  onClick={() => setShowTitleDropdown(!showTitleDropdown)}
+                  className="relative w-full flex items-center justify-between px-4 py-3 bg-white/20 border border-yellow-300/50 rounded-2xl text-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent hover:bg-white/25 transition"
+                >
+                  {selectedTitleData ? (
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{selectedTitleData.emoji}</span>
+                      <div className="text-left">
+                        <div className="font-semibold">{selectedTitleData.label}</div>
+                        <div className="text-xs text-yellow-200 opacity-80">{selectedTitleData.description}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-yellow-200">Choose your royal title...</span>
+                  )}
+                  <ChevronDown className={`w-5 h-5 transition-transform ${showTitleDropdown ? 'rotate-180' : ''}`} />
+                </button>
 
-        {/* Royal Decree Form */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/20 p-8">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-white mb-2">Claim Your Throne</h2>
-            <p className="text-yellow-100">Begin your culinary reign today</p>
-          </div>
+                {showTitleDropdown && (
+                  <div className="absolute z-50 mt-2 w-full bg-white/95 backdrop-blur-lg border border-yellow-300/50 rounded-2xl shadow-2xl max-h-80 overflow-y-auto">
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedTitle(''); setShowTitleDropdown(false); }}
+                      className="w-full text-left px-4 py-3 hover:bg-purple-100 transition text-gray-700 border-b border-gray-200"
+                    >
+                      <span className="text-gray-500">No Title</span>
+                    </button>
+                    {royalTitles.map(t => (
+                      <button
+                        key={t.value}
+                        type="button"
+                        onClick={() => { setSelectedTitle(t.value); setShowTitleDropdown(false); }}
+                        className={`w-full text-left px-4 py-3 hover:bg-purple-100 transition border-b border-gray-100 last:border-0 ${
+                          selectedTitle === t.value ? 'bg-purple-50' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{t.emoji}</span>
+                          <div>
+                            <div className="font-semibold text-gray-800">{t.label}</div>
+                            <div className="text-xs text-gray-600">{t.description}</div>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {errors.title && <p className="mt-2 text-sm text-red-300">{errors.title}</p>}
+              <p className="mt-1 text-xs text-yellow-200">Choose a royal title to be displayed alongside your name</p>
+            </div>
 
-          <form className="space-y-6" onSubmit={handleSubmit} noValidate>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* First Name */}
+            {/* First + Last Name */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <label htmlFor="firstName" className="block text-sm font-medium text-yellow-100 mb-2">
                   First Name *
@@ -397,16 +410,13 @@ export default function SignupPage() {
                   name="firstName"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  className={`block w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
+                  className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
                     errors.firstName ? 'border-red-400' : 'border-yellow-300/50'
                   }`}
-                  placeholder="Your given name"
-                  autoComplete="given-name"
+                  placeholder="Arthur"
                 />
                 {errors.firstName && <p className="mt-2 text-sm text-red-300">{errors.firstName}</p>}
               </div>
-
-              {/* Last Name */}
               <div>
                 <label htmlFor="lastName" className="block text-sm font-medium text-yellow-100 mb-2">
                   Last Name *
@@ -416,11 +426,10 @@ export default function SignupPage() {
                   name="lastName"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  className={`block w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
+                  className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
                     errors.lastName ? 'border-red-400' : 'border-yellow-300/50'
                   }`}
-                  placeholder="Your family name"
-                  autoComplete="family-name"
+                  placeholder="Pendragon"
                 />
                 {errors.lastName && <p className="mt-2 text-sm text-red-300">{errors.lastName}</p>}
               </div>
@@ -429,179 +438,104 @@ export default function SignupPage() {
             {/* Username */}
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-yellow-100 mb-2">
-                Kingdom Handle (Username) *
+                Username *
               </label>
               <input
                 id="username"
                 name="username"
                 value={username}
-                onChange={(e) => { setUserEditedUsername(true); setUsername(slugify(e.target.value)); }}
-                className={`block w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
+                onChange={(e) => { setUsername(e.target.value); setUserEditedUsername(true); }}
+                className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
                   errors.username ? 'border-red-400' : 'border-yellow-300/50'
                 }`}
-                placeholder="your-name"
-                autoComplete="username"
+                placeholder="arthur-king"
               />
-              <p className="mt-1 text-xs text-yellow-200">
-                Your title is auto-appended. Example: <span className="font-semibold">{(username || 'your-name')}-sire</span>
-              </p>
               {errors.username && <p className="mt-2 text-sm text-red-300">{errors.username}</p>}
-            </div>
-
-            {/* Title Selection */}
-            <div>
-              <label className="block text-sm font-medium text-yellow-100 mb-2">
-                Choose Your Royal Title *
-              </label>
-              <div className="relative">
-                <button
-                  ref={titleBtnRef}
-                  type="button"
-                  onClick={() => setShowTitleDropdown(!showTitleDropdown)}
-                  aria-haspopup="listbox"
-                  aria-expanded={showTitleDropdown}
-                  className={`flex items-center justify-between w-full px-4 py-3 bg-white/20 border rounded-2xl text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
-                    errors.title ? 'border-red-400' : 'border-yellow-300/50'
-                  } ${selectedTitle ? 'text-yellow-100' : 'text-yellow-200'}`}
-                >
-                  <div className="flex items-center space-x-3">
-                    {selectedTitle ? (
-                      <>
-                        <span className="text-xl">{selectedTitleData?.emoji}</span>
-                        <div className="text-left">
-                          <div className="font-semibold">{selectedTitleData?.label}</div>
-                          <div className="text-xs text-yellow-200">{selectedTitleData?.description}</div>
-                        </div>
-                      </>
-                    ) : (
-                      <span>Select your royal title...</span>
-                    )}
-                  </div>
-                  <ChevronDown className={`w-5 h-5 text-yellow-300 transition-transform ${showTitleDropdown ? 'rotate-180' : ''}`} />
-                </button>
-
-                {showTitleDropdown && (
-                  <div ref={dropdownRef} className="absolute z-50 w-full mt-2 bg-purple-900/95 backdrop-blur-lg border border-yellow-300/30 rounded-2xl shadow-2xl overflow-hidden">
-                    <div className="max-h-60 overflow-y-auto" role="listbox">
-                      {royalTitles.map((title) => (
-                        <button
-                          key={title.value}
-                          type="button"
-                          onClick={() => {
-                            setSelectedTitle(title.value);
-                            setShowTitleDropdown(false);
-                            setErrors(prev => ({ ...prev, title: '' }));
-                          }}
-                          className="flex items-center space-x-3 w-full px-4 py-3 text-left hover:bg-yellow-500/20 transition-colors border-b border-white/10 last:border-b-0"
-                          role="option"
-                          aria-selected={selectedTitle === title.value}
-                        >
-                          <span className="text-xl">{title.emoji}</span>
-                          <div className="flex-1">
-                            <div className="font-semibold text-white">{title.label}</div>
-                            <div className="text-xs text-yellow-200">{title.description}</div>
-                          </div>
-                          {selectedTitle === title.value && <Crown className="w-4 h-4 text-yellow-400" />}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-              {errors.title && <p className="mt-2 text-sm text-red-300">{errors.title}</p>}
+              <p className="mt-1 text-xs text-yellow-200">
+                Auto-generated from your name & title. You may edit it freely.
+              </p>
             </div>
 
             {/* Email */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-yellow-100 mb-2">
-                Royal Decree Address (Email) *
+                Email Address *
               </label>
-              <div className="relative">
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className={`block w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
-                    errors.email ? 'border-red-400' : 'border-yellow-300/50'
-                  }`}
-                  placeholder="your@royalcourt.com"
-                  autoComplete="email"
-                />
-                <Castle className="absolute right-3 top-1/2 -translate-y-1/2 text-yellow-300 w-5 h-5" />
-              </div>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
+                  errors.email ? 'border-red-400' : 'border-yellow-300/50'
+                }`}
+                placeholder="king@camelot.com"
+              />
               {errors.email && <p className="mt-2 text-sm text-red-300">{errors.email}</p>}
-            </div>
-
-            {/* Phone (for SMS verification) */}
-            <div>
-              <label htmlFor="phone" className="block text-sm font-medium text-yellow-100 mb-2">
-                Royal Trumpet (Telephone)
-              </label>
-              <div className="relative">
-                <input
-                  type="tel"
-                  id="phone"
-                  name="phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className={`block w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
-                    errors.phone ? 'border-red-400' : 'border-yellow-300/50'
-                  }`}
-                  placeholder="+1 555 555 5555"
-                  autoComplete="tel"
-                />
-                <Phone className="absolute right-3 top-1/2 -translate-y-1/2 text-yellow-300 w-5 h-5" />
-              </div>
-              {errors.phone && <p className="mt-2 text-sm text-red-300">{errors.phone}</p>}
-              <p className="mt-1 text-xs text-yellow-200">Include country code if outside U.S. (e.g., +44, +61).</p>
             </div>
 
             {/* Password */}
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-yellow-100 mb-2">
-                Royal Seal (Password) *
+                Password *
               </label>
               <div className="relative">
                 <input
-                  type={showPassword ? 'text' : 'password'}
                   id="password"
                   name="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  minLength={6}
-                  className={`block w-full px-4 py-3 pr-12 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
+                  className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent pr-12 ${
                     errors.password ? 'border-red-400' : 'border-yellow-300/50'
                   }`}
-                  placeholder="Your royal secret"
-                  autoComplete="new-password"
+                  placeholder="Enter your secret code"
                 />
                 <button
                   type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-yellow-300"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  onClick={() => setShowPassword(v => !v)}
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-yellow-300 hover:text-yellow-200"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
               {errors.password && <p className="mt-2 text-sm text-red-300">{errors.password}</p>}
-              <div className="mt-2">
-                <div className="h-2 w-full bg-white/20 rounded-full overflow-hidden">
-                  <div
-                    className={`h-2 ${['w-1/5','w-2/5','w-3/5','w-4/5','w-full'][passwordScore]}`}
-                    style={{ background: 'linear-gradient(to right,#fde047,#fb923c)' }}
-                  />
-                </div>
-                <p className="text-xs text-yellow-200 mt-1">Strength: {passwordLabel}</p>
-              </div>
+              {password && (
+                <p className={`mt-1 text-xs ${passwordStrength.color}`}>
+                  Strength: {passwordStrength.text}
+                </p>
+              )}
+            </div>
+
+            {/* Phone */}
+            <div>
+              <label htmlFor="phone" className="block text-sm font-medium text-yellow-100 mb-2">
+                Phone Number {verifyMethod === 'sms' ? '*' : '(Optional)'}
+              </label>
+              <input
+                id="phone"
+                name="phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
+                  errors.phone ? 'border-red-400' : 'border-yellow-300/50'
+                }`}
+                placeholder="+1 (555) 123-4567"
+              />
+              {errors.phone && <p className="mt-2 text-sm text-red-300">{errors.phone}</p>}
+              <p className="mt-1 text-xs text-yellow-200">
+                Required for SMS verification; optional for email verification
+              </p>
             </div>
 
             {/* Verification Method */}
-            <div className="bg-white/10 rounded-2xl p-4 border border-yellow-300/30">
-              <p className="text-yellow-100 font-medium mb-2">Verify Your Identity *</p>
-              <div className="flex flex-col sm:flex-row gap-3">
+            <div className="p-4 bg-white/10 rounded-2xl border border-yellow-300/30">
+              <label className="block text-sm font-medium text-yellow-100 mb-3">
+                Verification Method *
+              </label>
+              <div className="space-y-2">
                 <label className="flex items-center gap-2 text-yellow-100">
                   <input
                     type="radio"
@@ -639,7 +573,7 @@ export default function SignupPage() {
                       <CheckCircle2 className="w-4 h-4" /> Link sent! Check your inbox.
                     </span>
                   ) : (
-                    <span className="text-yellow-200 text-sm">You’ll receive a clickable link.</span>
+                    <span className="text-yellow-200 text-sm">You'll receive a clickable link.</span>
                   )}
                 </div>
               )}
