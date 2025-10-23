@@ -21,16 +21,18 @@ import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
 import Profile from "@/pages/profile";
 import CreatePost from "@/pages/create-post";
 import Pantry from "@/components/Pantry";
-import Marketplace from "@/components/Marketplace";              // ✅ Correct path
+import Marketplace from "@/components/Marketplace";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import CateringMarketplace from "@/pages/catering";
 import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 
-// Auth
+// Auth - ADDED VERIFY PAGES
 import Signup from "@/pages/signup";
 import Login from "@/pages/login";
+import VerifyEmailPage from "@/pages/verify-email";
+import VerifySuccessPage from "@/pages/verify-success";
 
 // Store Viewer (public storefronts)
 import StoreViewer from "@/components/StoreViewer";
@@ -79,7 +81,6 @@ import DetoxWaters from "@/pages/drinks/detoxes/water";
 import CocktailsPage from "@/pages/drinks/potent-potables/cocktails";
 import CognacBrandyPage from "@/pages/drinks/potent-potables/cognac-brandy";
 import MartinisPage from "@/pages/drinks/potent-potables/martinis";
-// NOTE: Virgin removed per requirements; merged into Mocktails
 import MocktailsPage from "@/pages/drinks/potent-potables/mocktails";
 import RumPage from "@/pages/drinks/potent-potables/rum";
 import ScotchIrishWhiskeyPage from "@/pages/drinks/potent-potables/scotch-irish-whiskey";
@@ -134,10 +135,6 @@ function RecipesSection() {
   );
 }
 
-/**
- * Alcoholic "Potent Potables" sub-routes — behind AgeGate only.
- * NOTE: Mocktails (zero-proof) is handled OUTSIDE of this component (see DrinksSection).
- */
 function PotentPotablesSection() {
   return (
     <RequireAgeGate>
@@ -145,7 +142,6 @@ function PotentPotablesSection() {
         <Route path="/drinks/potent-potables/cocktails" component={CocktailsPage} />
         <Route path="/drinks/potent-potables/cognac-brandy" component={CognacBrandyPage} />
         <Route path="/drinks/potent-potables/martinis" component={MartinisPage} />
-        {/* Mocktails intentionally NOT here (zero-proof, outside gate) */}
         <Route path="/drinks/potent-potables/rum" component={RumPage} />
         <Route path="/drinks/potent-potables/scotch-irish-whiskey" component={ScotchIrishWhiskeyPage} />
         <Route path="/drinks/potent-potables/seasonal" component={SeasonalPage} />
@@ -246,9 +242,11 @@ function AppRouter() {
           <Redirect to="/drinks/potent-potables/mocktails" />
         </Route>
 
-        {/* Auth */}
+        {/* Auth - ADDED VERIFY ROUTES */}
         <Route path="/signup" component={Signup} />
         <Route path="/login" component={Login} />
+        <Route path="/verify-email" component={VerifyEmailPage} />
+        <Route path="/verify/success" component={VerifySuccessPage} />
 
         <Route path="/profile/:userId?" component={Profile} />
         <Route path="/store/:username" component={StoreViewer} />
@@ -289,7 +287,6 @@ function AppRouter() {
           </ErrorBoundary>
         </Route>
 
-        {/* ✅ Marketplace routes */}
         <Route path="/store" component={Marketplace} />
         <Route path="/marketplace" component={Marketplace} />
 
