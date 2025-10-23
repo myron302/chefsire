@@ -11,9 +11,24 @@ export default function VerifyEmailPage() {
   const handleResendEmail = async () => {
     setResending(true);
     try {
-      // TODO: Implement actual resend logic
-      // For now, just simulate a delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Get email from sessionStorage (set during signup)
+      const email = sessionStorage.getItem('pendingVerificationEmail');
+      
+      if (!email) {
+        alert('Email not found. Please sign up again.');
+        return;
+      }
+
+      const response = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to resend email');
+      }
+
       setResent(true);
       setTimeout(() => setResent(false), 5000);
     } catch (error) {
