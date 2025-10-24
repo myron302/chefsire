@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-// 🔐 AUTH ROUTER - ADDED!
+// 🔐 AUTH ROUTER
 import authRouter from "./auth";
 
 // Core feature routers
@@ -34,7 +34,7 @@ const r = Router();
  *   app.use("/api", routes)
  */
 
-// 🔐 AUTH ROUTES - ADDED!
+// 🔐 AUTH ROUTES
 r.use("/auth", authRouter);
 
 // Recipes routes (prefixed)
@@ -84,7 +84,7 @@ if (process.env.NODE_ENV !== "production") {
       ok: true,
       mountedAt: "/api",
       endpoints: [
-        "/auth/*",          // 🔐 ADDED!
+        "/auth/*",
         "/recipes/*",
         "/bites/*",
         "/users/*",
