@@ -4,11 +4,20 @@ import nodemailer from "nodemailer";
 export const mailer = nodemailer.createTransport({
   host: process.env.MAIL_HOST || "smtp.ionos.com",
   port: Number(process.env.MAIL_PORT || 587),
-  secure: false, // true only if using port 465
+  secure: false, // false for port 587 (TLS), true for port 465 (SSL)
   auth: {
-    user: process.env.MAIL_USER, // verify@notify.chefsire.com
+    user: process.env.MAIL_USER,
     pass: process.env.MAIL_PASS,
   },
+  tls: {
+    // Do not fail on invalid certs (for development)
+    rejectUnauthorized: false,
+    // Force TLS
+    ciphers: 'SSLv3',
+  },
+  // Add debug logging
+  debug: process.env.NODE_ENV !== 'production',
+  logger: process.env.NODE_ENV !== 'production',
 });
 
 export async function sendVerificationEmail(to: string, link: string) {
@@ -21,15 +30,24 @@ export async function sendVerificationEmail(to: string, link: string) {
           Verify Email
         </a>
       </p>
-      <p>This link expires in 30 minutes. If you didn’t sign up, ignore this message.</p>
+      <p>This link expires in 24 hours. If you didn't sign up, ignore this message.</p>
       <hr style="border:none;border-top:1px solid #eee;margin:24px 0" />
       <p style="font-size:12px;color:#666">ChefSire • Royal Guard</p>
     </div>
   `;
-  await mailer.sendMail({
-    from: process.env.MAIL_FROM || 'ChefSire Royal Guard <verify@notify.chefsire.com>',
-    to,
-    subject: "Verify your ChefSire account",
-    html,
-  });
+  
+  try {
+    const info = await mailer.sendMail({
+      from: process.env.MAIL_FROM || 'ChefSire Royal Guard <verify@notify.chefsire.com>',
+      to,
+      subject: "👑 Verify your ChefSire account",
+      html,
+    });
+    
+    console.log('✅ Email sent:', info.messageId);
+    return info;
+  } catch (error) {
+    console.error('❌ Failed to send email:', error);
+    throw error;
+  }
 }
