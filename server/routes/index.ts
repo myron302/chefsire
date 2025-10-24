@@ -21,10 +21,10 @@ import { googleRouter } from "./google";
 // Competitions
 import competitionsRouter from "./competitions";
 
-// 🆕 Stores (user storefronts)
+// Stores (user storefronts)
 import storesRouter from "./stores-crud";
 
-// 🆕 Square (subscriptions / checkout links)
+// Square (subscriptions / checkout links)
 import squareRouter from "./stores";
 
 const r = Router();
@@ -34,7 +34,7 @@ const r = Router();
  *   app.use("/api", routes)
  */
 
-// 🔐 AUTH ROUTES
+// 🔐 AUTH ROUTES - All auth endpoints including verification
 r.use("/auth", authRouter);
 
 // Recipes routes (prefixed)
@@ -71,10 +71,10 @@ r.use("/google", googleRouter);
 // Competitions
 r.use("/competitions", competitionsRouter);
 
-// 🆕 Stores (public viewer + owner writes)
+// Stores (public viewer + owner writes)
 r.use("/stores", storesRouter);
 
-// 🆕 Square (payments/subscriptions)
+// Square (payments/subscriptions)
 r.use("/square", squareRouter);
 
 // Optional: dev-only route list
