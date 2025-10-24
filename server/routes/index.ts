@@ -1,5 +1,8 @@
 import { Router } from "express";
 
+// 🔐 AUTH ROUTER - ADDED!
+import authRouter from "./auth";
+
 // Core feature routers
 import recipesRouter from "./recipes";
 import bitesRouter from "./bites";
@@ -30,6 +33,9 @@ const r = Router();
  * Mounted under `/api` by app.ts:
  *   app.use("/api", routes)
  */
+
+// 🔐 AUTH ROUTES - ADDED!
+r.use("/auth", authRouter);
 
 // Recipes routes (prefixed)
 r.use("/recipes", recipesRouter);
@@ -78,6 +84,7 @@ if (process.env.NODE_ENV !== "production") {
       ok: true,
       mountedAt: "/api",
       endpoints: [
+        "/auth/*",          // 🔐 ADDED!
         "/recipes/*",
         "/bites/*",
         "/users/*",
@@ -88,10 +95,10 @@ if (process.env.NODE_ENV !== "production") {
         "/drinks/*",
         "/lookup/*",
         "/export/*",
-        "/google/*",        // <-- BiteMap uses this
+        "/google/*",
         "/competitions/*",
-        "/stores/*",        // 🆕 Storefront API
-        "/square/*",        // 🆕 Square subscription/checkout API
+        "/stores/*",
+        "/square/*",
       ],
     });
   });
