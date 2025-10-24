@@ -89,9 +89,29 @@ router.post("/auth/signup", async (req, res) => {
       expiresAt,
     });
 
-    // Send verification email
+    // Send verification email (non-blocking, don't fail signup if email fails)
     const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
-    await sendVerificationEmail(email, verificationLink);
+    console.log('📧 Attempting to send verification email to:', email);
+    console.log('📧 Verification link:', verificationLink);
+    console.log('📧 Mail config:', {
+      host: process.env.MAIL_HOST,
+      port: process.env.MAIL_PORT,
+      user: process.env.MAIL_USER,
+      from: process.env.MAIL_FROM,
+    });
+    
+    sendVerificationEmail(email, verificationLink)
+      .then(() => {
+        console.log('✅ Verification email sent successfully to:', email);
+      })
+      .catch((emailError) => {
+        console.error('❌ Failed to send verification email:', emailError);
+        console.error('❌ Error details:', {
+          message: emailError.message,
+          code: emailError.code,
+          command: emailError.command,
+        });
+      });
 
     res.status(201).json({
       message: "Account created! Please check your email to verify your account.",
@@ -272,9 +292,16 @@ router.post("/auth/resend-verification", async (req, res) => {
 
     // Send verification email
     const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
-    await sendVerificationEmail(email, verificationLink);
-
-    res.json({ message: "Verification email sent" });
+    console.log('📧 Resending verification email to:', email);
+    
+    try {
+      await sendVerificationEmail(email, verificationLink);
+      console.log('✅ Verification email resent successfully to:', email);
+      res.json({ message: "Verification email sent" });
+    } catch (emailError) {
+      console.error('❌ Failed to resend verification email:', emailError);
+      res.status(500).json({ error: "Failed to send verification email" });
+    }
   } catch (error) {
     console.error("Error resending verification:", error);
     res.status(500).json({ error: "Failed to resend verification email" });
