@@ -1,11 +1,10 @@
-// server/routes/auth.ts - WORKING VERSION FROM YESTERDAY
+// server/routes/auth.ts
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { storage } from "../storage";
 import { db } from "../db";
 import { emailVerificationTokens } from "../../shared/schema";
-import { eq } from "drizzle-orm";
 import { sendVerificationEmail } from "../utils/mailer";
 
 const router = Router();
@@ -20,44 +19,60 @@ const TITLE_LABELS: Record<string, string> = {
   "queen": "Queen",
   "prince": "Prince",
   "princess": "Princess",
+  "sire": "Sire",
+  "your-majesty": "Your Majesty",
+  "your-highness": "Your Highness",
   "duke": "Duke",
   "duchess": "Duchess",
   "lord": "Lord",
   "lady": "Lady",
-  "sir": "Sir",
+  "knight": "Sir Knight",
   "dame": "Dame",
-  "baron": "Baron",
-  "baroness": "Baroness",
+  "royal-chef": "Royal Chef",
+  "court-master": "Court Master",
+  "noble-chef": "Noble Chef",
+  "imperial-chef": "Imperial Chef",
+  "majestic-chef": "Majestic Chef",
+  "chef": "Chef",
 };
 
 /**
  * POST /auth/signup
+ * Body: { name, email, password, username?, selectedTitle? }
+ * - name: display name (e.g., "King Myron Jones")
+ * - username: base handle the user typed (can have spaces, per your request)
+ * - selectedTitle: one of the known slugs (king, queen, etc.)
+ *
+ * Behavior:
+ *  - Creates the user with username: "<Title Label> <username>" (SPACE at the beginning)
+ *  - Automatically creates a verification token and emails a link
+ *  - DOES NOT log the user in; user must verify via email before login
  */
 router.post("/auth/signup", async (req, res) => {
   const { name, email, password, username, selectedTitle } = req.body ?? {};
 
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required" });
+  }
+
   try {
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
+    // Check existing user
+    const existingUser = await storage.findByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({ error: "Email already in use" });
     }
 
-    // Check if user already exists
-    const existing = await storage.findByEmail(email);
-    if (existing) {
-      return res.status(400).json({ error: "Email already registered" });
-    }
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Build username with title prepended WITH SPACE
+    // Build final username with title at the BEGINNING (space-separated)
     const titleLabel = TITLE_LABELS[selectedTitle] || "";
     const baseUsername = username || email.split("@")[0];
     const finalUsername = titleLabel ? `${titleLabel} ${baseUsername}` : baseUsername;
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
     // Create user
     const newUser = await storage.createUser({
-      email: email.toLowerCase().trim(),
+      name: name || finalUsername,
+      email,
       password: hashedPassword,
       username: finalUsername,
       emailVerifiedAt: null,
@@ -66,7 +81,7 @@ router.post("/auth/signup", async (req, res) => {
     // Create verification token
     const token = newToken();
     const hashedToken = sha256Hex(token);
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
     await db.insert(emailVerificationTokens).values({
       userId: newUser.id,
@@ -74,13 +89,29 @@ router.post("/auth/signup", async (req, res) => {
       expiresAt,
     });
 
-    // Send verification email
+    // Send verification email (non-blocking, don't fail signup if email fails)
     const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
-    console.log('📧 Sending verification email to:', email);
+    console.log('📧 Attempting to send verification email to:', email);
+    console.log('📧 Verification link:', verificationLink);
+    console.log('📧 Mail config:', {
+      host: process.env.MAIL_HOST,
+      port: process.env.MAIL_PORT,
+      user: process.env.MAIL_USER,
+      from: process.env.MAIL_FROM,
+    });
     
     sendVerificationEmail(email, verificationLink)
-      .then(() => console.log('✅ Email sent successfully'))
-      .catch((err) => console.error('❌ Email failed:', err));
+      .then(() => {
+        console.log('✅ Verification email sent successfully to:', email);
+      })
+      .catch((emailError) => {
+        console.error('❌ Failed to send verification email:', emailError);
+        console.error('❌ Error details:', {
+          message: emailError.message,
+          code: emailError.code,
+          command: emailError.command,
+        });
+      });
 
     res.status(201).json({
       message: "Account created! Please check your email to verify your account.",
@@ -93,38 +124,86 @@ router.post("/auth/signup", async (req, res) => {
 });
 
 /**
+ * GET /auth/verify-email?token=...
+ * - Verifies the email by checking the token
+ * - Marks user as verified
+ * - Redirects to success page
+ */
+router.get("/auth/verify-email", async (req, res) => {
+  const { token } = req.query;
+
+  if (!token || typeof token !== "string") {
+    return res.status(400).send("Invalid or missing token");
+  }
+
+  try {
+    const hashedToken = sha256Hex(token);
+    const tokenRecord = await storage.findVerificationToken(hashedToken);
+
+    if (!tokenRecord) {
+      return res.status(400).send("Invalid verification token");
+    }
+
+    if (new Date() > tokenRecord.expiresAt) {
+      return res.status(400).send("Verification token has expired");
+    }
+
+    // Mark user as verified
+    await storage.verifyUserEmail(tokenRecord.userId);
+
+    // Delete the used token
+    await storage.deleteVerificationToken(hashedToken);
+
+    // Redirect to success page
+    res.redirect("/verify/success");
+  } catch (error) {
+    console.error("Error during email verification:", error);
+    res.status(500).send("Failed to verify email");
+  }
+});
+
+/**
  * POST /auth/login
+ * Body: { email, password }
+ * - BLOCKS login if email is not verified
  */
 router.post("/auth/login", async (req, res) => {
+  const { email, password } = req.body ?? {};
+
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required" });
+  }
+
   try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
-    }
-
     const user = await storage.findByEmail(email);
-    if (!user) {
-      return res.status(401).json({ error: "Invalid email or password" });
+
+    if (!user || !user.password) {
+      return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // Check if email verified
+    // CHECK: Email must be verified before login
     if (!user.emailVerifiedAt) {
       return res.status(403).json({ error: "Please verify your email to log in." });
     }
 
-    // Verify password
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
-      return res.status(401).json({ error: "Invalid email or password" });
+      return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    // Set session
+    req.session.userId = user.id;
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err) => (err ? reject(err) : resolve()));
+    });
+
     res.json({
-      success: true,
+      message: "Login successful",
       user: {
         id: user.id,
-        email: user.email,
+        name: user.name,
         username: user.username,
+        email: user.email,
       },
     });
   } catch (error) {
@@ -134,56 +213,49 @@ router.post("/auth/login", async (req, res) => {
 });
 
 /**
- * GET /auth/verify-email?token=xxx
+ * POST /auth/logout
  */
-router.get("/auth/verify-email", async (req, res) => {
+router.post("/auth/logout", (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ error: "Failed to logout" });
+    }
+    res.clearCookie("connect.sid");
+    res.json({ message: "Logout successful" });
+  });
+});
+
+/**
+ * GET /auth/me
+ * Returns current logged-in user or 401
+ */
+router.get("/auth/me", async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
   try {
-    const { token } = req.query;
-
-    if (!token || typeof token !== "string") {
-      return res.status(400).send("Invalid verification link");
+    const user = await storage.findById(req.session.userId);
+    if (!user) {
+      return res.status(401).json({ error: "User not found" });
     }
 
-    const hashedToken = sha256Hex(token);
-
-    const [tokenRecord] = await db
-      .select()
-      .from(emailVerificationTokens)
-      .where(eq(emailVerificationTokens.token, hashedToken))
-      .limit(1);
-
-    if (!tokenRecord) {
-      return res.status(400).send("Invalid or expired verification link");
-    }
-
-    if (new Date() > tokenRecord.expiresAt) {
-      return res.status(400).send("Verification link has expired");
-    }
-
-    if (tokenRecord.used) {
-      return res.status(400).send("This link has already been used");
-    }
-
-    // Mark user as verified
-    await storage.verifyUserEmail(tokenRecord.userId);
-
-    // Mark token as used
-    await db
-      .update(emailVerificationTokens)
-      .set({ used: true })
-      .where(eq(emailVerificationTokens.id, tokenRecord.id));
-
-    console.log('✅ Email verified for user:', tokenRecord.userId);
-
-    res.redirect("/verify/success");
+    res.json({
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      email: user.email,
+    });
   } catch (error) {
-    console.error("Error verifying email:", error);
-    res.status(500).send("Verification failed");
+    console.error("Error fetching user:", error);
+    res.status(500).json({ error: "Failed to fetch user" });
   }
 });
 
 /**
  * POST /auth/resend-verification
+ * Body: { email }
+ * Resends verification email
  */
 router.post("/auth/resend-verification", async (req, res) => {
   const { email } = req.body ?? {};
@@ -196,6 +268,7 @@ router.post("/auth/resend-verification", async (req, res) => {
     const user = await storage.findByEmail(email);
 
     if (!user) {
+      // Don't reveal if user exists
       return res.json({ message: "If that email exists, a verification email has been sent." });
     }
 
@@ -203,10 +276,10 @@ router.post("/auth/resend-verification", async (req, res) => {
       return res.status(400).json({ error: "Email is already verified" });
     }
 
-    // Delete old tokens
+    // Delete any existing tokens for this user
     await storage.deleteVerificationTokensByUserId(user.id);
 
-    // Create new token
+    // Create new verification token
     const token = newToken();
     const hashedToken = sha256Hex(token);
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -217,16 +290,16 @@ router.post("/auth/resend-verification", async (req, res) => {
       expiresAt,
     });
 
-    // Send email
+    // Send verification email
     const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
     console.log('📧 Resending verification email to:', email);
     
     try {
       await sendVerificationEmail(email, verificationLink);
-      console.log('✅ Email resent successfully');
+      console.log('✅ Verification email resent successfully to:', email);
       res.json({ message: "Verification email sent" });
     } catch (emailError) {
-      console.error('❌ Failed to resend email:', emailError);
+      console.error('❌ Failed to resend verification email:', emailError);
       res.status(500).json({ error: "Failed to send verification email" });
     }
   } catch (error) {
