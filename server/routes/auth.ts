@@ -1,4 +1,4 @@
-// server/routes/auth.ts - FIXED TO MATCH SCHEMA
+// server/routes/auth.ts - WITHOUT MAILER
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
@@ -6,7 +6,6 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { emailVerificationTokens } from "../../shared/schema";
 import { eq } from "drizzle-orm";
-import { sendVerificationEmail } from "../utils/mailer";
 
 const router = Router();
 
@@ -70,21 +69,18 @@ router.post("/auth/signup", async (req, res) => {
 
     await db.insert(emailVerificationTokens).values({
       userId: newUser.id,
-      tokenHash: tokenHash,  // ✅ FIXED: use tokenHash not token
+      tokenHash: tokenHash,
       email: email.toLowerCase().trim(),
     });
 
-    // Send verification email
+    // Log the verification link instead of sending email
     const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
-    console.log('📧 Sending verification email to:', email);
-    
-    sendVerificationEmail(email, verificationLink)
-      .then(() => console.log('✅ Email sent successfully'))
-      .catch((err) => console.error('❌ Email failed:', err));
+    console.log('📧 Verification link for', email, ':', verificationLink);
 
     res.status(201).json({
-      message: "Account created! Please check your email to verify your account.",
+      message: "Account created! Check server logs for verification link (email disabled).",
       userId: newUser.id,
+      verificationLink, // Return in response for now
     });
   } catch (error) {
     console.error("Error during signup:", error);
@@ -149,7 +145,7 @@ router.get("/auth/verify-email", async (req, res) => {
     const [tokenRecord] = await db
       .select()
       .from(emailVerificationTokens)
-      .where(eq(emailVerificationTokens.tokenHash, tokenHash))  // ✅ FIXED: use tokenHash
+      .where(eq(emailVerificationTokens.tokenHash, tokenHash))
       .limit(1);
 
     if (!tokenRecord) {
@@ -160,7 +156,7 @@ router.get("/auth/verify-email", async (req, res) => {
       return res.status(400).send("Verification link has expired");
     }
 
-    if (tokenRecord.consumedAt) {  // ✅ FIXED: use consumedAt not used
+    if (tokenRecord.consumedAt) {
       return res.status(400).send("This link has already been used");
     }
 
@@ -170,7 +166,7 @@ router.get("/auth/verify-email", async (req, res) => {
     // Mark token as consumed
     await db
       .update(emailVerificationTokens)
-      .set({ consumedAt: new Date() })  // ✅ FIXED: use consumedAt not used
+      .set({ consumedAt: new Date() })
       .where(eq(emailVerificationTokens.id, tokenRecord.id));
 
     console.log('✅ Email verified for user:', tokenRecord.userId);
@@ -214,22 +210,18 @@ router.post("/auth/resend-verification", async (req, res) => {
 
     await db.insert(emailVerificationTokens).values({
       userId: user.id,
-      tokenHash: tokenHash,  // ✅ FIXED: use tokenHash
+      tokenHash: tokenHash,
       email: email.toLowerCase().trim(),
     });
 
-    // Send email
+    // Log verification link
     const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
-    console.log('📧 Resending verification email to:', email);
+    console.log('📧 Resent verification link for', email, ':', verificationLink);
     
-    try {
-      await sendVerificationEmail(email, verificationLink);
-      console.log('✅ Email resent successfully');
-      res.json({ message: "Verification email sent" });
-    } catch (emailError) {
-      console.error('❌ Failed to resend email:', emailError);
-      res.status(500).json({ error: "Failed to send verification email" });
-    }
+    res.json({ 
+      message: "Verification link generated (check server logs)",
+      verificationLink,
+    });
   } catch (error) {
     console.error("Error resending verification:", error);
     res.status(500).json({ error: "Failed to resend verification email" });
