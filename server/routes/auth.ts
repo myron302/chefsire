@@ -1,4 +1,4 @@
-// server/routes/auth.ts - WITH MAILER
+// server/routes/auth.ts - NO MAILER (logs links instead)
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
@@ -6,7 +6,6 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { emailVerificationTokens } from "../../shared/schema";
 import { eq } from "drizzle-orm";
-import { sendVerificationEmail } from "../utils/mailer";
 
 const router = Router();
 
@@ -74,16 +73,15 @@ router.post("/auth/signup", async (req, res) => {
       email: email.toLowerCase().trim(),
     });
 
-    // Send verification email
+    // Log verification link (email disabled for now)
     const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
-    console.log('📧 Sending verification email to:', email);
-    
-    sendVerificationEmail(email, verificationLink)
-      .then(() => console.log('✅ Email sent successfully'))
-      .catch((err) => console.error('❌ Email failed:', err));
+    console.log('==========================================');
+    console.log('📧 VERIFICATION LINK FOR:', email);
+    console.log('🔗', verificationLink);
+    console.log('==========================================');
 
     res.status(201).json({
-      message: "Account created! Please check your email to verify your account.",
+      message: "Account created! Check server logs for verification link.",
       userId: newUser.id,
     });
   } catch (error) {
@@ -196,7 +194,7 @@ router.post("/auth/resend-verification", async (req, res) => {
     const user = await storage.findByEmail(email);
 
     if (!user) {
-      return res.json({ message: "If that email exists, a verification email has been sent." });
+      return res.json({ message: "If that email exists, a verification link has been sent." });
     }
 
     if (user.emailVerifiedAt) {
@@ -218,21 +216,17 @@ router.post("/auth/resend-verification", async (req, res) => {
       email: email.toLowerCase().trim(),
     });
 
-    // Send email
+    // Log verification link
     const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
-    console.log('📧 Resending verification email to:', email);
+    console.log('==========================================');
+    console.log('📧 RESEND VERIFICATION LINK FOR:', email);
+    console.log('🔗', verificationLink);
+    console.log('==========================================');
     
-    try {
-      await sendVerificationEmail(email, verificationLink);
-      console.log('✅ Email resent successfully');
-      res.json({ message: "Verification email sent" });
-    } catch (emailError) {
-      console.error('❌ Failed to resend email:', emailError);
-      res.status(500).json({ error: "Failed to send verification email" });
-    }
+    res.json({ message: "Verification link sent (check server logs)" });
   } catch (error) {
     console.error("Error resending verification:", error);
-    res.status(500).json({ error: "Failed to resend verification email" });
+    res.status(500).json({ error: "Failed to resend verification" });
   }
 });
 
