@@ -1,32 +1,39 @@
-// server/utils/mailer.ts - SAFE VERSION
-import nodemailer from "nodemailer";
+// server/utils/mailer.ts - WITH ERROR HANDLING
+let nodemailer: any;
+let mailerTransport: any = null;
+let mailerError: string | null = null;
 
-let mailer: any = null;
+// Try to load nodemailer
+try {
+  nodemailer = require("nodemailer");
+} catch (error) {
+  mailerError = "nodemailer not installed - run: npm install nodemailer";
+  console.error("⚠️", mailerError);
+}
 
-function getMailer() {
-  if (!mailer) {
-    try {
-      mailer = nodemailer.createTransport({
-        host: process.env.MAIL_HOST || "smtp.ionos.com",
-        port: Number(process.env.MAIL_PORT || 587),
-        secure: false,
-        auth: {
-          user: process.env.MAIL_USER,
-          pass: process.env.MAIL_PASS,
-        },
-        tls: {
-          rejectUnauthorized: false,
-          ciphers: 'SSLv3',
-        },
-        debug: process.env.NODE_ENV !== 'production',
-        logger: process.env.NODE_ENV !== 'production',
-      });
-    } catch (error) {
-      console.error('⚠️ Failed to create mailer transport:', error);
-      return null;
-    }
+// Try to create transport
+if (nodemailer) {
+  try {
+    mailerTransport = nodemailer.createTransport({
+      host: process.env.MAIL_HOST || "smtp.ionos.com",
+      port: Number(process.env.MAIL_PORT || 587),
+      secure: false,
+      auth: {
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASS,
+      },
+      tls: {
+        rejectUnauthorized: false,
+        ciphers: 'SSLv3',
+      },
+      debug: process.env.NODE_ENV !== 'production',
+      logger: process.env.NODE_ENV !== 'production',
+    });
+    console.log("✅ Mailer transport created successfully");
+  } catch (error: any) {
+    mailerError = `Failed to create mailer: ${error.message}`;
+    console.error("⚠️", mailerError);
   }
-  return mailer;
 }
 
 export async function sendVerificationEmail(to: string, link: string) {
@@ -45,27 +52,26 @@ export async function sendVerificationEmail(to: string, link: string) {
     </div>
   `;
   
-  try {
-    const transport = getMailer();
-    
-    if (!transport) {
-      console.log('⚠️ Email not configured - verification link:', link);
-      return { messageId: 'disabled', link };
-    }
+  // If mailer isn't set up, log error and link
+  if (mailerError || !mailerTransport) {
+    console.error("❌ Cannot send email:", mailerError || "Transport not initialized");
+    console.log("📧 Verification link for", to, ":", link);
+    throw new Error(mailerError || "Email transport not available");
+  }
 
-    const info = await transport.sendMail({
+  try {
+    const info = await mailerTransport.sendMail({
       from: process.env.MAIL_FROM || 'ChefSire Royal Guard <verify@notify.chefsire.com>',
       to,
       subject: "👑 Verify your ChefSire account",
       html,
     });
     
-    console.log('✅ Email sent:', info.messageId);
+    console.log('✅ Email sent successfully to', to, '- Message ID:', info.messageId);
     return info;
-  } catch (error) {
-    console.error('❌ Failed to send email:', error);
-    console.log('📧 Verification link (email failed):', link);
-    // Don't throw - just log the link
-    return { messageId: 'error', link };
+  } catch (error: any) {
+    console.error('❌ Failed to send email to', to, ':', error.message);
+    console.log('📧 Verification link:', link);
+    throw error;
   }
 }
