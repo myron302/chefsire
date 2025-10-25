@@ -22,6 +22,7 @@ import {
   drinkLikes,
   drinkSaves,
   userDrinkStats,
+  emailVerificationTokens,
   type User,
   type InsertUser,
   type Post,
@@ -87,6 +88,14 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
   getSuggestedUsers(userId: string, limit?: number): Promise<User[]>;
+
+  // Email Verification
+  findByEmail(email: string): Promise<User | undefined>;
+  findById(id: string): Promise<User | undefined>;
+  findVerificationToken(hashedToken: string): Promise<any | undefined>;
+  verifyUserEmail(userId: string): Promise<void>;
+  deleteVerificationToken(hashedToken: string): Promise<void>;
+  deleteVerificationTokensByUserId(userId: string): Promise<void>;
 
   // Posts
   getPost(id: string): Promise<Post | undefined>;
@@ -306,6 +315,47 @@ export class DrizzleStorage implements IStorage {
       .where(and(sql`${users.id} != ${userId}`, eq(users.isChef, true)))
       .orderBy(desc(users.followersCount))
       .limit(limit);
+  }
+
+  // ---------- Email Verification ----------
+  async findByEmail(email: string): Promise<User | undefined> {
+    return this.getUserByEmail(email);
+  }
+
+  async findById(id: string): Promise<User | undefined> {
+    return this.getUser(id);
+  }
+
+  async findVerificationToken(hashedToken: string): Promise<any | undefined> {
+    const db = getDb();
+    const result = await db
+      .select()
+      .from(emailVerificationTokens)
+      .where(eq(emailVerificationTokens.token, hashedToken))
+      .limit(1);
+    return result[0];
+  }
+
+  async verifyUserEmail(userId: string): Promise<void> {
+    const db = getDb();
+    await db
+      .update(users)
+      .set({ emailVerifiedAt: new Date() })
+      .where(eq(users.id, userId));
+  }
+
+  async deleteVerificationToken(hashedToken: string): Promise<void> {
+    const db = getDb();
+    await db
+      .delete(emailVerificationTokens)
+      .where(eq(emailVerificationTokens.token, hashedToken));
+  }
+
+  async deleteVerificationTokensByUserId(userId: string): Promise<void> {
+    const db = getDb();
+    await db
+      .delete(emailVerificationTokens)
+      .where(eq(emailVerificationTokens.userId, userId));
   }
 
   // ---------- Posts ----------
