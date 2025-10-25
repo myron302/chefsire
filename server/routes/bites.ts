@@ -16,7 +16,7 @@ r.get("/active/:userId", async (req, res) => {
     const { userId } = req.params;
     const items = await storage.getActiveStories(userId);
     res.json(items);
-  } catch (e) {
+  } catch (error) {
     console.error("bites/active error", e);
     res.status(500).json({ message: "Failed to fetch active bites" });
   }
@@ -28,7 +28,7 @@ r.get("/user/:userId", async (req, res) => {
     const { userId } = req.params;
     const items = await storage.getUserStories(userId);
     res.json({ bites: items, total: items.length });
-  } catch (e) {
+  } catch (error) {
     console.error("bites/user error", e);
     res.status(500).json({ message: "Failed to fetch user bites" });
   }

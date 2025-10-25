@@ -13,7 +13,7 @@ r.get("/users/:id", async (req, res) => {
     const user = await storage.getUser(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
-  } catch (e) {
+  } catch (error) {
     console.error("users/:id error", e);
     res.status(500).json({ message: "Failed to fetch user" });
   }
@@ -24,7 +24,7 @@ r.get("/users/username/:username", async (req, res) => {
     const user = await storage.getUserByUsername(req.params.username);
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
-  } catch (e) {
+  } catch (error) {
     console.error("users/username error", e);
     res.status(500).json({ message: "Failed to fetch user" });
   }
@@ -58,7 +58,7 @@ r.get("/users/:id/suggested", async (req, res) => {
     const limit = Number(req.query.limit ?? 5);
     const list = await storage.getSuggestedUsers(req.params.id, isNaN(limit) ? 5 : limit);
     res.json(list);
-  } catch (e) {
+  } catch (error) {
     console.error("users/suggested error", e);
     res.status(500).json({ message: "Failed to fetch suggested users" });
   }
@@ -90,7 +90,7 @@ r.post("/users/:id/catering/disable", async (req, res) => {
     const updated = await storage.disableCatering(req.params.id);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering disabled", user: updated });
-  } catch (e) {
+  } catch (error) {
     console.error("catering/disable error", e);
     res.status(500).json({ message: "Failed to disable catering" });
   }
@@ -127,7 +127,7 @@ r.get("/users/:id/catering/status", async (req, res) => {
       cateringBio: (user as any).cateringBio,
       isChef: (user as any).isChef,
     });
-  } catch (e) {
+  } catch (error) {
     console.error("catering/status error", e);
     res.status(500).json({ message: "Failed to fetch status" });
   }
@@ -193,7 +193,7 @@ r.get("/users/:id/subscription/info", async (req, res) => {
         premium_plus: { price: 150, baseRate: 1 },
       },
     });
-  } catch (e) {
+  } catch (error) {
     console.error("subscription/info error", e);
     res.status(500).json({ message: "Failed to fetch subscription info" });
   }
@@ -207,7 +207,7 @@ r.post("/users/:id/nutrition/trial", async (req, res) => {
     const updated = await storage.enableNutritionPremium(req.params.id, 30);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Nutrition trial activated", user: updated, trialEndsAt: (updated as any).nutritionTrialEnd });
-  } catch (e) {
+  } catch (error) {
     console.error("nutrition/trial error", e);
     res.status(500).json({ message: "Failed to start nutrition trial" });
   }
@@ -246,7 +246,7 @@ r.get("/users/:id/nutrition/daily/:date", async (req, res) => {
         ? { calorieProgress: Math.round(((summary as any).totalCalories / (user as any).dailyCalorieGoal) * 100) }
         : null,
     });
-  } catch (e) {
+  } catch (error) {
     console.error("nutrition/daily error", e);
     res.status(500).json({ message: "Failed to fetch daily nutrition" });
   }
@@ -265,7 +265,7 @@ r.get("/users/:id/nutrition/logs", async (req, res) => {
       dateRange: { startDate: start.toISOString().split("T")[0], endDate: end.toISOString().split("T")[0] },
       total: logs.length,
     });
-  } catch (e) {
+  } catch (error) {
     console.error("nutrition/logs error", e);
     res.status(500).json({ message: "Failed to fetch logs" });
   }

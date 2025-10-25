@@ -61,7 +61,7 @@ async function getCompetitionDetail(competitionId: string) {
       voteTallies: tallies,
       media: [],
     };
-  } catch (err) {
+  } catch (error) {
     if (isMissingTable(err)) {
       return null;
     }
@@ -113,7 +113,7 @@ router.post("/", async (req, res, next) => {
       .onConflictDoNothing();
 
     res.json({ id: created.id });
-  } catch (err) {
+  } catch (error) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -130,7 +130,7 @@ router.get("/:id", async (req, res, next) => {
     const detail = await getCompetitionDetail(req.params.id);
     if (!detail) return res.status(404).json({ error: "Not found" });
     res.json(detail);
-  } catch (err) {
+  } catch (error) {
     if (isMissingTable(err)) {
       return res
         .status(404)
@@ -173,7 +173,7 @@ router.post("/:id/start", async (req, res, next) => {
       .where(eq(competitions.id, compId));
 
     res.json({ ok: true });
-  } catch (err) {
+  } catch (error) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -216,7 +216,7 @@ router.post("/:id/end", async (req, res, next) => {
       .where(eq(competitions.id, compId));
 
     res.json({ ok: true, judgingClosesAt: closeAt.toISOString() });
-  } catch (err) {
+  } catch (error) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -271,7 +271,7 @@ router.post("/:id/submit", async (req, res, next) => {
       });
 
     res.json({ ok: true });
-  } catch (err) {
+  } catch (error) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -337,7 +337,7 @@ router.post("/:id/votes", async (req, res, next) => {
       });
 
     res.json({ ok: true });
-  } catch (err) {
+  } catch (error) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -410,7 +410,7 @@ router.post("/:id/complete", async (req, res, next) => {
 
     const detail = await getCompetitionDetail(compId);
     res.json({ ok: true, winnerParticipantId, isOfficial, detail });
-  } catch (err) {
+  } catch (error) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -460,7 +460,7 @@ router.get("/library", async (req, res, next) => {
       .offset(off);
 
     res.json({ items, total, limit: lim, offset: off });
-  } catch (err) {
+  } catch (error) {
     if (isMissingTable(err)) {
       return res.json({
         items: [],

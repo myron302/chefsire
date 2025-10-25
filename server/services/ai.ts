@@ -105,7 +105,7 @@ Return ONLY valid JSON array. Do not add prose. Numbers should be realistic but 
     // Validate very lightly
     if (!Array.isArray(parsed)) return [];
     return parsed.slice(0, 6);
-  } catch (err) {
+  } catch (error) {
     // On any AI error, fall back to static examples so the endpoint never 500s
     const f = FALLBACK[ingredient.toLowerCase()];
     return f ? f : [];

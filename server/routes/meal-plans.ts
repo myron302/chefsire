@@ -25,7 +25,7 @@ r.post("/", async (req, res, next) => {
       isTemplate: Boolean(isTemplate),
     });
     res.status(201).json({ message: "Meal plan created successfully", mealPlan: plan });
-  } catch (e) { next(e); }
+  } catch (error) { next(e); }
 });
 
 /**
@@ -36,7 +36,7 @@ r.get("/:id", async (req, res, next) => {
     const plan = await storage.getMealPlan(req.params.id);
     if (!plan) return res.status(404).json({ message: "Meal plan not found" });
     res.json(plan);
-  } catch (e) { next(e); }
+  } catch (error) { next(e); }
 });
 
 /**
@@ -46,7 +46,7 @@ r.get("/users/:id", async (req, res, next) => {
   try {
     const items = await storage.getUserMealPlans(req.params.id);
     res.json({ mealPlans: items, total: items.length });
-  } catch (e) { next(e); }
+  } catch (error) { next(e); }
 });
 
 /**
@@ -68,7 +68,7 @@ r.post("/:id/entries", async (req, res, next) => {
       customCalories: req.body.customCalories != null ? Number(req.body.customCalories) : undefined,
     });
     res.status(201).json({ message: "Meal plan entry added", entry });
-  } catch (e) { next(e); }
+  } catch (error) { next(e); }
 });
 
 export default r;

@@ -72,7 +72,7 @@ router.get("/:barcode", async (req, res) => {
 
     cache.set(barcode, { data: candidate, expiry: now + TTL_MS });
     res.json(candidate);
-  } catch (e) {
+  } catch (error) {
     cache.set(barcode, { data: null, expiry: now + 5 * 60 * 1000 });
     res.json(null);
   }

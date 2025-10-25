@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash, Image as ImageIcon, Package } from 'lucide-react';
 import { Product } from '../../types/store';
-import { getStoreProducts, createProduct, updateProduct, deleteProduct } from '../../lib/products';
+import { getStoreProducts, createProduct, updateProduct, deleteProduct } from '../../lib/store/products';
 
 interface ProductManagerProps {
   storeId: string;
