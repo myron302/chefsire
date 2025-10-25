@@ -40,6 +40,10 @@ import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 // Store pages - ALL IN pages/store/
 import Marketplace from "@/pages/store/Marketplace";
 import StoreViewer from "@/pages/store/StoreViewer";
+import StoreDashboard from "@/pages/store/StoreDashboard";
+
+// Settings page
+import Settings from "@/pages/settings";
 
 // BiteMap page
 import BiteMapPage from "@/pages/bitemap/index.tsx";
@@ -253,6 +257,8 @@ function AppRouter() {
         <Route path="/verify/success" component={VerifySuccessPage} />
 
         <Route path="/profile/:userId?" component={Profile} />
+        <Route path="/settings" component={Settings} />
+        <Route path="/store/dashboard" component={StoreDashboard} />
         <Route path="/store/:username" component={StoreViewer} />
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
@@ -329,7 +335,6 @@ function AppRouter() {
         {/* 404 fallback */}
         <Route path="/saved" component={NotFound} />
         <Route path="/following" component={NotFound} />
-        <Route path="/settings" component={NotFound} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
