@@ -1,4 +1,4 @@
-// server/routes/auth.ts - NO MAILER (logs links instead)
+// server/routes/auth.ts - WITH MAILER (won't crash if email fails)
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
@@ -6,6 +6,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { emailVerificationTokens } from "../../shared/schema";
 import { eq } from "drizzle-orm";
+import { sendVerificationEmail } from "../utils/mailer";
 
 const router = Router();
 
@@ -73,17 +74,27 @@ router.post("/auth/signup", async (req, res) => {
       email: email.toLowerCase().trim(),
     });
 
-    // Log verification link (email disabled for now)
+    // Try to send verification email
     const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
-    console.log('==========================================');
-    console.log('📧 VERIFICATION LINK FOR:', email);
-    console.log('🔗', verificationLink);
-    console.log('==========================================');
-
-    res.status(201).json({
-      message: "Account created! Check server logs for verification link.",
-      userId: newUser.id,
-    });
+    
+    try {
+      await sendVerificationEmail(email, verificationLink);
+      console.log('✅ Verification email sent to:', email);
+      
+      res.status(201).json({
+        message: "Account created! Please check your email to verify your account.",
+        userId: newUser.id,
+      });
+    } catch (emailError: any) {
+      // Email failed but account was created - log error but don't fail signup
+      console.error('⚠️ Email sending failed:', emailError.message);
+      
+      res.status(201).json({
+        message: "Account created! Email sending is currently unavailable. Contact support for verification.",
+        userId: newUser.id,
+        emailError: "Email service unavailable",
+      });
+    }
   } catch (error) {
     console.error("Error during signup:", error);
     res.status(500).json({ error: "Failed to create account" });
@@ -194,7 +205,7 @@ router.post("/auth/resend-verification", async (req, res) => {
     const user = await storage.findByEmail(email);
 
     if (!user) {
-      return res.json({ message: "If that email exists, a verification link has been sent." });
+      return res.json({ message: "If that email exists, a verification email has been sent." });
     }
 
     if (user.emailVerifiedAt) {
@@ -216,17 +227,20 @@ router.post("/auth/resend-verification", async (req, res) => {
       email: email.toLowerCase().trim(),
     });
 
-    // Log verification link
+    // Try to send email
     const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
-    console.log('==========================================');
-    console.log('📧 RESEND VERIFICATION LINK FOR:', email);
-    console.log('🔗', verificationLink);
-    console.log('==========================================');
     
-    res.json({ message: "Verification link sent (check server logs)" });
+    try {
+      await sendVerificationEmail(email, verificationLink);
+      console.log('✅ Verification email resent to:', email);
+      res.json({ message: "Verification email sent" });
+    } catch (emailError: any) {
+      console.error('⚠️ Failed to resend email:', emailError.message);
+      res.status(500).json({ error: "Failed to send verification email. Please try again later." });
+    }
   } catch (error) {
     console.error("Error resending verification:", error);
-    res.status(500).json({ error: "Failed to resend verification" });
+    res.status(500).json({ error: "Failed to resend verification email" });
   }
 });
 
