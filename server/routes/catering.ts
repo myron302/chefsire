@@ -17,7 +17,7 @@ r.post("/users/:id/enable", async (req, res, next) => {
     const updated = await storage.enableCatering(req.params.id, String(location), Number(radius), bio);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering enabled successfully", user: updated });
-  } catch (e) { next(e); }
+  } catch (error) { next(e); }
 });
 
 /**
@@ -28,7 +28,7 @@ r.post("/users/:id/disable", async (req, res, next) => {
     const updated = await storage.disableCatering(req.params.id);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering disabled successfully", user: updated });
-  } catch (e) { next(e); }
+  } catch (error) { next(e); }
 });
 
 /**
@@ -40,7 +40,7 @@ r.put("/users/:id/settings", async (req, res, next) => {
     const updated = await storage.updateCateringSettings(req.params.id, req.body || {});
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering settings updated", user: updated });
-  } catch (e) { next(e); }
+  } catch (error) { next(e); }
 });
 
 /**
@@ -55,7 +55,7 @@ r.get("/chefs/search", async (req, res, next) => {
 
     const chefs = await storage.findChefsInRadius(location, radius, limit);
     res.json({ chefs, searchParams: { location, radius }, total: chefs.length });
-  } catch (e) { next(e); }
+  } catch (error) { next(e); }
 });
 
 /**
@@ -66,7 +66,7 @@ r.post("/inquiries", async (req, res, next) => {
   try {
     const inquiry = await storage.createCateringInquiry(req.body);
     res.status(201).json({ message: "Catering inquiry sent successfully", inquiry });
-  } catch (e) { next(e); }
+  } catch (error) { next(e); }
 });
 
 /**
@@ -76,7 +76,7 @@ r.get("/users/:id/inquiries", async (req, res, next) => {
   try {
     const inquiries = await storage.getCateringInquiries(req.params.id);
     res.json({ inquiries, total: inquiries.length });
-  } catch (e) { next(e); }
+  } catch (error) { next(e); }
 });
 
 /**
@@ -88,7 +88,7 @@ r.put("/inquiries/:id", async (req, res, next) => {
     const updated = await storage.updateCateringInquiry(req.params.id, req.body || {});
     if (!updated) return res.status(404).json({ message: "Inquiry not found" });
     res.json({ message: "Inquiry updated successfully", inquiry: updated });
-  } catch (e) { next(e); }
+  } catch (error) { next(e); }
 });
 
 /**
@@ -107,7 +107,7 @@ r.get("/users/:id/status", async (req, res, next) => {
       cateringBio:      (user as any).cateringBio,
       isChef:           (user as any).isChef,
     });
-  } catch (e) { next(e); }
+  } catch (error) { next(e); }
 });
 
 export default r;

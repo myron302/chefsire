@@ -187,7 +187,7 @@ async function seedFromJsonl(filePath: string) {
       process.exit(1);
     }
     await seedFromJsonl(datasetPath);
-  } catch (e) {
+  } catch (error) {
     console.error("❌ Seed failed:", e);
     process.exit(1);
   } finally {

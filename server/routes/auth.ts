@@ -1,18 +1,10 @@
 // server/routes/auth.ts - WITH MAILER (won't crash if email fails)
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import crypto from "node:crypto";
 import { storage } from "../storage";
-import { db } from "../db";
-import { emailVerificationTokens } from "../../shared/schema";
-import { eq } from "drizzle-orm";
-import { sendVerificationEmail } from "../utils/mailer";
+import { AuthService } from "../services/auth.service";
 
 const router = Router();
-
-// --- helpers ---
-const sha256Hex = (s: string) => crypto.createHash("sha256").update(s, "utf8").digest("hex");
-const newToken = () => crypto.randomBytes(32).toString("hex");
 
 // Map slug values to pretty labels for the space version
 const TITLE_LABELS: Record<string, string> = {
@@ -64,31 +56,18 @@ router.post("/auth/signup", async (req, res) => {
       emailVerifiedAt: null,
     });
 
-    // Create verification token
-    const token = newToken();
-    const tokenHash = sha256Hex(token);
+    // Create and send verification email
+    const result = await AuthService.createAndSendVerification(newUser.id, email);
 
-    await db.insert(emailVerificationTokens).values({
-      userId: newUser.id,
-      tokenHash: tokenHash,
-      email: email.toLowerCase().trim(),
-    });
-
-    // Try to send verification email
-    const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
-    
-    try {
-      await sendVerificationEmail(email, verificationLink);
+    if (result.success) {
       console.log('✅ Verification email sent to:', email);
-      
       res.status(201).json({
         message: "Account created! Please check your email to verify your account.",
         userId: newUser.id,
       });
-    } catch (emailError: any) {
+    } else {
       // Email failed but account was created - log error but don't fail signup
-      console.error('⚠️ Email sending failed:', emailError.message);
-      
+      console.error('⚠️ Email sending failed:', result.error);
       res.status(201).json({
         message: "Account created! Email sending is currently unavailable. Contact support for verification.",
         userId: newUser.id,
@@ -153,37 +132,13 @@ router.get("/auth/verify-email", async (req, res) => {
       return res.status(400).send("Invalid verification link");
     }
 
-    const tokenHash = sha256Hex(token);
+    const result = await AuthService.verifyEmailToken(token);
 
-    const [tokenRecord] = await db
-      .select()
-      .from(emailVerificationTokens)
-      .where(eq(emailVerificationTokens.tokenHash, tokenHash))
-      .limit(1);
-
-    if (!tokenRecord) {
-      return res.status(400).send("Invalid or expired verification link");
+    if (!result.success) {
+      return res.status(400).send(result.error);
     }
 
-    if (new Date() > tokenRecord.expiresAt) {
-      return res.status(400).send("Verification link has expired");
-    }
-
-    if (tokenRecord.consumedAt) {
-      return res.status(400).send("This link has already been used");
-    }
-
-    // Mark user as verified
-    await storage.verifyUserEmail(tokenRecord.userId);
-
-    // Mark token as consumed
-    await db
-      .update(emailVerificationTokens)
-      .set({ consumedAt: new Date() })
-      .where(eq(emailVerificationTokens.id, tokenRecord.id));
-
-    console.log('✅ Email verified for user:', tokenRecord.userId);
-
+    console.log('✅ Email verified for user:', result.userId);
     res.redirect("/verify/success");
   } catch (error) {
     console.error("Error verifying email:", error);
@@ -212,30 +167,14 @@ router.post("/auth/resend-verification", async (req, res) => {
       return res.status(400).json({ error: "Email is already verified" });
     }
 
-    // Delete old tokens for this user
-    await db
-      .delete(emailVerificationTokens)
-      .where(eq(emailVerificationTokens.userId, user.id));
+    // Create and send verification email
+    const result = await AuthService.createAndSendVerification(user.id, email);
 
-    // Create new token
-    const token = newToken();
-    const tokenHash = sha256Hex(token);
-
-    await db.insert(emailVerificationTokens).values({
-      userId: user.id,
-      tokenHash: tokenHash,
-      email: email.toLowerCase().trim(),
-    });
-
-    // Try to send email
-    const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
-    
-    try {
-      await sendVerificationEmail(email, verificationLink);
+    if (result.success) {
       console.log('✅ Verification email resent to:', email);
       res.json({ message: "Verification email sent" });
-    } catch (emailError: any) {
-      console.error('⚠️ Failed to resend email:', emailError.message);
+    } else {
+      console.error('⚠️ Failed to resend email:', result.error);
       res.status(500).json({ error: "Failed to send verification email. Please try again later." });
     }
   } catch (error) {
