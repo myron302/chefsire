@@ -1,8 +1,5 @@
 import { Router } from "express";
 
-// 🔐 AUTH ROUTER
-import authRouter from "./auth";
-
 // Core feature routers
 import recipesRouter from "./recipes";
 import bitesRouter from "./bites";
@@ -12,6 +9,9 @@ import pantryRouter from "./pantry";
 import marketplaceRouter from "./marketplace";
 import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
+
+// AUTH ROUTES
+import authRouter from "./auth";
 
 // Integrations
 import lookupRouter from "./lookup";
@@ -34,8 +34,8 @@ const r = Router();
  *   app.use("/api", routes)
  */
 
-// 🔐 AUTH ROUTES - All auth endpoints including verification
-r.use("/auth", authRouter);
+// AUTH - mount auth routes
+r.use(authRouter);
 
 // Recipes routes (prefixed)
 r.use("/recipes", recipesRouter);
