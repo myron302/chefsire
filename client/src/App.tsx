@@ -12,30 +12,38 @@ import RequireAgeGate from "@/components/RequireAgeGate";
 import { DrinksProvider } from "@/contexts/DrinksContext";
 import { UserProvider } from "@/contexts/UserContext";
 
-// Pages (existing)
-import Feed from "@/pages/feed";
+// Auth Pages
+import Signup from "@/pages/auth/signup";
+import Login from "@/pages/auth/login";
+import VerifyEmailPage from "@/pages/auth/verify-email";
+import VerifySuccessPage from "@/pages/auth/verify-success";
+
+// Social Pages
+import Feed from "@/pages/social/feed";
+import Profile from "@/pages/social/profile";
+import CreatePost from "@/pages/social/create-post";
+
+// Service Pages
+import CateringMarketplace from "@/pages/services/catering";
+import WeddingPlanning from "@/pages/services/wedding-planning";
+
+// Other Pages
 import ExplorePage from "@/pages/explore/ExplorePage";
 import RecipesListPage from "@/pages/recipes/RecipesListPage";
 import RecipesFiltersPage from "@/pages/recipes/RecipesFiltersPage";
 import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
-import Profile from "@/pages/profile";
-import CreatePost from "@/pages/create-post";
 import Pantry from "@/components/Pantry";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
-import CateringMarketplace from "@/pages/catering";
-import WeddingPlanning from "@/pages/wedding-planning";
 import NotFound from "@/pages/not-found";
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
-
-// Auth - ADDED VERIFY PAGES
-import Signup from "@/pages/signup";
-import Login from "@/pages/login";
-import VerifyEmailPage from "@/pages/verify-email";
-import VerifySuccessPage from "@/pages/verify-success";
 
 // Store pages - ALL IN pages/store/
 import Marketplace from "@/pages/store/Marketplace";
 import StoreViewer from "@/pages/store/StoreViewer";
+import StoreDashboard from "@/pages/store/StoreDashboard";
+
+// Settings page
+import Settings from "@/pages/settings";
 
 // BiteMap page
 import BiteMapPage from "@/pages/bitemap/index.tsx";
@@ -249,6 +257,8 @@ function AppRouter() {
         <Route path="/verify/success" component={VerifySuccessPage} />
 
         <Route path="/profile/:userId?" component={Profile} />
+        <Route path="/settings" component={Settings} />
+        <Route path="/store/dashboard" component={StoreDashboard} />
         <Route path="/store/:username" component={StoreViewer} />
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
@@ -325,7 +335,6 @@ function AppRouter() {
         {/* 404 fallback */}
         <Route path="/saved" component={NotFound} />
         <Route path="/following" component={NotFound} />
-        <Route path="/settings" component={NotFound} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

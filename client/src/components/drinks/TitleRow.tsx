@@ -3,7 +3,6 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft } from "lucide-react";
-import { SafeArea } from "@/mobile/MobileKit";
 
 /**
  * Drinks Title Row
@@ -46,9 +45,6 @@ export default function TitleRow({
           }
         : {})}
     >
-      {/* Safe top padding if used at the very top (header beneath notch) */}
-      <SafeArea edge="top" />
-
       <div className={`px-4 md:px-6 ${gradient ? "py-6 md:py-10" : "py-4"} ${className}`}>
         {/* Row 1: Back link */}
         {backHref ? (

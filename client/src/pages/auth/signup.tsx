@@ -18,7 +18,11 @@ type Errors = {
   phone: string;
   captcha: string;
   verify: string;
+  businessName: string;
+  businessCategory: string;
 };
+
+type AccountType = 'personal' | 'business';
 
 type VerifyMethod = 'sms' | 'email';
 
@@ -60,7 +64,7 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Errors>({
     firstName: '', lastName: '', username: '', email: '', password: '',
-    title: '', phone: '', captcha: '', verify: ''
+    title: '', phone: '', captcha: '', verify: '', businessName: '', businessCategory: ''
   });
 
   // Form state
@@ -71,6 +75,11 @@ export default function SignupPage() {
   const [password, setPassword]   = useState('');
   const [phone, setPhone]         = useState('');
   const [agree, setAgree]         = useState(false);
+
+  // Account type and business fields
+  const [accountType, setAccountType] = useState<AccountType>('personal');
+  const [businessName, setBusinessName] = useState('');
+  const [businessCategory, setBusinessCategory] = useState('');
 
   // Title dropdown
   const [showTitleDropdown, setShowTitleDropdown] = useState(false);
@@ -239,13 +248,13 @@ export default function SignupPage() {
     // Reset errors
     setErrors({
       firstName: '', lastName: '', username: '', email: '', password: '',
-      title: '', phone: '', captcha: '', verify: ''
+      title: '', phone: '', captcha: '', verify: '', businessName: '', businessCategory: ''
     });
 
     // Validate
     const newErrors: Errors = {
       firstName: '', lastName: '', username: '', email: '', password: '',
-      title: '', phone: '', captcha: '', verify: ''
+      title: '', phone: '', captcha: '', verify: '', businessName: '', businessCategory: ''
     };
 
     if (!firstName.trim()) newErrors.firstName = 'First name is required';
@@ -255,6 +264,12 @@ export default function SignupPage() {
     else if (!isEmailValid) newErrors.email = 'Email is not valid';
     if (!password) newErrors.password = 'Password is required';
     else if (password.length < 6) newErrors.password = 'Password must be at least 6 characters';
+
+    // Business account validation
+    if (accountType === 'business') {
+      if (!businessName.trim()) newErrors.businessName = 'Business name is required';
+      if (!businessCategory.trim()) newErrors.businessCategory = 'Business category is required';
+    }
 
     // Captcha
     const sum = captchaA + captchaB;
@@ -287,6 +302,9 @@ export default function SignupPage() {
         otpVerified,
         emailLinkSent,
         title: selectedTitle,
+        accountType,
+        businessName: accountType === 'business' ? businessName.trim() : undefined,
+        businessCategory: accountType === 'business' ? businessCategory.trim() : undefined,
       };
 
       try {
@@ -414,6 +432,131 @@ export default function SignupPage() {
               {errors.title && <p className="mt-2 text-sm text-red-300">{errors.title}</p>}
               <p className="mt-1 text-xs text-yellow-200">Choose a royal title to be displayed alongside your name</p>
             </div>
+
+            {/* Account Type Selector */}
+            <div className="p-4 bg-white/10 rounded-2xl border border-yellow-300/30">
+              <label className="block text-sm font-medium text-yellow-100 mb-3">
+                Account Type *
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setAccountType('personal')}
+                  className={`p-4 rounded-xl border-2 transition-all ${
+                    accountType === 'personal'
+                      ? 'border-yellow-400 bg-yellow-400/20'
+                      : 'border-yellow-300/30 bg-white/5 hover:bg-white/10'
+                  }`}
+                >
+                  <div className="text-center">
+                    <div className="text-3xl mb-2">👤</div>
+                    <div className="font-semibold text-yellow-100">Personal</div>
+                    <div className="text-xs text-yellow-200 mt-1">For individual chefs</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAccountType('business')}
+                  className={`p-4 rounded-xl border-2 transition-all ${
+                    accountType === 'business'
+                      ? 'border-yellow-400 bg-yellow-400/20'
+                      : 'border-yellow-300/30 bg-white/5 hover:bg-white/10'
+                  }`}
+                >
+                  <div className="text-center">
+                    <div className="text-3xl mb-2">🏢</div>
+                    <div className="font-semibold text-yellow-100">Business</div>
+                    <div className="text-xs text-yellow-200 mt-1">For restaurants & stores</div>
+                  </div>
+                </button>
+              </div>
+
+              {/* Business Benefits */}
+              {accountType === 'business' && (
+                <div className="mt-4 p-3 bg-green-500/20 border border-green-400/30 rounded-xl">
+                  <div className="text-sm font-semibold text-green-100 mb-2 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    Business Account Benefits
+                  </div>
+                  <ul className="text-xs text-green-100 space-y-1">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                      <span>Create and manage your online store</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                      <span>List products and accept payments</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                      <span>Professional business profile</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                      <span>Advanced analytics and insights</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                      <span>Priority customer support</span>
+                    </li>
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Business Fields (conditional) */}
+            {accountType === 'business' && (
+              <div className="space-y-6 p-4 bg-white/10 rounded-2xl border border-yellow-300/30">
+                <h3 className="text-sm font-semibold text-yellow-100 flex items-center gap-2">
+                  <Castle className="w-4 h-4" />
+                  Business Information
+                </h3>
+
+                <div>
+                  <label htmlFor="businessName" className="block text-sm font-medium text-yellow-100 mb-2">
+                    Business Name *
+                  </label>
+                  <input
+                    id="businessName"
+                    name="businessName"
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
+                      errors.businessName ? 'border-red-400' : 'border-yellow-300/50'
+                    }`}
+                    placeholder="Royal Kitchen Co."
+                  />
+                  {errors.businessName && <p className="mt-2 text-sm text-red-300">{errors.businessName}</p>}
+                </div>
+
+                <div>
+                  <label htmlFor="businessCategory" className="block text-sm font-medium text-yellow-100 mb-2">
+                    Business Category *
+                  </label>
+                  <select
+                    id="businessCategory"
+                    name="businessCategory"
+                    value={businessCategory}
+                    onChange={(e) => setBusinessCategory(e.target.value)}
+                    className={`w-full px-4 py-3 bg-white/20 border rounded-2xl text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
+                      errors.businessCategory ? 'border-red-400' : 'border-yellow-300/50'
+                    }`}
+                  >
+                    <option value="" className="bg-purple-900">Select a category...</option>
+                    <option value="restaurant" className="bg-purple-900">Restaurant</option>
+                    <option value="cafe" className="bg-purple-900">Café</option>
+                    <option value="bakery" className="bg-purple-900">Bakery</option>
+                    <option value="catering" className="bg-purple-900">Catering Service</option>
+                    <option value="food-truck" className="bg-purple-900">Food Truck</option>
+                    <option value="grocery" className="bg-purple-900">Grocery Store</option>
+                    <option value="specialty" className="bg-purple-900">Specialty Food Shop</option>
+                    <option value="meal-prep" className="bg-purple-900">Meal Prep Service</option>
+                    <option value="other" className="bg-purple-900">Other</option>
+                  </select>
+                  {errors.businessCategory && <p className="mt-2 text-sm text-red-300">{errors.businessCategory}</p>}
+                </div>
+              </div>
+            )}
 
             {/* First + Last Name */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
