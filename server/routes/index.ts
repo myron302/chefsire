@@ -10,8 +10,8 @@ import marketplaceRouter from "./marketplace";
 import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
 
-// AUTH ROUTES
-import authRouter from "./auth";
+// AUTH ROUTES - TEMPORARILY COMMENTED OUT FOR TESTING
+// import authRouter from "./auth";
 
 // Integrations
 import lookupRouter from "./lookup";
@@ -34,8 +34,8 @@ const r = Router();
  *   app.use("/api", routes)
  */
 
-// AUTH - mount auth routes
-r.use(authRouter);
+// AUTH - TEMPORARILY DISABLED FOR TESTING
+// r.use(authRouter);
 
 // Recipes routes (prefixed)
 r.use("/recipes", recipesRouter);
@@ -84,7 +84,6 @@ if (process.env.NODE_ENV !== "production") {
       ok: true,
       mountedAt: "/api",
       endpoints: [
-        "/auth/*",
         "/recipes/*",
         "/bites/*",
         "/users/*",
