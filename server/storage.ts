@@ -331,7 +331,7 @@ export class DrizzleStorage implements IStorage {
     const result = await db
       .select()
       .from(emailVerificationTokens)
-      .where(eq(emailVerificationTokens.token, hashedToken))
+      .where(eq(emailVerificationTokens.tokenHash, hashedToken))
       .limit(1);
     return result[0];
   }
@@ -348,7 +348,7 @@ export class DrizzleStorage implements IStorage {
     const db = getDb();
     await db
       .delete(emailVerificationTokens)
-      .where(eq(emailVerificationTokens.token, hashedToken));
+      .where(eq(emailVerificationTokens.tokenHash, hashedToken));
   }
 
   async deleteVerificationTokensByUserId(userId: string): Promise<void> {
