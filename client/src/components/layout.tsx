@@ -48,7 +48,7 @@ export default function Layout({ children }: LayoutProps) {
   ];
 
   const handleCreatePost = () => {
-    console.log("Create post clicked");
+    setLocation("/create");
   };
 
   const onSearchSubmit = (e: FormEvent) => {

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +55,7 @@ type Store = {
 
 export default function Profile() {
   const { userId } = useParams<{ userId?: string }>();
+  const [, setLocation] = useLocation();
   const { user: currentUser } = useUser();
   const profileUserId = userId || currentUser?.id;
 
@@ -329,7 +330,7 @@ export default function Profile() {
 
             {isOwnProfile ? (
               <div className="flex flex-col items-end gap-2">
-                <Button variant="outline" data-testid="button-edit-profile">
+                <Button variant="outline" data-testid="button-edit-profile" onClick={() => setLocation('/settings')}>
                   Edit Profile
                 </Button>
                 {/* Show store management button if user has a store */}
