@@ -45,7 +45,7 @@ r.get("/marketplace/products/:id", async (req, res) => {
     const prod = await storage.getProductWithSeller(req.params.id);
     if (!prod) return res.status(404).json({ message: "Product not found" });
     res.json(prod);
-  } catch (e) {
+  } catch (error) {
     console.error("marketplace/get error", e);
     res.status(500).json({ message: "Failed to fetch product" });
   }
@@ -86,7 +86,7 @@ r.get("/marketplace/sellers/:sellerId/products", async (req, res) => {
     const limit = Number(req.query.limit ?? 20);
     const items = await storage.getUserProducts(req.params.sellerId, offset, limit);
     res.json({ products: items, total: items.length, sellerId: req.params.sellerId });
-  } catch (e) {
+  } catch (error) {
     console.error("marketplace/seller products error", e);
     res.status(500).json({ message: "Failed to fetch seller products" });
   }
@@ -125,7 +125,7 @@ r.delete("/marketplace/products/:id", async (req, res) => {
     const ok = await storage.deleteProduct(req.params.id);
     if (!ok) return res.status(404).json({ message: "Product not found" });
     res.json({ message: "Product deactivated" });
-  } catch (e) {
+  } catch (error) {
     console.error("marketplace/delete error", e);
     res.status(500).json({ message: "Failed to delete product" });
   }
@@ -154,7 +154,7 @@ r.get("/marketplace/storefront/:username", async (req, res) => {
         subscriptionTier: (user as any).subscriptionTier,
       },
     });
-  } catch (e) {
+  } catch (error) {
     console.error("marketplace/storefront error", e);
     res.status(500).json({ message: "Failed to fetch storefront" });
   }
@@ -173,7 +173,7 @@ r.get("/marketplace/categories", async (_req, res) => {
       other: all.filter((p: any) => p.category === "other").length,
     };
     res.json({ categories: counts, totalProducts: all.length });
-  } catch (e) {
+  } catch (error) {
     console.error("marketplace/categories error", e);
     res.status(500).json({ message: "Failed to fetch categories" });
   }
@@ -196,7 +196,7 @@ r.get("/marketplace/sellers/:sellerId/analytics", async (req, res) => {
       subscriptionTier: (user as any).subscriptionTier || "free",
     };
     res.json(analytics);
-  } catch (e) {
+  } catch (error) {
     console.error("marketplace/analytics error", e);
     res.status(500).json({ message: "Failed to fetch analytics" });
   }

@@ -73,7 +73,7 @@ export default function CompetitionRoomPage() {
         const data = await response.json();
         setRoomUrl(data.roomUrl);
       }
-    } catch (err) {
+    } catch (error) {
       console.log('No existing room found');
     }
   };
@@ -98,7 +98,7 @@ export default function CompetitionRoomPage() {
 
       const data = await response.json();
       setRoomUrl(data.roomUrl);
-    } catch (err) {
+    } catch (error) {
       setError(err.message);
       console.error('Error creating video room:', err);
     } finally {

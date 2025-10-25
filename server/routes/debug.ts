@@ -182,7 +182,7 @@ async function hit(path, outId = 'out1') {
     const res = await fetch(path);
     const data = await res.json();
     el.textContent = JSON.stringify(data, null, 2);
-  } catch (e) {
+  } catch (error) {
     el.textContent = 'Error: ' + e;
   }
 }
