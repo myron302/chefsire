@@ -1,4 +1,4 @@
-// server/routes/auth.ts - WITHOUT MAILER
+// server/routes/auth.ts - WITH MAILER
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
@@ -6,6 +6,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { emailVerificationTokens } from "../../shared/schema";
 import { eq } from "drizzle-orm";
+import { sendVerificationEmail } from "../utils/mailer";
 
 const router = Router();
 
@@ -73,14 +74,17 @@ router.post("/auth/signup", async (req, res) => {
       email: email.toLowerCase().trim(),
     });
 
-    // Log the verification link instead of sending email
+    // Send verification email
     const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
-    console.log('📧 Verification link for', email, ':', verificationLink);
+    console.log('📧 Sending verification email to:', email);
+    
+    sendVerificationEmail(email, verificationLink)
+      .then(() => console.log('✅ Email sent successfully'))
+      .catch((err) => console.error('❌ Email failed:', err));
 
     res.status(201).json({
-      message: "Account created! Check server logs for verification link (email disabled).",
+      message: "Account created! Please check your email to verify your account.",
       userId: newUser.id,
-      verificationLink, // Return in response for now
     });
   } catch (error) {
     console.error("Error during signup:", error);
@@ -214,14 +218,18 @@ router.post("/auth/resend-verification", async (req, res) => {
       email: email.toLowerCase().trim(),
     });
 
-    // Log verification link
+    // Send email
     const verificationLink = `${process.env.APP_URL || 'https://chefsire.com'}/api/auth/verify-email?token=${token}`;
-    console.log('📧 Resent verification link for', email, ':', verificationLink);
+    console.log('📧 Resending verification email to:', email);
     
-    res.json({ 
-      message: "Verification link generated (check server logs)",
-      verificationLink,
-    });
+    try {
+      await sendVerificationEmail(email, verificationLink);
+      console.log('✅ Email resent successfully');
+      res.json({ message: "Verification email sent" });
+    } catch (emailError) {
+      console.error('❌ Failed to resend email:', emailError);
+      res.status(500).json({ error: "Failed to send verification email" });
+    }
   } catch (error) {
     console.error("Error resending verification:", error);
     res.status(500).json({ error: "Failed to resend verification email" });
