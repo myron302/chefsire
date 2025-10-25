@@ -21,7 +21,7 @@ import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
 import Profile from "@/pages/profile";
 import CreatePost from "@/pages/create-post";
 import Pantry from "@/components/Pantry";
-import Marketplace from "@/components/Marketplace";
+import Marketplace from "@/components/store/Marketplace";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import CateringMarketplace from "@/pages/catering";
 import WeddingPlanning from "@/pages/wedding-planning";
@@ -35,7 +35,7 @@ import VerifyEmailPage from "@/pages/verify-email";
 import VerifySuccessPage from "@/pages/verify-success";
 
 // Store Viewer (public storefronts)
-import StoreViewer from "@/components/StoreViewer";
+import StoreViewer from "@/components/store/StoreViewer";
 
 // BiteMap page
 import BiteMapPage from "@/pages/bitemap/index.tsx";
