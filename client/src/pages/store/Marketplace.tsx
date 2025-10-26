@@ -495,6 +495,11 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
 
   // 🔁 Square upgrade flow — creates a hosted checkout link and navigates there
   const handleUpgrade = async (tier: "pro" | "enterprise", isTrial = false) => {
+    if (!user) {
+      alert("Please log in to start your trial or upgrade.");
+      return;
+    }
+
     try {
       const resp = await fetch("/api/square/subscription-link", {
         method: "POST",
@@ -507,7 +512,16 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
         }),
       });
       const data = await resp.json();
-      if (!resp.ok || !data?.url) throw new Error(data?.error || "Could not start checkout");
+      if (!resp.ok || !data?.url) {
+        // More specific error message
+        const errorMsg = data?.error || "Could not start checkout";
+        if (errorMsg.includes("Missing plan variation")) {
+          alert("Subscription service is currently being configured. Please check back later or contact support.");
+        } else {
+          alert(`Error: ${errorMsg}`);
+        }
+        return;
+      }
       // If you want to record local UI state immediately for trial:
       if (isTrial) {
         const trialEnds = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);

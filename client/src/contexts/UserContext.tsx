@@ -114,51 +114,50 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     }
   };
 
-  const signup = async (name: string, email: string, password: string, royalTitle?: string): Promise<boolean> => {
+  const signup = async (
+    name: string,
+    email: string,
+    password: string,
+    royalTitle?: string,
+    meta?: { firstName?: string; lastName?: string; [key: string]: any }
+  ): Promise<boolean> => {
     try {
       setLoading(true);
-      
-      // Check if user already exists
-      const existingUser = localStorage.getItem('user');
-      if (existingUser) {
-        const userData: User = JSON.parse(existingUser);
-        if (userData.email === email) {
-          console.log('User already exists with this email');
-          return false;
-        }
+
+      // Extract first and last name from meta or fallback to splitting name
+      const firstName = meta?.firstName || name.split(' ')[0] || name;
+      const lastName = meta?.lastName || name.split(' ').slice(1).join(' ') || '';
+
+      // Call the backend API
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firstName,
+          lastName,
+          email: email.toLowerCase().trim(),
+          password,
+          selectedTitle: royalTitle,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Signup failed:', data.error);
+        alert(data.error || 'Signup failed');
+        return false;
       }
 
-      // Create new user with actual password storage (for demo)
-      if (name && email && password.length >= 6) {
-        const mockUser: User = {
-          id: 'user-' + Date.now(),
-          username: email.split('@')[0],
-          displayName: name,
-          royalTitle: royalTitle || 'Knight',
-          avatar: 'https://images.unsplash.com/photo-1566554273541-37a9ca77b91f',
-          bio: 'New food enthusiast!',
-          email: email,
-          password: password, // Store password for validation (in real app, this would be hashed)
-          subscription: 'free',
-          productCount: 0,
-          postsCount: 0,
-          followersCount: 0,
-          followingCount: 0,
-          isChef: false
-        };
-        
-        // Store user with password for login validation
-        localStorage.setItem('user', JSON.stringify(mockUser));
-        
-        // Set user without password for security
-        const { password: _, ...userWithoutPassword } = mockUser;
-        setUser(userWithoutPassword as User);
-        
-        return true;
-      }
-      return false;
+      // Show success message about email verification
+      alert(data.message || 'Account created! Please check your email to verify your account.');
+
+      return true;
     } catch (error) {
       console.error('Signup error:', error);
+      alert('An error occurred during signup. Please try again.');
       return false;
     } finally {
       setLoading(false);

@@ -323,9 +323,13 @@ export default function Profile() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
             <div>
               <h1 className="text-2xl font-bold" data-testid={`text-profile-name-${displayUser.id}`}>
-                {displayUser.displayName}
+                {displayUser.username}
               </h1>
-              <p className="text-muted-foreground">@{displayUser.username}</p>
+              {displayUser.showFullName && displayUser.firstName && displayUser.lastName && (
+                <p className="text-sm text-muted-foreground">
+                  {displayUser.firstName} {displayUser.lastName}
+                </p>
+              )}
             </div>
 
             {isOwnProfile ? (
