@@ -28,7 +28,8 @@
     "check:imports": "node tools/check-imports.js",
     "gen:shims": "node tools/generate-import-shims.js",
     "fix:filenames": "node tools/fix-filenames.js",
-    "env:print": "tsx server/scripts/print-env.ts"
+    "env:print": "tsx server/scripts/print-env.ts",
+    "test:email": "tsx server/scripts/test-email.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
