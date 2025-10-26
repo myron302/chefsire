@@ -161,10 +161,32 @@ export default function SettingsPage() {
                         <User size={32} className="text-gray-400" />
                       )}
                     </div>
-                    <Button variant="outline">
-                      <Upload size={16} className="mr-2" />
-                      Upload Photo
-                    </Button>
+                    <div className="space-x-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => document.getElementById('avatar-upload')?.click()}
+                      >
+                        <Upload size={16} className="mr-2" />
+                        Upload Photo
+                      </Button>
+                      <input
+                        id="avatar-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setProfile({ ...profile, avatar: reader.result as string });
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
 
