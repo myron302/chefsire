@@ -9,8 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useUser } from '@/contexts/UserContext';
+import { useToast } from '@/hooks/use-toast';
 
 const NutritionMealPlanner = () => {
+  const { user } = useUser();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('planner');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
@@ -94,16 +98,41 @@ const NutritionMealPlanner = () => {
   };
 
   const startNutritionTrial = async () => {
-    try {
-      const userId = "user-123";
-      const response = await fetch(`/api/users/${userId}/nutrition/trial`, {
-        method: 'POST'
+    if (!user) {
+      toast({
+        variant: "destructive",
+        description: "Please log in to start your trial",
       });
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/users/${user.id}/nutrition/trial`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
       if (response.ok) {
+        const data = await response.json();
         setIsPremium(true);
+        toast({
+          description: "30-day nutrition trial activated! Enjoy premium features.",
+        });
+      } else {
+        const error = await response.json();
+        toast({
+          variant: "destructive",
+          description: error.message || "Failed to start trial",
+        });
       }
     } catch (error) {
       console.error('Error starting trial:', error);
+      toast({
+        variant: "destructive",
+        description: "An error occurred. Please try again.",
+      });
     }
   };
 
@@ -324,6 +353,43 @@ const NutritionMealPlanner = () => {
           {/* Meal Planner Tab */}
           <TabsContent value="planner">
             <div className="space-y-6">
+              {/* Daily Calorie Counter Widget */}
+              <Card className="bg-gradient-to-r from-orange-500 to-pink-500 text-white shadow-lg">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-white/90 text-sm font-medium mb-1">Today's Calories</p>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-4xl font-bold">1,850</span>
+                        <span className="text-white/80 text-lg">/ 2,000 kcal</span>
+                      </div>
+                      <Progress value={92.5} className="h-2 mt-3 bg-white/20" />
+                    </div>
+                    <div className="text-right">
+                      <div className="bg-white/20 backdrop-blur rounded-lg px-4 py-3">
+                        <p className="text-sm text-white/90">Remaining</p>
+                        <p className="text-2xl font-bold">150</p>
+                        <p className="text-xs text-white/80">calories</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 mt-4">
+                    <div className="bg-white/15 backdrop-blur rounded-lg p-3 text-center">
+                      <p className="text-xs text-white/80">Protein</p>
+                      <p className="text-lg font-semibold">145g</p>
+                    </div>
+                    <div className="bg-white/15 backdrop-blur rounded-lg p-3 text-center">
+                      <p className="text-xs text-white/80">Carbs</p>
+                      <p className="text-lg font-semibold">180g</p>
+                    </div>
+                    <div className="bg-white/15 backdrop-blur rounded-lg p-3 text-center">
+                      <p className="text-xs text-white/80">Fat</p>
+                      <p className="text-lg font-semibold">62g</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <Button
@@ -495,6 +561,83 @@ const NutritionMealPlanner = () => {
                       <Target className="w-4 h-4 mr-2" />
                       Adjust Goals
                     </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Food Scanner Card */}
+                <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Camera className="w-5 h-5 text-purple-600" />
+                      Food Scanner
+                    </CardTitle>
+                    <CardDescription>Scan food to track calories instantly</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <p className="text-sm text-gray-600">Point your camera at any food item to automatically detect and log nutrition info.</p>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
+                        onClick={() => {
+                          const input = document.getElementById('food-scanner-camera');
+                          if (input) input.click();
+                        }}
+                      >
+                        <Camera className="w-4 h-4 mr-2" />
+                        Scan Food Now
+                      </Button>
+                      <input
+                        id="food-scanner-camera"
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            // In production, this would call an AI vision API
+                            toast({
+                              description: "Food scanning detected: Chicken Breast (200g) - 330 calories, 62g protein",
+                            });
+                          }
+                        }}
+                      />
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          const input = document.getElementById('food-scanner-upload');
+                          if (input) input.click();
+                        }}
+                      >
+                        Upload Photo
+                      </Button>
+                      <input
+                        id="food-scanner-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            toast({
+                              description: "Food scanning detected: Mixed Salad - 150 calories, 8g protein",
+                            });
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="bg-white rounded-lg p-3 space-y-2">
+                      <p className="text-xs font-medium text-gray-700">Recently Scanned:</p>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-600">Grilled Chicken</span>
+                        <span className="font-medium">330 cal</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-600">Greek Yogurt</span>
+                        <span className="font-medium">120 cal</span>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
 

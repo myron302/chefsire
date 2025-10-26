@@ -26,11 +26,15 @@ const TITLE_LABELS: Record<string, string> = {
  * POST /auth/signup
  */
 router.post("/auth/signup", async (req, res) => {
-  const { name, email, password, username, selectedTitle } = req.body ?? {};
+  const { firstName, lastName, email, password, selectedTitle } = req.body ?? {};
 
   try {
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    if (!firstName || !lastName) {
+      return res.status(400).json({ error: "First and last name are required" });
     }
 
     // Check if user already exists
@@ -41,8 +45,8 @@ router.post("/auth/signup", async (req, res) => {
 
     // Build username with title prepended WITH SPACE
     const titleLabel = TITLE_LABELS[selectedTitle] || "";
-    const baseUsername = username || email.split("@")[0];
-    const finalUsername = titleLabel ? `${titleLabel} ${baseUsername}` : baseUsername;
+    const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+    const finalUsername = titleLabel ? `${titleLabel} ${fullName}` : fullName;
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -53,6 +57,10 @@ router.post("/auth/signup", async (req, res) => {
       password: hashedPassword,
       username: finalUsername,
       displayName: finalUsername,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      royalTitle: selectedTitle || null,
+      showFullName: false,
       emailVerifiedAt: null,
     });
 

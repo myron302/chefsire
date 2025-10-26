@@ -23,7 +23,9 @@ interface CreatePostModalProps {
 export default function CreatePostModal({ open, onOpenChange }: CreatePostModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
+
   const [formData, setFormData] = useState({
     caption: "",
     imageUrl: "",
@@ -71,6 +73,8 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
       servings: "",
       difficulty: "Easy",
     });
+    setImageFile(null);
+    setImagePreview("");
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -99,6 +103,24 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+
+      // Create a preview URL
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        setImagePreview(result);
+        // For demo purposes, we'll use the preview URL as the imageUrl
+        // In production, you would upload this to a CDN/storage service
+        handleChange("imageUrl", result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -107,18 +129,82 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Image Upload Placeholder */}
+          {/* Image Upload */}
           <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
             <Camera className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground mb-2">Add image URL</p>
-            <Input
-              type="url"
-              placeholder="https://example.com/image.jpg"
-              value={formData.imageUrl}
-              onChange={(e) => handleChange("imageUrl", e.target.value)}
-              className="mt-2"
-              data-testid="input-image-url"
-            />
+
+            {imagePreview ? (
+              <div className="space-y-2">
+                <img src={imagePreview} alt="Preview" className="w-full max-h-48 object-cover rounded-lg mx-auto" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setImageFile(null);
+                    setImagePreview("");
+                    handleChange("imageUrl", "");
+                  }}
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Remove
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">Take a photo or choose from library</p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => document.getElementById('camera-input')?.click()}
+                    className="flex-1"
+                  >
+                    <Camera className="h-4 w-4 mr-2" />
+                    Camera
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => document.getElementById('file-input')?.click()}
+                    className="flex-1"
+                  >
+                    Upload
+                  </Button>
+                </div>
+                <input
+                  id="camera-input"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  data-testid="input-camera"
+                />
+                <input
+                  id="file-input"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  data-testid="input-file"
+                />
+                <p className="text-xs text-muted-foreground">or paste URL</p>
+                <Input
+                  type="url"
+                  placeholder="https://example.com/image.jpg"
+                  value={formData.imageUrl}
+                  onChange={(e) => {
+                    handleChange("imageUrl", e.target.value);
+                    if (e.target.value) {
+                      setImagePreview(e.target.value);
+                    }
+                  }}
+                  className="mt-2"
+                  data-testid="input-image-url"
+                />
+              </div>
+            )}
           </div>
 
           {/* Caption */}

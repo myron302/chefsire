@@ -161,29 +161,15 @@ export default function SignupPage() {
   const [userEditedUsername, setUserEditedUsername] = useState(false);
   useEffect(() => {
     if (userEditedUsername) return;
-    const base = slugify(`${firstName} ${lastName}`.trim());
+    const base = `${firstName} ${lastName}`.trim();
     if (!base) return;
-    // attach title suffix if selected
-    const suffix = selectedTitle ? TITLE_SUFFIX_MAP[selectedTitle] ?? selectedTitle : '';
-    setUsername(suffix ? `${base}-${suffix}` : base);
-  }, [firstName, lastName, selectedTitle, userEditedUsername]);
 
-  // When title changes explicitly, append suffix to current username (once)
-  useEffect(() => {
-    if (!selectedTitle || !username) return;
-    const suffix = TITLE_SUFFIX_MAP[selectedTitle] ?? selectedTitle;
-    // If already has suffix, don't duplicate
-    if (!username.endsWith(`-${suffix}`)) {
-      setUsername(prev => {
-        // If prev already ends with any known title suffix, replace; else append
-        const hasAnySuffix = Object.values(TITLE_SUFFIX_MAP).some(s => prev.endsWith(`-${s}`));
-        if (hasAnySuffix) {
-          return prev.replace(/-([a-z0-9]+)$/, `-${suffix}`);
-        }
-        return `${prev}-${suffix}`;
-      });
-    }
-  }, [selectedTitle]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Get title label if selected (e.g., "King", "Queen")
+    const titleLabel = selectedTitle ? selectedTitleData?.label || '' : '';
+
+    // Build username as "Title FirstLast" (e.g., "King John Smith")
+    setUsername(titleLabel ? `${titleLabel} ${base}` : base);
+  }, [firstName, lastName, selectedTitle, selectedTitleData, userEditedUsername]);
 
   // Basic validators
   const isEmailValid = useMemo(() => /\S+@\S+\.\S+/.test(email.trim()), [email]);
@@ -296,6 +282,8 @@ export default function SignupPage() {
       // Try to pass extra meta if your signup supports it (arity check)
       let success = false;
       const meta = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
         username: slugify(username),
         phone,
         verifyMethod,

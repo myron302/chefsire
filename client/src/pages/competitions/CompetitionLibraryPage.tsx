@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'wouter';
 import { Search, Sparkles, Filter, Timer, Users, Trophy, Flame, Calendar, Video, Eye, Plus, Layers, Home, TrendingUp, Zap, Star } from 'lucide-react';
 
 const THEMES = [
@@ -43,6 +44,7 @@ const STATUS_OPTIONS = [
 ];
 
 export default function CompetitionsLibraryPage() {
+  const [, setLocation] = useLocation();
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('all');
   const [theme, setTheme] = useState('');
@@ -138,8 +140,8 @@ export default function CompetitionsLibraryPage() {
               <Home className="w-4 h-4" />
               <span>Home</span>
             </button>
-            <button 
-              onClick={() => window.location.href = '/competitions/new'}
+            <button
+              onClick={() => setLocation('/competitions/new')}
               className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 rounded-full transition-all duration-300 hover:scale-105 text-white font-semibold shadow-lg"
             >
               <Plus className="w-5 h-5" />
@@ -346,8 +348,8 @@ export default function CompetitionsLibraryPage() {
                 </h3>
                 <p className="text-purple-100">Create your own cookoff and challenge the community!</p>
               </div>
-              <button 
-                onClick={() => window.location.href = '/competitions/new'}
+              <button
+                onClick={() => setLocation('/competitions/new')}
                 className="px-8 py-4 bg-white text-purple-600 hover:bg-purple-50 rounded-full font-bold text-lg transition-all duration-300 hover:scale-105 shadow-2xl whitespace-nowrap"
               >
                 <Plus className="w-5 h-5 inline mr-2" />
