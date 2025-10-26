@@ -26,7 +26,7 @@ const TITLE_LABELS: Record<string, string> = {
  * POST /auth/signup
  */
 router.post("/auth/signup", async (req, res) => {
-  const { firstName, lastName, email, password, selectedTitle } = req.body ?? {};
+  const { firstName, lastName, username, email, password, selectedTitle } = req.body ?? {};
 
   try {
     if (!email || !password) {
@@ -37,16 +37,19 @@ router.post("/auth/signup", async (req, res) => {
       return res.status(400).json({ error: "First and last name are required" });
     }
 
+    if (!username) {
+      return res.status(400).json({ error: "Username is required" });
+    }
+
     // Check if user already exists
     const existing = await storage.findByEmail(email);
     if (existing) {
       return res.status(400).json({ error: "Email already registered" });
     }
 
-    // Build username with title prepended WITH SPACE
-    const titleLabel = TITLE_LABELS[selectedTitle] || "";
-    const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
-    const finalUsername = titleLabel ? `${titleLabel} ${fullName}` : fullName;
+    // Use the username EXACTLY as the user typed it!
+    const finalUsername = username.trim();
+    const displayName = finalUsername; // Display the username they chose
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -56,7 +59,7 @@ router.post("/auth/signup", async (req, res) => {
       email: email.toLowerCase().trim(),
       password: hashedPassword,
       username: finalUsername,
-      displayName: finalUsername,
+      displayName: displayName,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       royalTitle: selectedTitle || null,
