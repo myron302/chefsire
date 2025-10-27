@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Camera, Upload, Plus, Minus } from "lucide-react";
+import { Camera, Upload, Plus, Minus, X } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -17,7 +17,9 @@ export default function CreatePost() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
-  
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
+
   const [formData, setFormData] = useState({
     caption: "",
     imageUrl: "",
@@ -103,6 +105,30 @@ export default function CreatePost() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+
+      // Create a preview URL
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        setImagePreview(result);
+        // For demo purposes, we'll use the preview URL as the imageUrl
+        // In production, you would upload this to a CDN/storage service
+        handleChange("imageUrl", result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const clearImage = () => {
+    setImageFile(null);
+    setImagePreview("");
+    handleChange("imageUrl", "");
+  };
+
   const addTag = () => {
     setFormData(prev => ({ ...prev, tags: [...prev.tags, ""] }));
   };
@@ -169,28 +195,84 @@ export default function CreatePost() {
             <div className="space-y-2">
               <Label htmlFor="imageUrl">Image *</Label>
               <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-                <Camera className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-sm text-muted-foreground mb-4">Add image URL for your post</p>
-                <Input
-                  id="imageUrl"
-                  type="url"
-                  placeholder="https://example.com/image.jpg"
-                  value={formData.imageUrl}
-                  onChange={(e) => handleChange("imageUrl", e.target.value)}
-                  data-testid="input-image-url"
-                />
-                {formData.imageUrl && (
-                  <div className="mt-4">
+                {imagePreview ? (
+                  <div className="space-y-4">
                     <img
-                      src={formData.imageUrl}
+                      src={imagePreview}
                       alt="Preview"
-                      className="w-full max-w-md mx-auto h-48 object-cover rounded-lg"
+                      className="w-full max-w-md mx-auto h-64 object-cover rounded-lg"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
                         target.style.display = 'none';
                       }}
                     />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={clearImage}
+                    >
+                      <X className="h-4 w-4 mr-2" />
+                      Remove Image
+                    </Button>
                   </div>
+                ) : (
+                  <>
+                    <Camera className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-sm text-muted-foreground mb-4">Take a photo or choose from your device</p>
+                    <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => document.getElementById('camera-input')?.click()}
+                        className="flex-1"
+                      >
+                        <Camera className="h-4 w-4 mr-2" />
+                        Camera
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => document.getElementById('file-input')?.click()}
+                        className="flex-1"
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload Photo
+                      </Button>
+                    </div>
+                    <input
+                      id="camera-input"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      data-testid="input-camera"
+                    />
+                    <input
+                      id="file-input"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      data-testid="input-file"
+                    />
+                    <p className="text-xs text-muted-foreground mb-2">or paste an image URL</p>
+                    <Input
+                      id="imageUrl"
+                      type="url"
+                      placeholder="https://example.com/image.jpg"
+                      value={formData.imageUrl}
+                      onChange={(e) => {
+                        const url = e.target.value;
+                        handleChange("imageUrl", url);
+                        if (url) {
+                          setImagePreview(url);
+                        }
+                      }}
+                      data-testid="input-image-url"
+                    />
+                  </>
                 )}
               </div>
             </div>
