@@ -1,11 +1,22 @@
-import "dotenv/config";
-import { Pool } from "pg";
+import "../lib/load-env";
+import { Pool } from "@neondatabase/serverless";
 import { readdir, readFile } from "fs/promises";
 import { join } from "path";
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+let DATABASE_URL = process.env.DATABASE_URL?.trim();
+
+if (!DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL is missing. Set it in Plesk → Node.js → Custom environment variables, " +
+    "or create /httpdocs/server/.env with DATABASE_URL=... (for NPM scripts)."
+  );
+}
+
+if (!/[?&]sslmode=/.test(DATABASE_URL)) {
+  DATABASE_URL += (DATABASE_URL.includes("?") ? "&" : "?") + "sslmode=require";
+}
+
+const pool = new Pool({ connectionString: DATABASE_URL });
 
 async function runMigrations() {
   console.log("🔄 Running database migrations...\n");
