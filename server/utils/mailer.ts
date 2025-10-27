@@ -17,19 +17,20 @@ if (nodemailer) {
     mailerTransport = nodemailer.createTransport({
       host: process.env.MAIL_HOST || "smtp.ionos.com",
       port: Number(process.env.MAIL_PORT || 587),
-      secure: false,
+      secure: false, // use STARTTLS
       auth: {
         user: process.env.MAIL_USER,
         pass: process.env.MAIL_PASS,
       },
       tls: {
-        rejectUnauthorized: false,
-        ciphers: 'SSLv3',
+        rejectUnauthorized: true, // validate certificate
       },
       debug: process.env.NODE_ENV !== 'production',
       logger: process.env.NODE_ENV !== 'production',
     });
     console.log("✅ Mailer transport created successfully");
+    console.log("📧 Using MAIL_USER:", process.env.MAIL_USER ? "✅ SET" : "❌ NOT SET");
+    console.log("📧 Using MAIL_PASS:", process.env.MAIL_PASS ? "✅ SET (hidden)" : "❌ NOT SET");
   } catch (error: any) {
     mailerError = `Failed to create mailer: ${error.message}`;
     console.error("⚠️", mailerError);
