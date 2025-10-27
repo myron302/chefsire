@@ -1,7 +1,11 @@
 import "../lib/load-env";
 import { Pool } from "@neondatabase/serverless";
 import { readdir, readFile } from "fs/promises";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 let DATABASE_URL = process.env.DATABASE_URL?.trim();
 
