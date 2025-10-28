@@ -1,4 +1,8 @@
+// server/routes/index.ts
 import { Router } from "express";
+
+// AUTH ROUTES (single source of truth)
+import authRouter from "./auth";
 
 // Core feature routers
 import recipesRouter from "./recipes";
@@ -9,9 +13,6 @@ import pantryRouter from "./pantry";
 import marketplaceRouter from "./marketplace";
 import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
-
-// AUTH ROUTES
-import authRouter from "./auth";
 
 // Integrations
 import lookupRouter from "./lookup";
@@ -27,57 +28,50 @@ import storesRouter from "./stores-crud";
 // Square (subscriptions / checkout links)
 import squareRouter from "./stores";
 
+// Dev mail health-check route (lets you confirm SMTP from browser)
+import devMailcheckRouter from "./dev.mailcheck";
+
 const r = Router();
 
 /**
  * Mounted under `/api` by app.ts:
  *   app.use("/api", routes)
+ *
+ * Make sure there is only ONE `const r = Router()` and ONE `export default r`
+ * in this file to avoid duplicate export/build errors.
  */
 
-// AUTH - mount auth routes
+// ---- AUTH (mounted at root so its own paths like /auth/* work) ----
 r.use(authRouter);
 
-// Recipes routes (prefixed)
+// ---- Core features (prefixed) ----
 r.use("/recipes", recipesRouter);
-
-// Bites (social stories) - prefixed
 r.use("/bites", bitesRouter);
-
-// Users - prefixed
 r.use("/users", usersRouter);
-
-// Posts - prefixed
 r.use("/posts", postsRouter);
-
-// Pantry - prefixed
 r.use("/pantry", pantryRouter);
-
-// Marketplace - prefixed
 r.use("/marketplace", marketplaceRouter);
-
-// Substitutions - prefixed
 r.use("/substitutions", substitutionsRouter);
-
-// Drinks - prefixed
 r.use("/drinks", drinksRouter);
 
-// Integrations with explicit prefixes
+// ---- Integrations ----
 r.use("/lookup", lookupRouter);
 r.use("/export", exportRouter);
-
-// IMPORTANT: Google router for BiteMap
 r.use("/google", googleRouter);
 
-// Competitions
+// ---- Competitions ----
 r.use("/competitions", competitionsRouter);
 
-// Stores (public viewer + owner writes)
+// ---- Stores ----
 r.use("/stores", storesRouter);
 
-// Square (payments/subscriptions)
+// ---- Square ----
 r.use("/square", squareRouter);
 
-// Optional: dev-only route list
+// ---- Dev helpers (no prefix so the route path is exact) ----
+r.use(devMailcheckRouter);
+
+// ---- Optional: dev-only route list ----
 if (process.env.NODE_ENV !== "production") {
   r.get("/_routes", (_req, res) => {
     res.json({
@@ -99,6 +93,7 @@ if (process.env.NODE_ENV !== "production") {
         "/competitions/*",
         "/stores/*",
         "/square/*",
+        "/auth/_mail-verify", // from dev.mailcheck
       ],
     });
   });
