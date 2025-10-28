@@ -6,9 +6,7 @@ const router = Router();
 
 /**
  * GET /api/auth/_mail-verify
- * Returns the live SMTP status from the server:
- *  - verifyOK: true means SMTP login works and is ready to send
- *  - verifyError: any provider error if verify failed
+ * Confirms SMTP login from the server (no guessing).
  */
 router.get("/auth/_mail-verify", async (_req, res) => {
   try {
