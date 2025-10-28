@@ -1,4 +1,3 @@
-// src/contexts/UserContext.tsx
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 interface User {
@@ -75,37 +74,39 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     });
   };
 
+  // 🔧 FIX: actually call the server and persist the returned user
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       setLoading(true);
-      
-      // Get stored user from localStorage
-      const savedUser = localStorage.getItem('user');
-      
-      if (!savedUser) {
-        console.log('No user found - please sign up first');
+
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // future-proof if you add cookies/sessions
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (res.status === 403) {
+        const j = await res.json().catch(() => ({}));
+        alert(j?.error || 'Please verify your email to log in.');
         return false;
       }
 
-      const existingUser: User = JSON.parse(savedUser);
-      
-      // Validate email matches
-      if (existingUser.email !== email) {
-        console.log('Email does not match registered user');
+      if (!res.ok) {
+        // 401 or other errors
         return false;
       }
 
-      // Validate password matches (in real app, this would compare hashes)
-      if (existingUser.password !== password) {
-        console.log('Password does not match');
-        return false;
+      const data = await res.json().catch(() => ({}));
+      // Expecting: { success: true, user: { id, email, username, ... } }
+      if (data?.success && data?.user) {
+        // Do NOT store password
+        localStorage.setItem('user', JSON.stringify(data.user));
+        setUser(data.user as User);
+        return true;
       }
 
-      // If validation passes, set the user (without password for security)
-      const { password: _, ...userWithoutPassword } = existingUser;
-      setUser(userWithoutPassword as User);
-      return true;
-      
+      return false;
     } catch (error) {
       console.error('Login error:', error);
       return false;
