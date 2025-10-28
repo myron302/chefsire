@@ -1,7 +1,7 @@
 // server/routes/index.ts
 import { Router } from "express";
 
-// AUTH ROUTES (single source of truth)
+// AUTH ROUTES
 import authRouter from "./auth";
 
 // Core feature routers
@@ -28,7 +28,7 @@ import storesRouter from "./stores-crud";
 // Square (subscriptions / checkout links)
 import squareRouter from "./stores";
 
-// Dev mail health-check route (lets you confirm SMTP from browser)
+// Dev mail health-check route
 import devMailcheckRouter from "./dev.mailcheck";
 
 const r = Router();
@@ -36,15 +36,12 @@ const r = Router();
 /**
  * Mounted under `/api` by app.ts:
  *   app.use("/api", routes)
- *
- * Make sure there is only ONE `const r = Router()` and ONE `export default r`
- * in this file to avoid duplicate export/build errors.
  */
 
-// ---- AUTH (mounted at root so its own paths like /auth/* work) ----
+// ---- AUTH (mounted at root so it exposes /auth/*) ----
 r.use(authRouter);
 
-// ---- Core features (prefixed) ----
+// ---- Core features ----
 r.use("/recipes", recipesRouter);
 r.use("/bites", bitesRouter);
 r.use("/users", usersRouter);
@@ -68,7 +65,7 @@ r.use("/stores", storesRouter);
 // ---- Square ----
 r.use("/square", squareRouter);
 
-// ---- Dev helpers (no prefix so the route path is exact) ----
+// ---- Dev helpers ----
 r.use(devMailcheckRouter);
 
 // ---- Optional: dev-only route list ----
@@ -93,7 +90,7 @@ if (process.env.NODE_ENV !== "production") {
         "/competitions/*",
         "/stores/*",
         "/square/*",
-        "/auth/_mail-verify", // from dev.mailcheck
+        "/auth/_mail-verify",
       ],
     });
   });
