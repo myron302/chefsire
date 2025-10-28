@@ -1,4 +1,4 @@
-// server/routes/auth.ts - WITH MAILER (won't crash if email fails)
+// server/routes/auth.ts
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { storage } from "../storage";
@@ -6,129 +6,122 @@ import { AuthService } from "../services/auth.service";
 
 const router = Router();
 
-// Map slug values to pretty labels for the space version
-const TITLE_LABELS: Record<string, string> = {
-  "king": "King",
-  "queen": "Queen",
-  "prince": "Prince",
-  "princess": "Princess",
-  "duke": "Duke",
-  "duchess": "Duchess",
-  "lord": "Lord",
-  "lady": "Lady",
-  "sir": "Sir",
-  "dame": "Dame",
-  "baron": "Baron",
-  "baroness": "Baroness",
-};
-
 /**
  * POST /auth/signup
+ * Body: { firstName, lastName, username, email, password, selectedTitle }
  */
 router.post("/auth/signup", async (req, res) => {
-  const { firstName, lastName, username, email, password, selectedTitle } = req.body ?? {};
-
   try {
+    const {
+      firstName,
+      lastName,
+      username,
+      email,
+      password,
+      selectedTitle,
+    } = req.body ?? {};
+
+    // Basic validation
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
     }
-
     if (!firstName || !lastName) {
       return res.status(400).json({ error: "First and last name are required" });
     }
-
     if (!username) {
       return res.status(400).json({ error: "Username is required" });
     }
 
-    // Check if user already exists
-    const existing = await storage.findByEmail(email);
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    // Use getUserByEmail consistently
+    const existing = await storage.getUserByEmail(normalizedEmail);
     if (existing) {
       return res.status(400).json({ error: "Email already registered" });
     }
 
-    // Use the username EXACTLY as the user typed it!
-    const finalUsername = username.trim();
-    const displayName = finalUsername; // Display the username they chose
-
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
+    // Persist new user
     const newUser = await storage.createUser({
-      email: email.toLowerCase().trim(),
+      email: normalizedEmail,
       password: hashedPassword,
-      username: finalUsername,
-      displayName: displayName,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
+      username: String(username).trim(),
+      displayName: String(username).trim(), // show exactly what they chose
+      firstName: String(firstName).trim(),
+      lastName: String(lastName).trim(),
       royalTitle: selectedTitle || null,
       showFullName: false,
       emailVerifiedAt: null,
     });
 
-    // Create and send verification email
-    const result = await AuthService.createAndSendVerification(newUser.id, email);
+    // Send verification (best effort)
+    const result = await AuthService.createAndSendVerification(newUser.id, normalizedEmail);
 
     if (result.success) {
-      console.log('✅ Verification email sent to:', email);
-      res.status(201).json({
+      return res.status(201).json({
         message: "Account created! Please check your email to verify your account.",
         userId: newUser.id,
       });
     } else {
-      // Email failed but account was created - log error but don't fail signup
-      console.error('⚠️ Email sending failed:', result.error);
-      res.status(201).json({
-        message: "Account created! Email sending is currently unavailable. Contact support for verification.",
+      // Account is created even if email fails (you can still verify manually)
+      return res.status(201).json({
+        message:
+          "Account created! Email sending is currently unavailable. Contact support for verification.",
         userId: newUser.id,
         emailError: "Email service unavailable",
       });
     }
   } catch (error) {
     console.error("Error during signup:", error);
-    res.status(500).json({ error: "Failed to create account" });
+    return res.status(500).json({ error: "Failed to create account" });
   }
 });
 
 /**
  * POST /auth/login
+ * Body: { email, password }
  */
 router.post("/auth/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body ?? {};
 
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    const user = await storage.findByEmail(email);
-    if (!user) {
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    // Use getUserByEmail (not findByEmail)
+    const user = await storage.getUserByEmail(normalizedEmail);
+    if (!user || !user.password) {
+      // do not reveal which field is wrong
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // Check if email verified
+    // Must verify email first
     if (!user.emailVerifiedAt) {
       return res.status(403).json({ error: "Please verify your email to log in." });
     }
 
-    // Verify password
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    res.json({
+    // shape kept minimal on purpose
+    return res.json({
       success: true,
       user: {
         id: user.id,
         email: user.email,
         username: user.username,
+        displayName: user.displayName ?? user.username,
       },
     });
   } catch (error) {
     console.error("Error during login:", error);
-    res.status(500).json({ error: "Login failed" });
+    return res.status(500).json({ error: "Login failed" });
   }
 });
 
@@ -137,39 +130,41 @@ router.post("/auth/login", async (req, res) => {
  */
 router.get("/auth/verify-email", async (req, res) => {
   try {
-    const { token } = req.query;
+    const token = typeof req.query.token === "string" ? req.query.token : "";
 
-    if (!token || typeof token !== "string") {
+    if (!token) {
       return res.status(400).send("Invalid verification link");
     }
 
     const result = await AuthService.verifyEmailToken(token);
 
     if (!result.success) {
-      return res.status(400).send(result.error);
+      return res.status(400).send(result.error ?? "Invalid or expired verification link");
     }
 
-    console.log('✅ Email verified for user:', result.userId);
-    res.redirect("/verify/success");
+    // redirect to a success page in your client
+    return res.redirect("/verify/success");
   } catch (error) {
     console.error("Error verifying email:", error);
-    res.status(500).send("Verification failed");
+    return res.status(500).send("Verification failed");
   }
 });
 
 /**
  * POST /auth/resend-verification
+ * Body: { email }
  */
 router.post("/auth/resend-verification", async (req, res) => {
-  const { email } = req.body ?? {};
-
-  if (!email) {
-    return res.status(400).json({ error: "Email is required" });
-  }
-
   try {
-    const user = await storage.findByEmail(email);
+    const { email } = req.body ?? {};
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
 
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const user = await storage.getUserByEmail(normalizedEmail);
+
+    // For privacy, don't disclose existence. If not found, reply like it's fine.
     if (!user) {
       return res.json({ message: "If that email exists, a verification email has been sent." });
     }
@@ -178,19 +173,18 @@ router.post("/auth/resend-verification", async (req, res) => {
       return res.status(400).json({ error: "Email is already verified" });
     }
 
-    // Create and send verification email
-    const result = await AuthService.createAndSendVerification(user.id, email);
-
+    const result = await AuthService.createAndSendVerification(user.id, normalizedEmail);
     if (result.success) {
-      console.log('✅ Verification email resent to:', email);
-      res.json({ message: "Verification email sent" });
+      return res.json({ message: "Verification email sent" });
     } else {
-      console.error('⚠️ Failed to resend email:', result.error);
-      res.status(500).json({ error: "Failed to send verification email. Please try again later." });
+      console.error("Failed to resend email:", result.error);
+      return res
+        .status(500)
+        .json({ error: "Failed to send verification email. Please try again later." });
     }
   } catch (error) {
     console.error("Error resending verification:", error);
-    res.status(500).json({ error: "Failed to resend verification email" });
+    return res.status(500).json({ error: "Failed to resend verification email" });
   }
 });
 
