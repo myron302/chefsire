@@ -1,82 +1,53 @@
 // server/utils/mailer.ts
-let nodemailer: any;
-let transport: any = null;
-let initError: string | null = null;
-let lastVerifyOK: boolean | null = null;
-let lastVerifyError: string | null = null;
+import nodemailer from "nodemailer";
 
-try {
-  // Use require for CJS interop in Node ESM bundle
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  nodemailer = require("nodemailer");
-} catch (e) {
-  initError = "nodemailer not installed";
-  console.error("❌ mailer init:", initError);
-}
-
-async function createTransport() {
-  if (!nodemailer) return null;
-
-  try {
-    const t = nodemailer.createTransport({
-      host: process.env.MAIL_HOST || "smtp.ionos.com",
-      port: Number(process.env.MAIL_PORT || 587),
-      secure: false,            // STARTTLS
-      requireTLS: true,         // make sure we upgrade
-      auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS,
-      },
-      // Helpful while diagnosing; flip to false later if noisy
-      logger: true,
-      debug: true,
-      tls: {
-        // Keep strict; IONOS has valid certs
-        rejectUnauthorized: true,
-      },
-    });
-
-    return t;
-  } catch (err: any) {
-    initError = `createTransport failed: ${err?.message || String(err)}`;
-    console.error("❌ mailer transport:", initError);
-    return null;
-  }
-}
-
-// Initialize on first import
-(async () => {
-  transport = await createTransport();
-  if (!transport) return;
-  try {
-    await transport.verify();
-    lastVerifyOK = true;
-    lastVerifyError = null;
-    console.log("✅ SMTP transport verified: ready to send");
-    console.log("📧 MAIL_USER:", process.env.MAIL_USER ? "SET" : "MISSING");
-    console.log("📧 MAIL_FROM:", process.env.MAIL_FROM || "ChefSire Royal Guard <verify@notify.chefsire.com>");
-  } catch (err: any) {
-    lastVerifyOK = false;
-    lastVerifyError = err?.message || String(err);
-    console.error("❌ SMTP verify failed:", lastVerifyError);
-  }
-})();
-
-export async function mailHealth() {
-  return {
-    hasNodemailer: !!nodemailer,
-    transportCreated: !!transport,
-    verifyOK: lastVerifyOK,
-    verifyError: lastVerifyError,
-    initError,
-    host: process.env.MAIL_HOST,
-    port: Number(process.env.MAIL_PORT || 587),
-    userSet: !!process.env.MAIL_USER,
-    fromValue: process.env.MAIL_FROM || 'ChefSire Royal Guard <verify@notify.chefsire.com>',
+type Health = {
+  verifyOK: boolean;
+  verifyError?: string;
+  env: {
+    host: string | undefined;
+    port: number | undefined;
+    userSet: boolean;
+    passSet: boolean;
+    from: string | undefined;
+    appUrl: string | undefined;
+    nodeEnv: string | undefined;
   };
+};
+
+let transport: nodemailer.Transporter | null = null;
+let initError: string | null = null;
+
+// Create transport once
+try {
+  transport = nodemailer.createTransport({
+    host: process.env.MAIL_HOST || "smtp.ionos.com",
+    port: Number(process.env.MAIL_PORT || 587),
+    secure: false, // STARTTLS on 587
+    auth: {
+      user: process.env.MAIL_USER,
+      pass: process.env.MAIL_PASS,
+    },
+    tls: {
+      // ensure valid TLS in prod; loosen only if your provider requires it
+      rejectUnauthorized: true,
+    },
+    debug: process.env.NODE_ENV !== "production",
+    logger: process.env.NODE_ENV !== "production",
+  });
+  console.log("✅ Mailer: transport created");
+} catch (e: any) {
+  initError = e?.message || String(e);
+  console.error("❌ Mailer: failed to create transport:", initError);
 }
 
+/**
+ * Send verification email
+ */
 export async function sendVerificationEmail(to: string, link: string) {
+  const from =
+    process.env.MAIL_FROM || "ChefSire Royal Guard <verify@notify.chefsire.com>";
+
   const html = `
     <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.55">
       <h2>👑 Welcome to ChefSire!</h2>
@@ -92,37 +63,54 @@ export async function sendVerificationEmail(to: string, link: string) {
     </div>
   `;
 
-  if (!nodemailer || !transport) {
-    const msg = initError || "Email transport not available";
-    console.error("❌ sendVerificationEmail:", msg);
-    throw new Error(msg);
+  if (initError || !transport) {
+    console.error("❌ Cannot send email:", initError || "No transport");
+    console.log("📧 Fallback — verification link for", to, ":", link);
+    throw new Error(initError || "Email transport not available");
   }
 
-  // Optional: re-verify before send (helps catch mid-run password changes)
-  try {
-    await transport.verify();
-    lastVerifyOK = true;
-    lastVerifyError = null;
-  } catch (err: any) {
-    lastVerifyOK = false;
-    lastVerifyError = err?.message || String(err);
-    console.error("❌ SMTP verify (pre-send) failed:", lastVerifyError);
-    // continue to attempt send — provider sometimes returns richer errors on send
+  const info = await transport.sendMail({
+    from,
+    to,
+    subject: "👑 Verify your ChefSire account",
+    html,
+  });
+
+  console.log("✅ Email sent to", to, "— messageId:", info.messageId);
+  return info;
+}
+
+/**
+ * Mail health check — verifies SMTP credentials with the provider
+ * Used by GET /api/auth/_mail-verify
+ */
+export async function mailHealth(): Promise<Health> {
+  const env = {
+    host: process.env.MAIL_HOST,
+    port: process.env.MAIL_PORT ? Number(process.env.MAIL_PORT) : undefined,
+    userSet: !!process.env.MAIL_USER,
+    passSet: !!process.env.MAIL_PASS,
+    from: process.env.MAIL_FROM,
+    appUrl: process.env.APP_URL,
+    nodeEnv: process.env.NODE_ENV,
+  };
+
+  if (initError || !transport) {
+    return {
+      verifyOK: false,
+      verifyError: initError || "Transport not initialized",
+      env,
+    };
   }
 
-  const fromValue = process.env.MAIL_FROM || 'ChefSire Royal Guard <verify@notify.chefsire.com>';
-
   try {
-    const info = await transport.sendMail({
-      from: fromValue, // must be mailbox or same domain allowed by IONOS
-      to,
-      subject: "👑 Verify your ChefSire account",
-      html,
-    });
-    console.log("✅ Email sent:", info.messageId);
-    return info;
-  } catch (err: any) {
-    console.error("❌ Email send failed:", err?.message || String(err));
-    throw err;
+    await transport.verify(); // real SMTP handshake + auth check
+    return { verifyOK: true, env };
+  } catch (e: any) {
+    return {
+      verifyOK: false,
+      verifyError: e?.message || String(e),
+      env,
+    };
   }
 }
