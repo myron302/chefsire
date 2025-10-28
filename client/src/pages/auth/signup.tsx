@@ -1,8 +1,7 @@
-// client/src/pages/signup.tsx
+// client/src/pages/auth/signup.tsx
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
-import { useUser } from '@/contexts/UserContext';
 import {
   Crown, ChevronDown, Sparkles, Castle, Shield, Gem,
   Eye, EyeOff, Phone, Mail, CheckCircle2, XCircle
@@ -23,7 +22,6 @@ type Errors = {
 };
 
 type AccountType = 'personal' | 'business';
-
 type VerifyMethod = 'sms' | 'email';
 
 const TITLE_SUFFIX_MAP: Record<string, string> = {
@@ -53,12 +51,11 @@ function slugify(raw: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)+/g, '')
-    .slice(0, 32); // keep tidy
+    .slice(0, 32);
 }
 
 export default function SignupPage() {
   const [, setLocation] = useLocation();
-  const { signup } = useUser();
 
   // Core state
   const [loading, setLoading] = useState(false);
@@ -90,7 +87,7 @@ export default function SignupPage() {
   // Password visibility
   const [showPassword, setShowPassword] = useState(false);
 
-  // Verification
+  // Verification UI helpers (email option visible; SMS is UI-only here)
   const [verifyMethod, setVerifyMethod] = useState<VerifyMethod>('email');
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
@@ -102,7 +99,7 @@ export default function SignupPage() {
   const [captchaB, setCaptchaB] = useState(0);
   const [captchaAnswer, setCaptchaAnswer] = useState('');
 
-  // Royal Titles - WITH 4 NEW TITLES ADDED
+  // Royal Titles
   const royalTitles = useMemo(() => ([
     { value: 'king', label: 'King', emoji: '👑', description: 'Ruler of the Kitchen' },
     { value: 'queen', label: 'Queen', emoji: '👑', description: 'Ruler of the Kitchen' },
@@ -157,26 +154,20 @@ export default function SignupPage() {
     };
   }, [showTitleDropdown]);
 
-  // Auto-build username base from first+last; keep manual edits
+  // Build a default username from first+last only (NO title suffix/hyphen)
   const [userEditedUsername, setUserEditedUsername] = useState(false);
   useEffect(() => {
     if (userEditedUsername) return;
     const base = `${firstName} ${lastName}`.trim();
     if (!base) return;
-
-    // Get title label if selected (e.g., "King", "Queen")
-    const titleLabel = selectedTitle ? selectedTitleData?.label || '' : '';
-
-    // Build username as "Title FirstLast" (e.g., "King John Smith")
-    setUsername(titleLabel ? `${titleLabel} ${base}` : base);
-  }, [firstName, lastName, selectedTitle, selectedTitleData, userEditedUsername]);
+    setUsername(slugify(base)); // strictly slugified name — no title, no hyphen
+  }, [firstName, lastName, userEditedUsername]);
 
   // Basic validators
   const isEmailValid = useMemo(() => /\S+@\S+\.\S+/.test(email.trim()), [email]);
   const isPhoneValid = useMemo(() => {
-    // Very permissive; normalize digits count between 10 and 15
-    const digits = phone.replace(/\D/g, '');
-    return digits.length >= 10 && digits.length <= 15;
+    const digits = (phone || '').replace(/\D/g, '');
+    return digits.length === 0 || (digits.length >= 10 && digits.length <= 15);
   }, [phone]);
 
   const passwordScore = useMemo(() => {
@@ -198,10 +189,40 @@ export default function SignupPage() {
     return { text: 'Strong', color: 'text-green-500' };
   }, [passwordScore]);
 
-  // --- Handlers ---
+  // --- API helpers ---
+  async function apiSignup() {
+    const payload = {
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      username: slugify(username.trim()),
+      email: email.trim(),
+      password,
+      selectedTitle,              // stored separately on server; not appended to username
+      phone,
+      accountType,
+      businessName: accountType === 'business' ? businessName.trim() : undefined,
+      businessCategory: accountType === 'business' ? businessCategory.trim() : undefined,
+    };
+
+    const res = await fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    // Backend returns JSON with ok/message or error
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // bubble server message if present
+      throw new Error(data?.error || "Signup failed");
+    }
+    return data;
+  }
+
+  // --- Handlers (UI-only for SMS/email buttons shown on the form) ---
   const handleSendEmailLink = async () => {
-    // Placeholder: call backend or mock
-    await new Promise(r => setTimeout(r, 500));
+    // This button is just visual here; the real email is sent by the server on signup.
+    await new Promise(r => setTimeout(r, 350));
     setEmailLinkSent(true);
   };
 
@@ -211,8 +232,7 @@ export default function SignupPage() {
       return;
     }
     setErrors(e => ({ ...e, phone: '' }));
-    // Placeholder
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 350));
     setOtpSent(true);
   };
 
@@ -221,8 +241,7 @@ export default function SignupPage() {
       setErrors(e => ({ ...e, verify: 'Code must be 6 digits' }));
       return;
     }
-    // Placeholder
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 350));
     setOtpVerified(true);
     setErrors(e => ({ ...e, verify: '' }));
   };
@@ -251,13 +270,13 @@ export default function SignupPage() {
     if (!password) newErrors.password = 'Password is required';
     else if (password.length < 6) newErrors.password = 'Password must be at least 6 characters';
 
-    // Business account validation
+    if (!isPhoneValid) newErrors.phone = 'Enter a valid phone number or leave it blank';
+
     if (accountType === 'business') {
       if (!businessName.trim()) newErrors.businessName = 'Business name is required';
       if (!businessCategory.trim()) newErrors.businessCategory = 'Business category is required';
     }
 
-    // Captcha
     const sum = captchaA + captchaB;
     if (!captchaAnswer.trim() || parseInt(captchaAnswer, 10) !== sum) {
       newErrors.captcha = 'Incorrect answer. Try again.';
@@ -268,59 +287,24 @@ export default function SignupPage() {
       return;
     }
 
-    // Show errors if any
     if (Object.values(newErrors).some(x => x !== '')) {
       setErrors(newErrors);
       return;
     }
 
-    // --- All good, attempt signup ---
+    // Submit to backend (no auto-login; email verification required)
     setLoading(true);
     try {
-      const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+      const result = await apiSignup();
 
-      // Try to pass extra meta if your signup supports it (arity check)
-      let success = false;
-      const meta = {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        username: slugify(username),
-        phone,
-        verifyMethod,
-        otpVerified,
-        emailLinkSent,
-        title: selectedTitle,
-        accountType,
-        businessName: accountType === 'business' ? businessName.trim() : undefined,
-        businessCategory: accountType === 'business' ? businessCategory.trim() : undefined,
-      };
+      // Store email so /verify-email page can offer "Resend"
+      sessionStorage.setItem('pendingVerificationEmail', email.trim());
 
-      try {
-        // If signup has >=5 params, call with (name, email, password, title, meta)
-        if ((signup as unknown as Function).length >= 5) {
-          // @ts-expect-error – accepting extended signature if available
-          success = await (signup as any)(fullName, email, password, selectedTitle, meta);
-        } else {
-          // Fallback to legacy 4-arg signature
-          // @ts-expect-error legacy signature
-          success = await signup(fullName, email, password, selectedTitle);
-        }
-      } catch {
-        // Fallback in case length probing is unreliable at runtime
-        // @ts-expect-error legacy signature
-        success = await signup(fullName, email, password, selectedTitle);
-      }
-
-      if (success) {
-        // Store email for resend functionality
-        sessionStorage.setItem('pendingVerificationEmail', email.trim());
-        // Redirect to verify email page
-        setLocation('/verify-email');
-      } else {
-        alert('The royal scribes encountered an issue. Please try again!');
-      }
-    } catch {
-      alert('Royal courier unavailable. Check your connection.');
+      // Redirect to the verify page; backend already sent an email
+      // (or returned message if mail temporarily failed)
+      setLocation('/verify-email');
+    } catch (err: any) {
+      alert(err?.message || 'Signup failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -361,7 +345,7 @@ export default function SignupPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Title Selector */}
+            {/* Title Selector (optional) */}
             <div>
               <label htmlFor="title" className="block text-sm font-medium text-yellow-100 mb-2">
                 Royal Title (Optional)
@@ -459,7 +443,6 @@ export default function SignupPage() {
                 </button>
               </div>
 
-              {/* Business Benefits */}
               {accountType === 'business' && (
                 <div className="mt-4 p-3 bg-green-500/20 border border-green-400/30 rounded-xl">
                   <div className="text-sm font-semibold text-green-100 mb-2 flex items-center gap-2">
@@ -582,7 +565,7 @@ export default function SignupPage() {
               </div>
             </div>
 
-            {/* Username */}
+            {/* Username (no auto suffix, no hyphen from title) */}
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-yellow-100 mb-2">
                 Username *
@@ -595,11 +578,11 @@ export default function SignupPage() {
                 className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
                   errors.username ? 'border-red-400' : 'border-yellow-300/50'
                 }`}
-                placeholder="arthur-king"
+                placeholder="arthur-pendragon"
               />
               {errors.username && <p className="mt-2 text-sm text-red-300">{errors.username}</p>}
               <p className="mt-1 text-xs text-yellow-200">
-                Auto-generated from your name & title. You may edit it freely.
+                We’ll use exactly what you type here (just cleaned to a URL-safe handle).
               </p>
             </div>
 
@@ -677,7 +660,7 @@ export default function SignupPage() {
               </p>
             </div>
 
-            {/* Verification Method */}
+            {/* Verification Method (UI only) */}
             <div className="p-4 bg-white/10 rounded-2xl border border-yellow-300/30">
               <label className="block text-sm font-medium text-yellow-100 mb-3">
                 Verification Method *
@@ -705,7 +688,7 @@ export default function SignupPage() {
                 </label>
               </div>
 
-              {/* Email link flow */}
+              {/* Email link flow (visual only; real mail is sent server-side on submit) */}
               {verifyMethod === 'email' && (
                 <div className="mt-3 flex items-center gap-3">
                   <button
@@ -713,19 +696,19 @@ export default function SignupPage() {
                     onClick={handleSendEmailLink}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-yellow-400 text-purple-900 font-semibold hover:bg-yellow-300 transition"
                   >
-                    <Mail className="w-4 h-4" /> Send Verification Link
+                    <Mail className="w-4 h-4" /> Send Test Link
                   </button>
                   {emailLinkSent ? (
                     <span className="inline-flex items-center gap-1 text-green-300 text-sm">
-                      <CheckCircle2 className="w-4 h-4" /> Link sent! Check your inbox.
+                      <CheckCircle2 className="w-4 h-4" /> (UI test) Link prepared.
                     </span>
                   ) : (
-                    <span className="text-yellow-200 text-sm">You'll receive a clickable link.</span>
+                    <span className="text-yellow-200 text-sm">Actual link comes after you submit the form.</span>
                   )}
                 </div>
               )}
 
-              {/* SMS OTP flow */}
+              {/* SMS OTP flow (visual only) */}
               {verifyMethod === 'sms' && (
                 <div className="mt-3 space-y-3">
                   {!otpSent ? (
