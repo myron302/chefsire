@@ -80,7 +80,7 @@ export default function SignupPage() {
 
   // Title dropdown
   const [showTitleDropdown, setShowTitleDropdown] = useState(false);
-  const [selectedTitle, setSelectedTitle] = useState('');
+  const [selectedTitle, setSelectedTitle] = useState(''); // '' = no title; user can only clear by choosing "No Title"
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const titleBtnRef = useRef<HTMLButtonElement | null>(null);
 
@@ -194,10 +194,13 @@ export default function SignupPage() {
     const payload = {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
-      username: slugify(username.trim()),
+      username: slugify(username.trim()), // never includes title
       email: email.trim(),
       password,
-      selectedTitle,              // stored separately on server; not appended to username
+      // Title is stored separately; not appended to username.
+      // Send both keys for backwards compatibility with your API.
+      selectedTitle: selectedTitle || null,
+      title: selectedTitle || null,
       phone,
       accountType,
       businessName: accountType === 'business' ? businessName.trim() : undefined,
@@ -221,7 +224,6 @@ export default function SignupPage() {
 
   // --- Handlers (UI-only for SMS/email buttons shown on the form) ---
   const handleSendEmailLink = async () => {
-    // This button is just visual here; the real email is sent by the server on signup.
     await new Promise(r => setTimeout(r, 350));
     setEmailLinkSent(true);
   };
@@ -300,8 +302,11 @@ export default function SignupPage() {
       // Store email so /verify-email page can offer "Resend"
       sessionStorage.setItem('pendingVerificationEmail', email.trim());
 
-      // Redirect to the verify page; backend already sent an email
-      // (or returned message if mail temporarily failed)
+      // Optional: clear sensitive fields to be extra safe before leaving
+      setPassword('');
+      setPhone('');
+
+      // Redirect to the verify page
       setLocation('/verify-email');
     } catch (err: any) {
       alert(err?.message || 'Signup failed. Please try again.');
@@ -344,8 +349,15 @@ export default function SignupPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Title Selector (optional) */}
+          <form onSubmit={handleSubmit} autoComplete="off" className="space-y-6">
+            {/* AUTOFILL MITIGATION: decoy fields to absorb browser-saved creds */}
+            <div className="sr-only" aria-hidden="true">
+              <input type="text" name="username" autoComplete="username" tabIndex={-1} />
+              <input type="email" name="email" autoComplete="email" tabIndex={-1} />
+              <input type="password" name="password" autoComplete="current-password" tabIndex={-1} />
+            </div>
+
+            {/* Title Selector (optional, but cannot be erased unless 'No Title' is picked) */}
             <div>
               <label htmlFor="title" className="block text-sm font-medium text-yellow-100 mb-2">
                 Royal Title (Optional)
@@ -496,6 +508,7 @@ export default function SignupPage() {
                       errors.businessName ? 'border-red-400' : 'border-yellow-300/50'
                     }`}
                     placeholder="Royal Kitchen Co."
+                    autoComplete="organization"
                   />
                   {errors.businessName && <p className="mt-2 text-sm text-red-300">{errors.businessName}</p>}
                 </div>
@@ -544,6 +557,7 @@ export default function SignupPage() {
                     errors.firstName ? 'border-red-400' : 'border-yellow-300/50'
                   }`}
                   placeholder="Arthur"
+                  autoComplete="given-name"
                 />
                 {errors.firstName && <p className="mt-2 text-sm text-red-300">{errors.firstName}</p>}
               </div>
@@ -560,6 +574,7 @@ export default function SignupPage() {
                     errors.lastName ? 'border-red-400' : 'border-yellow-300/50'
                   }`}
                   placeholder="Pendragon"
+                  autoComplete="family-name"
                 />
                 {errors.lastName && <p className="mt-2 text-sm text-red-300">{errors.lastName}</p>}
               </div>
@@ -572,13 +587,18 @@ export default function SignupPage() {
               </label>
               <input
                 id="username"
-                name="username"
+                name="handle"                     // changed to avoid autofill reuse
                 value={username}
                 onChange={(e) => { setUsername(e.target.value); setUserEditedUsername(true); }}
                 className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
                   errors.username ? 'border-red-400' : 'border-yellow-300/50'
                 }`}
                 placeholder="arthur-pendragon"
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                inputMode="text"
               />
               {errors.username && <p className="mt-2 text-sm text-red-300">{errors.username}</p>}
               <p className="mt-1 text-xs text-yellow-200">
@@ -593,7 +613,7 @@ export default function SignupPage() {
               </label>
               <input
                 id="email"
-                name="email"
+                name="contactEmail"              // changed to dodge saved autofill
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -601,6 +621,10 @@ export default function SignupPage() {
                   errors.email ? 'border-red-400' : 'border-yellow-300/50'
                 }`}
                 placeholder="king@camelot.com"
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
               />
               {errors.email && <p className="mt-2 text-sm text-red-300">{errors.email}</p>}
             </div>
@@ -613,7 +637,7 @@ export default function SignupPage() {
               <div className="relative">
                 <input
                   id="password"
-                  name="password"
+                  name="newPassword"             // changed + 'new-password' to block reuse
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -621,6 +645,7 @@ export default function SignupPage() {
                     errors.password ? 'border-red-400' : 'border-yellow-300/50'
                   }`}
                   placeholder="Enter your secret code"
+                  autoComplete="new-password"
                 />
                 <button
                   type="button"
@@ -653,6 +678,7 @@ export default function SignupPage() {
                   errors.phone ? 'border-red-400' : 'border-yellow-300/50'
                 }`}
                 placeholder="+1 (555) 123-4567"
+                autoComplete="tel"
               />
               {errors.phone && <p className="mt-2 text-sm text-red-300">{errors.phone}</p>}
               <p className="mt-1 text-xs text-yellow-200">
@@ -731,6 +757,7 @@ export default function SignupPage() {
                           onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
                           className="w-full px-4 py-3 bg-white/20 border border-yellow-300/50 rounded-2xl text-white focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
                           placeholder="123456"
+                          autoComplete="one-time-code"
                         />
                       </div>
                       <div className="flex gap-2">
@@ -785,6 +812,7 @@ export default function SignupPage() {
                   }`}
                   placeholder="Answer"
                   aria-describedby="captcha-help"
+                  autoComplete="off"
                 />
               </div>
               <p id="captcha-help" className="mt-1 text-xs text-yellow-200">Prove you are not a mischievous kitchen goblin.</p>
