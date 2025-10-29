@@ -5,15 +5,34 @@ import { AuthService } from "../services/auth.service";
 
 const router = Router();
 
-// Utility to normalize emails
+// Normalize email
 function normEmail(e: string) {
   return (e || "").trim().toLowerCase();
 }
 
+// Safe username (server-side too, never trust client)
+function slugify(raw: string) {
+  return String(raw)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "")
+    .slice(0, 32);
+}
+
+// Allow-list of titles; anything else becomes null
+const ALLOWED_TITLES = new Set([
+  "king","queen","prince","princess","sire","your-majesty","your-highness",
+  "duke","duchess","lord","lady","knight","dame",
+  "royal-chef","court-master","noble-chef","imperial-chef","majestic-chef","chef",
+]);
+
 /**
  * POST /auth/signup
  * Body: { firstName, lastName, username, email, password, selectedTitle? }
- * Creates the user (unverified), generates a token, and emails the verification link.
+ * - Username is slugified and saved as-is (no title added).
+ * - Title is stored separately in royalTitle.
+ * - displayName defaults to "First Last" (or username if missing).
+ * - Creates email verification token and sends mail.
  */
 router.post("/auth/signup", async (req, res) => {
   try {
@@ -43,25 +62,46 @@ router.post("/auth/signup", async (req, res) => {
     }
 
     const normalizedEmail = normEmail(email);
+    const handle = slugify(username); // <- enforce on server, too
 
-    // Check if user already exists
-    const existing = await storage.findByEmail(normalizedEmail);
-    if (existing) {
+    // Pre-check email uniqueness
+    const existingByEmail = await storage.findByEmail(normalizedEmail);
+    if (existingByEmail) {
       return res.status(400).json({ error: "Email already registered" });
+    }
+
+    // Optional pre-check username uniqueness (keeps error messages friendly).
+    // If your storage layer doesn't expose findByUsername, you can rely on the DB UNIQUE constraint.
+    const storageAny = storage as any;
+    if (typeof storageAny.findByUsername === "function") {
+      const existingByUsername = await storageAny.findByUsername(handle);
+      if (existingByUsername) {
+        return res.status(400).json({ error: "Username already taken" });
+      }
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Clean title: if user picked "No Title" (empty string/null) or unrecognized, store null
+    const cleanTitle =
+      selectedTitle && ALLOWED_TITLES.has(String(selectedTitle))
+        ? String(selectedTitle)
+        : null;
+
+    // Build a sensible display name (never prepend the title here;
+    // the profile UI will render "👑 Title First Last" without touching username)
+    const displayName = `${firstName.trim()} ${lastName.trim()}`.trim() || handle;
+
     // Create user (unverified)
     const newUser = await storage.createUser({
       email: normalizedEmail,
       password: hashedPassword,
-      username: username.trim(),
-      displayName: username.trim(),
+      username: handle,            // <- clean, title-free handle
+      displayName,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
-      royalTitle: selectedTitle || null,
+      royalTitle: cleanTitle,      // <- stored separately
       showFullName: false,
       emailVerifiedAt: null,
     });
@@ -75,7 +115,7 @@ router.post("/auth/signup", async (req, res) => {
         userId: newUser.id,
       });
     } else {
-      // Account created but email failed — return 201 with a warning
+      // Account created but email failed — still 201 with a warning
       return res.status(201).json({
         message:
           "Account created! Email sending is currently unavailable. Contact support for verification.",
@@ -85,6 +125,14 @@ router.post("/auth/signup", async (req, res) => {
     }
   } catch (err) {
     console.error("Error during /auth/signup:", err);
+    // If DB unique constraint fires (username/email), surface a friendly message
+    const msg = String(err?.toString?.() || "");
+    if (msg.includes("users_username_key")) {
+      return res.status(400).json({ error: "Username already taken" });
+    }
+    if (msg.includes("users_email_key")) {
+      return res.status(400).json({ error: "Email already registered" });
+    }
     return res.status(500).json({ error: "Failed to create account" });
   }
 });
@@ -108,8 +156,8 @@ router.post("/auth/login", async (req, res) => {
     const normalizedEmail = normEmail(email);
     const user = await storage.findByEmail(normalizedEmail);
 
+    // keep it generic to avoid user enumeration
     if (!user) {
-      // keep it generic to avoid user enumeration
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
@@ -122,8 +170,7 @@ router.post("/auth/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // Here you would normally set a session/cookie or return a token.
-    // Keeping it simple and consistent with your current setup:
+    // return minimal user info; session/token handling can be added here
     return res.json({
       success: true,
       user: {
