@@ -6,8 +6,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
-import PostCard from "@/components/post-card";
 import { useUser } from "@/contexts/UserContext";
 import {
   Image,
@@ -17,19 +15,8 @@ import {
   Star,
   Users,
   Heart,
-  Calendar,
   GlassWater,
-  Flame,
-  Award,
-  TrendingUp,
-  Apple,
-  Crown,
-  Target,
-  Zap,
-  Plus,
   Store,
-  ShoppingBag,
-  Eye,
 } from "lucide-react";
 import type { User, PostWithUser } from "@shared/schema";
 
@@ -53,10 +40,7 @@ type StoreT = {
 };
 
 /** Map royalTitle -> nice label + emoji for header */
-const TITLE_META: Record<
-  string,
-  { label: string; emoji: string }
-> = {
+const TITLE_META: Record<string, { label: string; emoji: string }> = {
   king: { label: "King", emoji: "👑" },
   queen: { label: "Queen", emoji: "👑" },
   prince: { label: "Prince", emoji: "🤴" },
@@ -78,35 +62,41 @@ const TITLE_META: Record<
   chef: { label: "Chef", emoji: "👨‍🍳" },
 };
 
+function getRoyalTitle(u: any): string | null {
+  // Be flexible: support camelCase or snake_case coming from the API
+  return (u?.royalTitle ?? u?.royal_title ?? null) || null;
+}
+
 export default function Profile() {
   const { userId } = useParams<{ userId?: string }>();
   const [, setLocation] = useLocation();
   const { user: currentUser } = useUser();
+
   const profileUserId = userId || currentUser?.id;
 
-  // Use current user data if viewing own profile, otherwise fetch from API
-  const { data: user, isLoading: userLoading } = useQuery<User>({
+  // Always fetch the full user from API so we get royalTitle and other fields.
+  const { data: user, isLoading: userLoading } = useQuery<User | null>({
     queryKey: ["/api/users", profileUserId],
     queryFn: async () => {
-      if (profileUserId === currentUser?.id && currentUser) {
-        return currentUser;
+      if (!profileUserId) return null;
+      try {
+        const r = await fetch(`/api/users/${profileUserId}`);
+        if (!r.ok) throw new Error("not ok");
+        const u = await r.json();
+        return u;
+      } catch {
+        // Fallback if API temporarily fails
+        return (currentUser as any) ?? null;
       }
-      const response = await fetch(`/api/users/${profileUserId}`);
-      if (!response.ok) {
-        if (profileUserId === currentUser?.id && currentUser) {
-          return currentUser;
-        }
-        throw new Error("User not found");
-      }
-      return response.json();
     },
     enabled: !!profileUserId,
   });
 
-  // Mock posts
+  // Mock posts (unchanged demo data)
   const { data: posts, isLoading: postsLoading } = useQuery<PostWithUser[]>({
     queryKey: ["/api/posts/user", profileUserId],
     queryFn: async () => {
+      const baseUser = user ?? (currentUser as any);
       const list: PostWithUser[] = [
         {
           id: "1",
@@ -118,7 +108,7 @@ export default function Profile() {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           isRecipe: false,
-          user: user || currentUser!,
+          user: baseUser as any,
         },
         {
           id: "2",
@@ -131,7 +121,7 @@ export default function Profile() {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           isRecipe: true,
-          user: user || currentUser!,
+          user: baseUser as any,
         },
       ];
       return list;
@@ -139,155 +129,129 @@ export default function Profile() {
     enabled: !!profileUserId && !!user,
   });
 
-  // Mock custom drinks
+  // Mock data blocks (unchanged)
   const { data: drinksData } = useQuery({
     queryKey: ["/api/custom-drinks/user", profileUserId],
-    queryFn: async () => {
-      return {
-        drinks: [
-          {
-            id: "1",
-            name: "Tropical Sunrise",
-            category: "Smoothie",
-            description:
-              "Refreshing tropical smoothie with mango and pineapple",
-            calories: 180,
-            protein: 3,
-            fiber: 5,
-            likesCount: 15,
-            savesCount: 8,
-            imageUrl:
-              "https://images.unsplash.com/photo-1570197788417-0e82375c9371",
-          },
-          {
-            id: "2",
-            name: "Protein Power Shake",
-            category: "Protein Shake",
-            description:
-              "High protein shake for post-workout recovery",
-            calories: 220,
-            protein: 25,
-            fiber: 2,
-            likesCount: 23,
-            savesCount: 12,
-            imageUrl:
-              "https://images.unsplash.com/photo-1592924357228-91a4daadcfea",
-          },
-        ],
-      };
-    },
+    queryFn: async () => ({
+      drinks: [
+        {
+          id: "1",
+          name: "Tropical Sunrise",
+          category: "Smoothie",
+          description: "Refreshing tropical smoothie with mango and pineapple",
+          calories: 180,
+          protein: 3,
+          fiber: 5,
+          likesCount: 15,
+          savesCount: 8,
+          imageUrl:
+            "https://images.unsplash.com/photo-1570197788417-0e82375c9371",
+        },
+        {
+          id: "2",
+          name: "Protein Power Shake",
+          category: "Protein Shake",
+          description: "High protein shake for post-workout recovery",
+          calories: 220,
+          protein: 25,
+          fiber: 2,
+          likesCount: 23,
+          savesCount: 12,
+          imageUrl:
+            "https://images.unsplash.com/photo-1592924357228-91a4daadcfea",
+        },
+      ],
+    }),
     enabled: !!profileUserId,
   });
 
-  // Mock drink stats
   const { data: statsData } = useQuery({
     queryKey: ["/api/user-drink-stats", profileUserId],
-    queryFn: async () => {
-      return {
-        stats: {
-          totalDrinksMade: 47,
-          level: 5,
-          totalPoints: 2350,
-          currentStreak: 4,
-          badges: ["early-bird", "smoothie-master", "health-guru"],
-          smoothiesMade: 18,
-          proteinShakesMade: 12,
-          detoxesMade: 9,
-          cocktailsMade: 8,
-        },
-      };
-    },
+    queryFn: async () => ({
+      stats: {
+        totalDrinksMade: 47,
+        level: 5,
+        totalPoints: 2350,
+        currentStreak: 4,
+        badges: ["early-bird", "smoothie-master", "health-guru"],
+        smoothiesMade: 18,
+        proteinShakesMade: 12,
+        detoxesMade: 9,
+        cocktailsMade: 8,
+      },
+    }),
     enabled: !!profileUserId,
   });
 
-  // Mock saved drinks
   const { data: savedDrinksData } = useQuery({
     queryKey: ["/api/custom-drinks/saved", profileUserId],
-    queryFn: async () => {
-      return { drinks: [] as any[] };
-    },
+    queryFn: async () => ({ drinks: [] as any[] }),
     enabled: !!profileUserId,
   });
 
-  // Mock competitions
   const { data: competitionsData } = useQuery({
     queryKey: ["/api/competitions/user", profileUserId],
-    queryFn: async () => {
-      return {
-        competitions: [
-          {
-            id: "1",
-            title: "Midnight Pasta Showdown",
-            themeName: "Italian Night",
-            status: "completed",
-            placement: 1,
-            participants: 6,
-            createdAt: new Date(
-              Date.now() - 2 * 24 * 60 * 60 * 1000
-            ).toISOString(),
-          },
-          {
-            id: "2",
-            title: "Taco Fiesta Challenge",
-            themeName: "Taco Tuesday",
-            status: "judging",
-            placement: 2,
-            participants: 8,
-            createdAt: new Date(
-              Date.now() - 1 * 24 * 60 * 60 * 1000
-            ).toISOString(),
-          },
-          {
-            id: "3",
-            title: "Quick 30-Min Sprint",
-            themeName: "Quick 30-Min",
-            status: "live",
-            participants: 5,
-            createdAt: new Date(
-              Date.now() - 2 * 60 * 60 * 1000
-            ).toISOString(),
-          },
-        ],
-      };
-    },
+    queryFn: async () => ({
+      competitions: [
+        {
+          id: "1",
+          title: "Midnight Pasta Showdown",
+          themeName: "Italian Night",
+          status: "completed",
+          placement: 1,
+          participants: 6,
+          createdAt: new Date(Date.now() - 2 * 864e5).toISOString(),
+        },
+        {
+          id: "2",
+          title: "Taco Fiesta Challenge",
+          themeName: "Taco Tuesday",
+          status: "judging",
+          placement: 2,
+          participants: 8,
+          createdAt: new Date(Date.now() - 1 * 864e5).toISOString(),
+        },
+        {
+          id: "3",
+          title: "Quick 30-Min Sprint",
+          themeName: "Quick 30-Min",
+          status: "live",
+          participants: 5,
+          createdAt: new Date(Date.now() - 2 * 3600e3).toISOString(),
+        },
+      ],
+    }),
     enabled: !!profileUserId,
   });
 
-  // Mock store
   const { data: storeData } = useQuery<{ store: StoreT | null }>({
     queryKey: ["/api/stores/by-user", profileUserId],
-    queryFn: async () => {
-      return {
-        store: {
-          id: "store-1",
-          userId: profileUserId!,
-          handle: user?.username || "demo",
-          name: `${user?.displayName || "User"}'s Store`,
-          bio: "Quality ingredients and kitchen tools",
-          logo: user?.avatar || null,
-          theme: "default",
-          is_published: true,
-          subscription_tier: "free",
-          product_limit: 10,
-          current_products: 3,
-          layout: null,
-          published: true,
-          updatedAt: new Date().toISOString(),
-        },
-      };
-    },
+    queryFn: async () => ({
+      store: {
+        id: "store-1",
+        userId: profileUserId!,
+        handle: (user as any)?.username || "demo",
+        name: `${(user as any)?.displayName || "User"}'s Store`,
+        bio: "Quality ingredients and kitchen tools",
+        logo: (user as any)?.avatar || null,
+        theme: "default",
+        is_published: true,
+        subscription_tier: "free",
+        product_limit: 10,
+        current_products: 3,
+        layout: null,
+        published: true,
+        updatedAt: new Date().toISOString(),
+      },
+    }),
     enabled: !!profileUserId,
   });
 
   const { data: storeProductsData } = useQuery({
     queryKey: ["/api/stores/products/count", profileUserId],
-    queryFn: async () => {
-      return { count: 3 };
-    },
+    queryFn: async () => ({ count: 3 }),
     enabled: !!storeData?.store,
   });
-
-  const isOwnProfile = profileUserId === currentUser?.id;
 
   if (userLoading) {
     return (
@@ -308,9 +272,7 @@ export default function Profile() {
     );
   }
 
-  // Use current user data as fallback if API fails but we're viewing own profile
-  const displayUser = user || (isOwnProfile ? currentUser : null);
-
+  const displayUser = user as any;
   if (!displayUser) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-6 text-center">
@@ -322,20 +284,18 @@ export default function Profile() {
     );
   }
 
-  const userPosts = posts?.filter((post) => !post.isRecipe) || [];
-  const userRecipes = posts?.filter((post) => post.isRecipe) || [];
+  const userPosts = posts?.filter((p) => !p.isRecipe) || [];
+  const userRecipes = posts?.filter((p) => p.isRecipe) || [];
   const customDrinks = drinksData?.drinks || [];
   const savedDrinks = savedDrinksData?.drinks || [];
-  const drinkStats = statsData?.stats;
-  const userCompetitions = competitionsData?.competitions || [];
-  const storeProductsCount = storeProductsData?.count || 0;
+  const drinkStats = (statsData as any)?.stats;
+  const userCompetitions = (competitionsData as any)?.competitions || [];
+  const storeProductsCount = (storeProductsData as any)?.count || 0;
 
-  const titleMeta = displayUser.royalTitle
-    ? TITLE_META[String(displayUser.royalTitle)]
-    : undefined;
+  const rawTitle = getRoyalTitle(displayUser); // "king", "queen", etc., or null
+  const titleMeta = rawTitle ? TITLE_META[String(rawTitle)] : undefined;
 
-  // What to show as the big name line:
-  // Prefer full name if allowed, else displayName, else username (no @).
+  // Big name line: prefer full name if allowed, else displayName, else username (no @)
   const nameLine =
     (displayUser.showFullName &&
       displayUser.firstName &&
@@ -350,8 +310,8 @@ export default function Profile() {
       judging: "bg-gradient-to-r from-amber-500 to-orange-500 text-white",
       completed: "bg-gradient-to-r from-blue-500 to-purple-500 text-white",
       upcoming: "bg-gradient-to-r from-gray-500 to-slate-500 text-white",
-    };
-    return styles[status as keyof typeof styles] || styles.upcoming;
+    } as const;
+    return (styles as any)[status] || styles.upcoming;
   };
 
   return (
@@ -373,27 +333,27 @@ export default function Profile() {
         <div className="flex-1">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
             <div>
-              {/* === Single name line with optional royal title; NO @username line === */}
+              {/* Single name line with optional royal title; NO @username line */}
               <h1
                 className="text-2xl font-bold flex items-center gap-2"
                 data-testid={`text-profile-name-${displayUser.id}`}
               >
                 {titleMeta && (
-                  <span
-                    title={titleMeta.label}
-                    aria-label={titleMeta.label}
-                    className="text-xl"
-                  >
-                    {titleMeta.emoji}
-                  </span>
-                )}
-                {titleMeta && (
-                  <span className="font-semibold">{titleMeta.label}</span>
+                  <>
+                    <span
+                      title={titleMeta.label}
+                      aria-label={titleMeta.label}
+                      className="text-xl"
+                    >
+                      {titleMeta.emoji}
+                    </span>
+                    <span className="font-semibold">{titleMeta.label}</span>
+                  </>
                 )}
                 <span>{nameLine}</span>
               </h1>
 
-              {/* Optional subline for specialty / anything else — NOT @username */}
+              {/* Optional subline for specialty — NOT @username */}
               {displayUser.specialty && (
                 <p className="text-sm text-muted-foreground mt-1">
                   {displayUser.specialty}
@@ -401,16 +361,12 @@ export default function Profile() {
               )}
             </div>
 
-            {isOwnProfile ? (
+            {displayUser.id === currentUser?.id ? (
               <div className="flex flex-col items-end gap-2">
-                <Button
-                  variant="outline"
-                  data-testid="button-edit-profile"
-                  onClick={() => setLocation("/settings")}
-                >
+                <Button variant="outline" onClick={() => setLocation("/settings")}>
                   Edit Profile
                 </Button>
-                {storeData?.store && (
+                {(storeData as any)?.store && (
                   <Button
                     variant="ghost"
                     className="mt-0"
@@ -432,28 +388,19 @@ export default function Profile() {
           {/* Stats */}
           <div className="flex flex-wrap gap-x-6 gap-y-3 mb-4 text-sm">
             <div className="text-center">
-              <span
-                className="font-semibold block"
-                data-testid={`text-posts-count-${displayUser.id}`}
-              >
+              <span className="font-semibold block">
                 {displayUser.postsCount || 0}
               </span>
               <span className="text-muted-foreground">Posts</span>
             </div>
             <div className="text-center">
-              <span
-                className="font-semibold block"
-                data-testid={`text-followers-count-${displayUser.id}`}
-              >
+              <span className="font-semibold block">
                 {displayUser.followersCount || 0}
               </span>
               <span className="text-muted-foreground">Followers</span>
             </div>
             <div className="text-center">
-              <span
-                className="font-semibold block"
-                data-testid={`text-following-count-${displayUser.id}`}
-              >
+              <span className="font-semibold block">
                 {displayUser.followingCount || 0}
               </span>
               <span className="text-muted-foreground">Following</span>
@@ -467,10 +414,12 @@ export default function Profile() {
               </div>
             )}
             <div className="text-center">
-              <span className="font-semibold block">{userCompetitions.length}</span>
+              <span className="font-semibold block">
+                {(competitionsData as any)?.competitions?.length || 0}
+              </span>
               <span className="text-muted-foreground">Cookoffs</span>
             </div>
-            {storeData?.store && (
+            {(storeData as any)?.store && (
               <div className="text-center">
                 <span className="font-semibold block">{storeProductsCount}</span>
                 <span className="text-muted-foreground">Products</span>
@@ -480,12 +429,7 @@ export default function Profile() {
 
           {/* Bio */}
           {displayUser.bio && (
-            <p
-              className="text-sm mb-4"
-              data-testid={`text-bio-${displayUser.id}`}
-            >
-              {displayUser.bio}
-            </p>
+            <p className="text-sm mb-4">{displayUser.bio}</p>
           )}
 
           {/* Badges */}
@@ -508,7 +452,7 @@ export default function Profile() {
                 Level {drinkStats.level} • {drinkStats.totalPoints} XP
               </Badge>
             )}
-            {storeData?.store && (
+            {(storeData as any)?.store && (
               <Badge
                 variant="secondary"
                 className="bg-orange-100 text-orange-800"
@@ -596,9 +540,7 @@ export default function Profile() {
               <Image className="w-16 h-16 mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-semibold mb-2">No posts yet</h3>
               <p className="text-muted-foreground">
-                {isOwnProfile
-                  ? "Start sharing your culinary creations!"
-                  : "No posts to show."}
+                Start sharing your culinary creations!
               </p>
             </div>
           )}
@@ -656,9 +598,7 @@ export default function Profile() {
               <ChefHat className="w-16 h-16 mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-semibold mb-2">No recipes yet</h3>
               <p className="text-muted-foreground">
-                {isOwnProfile
-                  ? "Share your favorite recipes with the community!"
-                  : "No recipes to show."}
+                Share your favorite recipes with the community!
               </p>
             </div>
           )}
@@ -704,9 +644,7 @@ export default function Profile() {
               <GlassWater className="w-16 h-16 mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-semibold mb-2">No drinks yet</h3>
               <p className="text-muted-foreground">
-                {isOwnProfile
-                  ? "Create a custom drink and it will appear here."
-                  : "No drinks to show."}
+                Create a custom drink and it will appear here.
               </p>
             </div>
           )}
@@ -725,9 +663,7 @@ export default function Profile() {
                         Theme: {c.themeName}
                       </div>
                     </div>
-                    <Badge className={getStatusBadge(c.status)}>
-                      {c.status}
-                    </Badge>
+                    <Badge className={getStatusBadge(c.status)}>{c.status}</Badge>
                   </div>
                 </Card>
               ))}
@@ -737,9 +673,7 @@ export default function Profile() {
               <Trophy className="w-16 h-16 mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-semibold mb-2">No cookoffs yet</h3>
               <p className="text-muted-foreground">
-                {isOwnProfile
-                  ? "Join a Weekly Cooking Competition to earn badges."
-                  : "No cookoffs to show."}
+                Join a Weekly Cooking Competition to earn badges.
               </p>
             </div>
           )}
@@ -778,9 +712,7 @@ export default function Profile() {
               <Star className="w-16 h-16 mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-semibold mb-2">No saved items</h3>
               <p className="text-muted-foreground">
-                {isOwnProfile
-                  ? "Save drinks or recipes to see them here."
-                  : "No saved items to show."}
+                Save drinks or recipes to see them here.
               </p>
             </div>
           )}
@@ -788,30 +720,32 @@ export default function Profile() {
 
         {/* STORE */}
         <TabsContent value="store" className="mt-6">
-          {storeData?.store ? (
+          {(storeData as any)?.store ? (
             <Card className="p-6">
               <div className="flex items-center gap-4">
                 <Avatar className="w-16 h-16">
                   <AvatarImage
-                    src={storeData.store.logo || ""}
-                    alt={storeData.store.name}
+                    src={(storeData as any).store.logo || ""}
+                    alt={(storeData as any).store.name}
                   />
                   <AvatarFallback>
-                    {storeData.store.name?.[0] || "S"}
+                    {(storeData as any).store.name?.[0] || "S"}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
                   <div className="text-lg font-semibold">
-                    {storeData.store.name}
+                    {(storeData as any).store.name}
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    {storeData.store.bio}
+                    {(storeData as any).store.bio}
                   </div>
                 </div>
                 <Button
                   variant="default"
                   onClick={() =>
-                    (window.location.href = `/store/${storeData.store.handle}`)
+                    (window.location.href = `/store/${
+                      (storeData as any).store.handle
+                    }`)
                   }
                 >
                   Visit Store
@@ -826,9 +760,7 @@ export default function Profile() {
               <Store className="w-16 h-16 mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-semibold mb-2">No store yet</h3>
               <p className="text-muted-foreground">
-                {isOwnProfile
-                  ? "Open your storefront from the vendor dashboard."
-                  : "This user hasn’t opened a store yet."}
+                This user hasn’t opened a store yet.
               </p>
             </div>
           )}
