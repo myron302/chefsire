@@ -1,157 +1,137 @@
-// client/src/contexts/UserContext.tsx
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
-type Subscription = 'free' | 'pro' | 'enterprise';
-
-export interface User {
+type User = {
   id: string;
   email: string;
-  username: string;
+  username?: string;
   displayName?: string;
   royalTitle?: string | null;
   avatar?: string | null;
   bio?: string | null;
-  subscription?: Subscription;
-  productCount?: number;
-  trialEndDate?: string | null; // keep as ISO string if coming from API
-  postsCount?: number;
-  followersCount?: number;
-  followingCount?: number;
-  isChef?: boolean;
-  specialty?: string | null;
-}
+};
 
-interface UserContextType {
+type UserContextType = {
   user: User | null;
   loading: boolean;
-  updateUser: (patch: Partial<User>) => void;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
-  /**
-   * Note: signup DOES NOT log the user in.
-   * It triggers backend signup + verification email, then returns true/false.
-   */
   signup: (
     name: string,
     email: string,
     password: string,
     royalTitle?: string,
-    meta?: { firstName?: string; lastName?: string; username?: string; [key: string]: any }
-  ) => Promise<boolean>;
-}
+    meta?: Record<string, unknown>
+  ) => Promise<{ ok: boolean; error?: string }>;
+  updateUser: (updates: Partial<User>) => void;
+};
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const useUser = () => {
   const ctx = useContext(UserContext);
-  if (!ctx) throw new Error('useUser must be used within a UserProvider');
+  if (!ctx) throw new Error("useUser must be used within a UserProvider");
   return ctx;
 };
 
-interface ProviderProps { children: ReactNode }
-
-const STORAGE_KEY = 'user';
-
-export const UserProvider: React.FC<ProviderProps> = ({ children }) => {
+export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load existing session from localStorage on boot
+  // Load any existing session from localStorage
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setUser(JSON.parse(raw));
+      const raw = localStorage.getItem("user");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // Very light cleanup for legacy shapes
+        if (parsed && typeof parsed === "object") {
+          if (parsed.id && typeof parsed.id !== "string") parsed.id = String(parsed.id);
+          delete parsed.password; // never keep password
+          setUser(parsed as User);
+        }
+      }
     } catch (e) {
-      console.error('Failed to parse stored user:', e);
-      localStorage.removeItem(STORAGE_KEY);
+      console.error("Failed to read saved user:", e);
+      localStorage.removeItem("user");
     } finally {
       setLoading(false);
     }
   }, []);
 
   const persist = (u: User | null) => {
-    if (u) localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
-    else localStorage.removeItem(STORAGE_KEY);
+    if (!u) {
+      localStorage.removeItem("user");
+      setUser(null);
+      return;
+    }
+    localStorage.setItem("user", JSON.stringify(u));
     setUser(u);
   };
 
-  const updateUser = (patch: Partial<User>) => {
-    setUser(prev => {
-      if (!prev) return prev;
-      const next = { ...prev, ...patch };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  };
-
-  /**
-   * Server-backed login. Requires email to be verified on the backend.
-   * On success, stores user object in localStorage and sets context.
-   */
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string) => {
     try {
       setLoading(true);
-
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.toLowerCase().trim(),
-          password,
-        }),
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.toLowerCase().trim(), password }),
       });
 
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        // surface the backend message when possible
-        const message = data?.error || 'Login failed';
-        console.warn('Login failed:', message);
-        // Do NOT persist any user on failure
-        persist(null);
-        return false;
+        // Server returns messages like “Please verify your email…”
+        const msg =
+          data?.error ||
+          (res.status === 403
+            ? "Please verify your email to log in."
+            : "Invalid email or password");
+        return { ok: false, error: msg };
       }
 
-      // Expecting shape: { success: true, user: { id, email, username, ... } }
-      const loggedInUser: User = data.user;
-      if (!loggedInUser || !loggedInUser.id || !loggedInUser.email) {
-        console.warn('Login response missing user payload');
-        persist(null);
-        return false;
+      // Expect { success: true, user: {...} }
+      if (!data?.success || !data?.user) {
+        return { ok: false, error: "Unexpected server response" };
       }
 
-      persist(loggedInUser);
-      return true;
+      const cleanUser: User = {
+        id: String(data.user.id),
+        email: data.user.email,
+        username: data.user.username,
+        displayName: data.user.displayName,
+        royalTitle: data.user.royalTitle ?? null,
+        avatar: data.user.avatar ?? null,
+        bio: data.user.bio ?? null,
+      };
+
+      persist(cleanUser);
+      return { ok: true };
     } catch (e) {
-      console.error('Login error:', e);
-      persist(null);
-      return false;
+      console.error("Login failed:", e);
+      return { ok: false, error: "Network error. Please try again." };
     } finally {
       setLoading(false);
     }
   };
 
-  /**
-   * Signup calls backend and triggers verification email.
-   * Does NOT log the user in (must verify first, then login).
-   */
   const signup = async (
     name: string,
     email: string,
     password: string,
     royalTitle?: string,
-    meta?: { firstName?: string; lastName?: string; username?: string; [key: string]: any }
-  ): Promise<boolean> => {
+    meta?: Record<string, unknown>
+  ) => {
     try {
       setLoading(true);
 
-      const firstName = meta?.firstName || name.split(' ')[0] || name;
-      const lastName = meta?.lastName || name.split(' ').slice(1).join(' ') || '';
-      const username = meta?.username || name; // use what user typed on the form
+      // Split name best-effort
+      const [firstName, ...rest] = name.trim().split(/\s+/);
+      const lastName = rest.join(" ");
+      const username = (meta as any)?.username || name;
 
-      const res = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           firstName,
           lastName,
@@ -163,31 +143,16 @@ export const UserProvider: React.FC<ProviderProps> = ({ children }) => {
       });
 
       const data = await res.json().catch(() => ({}));
-
       if (!res.ok) {
-        const message = data?.error || 'Signup failed';
-        console.error('Signup failed:', message);
-        // no local persistence here
-        return false;
+        return { ok: false, error: data?.error || "Signup failed" };
       }
 
-      // Store email in session for “resend verification” UX if needed
-      try {
-        sessionStorage.setItem('pendingVerificationEmail', email.toLowerCase().trim());
-      } catch {}
-
-      // Optionally alert the message coming from server
-      if (data?.message) {
-        // eslint-disable-next-line no-alert
-        alert(data.message);
-      }
-
-      return true;
+      // Don’t persist user here — they must verify email first
+      // Show whatever message server returned
+      return { ok: true };
     } catch (e) {
-      console.error('Signup error:', e);
-      // eslint-disable-next-line no-alert
-      alert('An error occurred during signup. Please try again.');
-      return false;
+      console.error("Signup failed:", e);
+      return { ok: false, error: "Network error. Please try again." };
     } finally {
       setLoading(false);
     }
@@ -195,9 +160,18 @@ export const UserProvider: React.FC<ProviderProps> = ({ children }) => {
 
   const logout = () => persist(null);
 
+  const updateUser = (updates: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const merged = { ...prev, ...updates };
+      localStorage.setItem("user", JSON.stringify(merged));
+      return merged;
+    });
+  };
+
   return (
-    <UserContext.Provider value={{ user, loading, updateUser, login, logout, signup }}>
+    <UserContext.Provider value={{ user, loading, login, logout, signup, updateUser }}>
       {children}
     </UserContext.Provider>
   );
-};
+}
