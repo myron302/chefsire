@@ -6,31 +6,43 @@ import { storage } from "../storage";
 const r = Router();
 
 /**
- * Users & profile basics
+ * NOTE: This router is intended to be mounted like:
+ *   routes.use("/users", usersRouter)
+ * That means every route here should be RELATIVE, e.g. "/:id" not "/users/:id".
+ *
+ * Final URLs will look like:
+ *   GET  /api/users/:id
+ *   GET  /api/users/username/:username
+ *   POST /api/users
+ *   ...
  */
-r.get("/users/:id", async (req, res) => {
+
+/* ------------------------------------------------------------------ */
+/* Users & profile basics                                              */
+/* ------------------------------------------------------------------ */
+r.get("/:id", async (req, res) => {
   try {
     const user = await storage.getUser(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
   } catch (error) {
-    console.error("users/:id error", e);
+    console.error("GET /users/:id error", error);
     res.status(500).json({ message: "Failed to fetch user" });
   }
 });
 
-r.get("/users/username/:username", async (req, res) => {
+r.get("/username/:username", async (req, res) => {
   try {
     const user = await storage.getUserByUsername(req.params.username);
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
   } catch (error) {
-    console.error("users/username error", e);
+    console.error("GET /users/username/:username error", error);
     res.status(500).json({ message: "Failed to fetch user" });
   }
 });
 
-r.post("/users", async (req, res) => {
+r.post("/", async (req, res) => {
   try {
     const schema = z.object({
       id: z.string().optional(),
@@ -46,28 +58,30 @@ r.post("/users", async (req, res) => {
     const body = schema.parse(req.body);
     const created = await storage.createUser(body as any);
     res.status(201).json(created);
-  } catch (e: any) {
-    if (e?.issues) return res.status(400).json({ message: "Invalid user data", errors: e.issues });
-    console.error("users/create error", e);
+  } catch (error: any) {
+    if (error?.issues) {
+      return res.status(400).json({ message: "Invalid user data", errors: error.issues });
+    }
+    console.error("POST /users error", error);
     res.status(500).json({ message: "Failed to create user" });
   }
 });
 
-r.get("/users/:id/suggested", async (req, res) => {
+r.get("/:id/suggested", async (req, res) => {
   try {
     const limit = Number(req.query.limit ?? 5);
     const list = await storage.getSuggestedUsers(req.params.id, isNaN(limit) ? 5 : limit);
     res.json(list);
   } catch (error) {
-    console.error("users/suggested error", e);
+    console.error("GET /users/:id/suggested error", error);
     res.status(500).json({ message: "Failed to fetch suggested users" });
   }
 });
 
-/**
- * Catering settings (per-user)
- */
-r.post("/users/:id/catering/enable", async (req, res) => {
+/* ------------------------------------------------------------------ */
+/* Catering settings (per-user)                                        */
+/* ------------------------------------------------------------------ */
+r.post("/:id/catering/enable", async (req, res) => {
   try {
     const schema = z.object({
       location: z.string().min(3, "Postal/area required"),
@@ -78,25 +92,25 @@ r.post("/users/:id/catering/enable", async (req, res) => {
     const updated = await storage.enableCatering(req.params.id, body.location, body.radius, body.bio);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering enabled", user: updated });
-  } catch (e: any) {
-    if (e?.issues) return res.status(400).json({ message: "Invalid data", errors: e.issues });
-    console.error("catering/enable error", e);
+  } catch (error: any) {
+    if (error?.issues) return res.status(400).json({ message: "Invalid data", errors: error.issues });
+    console.error("POST /users/:id/catering/enable error", error);
     res.status(500).json({ message: "Failed to enable catering" });
   }
 });
 
-r.post("/users/:id/catering/disable", async (req, res) => {
+r.post("/:id/catering/disable", async (req, res) => {
   try {
     const updated = await storage.disableCatering(req.params.id);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering disabled", user: updated });
   } catch (error) {
-    console.error("catering/disable error", e);
+    console.error("POST /users/:id/catering/disable error", error);
     res.status(500).json({ message: "Failed to disable catering" });
   }
 });
 
-r.put("/users/:id/catering/settings", async (req, res) => {
+r.put("/:id/catering/settings", async (req, res) => {
   try {
     const schema = z.object({
       location: z.string().min(3).optional(),
@@ -108,14 +122,14 @@ r.put("/users/:id/catering/settings", async (req, res) => {
     const updated = await storage.updateCateringSettings(req.params.id, settings);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering settings updated", user: updated });
-  } catch (e: any) {
-    if (e?.issues) return res.status(400).json({ message: "Invalid data", errors: e.issues });
-    console.error("catering/settings error", e);
+  } catch (error: any) {
+    if (error?.issues) return res.status(400).json({ message: "Invalid data", errors: error.issues });
+    console.error("PUT /users/:id/catering/settings error", error);
     res.status(500).json({ message: "Failed to update catering settings" });
   }
 });
 
-r.get("/users/:id/catering/status", async (req, res) => {
+r.get("/:id/catering/status", async (req, res) => {
   try {
     const user = await storage.getUser(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -128,15 +142,15 @@ r.get("/users/:id/catering/status", async (req, res) => {
       isChef: (user as any).isChef,
     });
   } catch (error) {
-    console.error("catering/status error", e);
+    console.error("GET /users/:id/catering/status error", error);
     res.status(500).json({ message: "Failed to fetch status" });
   }
 });
 
-/**
- * Subscription (simple example)
- */
-r.put("/users/:id/subscription", async (req, res) => {
+/* ------------------------------------------------------------------ */
+/* Subscription (simple example)                                      */
+/* ------------------------------------------------------------------ */
+r.put("/:id/subscription", async (req, res) => {
   try {
     const schema = z.object({
       tier: z.enum(["free", "starter", "professional", "enterprise", "premium_plus"]),
@@ -152,14 +166,14 @@ r.put("/users/:id/subscription", async (req, res) => {
     } as any);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Subscription updated", user: updated });
-  } catch (e: any) {
-    if (e?.issues) return res.status(400).json({ message: "Invalid subscription data", errors: e.issues });
-    console.error("subscription/update error", e);
+  } catch (error: any) {
+    if (error?.issues) return res.status(400).json({ message: "Invalid subscription data", errors: error.issues });
+    console.error("PUT /users/:id/subscription error", error);
     res.status(500).json({ message: "Failed to update subscription" });
   }
 });
 
-r.get("/users/:id/subscription/info", async (req, res) => {
+r.get("/:id/subscription/info", async (req, res) => {
   try {
     const user = await storage.getUser(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -177,98 +191,4 @@ r.get("/users/:id/subscription/info", async (req, res) => {
       return t.base;
     };
 
-    const mr = parseFloat((user as any).monthlyRevenue || "0");
-    const rate = getCommissionRate((user as any).subscriptionTier || "free", mr);
-
-    res.json({
-      subscriptionTier: (user as any).subscriptionTier,
-      subscriptionStatus: (user as any).subscriptionStatus,
-      subscriptionEndsAt: (user as any).subscriptionEndsAt,
-      monthlyRevenue: (user as any).monthlyRevenue,
-      currentCommissionRate: rate,
-      tierPricing: {
-        starter: { price: 15, baseRate: 8 },
-        professional: { price: 35, baseRate: 5 },
-        enterprise: { price: 75, baseRate: 3 },
-        premium_plus: { price: 150, baseRate: 1 },
-      },
-    });
-  } catch (error) {
-    console.error("subscription/info error", e);
-    res.status(500).json({ message: "Failed to fetch subscription info" });
-  }
-});
-
-/**
- * Nutrition (trial + goals + summaries)
- */
-r.post("/users/:id/nutrition/trial", async (req, res) => {
-  try {
-    const updated = await storage.enableNutritionPremium(req.params.id, 30);
-    if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Nutrition trial activated", user: updated, trialEndsAt: (updated as any).nutritionTrialEnd });
-  } catch (error) {
-    console.error("nutrition/trial error", e);
-    res.status(500).json({ message: "Failed to start nutrition trial" });
-  }
-});
-
-r.put("/users/:id/nutrition/goals", async (req, res) => {
-  try {
-    const schema = z.object({
-      dailyCalorieGoal: z.number().min(800).max(5000).optional(),
-      macroGoals: z.object({ protein: z.number().min(0).max(100), carbs: z.number().min(0).max(100), fat: z.number().min(0).max(100) }).optional(),
-      dietaryRestrictions: z.array(z.string()).optional(),
-    });
-    const goals = schema.parse(req.body);
-    const updated = await storage.updateNutritionGoals(req.params.id, goals as any);
-    if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Nutrition goals updated", user: updated });
-  } catch (e: any) {
-    if (e?.issues) return res.status(400).json({ message: "Invalid goals data", errors: e.issues });
-    console.error("nutrition/goals error", e);
-    res.status(500).json({ message: "Failed to update goals" });
-  }
-});
-
-r.get("/users/:id/nutrition/daily/:date", async (req, res) => {
-  try {
-    const d = new Date(req.params.date);
-    if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid date" });
-    const summary = await storage.getDailyNutritionSummary(req.params.id, d);
-    const user = await storage.getUser(req.params.id);
-
-    res.json({
-      date: req.params.date,
-      summary,
-      goals: user ? { dailyCalorieGoal: (user as any).dailyCalorieGoal, macroGoals: (user as any).macroGoals } : null,
-      progress: (user as any)?.dailyCalorieGoal
-        ? { calorieProgress: Math.round(((summary as any).totalCalories / (user as any).dailyCalorieGoal) * 100) }
-        : null,
-    });
-  } catch (error) {
-    console.error("nutrition/daily error", e);
-    res.status(500).json({ message: "Failed to fetch daily nutrition" });
-  }
-});
-
-r.get("/users/:id/nutrition/logs", async (req, res) => {
-  try {
-    const start = new Date(String(req.query.startDate));
-    const end = new Date(String(req.query.endDate));
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      return res.status(400).json({ message: "Invalid date range" });
-    }
-    const logs = await storage.getNutritionLogs(req.params.id, start, end);
-    res.json({
-      logs,
-      dateRange: { startDate: start.toISOString().split("T")[0], endDate: end.toISOString().split("T")[0] },
-      total: logs.length,
-    });
-  } catch (error) {
-    console.error("nutrition/logs error", e);
-    res.status(500).json({ message: "Failed to fetch logs" });
-  }
-});
-
-export default r;
+    const mr = parseFloa
