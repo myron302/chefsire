@@ -22,11 +22,9 @@ import { googleRouter } from "./google";
 // Competitions
 import competitionsRouter from "./competitions";
 
-// Stores (user storefronts)
-import storesRouter from "./stores-crud";
-
-// Square (subscriptions / checkout links)
-import squareRouter from "./stores";
+// Stores
+import storesPublicRouter from "./stores";       // public: GET /:handle
+import storesCrudRouter from "./stores-crud";    // admin CRUD
 
 // Dev mail health-check route
 import devMailcheckRouter from "./dev.mailcheck";
@@ -60,10 +58,10 @@ r.use("/google", googleRouter);
 r.use("/competitions", competitionsRouter);
 
 // ---- Stores ----
-r.use("/stores", storesRouter);
-
-// ---- Square ----
-r.use("/square", squareRouter);
+// public storefront endpoints: /api/stores/:handle
+r.use("/stores", storesPublicRouter);
+// admin CRUD endpoints: /api/stores-crud/*
+r.use("/stores-crud", storesCrudRouter);
 
 // ---- Dev helpers ----
 r.use(devMailcheckRouter);
@@ -88,8 +86,8 @@ if (process.env.NODE_ENV !== "production") {
         "/export/*",
         "/google/*",
         "/competitions/*",
-        "/stores/*",
-        "/square/*",
+        "/stores/*",       // public
+        "/stores-crud/*",  // admin
         "/auth/_mail-verify",
       ],
     });
