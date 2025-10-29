@@ -80,7 +80,7 @@ export default function SignupPage() {
 
   // Title dropdown
   const [showTitleDropdown, setShowTitleDropdown] = useState(false);
-  const [selectedTitle, setSelectedTitle] = useState(''); // '' = no title; user can only clear by choosing "No Title"
+  const [selectedTitle, setSelectedTitle] = useState('');
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const titleBtnRef = useRef<HTMLButtonElement | null>(null);
 
@@ -194,13 +194,10 @@ export default function SignupPage() {
     const payload = {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
-      username: slugify(username.trim()), // never includes title
+      username: slugify(username.trim()),
       email: email.trim(),
       password,
-      // Title is stored separately; not appended to username.
-      // Send both keys for backwards compatibility with your API.
-      selectedTitle: selectedTitle || null,
-      title: selectedTitle || null,
+      selectedTitle,              // stored separately on server; not appended to username
       phone,
       accountType,
       businessName: accountType === 'business' ? businessName.trim() : undefined,
@@ -224,6 +221,7 @@ export default function SignupPage() {
 
   // --- Handlers (UI-only for SMS/email buttons shown on the form) ---
   const handleSendEmailLink = async () => {
+    // This button is just visual here; the real email is sent by the server on signup.
     await new Promise(r => setTimeout(r, 350));
     setEmailLinkSent(true);
   };
@@ -302,11 +300,7 @@ export default function SignupPage() {
       // Store email so /verify-email page can offer "Resend"
       sessionStorage.setItem('pendingVerificationEmail', email.trim());
 
-      // Optional: clear sensitive fields to be extra safe before leaving
-      setPassword('');
-      setPhone('');
-
-      // Redirect to the verify page
+      // Redirect to the verify page; backend already sent an email
       setLocation('/verify-email');
     } catch (err: any) {
       alert(err?.message || 'Signup failed. Please try again.');
@@ -349,15 +343,27 @@ export default function SignupPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} autoComplete="off" className="space-y-6">
-            {/* AUTOFILL MITIGATION: decoy fields to absorb browser-saved creds */}
-            <div className="sr-only" aria-hidden="true">
-              <input type="text" name="username" autoComplete="username" tabIndex={-1} />
-              <input type="email" name="email" autoComplete="email" tabIndex={-1} />
-              <input type="password" name="password" autoComplete="current-password" tabIndex={-1} />
-            </div>
+          {/* FORM starts */}
+          <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">
+            {/* Autofill sinks (absorb any saved creds so visible fields stay empty) */}
+            <input
+              type="text"
+              name="fake-user"
+              autoComplete="username"
+              className="hidden"
+              tabIndex={-1}
+              aria-hidden="true"
+            />
+            <input
+              type="password"
+              name="fake-pass"
+              autoComplete="current-password"
+              className="hidden"
+              tabIndex={-1}
+              aria-hidden="true"
+            />
 
-            {/* Title Selector (optional, but cannot be erased unless 'No Title' is picked) */}
+            {/* Title Selector (optional) */}
             <div>
               <label htmlFor="title" className="block text-sm font-medium text-yellow-100 mb-2">
                 Royal Title (Optional)
@@ -501,7 +507,7 @@ export default function SignupPage() {
                   </label>
                   <input
                     id="businessName"
-                    name="businessName"
+                    name="signup_business_name"
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
                     className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
@@ -519,7 +525,7 @@ export default function SignupPage() {
                   </label>
                   <select
                     id="businessCategory"
-                    name="businessCategory"
+                    name="signup_business_category"
                     value={businessCategory}
                     onChange={(e) => setBusinessCategory(e.target.value)}
                     className={`w-full px-4 py-3 bg-white/20 border rounded-2xl text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
@@ -550,7 +556,7 @@ export default function SignupPage() {
                 </label>
                 <input
                   id="firstName"
-                  name="firstName"
+                  name="given-name"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
@@ -567,7 +573,7 @@ export default function SignupPage() {
                 </label>
                 <input
                   id="lastName"
-                  name="lastName"
+                  name="family-name"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
@@ -587,7 +593,7 @@ export default function SignupPage() {
               </label>
               <input
                 id="username"
-                name="handle"                     // changed to avoid autofill reuse
+                name="signup_username"
                 value={username}
                 onChange={(e) => { setUsername(e.target.value); setUserEditedUsername(true); }}
                 className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
@@ -595,10 +601,9 @@ export default function SignupPage() {
                 }`}
                 placeholder="arthur-pendragon"
                 autoComplete="off"
-                autoCapitalize="none"
                 autoCorrect="off"
+                autoCapitalize="none"
                 spellCheck={false}
-                inputMode="text"
               />
               {errors.username && <p className="mt-2 text-sm text-red-300">{errors.username}</p>}
               <p className="mt-1 text-xs text-yellow-200">
@@ -613,7 +618,7 @@ export default function SignupPage() {
               </label>
               <input
                 id="email"
-                name="contactEmail"              // changed to dodge saved autofill
+                name="signup_email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -621,10 +626,7 @@ export default function SignupPage() {
                   errors.email ? 'border-red-400' : 'border-yellow-300/50'
                 }`}
                 placeholder="king@camelot.com"
-                autoComplete="off"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
+                autoComplete="email"
               />
               {errors.email && <p className="mt-2 text-sm text-red-300">{errors.email}</p>}
             </div>
@@ -637,7 +639,7 @@ export default function SignupPage() {
               <div className="relative">
                 <input
                   id="password"
-                  name="newPassword"             // changed + 'new-password' to block reuse
+                  name="signup_password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -670,7 +672,7 @@ export default function SignupPage() {
               </label>
               <input
                 id="phone"
-                name="phone"
+                name="signup_phone"
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
@@ -803,7 +805,7 @@ export default function SignupPage() {
                 </div>
                 <input
                   id="captcha"
-                  name="captcha"
+                  name="signup_captcha"
                   value={captchaAnswer}
                   onChange={(e) => setCaptchaAnswer(e.target.value.replace(/\D/g, ''))}
                   inputMode="numeric"
@@ -823,7 +825,7 @@ export default function SignupPage() {
             <div className="flex items-start space-x-3 bg-white/10 rounded-2xl p-4 border border-yellow-300/30">
               <input
                 id="terms"
-                name="terms"
+                name="signup_terms"
                 type="checkbox"
                 checked={agree}
                 onChange={(e) => setAgree(e.target.checked)}
