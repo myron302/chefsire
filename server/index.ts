@@ -1,16 +1,15 @@
+// server/index.ts
 import "dotenv/config";
+import http from "http";
 import app from "./app";
-
-// ✅ Realtime sockets for DMs
-import http from "node:http";
 import { attachDmRealtime } from "./realtime/dmSocket";
 
 const PORT = Number(process.env.PORT || 3001);
 
-// Create HTTP server so Socket.IO can attach
+// Create the raw HTTP server so Socket.IO can hook in
 const server = http.createServer(app);
 
-// Attach DM namespace under /socket.io → /dm
+// Attach DM realtime namespace at /socket.io and /dm
 attachDmRealtime(server);
 
 server.listen(PORT, () => {
