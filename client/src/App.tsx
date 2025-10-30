@@ -64,6 +64,16 @@ import DetoxesHub from "@/pages/drinks/detoxes";
 import PotentPotablesHub from "@/pages/drinks/potent-potables";
 import CaffeinatedDrinksHub from "@/pages/drinks/caffeinated";
 
+// ========== CAFFEINATED DRINKS SUBCATEGORY PAGES ==========
+import EspressoDrinks from "@/pages/drinks/caffeinated/espresso";
+import ColdBrewDrinks from "@/pages/drinks/caffeinated/cold-brew";
+import TeaDrinks from "@/pages/drinks/caffeinated/tea";
+import MatchaDrinks from "@/pages/drinks/caffeinated/matcha";
+import EnergyDrinks from "@/pages/drinks/caffeinated/energy";
+import SpecialtyCoffee from "@/pages/drinks/caffeinated/specialty";
+import LattesDrinks from "@/pages/drinks/caffeinated/lattes";
+import IcedCoffeeDrinks from "@/pages/drinks/caffeinated/iced";
+
 // ========== SMOOTHIES SUBCATEGORY PAGES ==========
 import BreakfastSmoothies from "@/pages/drinks/smoothies/breakfast";
 import DessertSmoothies from "@/pages/drinks/smoothies/dessert";
@@ -202,6 +212,14 @@ function DrinksSection() {
       <Route path="/drinks/detoxes" component={DetoxesHub} />
 
       {/* ---------- Caffeinated Drinks ---------- */}
+      <Route path="/drinks/caffeinated/espresso" component={EspressoDrinks} />
+      <Route path="/drinks/caffeinated/cold-brew" component={ColdBrewDrinks} />
+      <Route path="/drinks/caffeinated/tea" component={TeaDrinks} />
+      <Route path="/drinks/caffeinated/matcha" component={MatchaDrinks} />
+      <Route path="/drinks/caffeinated/energy" component={EnergyDrinks} />
+      <Route path="/drinks/caffeinated/specialty" component={SpecialtyCoffee} />
+      <Route path="/drinks/caffeinated/lattes" component={LattesDrinks} />
+      <Route path="/drinks/caffeinated/iced" component={IcedCoffeeDrinks} />
       <Route path="/drinks/caffeinated" component={CaffeinatedDrinksHub} />
 
       {/* ---------- Zero-proof (NOT age-gated) ---------- */}

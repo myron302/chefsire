@@ -88,6 +88,21 @@ const NAV: NavItem[] = [
         ],
       },
       {
+        name: "☕ Caffeinated Drinks",
+        href: "/drinks/caffeinated",
+        hasSubmenu: true,
+        submenu: [
+          { name: "☕ Espresso Drinks", href: "/drinks/caffeinated/espresso" },
+          { name: "🧊 Cold Brew", href: "/drinks/caffeinated/cold-brew" },
+          { name: "🍵 Tea", href: "/drinks/caffeinated/tea" },
+          { name: "🍃 Matcha", href: "/drinks/caffeinated/matcha" },
+          { name: "⚡ Energy Drinks", href: "/drinks/caffeinated/energy" },
+          { name: "⭐ Specialty Coffee", href: "/drinks/caffeinated/specialty" },
+          { name: "☕ Lattes & Cappuccinos", href: "/drinks/caffeinated/lattes" },
+          { name: "💧 Iced Coffee", href: "/drinks/caffeinated/iced" },
+        ],
+      },
+      {
         name: "🍷 Potent Potables (21+)",
         href: "/drinks/potent-potables",
         hasSubmenu: true,
@@ -128,7 +143,11 @@ const NAV: NavItem[] = [
 
   { name: "🍽️ Catering", href: "/catering", hasSubmenu: true, submenu: [
     { name: "👨‍🍳 Browse Caterers", href: "/catering" },
-    { name: "💒 Wedding Planning", href: "/catering/wedding-planning" },
+  ]},
+
+  { name: "💒 Wedding Planning", href: "/catering/wedding-planning", hasSubmenu: true, submenu: [
+    { name: "📋 Planning Hub", href: "/catering/wedding-planning" },
+    { name: "🗺️ Vendor Map", href: "/catering/wedding-map" },
   ]},
 
   { name: "🛒 Marketplace", href: "/marketplace" },
