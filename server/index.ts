@@ -1,7 +1,5 @@
 // server/index.ts
-// Starts the API with automatic port fallback.
-// Tries process.env.PORT (or 3001), then a small list of alternates.
-// Keeps your DM realtime (attachDmRealtime) exactly as-is.
+// Starts the API with automatic port fallback and DM realtime attached.
 
 import "dotenv/config";
 import http from "http";
@@ -10,38 +8,29 @@ import { attachDmRealtime } from "./realtime/dmSocket";
 
 const envPort = Number(process.env.PORT || 3001);
 
-// Build a de-duplicated candidate list.
-// 1) Whatever PORT is set to (or 3001), then +1 and +2
-// 2) Common alternates we’ve used before on this project
+// Candidate ports: try env, then nearby and common alternates
 const candidates = Array.from(
-  new Set<number>([
-    envPort,
-    envPort + 1,
-    envPort + 2,
-    4001,
-    4002,
-    5001,
-    8080,
-  ])
+  new Set<number>([envPort, envPort + 1, envPort + 2, 4001, 4002, 5001, 8080])
 ).filter((p) => Number.isFinite(p) && p > 0);
 
 function createServer() {
   const server = http.createServer(app);
-  attachDmRealtime(server); // ✅ keep DMs attached to whichever server instance we use
+  attachDmRealtime(server); // keep DMs attached
   return server;
 }
 
-function listenOnce(server: http.Server, port: number) {
+function listenOn(server: http.Server, port: number) {
   return new Promise<void>((resolve, reject) => {
     const onError = (err: any) => {
-      // Clean up this server instance if it failed to bind
-      server.close().catch(() => {});
+      // Do NOT call server.close() here; server may not be listening yet.
       reject(err);
     };
-
     server.once("error", onError);
     server.listen(port, () => {
       server.off("error", onError);
+      console.log(
+        `[ChefSire] API listening on port ${port} (NODE_ENV=${process.env.NODE_ENV || "development"})`
+      );
       resolve();
     });
   });
@@ -51,32 +40,14 @@ function listenOnce(server: http.Server, port: number) {
   for (const port of candidates) {
     const server = createServer();
     try {
-      await listenOnce(server, port);
-      console.log(
-        `[ChefSire] API listening on port ${port} (NODE_ENV=${process.env.NODE_ENV || "development"})`
-      );
-      // If we got here, we’re bound successfully; stop trying others.
-      return;
+      await listenOn(server, port);
+      return; // success
     } catch (err: any) {
       const code = err?.code || "";
-      if (code === "EADDRINUSE" || code === "EACCES") {
-        console.warn(
-          `[ChefSire] Port ${port} unavailable (${code}). Trying next candidate…`
-        );
-        // loop continues to try next port
-      } else {
-        console.error(
-          `[ChefSire] Failed to start on port ${port}:`,
-          err?.message || err
-        );
-        // For unexpected errors, also try next candidate instead of bailing immediately
-      }
+      console.warn(`[ChefSire] Port ${port} unavailable (${code || err?.message || err}); trying next…`);
+      // try next candidate
     }
   }
-
-  console.error(
-    "[ChefSire] No available ports from candidates:",
-    candidates.join(", ")
-  );
+  console.error("[ChefSire] No available ports from candidates:", candidates.join(", "));
   process.exit(1);
 })();
