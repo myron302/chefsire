@@ -6,11 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { 
-  Apple, Clock, Heart, Star, Crown, Search, 
+import {
+  Apple, Clock, Heart, Star, Crown, Search,
   Share2, ArrowLeft, Camera, Zap, X, Check,
   Clipboard, RotateCcw, Sparkles, Wine, Flame,
-  Sun, Leaf, Palmtree, Droplets, Target
+  Sun, Leaf, Palmtree, Droplets, Target, Coffee
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
@@ -362,6 +362,7 @@ const breakfastBenefitsList = [
 // ---------- Cross-nav - Top Level Drink Categories ----------
 const otherDrinkHubs = [
   { id: 'protein-shakes', name: 'Protein Shakes', icon: Zap, route: '/drinks/protein-shakes', description: 'Muscle building' },
+  { id: 'caffeinated', name: 'Caffeinated Drinks', icon: Coffee, route: '/drinks/caffeinated', description: 'Coffee, tea & energy' },
   { id: 'smoothies', name: 'All Smoothies', icon: Sparkles, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
   { id: 'potables', name: 'Potent Potables', icon: Wine, route: '/drinks/potent-potables', description: 'Cocktails (21+)' },
   { id: 'all-drinks', name: 'All Drinks', icon: Flame, route: '/drinks', description: 'Browse everything' }

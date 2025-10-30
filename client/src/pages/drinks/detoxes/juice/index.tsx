@@ -52,6 +52,7 @@ const toMetric = (unit: string, amount: number) => {
 // ---------- Navigation data ----------
 const otherDrinkHubs = [
   { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
+  { id: 'caffeinated', name: 'Caffeinated Drinks', icon: Coffee, route: '/drinks/caffeinated', description: 'Coffee, tea & energy' },
   { id: 'detoxes', name: 'Detoxes', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing & wellness' },
   { id: 'potables', name: 'Potent Potables', icon: GlassWater, route: '/drinks/potent-potables', description: 'Cocktails (21+)' },
   { id: 'all-drinks', name: 'All Drinks', icon: Sparkles, route: '/drinks', description: 'Browse everything' }
