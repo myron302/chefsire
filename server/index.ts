@@ -1,56 +1,50 @@
 // server/index.ts
-// Robust startup with host/port fallback + 2s timeout per attempt.
-// Keeps DM realtime attach intact.
+// Deterministic startup for Plesk: prefer HOST=0.0.0.0 and a non-3001 PORT.
+// Single-host retry (PORT, PORT+1, PORT+2) with 1s timeout per attempt.
 
 import "dotenv/config";
 import http from "http";
 import app from "./app";
 import { attachDmRealtime } from "./realtime/dmSocket";
 
-const envPort = Number(process.env.PORT || 3001);
-
-// Candidate ports: env, then nearby and common alternates
-const PORTS = Array.from(
-  new Set<number>([envPort, envPort + 1, envPort + 2, 4001, 4002, 5001, 8080])
-).filter((p) => Number.isFinite(p) && p > 0);
-
-// Candidate hosts: prefer 127.0.0.1 for Plesk reverse proxy
-const HOSTS = Array.from(
-  new Set<string>([process.env.HOST || "127.0.0.1", "0.0.0.0", "::"])
+const HOST = (process.env.HOST || "0.0.0.0").trim();
+const BASE_PORT = Number(process.env.PORT || 4002); // ✅ default away from 3001
+const PORTS = [BASE_PORT, BASE_PORT + 1, BASE_PORT + 2].filter(
+  (p) => Number.isFinite(p) && p > 0
 );
 
 function createServer() {
   const server = http.createServer(app);
   try {
-    attachDmRealtime(server); // ✅ DMs stay attached
+    attachDmRealtime(server);
   } catch (e) {
-    console.warn("[ChefSire] attachDmRealtime failed (continuing):", (e as Error)?.message);
+    console.warn("[ChefSire] attachDmRealtime warning:", (e as Error)?.message);
   }
   return server;
 }
 
-function listenOn(server: http.Server, host: string, port: number) {
+function listenWithTimeout(server: http.Server, host: string, port: number) {
   return new Promise<{ host: string; port: number }>((resolve, reject) => {
     let settled = false;
 
     const onError = (err: any) => {
       if (settled) return;
       settled = true;
-      // do not call server.close(); it may not be listening yet
       reject(err);
     };
 
-    const timeout = setTimeout(() => {
+    const t = setTimeout(() => {
       if (settled) return;
       settled = true;
+      // do not call server.close(); it may not have bound yet
       reject(new Error("LISTEN_TIMEOUT"));
-    }, 2000);
+    }, 1000);
 
     server.once("error", onError);
     server.listen(port, host, () => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
+      clearTimeout(t);
       server.off("error", onError);
       resolve({ host, port });
     });
@@ -59,30 +53,25 @@ function listenOn(server: http.Server, host: string, port: number) {
 
 (async () => {
   console.log(
-    `[ChefSire] Startup candidates → hosts: ${HOSTS.join(", ")} | ports: ${PORTS.join(", ")}`
+    `[ChefSire] Starting… HOST=${HOST} | PORT candidates=${PORTS.join(", ")} | NODE_ENV=${process.env.NODE_ENV || "development"}`
   );
 
   for (const port of PORTS) {
-    for (const host of HOSTS) {
-      const server = createServer();
-      process.stdout.write(`[ChefSire] Trying ${host}:${port} ... `);
-      try {
-        const bound = await listenOn(server, host, port);
-        console.log("OK");
-        console.log(
-          `[ChefSire] API listening on http://${bound.host}:${bound.port} (NODE_ENV=${process.env.NODE_ENV || "development"})`
-        );
-        return; // success
-      } catch (err: any) {
-        const code = err?.code || err?.message || String(err);
-        console.log(`fail (${code})`);
-        // try next host/port
-      }
+    const server = createServer();
+    process.stdout.write(`[ChefSire] Binding http://${HOST}:${port} … `);
+    try {
+      const bound = await listenWithTimeout(server, HOST, port);
+      console.log("OK");
+      console.log(`[ChefSire] API listening on http://${bound.host}:${bound.port}`);
+      return;
+    } catch (err: any) {
+      console.log(`fail (${err?.code || err?.message || String(err)})`);
+      // try next port
     }
   }
 
   console.error(
-    "[ChefSire] No available host/port from candidates. Set PORT env var (e.g. 4002) and try again."
+    `[ChefSire] Failed to bind on HOST=${HOST} using ports ${PORTS.join(", ")}. Set a free PORT in Plesk and restart.`
   );
   process.exit(1);
 })();
