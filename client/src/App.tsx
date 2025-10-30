@@ -212,7 +212,6 @@ function DrinksSection() {
       <Route path="/drinks/detoxes" component={DetoxesHub} />
 
       {/* ---------- Caffeinated Drinks ---------- */}
-<<<<<<< HEAD
       <Route path="/drinks/caffeinated/espresso" component={EspressoDrinks} />
       <Route path="/drinks/caffeinated/cold-brew" component={ColdBrewDrinks} />
       <Route path="/drinks/caffeinated/tea" component={TeaDrinks} />
@@ -221,8 +220,6 @@ function DrinksSection() {
       <Route path="/drinks/caffeinated/specialty" component={SpecialtyCoffee} />
       <Route path="/drinks/caffeinated/lattes" component={LattesDrinks} />
       <Route path="/drinks/caffeinated/iced" component={IcedCoffeeDrinks} />
-=======
->>>>>>> origin/main
       <Route path="/drinks/caffeinated" component={CaffeinatedDrinksHub} />
 
       {/* ---------- Zero-proof (NOT age-gated) ---------- */}
