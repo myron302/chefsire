@@ -336,7 +336,7 @@ const espressoAdvantages = [
   { icon: Crown, title: 'Barista Quality', description: 'Professional-level coffee at home', color: 'text-amber-400' }
 ];
 
-export default function EspressoDrinksPage() {
+export default function EspressoDrinks() {
   const {
     addToFavorites,
     isFavorite,
