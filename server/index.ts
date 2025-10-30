@@ -9,7 +9,7 @@ const PORT = Number(process.env.PORT || 3001);
 // Create the raw HTTP server so Socket.IO can hook in
 const server = http.createServer(app);
 
-// Attach DM realtime namespace at /socket.io and /dm
+// Attach DM realtime namespace
 attachDmRealtime(server);
 
 server.listen(PORT, () => {
