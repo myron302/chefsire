@@ -31,7 +31,8 @@
     "fix:filenames": "node tools/fix-filenames.js",
     "env:print": "tsx server/scripts/print-env.ts",
     "test:email": "tsx server/scripts/test-email.ts",
-    "db:apply:noninteractive": "npm run db:generate && npm run db:migrate"
+    "db:apply:noninteractive": "npm run db:generate && npm run db:migrate",
+    "fix:coffee": "node tools/fix-missing-coffee-imports.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
