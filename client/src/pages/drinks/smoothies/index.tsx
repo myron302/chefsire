@@ -4,13 +4,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { 
+import {
   Sparkles, Clock, Users, Trophy, Heart, Star,
   CheckCircle, Target, Flame, Leaf, Apple,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift,
   Dumbbell, Activity, BarChart3, Shuffle, Camera, Share2,
-  FlaskConical, GlassWater, ArrowLeft, Coffee, IceCream, 
-  X, Wine
+  FlaskConical, GlassWater, ArrowLeft, Coffee, IceCream,
+  X, Wine, ArrowRight, Droplets
 } from 'lucide-react';
 
 import UniversalSearch from '@/components/UniversalSearch';
@@ -427,36 +427,83 @@ export default function SmoothiesPage() {
         </div>
 
         {/* Cross-Hub Navigation */}
-        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
-          <CardContent className="p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+          <CardContent className="p-6">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <GlassWater className="h-6 w-6 text-purple-600" />
+              Explore Other Drink Categories
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Link href="/drinks/protein-shakes">
-                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
-                  <FlaskConical className="h-4 w-4 mr-2 text-blue-600" />
-                  <span>Protein Shakes</span>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                <Button
+                  variant="outline"
+                  className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                >
+                  <div className="flex items-center gap-3 w-full">
+                    <div className="p-2 bg-blue-600 rounded-lg">
+                      <Dumbbell className="h-5 w-5 text-white" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <div className="font-bold text-base">Protein Shakes</div>
+                      <div className="text-xs text-gray-600">Build muscle & recover</div>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <div className="text-xs text-gray-500 ml-11">98 recipes</div>
                 </Button>
               </Link>
               <Link href="/drinks/detoxes">
-                <Button variant="outline" className="w-full justify-start hover:bg-teal-50 hover:border-teal-300">
-                  <Leaf className="h-4 w-4 mr-2 text-teal-600" />
-                  <span>Detoxes & Cleanses</span>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                <Button
+                  variant="outline"
+                  className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                >
+                  <div className="flex items-center gap-3 w-full">
+                    <div className="p-2 bg-green-600 rounded-lg">
+                      <Droplets className="h-5 w-5 text-white" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <div className="font-bold text-base">Detox Drinks</div>
+                      <div className="text-xs text-gray-600">Cleanse & refresh</div>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <div className="text-xs text-gray-500 ml-11">26 recipes</div>
                 </Button>
               </Link>
               <Link href="/drinks/caffeinated">
-                <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
-                  <Flame className="h-4 w-4 mr-2 text-amber-600" />
-                  <span>Caffeinated Drinks</span>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                <Button
+                  variant="outline"
+                  className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                >
+                  <div className="flex items-center gap-3 w-full">
+                    <div className="p-2 bg-amber-600 rounded-lg">
+                      <Coffee className="h-5 w-5 text-white" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <div className="font-bold text-base">Caffeinated Drinks</div>
+                      <div className="text-xs text-gray-600">Coffee, tea & energy drinks</div>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <div className="text-xs text-gray-500 ml-11">186 recipes</div>
                 </Button>
               </Link>
               <Link href="/drinks/potent-potables">
-                <Button variant="outline" className="w-full justify-start hover:bg-purple-50 hover:border-purple-300">
-                  <Wine className="h-4 w-4 mr-2 text-purple-600" />
-                  <span>Potent Potables</span>
-                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                <Button
+                  variant="outline"
+                  className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                >
+                  <div className="flex items-center gap-3 w-full">
+                    <div className="p-2 bg-purple-600 rounded-lg">
+                      <Wine className="h-5 w-5 text-white" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <div className="font-bold text-base">Potent Potables</div>
+                      <div className="text-xs text-gray-600">Cocktails & mocktails</div>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <div className="text-xs text-gray-500 ml-11">168 recipes</div>
                 </Button>
               </Link>
             </div>
