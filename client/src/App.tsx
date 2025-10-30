@@ -130,6 +130,9 @@ import CreateCompetitionPage from "@/pages/competitions/CreateCompetitionPage";
 import CompetitionRoomPage from "@/pages/competitions/CompetitionRoomPage";
 import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage";
 
+// ========== DMs ==========
+import DmPage from "@/pages/dm";
+
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
   React.useEffect(() => setLocation(to), [to, setLocation]);
@@ -264,6 +267,11 @@ function AppRouter() {
         {/* Shortlinks (optional nice-to-have) */}
         <Route path="/daiquiri"><Redirect to="/drinks/potent-potables/daiquiri" /></Route>
         <Route path="/daquiri"><Redirect to="/drinks/potent-potables/daiquiri" /></Route>
+
+        {/* DMs */}
+        <Route path="/messages"><Redirect to="/dm" /></Route>
+        <Route path="/inbox"><Redirect to="/dm" /></Route>
+        <Route path="/dm/:id?" component={DmPage} />
 
         {/* Legacy redirects: Virgin → Mocktails */}
         <Route path="/drinks/potent-potables/virgin">
