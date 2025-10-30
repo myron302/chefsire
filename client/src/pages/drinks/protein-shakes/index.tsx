@@ -338,6 +338,12 @@ export default function ProteinShakesPage({ params }: Params) {
                 <div className="text-xs text-gray-500 ml-11">186 recipes</div>
               </Button>
             </Link>
+            <Link href="/drinks/caffeinated">
+              <Button variant="outline" size="sm" className="gap-2">
+                <Flame className="w-4 h-4" />
+                Caffeinated
+              </Button>
+            </Link>
             <Link href="/drinks/potent-potables">
               <Button
                 variant="outline"
