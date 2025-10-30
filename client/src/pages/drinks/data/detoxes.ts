@@ -28,6 +28,15 @@ export const otherDrinkHubs: DrinkCategory[] = [
     count: '523 recipes'
   },
   {
+    id: 'caffeinated',
+    name: 'Caffeinated Drinks',
+    description: 'Coffee, tea & energy drinks',
+    icon: Coffee,
+    route: '/drinks/caffeinated',
+    color: 'bg-amber-600',
+    count: '186 recipes'
+  },
+  {
     id: 'potent-potables',
     name: 'Potent Potables',
     description: 'Cocktails & beverages',

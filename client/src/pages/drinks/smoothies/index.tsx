@@ -430,7 +430,7 @@ export default function SmoothiesPage() {
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <Link href="/drinks/protein-shakes">
                 <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:border-blue-300">
                   <FlaskConical className="h-4 w-4 mr-2 text-blue-600" />
@@ -442,6 +442,13 @@ export default function SmoothiesPage() {
                 <Button variant="outline" className="w-full justify-start hover:bg-teal-50 hover:border-teal-300">
                   <Leaf className="h-4 w-4 mr-2 text-teal-600" />
                   <span>Detoxes & Cleanses</span>
+                  <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                </Button>
+              </Link>
+              <Link href="/drinks/caffeinated">
+                <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
+                  <Flame className="h-4 w-4 mr-2 text-amber-600" />
+                  <span>Caffeinated Drinks</span>
                   <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
                 </Button>
               </Link>
