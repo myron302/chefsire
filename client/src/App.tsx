@@ -23,6 +23,10 @@ import Feed from "@/pages/social/feed";
 import Profile from "@/pages/social/profile";
 import CreatePost from "@/pages/social/create-post";
 
+// 🔔 DMs (NEW)
+import DMInboxPage from "@/pages/dm/InboxPage";
+import DMThreadPage from "@/pages/dm/ThreadPage";
+
 // Service Pages
 import CateringMarketplace from "@/pages/services/catering";
 import WeddingPlanning from "@/pages/services/wedding-planning";
@@ -129,9 +133,6 @@ import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole"
 import CreateCompetitionPage from "@/pages/competitions/CreateCompetitionPage";
 import CompetitionRoomPage from "@/pages/competitions/CompetitionRoomPage";
 import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage";
-
-// ========== DMs ==========
-import DmPage from "@/pages/dm";
 
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
@@ -268,11 +269,6 @@ function AppRouter() {
         <Route path="/daiquiri"><Redirect to="/drinks/potent-potables/daiquiri" /></Route>
         <Route path="/daquiri"><Redirect to="/drinks/potent-potables/daiquiri" /></Route>
 
-        {/* DMs */}
-        <Route path="/messages"><Redirect to="/dm" /></Route>
-        <Route path="/inbox"><Redirect to="/dm" /></Route>
-        <Route path="/dm/:id?" component={DmPage} />
-
         {/* Legacy redirects: Virgin → Mocktails */}
         <Route path="/drinks/potent-potables/virgin">
           <Redirect to="/drinks/potent-potables/mocktails" />
@@ -294,6 +290,10 @@ function AppRouter() {
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
         <Route path="/explore" component={ExplorePage} />
+
+        {/* 🔔 DMs (NEW) */}
+        <Route path="/messages" component={DMInboxPage} />
+        <Route path="/messages/:threadId" component={DMThreadPage} />
 
         {/* BiteMap */}
         <Route path="/bitemap" component={BiteMapPage} />
@@ -348,9 +348,6 @@ function AppRouter() {
           {() => <DrinksSection />}
         </Route>
         <Route path="/drinks/detoxes/:rest*">
-          {() => <DrinksSection />}
-        </Route>
-        <Route path="/drinks/caffeinated/:rest*">
           {() => <DrinksSection />}
         </Route>
         <Route path="/drinks/potent-potables/:rest*">
