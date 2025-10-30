@@ -10,8 +10,7 @@ import {
   Search, Filter, Share2, ArrowLeft, Activity,
   BarChart3, Sparkles, Plus, Camera, Zap, X, Check,
   Apple, Sun, Leaf, Palmtree, Droplets, Clipboard, RotateCcw,
-  Crown, Wine, Flame
-, Coffee} from 'lucide-react';
+  Crown, Wine, Flame, Coffee} from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';

@@ -11,8 +11,7 @@ import {
   Search, Share2, ArrowLeft, Check, X,
   Camera, GlassWater, Crown, Gem,
   BookOpen, Home, Zap, Apple, Leaf, Martini,
-  Clipboard, RotateCcw
-, Coffee} from 'lucide-react';
+  Clipboard, RotateCcw, Coffee} from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 

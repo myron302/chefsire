@@ -9,8 +9,7 @@ import {
   Dumbbell, Clock, Heart, Star, Target, Flame, Droplets, Leaf, Apple,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
-  Beaker, Activity, BarChart3, Sparkles, Moon, Wine, ArrowRight, X, Check, Clipboard, RotateCcw
-, Coffee} from 'lucide-react';
+  Beaker, Activity, BarChart3, Sparkles, Moon, Wine, ArrowRight, X, Check, Clipboard, RotateCcw, Coffee} from 'lucide-react';
 import { useDrinks } from "@/contexts/DrinksContext";
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';

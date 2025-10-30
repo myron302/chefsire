@@ -9,8 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { 
   Droplets, Leaf, Heart, Star, Search, Share2, ArrowLeft,
   Camera, Zap, Sparkles, X, Check, Apple, Sun, Crown, Activity, Trophy, IceCream,
-  Clipboard, RotateCcw, Wine, Flame, Dumbbell, Sprout
-, Coffee} from 'lucide-react';
+  Clipboard, RotateCcw, Wine, Flame, Dumbbell, Sprout, Coffee} from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
