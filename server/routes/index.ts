@@ -1,4 +1,3 @@
-// server/routes/index.ts
 import { Router } from "express";
 
 // AUTH ROUTES
@@ -28,6 +27,9 @@ import storesCrudRouter from "./stores-crud";    // admin CRUD
 
 // Dev mail health-check route
 import devMailcheckRouter from "./dev.mailcheck";
+
+// ✅ DMs
+import dmRouter from "./dm";
 
 const r = Router();
 
@@ -63,6 +65,9 @@ r.use("/stores", storesPublicRouter);
 // admin CRUD endpoints: /api/stores-crud/*
 r.use("/stores-crud", storesCrudRouter);
 
+// ---- DMs ----
+r.use("/dm", dmRouter);
+
 // ---- Dev helpers ----
 r.use(devMailcheckRouter);
 
@@ -88,6 +93,7 @@ if (process.env.NODE_ENV !== "production") {
         "/competitions/*",
         "/stores/*",       // public
         "/stores-crud/*",  // admin
+        "/dm/*",           // ✅ new
         "/auth/_mail-verify",
       ],
     });
