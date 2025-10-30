@@ -342,6 +342,9 @@ function AppRouter() {
         <Route path="/drinks/detoxes/:rest*">
           {() => <DrinksSection />}
         </Route>
+        <Route path="/drinks/caffeinated/:rest*">
+          {() => <DrinksSection />}
+        </Route>
         <Route path="/drinks/potent-potables/:rest*">
           {() => <DrinksSection />}
         </Route>
