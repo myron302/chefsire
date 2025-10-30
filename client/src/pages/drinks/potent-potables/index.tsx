@@ -175,7 +175,8 @@ export default function PotentPotablesPage() {
                   { href: '/drinks', icon: Sparkles, label: 'All Drinks', badge: '400+', color: 'indigo' },
                   { href: '/drinks/smoothies', icon: Apple, label: 'Smoothies', badge: '132', color: 'purple' },
                   { href: '/drinks/protein-shakes', icon: FlaskConical, label: 'Protein Shakes', badge: '98', color: 'green' },
-                  { href: '/drinks/detoxes', icon: Leaf, label: 'Detoxes', badge: '26', color: 'teal' }
+                  { href: '/drinks/detoxes', icon: Leaf, label: 'Detoxes', badge: '26', color: 'teal' },
+                  { href: '/drinks/caffeinated', icon: Coffee, label: 'Caffeinated', badge: '186', color: 'amber' }
                 ].map((item) => (
                   <Link key={item.href} href={item.href}>
                     <Button variant="outline" className={`gap-2 hover:bg-${item.color}-50 hover:border-${item.color}-300 transition-all hover:scale-105`}>

@@ -302,6 +302,12 @@ export default function ProteinShakesPage({ params }: Params) {
                 Detoxes
               </Button>
             </Link>
+            <Link href="/drinks/caffeinated">
+              <Button variant="outline" size="sm" className="gap-2">
+                <Flame className="w-4 h-4" />
+                Caffeinated
+              </Button>
+            </Link>
             <Link href="/drinks/potent-potables">
               <Button variant="outline" size="sm" className="gap-2">
                 <Wine className="w-4 h-4" />
