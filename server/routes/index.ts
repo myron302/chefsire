@@ -39,7 +39,7 @@ const r = Router();
  *   app.use("/api", routes)
  */
 
-// ---- AUTH ----
+// ---- AUTH (mounted at root so it exposes /auth/*) ----
 r.use(authRouter);
 
 // ---- Core features ----
@@ -61,8 +61,8 @@ r.use("/google", googleRouter);
 r.use("/competitions", competitionsRouter);
 
 // ---- Stores ----
-r.use("/stores", storesPublicRouter);     // public storefront endpoints
-r.use("/stores-crud", storesCrudRouter);  // admin CRUD
+r.use("/stores", storesPublicRouter);
+r.use("/stores-crud", storesCrudRouter);
 
 // ✅ ---- Direct Messages ----
 r.use("/dm", dmRouter);
