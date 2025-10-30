@@ -30,6 +30,8 @@ import {
   Eye,
   Bookmark,
   Link as LinkIcon,
+  Video,
+  Play,
 } from "lucide-react";
 import type { User, PostWithUser } from "@shared/schema";
 
@@ -287,7 +289,15 @@ export default function Profile() {
       : displayUser.displayName || displayUser.username;
   const profileHeading = `${title ? `${title} ` : ""}${primaryName}`.trim();
 
-  const userPosts = posts?.filter((p) => !p.isRecipe) || [];
+  // Helper function to check if a URL is a video
+  const isVideoUrl = (url: string) => {
+    const videoExtensions = ['.mp4', '.mov', '.webm', '.avi', '.mkv', '.m4v'];
+    return videoExtensions.some(ext => url?.toLowerCase().includes(ext));
+  };
+
+  const allUserPosts = posts?.filter((p) => !p.isRecipe) || [];
+  const userPhotos = allUserPosts.filter((p) => !isVideoUrl(p.imageUrl));
+  const userVideos = allUserPosts.filter((p) => isVideoUrl(p.imageUrl));
   const userRecipes = posts?.filter((p) => p.isRecipe) || [];
   const customDrinks = drinksData?.drinks || [];
   const savedDrinks = savedDrinksData?.drinks || [];
@@ -319,12 +329,20 @@ export default function Profile() {
         <div className="flex-1">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
             <div>
-              {/* Single line heading with Title + Name */}
+              {/* Royal Title Badge (if exists) */}
+              {title && (
+                <Badge className="mb-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white">
+                  <Crown className="w-3 h-3 mr-1" />
+                  {title}
+                </Badge>
+              )}
+
+              {/* Name */}
               <h1
                 className="text-2xl font-bold"
                 data-testid={`text-profile-name-${displayUser.id}`}
               >
-                {profileHeading}
+                {primaryName}
               </h1>
 
               {/* Optional subtitle: show specialty if present (NOT @username) */}
@@ -447,11 +465,15 @@ export default function Profile() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="posts" className="w-full">
-        <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="posts" className="flex items-center space-x-2" data-testid="tab-posts">
+      <Tabs defaultValue="photos" className="w-full">
+        <TabsList className="grid w-full grid-cols-7">
+          <TabsTrigger value="photos" className="flex items-center space-x-2" data-testid="tab-photos">
             <Image className="h-4 w-4" />
-            <span className="hidden sm:inline">Posts</span>
+            <span className="hidden sm:inline">Photos</span>
+          </TabsTrigger>
+          <TabsTrigger value="bites" className="flex items-center space-x-2" data-testid="tab-bites">
+            <Video className="h-4 w-4" />
+            <span className="hidden sm:inline">Bites</span>
           </TabsTrigger>
           <TabsTrigger value="recipes" className="flex items-center space-x-2" data-testid="tab-recipes">
             <ChefHat className="h-4 w-4" />
@@ -475,24 +497,24 @@ export default function Profile() {
           </TabsTrigger>
         </TabsList>
 
-        {/* POSTS */}
-        <TabsContent value="posts" className="mt-6">
+        {/* PHOTOS */}
+        <TabsContent value="photos" className="mt-6">
           {postsLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className="aspect-square bg-muted rounded-lg animate-pulse" />
               ))}
             </div>
-          ) : userPosts.length > 0 ? (
+          ) : userPhotos.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {userPosts.map((post) => (
+              {userPhotos.map((post) => (
                 <Card key={post.id} className="group cursor-pointer hover:shadow-lg transition-shadow">
                   <div className="relative overflow-hidden aspect-square">
                     <img
                       src={post.imageUrl}
-                      alt={post.caption || "Post"}
+                      alt={post.caption || "Photo"}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      data-testid={`img-user-post-${post.id}`}
+                      data-testid={`img-user-photo-${post.id}`}
                     />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
                       <div className="flex items-center space-x-4 text-white">
@@ -513,10 +535,69 @@ export default function Profile() {
           ) : (
             <div className="text-center py-12">
               <Image className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-semibold mb-2">No posts yet</h3>
+              <h3 className="text-lg font-semibold mb-2">No photos yet</h3>
               <p className="text-muted-foreground">
-                {isOwnProfile ? "Start sharing your culinary creations!" : "No posts to show."}
+                {isOwnProfile ? "Start sharing your culinary creations!" : "No photos to show."}
               </p>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* BITES (VIDEOS) */}
+        <TabsContent value="bites" className="mt-6">
+          {postsLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="aspect-square bg-muted rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : userVideos.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {userVideos.map((post) => (
+                <Card key={post.id} className="group cursor-pointer hover:shadow-lg transition-shadow">
+                  <div className="relative overflow-hidden aspect-square bg-black">
+                    <video
+                      src={post.imageUrl}
+                      className="w-full h-full object-cover"
+                      data-testid={`video-user-bite-${post.id}`}
+                    />
+                    <div className="absolute inset-0 bg-black/40 group-hover:bg-black/60 transition-colors duration-300 flex items-center justify-center">
+                      <Play className="w-12 h-12 text-white opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all" />
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent">
+                      <div className="flex items-center space-x-4 text-white text-sm">
+                        <span className="flex items-center space-x-1">
+                          <Heart className="h-4 w-4" />
+                          <span>{post.likesCount}</span>
+                        </span>
+                        <span className="flex items-center space-x-1">
+                          <Users className="h-4 w-4" />
+                          <span>{post.commentsCount}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  {post.caption && (
+                    <CardContent className="p-3">
+                      <p className="text-sm line-clamp-2">{post.caption}</p>
+                    </CardContent>
+                  )}
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Video className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+              <h3 className="text-lg font-semibold mb-2">No bites yet</h3>
+              <p className="text-muted-foreground">
+                {isOwnProfile ? "Start sharing your video bites!" : "No video bites to show."}
+              </p>
+              {isOwnProfile && (
+                <Button className="mt-4" onClick={() => setLocation("/create")}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Your First Bite
+                </Button>
+              )}
             </div>
           )}
         </TabsContent>

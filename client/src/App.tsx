@@ -26,6 +26,7 @@ import CreatePost from "@/pages/social/create-post";
 // Service Pages
 import CateringMarketplace from "@/pages/services/catering";
 import WeddingPlanning from "@/pages/services/wedding-planning";
+import WeddingVendorMap from "@/pages/services/wedding-map";
 
 // Other Pages
 import ExplorePage from "@/pages/explore/ExplorePage";
@@ -61,6 +62,7 @@ import SmoothiesHub from "@/pages/drinks/smoothies";
 import ProteinShakesHub from "@/pages/drinks/protein-shakes";
 import DetoxesHub from "@/pages/drinks/detoxes";
 import PotentPotablesHub from "@/pages/drinks/potent-potables";
+import CaffeinatedDrinksHub from "@/pages/drinks/caffeinated";
 
 // ========== SMOOTHIES SUBCATEGORY PAGES ==========
 import BreakfastSmoothies from "@/pages/drinks/smoothies/breakfast";
@@ -199,6 +201,9 @@ function DrinksSection() {
       <Route path="/drinks/detoxes/water" component={DetoxWaters} />
       <Route path="/drinks/detoxes" component={DetoxesHub} />
 
+      {/* ---------- Caffeinated Drinks ---------- */}
+      <Route path="/drinks/caffeinated" component={CaffeinatedDrinksHub} />
+
       {/* ---------- Zero-proof (NOT age-gated) ---------- */}
       <Route path="/drinks/potent-potables/mocktails" component={MocktailsPage} />
 
@@ -302,6 +307,7 @@ function AppRouter() {
 
         <Route path="/catering" component={CateringMarketplace} />
         <Route path="/catering/wedding-planning" component={WeddingPlanning} />
+        <Route path="/catering/wedding-map" component={WeddingVendorMap} />
         <Route path="/potent-potables">
           <Redirect to="/drinks/potent-potables" />
         </Route>
