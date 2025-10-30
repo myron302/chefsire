@@ -30,7 +30,8 @@
     "gen:shims": "node tools/generate-import-shims.js",
     "fix:filenames": "node tools/fix-filenames.js",
     "env:print": "tsx server/scripts/print-env.ts",
-    "test:email": "tsx server/scripts/test-email.ts"
+    "test:email": "tsx server/scripts/test-email.ts",
+    "db:apply:noninteractive": "npm run db:generate && npm run db:migrate"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

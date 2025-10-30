@@ -29,6 +29,9 @@ import storesCrudRouter from "./stores-crud";    // admin CRUD
 // Dev mail health-check route
 import devMailcheckRouter from "./dev.mailcheck";
 
+// ✅ NEW: DMs
+import dmRouter from "./dm";
+
 const r = Router();
 
 /**
@@ -58,10 +61,11 @@ r.use("/google", googleRouter);
 r.use("/competitions", competitionsRouter);
 
 // ---- Stores ----
-// public storefront endpoints: /api/stores/:handle
 r.use("/stores", storesPublicRouter);
-// admin CRUD endpoints: /api/stores-crud/*
 r.use("/stores-crud", storesCrudRouter);
+
+// ✅ ---- Direct Messages ----
+r.use("/dm", dmRouter);
 
 // ---- Dev helpers ----
 r.use(devMailcheckRouter);
@@ -88,6 +92,7 @@ if (process.env.NODE_ENV !== "production") {
         "/competitions/*",
         "/stores/*",       // public
         "/stores-crud/*",  // admin
+        "/dm/*",           // ✅ DMs
         "/auth/_mail-verify",
       ],
     });
