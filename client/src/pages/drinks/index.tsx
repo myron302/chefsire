@@ -60,6 +60,21 @@ const drinkCategories = [
     image: 'https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=300&h=200&fit=crop'
   },
   {
+    id: 'caffeinated',
+    name: 'Caffeinated Drinks',
+    description: 'Coffee, tea, and energy drinks for your daily boost',
+    icon: Coffee,
+    color: 'from-amber-500 to-orange-500',
+    textColor: 'text-amber-600',
+    bgColor: 'bg-amber-50',
+    borderColor: 'border-amber-200',
+    route: '/drinks/caffeinated',
+    recipeCount: 186,
+    features: ['Caffeine Tracker', 'Custom Brews', 'Energy Goals'],
+    trending: true,
+    image: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=300&h=200&fit=crop'
+  },
+  {
     id: 'potent-potables',
     name: 'Potent Potables',
     description: 'Cocktails, mocktails, and specialty beverages',
