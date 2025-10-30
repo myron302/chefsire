@@ -5,13 +5,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
-import { 
-  Sparkles, Clock, Users, Trophy, Heart, Star, Calendar, 
+import {
+  Sparkles, Clock, Users, Trophy, Heart, Star, Calendar,
   CheckCircle, Target, Flame, Droplets, Leaf, Apple,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
   Dumbbell, Activity, BarChart3, Shuffle, Camera, Share2,
   FlaskConical, Weight, Gauge, Triangle, Waves, Shield,
-  Search, ArrowRight, Wine, Home, ArrowLeft, Moon
+  Search, ArrowRight, Wine, Home, ArrowLeft, Moon, Coffee, GlassWater
 } from 'lucide-react';
 
 import UniversalSearch from '@/components/UniversalSearch';
@@ -277,29 +277,65 @@ export default function ProteinShakesPage({ params }: Params) {
       </div>
 
       {/* Cross-Hub Navigation */}
-      <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Home className="w-4 h-4 text-gray-600" />
-            <span className="text-sm text-gray-600">Explore Other Categories</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/drinks">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Sparkles className="w-4 h-4" />
-                All Drinks
-              </Button>
-            </Link>
+      <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+        <CardContent className="p-6">
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <GlassWater className="h-6 w-6 text-purple-600" />
+            Explore Other Drink Categories
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Link href="/drinks/smoothies">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Apple className="w-4 h-4" />
-                Smoothies
+              <Button
+                variant="outline"
+                className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+              >
+                <div className="flex items-center gap-3 w-full">
+                  <div className="p-2 bg-purple-600 rounded-lg">
+                    <Apple className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="font-bold text-base">Smoothies</div>
+                    <div className="text-xs text-gray-600">Fruit & veggie blends</div>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-gray-400" />
+                </div>
+                <div className="text-xs text-gray-500 ml-11">132 recipes</div>
               </Button>
             </Link>
             <Link href="/drinks/detoxes">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Leaf className="w-4 h-4" />
-                Detoxes
+              <Button
+                variant="outline"
+                className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+              >
+                <div className="flex items-center gap-3 w-full">
+                  <div className="p-2 bg-green-600 rounded-lg">
+                    <Droplets className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="font-bold text-base">Detox Drinks</div>
+                    <div className="text-xs text-gray-600">Cleanse & refresh</div>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-gray-400" />
+                </div>
+                <div className="text-xs text-gray-500 ml-11">26 recipes</div>
+              </Button>
+            </Link>
+            <Link href="/drinks/caffeinated">
+              <Button
+                variant="outline"
+                className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+              >
+                <div className="flex items-center gap-3 w-full">
+                  <div className="p-2 bg-amber-600 rounded-lg">
+                    <Coffee className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="font-bold text-base">Caffeinated Drinks</div>
+                    <div className="text-xs text-gray-600">Coffee, tea & energy drinks</div>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-gray-400" />
+                </div>
+                <div className="text-xs text-gray-500 ml-11">186 recipes</div>
               </Button>
             </Link>
             <Link href="/drinks/caffeinated">
@@ -309,9 +345,21 @@ export default function ProteinShakesPage({ params }: Params) {
               </Button>
             </Link>
             <Link href="/drinks/potent-potables">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Wine className="w-4 h-4" />
-                Potent Potables (21+)
+              <Button
+                variant="outline"
+                className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+              >
+                <div className="flex items-center gap-3 w-full">
+                  <div className="p-2 bg-purple-600 rounded-lg">
+                    <Wine className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="font-bold text-base">Potent Potables</div>
+                    <div className="text-xs text-gray-600">Cocktails & mocktails</div>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-gray-400" />
+                </div>
+                <div className="text-xs text-gray-500 ml-11">168 recipes</div>
               </Button>
             </Link>
           </div>

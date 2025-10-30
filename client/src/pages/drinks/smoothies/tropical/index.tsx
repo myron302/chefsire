@@ -9,7 +9,7 @@ import {
   Palmtree, Sun, Heart, Star, Search, Share2, ArrowLeft,
   Camera, Zap, Waves, Droplets, X, Check, Apple, Leaf, Sparkles,
   Clipboard, RotateCcw, Crown, Activity, Wine, Flame
-} from 'lucide-react';
+, Coffee} from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
@@ -281,6 +281,7 @@ const tropicalBenefitsList = [
 // ---------- Cross-nav - Top Level Drink Categories ----------
 const otherDrinkHubs = [
   { id: 'protein-shakes', name: 'Protein Shakes', icon: Zap, route: '/drinks/protein-shakes', description: 'Muscle building' },
+  { id: 'caffeinated', name: 'Caffeinated Drinks', icon: Coffee, route: '/drinks/caffeinated', description: 'Coffee, tea & energy' },
   { id: 'smoothies', name: 'All Smoothies', icon: Sparkles, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
   { id: 'potables', name: 'Potent Potables', icon: Wine, route: '/drinks/potent-potables', description: 'Cocktails (21+)' },
   { id: 'all-drinks', name: 'All Drinks', icon: Flame, route: '/drinks', description: 'Browse everything' }

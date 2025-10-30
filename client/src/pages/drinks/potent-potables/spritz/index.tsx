@@ -10,7 +10,7 @@ import {
   Search, Share2, ArrowLeft, GlassWater, Flame,
   TrendingUp, Award, Zap, Crown, Apple, Leaf,
   Clipboard, RotateCcw, Check, Home, Martini, Sun
-} from 'lucide-react';
+, Coffee} from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 
@@ -346,6 +346,7 @@ const sisterPotentPotablesPages = [
 // CROSS-HUB
 const otherDrinkHubs = [
   { id: 'smoothies', name: 'Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
+  { id: 'caffeinated', name: 'Caffeinated Drinks', icon: Coffee, route: '/drinks/caffeinated', description: 'Coffee, tea & energy' },
   { id: 'protein', name: 'Protein Shakes', icon: Zap, route: '/drinks/protein-shakes', description: 'Muscle building' },
   { id: 'detox', name: 'Detoxes', icon: Leaf, route: '/drinks/detoxes', description: 'Cleansing blends' },
   { id: 'all', name: 'All Drinks', icon: Wine, route: '/drinks', description: 'Browse everything' }

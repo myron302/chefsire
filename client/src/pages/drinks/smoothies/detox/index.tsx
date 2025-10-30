@@ -10,7 +10,7 @@ import {
   Apple, Leaf, Heart, Star, Search, Share2, ArrowLeft,
   Camera, Zap, Sparkles, X, Check, Crown, Activity, IceCream,
   Clipboard, RotateCcw, Wine, Flame, Droplets
-} from 'lucide-react';
+, Coffee} from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
@@ -288,6 +288,7 @@ const detoxBenefits = [
 // ---------- Cross-nav ----------
 const otherDrinkHubs = [
   { id: 'protein-shakes', name: 'Protein Shakes', icon: Zap, route: '/drinks/protein-shakes', description: 'Muscle building' },
+  { id: 'caffeinated', name: 'Caffeinated Drinks', icon: Coffee, route: '/drinks/caffeinated', description: 'Coffee, tea & energy' },
   { id: 'smoothies', name: 'All Smoothies', icon: Apple, route: '/drinks/smoothies', description: 'Fruit & veggie blends' },
   { id: 'potables', name: 'Potent Potables', icon: Wine, route: '/drinks/potent-potables', description: 'Cocktails (21+)' },
   { id: 'all-drinks', name: 'All Drinks', icon: Sparkles, route: '/drinks', description: 'Browse everything' }

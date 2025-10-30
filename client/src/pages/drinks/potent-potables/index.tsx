@@ -5,11 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import RequireAgeGate from "@/components/RequireAgeGate";
-import { 
+import {
   Sparkles, Clock, Users, Trophy, Heart, Star,
   Target, Flame, Droplets, Wine, ArrowRight,
   GlassWater, Martini, ChefHat, ArrowLeft, Home,
-  FlaskConical, Leaf, Apple, Zap, Coffee
+  FlaskConical, Leaf, Apple, Zap, Coffee, Dumbbell
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
@@ -161,31 +161,85 @@ export default function PotentPotablesPage() {
             </div>
           </div>
 
-          <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
+          <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
             <CardContent className="p-6">
-              <div className="flex items-center justify-center gap-2 mb-3">
-                <Home className="w-5 h-5 text-indigo-600" />
-                <h3 className="text-lg font-bold text-gray-800">Explore Other Drink Categories</h3>
-              </div>
-              <p className="text-center text-sm text-gray-600 mb-4 max-w-2xl mx-auto">
-                Discover healthy smoothies, powerful protein shakes, and cleansing detox drinks to balance your cocktail adventures
-              </p>
-              <div className="flex flex-wrap gap-3 justify-center">
-                {[
-                  { href: '/drinks', icon: Sparkles, label: 'All Drinks', badge: '400+', color: 'indigo' },
-                  { href: '/drinks/smoothies', icon: Apple, label: 'Smoothies', badge: '132', color: 'purple' },
-                  { href: '/drinks/protein-shakes', icon: FlaskConical, label: 'Protein Shakes', badge: '98', color: 'green' },
-                  { href: '/drinks/detoxes', icon: Leaf, label: 'Detoxes', badge: '26', color: 'teal' },
-                  { href: '/drinks/caffeinated', icon: Coffee, label: 'Caffeinated', badge: '186', color: 'amber' }
-                ].map((item) => (
-                  <Link key={item.href} href={item.href}>
-                    <Button variant="outline" className={`gap-2 hover:bg-${item.color}-50 hover:border-${item.color}-300 transition-all hover:scale-105`}>
-                      <item.icon className={`w-4 h-4 text-${item.color}-500`} />
-                      <span>{item.label}</span>
-                      <Badge variant="secondary" className={`ml-1 bg-${item.color}-100 text-${item.color}-700`}>{item.badge}</Badge>
-                    </Button>
-                  </Link>
-                ))}
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <GlassWater className="h-6 w-6 text-purple-600" />
+                Explore Other Drink Categories
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Link href="/drinks/smoothies">
+                  <Button
+                    variant="outline"
+                    className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                  >
+                    <div className="flex items-center gap-3 w-full">
+                      <div className="p-2 bg-purple-600 rounded-lg">
+                        <Apple className="h-5 w-5 text-white" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className="font-bold text-base">Smoothies</div>
+                        <div className="text-xs text-gray-600">Fruit & veggie blends</div>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <div className="text-xs text-gray-500 ml-11">132 recipes</div>
+                  </Button>
+                </Link>
+                <Link href="/drinks/protein-shakes">
+                  <Button
+                    variant="outline"
+                    className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                  >
+                    <div className="flex items-center gap-3 w-full">
+                      <div className="p-2 bg-blue-600 rounded-lg">
+                        <Dumbbell className="h-5 w-5 text-white" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className="font-bold text-base">Protein Shakes</div>
+                        <div className="text-xs text-gray-600">Build muscle & recover</div>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <div className="text-xs text-gray-500 ml-11">98 recipes</div>
+                  </Button>
+                </Link>
+                <Link href="/drinks/detoxes">
+                  <Button
+                    variant="outline"
+                    className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                  >
+                    <div className="flex items-center gap-3 w-full">
+                      <div className="p-2 bg-green-600 rounded-lg">
+                        <Droplets className="h-5 w-5 text-white" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className="font-bold text-base">Detox Drinks</div>
+                        <div className="text-xs text-gray-600">Cleanse & refresh</div>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <div className="text-xs text-gray-500 ml-11">26 recipes</div>
+                  </Button>
+                </Link>
+                <Link href="/drinks/caffeinated">
+                  <Button
+                    variant="outline"
+                    className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                  >
+                    <div className="flex items-center gap-3 w-full">
+                      <div className="p-2 bg-amber-600 rounded-lg">
+                        <Coffee className="h-5 w-5 text-white" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className="font-bold text-base">Caffeinated Drinks</div>
+                        <div className="text-xs text-gray-600">Coffee, tea & energy drinks</div>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <div className="text-xs text-gray-500 ml-11">186 recipes</div>
+                  </Button>
+                </Link>
               </div>
             </CardContent>
           </Card>
