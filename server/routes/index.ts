@@ -1,3 +1,4 @@
+// server/routes/index.ts
 import { Router } from "express";
 
 // AUTH ROUTES
@@ -28,7 +29,7 @@ import storesCrudRouter from "./stores-crud";    // admin CRUD
 // Dev mail health-check route
 import devMailcheckRouter from "./dev.mailcheck";
 
-// ✅ DMs
+// ✅ NEW: DMs
 import dmRouter from "./dm";
 
 const r = Router();
@@ -38,7 +39,7 @@ const r = Router();
  *   app.use("/api", routes)
  */
 
-// ---- AUTH (mounted at root so it exposes /auth/*) ----
+// ---- AUTH ----
 r.use(authRouter);
 
 // ---- Core features ----
@@ -60,12 +61,10 @@ r.use("/google", googleRouter);
 r.use("/competitions", competitionsRouter);
 
 // ---- Stores ----
-// public storefront endpoints: /api/stores/:handle
-r.use("/stores", storesPublicRouter);
-// admin CRUD endpoints: /api/stores-crud/*
-r.use("/stores-crud", storesCrudRouter);
+r.use("/stores", storesPublicRouter);     // public storefront endpoints
+r.use("/stores-crud", storesCrudRouter);  // admin CRUD
 
-// ---- DMs ----
+// ✅ ---- Direct Messages ----
 r.use("/dm", dmRouter);
 
 // ---- Dev helpers ----
@@ -93,7 +92,7 @@ if (process.env.NODE_ENV !== "production") {
         "/competitions/*",
         "/stores/*",       // public
         "/stores-crud/*",  // admin
-        "/dm/*",           // ✅ new
+        "/dm/*",           // ✅ DMs
         "/auth/_mail-verify",
       ],
     });
