@@ -32,7 +32,10 @@
     "env:print": "tsx server/scripts/print-env.ts",
     "test:email": "tsx server/scripts/test-email.ts",
     "db:apply:noninteractive": "npm run db:generate && npm run db:migrate",
-    "fix:coffee": "node tools/fix-missing-coffee-imports.js"
+    "fix:coffee": "node tools/fix-missing-coffee-imports.js",
+    "check:coffee": "node tools/check-missing-icon-imports.js Coffee",
+    "check:icons": "node tools/check-missing-icon-imports.js",
+    "fix:icons": "node tools/fix-missing-coffee-imports.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
