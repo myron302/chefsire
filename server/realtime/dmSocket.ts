@@ -1,13 +1,17 @@
+// server/realtime/dmSocket.ts
 import type { Server as HttpServer } from "http";
 import { Server } from "socket.io";
-import { db } from "../db";
 import { and, eq } from "drizzle-orm";
-import { dmParticipants, dmMessages } from "../../shared/schema.dm";
+import { db } from "../db";
+import {
+  dmParticipants,
+  dmMessages,
+} from "../../shared/schema.dm.ts";
 
-// Extract userId from auth (customize to your auth)
 function userIdFromSocket(socket: any): string | null {
-  // Options: cookie/session, JWT, or query header during connect
-  return (socket.handshake.auth?.userId || socket.handshake.headers["x-user-id"]) as string || null;
+  return (socket.handshake.auth?.userId ||
+    socket.handshake.headers["x-user-id"] ||
+    null) as string | null;
 }
 
 export function attachDmRealtime(httpServer: HttpServer) {
@@ -16,8 +20,10 @@ export function attachDmRealtime(httpServer: HttpServer) {
     cors: { origin: true, credentials: true },
   });
 
-  const ns = io.of("/dm"); // namespaced to avoid conflicts
+  // Namespace for DMs
+  const ns = io.of("/dm");
 
+  // Simple auth gate
   ns.use((socket, next) => {
     const uid = userIdFromSocket(socket);
     if (!uid) return next(new Error("unauthorized"));
@@ -28,16 +34,28 @@ export function attachDmRealtime(httpServer: HttpServer) {
   ns.on("connection", (socket) => {
     const userId: string = (socket as any).userId;
 
-    // Join a thread room after verifying membership
+    // Join a thread room (only if member)
     socket.on("join", async ({ threadId }: { threadId: string }) => {
-      const member = await db.query.dmParticipants.findFirst({
-        where: and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)),
-      });
-      if (!member) return;
-      socket.join(threadId);
-      ns.to(socket.id).emit("joined", { threadId });
+      try {
+        const member = await db
+          .select()
+          .from(dmParticipants)
+          .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)))
+          .limit(1);
+
+        if (member.length === 0) {
+          socket.emit("error", { error: "forbidden" });
+          return;
+        }
+
+        socket.join(threadId);
+        socket.emit("joined", { threadId });
+      } catch (e: any) {
+        socket.emit("error", { error: e?.message || "join failed" });
+      }
     });
 
+    // Leave a thread room
     socket.on("leave", ({ threadId }: { threadId: string }) => {
       socket.leave(threadId);
     });
@@ -47,34 +65,87 @@ export function attachDmRealtime(httpServer: HttpServer) {
       socket.to(threadId).emit("typing", { threadId, userId, typing });
     });
 
-    // Send message (server persists + emits)
-    socket.on("send", async ({ threadId, text, attachments }: { threadId: string; text: string; attachments?: any[] }) => {
-      if (!text || !threadId) return;
-      const member = await db.query.dmParticipants.findFirst({
-        where: and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)),
-      });
-      if (!member) return;
+    // Send message over socket (persists + broadcasts)
+    socket.on(
+      "send",
+      async ({
+        threadId,
+        text,
+        attachments,
+      }: {
+        threadId: string;
+        text: string;
+        attachments?: Array<{ name: string; url: string; type?: string }>;
+      }) => {
+        try {
+          // Auth: must be participant
+          const member = await db
+            .select()
+            .from(dmParticipants)
+            .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)))
+            .limit(1);
 
-      const [msg] = await db.insert(dmMessages).values({
-        threadId, senderId: userId, body: text, attachments: attachments ?? [],
-      }).returning();
+          if (member.length === 0) {
+            socket.emit("error", { error: "forbidden" });
+            return;
+          }
 
-      // Mark sender read
-      await db.update(dmParticipants)
-        .set({ lastReadMessageId: msg.id, lastReadAt: new Date() })
-        .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
+          // Persist message
+          const [msg] = await db
+            .insert(dmMessages)
+            .values({
+              threadId,
+              senderId: userId,
+              body: String(text || ""),
+              attachments: attachments ?? [],
+            })
+            .returning();
 
-      ns.to(threadId).emit("message", { message: msg });
-    });
+          // Mark my read position
+          await db
+            .update(dmParticipants)
+            .set({ lastReadMessageId: msg.id, lastReadAt: new Date() })
+            .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
 
-    // Read receipts
-    socket.on("read", async ({ threadId, lastReadMessageId }: { threadId: string; lastReadMessageId?: string }) => {
-      await db.update(dmParticipants)
-        .set({ lastReadMessageId: lastReadMessageId ?? null, lastReadAt: new Date() })
-        .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
-      socket.to(threadId).emit("read", { threadId, userId, lastReadMessageId: lastReadMessageId ?? null });
+          // Broadcast to everyone in the room (including sender for confirm)
+          ns.to(threadId).emit("message", { threadId, message: msg });
+        } catch (e: any) {
+          socket.emit("error", { error: e?.message || "send failed" });
+        }
+      }
+    );
+
+    // Mark read via socket
+    socket.on(
+      "read",
+      async ({ threadId, lastReadMessageId }: { threadId: string; lastReadMessageId?: string }) => {
+        try {
+          const member = await db
+            .select()
+            .from(dmParticipants)
+            .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)))
+            .limit(1);
+
+          if (member.length === 0) {
+            socket.emit("error", { error: "forbidden" });
+            return;
+          }
+
+          await db
+            .update(dmParticipants)
+            .set({ lastReadMessageId: lastReadMessageId ?? null, lastReadAt: new Date() })
+            .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
+
+          // Notify others of read receipt
+          socket.to(threadId).emit("read", { threadId, userId, lastReadMessageId: lastReadMessageId ?? null });
+        } catch (e: any) {
+          socket.emit("error", { error: e?.message || "read failed" });
+        }
+      }
+    );
+
+    socket.on("disconnect", () => {
+      // no-op; hook available for presence if you add it later
     });
   });
-
-  return ns;
 }
