@@ -1,149 +1,142 @@
 // tools/fix-missing-coffee-imports.js
-// Bulk-fixes files that USE `Coffee` but forgot to import it from "lucide-react".
-// Safe: only adds Coffee to an existing lucide import OR inserts a new import.
-// ESM script (package.json has "type":"module").
+// ESM-friendly (package.json has "type":"module")
+import fs from "node:fs/promises";
+import path from "node:path";
+import process from "node:process";
 
-import { promises as fs } from "fs";
-import { join } from "path";
+const ARGS = process.argv.slice(2).filter(Boolean);
 
-const ROOT = process.cwd();
-const SEARCH_DIR = join(ROOT, "client", "src", "pages", "drinks");
+// icons to fix (default Coffee)
+const ICONS = ARGS.length && !ARGS[0].includes(".tsx") && !ARGS[0].includes(".ts")
+  ? ARGS.filter((a) => !a.endsWith(".tsx") && !a.endsWith(".ts"))
+  : ["Coffee"];
 
-// Recursively collect all .tsx files under SEARCH_DIR
-async function listTsxFiles(dir) {
-  const out = [];
+// optional explicit file paths after icons
+const EXPLICIT_FILES = ARGS.filter((a) => a.endsWith(".tsx") || a.endsWith(".ts"));
+
+const BASE_DIR = process.env.ICON_FIX_DIR || path.resolve("client/src");
+
+async function walk(dir, out = []) {
   const entries = await fs.readdir(dir, { withFileTypes: true });
   for (const e of entries) {
-    const p = join(dir, e.name);
+    const p = path.join(dir, e.name);
     if (e.isDirectory()) {
-      const kids = await listTsxFiles(p);
-      out.push(...kids);
-    } else if (e.isFile() && e.name.endsWith(".tsx")) {
+      await walk(p, out);
+    } else if (e.isFile() && (p.endsWith(".tsx") || p.endsWith(".ts"))) {
       out.push(p);
     }
   }
   return out;
 }
 
-const HAS_COFFEE_IMPORT_RE =
-  /import\s*{\s*([^}]*)\s*}\s*from\s*['"]lucide-react['"]\s*;?/m;
-const COFFEE_IN_IMPORT_LIST_RE = /\bCoffee\b/;
-const HAS_ANY_IMPORT_RE = /^\s*import\s/m;
+function needsIcon(code, icon) {
+  const usage = new RegExp(`\\b${icon}\\b`).test(code);
+  if (!usage) return false;
+  const imported = new RegExp(
+    `import\\s+{[^}]*\\b${icon}\\b[^}]*}\\s+from\\s+['"]lucide-react['"]`
+  ).test(code);
+  if (imported) return false;
 
-// crude check to see if the file references Coffee symbol anywhere
-const USES_COFFEE_RE = /(^|[^.$\w])Coffee([^$\w]|$)/m;
-
-function addCoffeeToImport(importLine) {
-  // import { A, B, C } from "lucide-react"
-  const m = importLine.match(HAS_COFFEE_IMPORT_RE);
-  if (!m) return null;
-
-  const inner = m[1]; // "A, B, C"
-  // split items by comma, preserve ordering, trim
-  const parts = inner
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  if (!parts.includes("Coffee")) {
-    parts.push("Coffee");
+  // namespace import?
+  const nsImport = /import\s+\*\s+as\s+(\w+)\s+from\s+['"]lucide-react['"]/.exec(code);
+  if (nsImport) {
+    const ns = nsImport[1];
+    const nsUse = new RegExp(`\\b${ns}\\s*\\.\\s*${icon}\\b`).test(code);
+    if (nsUse) return false;
   }
+  return true;
+}
 
-  const rebuilt = importLine.replace(
-    HAS_COFFEE_IMPORT_RE,
-    `import { ${parts.join(", ")} } from "lucide-react";`
+function insertNamedIntoExisting(line, iconsToAdd) {
+  // line example: import { A, B, C } from 'lucide-react'
+  return line.replace(
+    /import\s+{([^}]*)}\s+from\s+(['"])lucide-react\2/,
+    (m, inside, quote) => {
+      const names = inside
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const set = new Set(names);
+      for (const i of iconsToAdd) set.add(i);
+      const sorted = Array.from(set).sort((a, b) => a.localeCompare(b));
+      return `import { ${sorted.join(", ")} } from ${quote}lucide-react${quote}`;
+    }
   );
-  return rebuilt;
 }
 
-function insertCoffeeImportAtTop(source) {
-  // place after the last import statement for neatness
-  const lines = source.split("\n");
-  let lastImportIdx = -1;
+function addOrExtendLucideImport(code, iconsToAdd) {
+  // 1) If there is an existing named lucide import, extend it
+  const namedRe = /import\s+{[^}]*}\s+from\s+['"]lucide-react['"]\s*;?/;
+  if (namedRe.test(code)) {
+    let done = false;
+    const lines = code.split(/\r?\n/).map((line) => {
+      if (!done && namedRe.test(line)) {
+        done = true;
+        return insertNamedIntoExisting(line, iconsToAdd);
+      }
+      return line;
+    });
+    return lines.join("\n");
+  }
+
+  // 2) If there is a namespace lucide import, add a separate named line (safe)
+  const nsRe = /import\s+\*\s+as\s+\w+\s+from\s+['"]lucide-react['"]\s*;?/;
+  const importLine = `import { ${iconsToAdd.join(", ")} } from "lucide-react";`;
+  if (nsRe.test(code)) {
+    // insert after the last import line
+    const lines = code.split(/\r?\n/);
+    let lastImport = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (/^\s*import\s+/.test(lines[i])) lastImport = i;
+    }
+    if (lastImport >= 0) {
+      lines.splice(lastImport + 1, 0, importLine);
+      return lines.join("\n");
+    }
+    return `${importLine}\n${code}`;
+  }
+
+  // 3) No lucide import at all → add new named import after last import or at top
+  const lines = code.split(/\r?\n/);
+  let lastImport = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (/^\s*import\s/.test(lines[i])) lastImportIdx = i;
-    else if (lastImportIdx !== -1 && lines[i].trim() && !/^\s*\/\//.test(lines[i])) {
-      // we hit a non-import non-empty line → stop scanning
-      break;
-    }
+    if (/^\s*import\s+/.test(lines[i])) lastImport = i;
   }
-  const coffeeImport = `import { Coffee } from "lucide-react";`;
-  if (lastImportIdx >= 0) {
-    lines.splice(lastImportIdx + 1, 0, coffeeImport);
-  } else {
-    // no imports found at all; put it at very top
-    lines.unshift(coffeeImport);
+  if (lastImport >= 0) {
+    lines.splice(lastImport + 1, 0, importLine);
+    return lines.join("\n");
   }
-  return lines.join("\n");
+  return `${importLine}\n${code}`;
 }
 
-async function processFile(path) {
-  let src = await fs.readFile(path, "utf8");
+async function fixFile(file, icons) {
+  const code = await fs.readFile(file, "utf8");
+  const needed = icons.filter((icon) => needsIcon(code, icon));
+  if (!needed.length) return false;
 
-  // If file does not use Coffee symbol at all, skip.
-  if (!USES_COFFEE_RE.test(src)) {
-    return { path, changed: false, reason: "no Coffee usage" };
-  }
-
-  // If it already imports Coffee from lucide-react, skip.
-  const lucideImportMatch = src.match(HAS_COFFEE_IMPORT_RE);
-  if (lucideImportMatch && COFFEE_IN_IMPORT_LIST_RE.test(lucideImportMatch[1])) {
-    return { path, changed: false, reason: "already imports Coffee" };
-  }
-
-  let newSrc = src;
-
-  if (lucideImportMatch) {
-    // Add Coffee to existing lucide named import
-    const fullImportLine = lucideImportMatch[0];
-    const rebuilt = addCoffeeToImport(fullImportLine);
-    if (rebuilt && rebuilt !== fullImportLine) {
-      newSrc = newSrc.replace(fullImportLine, rebuilt);
-    }
-  } else {
-    // No lucide named import; just insert a new line after last import
-    newSrc = insertCoffeeImportAtTop(newSrc);
-  }
-
-  if (newSrc !== src) {
-    // optional: write a .bak once (comment out if not wanted)
-    // await fs.writeFile(path + ".bak", src, "utf8");
-    await fs.writeFile(path, newSrc, "utf8");
-    return { path, changed: true };
-  } else {
-    return { path, changed: false, reason: "no edit needed" };
-  }
+  const newCode = addOrExtendLucideImport(code, needed);
+  await fs.writeFile(file, newCode, "utf8");
+  return true;
 }
 
 async function main() {
-  console.log(`[fix-coffee] scanning under: ${SEARCH_DIR}`);
-  let files = [];
-  try {
-    files = await listTsxFiles(SEARCH_DIR);
-  } catch (e) {
-    console.error(`[fix-coffee] ERROR: cannot read ${SEARCH_DIR}`, e);
-    process.exit(1);
-  }
+  const files = EXPLICIT_FILES.length ? EXPLICIT_FILES : await walk(BASE_DIR);
 
+  console.log(`[fix-coffee] scanning under: ${EXPLICIT_FILES.length ? "(explicit files)" : BASE_DIR}`);
   let changed = 0;
-  for (const f of files) {
-    try {
-      const res = await processFile(f);
-      if (res.changed) {
-        changed++;
-        console.log(`✔ fixed: ${f}`);
-      } else {
-        // uncomment for verbose:
-        // console.log(`skip: ${f} (${res.reason})`);
-      }
-    } catch (e) {
-      console.warn(`⚠ failed: ${f}`, e?.message || e);
+
+  for (const file of files) {
+    const did = await fixFile(file, ICONS);
+    if (did) {
+      changed++;
+      console.log(`✔ fixed: ${file}`);
     }
   }
+
   console.log(`[fix-coffee] done. files changed: ${changed}/${files.length}`);
 }
 
 main().catch((e) => {
-  console.error("[fix-coffee] fatal", e);
+  console.error(e);
   process.exit(1);
 });
