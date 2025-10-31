@@ -1,98 +1,95 @@
 // tools/check-missing-icon-imports.js
-// Lists every TSX file that USES an icon (e.g. Coffee) but does NOT import it from "lucide-react".
-// Usage:
-//   node tools/check-missing-icon-imports.js            # checks for Coffee by default
-//   node tools/check-missing-icon-imports.js Coffee     # explicit single icon
-//   node tools/check-missing-icon-imports.js Coffee Wine Martini  # multiple icons
-//
-// Exit code:
-//   0 => no missing imports
-//   1 => at least one file is missing at least one icon import
-
-import { readdir, readFile } from "node:fs/promises";
+// ESM-friendly (package.json has "type":"module")
+import fs from "node:fs/promises";
 import path from "node:path";
+import process from "node:process";
 
-const repoRoot = process.cwd();
-const SRC_DIR = path.join(repoRoot, "client", "src");
+const ICONS = process.argv.slice(2).filter(Boolean);
+const TARGET_ICONS = ICONS.length ? ICONS : ["Coffee"];
+const BASE_DIR = process.env.ICON_CHECK_DIR || path.resolve("client/src");
 
-// Directories to scan (add more if you like).
-const SCAN_DIRS = [
-  path.join(SRC_DIR, "pages", "drinks"),
-  path.join(SRC_DIR, "pages", "recipes"),
-  path.join(SRC_DIR, "pages", "social"),
-  path.join(SRC_DIR, "components"),
-];
-
-const ICONS = process.argv.slice(2).length ? process.argv.slice(2) : ["Coffee"];
-
-// ---------------- helpers ----------------
-async function walk(dir) {
-  let out = [];
-  try {
-    const entries = await readdir(dir, { withFileTypes: true });
-    for (const e of entries) {
-      const full = path.join(dir, e.name);
-      if (e.isDirectory()) {
-        out = out.concat(await walk(full));
-      } else if (e.isFile() && full.endsWith(".tsx")) {
-        out.push(full);
-      }
+async function walk(dir, out = []) {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const e of entries) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      await walk(p, out);
+    } else if (e.isFile() && (p.endsWith(".tsx") || p.endsWith(".ts"))) {
+      out.push(p);
     }
-  } catch {
-    // dir may not exist; ignore
   }
   return out;
 }
 
-function fileUsesIcon(src, icon) {
-  // Looks for the bare identifier (JSX or object use)
-  return new RegExp(`\\b${icon}\\b`).test(src);
+function hasIconUsage(code, icon) {
+  // Heuristic: icon name appears outside of import line
+  // Avoid counting the import itself
+  const reAny = new RegExp(`\\b${icon}\\b`);
+  if (!reAny.test(code)) return false;
+
+  // If it's only present inside import from lucide-react, skip
+  const imports = code.match(/import\s+{[^}]*}\s+from\s+['"]lucide-react['"]/g) || [];
+  const imported = imports.some((line) => new RegExp(`\\b${icon}\\b`).test(line));
+  if (imported) {
+    // Could still be used in code; return true if it appears outside import lines
+    // Remove all lucide-react import lines and check again
+    const codeNoImports = code.replace(/import\s+{[^}]*}\s+from\s+['"]lucide-react['"];?\s*/g, "");
+    return reAny.test(codeNoImports);
+  }
+  return true;
 }
 
-function fileImportsIcon(src, icon) {
-  // Looks for an existing lucide-react named import that includes this icon
-  return new RegExp(
-    `import\\s*{[^}]*\\b${icon}\\b[^}]*}\\s*from\\s*['"]lucide-react['"]`,
-    "m"
-  ).test(src);
+function hasLucideImportFor(code, icon) {
+  // Named import
+  const named = new RegExp(
+    `import\\s+{[^}]*\\b${icon}\\b[^}]*}\\s+from\\s+['"]lucide-react['"]`
+  ).test(code);
+  if (named) return true;
+
+  // Namespace import (rare): import * as Icons from 'lucide-react'
+  // If user writes Icons.Coffee we can't be sure; but check for that usage too
+  const nsImport = /import\s+\*\s+as\s+(\w+)\s+from\s+['"]lucide-react['"]/.exec(code);
+  if (nsImport) {
+    const ns = nsImport[1];
+    const nsUse = new RegExp(`\\b${ns}\\s*\\.\\s*${icon}\\b`).test(code);
+    if (nsUse) return true;
+  }
+  return false;
 }
 
-// ---------------- main ----------------
-(async () => {
-  const files = (await Promise.all(SCAN_DIRS.map(walk))).flat();
+async function main() {
+  const files = await walk(BASE_DIR);
+  const missing = [];
 
-  const results = [];
   for (const file of files) {
-    const src = await readFile(file, "utf8");
-    const missing = [];
-    for (const icon of ICONS) {
-      if (fileUsesIcon(src, icon) && !fileImportsIcon(src, icon)) {
-        missing.push(icon);
-      }
-    }
-    if (missing.length) {
-      results.push({ file, missing });
+    const code = await fs.readFile(file, "utf8");
+    const missingInFile = TARGET_ICONS.filter(
+      (icon) => hasIconUsage(code, icon) && !hasLucideImportFor(code, icon)
+    );
+    if (missingInFile.length) {
+      missing.push({ file, icons: missingInFile });
     }
   }
 
-  if (!results.length) {
-    console.log(`✅ No missing ${ICONS.join(", ")} imports found.`);
+  if (!missing.length) {
+    console.log("✅ No missing lucide-react icon imports. All good!");
     process.exit(0);
   }
 
   console.log("❌ Missing lucide-react icon imports detected:\n");
-  for (const r of results) {
-    const rel = path.relative(repoRoot, r.file);
-    console.log(`- ${rel}`);
-    console.log(`    ↳ missing: ${r.missing.join(", ")}`);
+  for (const { file, icons } of missing) {
+    console.log(`- ${file}`);
+    for (const icon of icons) console.log(`    ↳ missing: ${icon}`);
   }
   console.log(
-    `\nTip: run "npm run fix:coffee" for Coffee only, or:\n` +
-      `  node tools/fix-missing-coffee-imports.js ${ICONS.join(" ")}\n` +
-      `to auto-fix these files.`
+    `\nTip: run "npm run fix:coffee" for Coffee only, or:\n  node tools/fix-missing-coffee-imports.js ${TARGET_ICONS.join(
+      " "
+    )}\nto auto-fix these files.`
   );
   process.exit(1);
-})().catch((e) => {
-  console.error("check-missing-icon-imports failed:", e);
+}
+
+main().catch((e) => {
+  console.error(e);
   process.exit(1);
 });
