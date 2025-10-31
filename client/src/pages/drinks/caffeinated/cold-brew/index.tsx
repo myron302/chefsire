@@ -11,6 +11,7 @@ import {
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 
+// Cold brew coffee drinks
 const coldBrewDrinks = [
   {
     id: 'classic-espresso',
