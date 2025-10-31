@@ -130,7 +130,6 @@ const dailyChallenge = {
 };
 
 export default function CaffeinatedDrinksPage() {
-  console.log('✅ CAFFEINATED HUB LOADED - Build timestamp:', new Date().toISOString());
   const {
     userProgress,
     addPoints,

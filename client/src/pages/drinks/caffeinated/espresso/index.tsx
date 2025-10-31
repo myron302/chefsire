@@ -87,7 +87,6 @@ const espressoDrinks = [
 ];
 
 export default function EspressoDrinks() {
-  console.log('✅ ESPRESSO PAGE LOADED - Route is working!');
   const { addPoints, incrementDrinksMade, addToFavorites, isFavorite, addToRecentlyViewed } = useDrinks();
   const [selectedDrink, setSelectedDrink] = useState(null);
 
