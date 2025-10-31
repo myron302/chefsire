@@ -4,12 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  Martini, Clock, Heart, Star, Target, Sparkles, Leaf, Wine,
-  Search, Share2, ArrowLeft, Plus, Zap, Cherry, Camera, Flame,
-  GlassWater, Award, TrendingUp, Crown, Home, Droplets, Apple,
-  Clipboard, RotateCcw, Check
-} from 'lucide-react';
+import { Martini, Clock, Heart, Star, Target, Sparkles, Leaf, Wine, Search, Share2, ArrowLeft, Plus, Zap, Cherry, Camera, Flame, GlassWater, Award, TrendingUp, Crown, Home, Droplets, Apple, Clipboard, RotateCcw, Check, Coffee } from "lucide-react";
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 

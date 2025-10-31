@@ -5,12 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import RequireAgeGate from "@/components/RequireAgeGate";
-import { 
-  Wine, Clock, Heart, Target, Sparkles, Droplets, 
-  Search, Share2, ArrowLeft, GlassWater, Flame,
-  TrendingUp, Award, Zap, Crown, Apple, Leaf,
-  Clipboard, RotateCcw, Check, Home, Martini, Cherry
-} from 'lucide-react';
+import { Wine, Clock, Heart, Target, Sparkles, Droplets, Search, Share2, ArrowLeft, GlassWater, Flame, TrendingUp, Award, Zap, Crown, Apple, Leaf, Clipboard, RotateCcw, Check, Home, Martini, Cherry, Coffee } from "lucide-react";
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 
