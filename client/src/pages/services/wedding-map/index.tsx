@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   MapPin, Search, Filter, ChefHat, Camera, Music,
   Flower, Heart, Users, DollarSign, Star, Shield,
@@ -199,7 +199,7 @@ const weddingVendors = {
   tuxedoShops: [
     {
       id: 11,
-      name: 'Gentleman\'s Attire',
+      name: "Gentleman's Attire",
       category: 'tuxedoShop',
       address: '456 Suit Ln, Hartford, CT',
       lat: 41.7680,
@@ -248,10 +248,10 @@ export default function WeddingVendorMap() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [locationQuery, setLocationQuery] = useState('Hartford, CT');
-  const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
-  const [selectedVendor, setSelectedVendor] = useState(null);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list'); // 'list' or 'grid'
+  const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [showDetails, setShowDetails] = useState(false);
-  const [savedVendors, setSavedVendors] = useState(new Set());
+  const [savedVendors, setSavedVendors] = useState<Set<number>>(new Set());
 
   // Flatten all vendors into a single array
   const allVendors = [
@@ -266,31 +266,28 @@ export default function WeddingVendorMap() {
   // Filter vendors based on category and search
   const filteredVendors = allVendors.filter(vendor => {
     const matchesCategory = selectedCategory === 'all' || vendor.category === selectedCategory;
-    const matchesSearch = !searchQuery ||
+    const matchesSearch =
+      !searchQuery ||
       vendor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       vendor.address.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
 
-  const handleViewDetails = (vendor) => {
+  const handleViewDetails = (vendor: any) => {
     setSelectedVendor(vendor);
     setShowDetails(true);
   };
 
-  const toggleSaveVendor = (vendorId) => {
+  const toggleSaveVendor = (vendorId: number) => {
     setSavedVendors(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(vendorId)) {
-        newSet.delete(vendorId);
-      } else {
-        newSet.add(vendorId);
-      }
+      newSet.has(vendorId) ? newSet.delete(vendorId) : newSet.add(vendorId);
       return newSet;
     });
   };
 
-  const getCategoryIcon = (category) => {
-    const config = categoryConfig[category];
+  const getCategoryIcon = (category: string) => {
+    const config = (categoryConfig as any)[category];
     return config ? config.icon : MapPin;
   };
 
@@ -303,9 +300,7 @@ export default function WeddingVendorMap() {
             <h1 className="text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">
               Wedding Vendor Map
             </h1>
-            <p className="text-muted-foreground">
-              Find and explore wedding vendors near you on the map
-            </p>
+            <p className="text-muted-foreground">Find and explore wedding vendors near you on the map</p>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-sm">
@@ -348,7 +343,7 @@ export default function WeddingVendorMap() {
         {/* Category Filters */}
         <div className="flex gap-2 overflow-x-auto pb-2 mb-6">
           {Object.entries(categoryConfig).map(([key, config]) => {
-            const Icon = config.icon;
+            const Icon = (config as any).icon;
             return (
               <Button
                 key={key}
@@ -357,9 +352,9 @@ export default function WeddingVendorMap() {
                 className="whitespace-nowrap"
               >
                 <Icon className="w-4 h-4 mr-2" />
-                {config.label}
+                {(config as any).label}
                 <Badge variant="secondary" className="ml-2">
-                  {key === 'all' ? allVendors.length : allVendors.filter(v => v.category === key).length}
+                  {key === 'all' ? allVendors.length : allVendors.filter(v => (v as any).category === key).length}
                 </Badge>
               </Button>
             );
@@ -386,7 +381,7 @@ export default function WeddingVendorMap() {
                 </div>
 
                 {/* Map Markers */}
-                {filteredVendors.slice(0, 8).map((vendor, index) => {
+                {filteredVendors.slice(0, 8).map((vendor: any, index: number) => {
                   const Icon = getCategoryIcon(vendor.category);
                   const top = 20 + (index % 4) * 20;
                   const left = 15 + Math.floor(index / 4) * 35;
@@ -437,7 +432,7 @@ export default function WeddingVendorMap() {
               </div>
             </CardHeader>
             <CardContent className="flex-1 overflow-y-auto space-y-3">
-              {filteredVendors.map((vendor) => {
+              {filteredVendors.map((vendor: any) => {
                 const Icon = getCategoryIcon(vendor.category);
                 return (
                   <Card
@@ -448,19 +443,13 @@ export default function WeddingVendorMap() {
                     <CardContent className="p-3">
                       <div className="flex items-start gap-3">
                         <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
-                          <img
-                            src={vendor.image}
-                            alt={vendor.name}
-                            className="w-full h-full object-cover"
-                          />
+                          <img src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
                             <h4 className="font-semibold text-sm truncate flex items-center gap-1">
                               {vendor.name}
-                              {vendor.verified && (
-                                <Shield className="w-3 h-3 text-blue-500 flex-shrink-0" />
-                              )}
+                              {vendor.verified && <Shield className="w-3 h-3 text-blue-500 flex-shrink-0" />}
                             </h4>
                             <Button
                               size="sm"
@@ -471,14 +460,12 @@ export default function WeddingVendorMap() {
                                 toggleSaveVendor(vendor.id);
                               }}
                             >
-                              <Heart
-                                className={`w-4 h-4 ${savedVendors.has(vendor.id) ? 'fill-red-500 text-red-500' : ''}`}
-                              />
+                              <Heart className={`w-4 h-4 ${savedVendors.has(vendor.id) ? 'fill-red-500 text-red-500' : ''}`} />
                             </Button>
                           </div>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                             <Icon className="w-3 h-3" />
-                            <span>{categoryConfig[vendor.category]?.label}</span>
+                            <span>{(categoryConfig as any)[vendor.category]?.label}</span>
                           </div>
                           <div className="flex items-center gap-2 mt-1">
                             <div className="flex items-center gap-1">
@@ -509,9 +496,7 @@ export default function WeddingVendorMap() {
                   <div>
                     <DialogTitle className="text-2xl flex items-center gap-2">
                       {selectedVendor.name}
-                      {selectedVendor.verified && (
-                        <Shield className="w-5 h-5 text-blue-500" />
-                      )}
+                      {selectedVendor.verified && <Shield className="w-5 h-5 text-blue-500" />}
                     </DialogTitle>
                     <DialogDescription className="flex items-center gap-2 mt-2">
                       <MapPin className="w-4 h-4" />
@@ -523,9 +508,7 @@ export default function WeddingVendorMap() {
                     variant="ghost"
                     onClick={() => toggleSaveVendor(selectedVendor.id)}
                   >
-                    <Heart
-                      className={`w-5 h-5 ${savedVendors.has(selectedVendor.id) ? 'fill-red-500 text-red-500' : ''}`}
-                    />
+                    <Heart className={`w-5 h-5 ${savedVendors.has(selectedVendor.id) ? 'fill-red-500 text-red-500' : ''}`} />
                   </Button>
                 </div>
               </DialogHeader>
@@ -533,11 +516,7 @@ export default function WeddingVendorMap() {
               <div className="space-y-4">
                 {/* Image */}
                 <div className="w-full h-64 rounded-lg overflow-hidden">
-                  <img
-                    src={selectedVendor.image}
-                    alt={selectedVendor.name}
-                    className="w-full h-full object-cover"
-                  />
+                  <img src={selectedVendor.image} alt={selectedVendor.name} className="w-full h-full object-cover" />
                 </div>
 
                 {/* Rating and Price */}
@@ -547,9 +526,7 @@ export default function WeddingVendorMap() {
                     <span className="font-bold text-lg">{selectedVendor.rating}</span>
                     <span className="text-muted-foreground">({selectedVendor.reviews} reviews)</span>
                   </div>
-                  <Badge variant="secondary" className="text-sm">
-                    {selectedVendor.priceRange}
-                  </Badge>
+                  <Badge variant="secondary" className="text-sm">{selectedVendor.priceRange}</Badge>
                 </div>
 
                 {/* Category-specific info */}
@@ -579,14 +556,12 @@ export default function WeddingVendorMap() {
                   <div>
                     <h4 className="font-semibold mb-2">
                       {selectedVendor.amenities ? 'Amenities' :
-                       selectedVendor.services ? 'Services' :
-                       selectedVendor.packages ? 'Packages' : 'Brands'}
+                        selectedVendor.services ? 'Services' :
+                        selectedVendor.packages ? 'Packages' : 'Brands'}
                     </h4>
                     <div className="flex flex-wrap gap-2">
-                      {(selectedVendor.amenities || selectedVendor.services || selectedVendor.packages || selectedVendor.brands)?.map((item) => (
-                        <Badge key={item} variant="outline">
-                          {item}
-                        </Badge>
+                      {(selectedVendor.amenities || selectedVendor.services || selectedVendor.packages || selectedVendor.brands)?.map((item: string) => (
+                        <Badge key={item} variant="outline">{item}</Badge>
                       ))}
                     </div>
                   </div>
@@ -657,25 +632,19 @@ export default function WeddingVendorMap() {
               <Heart className="w-5 h-5 text-red-500" />
               Saved Vendors ({savedVendors.size})
             </CardTitle>
-            <CardDescription>
-              Vendors you've bookmarked for your wedding
-            </CardDescription>
+            <CardDescription>Vendors you've bookmarked for your wedding</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {Array.from(savedVendors).map(vendorId => {
-                const vendor = allVendors.find(v => v.id === vendorId);
+              {Array.from(savedVendors).map((vendorId) => {
+                const vendor: any = allVendors.find(v => (v as any).id === vendorId);
                 if (!vendor) return null;
                 const Icon = getCategoryIcon(vendor.category);
 
                 return (
                   <Card key={vendor.id} className="overflow-hidden">
                     <div className="relative h-32">
-                      <img
-                        src={vendor.image}
-                        alt={vendor.name}
-                        className="w-full h-full object-cover"
-                      />
+                      <img src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
                       <Button
                         size="sm"
                         variant="secondary"
@@ -689,7 +658,7 @@ export default function WeddingVendorMap() {
                       <h4 className="font-semibold text-sm mb-1">{vendor.name}</h4>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Icon className="w-3 h-3" />
-                        <span>{categoryConfig[vendor.category]?.label}</span>
+                        <span>{(categoryConfig as any)[vendor.category]?.label}</span>
                       </div>
                     </CardContent>
                   </Card>
