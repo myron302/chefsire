@@ -1,142 +1,149 @@
 // tools/fix-missing-coffee-imports.js
-// ESM-friendly (package.json has "type":"module")
-import fs from "node:fs/promises";
-import path from "node:path";
-import process from "node:process";
+// Usage:
+//   node tools/fix-missing-coffee-imports.js Coffee
+//   npm run fix:coffee   (if package.json maps to this)
 
-const ARGS = process.argv.slice(2).filter(Boolean);
+import fs from "fs";
+import path from "path";
+import url from "url";
 
-// icons to fix (default Coffee)
-const ICONS = ARGS.length && !ARGS[0].includes(".tsx") && !ARGS[0].includes(".ts")
-  ? ARGS.filter((a) => !a.endsWith(".tsx") && !a.endsWith(".ts"))
-  : ["Coffee"];
+const __filename = url.fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// optional explicit file paths after icons
-const EXPLICIT_FILES = ARGS.filter((a) => a.endsWith(".tsx") || a.endsWith(".ts"));
+// Which icon to fix
+const ICON = process.argv[2] || "Coffee";
 
-const BASE_DIR = process.env.ICON_FIX_DIR || path.resolve("client/src");
+// Where to scan
+const ROOT = process.cwd();
+const TARGET_DIR = path.resolve(ROOT, "client/src");
 
-async function walk(dir, out = []) {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-  for (const e of entries) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) {
-      await walk(p, out);
-    } else if (e.isFile() && (p.endsWith(".tsx") || p.endsWith(".ts"))) {
-      out.push(p);
+const isTsLike = (p) => p.endsWith(".ts") || p.endsWith(".tsx");
+
+function listFiles(dir) {
+  const out = [];
+  const stack = [dir];
+  while (stack.length) {
+    const d = stack.pop();
+    let entries;
+    try {
+      entries = fs.readdirSync(d, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) {
+        stack.push(full);
+      } else if (e.isFile() && isTsLike(full)) {
+        out.push(full);
+      }
     }
   }
   return out;
 }
 
-function needsIcon(code, icon) {
-  const usage = new RegExp(`\\b${icon}\\b`).test(code);
-  if (!usage) return false;
-  const imported = new RegExp(
-    `import\\s+{[^}]*\\b${icon}\\b[^}]*}\\s+from\\s+['"]lucide-react['"]`
-  ).test(code);
-  if (imported) return false;
-
-  // namespace import?
-  const nsImport = /import\s+\*\s+as\s+(\w+)\s+from\s+['"]lucide-react['"]/.exec(code);
-  if (nsImport) {
-    const ns = nsImport[1];
-    const nsUse = new RegExp(`\\b${ns}\\s*\\.\\s*${icon}\\b`).test(code);
-    if (nsUse) return false;
+function read(file) {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    return "";
   }
-  return true;
 }
 
-function insertNamedIntoExisting(line, iconsToAdd) {
-  // line example: import { A, B, C } from 'lucide-react'
-  return line.replace(
-    /import\s+{([^}]*)}\s+from\s+(['"])lucide-react\2/,
-    (m, inside, quote) => {
-      const names = inside
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const set = new Set(names);
-      for (const i of iconsToAdd) set.add(i);
-      const sorted = Array.from(set).sort((a, b) => a.localeCompare(b));
-      return `import { ${sorted.join(", ")} } from ${quote}lucide-react${quote}`;
-    }
+function write(file, content) {
+  fs.writeFileSync(file, content, "utf8");
+}
+
+// ---- same detection rules as the checker ----
+function usesIcon(code, icon) {
+  const jsxTag = new RegExp(`<\\s*${icon}\\b`);
+  const objectIcon = new RegExp(`icon\\s*:\\s*${icon}\\b`);
+  const nsUse = new RegExp(`\\bIcons\\.${icon}\\b`);
+  return jsxTag.test(code) || objectIcon.test(code) || nsUse.test(code);
+}
+
+function hasNamedIconImport(code, icon) {
+  const named = new RegExp(
+    `import\\s*\\{[^}]*\\b${icon}\\b[^}]*\\}\\s*from\\s*['"]lucide-react['"]`
   );
+  return named.test(code);
 }
 
-function addOrExtendLucideImport(code, iconsToAdd) {
-  // 1) If there is an existing named lucide import, extend it
-  const namedRe = /import\s+{[^}]*}\s+from\s+['"]lucide-react['"]\s*;?/;
-  if (namedRe.test(code)) {
-    let done = false;
-    const lines = code.split(/\r?\n/).map((line) => {
-      if (!done && namedRe.test(line)) {
-        done = true;
-        return insertNamedIntoExisting(line, iconsToAdd);
-      }
-      return line;
-    });
-    return lines.join("\n");
-  }
-
-  // 2) If there is a namespace lucide import, add a separate named line (safe)
-  const nsRe = /import\s+\*\s+as\s+\w+\s+from\s+['"]lucide-react['"]\s*;?/;
-  const importLine = `import { ${iconsToAdd.join(", ")} } from "lucide-react";`;
-  if (nsRe.test(code)) {
-    // insert after the last import line
-    const lines = code.split(/\r?\n/);
-    let lastImport = -1;
-    for (let i = 0; i < lines.length; i++) {
-      if (/^\s*import\s+/.test(lines[i])) lastImport = i;
-    }
-    if (lastImport >= 0) {
-      lines.splice(lastImport + 1, 0, importLine);
-      return lines.join("\n");
-    }
-    return `${importLine}\n${code}`;
-  }
-
-  // 3) No lucide import at all → add new named import after last import or at top
-  const lines = code.split(/\r?\n/);
-  let lastImport = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (/^\s*import\s+/.test(lines[i])) lastImport = i;
-  }
-  if (lastImport >= 0) {
-    lines.splice(lastImport + 1, 0, importLine);
-    return lines.join("\n");
-  }
-  return `${importLine}\n${code}`;
+function hasNamespaceImport(code) {
+  return /import\s*\*\s*as\s*Icons\s*from\s*['"]lucide-react['"]/.test(code);
 }
 
-async function fixFile(file, icons) {
-  const code = await fs.readFile(file, "utf8");
-  const needed = icons.filter((icon) => needsIcon(code, icon));
-  if (!needed.length) return false;
+// Inject `Coffee` into an existing `import { … } from "lucide-react"`
+function addIconToNamedImport(code, icon) {
+  const re = /import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"]/m;
+  return code.replace(re, (m, group1) => {
+    // Normalize commas and whitespace
+    const names = group1
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
 
-  const newCode = addOrExtendLucideImport(code, needed);
-  await fs.writeFile(file, newCode, "utf8");
-  return true;
+    if (!names.includes(icon)) names.push(icon);
+    const joined = names.join(", ");
+    return `import { ${joined} } from "lucide-react"`;
+  });
 }
 
-async function main() {
-  const files = EXPLICIT_FILES.length ? EXPLICIT_FILES : await walk(BASE_DIR);
+// Insert a brand new named import after the last import line
+function insertNewImport(code, icon) {
+  const newLine = `import { ${icon} } from "lucide-react";\n`;
+  const importBlock = code.match(/^(import .*\n)+/m);
+  if (importBlock) {
+    const end = importBlock.index + importBlock[0].length;
+    return code.slice(0, end) + newLine + code.slice(end);
+  }
+  return newLine + code;
+}
 
-  console.log(`[fix-coffee] scanning under: ${EXPLICIT_FILES.length ? "(explicit files)" : BASE_DIR}`);
-  let changed = 0;
+function fixFile(file, icon) {
+  const before = read(file);
+  if (!before) return false;
 
-  for (const file of files) {
-    const did = await fixFile(file, ICONS);
+  // Only touch files that truly use the icon
+  if (!usesIcon(before, icon)) return false;
+
+  // Already properly imported?
+  if (hasNamedIconImport(before, icon)) return false;
+
+  let after = before;
+
+  // If there's a named lucide import, add to it
+  if (/import\s*\{[^}]*\}\s*from\s*['"]lucide-react['"]/.test(before)) {
+    after = addIconToNamedImport(before, icon);
+  } else {
+    // Otherwise, add a new named import (even if there is a namespace import)
+    after = insertNewImport(before, icon);
+  }
+
+  if (after !== before) {
+    write(file, after);
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+
+const files = listFiles(TARGET_DIR);
+const changed = [];
+
+console.log(`[fix-${ICON.toLowerCase()}] scanning under: ${TARGET_DIR}`);
+
+for (const file of files) {
+  try {
+    const did = fixFile(file, ICON);
     if (did) {
-      changed++;
       console.log(`✔ fixed: ${file}`);
+      changed.push(file);
     }
+  } catch (e) {
+    console.log(`⚠︎ skip (error): ${file} → ${e?.message || e}`);
   }
-
-  console.log(`[fix-coffee] done. files changed: ${changed}/${files.length}`);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+console.log(`[fix-${ICON.toLowerCase()}] done. files changed: ${changed.length}/${files.length}`);
