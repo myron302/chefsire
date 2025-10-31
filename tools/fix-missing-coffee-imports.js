@@ -1,16 +1,16 @@
 // tools/fix-missing-coffee-imports.js
 // Usage:
 //   node tools/fix-missing-coffee-imports.js Coffee
-//   npm run fix:coffee   (if package.json maps to this)
+//   npm run fix:coffee    (if package.json maps to this)
 
-import fs from "fs";
-import path from "path";
-import url from "url";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const __filename = url.fileURLToPath(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Which icon to fix
+// Icon to fix
 const ICON = process.argv[2] || "Coffee";
 
 // Where to scan
@@ -32,11 +32,8 @@ function listFiles(dir) {
     }
     for (const e of entries) {
       const full = path.join(d, e.name);
-      if (e.isDirectory()) {
-        stack.push(full);
-      } else if (e.isFile() && isTsLike(full)) {
-        out.push(full);
-      }
+      if (e.isDirectory()) stack.push(full);
+      else if (e.isFile() && isTsLike(full)) out.push(full);
     }
   }
   return out;
@@ -49,19 +46,17 @@ function read(file) {
     return "";
   }
 }
-
 function write(file, content) {
   fs.writeFileSync(file, content, "utf8");
 }
 
-// ---- same detection rules as the checker ----
+// --- detection rules (must match the checker) ---
 function usesIcon(code, icon) {
   const jsxTag = new RegExp(`<\\s*${icon}\\b`);
-  const objectIcon = new RegExp(`icon\\s*:\\s*${icon}\\b`);
+  const objectIcon = new RegExp(`\\bicon\\s*:\\s*${icon}\\b`);
   const nsUse = new RegExp(`\\bIcons\\.${icon}\\b`);
   return jsxTag.test(code) || objectIcon.test(code) || nsUse.test(code);
 }
-
 function hasNamedIconImport(code, icon) {
   const named = new RegExp(
     `import\\s*\\{[^}]*\\b${icon}\\b[^}]*\\}\\s*from\\s*['"]lucide-react['"]`
@@ -69,15 +64,10 @@ function hasNamedIconImport(code, icon) {
   return named.test(code);
 }
 
-function hasNamespaceImport(code) {
-  return /import\s*\*\s*as\s*Icons\s*from\s*['"]lucide-react['"]/.test(code);
-}
-
-// Inject `Coffee` into an existing `import { … } from "lucide-react"`
+// If there’s a named lucide import, add the icon into it
 function addIconToNamedImport(code, icon) {
   const re = /import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"]/m;
   return code.replace(re, (m, group1) => {
-    // Normalize commas and whitespace
     const names = group1
       .split(",")
       .map((s) => s.trim())
@@ -89,10 +79,10 @@ function addIconToNamedImport(code, icon) {
   });
 }
 
-// Insert a brand new named import after the last import line
+// Otherwise, insert a brand-new named import after the last import line
 function insertNewImport(code, icon) {
   const newLine = `import { ${icon} } from "lucide-react";\n`;
-  const importBlock = code.match(/^(import .*\n)+/m);
+  const importBlock = code.match(/^(?:import .*\n)+/m);
   if (importBlock) {
     const end = importBlock.index + importBlock[0].length;
     return code.slice(0, end) + newLine + code.slice(end);
@@ -104,19 +94,17 @@ function fixFile(file, icon) {
   const before = read(file);
   if (!before) return false;
 
-  // Only touch files that truly use the icon
+  // Only modify files that truly use the icon
   if (!usesIcon(before, icon)) return false;
 
-  // Already properly imported?
+  // Already has proper named import?
   if (hasNamedIconImport(before, icon)) return false;
 
   let after = before;
 
-  // If there's a named lucide import, add to it
   if (/import\s*\{[^}]*\}\s*from\s*['"]lucide-react['"]/.test(before)) {
     after = addIconToNamedImport(before, icon);
   } else {
-    // Otherwise, add a new named import (even if there is a namespace import)
     after = insertNewImport(before, icon);
   }
 
