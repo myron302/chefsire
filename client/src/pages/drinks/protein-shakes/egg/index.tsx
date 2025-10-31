@@ -6,11 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
-import {
-  Target, Heart, Star, Zap, Flame, Leaf, Sparkles, Moon, Wine,
-  Search, ArrowLeft, ArrowRight, Camera, X, Plus, Dumbbell,
-  Check, Clipboard, Share2, RotateCcw
-} from 'lucide-react';
+import { Target, Heart, Star, Zap, Flame, Leaf, Sparkles, Moon, Wine, Search, ArrowLeft, ArrowRight, Camera, X, Plus, Dumbbell, Check, Clipboard, Share2, RotateCcw, Coffee } from "lucide-react";
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit, { Measured } from '@/components/recipes/RecipeKit';
