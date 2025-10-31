@@ -98,11 +98,24 @@ const premadeRecipes = [
     calories: 180,
     protein: 12.8,
     difficulty: "Medium",
-    time: "4 min", 
+    time: "4 min",
     rating: 4.7,
     likes: 892,
     workoutType: "recovery",
     image: "https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400&h=300&fit=crop"
+  },
+  {
+    id: 4,
+    name: "Tropical Energy Boost",
+    ingredients: ["Mango", "Pineapple", "Banana", "Coconut Water", "Chia Seeds"],
+    calories: 210,
+    protein: 5.2,
+    difficulty: "Easy",
+    time: "3 min",
+    rating: 4.8,
+    likes: 1523,
+    workoutType: "pre-workout",
+    image: "https://images.unsplash.com/photo-1546173159-315724a31696?w=400&h=300&fit=crop"
   }
 ];
 
@@ -826,7 +839,7 @@ export default function SmoothiesPage() {
                   <TrendingUp className="w-5 h-5 text-orange-500" />
                   Popular Smoothie Recipes
                 </h3>
-                <div className="grid md:grid-cols-3 gap-6">
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
                   {premadeRecipes.map((recipe) => (
                     <Card key={recipe.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                       <div className="relative h-48">
