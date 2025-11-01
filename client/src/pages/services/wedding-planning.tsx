@@ -351,22 +351,28 @@ export default function WeddingPlanning() {
         </Card>
       </div>
 
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
         {vendorCategories.map((category) => {
           const Icon = category.icon;
           const isSelected = selectedVendorType === category.value;
+          const count = category.value === 'all'
+            ? vendors.length
+            : vendors.filter(v => v.type === category.value).length;
           return (
             <Button
               key={category.value}
               variant={isSelected ? 'default' : 'outline'}
               onClick={() => setSelectedVendorType(category.value)}
-              className="whitespace-nowrap flex-shrink-0"
+              className="w-full flex items-center justify-between"
               size="sm"
             >
-              <Icon className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">{category.label}</span>
-              {/* Show label only for selected on mobile */}
-              {isSelected && <span className="sm:hidden ml-2">{category.label}</span>}
+              <div className="flex items-center gap-2">
+                <Icon className="w-4 h-4" />
+                <span className="text-sm">{category.label}</span>
+              </div>
+              <Badge variant="secondary" className="text-xs">
+                {count}
+              </Badge>
             </Button>
           );
         })}

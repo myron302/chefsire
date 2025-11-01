@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapPin, Search, Navigation, List, Grid, Sparkles, Clock, Star, Shield,
-  Heart, X, MapPinned, Phone, Globe, Camera, Users
+  Heart, X, MapPinned, Phone, Globe, Camera, Users, Music, Flower2, ShoppingBag, Shirt
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,13 +49,13 @@ type PlaceResultLite = {
 };
 
 const categoryConfig: Record<VendorCategoryKey, { label: string; icon: any; query: string }> = {
-  all:          { label: "All Vendors",        icon: Sparkles, query: "wedding venue OR photographer OR wedding dj OR florist OR bridal shop OR tuxedo shop" },
-  venue:        { label: "Venues",             icon: MapPin,   query: "wedding venue OR event venue OR banquet hall" },
-  photographer: { label: "Photographers",      icon: Camera,   query: "wedding photographer OR photographer" },
-  dj:           { label: "DJs & Entertainment",icon: Sparkles, query: "wedding dj OR dj services" },
-  florist:      { label: "Florists",           icon: Sparkles, query: "florist wedding OR florist" },
-  dressShop:    { label: "Dress Shops",        icon: Sparkles, query: "bridal shop OR wedding dress shop" },
-  tuxedoShop:   { label: "Tuxedo Shops",       icon: Sparkles, query: "tuxedo shop OR formal wear" },
+  all:          { label: "All Vendors",        icon: Sparkles,     query: "wedding venue OR photographer OR wedding dj OR florist OR bridal shop OR tuxedo shop" },
+  venue:        { label: "Venues",             icon: MapPin,       query: "wedding venue OR event venue OR banquet hall" },
+  photographer: { label: "Photographers",      icon: Camera,       query: "wedding photographer OR photographer" },
+  dj:           { label: "DJs & Entertainment",icon: Music,        query: "wedding dj OR dj services" },
+  florist:      { label: "Florists",           icon: Flower2,      query: "florist wedding OR florist" },
+  dressShop:    { label: "Dress Shops",        icon: ShoppingBag,  query: "bridal shop OR wedding dress shop" },
+  tuxedoShop:   { label: "Tuxedo Shops",       icon: Shirt,        query: "tuxedo shop OR formal wear" },
 };
 
 // ---------- Helpers ----------
@@ -347,7 +347,7 @@ export default function WeddingVendorMap() {
         </Card>
 
         {/* Category Filters */}
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-6 scrollbar-hide">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
           {(
             Object.keys(categoryConfig) as VendorCategoryKey[]
           ).map((key) => {
@@ -360,12 +360,13 @@ export default function WeddingVendorMap() {
                 key={key}
                 variant={isSelected ? "default" : "outline"}
                 onClick={() => setSelectedCategory(key)}
-                className="whitespace-nowrap flex-shrink-0"
+                className="w-full flex items-center justify-between"
               >
-                <Icon className="w-4 h-4 sm:mr-2" />
-                <span className="hidden sm:inline">{cfg.label}</span>
-                {isSelected && <span className="sm:hidden ml-2">{cfg.label}</span>}
-                <Badge variant="secondary" className="ml-2 hidden sm:inline-flex">
+                <div className="flex items-center gap-2">
+                  <Icon className="w-4 h-4" />
+                  <span className="text-sm">{cfg.label}</span>
+                </div>
+                <Badge variant="secondary" className="text-xs">
                   {count}
                 </Badge>
               </Button>
