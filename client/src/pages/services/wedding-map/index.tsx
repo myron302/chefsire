@@ -347,25 +347,26 @@ export default function WeddingVendorMap() {
         </Card>
 
         {/* Category Filters */}
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-6">
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-6 scrollbar-hide">
           {(
             Object.keys(categoryConfig) as VendorCategoryKey[]
           ).map((key) => {
             const cfg = categoryConfig[key];
             const Icon = cfg.icon;
+            const isSelected = selectedCategory === key;
+            const count = key === "all" ? vendors.length : vendors.filter((v) => v.category === key).length;
             return (
               <Button
                 key={key}
-                variant={selectedCategory === key ? "default" : "outline"}
+                variant={isSelected ? "default" : "outline"}
                 onClick={() => setSelectedCategory(key)}
-                className="whitespace-nowrap"
+                className="whitespace-nowrap flex-shrink-0"
               >
-                <Icon className="w-4 h-4 mr-2" />
-                {cfg.label}
-                <Badge variant="secondary" className="ml-2">
-                  {key === "all"
-                    ? vendors.length
-                    : vendors.filter((v) => v.category === key).length}
+                <Icon className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">{cfg.label}</span>
+                {isSelected && <span className="sm:hidden ml-2">{cfg.label}</span>}
+                <Badge variant="secondary" className="ml-2 hidden sm:inline-flex">
+                  {count}
                 </Badge>
               </Button>
             );
