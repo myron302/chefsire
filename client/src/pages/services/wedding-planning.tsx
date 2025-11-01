@@ -351,37 +351,41 @@ export default function WeddingPlanning() {
         </Card>
       </div>
 
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
         {vendorCategories.map((category) => {
           const Icon = category.icon;
+          const isSelected = selectedVendorType === category.value;
           return (
             <Button
               key={category.value}
-              variant={selectedVendorType === category.value ? 'default' : 'outline'}
+              variant={isSelected ? 'default' : 'outline'}
               onClick={() => setSelectedVendorType(category.value)}
-              className="whitespace-nowrap"
+              className="whitespace-nowrap flex-shrink-0"
+              size="sm"
             >
-              <Icon className="w-4 h-4 mr-2" />
-              {category.label}
+              <Icon className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">{category.label}</span>
+              {/* Show label only for selected on mobile */}
+              {isSelected && <span className="sm:hidden ml-2">{category.label}</span>}
             </Button>
           );
         })}
       </div>
 
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <h2 className="text-xl font-semibold">{filteredVendors.length} Vendors Available</h2>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+          <h2 className="text-lg md:text-xl font-semibold">{filteredVendors.length} Vendors Available</h2>
           {selectedDate && (
-            <Badge variant="secondary">
+            <Badge variant="secondary" className="w-fit">
               <Calendar className="w-3 h-3 mr-1" />
-              {new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              <span className="text-xs">{new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
             </Badge>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <Select defaultValue="featured">
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-full sm:w-40 text-xs md:text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
