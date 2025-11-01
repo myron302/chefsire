@@ -330,7 +330,7 @@ const otherDrinkHubs = [
 // Sister caffeinated subcategories (excluding energy since we're on energy page)
 const allCaffeinatedSubcategories = [
   { id: 'espresso', name: 'Espresso', path: '/drinks/caffeinated/espresso', icon: Coffee, description: 'Pure & intense' },
-  { id: 'cold-brew', name: 'Cold Brew', path: '/drinks/caffeinated/cold-brew', icon: Zaps, description: 'Smooth cold coffee' },
+  { id: 'cold-brew', name: 'Cold Brew', path: '/drinks/caffeinated/cold-brew', icon: Droplets, description: 'Smooth cold coffee' },
   { id: 'tea', name: 'Tea', path: '/drinks/caffeinated/tea', icon: Leaf, description: 'Tea varieties' },
   { id: 'matcha', name: 'Matcha', path: '/drinks/caffeinated/matcha', icon: Leaf, description: 'Green tea powder' },
   { id: 'lattes', name: 'Lattes', path: '/drinks/caffeinated/lattes', icon: Coffee, description: 'Milk & espresso' },
