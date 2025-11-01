@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Mail, Send, MessageSquare } from "lucide-react";
+import { Crown, Send, MessageSquare, Scroll } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
 
 type DMUser = {
@@ -80,18 +80,23 @@ function ThreadRow({ thread, meId }: { thread: DMThread; meId?: string }) {
   return (
     <Link href={`/messages/${thread.id}`}>
       <a className="block">
-        <Card className="hover:shadow transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <Card className="hover:shadow-lg hover:border-amber-300 transition-all duration-200 border border-amber-100 bg-gradient-to-r from-white to-orange-50/30">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
-              <span className="truncate">{name}</span>
+              <MessageSquare className="h-4 w-4 text-amber-600" />
+              <span className="truncate font-semibold text-gray-800">{name}</span>
+              {(thread.unread ?? 0) > 0 && (
+                <Badge className="bg-gradient-to-r from-fuchsia-600 to-rose-600 text-white">
+                  {thread.unread}
+                </Badge>
+              )}
             </CardTitle>
-            <Badge variant="secondary">
-              {new Date(ts).toLocaleString()}
+            <Badge variant="secondary" className="text-xs text-gray-600">
+              {new Date(ts).toLocaleDateString()}
             </Badge>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground line-clamp-2">{preview}</p>
+          <CardContent className="pt-0">
+            <p className="text-sm text-gray-600 line-clamp-2 italic">{preview}</p>
           </CardContent>
         </Card>
       </a>
@@ -135,9 +140,12 @@ export default function DMInboxPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
-      <div className="flex items-center gap-2">
-        <Mail className="h-5 w-5" />
-        <h1 className="text-xl font-semibold">
+      <div className="flex items-center gap-3">
+        <Crown className="h-6 w-6 text-amber-500" />
+        <h1
+          className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent"
+          style={{ fontFamily: "'Playfair Display', serif" }}
+        >
           <span className="hidden sm:inline">Royal Table Talk</span>
           <span className="sm:hidden">Table Talk</span>
         </h1>
@@ -153,11 +161,16 @@ export default function DMInboxPage() {
       </div>
 
       {/* Compose */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Start a new conversation</CardTitle>
+      <Card className="border-2 border-amber-200 bg-gradient-to-br from-orange-50/50 to-red-50/50 shadow-lg">
+        <CardHeader className="border-b border-amber-200">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Scroll className="h-5 w-5 text-amber-600" />
+            <span className="bg-gradient-to-r from-orange-700 to-red-700 bg-clip-text text-transparent font-semibold">
+              Dispatch a New Message
+            </span>
+          </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-3 pt-4">
           <div className="flex gap-2">
             <Input
               placeholder="Recipient username (e.g., chefsire)"
@@ -168,14 +181,15 @@ export default function DMInboxPage() {
                   createMutation.mutate(toUsername.trim());
                 }
               }}
-              className="flex-1"
+              className="flex-1 border-amber-300 focus:border-amber-500 focus:ring-amber-500"
             />
             <Button
               disabled={!toUsername.trim() || createMutation.isPending}
               onClick={() => createMutation.mutate(toUsername.trim())}
+              className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-semibold shadow-md"
             >
               <Send className="h-4 w-4 mr-2" />
-              Message
+              Dispatch
             </Button>
           </div>
           {createMutation.isError && (

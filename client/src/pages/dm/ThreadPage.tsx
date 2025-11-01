@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Send } from "lucide-react";
+import { ArrowLeft, Send, Crown } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
 
 type Params = { params?: Record<string, string> };
@@ -95,16 +95,21 @@ export default function DMThreadPage({ params }: Params) {
         </Link>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Conversation</CardTitle>
+      <Card className="border-2 border-amber-200 shadow-lg bg-gradient-to-br from-orange-50/30 to-red-50/30">
+        <CardHeader className="border-b border-amber-200">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Crown className="h-5 w-5 text-amber-600" />
+            <span className="bg-gradient-to-r from-orange-700 to-red-700 bg-clip-text text-transparent font-semibold">
+              Royal Conversation
+            </span>
+          </CardTitle>
         </CardHeader>
 
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-3 pt-4">
           {/* Messages list */}
           <div
             ref={scrollerRef}
-            className="h-[60vh] overflow-y-auto rounded border p-3 bg-background"
+            className="h-[60vh] overflow-y-auto rounded-lg border-2 border-amber-100 p-4 bg-white/80 backdrop-blur-sm"
           >
             {loadingMessages ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
@@ -121,17 +126,17 @@ export default function DMThreadPage({ params }: Params) {
               return (
                 <div
                   key={m.id}
-                  className={`mb-2 flex ${mine ? "justify-end" : "justify-start"}`}
+                  className={`mb-3 flex ${mine ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${
+                    className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-md ${
                       mine
-                        ? "bg-primary text-primary-foreground rounded-br-sm"
-                        : "bg-muted rounded-bl-sm"
+                        ? "bg-gradient-to-br from-orange-600 to-red-600 text-white rounded-br-sm border-2 border-amber-400"
+                        : "bg-gradient-to-br from-purple-50 to-fuchsia-50 text-gray-800 rounded-bl-sm border-2 border-purple-200"
                     }`}
                   >
-                    <div className="whitespace-pre-wrap break-words">{m.body}</div>
-                    <div className="mt-1 text-[10px] opacity-70 text-right">
+                    <div className="whitespace-pre-wrap break-words leading-relaxed">{m.body}</div>
+                    <div className={`mt-1.5 text-[10px] text-right ${mine ? "text-amber-100" : "text-purple-400"}`}>
                       {new Date(m.createdAt).toLocaleString()}
                     </div>
                   </div>
@@ -140,14 +145,17 @@ export default function DMThreadPage({ params }: Params) {
             })}
 
             {!loadingMessages && messages.length === 0 && (
-              <p className="text-sm text-muted-foreground">No messages yet. Say hello!</p>
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <Crown className="h-12 w-12 text-amber-300 mb-3" />
+                <p className="text-sm text-gray-500 italic">No messages yet. Begin the royal discourse!</p>
+              </div>
             )}
           </div>
 
           {/* Composer */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 pt-2">
             <Input
-              placeholder="Write a message…"
+              placeholder="Compose your royal message…"
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
@@ -158,13 +166,15 @@ export default function DMThreadPage({ params }: Params) {
                   }
                 }
               }}
+              className="border-amber-300 focus:border-amber-500 focus:ring-amber-500"
             />
             <Button
               disabled={!text.trim() || sendMutation.isPending}
               onClick={() => sendMutation.mutate(text.trim())}
+              className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-semibold shadow-md"
             >
               <Send className="h-4 w-4 mr-1" />
-              Send
+              Dispatch
             </Button>
           </div>
           {sendMutation.isError && (
