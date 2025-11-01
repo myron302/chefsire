@@ -1,14 +1,13 @@
 /* client/src/pages/services/wedding-map/index.tsx */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* global google */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
-  MapPin, Search, Filter, ChefHat, Camera, Music,
-  Flower, Heart, Users, DollarSign, Star, Shield,
-  Phone, Globe, Navigation, List, Grid,
-  Sparkles, Clock, X, MapPinned,
-  Shirt, Crown
+  MapPin, Search, Camera, Music, Flower, Heart, Users,
+  Star, Shield, Phone, Globe, Navigation, List, Grid,
+  Sparkles, X, MapPinned, Shirt, Crown
 } from "lucide-react";
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -244,17 +243,15 @@ const weddingVendors = {
   ],
 } as const;
 
-type AnyVendor = (typeof weddingVendors)["venues"][number] |
-  (typeof weddingVendors)["photographers"][number] |
-  (typeof weddingVendors)["djs"][number] |
-  (typeof weddingVendors)["florists"][number] |
-  (typeof weddingVendors)["dressShops"][number] |
-  (typeof weddingVendors)["tuxedoShops"][number];
+type AnyVendor =
+  | (typeof weddingVendors)["venues"][number]
+  | (typeof weddingVendors)["photographers"][number]
+  | (typeof weddingVendors)["djs"][number]
+  | (typeof weddingVendors)["florists"][number]
+  | (typeof weddingVendors)["dressShops"][number]
+  | (typeof weddingVendors)["tuxedoShops"][number];
 
-const categoryConfig: Record<
-  string,
-  { label: string; icon: any; color: string }
-> = {
+const categoryConfig: Record<string, { label: string; icon: any; color: string }> = {
   all: { label: "All Vendors", icon: Sparkles, color: "purple" },
   venue: { label: "Venues", icon: MapPin, color: "blue" },
   photographer: { label: "Photographers", icon: Camera, color: "pink" },
@@ -268,116 +265,172 @@ const categoryConfig: Record<
  * Key resolution: Vite env → window fallback
  * ------------------------------------- */
 function getBrowserMapsKey(): string | undefined {
-  const fromVite = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+  const fromVite = (import.meta as any)?.env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
   const fromWindow = (globalThis as any)?.GMAPS_KEY as string | undefined;
   return fromVite || fromWindow;
 }
 
 /** -------------------------------------
- * Map shell – only mounts loader when key exists
+ * Subcomponent that loads Maps and renders
+ * Autocomplete + Map (so google is defined)
  * ------------------------------------- */
-function WeddingMapCanvas({
-  vendors,
-  center,
-  onMarkerClick,
-  onReady,
-}: {
-  vendors: AnyVendor[];
-  center: google.maps.LatLngLiteral;
-  onMarkerClick: (v: AnyVendor) => void;
-  onReady?: (map: google.maps.Map) => void;
-}) {
-  const apiKey = getBrowserMapsKey();
-
-  if (!apiKey) {
-    return (
-      <div className="h-[600px] flex items-center justify-center bg-muted/30 rounded-lg text-center p-6">
-        <div>
-          <p className="font-semibold mb-1">Google Maps key not detected</p>
-          <p className="text-sm text-muted-foreground">
-            Set <code>VITE_GOOGLE_MAPS_API_KEY</code> in your environment (Plesk) or define{" "}
-            <code>window.GMAPS_KEY</code> before this page loads.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return <WeddingMapInner apiKey={apiKey} vendors={vendors} center={center} onMarkerClick={onMarkerClick} onReady={onReady} />;
-}
-
-function WeddingMapInner({
+function LoadedMapsSection({
   apiKey,
-  vendors,
+  filteredVendors,
+  locationQuery,
+  setLocationQuery,
   center,
+  setCenter,
+  searchQuery,
+  setSearchQuery,
   onMarkerClick,
-  onReady,
 }: {
   apiKey: string;
-  vendors: AnyVendor[];
-  center: google.maps.LatLngLiteral;
+  filteredVendors: AnyVendor[];
+  locationQuery: string;
+  setLocationQuery: (v: string) => void;
+  center: { lat: number; lng: number };
+  setCenter: (c: { lat: number; lng: number }) => void;
+  searchQuery: string;
+  setSearchQuery: (v: string) => void;
   onMarkerClick: (v: AnyVendor) => void;
-  onReady?: (map: google.maps.Map) => void;
 }) {
-  const { isLoaded, loadError } = useJsApiLoader(
-    useMemo(
-      () => ({
-        id: "wedding-map-script",
-        googleMapsApiKey: apiKey,
-        libraries: ["places", "marker"],
-      }),
-      [apiKey]
-    )
-  );
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: "chefsire-maps",
+    googleMapsApiKey: apiKey,
+    libraries: ["places", "marker"],
+  });
 
-  const mapRef = useRef<google.maps.Map | null>(null);
+  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+
+  const onPlaceChanged = () => {
+    try {
+      const place = autocompleteRef.current?.getPlace();
+      const loc = place?.geometry?.location;
+      if (loc) {
+        setCenter({ lat: loc.lat(), lng: loc.lng() });
+        setLocationQuery(place?.formatted_address || place?.name || locationQuery);
+      }
+    } catch (e) {
+      // ignore; keep UI alive
+      console.error("Autocomplete error:", e);
+    }
+  };
+
+  // --- Search Bar (kept visually the same) ---
+  const SearchBar = (
+    <Card className="mb-6">
+      <CardContent className="p-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Input
+                placeholder="Search by vendor name, specialty, or service..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </div>
+
+          <div>
+            {isLoaded ? (
+              <Autocomplete
+                onLoad={(ac) => (autocompleteRef.current = ac)}
+                onPlaceChanged={onPlaceChanged}
+                options={{}}
+              >
+                <div className="relative">
+                  <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Input
+                    placeholder="Location (City, State)"
+                    value={locationQuery}
+                    onChange={(e) => setLocationQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        onPlaceChanged();
+                      }
+                    }}
+                    className="pl-10"
+                  />
+                </div>
+              </Autocomplete>
+            ) : (
+              <div className="relative">
+                <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Input
+                  placeholder="Location (City, State)"
+                  value={locationQuery}
+                  onChange={(e) => setLocationQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 
   if (loadError) {
     return (
-      <div className="h-[600px] flex items-center justify-center bg-muted/30 rounded-lg">
-        <div className="text-center px-6">
-          <p className="font-semibold mb-1">Maps failed to load</p>
-          <p className="text-sm text-muted-foreground">
-            Check that your key allows this referrer and that <code>Maps JavaScript API</code> and{" "}
-            <code>Places API</code> are enabled.
-          </p>
-        </div>
-      </div>
+      <>
+        {SearchBar}
+        <Card className="h-[600px] overflow-hidden">
+          <CardContent className="p-0 h-full flex items-center justify-center bg-muted/30">
+            <div className="text-center px-6">
+              <p className="font-semibold mb-1">Maps failed to load</p>
+              <p className="text-sm text-muted-foreground">
+                Check that this referrer is allowed and that <code>Maps JavaScript API</code> and{" "}
+                <code>Places API</code> are enabled.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </>
     );
   }
 
   if (!isLoaded) {
     return (
-      <div className="h-[600px] flex items-center justify-center bg-muted/30 rounded-lg">
-        Loading Google Map…
-      </div>
+      <>
+        {SearchBar}
+        <Card className="h-[600px] overflow-hidden">
+          <CardContent className="p-0 h-full flex items-center justify-center bg-muted/30">
+            Loading Google Map…
+          </CardContent>
+        </Card>
+      </>
     );
   }
 
   return (
-    <GoogleMap
-      onLoad={(m) => {
-        mapRef.current = m;
-        onReady?.(m);
-      }}
-      center={center}
-      zoom={12}
-      mapContainerStyle={{ width: "100%", height: "600px", borderRadius: "0.5rem" }}
-      options={{
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
-      }}
-    >
-      {vendors.map((v) => (
-        <Marker
-          key={v.id}
-          position={{ lat: v.lat, lng: v.lng }}
-          onClick={() => onMarkerClick(v)}
-          title={v.name}
-        />
-      ))}
-    </GoogleMap>
+    <>
+      {SearchBar}
+
+      <Card className="h-[600px] overflow-hidden">
+        <CardContent className="p-0 h-full">
+          <GoogleMap
+            center={center}
+            zoom={12}
+            onLoad={() => {}}
+            mapContainerStyle={{ width: "100%", height: "600px" }}
+            options={{ mapTypeControl: false, streetViewControl: false, fullscreenControl: false }}
+          >
+            {filteredVendors.map((v) => (
+              <Marker
+                key={v.id}
+                position={{ lat: v.lat, lng: v.lng }}
+                title={v.name}
+                onClick={() => onMarkerClick(v)}
+              />
+            ))}
+          </GoogleMap>
+        </CardContent>
+      </Card>
+    </>
   );
 }
 
@@ -392,8 +445,7 @@ export default function WeddingVendorMap() {
   const [selectedVendor, setSelectedVendor] = useState<AnyVendor | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [savedVendors, setSavedVendors] = useState<Set<number>>(new Set());
-  const [center, setCenter] = useState<google.maps.LatLngLiteral>({ lat: 41.7658, lng: -72.6734 });
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const [center, setCenter] = useState<{ lat: number; lng: number }>({ lat: 41.7658, lng: -72.6734 });
 
   // flatten vendors
   const allVendors: AnyVendor[] = useMemo(
@@ -439,33 +491,7 @@ export default function WeddingVendorMap() {
     return config ? config.icon : MapPin;
   };
 
-  // Safe Autocomplete handler with geocode fallback
-  const onPlaceChanged = async () => {
-    try {
-      const place = autocompleteRef.current?.getPlace();
-      const loc = place?.geometry?.location ?? null;
-      if (loc) {
-        const next = { lat: loc.lat(), lng: loc.lng() };
-        setCenter(next);
-        setLocationQuery(place?.formatted_address || place?.name || locationQuery);
-        return;
-      }
-      // fallback via Geocoder
-      const text = locationQuery;
-      if (!text) return;
-      const geocoder = new google.maps.Geocoder();
-      geocoder.geocode({ address: text }, (results, status) => {
-        const r = results?.[0];
-        if (status === "OK" && r?.geometry?.location) {
-          const loc2 = r.geometry.location;
-          setCenter({ lat: loc2.lat(), lng: loc2.lng() });
-        }
-      });
-    } catch (e) {
-      // swallow – keep UI alive
-      console.error("Autocomplete error:", e);
-    }
-  };
+  const apiKey = getBrowserMapsKey();
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -486,51 +512,8 @@ export default function WeddingVendorMap() {
           </div>
         </div>
 
-        {/* Search Bar */}
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="md:col-span-2">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <Input
-                    placeholder="Search by vendor name, specialty, or service..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <div>
-                {/* Autocomplete wraps the input for location */}
-                <Autocomplete
-                  onLoad={(ac) => (autocompleteRef.current = ac)}
-                  onPlaceChanged={onPlaceChanged}
-                  options={{}}
-                >
-                  <div className="relative">
-                    <Navigation className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                    <Input
-                      placeholder="Location (City, State)"
-                      value={locationQuery}
-                      onChange={(e) => setLocationQuery(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          onPlaceChanged();
-                        }
-                      }}
-                      className="pl-10"
-                    />
-                  </div>
-                </Autocomplete>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Category Filters */}
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-6">
+        <div className="flex gap-2 overflow-x-auto pb-2">
           {Object.entries(categoryConfig).map(([key, config]) => {
             const Icon = config.icon;
             return (
@@ -553,21 +536,65 @@ export default function WeddingVendorMap() {
 
       {/* Map + Vendor List */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        {/* Map Section */}
+        {/* Map + Search Section (left, spans 2 columns) */}
         <div className="lg:col-span-2">
-          <Card className="h-[600px] overflow-hidden">
-            <CardContent className="p-0 h-full">
-              <WeddingMapCanvas
-                vendors={filteredVendors}
-                center={center}
-                onMarkerClick={handleViewDetails}
-                onReady={() => {}}
-              />
-            </CardContent>
-          </Card>
+          {apiKey ? (
+            <LoadedMapsSection
+              apiKey={apiKey}
+              filteredVendors={filteredVendors}
+              locationQuery={locationQuery}
+              setLocationQuery={setLocationQuery}
+              center={center}
+              setCenter={setCenter}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              onMarkerClick={handleViewDetails}
+            />
+          ) : (
+            <>
+              {/* search bar without Google (key missing) */}
+              <Card className="mb-6">
+                <CardContent className="p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="md:col-span-2">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                        <Input
+                          placeholder="Search by vendor name, specialty, or service..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-10"
+                        />
+                      </div>
+                    </div>
+                    <div className="relative">
+                      <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                      <Input
+                        placeholder="Location (City, State)"
+                        value={locationQuery}
+                        onChange={(e) => setLocationQuery(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="h-[600px] overflow-hidden">
+                <CardContent className="p-0 h-full flex items-center justify-center bg-muted/30 text-center px-6">
+                  <div>
+                    <p className="font-semibold mb-1">Google Maps key not detected</p>
+                    <p className="text-sm text-muted-foreground">
+                      Set <code>VITE_GOOGLE_MAPS_API_KEY</code> (or define <code>window.GMAPS_KEY</code>) and reload.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </div>
 
-        {/* Vendor List Section */}
+        {/* Vendor List Section (right) */}
         <div className="lg:col-span-1">
           <Card className="h-[600px] overflow-hidden flex flex-col">
             <CardHeader className="pb-3">
@@ -860,4 +887,9 @@ export default function WeddingVendorMap() {
       </Card>
     </div>
   );
+
+  function getCategoryIcon(category: string) {
+    const config = categoryConfig[category];
+    return config ? config.icon : MapPin;
+  }
 }
