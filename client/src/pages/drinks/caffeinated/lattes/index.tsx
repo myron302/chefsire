@@ -270,7 +270,7 @@ const latteTypes = [
     name: 'Classic Latte',
     icon: Coffee,
     description: 'Simple cold coffee over ice',
-    color: 'text-amber-400',
+    color: 'text-stone-600',
     timing: 'Anytime',
     focus: 'Pure Coffee'
   },
@@ -279,7 +279,7 @@ const latteTypes = [
     name: 'Latte Latte',
     icon: Coffee,
     description: 'Espresso with cold milk',
-    color: 'text-amber-400',
+    color: 'text-stone-600',
     timing: 'Morning',
     focus: 'Creamy & Smooth'
   },
@@ -288,7 +288,7 @@ const latteTypes = [
     name: 'Flavored Latte',
     icon: Sparkles,
     description: 'Syrups and flavor additions',
-    color: 'text-amber-400',
+    color: 'text-stone-600',
     timing: 'Anytime',
     focus: 'Sweet & Flavorful'
   },
@@ -297,7 +297,7 @@ const latteTypes = [
     name: 'Mocha',
     icon: Heart,
     description: 'Chocolate meets coffee',
-    color: 'text-amber-400',
+    color: 'text-stone-600',
     timing: 'Afternoon',
     focus: 'Chocolate Blend'
   }
@@ -333,12 +333,12 @@ const allCaffeinatedSubcategories = [
 ];
 
 const latteAdvantages = [
-  { icon: Coffee, title: 'Refreshingly Cold', description: 'Perfect cool coffee experience', color: 'text-amber-400' },
-  { icon: Clock, title: 'Quick Prep', description: 'Ready in 2-4 minutes', color: 'text-amber-400' },
-  { icon: Zap, title: 'Energy Boost', description: 'Caffeine when you need it', color: 'text-amber-400' },
-  { icon: Star, title: 'Versatile', description: 'Endless flavor combinations', color: 'text-amber-400' },
-  { icon: Sun, title: 'Anytime Drink', description: 'Perfect for any time of day', color: 'text-amber-400' },
-  { icon: Heart, title: 'Customizable', description: 'Make it exactly how you like', color: 'text-amber-400' }
+  { icon: Coffee, title: 'Refreshingly Cold', description: 'Perfect cool coffee experience', color: 'text-stone-600' },
+  { icon: Clock, title: 'Quick Prep', description: 'Ready in 2-4 minutes', color: 'text-stone-600' },
+  { icon: Zap, title: 'Energy Boost', description: 'Caffeine when you need it', color: 'text-stone-600' },
+  { icon: Star, title: 'Versatile', description: 'Endless flavor combinations', color: 'text-stone-600' },
+  { icon: Sun, title: 'Anytime Drink', description: 'Perfect for any time of day', color: 'text-stone-600' },
+  { icon: Heart, title: 'Customizable', description: 'Make it exactly how you like', color: 'text-stone-600' }
 ];
 
 export default function LattesPage() {
@@ -496,7 +496,7 @@ export default function LattesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+    <div className="min-h-screen bg-gradient-to-br from-stone-50 via-amber-50 to-yellow-50">
       {/* Universal Search Modal */}
       {showUniversalSearch && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
@@ -519,7 +519,7 @@ export default function LattesPage() {
         <RecipeKit
           open={showKit}
           onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
-          accent="amber"
+          accent="stone"
           pointsReward={20}
           onComplete={handleCompleteRecipe}
           item={{
@@ -547,9 +547,9 @@ export default function LattesPage() {
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
-                <Coffee className="h-6 w-6 text-amber-400" />
+                <Coffee className="h-6 w-6 text-stone-600" />
                 <h1 className="text-2xl font-bold text-gray-900">Lattes</h1>
-                <Badge className="bg-amber-100 text-amber-600 border-amber-200">Milk Milk Cold & Refreshing Espresso Espresso</Badge>
+                <Badge className="bg-stone-100 text-stone-700 border-stone-200">Milk Milk Cold & Refreshing Espresso Espresso</Badge>
               </div>
             </div>
 
@@ -568,7 +568,7 @@ export default function LattesPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-amber-400 hover:bg-amber-500 text-white" onClick={handleSharePage}>
+              <Button size="sm" className="bg-stone-500 hover:bg-stone-600 text-white" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Page
               </Button>
@@ -580,7 +580,7 @@ export default function LattesPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
         {/* CROSS-HUB NAVIGATION */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+        <Card className="bg-gradient-to-r from-stone-50 to-yellow-50 border-stone-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -588,8 +588,8 @@ export default function LattesPage() {
                 const Icon = hub.icon;
                 return (
                   <Link key={hub.id} href={hub.route}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
-                      <Icon className="h-4 w-4 mr-2 text-amber-400" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-stone-50 hover:border-stone-300">
+                      <Icon className="h-4 w-4 mr-2 text-stone-600" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{hub.name}</div>
                         <div className="text-xs text-gray-500">{hub.description}</div>
@@ -604,7 +604,7 @@ export default function LattesPage() {
         </Card>
 
         {/* SISTER SUBPAGES NAVIGATION */}
-        <Card className="bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
+        <Card className="bg-gradient-to-r from-stone-50 to-yellow-50 border-stone-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Caffeinated Drinks</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -612,8 +612,8 @@ export default function LattesPage() {
                 const Icon = subcategory.icon;
                 return (
                   <Link key={subcategory.id} href={subcategory.path}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
-                      <Icon className="h-4 w-4 mr-2 text-amber-400" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-stone-50 hover:border-stone-300">
+                      <Icon className="h-4 w-4 mr-2 text-stone-600" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{subcategory.name}</div>
                         <div className="text-xs text-gray-500">{subcategory.description}</div>
@@ -631,7 +631,7 @@ export default function LattesPage() {
         <Card className="mb-8">
           <CardContent className="p-6">
             <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-              <Coffee className="h-6 w-6 text-amber-400" />
+              <Coffee className="h-6 w-6 text-stone-600" />
               Why Lattes?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -655,25 +655,25 @@ export default function LattesPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">149</div>
+              <div className="text-2xl font-bold text-stone-600">149</div>
               <div className="text-sm text-gray-600">Avg Calories</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">4.4g</div>
+              <div className="text-2xl font-bold text-stone-600">4.4g</div>
               <div className="text-sm text-gray-600">Avg Protein</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">4.7★</div>
+              <div className="text-2xl font-bold text-stone-600">4.7★</div>
               <div className="text-sm text-gray-600">Avg Rating</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">{latteDrinks.length}</div>
+              <div className="text-2xl font-bold text-stone-600">{latteDrinks.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -816,7 +816,7 @@ export default function LattesPage() {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <Badge className="bg-amber-100 text-amber-600 border-amber-200">{drink.drinkType}</Badge>
+                        <Badge className="bg-stone-100 text-stone-700 border-stone-200">{drink.drinkType}</Badge>
                         <Badge variant="outline">{drink.caffeineLevel}</Badge>
                         {drink.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
@@ -826,15 +826,15 @@ export default function LattesPage() {
                       {/* Nutrition Grid */}
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
-                          <div className="font-bold text-amber-400">{drink.nutrition.calories}</div>
+                          <div className="font-bold text-stone-600">{drink.nutrition.calories}</div>
                           <div className="text-gray-500">Calories</div>
                         </div>
                         <div>
-                          <div className="font-bold text-amber-400">{drink.nutrition.protein}g</div>
+                          <div className="font-bold text-stone-600">{drink.nutrition.protein}g</div>
                           <div className="text-gray-500">Protein</div>
                         </div>
                         <div>
-                          <div className="font-bold text-amber-400">{drink.prepTime}m</div>
+                          <div className="font-bold text-stone-600">{drink.prepTime}m</div>
                           <div className="text-gray-500">Prep</div>
                         </div>
                       </div>
@@ -903,7 +903,7 @@ export default function LattesPage() {
 
                               return (
                                 <li key={i} className="flex items-start gap-2">
-                                  <Check className="h-4 w-4 text-amber-400 mt-0.5" />
+                                  <Check className="h-4 w-4 text-stone-600 mt-0.5" />
                                   <span>
                                     <span className="text-amber-500 font-semibold">
                                       {show.amount} {show.unit}
@@ -965,14 +965,14 @@ export default function LattesPage() {
                       <div className="space-y-2 mb-3 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Best Time:</span>
-                          <span className="font-medium text-amber-400">{drink.bestTime}</span>
+                          <span className="font-medium text-stone-600">{drink.bestTime}</span>
                         </div>
                       </div>
 
                       {/* Benefits Tags - BELOW DESCRIPTION */}
                       <div className="flex flex-wrap gap-1 mb-4">
                         {drink.benefits?.slice(0, 3).map((benefit: string, index: number) => (
-                          <Badge key={index} variant="secondary" className="text-xs bg-amber-100 text-amber-600 hover:bg-amber-200">
+                          <Badge key={index} variant="secondary" className="text-xs bg-stone-100 text-stone-700 hover:bg-amber-200">
                             {benefit}
                           </Badge>
                         ))}
@@ -981,7 +981,7 @@ export default function LattesPage() {
                       {/* Make Drink Button */}
                       <div className="mt-3">
                         <Button
-                          className="w-full bg-amber-400 hover:bg-amber-500 text-white"
+                          className="w-full bg-stone-500 hover:bg-stone-500 text-white"
                           onClick={() => openRecipeModal(drink)}
                         >
                           <Coffee className="h-4 w-4 mr-2" />
@@ -1005,19 +1005,19 @@ export default function LattesPage() {
                 <Card key={type.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="text-center">
-                      <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <Icon className="h-6 w-6 text-amber-400" />
+                      <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <Icon className="h-6 w-6 text-stone-600" />
                       </div>
                       <CardTitle className="text-lg">{type.name}</CardTitle>
                       <p className="text-sm text-gray-600">{type.description}</p>
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-center bg-amber-50 p-3 rounded-lg mb-4">
+                    <div className="text-center bg-stone-50 p-3 rounded-lg mb-4">
                       <div className="text-sm font-medium text-gray-700 mb-1">Timing</div>
-                      <div className="text-lg font-bold text-amber-400">{type.timing}</div>
+                      <div className="text-lg font-bold text-stone-600">{type.timing}</div>
                     </div>
-                    <Button className="w-full bg-amber-400 hover:bg-amber-500 text-white" onClick={() => setActiveTab('browse')}>
+                    <Button className="w-full bg-stone-500 hover:bg-stone-500 text-white" onClick={() => setActiveTab('browse')}>
                       Explore {type.name}
                     </Button>
                   </CardContent>
@@ -1034,8 +1034,8 @@ export default function LattesPage() {
               <Card key={benefit.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader>
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-amber-100 rounded-lg">
-                      <Heart className="h-6 w-6 text-amber-400" />
+                    <div className="p-2 bg-stone-100 rounded-lg">
+                      <Heart className="h-6 w-6 text-stone-600" />
                     </div>
                     <div>
                       <CardTitle className="text-lg">{benefit.name}</CardTitle>
@@ -1044,11 +1044,11 @@ export default function LattesPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center bg-amber-50 p-3 rounded-lg mb-4">
+                  <div className="text-center bg-stone-50 p-3 rounded-lg mb-4">
                     <div className="text-sm font-medium text-gray-700 mb-1">Coffee Focus</div>
-                    <div className="text-lg font-bold text-amber-400">Latte Support</div>
+                    <div className="text-lg font-bold text-stone-600">Latte Support</div>
                   </div>
-                  <Button className="w-full bg-amber-400 hover:bg-amber-500 text-white" onClick={() => setActiveTab('browse')}>
+                  <Button className="w-full bg-stone-500 hover:bg-stone-500 text-white" onClick={() => setActiveTab('browse')}>
                     View {benefit.name}
                   </Button>
                 </CardContent>
@@ -1062,9 +1062,9 @@ export default function LattesPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {featuredDrinks.map(drink => (
               <Card key={drink.id} className="overflow-hidden hover:shadow-xl transition-shadow">
-                <div className="relative h-48 bg-gradient-to-br from-amber-100 to-orange-200 flex items-center justify-center">
-                  <Coffee className="h-24 w-24 text-amber-400 opacity-50" />
-                  <Badge className="absolute top-4 left-4 bg-amber-400 text-white">Featured</Badge>
+                <div className="relative h-48 bg-gradient-to-br from-stone-100 to-yellow-200 flex items-center justify-center">
+                  <Coffee className="h-24 w-24 text-stone-600 opacity-50" />
+                  <Badge className="absolute top-4 left-4 bg-stone-500 text-white">Featured</Badge>
                 </div>
 
                 <CardHeader>
@@ -1074,7 +1074,7 @@ export default function LattesPage() {
 
                 <CardContent>
                   <Button
-                    className="w-full bg-amber-400 hover:bg-amber-500 text-white"
+                    className="w-full bg-stone-500 hover:bg-stone-500 text-white"
                     onClick={() => openRecipeModal(drink)}
                   >
                     <Coffee className="h-4 w-4 mr-2" />
@@ -1090,7 +1090,7 @@ export default function LattesPage() {
         {activeTab === 'trending' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {trendingDrinks.map(drink => (
-              <Card key={drink.id} className="hover:shadow-lg transition-shadow border-2 border-amber-200">
+              <Card key={drink.id} className="hover:shadow-lg transition-shadow border-2 border-stone-200">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -1103,7 +1103,7 @@ export default function LattesPage() {
 
                 <CardContent>
                   <Button
-                    className="w-full bg-amber-400 hover:bg-amber-500 text-white"
+                    className="w-full bg-stone-500 hover:bg-stone-500 text-white"
                     onClick={() => openRecipeModal(drink)}
                   >
                     <Coffee className="h-4 w-4 mr-2" />
@@ -1116,19 +1116,19 @@ export default function LattesPage() {
         )}
 
         {/* Your Progress */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+        <Card className="bg-gradient-to-r from-stone-50 to-yellow-50 border-stone-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold mb-2">Your Progress</h3>
                 <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="text-amber-400">
+                  <Badge variant="outline" className="text-stone-600">
                     Level {userProgress.level}
                   </Badge>
-                  <Badge variant="outline" className="text-amber-400">
+                  <Badge variant="outline" className="text-stone-600">
                     {userProgress.totalPoints} XP
                   </Badge>
-                  <Badge variant="outline" className="text-amber-400">
+                  <Badge variant="outline" className="text-stone-600">
                     {userProgress.totalDrinksMade} Drinks Made
                   </Badge>
                 </div>
