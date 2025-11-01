@@ -1,8 +1,13 @@
-import * as React from "react";
-import { useMemo, useRef, useState, useEffect } from "react";
+/* client/src/pages/services/wedding-map/index.tsx */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* global google */
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  MapPin, Search, Camera, Music, Flower, Heart, Users, Star, Shield,
-  Phone, Globe, Navigation, List, Grid, Sparkles, X, MapPinned, Shirt, Crown
+  MapPin, Search, Filter, ChefHat, Camera, Music,
+  Flower, Heart, Users, DollarSign, Star, Shield,
+  Phone, Globe, Navigation, List, Grid,
+  Sparkles, Clock, X, MapPinned,
+  Shirt, Crown
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,16 +15,16 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
-// Google Maps
 import {
   GoogleMap,
   Marker,
-  InfoWindow,
   Autocomplete,
   useJsApiLoader,
 } from "@react-google-maps/api";
 
-// ---------- Mock data (same vendors you had) ----------
+/** -----------------------------
+ * Vendor seed data (same as yours)
+ * ----------------------------- */
 const weddingVendors = {
   venues: [
     {
@@ -239,103 +244,183 @@ const weddingVendors = {
   ],
 } as const;
 
-const categoryConfig = {
-  all: { label: "All Vendors", color: "#8b5cf6" }, // purple
-  venue: { label: "Venues", color: "#3b82f6" }, // blue
-  photographer: { label: "Photographers", color: "#ec4899" }, // pink
-  dj: { label: "DJs & Entertainment", color: "#f59e0b" }, // amber
-  florist: { label: "Florists", color: "#22c55e" }, // green
-  dressShop: { label: "Dress Shops", color: "#a855f7" }, // purple
-  tuxedoShop: { label: "Tuxedo Shops", color: "#6366f1" }, // indigo
-} as const;
+type AnyVendor = (typeof weddingVendors)["venues"][number] |
+  (typeof weddingVendors)["photographers"][number] |
+  (typeof weddingVendors)["djs"][number] |
+  (typeof weddingVendors)["florists"][number] |
+  (typeof weddingVendors)["dressShops"][number] |
+  (typeof weddingVendors)["tuxedoShops"][number];
 
-type CategoryKey = keyof typeof categoryConfig | "all";
-type Vendor = {
-  id: number;
-  name: string;
-  category: Exclude<CategoryKey, "all">;
-  address: string;
-  lat: number;
-  lng: number;
-  rating: number;
-  reviews: number;
-  priceRange: string;
-  image: string;
-  verified?: boolean;
-  capacity?: string;
-  style?: string;
-  specialty?: string;
-  amenities?: string[];
-  services?: string[];
-  packages?: string[];
-  brands?: string[];
+const categoryConfig: Record<
+  string,
+  { label: string; icon: any; color: string }
+> = {
+  all: { label: "All Vendors", icon: Sparkles, color: "purple" },
+  venue: { label: "Venues", icon: MapPin, color: "blue" },
+  photographer: { label: "Photographers", icon: Camera, color: "pink" },
+  dj: { label: "DJs & Entertainment", icon: Music, color: "orange" },
+  florist: { label: "Florists", icon: Flower, color: "green" },
+  dressShop: { label: "Dress Shops", icon: Crown, color: "purple" },
+  tuxedoShop: { label: "Tuxedo Shops", icon: Shirt, color: "indigo" },
 };
 
-const FLAT_VENDORS: Vendor[] = [
-  ...(weddingVendors.venues as any),
-  ...(weddingVendors.photographers as any),
-  ...(weddingVendors.djs as any),
-  ...(weddingVendors.florists as any),
-  ...(weddingVendors.dressShops as any),
-  ...(weddingVendors.tuxedoShops as any),
-];
-
-// Google Map container style
-const mapContainerStyle = { width: "100%", height: "100%" };
-
-// Build a colored SVG pin per category
-function markerIconFor(category: Vendor["category"]): google.maps.Symbol {
-  const fill = (categoryConfig as any)[category]?.color ?? "#8b5cf6";
-  return {
-    path: "M12 2C7.03 2 3 6.03 3 11c0 5.25 7.2 11.64 8.1 12.39a1.3 1.3 0 0 0 1.8 0C13.8 22.64 21 16.25 21 11c0-4.97-4.03-9-9-9zm0 12.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z",
-    fillColor: fill,
-    fillOpacity: 1,
-    strokeWeight: 1.2,
-    strokeColor: "#ffffff",
-    scale: 1.2,
-    anchor: new google.maps.Point(12, 24),
-  };
+/** -------------------------------------
+ * Key resolution: Vite env → window fallback
+ * ------------------------------------- */
+function getBrowserMapsKey(): string | undefined {
+  const fromVite = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+  const fromWindow = (globalThis as any)?.GMAPS_KEY as string | undefined;
+  return fromVite || fromWindow;
 }
 
-export default function WeddingVendorMap() {
-  // If you already inject the Maps script elsewhere (e.g., BiteMap), this loader
-  // will detect it. If not, set VITE_GOOGLE_MAPS_API_KEY in your env.
-  const loaderOptions = useMemo(() => {
-    const key = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
-    const opts: any = { id: "google-map-script", libraries: ["places"] };
-    if (key) opts.googleMapsApiKey = key;
-    return opts;
-  }, []);
-  const { isLoaded } = useJsApiLoader(loaderOptions);
+/** -------------------------------------
+ * Map shell – only mounts loader when key exists
+ * ------------------------------------- */
+function WeddingMapCanvas({
+  vendors,
+  center,
+  onMarkerClick,
+  onReady,
+}: {
+  vendors: AnyVendor[];
+  center: google.maps.LatLngLiteral;
+  onMarkerClick: (v: AnyVendor) => void;
+  onReady?: (map: google.maps.Map) => void;
+}) {
+  const apiKey = getBrowserMapsKey();
 
-  const [selectedCategory, setSelectedCategory] = useState<CategoryKey>("all");
+  if (!apiKey) {
+    return (
+      <div className="h-[600px] flex items-center justify-center bg-muted/30 rounded-lg text-center p-6">
+        <div>
+          <p className="font-semibold mb-1">Google Maps key not detected</p>
+          <p className="text-sm text-muted-foreground">
+            Set <code>VITE_GOOGLE_MAPS_API_KEY</code> in your environment (Plesk) or define{" "}
+            <code>window.GMAPS_KEY</code> before this page loads.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return <WeddingMapInner apiKey={apiKey} vendors={vendors} center={center} onMarkerClick={onMarkerClick} onReady={onReady} />;
+}
+
+function WeddingMapInner({
+  apiKey,
+  vendors,
+  center,
+  onMarkerClick,
+  onReady,
+}: {
+  apiKey: string;
+  vendors: AnyVendor[];
+  center: google.maps.LatLngLiteral;
+  onMarkerClick: (v: AnyVendor) => void;
+  onReady?: (map: google.maps.Map) => void;
+}) {
+  const { isLoaded, loadError } = useJsApiLoader(
+    useMemo(
+      () => ({
+        id: "wedding-map-script",
+        googleMapsApiKey: apiKey,
+        libraries: ["places", "marker"],
+      }),
+      [apiKey]
+    )
+  );
+
+  const mapRef = useRef<google.maps.Map | null>(null);
+
+  if (loadError) {
+    return (
+      <div className="h-[600px] flex items-center justify-center bg-muted/30 rounded-lg">
+        <div className="text-center px-6">
+          <p className="font-semibold mb-1">Maps failed to load</p>
+          <p className="text-sm text-muted-foreground">
+            Check that your key allows this referrer and that <code>Maps JavaScript API</code> and{" "}
+            <code>Places API</code> are enabled.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isLoaded) {
+    return (
+      <div className="h-[600px] flex items-center justify-center bg-muted/30 rounded-lg">
+        Loading Google Map…
+      </div>
+    );
+  }
+
+  return (
+    <GoogleMap
+      onLoad={(m) => {
+        mapRef.current = m;
+        onReady?.(m);
+      }}
+      center={center}
+      zoom={12}
+      mapContainerStyle={{ width: "100%", height: "600px", borderRadius: "0.5rem" }}
+      options={{
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+      }}
+    >
+      {vendors.map((v) => (
+        <Marker
+          key={v.id}
+          position={{ lat: v.lat, lng: v.lng }}
+          onClick={() => onMarkerClick(v)}
+          title={v.name}
+        />
+      ))}
+    </GoogleMap>
+  );
+}
+
+/** -------------------------------------
+ * Main page
+ * ------------------------------------- */
+export default function WeddingVendorMap() {
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [locationQuery, setLocationQuery] = useState("Hartford, CT");
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
-  const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
+  const [selectedVendor, setSelectedVendor] = useState<AnyVendor | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [savedVendors, setSavedVendors] = useState<Set<number>>(new Set());
-  const [activeInfoId, setActiveInfoId] = useState<number | null>(null);
-
-  const mapRef = useRef<google.maps.Map | null>(null);
+  const [center, setCenter] = useState<google.maps.LatLngLiteral>({ lat: 41.7658, lng: -72.6734 });
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
-  const [center, setCenter] = useState<google.maps.LatLngLiteral>({
-    lat: 41.7658,
-    lng: -72.6734, // Hartford default
-  });
-  const [zoom, setZoom] = useState(12);
 
-  // Fit bounds to filtered vendors
-  useEffect(() => {
-    if (!mapRef.current) return;
-    const vendors = getFilteredVendors();
-    if (!vendors.length) return;
-    const bounds = new google.maps.LatLngBounds();
-    vendors.forEach((v) => bounds.extend({ lat: v.lat, lng: v.lng }));
-    mapRef.current.fitBounds(bounds, 50);
-  }, [selectedCategory, searchQuery]);
+  // flatten vendors
+  const allVendors: AnyVendor[] = useMemo(
+    () => [
+      ...weddingVendors.venues,
+      ...weddingVendors.photographers,
+      ...weddingVendors.djs,
+      ...weddingVendors.florists,
+      ...weddingVendors.dressShops,
+      ...weddingVendors.tuxedoShops,
+    ],
+    []
+  );
 
-  const handleViewDetails = (vendor: Vendor) => {
+  const filteredVendors = useMemo(() => {
+    return allVendors.filter((vendor) => {
+      const matchesCategory = selectedCategory === "all" || vendor.category === selectedCategory;
+      const q = searchQuery.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        vendor.name.toLowerCase().includes(q) ||
+        vendor.address.toLowerCase().includes(q);
+      return matchesCategory && matchesSearch;
+    });
+  }, [allVendors, selectedCategory, searchQuery]);
+
+  const handleViewDetails = (vendor: AnyVendor) => {
     setSelectedVendor(vendor);
     setShowDetails(true);
   };
@@ -343,21 +428,44 @@ export default function WeddingVendorMap() {
   const toggleSaveVendor = (vendorId: number) => {
     setSavedVendors((prev) => {
       const next = new Set(prev);
-      next.has(vendorId) ? next.delete(vendorId) : next.add(vendorId);
+      if (next.has(vendorId)) next.delete(vendorId);
+      else next.add(vendorId);
       return next;
     });
   };
 
-  const getFilteredVendors = () => {
-    const q = searchQuery.trim().toLowerCase();
-    return FLAT_VENDORS.filter((v) => {
-      const matchCat = selectedCategory === "all" || v.category === selectedCategory;
-      const matchQ = !q || v.name.toLowerCase().includes(q) || v.address.toLowerCase().includes(q);
-      return matchCat && matchQ;
-    });
+  const getCategoryIcon = (category: string) => {
+    const config = categoryConfig[category];
+    return config ? config.icon : MapPin;
   };
 
-  const filteredVendors = getFilteredVendors();
+  // Safe Autocomplete handler with geocode fallback
+  const onPlaceChanged = async () => {
+    try {
+      const place = autocompleteRef.current?.getPlace();
+      const loc = place?.geometry?.location ?? null;
+      if (loc) {
+        const next = { lat: loc.lat(), lng: loc.lng() };
+        setCenter(next);
+        setLocationQuery(place?.formatted_address || place?.name || locationQuery);
+        return;
+      }
+      // fallback via Geocoder
+      const text = locationQuery;
+      if (!text) return;
+      const geocoder = new google.maps.Geocoder();
+      geocoder.geocode({ address: text }, (results, status) => {
+        const r = results?.[0];
+        if (status === "OK" && r?.geometry?.location) {
+          const loc2 = r.geometry.location;
+          setCenter({ lat: loc2.lat(), lng: loc2.lng() });
+        }
+      });
+    } catch (e) {
+      // swallow – keep UI alive
+      console.error("Autocomplete error:", e);
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -384,7 +492,7 @@ export default function WeddingVendorMap() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-2">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <Input
                     placeholder="Search by vendor name, specialty, or service..."
                     value={searchQuery}
@@ -394,41 +502,28 @@ export default function WeddingVendorMap() {
                 </div>
               </div>
               <div>
-                <div className="relative">
-                  <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  {/* Google Places Autocomplete for location */}
-                  {isLoaded ? (
-                    <Autocomplete
-                      onLoad={(ac) => (autocompleteRef.current = ac)}
-                      onPlaceChanged={() => {
-                        const place = autocompleteRef.current?.getPlace();
-                        if (!place || !place.geometry) return;
-                        const loc = place.geometry.location;
-                        const nextCenter = { lat: loc.lat(), lng: loc.lng() };
-                        setCenter(nextCenter);
-                        setZoom(12);
-                        setLocationQuery(place.formatted_address || "");
-                        // pan + (optional) fit vendors near new center (we keep simple here)
-                        mapRef.current?.panTo(nextCenter);
-                      }}
-                      options={{ types: ["(cities)"] }}
-                    >
-                      <Input
-                        placeholder="Location (City, State)"
-                        value={locationQuery}
-                        onChange={(e) => setLocationQuery(e.target.value)}
-                        className="pl-10"
-                      />
-                    </Autocomplete>
-                  ) : (
+                {/* Autocomplete wraps the input for location */}
+                <Autocomplete
+                  onLoad={(ac) => (autocompleteRef.current = ac)}
+                  onPlaceChanged={onPlaceChanged}
+                  options={{}}
+                >
+                  <div className="relative">
+                    <Navigation className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                     <Input
                       placeholder="Location (City, State)"
                       value={locationQuery}
                       onChange={(e) => setLocationQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          onPlaceChanged();
+                        }
+                      }}
                       className="pl-10"
                     />
-                  )}
-                </div>
+                  </div>
+                </Autocomplete>
               </div>
             </div>
           </CardContent>
@@ -436,94 +531,43 @@ export default function WeddingVendorMap() {
 
         {/* Category Filters */}
         <div className="flex gap-2 overflow-x-auto pb-2 mb-6">
-          {Object.entries(categoryConfig).map(([key, cfg]) => (
-            <Button
-              key={key}
-              variant={selectedCategory === (key as CategoryKey) ? "default" : "outline"}
-              onClick={() => setSelectedCategory(key as CategoryKey)}
-              className="whitespace-nowrap"
-            >
-              <span
-                className="w-4 h-4 mr-2 inline-block rounded-full"
-                style={{ backgroundColor: (cfg as any).color }}
-              />
-              {(cfg as any).label}
-              <Badge variant="secondary" className="ml-2">
-                {key === "all"
-                  ? FLAT_VENDORS.length
-                  : FLAT_VENDORS.filter((v) => v.category === (key as any)).length}
-              </Badge>
-            </Button>
-          ))}
+          {Object.entries(categoryConfig).map(([key, config]) => {
+            const Icon = config.icon;
+            return (
+              <Button
+                key={key}
+                variant={selectedCategory === key ? "default" : "outline"}
+                onClick={() => setSelectedCategory(key)}
+                className="whitespace-nowrap"
+              >
+                <Icon className="w-4 h-4 mr-2" />
+                {config.label}
+                <Badge variant="secondary" className="ml-2">
+                  {key === "all" ? allVendors.length : allVendors.filter((v) => v.category === key).length}
+                </Badge>
+              </Button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Map + List */}
+      {/* Map + Vendor List */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        {/* Google Map */}
+        {/* Map Section */}
         <div className="lg:col-span-2">
           <Card className="h-[600px] overflow-hidden">
             <CardContent className="p-0 h-full">
-              {isLoaded ? (
-                <GoogleMap
-                  onLoad={(m) => (mapRef.current = m)}
-                  center={center}
-                  zoom={zoom}
-                  mapContainerStyle={mapContainerStyle}
-                  options={{
-                    mapTypeControl: false,
-                    streetViewControl: false,
-                    fullscreenControl: false,
-                  }}
-                >
-                  {filteredVendors.map((v) => (
-                    <Marker
-                      key={v.id}
-                      position={{ lat: v.lat, lng: v.lng }}
-                      icon={markerIconFor(v.category)}
-                      onClick={() => {
-                        setActiveInfoId(v.id);
-                      }}
-                    />
-                  ))}
-
-                  {filteredVendors.map((v) =>
-                    activeInfoId === v.id ? (
-                      <InfoWindow
-                        key={`iw-${v.id}`}
-                        position={{ lat: v.lat, lng: v.lng }}
-                        onCloseClick={() => setActiveInfoId(null)}
-                      >
-                        <div className="space-y-1 max-w-[220px]">
-                          <div className="font-semibold">{v.name}</div>
-                          <div className="text-xs text-muted-foreground">{v.address}</div>
-                          <div className="flex items-center gap-1 text-xs">
-                            <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                            <span>{v.rating}</span>
-                            <span className="text-muted-foreground">({v.reviews})</span>
-                          </div>
-                          <Button
-                            size="sm"
-                            className="mt-2 w-full"
-                            onClick={() => handleViewDetails(v)}
-                          >
-                            View Details
-                          </Button>
-                        </div>
-                      </InfoWindow>
-                    ) : null
-                  )}
-                </GoogleMap>
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50">
-                  <p className="text-gray-500">Loading Google Map…</p>
-                </div>
-              )}
+              <WeddingMapCanvas
+                vendors={filteredVendors}
+                center={center}
+                onMarkerClick={handleViewDetails}
+                onReady={() => {}}
+              />
             </CardContent>
           </Card>
         </div>
 
-        {/* Vendor List */}
+        {/* Vendor List Section */}
         <div className="lg:col-span-1">
           <Card className="h-[600px] overflow-hidden flex flex-col">
             <CardHeader className="pb-3">
@@ -549,6 +593,7 @@ export default function WeddingVendorMap() {
             </CardHeader>
             <CardContent className="flex-1 overflow-y-auto space-y-3">
               {filteredVendors.map((vendor) => {
+                const Icon = getCategoryIcon(vendor.category);
                 return (
                   <Card
                     key={vendor.id}
@@ -558,17 +603,13 @@ export default function WeddingVendorMap() {
                     <CardContent className="p-3">
                       <div className="flex items-start gap-3">
                         <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
-                          <img
-                            src={vendor.image}
-                            alt={vendor.name}
-                            className="w-full h-full object-cover"
-                          />
+                          <img src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
                             <h4 className="font-semibold text-sm truncate flex items-center gap-1">
                               {vendor.name}
-                              {vendor.verified && (
+                              {("verified" in vendor && (vendor as any).verified) && (
                                 <Shield className="w-3 h-3 text-blue-500 flex-shrink-0" />
                               )}
                             </h4>
@@ -578,35 +619,25 @@ export default function WeddingVendorMap() {
                               className="h-6 w-6 p-0"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                toggleSaveVendor(vendor.id);
+                                toggleSaveVendor(vendor.id as number);
                               }}
                             >
                               <Heart
-                                className={`w-4 h-4 ${
-                                  savedVendors.has(vendor.id)
-                                    ? "fill-red-500 text-red-500"
-                                    : ""
-                                }`}
+                                className={`w-4 h-4 ${savedVendors.has(vendor.id as number) ? "fill-red-500 text-red-500" : ""}`}
                               />
                             </Button>
                           </div>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                            <MapPin className="w-3 h-3" />
-                            <span>{vendor.address}</span>
+                            <Icon className="w-3 h-3" />
+                            <span>{categoryConfig[(vendor as any).category]?.label}</span>
                           </div>
                           <div className="flex items-center gap-2 mt-1">
                             <div className="flex items-center gap-1">
                               <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                              <span className="text-xs font-medium">
-                                {vendor.rating}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                ({vendor.reviews})
-                              </span>
+                              <span className="text-xs font-medium">{(vendor as any).rating}</span>
+                              <span className="text-xs text-muted-foreground">({(vendor as any).reviews})</span>
                             </div>
-                            <span className="text-xs font-medium">
-                              {vendor.priceRange}
-                            </span>
+                            <span className="text-xs font-medium">{(vendor as any).priceRange}</span>
                           </div>
                         </div>
                       </div>
@@ -629,7 +660,7 @@ export default function WeddingVendorMap() {
                   <div>
                     <DialogTitle className="text-2xl flex items-center gap-2">
                       {selectedVendor.name}
-                      {selectedVendor.verified && (
+                      {("verified" in selectedVendor && (selectedVendor as any).verified) && (
                         <Shield className="w-5 h-5 text-blue-500" />
                       )}
                     </DialogTitle>
@@ -638,17 +669,9 @@ export default function WeddingVendorMap() {
                       {selectedVendor.address}
                     </DialogDescription>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => toggleSaveVendor(selectedVendor.id)}
-                  >
+                  <Button size="sm" variant="ghost" onClick={() => toggleSaveVendor(selectedVendor.id as number)}>
                     <Heart
-                      className={`w-5 h-5 ${
-                        savedVendors.has(selectedVendor.id)
-                          ? "fill-red-500 text-red-500"
-                          : ""
-                      }`}
+                      className={`w-5 h-5 ${savedVendors.has(selectedVendor.id as number) ? "fill-red-500 text-red-500" : ""}`}
                     />
                   </Button>
                 </div>
@@ -657,74 +680,62 @@ export default function WeddingVendorMap() {
               <div className="space-y-4">
                 {/* Image */}
                 <div className="w-full h-64 rounded-lg overflow-hidden">
-                  <img
-                    src={selectedVendor.image}
-                    alt={selectedVendor.name}
-                    className="w-full h-full object-cover"
-                  />
+                  <img src={selectedVendor.image} alt={selectedVendor.name} className="w-full h-full object-cover" />
                 </div>
 
                 {/* Rating and Price */}
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1">
                     <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-                    <span className="font-bold text-lg">
-                      {selectedVendor.rating}
-                    </span>
-                    <span className="text-muted-foreground">
-                      ({selectedVendor.reviews} reviews)
-                    </span>
+                    <span className="font-bold text-lg">{(selectedVendor as any).rating}</span>
+                    <span className="text-muted-foreground">({(selectedVendor as any).reviews} reviews)</span>
                   </div>
                   <Badge variant="secondary" className="text-sm">
-                    {selectedVendor.priceRange}
+                    {(selectedVendor as any).priceRange}
                   </Badge>
                 </div>
 
                 {/* Category-specific info */}
-                {selectedVendor.capacity && (
+                {("capacity" in selectedVendor) && (
                   <div className="flex items-center gap-2">
                     <Users className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm">
-                      Capacity: {selectedVendor.capacity} guests
-                    </span>
+                    <span className="text-sm">Capacity: {(selectedVendor as any).capacity} guests</span>
                   </div>
                 )}
-                {selectedVendor.style && (
+                {("style" in selectedVendor) && (
                   <div className="flex items-center gap-2">
                     <Camera className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm">Style: {selectedVendor.style}</span>
+                    <span className="text-sm">Style: {(selectedVendor as any).style}</span>
                   </div>
                 )}
-                {selectedVendor.specialty && (
+                {("specialty" in selectedVendor) && (
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm">
-                      Specialty: {selectedVendor.specialty}
-                    </span>
+                    <span className="text-sm">Specialty: {(selectedVendor as any).specialty}</span>
                   </div>
                 )}
 
-                {/* Amenities/Services/Packages */}
-                {(selectedVendor.amenities ||
-                  selectedVendor.services ||
-                  selectedVendor.packages ||
-                  selectedVendor.brands) && (
+                {/* Amenities/Services/Packages/Brands */}
+                {((selectedVendor as any).amenities ||
+                  (selectedVendor as any).services ||
+                  (selectedVendor as any).packages ||
+                  (selectedVendor as any).brands) && (
                   <div>
                     <h4 className="font-semibold mb-2">
-                      {selectedVendor.amenities
+                      {(selectedVendor as any).amenities
                         ? "Amenities"
-                        : selectedVendor.services
+                        : (selectedVendor as any).services
                         ? "Services"
-                        : selectedVendor.packages
+                        : (selectedVendor as any).packages
                         ? "Packages"
                         : "Brands"}
                     </h4>
                     <div className="flex flex-wrap gap-2">
                       {(
-                        selectedVendor.amenities ||
-                        selectedVendor.services ||
-                        selectedVendor.packages ||
-                        selectedVendor.brands
+                        (selectedVendor as any).amenities ||
+                        (selectedVendor as any).services ||
+                        (selectedVendor as any).packages ||
+                        (selectedVendor as any).brands
                       )?.map((item: string) => (
                         <Badge key={item} variant="outline">
                           {item}
@@ -734,51 +745,51 @@ export default function WeddingVendorMap() {
                   </div>
                 )}
 
-                {/* Contact + Directions */}
+                {/* Contact Info */}
                 <div className="border-t pt-4">
                   <h4 className="font-semibold mb-3">Contact Information</h4>
                   <div className="space-y-2">
-                    {selectedVendor.phone && (
+                    {("phone" in selectedVendor) && (
                       <div className="flex items-center gap-2">
                         <Phone className="w-4 h-4 text-muted-foreground" />
-                        <a
-                          href={`tel:${selectedVendor.phone}`}
-                          className="text-sm hover:underline"
-                        >
-                          {selectedVendor.phone}
+                        <a href={`tel:${(selectedVendor as any).phone}`} className="text-sm hover:underline">
+                          {(selectedVendor as any).phone}
                         </a>
                       </div>
                     )}
-                    {selectedVendor.website && (
+                    {("website" in selectedVendor) && (
                       <div className="flex items-center gap-2">
                         <Globe className="w-4 h-4 text-muted-foreground" />
                         <a
-                          href={`https://${selectedVendor.website}`}
+                          href={`https://${(selectedVendor as any).website}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-sm hover:underline"
                         >
-                          {selectedVendor.website}
+                          {(selectedVendor as any).website}
                         </a>
                       </div>
                     )}
                   </div>
+                </div>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full mt-3"
-                    onClick={() => {
-                      const q =
-                        selectedVendor.lat && selectedVendor.lng
-                          ? `${selectedVendor.lat},${selectedVendor.lng}`
-                          : encodeURIComponent(selectedVendor.address);
-                      window.open(
-                        `https://www.google.com/maps/dir/?api=1&destination=${q}`,
-                        "_blank"
-                      );
-                    }}
-                  >
+                {/* Action Buttons */}
+                <div className="flex gap-2 pt-4">
+                  <Button className="flex-1 bg-gradient-to-r from-pink-600 to-purple-600">Request Quote</Button>
+                  <Button variant="outline" className="flex-1">
+                    <Phone className="w-4 h-4 mr-2" />
+                    Call Now
+                  </Button>
+                </div>
+
+                {/* Address Box */}
+                <div className="border rounded-lg p-4 bg-muted/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <MapPin className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Location</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-2">{selectedVendor.address}</p>
+                  <Button variant="outline" size="sm" className="w-full">
                     <Navigation className="w-4 h-4 mr-2" />
                     Get Directions
                   </Button>
@@ -789,7 +800,7 @@ export default function WeddingVendorMap() {
         </DialogContent>
       </Dialog>
 
-      {/* Saved Vendors */}
+      {/* Saved Vendors Section */}
       {savedVendors.size > 0 && (
         <Card className="mb-8">
           <CardHeader>
@@ -802,22 +813,18 @@ export default function WeddingVendorMap() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {Array.from(savedVendors).map((vendorId) => {
-                const vendor = FLAT_VENDORS.find((v) => v.id === vendorId);
+                const vendor = allVendors.find((v) => v.id === vendorId);
                 if (!vendor) return null;
-
+                const Icon = getCategoryIcon((vendor as any).category);
                 return (
                   <Card key={vendor.id} className="overflow-hidden">
                     <div className="relative h-32">
-                      <img
-                        src={vendor.image}
-                        alt={vendor.name}
-                        className="w-full h-full object-cover"
-                      />
+                      <img src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
                       <Button
                         size="sm"
                         variant="secondary"
                         className="absolute top-2 right-2 rounded-full p-2"
-                        onClick={() => toggleSaveVendor(vendor.id)}
+                        onClick={() => toggleSaveVendor(vendor.id as number)}
                       >
                         <X className="w-3 h-3" />
                       </Button>
@@ -825,8 +832,8 @@ export default function WeddingVendorMap() {
                     <CardContent className="p-3">
                       <h4 className="font-semibold text-sm mb-1">{vendor.name}</h4>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <MapPin className="w-3 h-3" />
-                        <span>{vendor.address}</span>
+                        <Icon className="w-3 h-3" />
+                        <span>{categoryConfig[(vendor as any).category]?.label}</span>
                       </div>
                     </CardContent>
                   </Card>
