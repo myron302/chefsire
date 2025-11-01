@@ -79,26 +79,34 @@ function ThreadRow({ thread, meId }: { thread: DMThread; meId?: string }) {
 
   return (
     <Link href={`/messages/${thread.id}`}>
-      <a className="block">
-        <Card className="hover:shadow-lg hover:border-amber-300 transition-all duration-200 border border-amber-100 bg-gradient-to-r from-white to-orange-50/30">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-amber-600" />
-              <span className="truncate font-semibold text-gray-800">{name}</span>
-              {(thread.unread ?? 0) > 0 && (
-                <Badge className="bg-gradient-to-r from-fuchsia-600 to-rose-600 text-white">
-                  {thread.unread}
-                </Badge>
-              )}
-            </CardTitle>
-            <Badge variant="secondary" className="text-xs text-gray-600">
-              {new Date(ts).toLocaleDateString()}
-            </Badge>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <p className="text-sm text-gray-600 line-clamp-2 italic">{preview}</p>
-          </CardContent>
-        </Card>
+      <a className="block group">
+        <div className="relative">
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-400 to-red-400 rounded-lg blur opacity-0 group-hover:opacity-30 transition duration-300"></div>
+          <Card className="relative hover:shadow-2xl hover:border-amber-400 hover:scale-[1.02] transition-all duration-300 border-2 border-amber-200 bg-gradient-to-r from-white via-orange-50/20 to-red-50/20">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3 bg-gradient-to-r from-transparent to-orange-50/40">
+              <CardTitle className="text-base flex items-center gap-2">
+                <div className="relative">
+                  <MessageSquare className="h-5 w-5 text-amber-600" />
+                  {(thread.unread ?? 0) > 0 && (
+                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                  )}
+                </div>
+                <span className="truncate font-bold text-gray-800">{name}</span>
+                {(thread.unread ?? 0) > 0 && (
+                  <Badge className="bg-gradient-to-r from-fuchsia-600 to-rose-600 text-white shadow-md animate-pulse">
+                    {thread.unread}
+                  </Badge>
+                )}
+              </CardTitle>
+              <Badge variant="secondary" className="text-xs text-gray-600 bg-amber-100">
+                {new Date(ts).toLocaleDateString()}
+              </Badge>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-sm text-gray-700 line-clamp-2 italic leading-relaxed">{preview}</p>
+            </CardContent>
+          </Card>
+        </div>
       </a>
     </Link>
   );
@@ -144,37 +152,62 @@ export default function DMInboxPage() {
   }, [threads, filter]);
 
   return (
-    <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <Crown className="h-6 w-6 text-amber-500" />
-        <h1
-          className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent"
-          style={{ fontFamily: "'Playfair Display', serif" }}
-        >
-          <span className="hidden sm:inline">Royal Table Talk</span>
-          <span className="sm:hidden">Table Talk</span>
-        </h1>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-red-50">
+      {/* Decorative background pattern */}
+      <div className="fixed inset-0 opacity-[0.03] pointer-events-none" style={{
+        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23FF6B35' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+      }}></div>
 
-      {/* Search */}
-      <div className="flex gap-2">
-        <Input
-          placeholder="Search conversations"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-      </div>
+      <div className="relative max-w-3xl mx-auto p-4 md:p-6 space-y-6">
+        {/* Royal Header */}
+        <div className="relative">
+          <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 to-red-600 rounded-lg blur opacity-20"></div>
+          <div className="relative bg-white rounded-lg p-6 shadow-xl border-2 border-amber-200">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Crown className="h-8 w-8 text-amber-500" />
+                <div className="absolute -inset-2 bg-amber-400/20 rounded-full blur-md"></div>
+              </div>
+              <h1
+                className="text-3xl font-bold bg-gradient-to-r from-orange-600 via-red-600 to-orange-600 bg-clip-text text-transparent"
+                style={{ fontFamily: "'Playfair Display', serif" }}
+              >
+                <span className="hidden sm:inline">Royal Table Talk</span>
+                <span className="sm:hidden">Table Talk</span>
+              </h1>
+            </div>
+            <p className="text-sm text-gray-600 mt-2 italic">
+              Where culinary royalty convenes
+            </p>
+          </div>
+        </div>
 
-      {/* Compose */}
-      <Card className="border-2 border-amber-200 bg-gradient-to-br from-orange-50/50 to-red-50/50 shadow-lg">
-        <CardHeader className="border-b border-amber-200">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Scroll className="h-5 w-5 text-amber-600" />
-            <span className="bg-gradient-to-r from-orange-700 to-red-700 bg-clip-text text-transparent font-semibold">
-              Dispatch a New Message
-            </span>
-          </CardTitle>
-        </CardHeader>
+        {/* Search */}
+        <div className="relative">
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-300 to-red-300 rounded-lg blur opacity-30"></div>
+          <Input
+            placeholder="Search conversations..."
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="relative bg-white border-2 border-amber-200 focus:border-amber-400 focus:ring-amber-400 shadow-md"
+          />
+        </div>
+
+        {/* Compose */}
+        <div className="relative group">
+          <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 via-amber-500 to-red-600 rounded-lg blur-md opacity-40 group-hover:opacity-60 transition duration-300"></div>
+          <Card className="relative border-2 border-amber-300 bg-white shadow-2xl">
+            <CardHeader className="border-b-2 border-amber-200 bg-gradient-to-r from-orange-50 to-red-50">
+              <CardTitle className="text-base flex items-center gap-2">
+                <div className="relative">
+                  <Scroll className="h-5 w-5 text-amber-600" />
+                  <div className="absolute inset-0 bg-amber-400 blur-sm opacity-30"></div>
+                </div>
+                <span className="bg-gradient-to-r from-orange-700 to-red-700 bg-clip-text text-transparent font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
+                  Dispatch a Royal Message
+                </span>
+              </CardTitle>
+            </CardHeader>
         <CardContent className="space-y-3 pt-4">
           <div className="flex gap-2">
             <Input
@@ -202,26 +235,39 @@ export default function DMInboxPage() {
               {(createMutation.error as Error)?.message || "Failed to create conversation"}
             </p>
           )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </div>
 
-      {/* List */}
-      {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-      {isError && (
-        <p className="text-sm text-red-600">Error: {(error as Error).message}</p>
-      )}
+        {/* List */}
+        {isLoading && (
+          <div className="text-center py-4">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+            <p className="text-sm text-muted-foreground mt-2">Loading your royal conversations...</p>
+          </div>
+        )}
 
-      <div className="space-y-3">
-        {filtered.map((t) => (
-          <ThreadRow key={t.id} thread={t} meId={meId} />
-        ))}
-        {!isLoading && filtered.length === 0 && (
-          <Card>
-            <CardContent className="p-6 text-sm text-muted-foreground">
-              No conversations yet.
+        {isError && (
+          <Card className="border-2 border-red-200 bg-red-50">
+            <CardContent className="p-6">
+              <p className="text-sm text-red-600">Error: {(error as Error).message}</p>
             </CardContent>
           </Card>
         )}
+
+        <div className="space-y-3">
+          {filtered.map((t) => (
+            <ThreadRow key={t.id} thread={t} meId={meId} />
+          ))}
+          {!isLoading && filtered.length === 0 && (
+            <Card className="border-2 border-amber-200 bg-gradient-to-br from-orange-50 to-red-50">
+              <CardContent className="p-8 text-center">
+                <Crown className="h-16 w-16 mx-auto mb-4 text-amber-300" />
+                <p className="text-gray-600 italic">No conversations yet. Begin your royal discourse!</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
     </div>
   );
