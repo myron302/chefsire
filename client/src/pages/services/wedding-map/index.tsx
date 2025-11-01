@@ -261,6 +261,12 @@ const categoryConfig: Record<string, { label: string; icon: any; color: string }
   tuxedoShop: { label: "Tuxedo Shops", icon: Shirt, color: "indigo" },
 };
 
+/** Single helper — keep only this one */
+const getCategoryIcon = (category: string) => {
+  const config = categoryConfig[category];
+  return config ? config.icon : MapPin;
+};
+
 /** -------------------------------------
  * Key resolution: Vite env → window fallback
  * ------------------------------------- */
@@ -298,7 +304,7 @@ function LoadedMapsSection({
   const { isLoaded, loadError } = useJsApiLoader({
     id: "chefsire-maps",
     googleMapsApiKey: apiKey,
-    libraries: ["places", "marker"],
+    libraries: ["places", "marker"] as any,
   });
 
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
@@ -312,7 +318,6 @@ function LoadedMapsSection({
         setLocationQuery(place?.formatted_address || place?.name || locationQuery);
       }
     } catch (e) {
-      // ignore; keep UI alive
       console.error("Autocomplete error:", e);
     }
   };
@@ -486,11 +491,6 @@ export default function WeddingVendorMap() {
     });
   };
 
-  const getCategoryIcon = (category: string) => {
-    const config = categoryConfig[category];
-    return config ? config.icon : MapPin;
-  };
-
   const apiKey = getBrowserMapsKey();
 
   return (
@@ -620,7 +620,7 @@ export default function WeddingVendorMap() {
             </CardHeader>
             <CardContent className="flex-1 overflow-y-auto space-y-3">
               {filteredVendors.map((vendor) => {
-                const Icon = getCategoryIcon(vendor.category);
+                const Icon = getCategoryIcon((vendor as any).category);
                 return (
                   <Card
                     key={vendor.id}
@@ -887,9 +887,4 @@ export default function WeddingVendorMap() {
       </Card>
     </div>
   );
-
-  function getCategoryIcon(category: string) {
-    const config = categoryConfig[category];
-    return config ? config.icon : MapPin;
-  }
 }
