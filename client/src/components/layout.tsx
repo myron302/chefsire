@@ -224,6 +224,14 @@ export default function Layout({ children }: LayoutProps) {
                                   🗺️ BiteMap
                                 </Link>
 
+                                <Link
+                                  href="/messages"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                                >
+                                  💬 Royal Table Talk
+                                </Link>
+
                                 {/* Competitions */}
                                 <div>
                                   <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">

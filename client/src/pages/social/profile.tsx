@@ -32,6 +32,7 @@ import {
   Link as LinkIcon,
   Video,
   Play,
+  MessageCircle,
 } from "lucide-react";
 import type { User, PostWithUser } from "@shared/schema";
 
@@ -375,12 +376,22 @@ export default function Profile() {
                 )}
               </div>
             ) : (
-              <Button
-                className="bg-primary text-primary-foreground"
-                data-testid={`button-follow-user-${displayUser.id}`}
-              >
-                Follow
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation(`/messages?new=${displayUser.username}`)}
+                  data-testid={`button-message-user-${displayUser.id}`}
+                >
+                  <MessageCircle className="h-4 w-4 mr-2" />
+                  Message
+                </Button>
+                <Button
+                  className="bg-primary text-primary-foreground"
+                  data-testid={`button-follow-user-${displayUser.id}`}
+                >
+                  Follow
+                </Button>
+              </div>
             )}
           </div>
 
