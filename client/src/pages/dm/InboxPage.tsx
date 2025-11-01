@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -108,13 +108,18 @@ export default function DMInboxPage() {
   const { user } = useUser();
   const meId = user?.id;
   const qc = useQueryClient();
+  const [location] = useLocation();
+
+  // Extract ?new=username from URL
+  const urlParams = new URLSearchParams(location.split('?')[1]);
+  const newUsername = urlParams.get('new') || '';
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["dm", "threads"],
     queryFn: fetchThreads,
   });
 
-  const [toUsername, setToUsername] = React.useState("");
+  const [toUsername, setToUsername] = React.useState(newUsername);
 
   const createMutation = useMutation({
     mutationFn: (username: string) => startThread(username),
