@@ -277,7 +277,7 @@ const icedCoffeeTypes = [
     name: 'Classic Iced',
     icon: Droplet,
     description: 'Simple cold coffee over ice',
-    color: 'text-amber-400',
+    color: 'text-cyan-400',
     timing: 'Anytime',
     focus: 'Pure Coffee'
   },
@@ -286,7 +286,7 @@ const icedCoffeeTypes = [
     name: 'Iced Latte',
     icon: Coffee,
     description: 'Espresso with cold milk',
-    color: 'text-amber-400',
+    color: 'text-cyan-400',
     timing: 'Morning',
     focus: 'Creamy & Smooth'
   },
@@ -295,7 +295,7 @@ const icedCoffeeTypes = [
     name: 'Flavored Iced',
     icon: Sparkles,
     description: 'Syrups and flavor additions',
-    color: 'text-amber-400',
+    color: 'text-cyan-400',
     timing: 'Anytime',
     focus: 'Sweet & Flavorful'
   },
@@ -304,7 +304,7 @@ const icedCoffeeTypes = [
     name: 'Mocha',
     icon: Heart,
     description: 'Chocolate meets coffee',
-    color: 'text-amber-400',
+    color: 'text-cyan-400',
     timing: 'Afternoon',
     focus: 'Chocolate Blend'
   }
@@ -340,12 +340,12 @@ const allCaffeinatedSubcategories = [
 ];
 
 const icedCoffeeAdvantages = [
-  { icon: Droplet, title: 'Refreshingly Cold', description: 'Perfect cool coffee experience', color: 'text-amber-400' },
-  { icon: Clock, title: 'Quick Prep', description: 'Ready in 2-4 minutes', color: 'text-amber-400' },
-  { icon: Zap, title: 'Energy Boost', description: 'Caffeine when you need it', color: 'text-amber-400' },
-  { icon: Star, title: 'Versatile', description: 'Endless flavor combinations', color: 'text-amber-400' },
-  { icon: Sun, title: 'Anytime Drink', description: 'Perfect for any time of day', color: 'text-amber-400' },
-  { icon: Heart, title: 'Customizable', description: 'Make it exactly how you like', color: 'text-amber-400' }
+  { icon: Droplet, title: 'Refreshingly Cold', description: 'Perfect cool coffee experience', color: 'text-cyan-400' },
+  { icon: Clock, title: 'Quick Prep', description: 'Ready in 2-4 minutes', color: 'text-cyan-400' },
+  { icon: Zap, title: 'Energy Boost', description: 'Caffeine when you need it', color: 'text-cyan-400' },
+  { icon: Star, title: 'Versatile', description: 'Endless flavor combinations', color: 'text-cyan-400' },
+  { icon: Sun, title: 'Anytime Drink', description: 'Perfect for any time of day', color: 'text-cyan-400' },
+  { icon: Heart, title: 'Customizable', description: 'Make it exactly how you like', color: 'text-cyan-400' }
 ];
 
 export default function IcedCoffeePage() {
@@ -526,7 +526,7 @@ export default function IcedCoffeePage() {
         <RecipeKit
           open={showKit}
           onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
-          accent="amber"
+          accent="cyan"
           pointsReward={20}
           onComplete={handleCompleteRecipe}
           item={{
@@ -554,9 +554,9 @@ export default function IcedCoffeePage() {
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
-                <Droplet className="h-6 w-6 text-amber-400" />
+                <Droplet className="h-6 w-6 text-cyan-400" />
                 <h1 className="text-2xl font-bold text-gray-900">Iced Coffee</h1>
-                <Badge className="bg-amber-100 text-amber-600 border-amber-200">Cold & Refreshing</Badge>
+                <Badge className="bg-cyan-100 text-cyan-600 border-cyan-200">Cold & Refreshing</Badge>
               </div>
             </div>
 
@@ -575,7 +575,7 @@ export default function IcedCoffeePage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-amber-400 hover:bg-amber-500 text-white" onClick={handleSharePage}>
+              <Button size="sm" className="bg-cyan-400 hover:bg-cyan-500 text-white" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Page
               </Button>
@@ -587,7 +587,7 @@ export default function IcedCoffeePage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
         {/* CROSS-HUB NAVIGATION */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+        <Card className="bg-gradient-to-r from-cyan-50 to-blue-50 border-cyan-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -595,8 +595,8 @@ export default function IcedCoffeePage() {
                 const Icon = hub.icon;
                 return (
                   <Link key={hub.id} href={hub.route}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
-                      <Icon className="h-4 w-4 mr-2 text-amber-400" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-cyan-50 hover:border-cyan-300">
+                      <Icon className="h-4 w-4 mr-2 text-cyan-400" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{hub.name}</div>
                         <div className="text-xs text-gray-500">{hub.description}</div>
@@ -611,7 +611,7 @@ export default function IcedCoffeePage() {
         </Card>
 
         {/* SISTER SUBPAGES NAVIGATION */}
-        <Card className="bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
+        <Card className="bg-gradient-to-r from-cyan-50 to-yellow-50 border-cyan-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Caffeinated Drinks</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -619,8 +619,8 @@ export default function IcedCoffeePage() {
                 const Icon = subcategory.icon;
                 return (
                   <Link key={subcategory.id} href={subcategory.path}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
-                      <Icon className="h-4 w-4 mr-2 text-amber-400" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-cyan-50 hover:border-cyan-300">
+                      <Icon className="h-4 w-4 mr-2 text-cyan-400" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{subcategory.name}</div>
                         <div className="text-xs text-gray-500">{subcategory.description}</div>
@@ -638,7 +638,7 @@ export default function IcedCoffeePage() {
         <Card className="mb-8">
           <CardContent className="p-6">
             <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-              <Droplet className="h-6 w-6 text-amber-400" />
+              <Droplet className="h-6 w-6 text-cyan-400" />
               Why Iced Coffee?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -662,25 +662,25 @@ export default function IcedCoffeePage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">149</div>
+              <div className="text-2xl font-bold text-cyan-400">149</div>
               <div className="text-sm text-gray-600">Avg Calories</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">4.4g</div>
+              <div className="text-2xl font-bold text-cyan-400">4.4g</div>
               <div className="text-sm text-gray-600">Avg Protein</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">4.7★</div>
+              <div className="text-2xl font-bold text-cyan-400">4.7★</div>
               <div className="text-sm text-gray-600">Avg Rating</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">{icedCoffeeDrinks.length}</div>
+              <div className="text-2xl font-bold text-cyan-400">{icedCoffeeDrinks.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -823,7 +823,7 @@ export default function IcedCoffeePage() {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <Badge className="bg-amber-100 text-amber-600 border-amber-200">{drink.drinkType}</Badge>
+                        <Badge className="bg-cyan-100 text-cyan-600 border-cyan-200">{drink.drinkType}</Badge>
                         <Badge variant="outline">{drink.caffeineLevel}</Badge>
                         {drink.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
@@ -833,15 +833,15 @@ export default function IcedCoffeePage() {
                       {/* Nutrition Grid */}
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
-                          <div className="font-bold text-amber-400">{drink.nutrition.calories}</div>
+                          <div className="font-bold text-cyan-400">{drink.nutrition.calories}</div>
                           <div className="text-gray-500">Calories</div>
                         </div>
                         <div>
-                          <div className="font-bold text-amber-400">{drink.nutrition.protein}g</div>
+                          <div className="font-bold text-cyan-400">{drink.nutrition.protein}g</div>
                           <div className="text-gray-500">Protein</div>
                         </div>
                         <div>
-                          <div className="font-bold text-amber-400">{drink.prepTime}m</div>
+                          <div className="font-bold text-cyan-400">{drink.prepTime}m</div>
                           <div className="text-gray-500">Prep</div>
                         </div>
                       </div>
@@ -910,9 +910,9 @@ export default function IcedCoffeePage() {
 
                               return (
                                 <li key={i} className="flex items-start gap-2">
-                                  <Check className="h-4 w-4 text-amber-400 mt-0.5" />
+                                  <Check className="h-4 w-4 text-cyan-400 mt-0.5" />
                                   <span>
-                                    <span className="text-amber-500 font-semibold">
+                                    <span className="text-cyan-500 font-semibold">
                                       {show.amount} {show.unit}
                                     </span>{" "}
                                     {ing.item}
@@ -972,14 +972,14 @@ export default function IcedCoffeePage() {
                       <div className="space-y-2 mb-3 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Best Time:</span>
-                          <span className="font-medium text-amber-400">{drink.bestTime}</span>
+                          <span className="font-medium text-cyan-400">{drink.bestTime}</span>
                         </div>
                       </div>
 
                       {/* Benefits Tags - BELOW DESCRIPTION */}
                       <div className="flex flex-wrap gap-1 mb-4">
                         {drink.benefits?.slice(0, 3).map((benefit: string, index: number) => (
-                          <Badge key={index} variant="secondary" className="text-xs bg-amber-100 text-amber-600 hover:bg-amber-200">
+                          <Badge key={index} variant="secondary" className="text-xs bg-cyan-100 text-cyan-600 hover:bg-cyan-200">
                             {benefit}
                           </Badge>
                         ))}
@@ -988,7 +988,7 @@ export default function IcedCoffeePage() {
                       {/* Make Drink Button */}
                       <div className="mt-3">
                         <Button
-                          className="w-full bg-amber-400 hover:bg-amber-500 text-white"
+                          className="w-full bg-cyan-400 hover:bg-cyan-500 text-white"
                           onClick={() => openRecipeModal(drink)}
                         >
                           <Coffee className="h-4 w-4 mr-2" />
@@ -1012,19 +1012,19 @@ export default function IcedCoffeePage() {
                 <Card key={type.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="text-center">
-                      <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <Icon className="h-6 w-6 text-amber-400" />
+                      <div className="w-12 h-12 bg-cyan-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <Icon className="h-6 w-6 text-cyan-400" />
                       </div>
                       <CardTitle className="text-lg">{type.name}</CardTitle>
                       <p className="text-sm text-gray-600">{type.description}</p>
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-center bg-amber-50 p-3 rounded-lg mb-4">
+                    <div className="text-center bg-cyan-50 p-3 rounded-lg mb-4">
                       <div className="text-sm font-medium text-gray-700 mb-1">Timing</div>
-                      <div className="text-lg font-bold text-amber-400">{type.timing}</div>
+                      <div className="text-lg font-bold text-cyan-400">{type.timing}</div>
                     </div>
-                    <Button className="w-full bg-amber-400 hover:bg-amber-500 text-white" onClick={() => setActiveTab('browse')}>
+                    <Button className="w-full bg-cyan-400 hover:bg-cyan-500 text-white" onClick={() => setActiveTab('browse')}>
                       Explore {type.name}
                     </Button>
                   </CardContent>
@@ -1041,8 +1041,8 @@ export default function IcedCoffeePage() {
               <Card key={benefit.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader>
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-amber-100 rounded-lg">
-                      <Heart className="h-6 w-6 text-amber-400" />
+                    <div className="p-2 bg-cyan-100 rounded-lg">
+                      <Heart className="h-6 w-6 text-cyan-400" />
                     </div>
                     <div>
                       <CardTitle className="text-lg">{benefit.name}</CardTitle>
@@ -1051,11 +1051,11 @@ export default function IcedCoffeePage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center bg-amber-50 p-3 rounded-lg mb-4">
+                  <div className="text-center bg-cyan-50 p-3 rounded-lg mb-4">
                     <div className="text-sm font-medium text-gray-700 mb-1">Coffee Focus</div>
-                    <div className="text-lg font-bold text-amber-400">Iced Support</div>
+                    <div className="text-lg font-bold text-cyan-400">Iced Support</div>
                   </div>
-                  <Button className="w-full bg-amber-400 hover:bg-amber-500 text-white" onClick={() => setActiveTab('browse')}>
+                  <Button className="w-full bg-cyan-400 hover:bg-cyan-500 text-white" onClick={() => setActiveTab('browse')}>
                     View {benefit.name}
                   </Button>
                 </CardContent>
@@ -1069,9 +1069,9 @@ export default function IcedCoffeePage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {featuredDrinks.map(drink => (
               <Card key={drink.id} className="overflow-hidden hover:shadow-xl transition-shadow">
-                <div className="relative h-48 bg-gradient-to-br from-amber-100 to-orange-200 flex items-center justify-center">
-                  <Droplet className="h-24 w-24 text-amber-400 opacity-50" />
-                  <Badge className="absolute top-4 left-4 bg-amber-400 text-white">Featured</Badge>
+                <div className="relative h-48 bg-gradient-to-br from-cyan-100 to-blue-200 flex items-center justify-center">
+                  <Droplet className="h-24 w-24 text-cyan-400 opacity-50" />
+                  <Badge className="absolute top-4 left-4 bg-cyan-400 text-white">Featured</Badge>
                 </div>
 
                 <CardHeader>
@@ -1081,7 +1081,7 @@ export default function IcedCoffeePage() {
 
                 <CardContent>
                   <Button
-                    className="w-full bg-amber-400 hover:bg-amber-500 text-white"
+                    className="w-full bg-cyan-400 hover:bg-cyan-500 text-white"
                     onClick={() => openRecipeModal(drink)}
                   >
                     <Coffee className="h-4 w-4 mr-2" />
@@ -1097,7 +1097,7 @@ export default function IcedCoffeePage() {
         {activeTab === 'trending' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {trendingDrinks.map(drink => (
-              <Card key={drink.id} className="hover:shadow-lg transition-shadow border-2 border-amber-200">
+              <Card key={drink.id} className="hover:shadow-lg transition-shadow border-2 border-cyan-200">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -1110,7 +1110,7 @@ export default function IcedCoffeePage() {
 
                 <CardContent>
                   <Button
-                    className="w-full bg-amber-400 hover:bg-amber-500 text-white"
+                    className="w-full bg-cyan-400 hover:bg-cyan-500 text-white"
                     onClick={() => openRecipeModal(drink)}
                   >
                     <Coffee className="h-4 w-4 mr-2" />
@@ -1123,19 +1123,19 @@ export default function IcedCoffeePage() {
         )}
 
         {/* Your Progress */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+        <Card className="bg-gradient-to-r from-cyan-50 to-blue-50 border-cyan-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold mb-2">Your Progress</h3>
                 <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="text-amber-400">
+                  <Badge variant="outline" className="text-cyan-400">
                     Level {userProgress.level}
                   </Badge>
-                  <Badge variant="outline" className="text-amber-400">
+                  <Badge variant="outline" className="text-cyan-400">
                     {userProgress.totalPoints} XP
                   </Badge>
-                  <Badge variant="outline" className="text-amber-400">
+                  <Badge variant="outline" className="text-cyan-400">
                     {userProgress.totalDrinksMade} Drinks Made
                   </Badge>
                 </div>

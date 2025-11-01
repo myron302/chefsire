@@ -274,7 +274,7 @@ const teaTypes = [
     name: 'Green Tea',
     icon: Leaf,
     description: 'Light and antioxidant-rich',
-    color: 'text-amber-400',
+    color: 'text-green-400',
     timing: 'Morning',
     focus: 'Health & Energy'
   },
@@ -283,7 +283,7 @@ const teaTypes = [
     name: 'Black Tea',
     icon: Coffee,
     description: 'Bold and energizing',
-    color: 'text-amber-400',
+    color: 'text-green-400',
     timing: 'Morning',
     focus: 'Caffeine & Focus'
   },
@@ -292,7 +292,7 @@ const teaTypes = [
     name: 'Herbal',
     icon: Sparkles,
     description: 'Caffeine-free relaxation',
-    color: 'text-amber-400',
+    color: 'text-green-400',
     timing: 'Evening',
     focus: 'Calming & Soothing'
   },
@@ -301,7 +301,7 @@ const teaTypes = [
     name: 'Chai',
     icon: Heart,
     description: 'Spiced milk tea',
-    color: 'text-amber-400',
+    color: 'text-green-400',
     timing: 'Afternoon',
     focus: 'Warming & Spiced'
   },
@@ -310,7 +310,7 @@ const teaTypes = [
     name: 'Oolong',
     icon: Target,
     description: 'Semi-oxidized traditional',
-    color: 'text-amber-400',
+    color: 'text-green-400',
     timing: 'Afternoon',
     focus: 'Metabolism & Balance'
   }
@@ -346,12 +346,12 @@ const allCaffeinatedSubcategories = [
 ];
 
 const teaAdvantages = [
-  { icon: Leaf, title: 'Natural Health', description: 'Rich in antioxidants and nutrients', color: 'text-amber-400' },
-  { icon: Clock, title: 'Quick Brew', description: 'Ready in 3-5 minutes', color: 'text-amber-400' },
-  { icon: Zap, title: 'Gentle Energy', description: 'Steady caffeine without jitters', color: 'text-amber-400' },
-  { icon: Star, title: 'Variety', description: 'Countless flavors and types', color: 'text-amber-400' },
-  { icon: Sun, title: 'Any Time', description: 'Morning, afternoon, or evening', color: 'text-amber-400' },
-  { icon: Heart, title: 'Wellness', description: 'Supports overall health', color: 'text-amber-400' }
+  { icon: Leaf, title: 'Natural Health', description: 'Rich in antioxidants and nutrients', color: 'text-green-400' },
+  { icon: Clock, title: 'Quick Brew', description: 'Ready in 3-5 minutes', color: 'text-green-400' },
+  { icon: Zap, title: 'Gentle Energy', description: 'Steady caffeine without jitters', color: 'text-green-400' },
+  { icon: Star, title: 'Variety', description: 'Countless flavors and types', color: 'text-green-400' },
+  { icon: Sun, title: 'Any Time', description: 'Morning, afternoon, or evening', color: 'text-green-400' },
+  { icon: Heart, title: 'Wellness', description: 'Supports overall health', color: 'text-green-400' }
 ];
 
 export default function TeaPage() {
@@ -532,7 +532,7 @@ export default function TeaPage() {
         <RecipeKit
           open={showKit}
           onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
-          accent="amber"
+          accent="green"
           pointsReward={20}
           onComplete={handleCompleteRecipe}
           item={{
@@ -560,9 +560,9 @@ export default function TeaPage() {
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
-                <Leaf className="h-6 w-6 text-amber-400" />
+                <Leaf className="h-6 w-6 text-green-400" />
                 <h1 className="text-2xl font-bold text-gray-900">Tea Drinks</h1>
-                <Badge className="bg-amber-100 text-amber-600 border-amber-200">Health & Wellness</Badge>
+                <Badge className="bg-green-100 text-green-600 border-green-200">Health & Wellness</Badge>
               </div>
             </div>
 
@@ -581,7 +581,7 @@ export default function TeaPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-amber-400 hover:bg-amber-500 text-white" onClick={handleSharePage}>
+              <Button size="sm" className="bg-green-400 hover:bg-green-500 text-white" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Page
               </Button>
@@ -593,7 +593,7 @@ export default function TeaPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
         {/* CROSS-HUB NAVIGATION */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -601,8 +601,8 @@ export default function TeaPage() {
                 const Icon = hub.icon;
                 return (
                   <Link key={hub.id} href={hub.route}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
-                      <Icon className="h-4 w-4 mr-2 text-amber-400" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-green-50 hover:border-green-300">
+                      <Icon className="h-4 w-4 mr-2 text-green-400" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{hub.name}</div>
                         <div className="text-xs text-gray-500">{hub.description}</div>
@@ -617,7 +617,7 @@ export default function TeaPage() {
         </Card>
 
         {/* SISTER SUBPAGES NAVIGATION */}
-        <Card className="bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
+        <Card className="bg-gradient-to-r from-green-50 to-yellow-50 border-green-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Caffeinated Drinks</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -625,8 +625,8 @@ export default function TeaPage() {
                 const Icon = subcategory.icon;
                 return (
                   <Link key={subcategory.id} href={subcategory.path}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
-                      <Icon className="h-4 w-4 mr-2 text-amber-400" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-green-50 hover:border-green-300">
+                      <Icon className="h-4 w-4 mr-2 text-green-400" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{subcategory.name}</div>
                         <div className="text-xs text-gray-500">{subcategory.description}</div>
@@ -644,7 +644,7 @@ export default function TeaPage() {
         <Card className="mb-8">
           <CardContent className="p-6">
             <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-              <Leaf className="h-6 w-6 text-amber-400" />
+              <Leaf className="h-6 w-6 text-green-400" />
               Why Tea?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -668,25 +668,25 @@ export default function TeaPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">45</div>
+              <div className="text-2xl font-bold text-green-400">45</div>
               <div className="text-sm text-gray-600">Avg Calories</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">1.3g</div>
+              <div className="text-2xl font-bold text-green-400">1.3g</div>
               <div className="text-sm text-gray-600">Avg Protein</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">4.7★</div>
+              <div className="text-2xl font-bold text-green-400">4.7★</div>
               <div className="text-sm text-gray-600">Avg Rating</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">{teaDrinks.length}</div>
+              <div className="text-2xl font-bold text-green-400">{teaDrinks.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -829,7 +829,7 @@ export default function TeaPage() {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <Badge className="bg-amber-100 text-amber-600 border-amber-200">{drink.drinkType}</Badge>
+                        <Badge className="bg-green-100 text-green-600 border-green-200">{drink.drinkType}</Badge>
                         <Badge variant="outline">{drink.caffeineLevel}</Badge>
                         {drink.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
@@ -839,15 +839,15 @@ export default function TeaPage() {
                       {/* Nutrition Grid */}
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
-                          <div className="font-bold text-amber-400">{drink.nutrition.calories}</div>
+                          <div className="font-bold text-green-400">{drink.nutrition.calories}</div>
                           <div className="text-gray-500">Calories</div>
                         </div>
                         <div>
-                          <div className="font-bold text-amber-400">{drink.nutrition.protein}g</div>
+                          <div className="font-bold text-green-400">{drink.nutrition.protein}g</div>
                           <div className="text-gray-500">Protein</div>
                         </div>
                         <div>
-                          <div className="font-bold text-amber-400">{drink.prepTime}m</div>
+                          <div className="font-bold text-green-400">{drink.prepTime}m</div>
                           <div className="text-gray-500">Prep</div>
                         </div>
                       </div>
@@ -916,9 +916,9 @@ export default function TeaPage() {
 
                               return (
                                 <li key={i} className="flex items-start gap-2">
-                                  <Check className="h-4 w-4 text-amber-400 mt-0.5" />
+                                  <Check className="h-4 w-4 text-green-400 mt-0.5" />
                                   <span>
-                                    <span className="text-amber-500 font-semibold">
+                                    <span className="text-green-500 font-semibold">
                                       {show.amount} {show.unit}
                                     </span>{" "}
                                     {ing.item}
@@ -978,14 +978,14 @@ export default function TeaPage() {
                       <div className="space-y-2 mb-3 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Best Time:</span>
-                          <span className="font-medium text-amber-400">{drink.bestTime}</span>
+                          <span className="font-medium text-green-400">{drink.bestTime}</span>
                         </div>
                       </div>
 
                       {/* Benefits Tags - BELOW DESCRIPTION */}
                       <div className="flex flex-wrap gap-1 mb-4">
                         {drink.benefits?.slice(0, 3).map((benefit: string, index: number) => (
-                          <Badge key={index} variant="secondary" className="text-xs bg-amber-100 text-amber-600 hover:bg-amber-200">
+                          <Badge key={index} variant="secondary" className="text-xs bg-green-100 text-green-600 hover:bg-green-200">
                             {benefit}
                           </Badge>
                         ))}
@@ -994,7 +994,7 @@ export default function TeaPage() {
                       {/* Make Drink Button */}
                       <div className="mt-3">
                         <Button
-                          className="w-full bg-amber-400 hover:bg-amber-500 text-white"
+                          className="w-full bg-green-400 hover:bg-green-500 text-white"
                           onClick={() => openRecipeModal(drink)}
                         >
                           <Leaf className="h-4 w-4 mr-2" />
@@ -1018,19 +1018,19 @@ export default function TeaPage() {
                 <Card key={type.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="text-center">
-                      <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <Icon className="h-6 w-6 text-amber-400" />
+                      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <Icon className="h-6 w-6 text-green-400" />
                       </div>
                       <CardTitle className="text-lg">{type.name}</CardTitle>
                       <p className="text-sm text-gray-600">{type.description}</p>
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-center bg-amber-50 p-3 rounded-lg mb-4">
+                    <div className="text-center bg-green-50 p-3 rounded-lg mb-4">
                       <div className="text-sm font-medium text-gray-700 mb-1">Timing</div>
-                      <div className="text-lg font-bold text-amber-400">{type.timing}</div>
+                      <div className="text-lg font-bold text-green-400">{type.timing}</div>
                     </div>
-                    <Button className="w-full bg-amber-400 hover:bg-amber-500 text-white" onClick={() => setActiveTab('browse')}>
+                    <Button className="w-full bg-green-400 hover:bg-green-500 text-white" onClick={() => setActiveTab('browse')}>
                       Explore {type.name}
                     </Button>
                   </CardContent>
@@ -1047,8 +1047,8 @@ export default function TeaPage() {
               <Card key={benefit.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader>
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-amber-100 rounded-lg">
-                      <Heart className="h-6 w-6 text-amber-400" />
+                    <div className="p-2 bg-green-100 rounded-lg">
+                      <Heart className="h-6 w-6 text-green-400" />
                     </div>
                     <div>
                       <CardTitle className="text-lg">{benefit.name}</CardTitle>
@@ -1057,11 +1057,11 @@ export default function TeaPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center bg-amber-50 p-3 rounded-lg mb-4">
+                  <div className="text-center bg-green-50 p-3 rounded-lg mb-4">
                     <div className="text-sm font-medium text-gray-700 mb-1">Tea Focus</div>
-                    <div className="text-lg font-bold text-amber-400">Health Support</div>
+                    <div className="text-lg font-bold text-green-400">Health Support</div>
                   </div>
-                  <Button className="w-full bg-amber-400 hover:bg-amber-500 text-white" onClick={() => setActiveTab('browse')}>
+                  <Button className="w-full bg-green-400 hover:bg-green-500 text-white" onClick={() => setActiveTab('browse')}>
                     View {benefit.name}
                   </Button>
                 </CardContent>
@@ -1076,8 +1076,8 @@ export default function TeaPage() {
             {featuredDrinks.map(drink => (
               <Card key={drink.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="relative h-48 bg-gradient-to-br from-green-100 to-emerald-200 flex items-center justify-center">
-                  <Leaf className="h-24 w-24 text-amber-400 opacity-50" />
-                  <Badge className="absolute top-4 left-4 bg-amber-400 text-white">Featured</Badge>
+                  <Leaf className="h-24 w-24 text-green-400 opacity-50" />
+                  <Badge className="absolute top-4 left-4 bg-green-400 text-white">Featured</Badge>
                 </div>
 
                 <CardHeader>
@@ -1087,7 +1087,7 @@ export default function TeaPage() {
 
                 <CardContent>
                   <Button
-                    className="w-full bg-amber-400 hover:bg-amber-500 text-white"
+                    className="w-full bg-green-400 hover:bg-green-500 text-white"
                     onClick={() => openRecipeModal(drink)}
                   >
                     <Leaf className="h-4 w-4 mr-2" />
@@ -1103,7 +1103,7 @@ export default function TeaPage() {
         {activeTab === 'trending' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {trendingDrinks.map(drink => (
-              <Card key={drink.id} className="hover:shadow-lg transition-shadow border-2 border-amber-200">
+              <Card key={drink.id} className="hover:shadow-lg transition-shadow border-2 border-green-200">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -1116,7 +1116,7 @@ export default function TeaPage() {
 
                 <CardContent>
                   <Button
-                    className="w-full bg-amber-400 hover:bg-amber-500 text-white"
+                    className="w-full bg-green-400 hover:bg-green-500 text-white"
                     onClick={() => openRecipeModal(drink)}
                   >
                     <Leaf className="h-4 w-4 mr-2" />
@@ -1129,19 +1129,19 @@ export default function TeaPage() {
         )}
 
         {/* Your Progress */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold mb-2">Your Progress</h3>
                 <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="text-amber-400">
+                  <Badge variant="outline" className="text-green-400">
                     Level {userProgress.level}
                   </Badge>
-                  <Badge variant="outline" className="text-amber-400">
+                  <Badge variant="outline" className="text-green-400">
                     {userProgress.totalPoints} XP
                   </Badge>
-                  <Badge variant="outline" className="text-amber-400">
+                  <Badge variant="outline" className="text-green-400">
                     {userProgress.totalDrinksMade} Drinks Made
                   </Badge>
                 </div>
