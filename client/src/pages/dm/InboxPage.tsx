@@ -19,7 +19,7 @@ type DMMessage = {
   id: string;
   threadId: string;
   senderId: string;
-  text: string;
+  body: string;
   createdAt: string;
 };
 
@@ -29,40 +29,42 @@ type DMThread = {
   createdAt: string;
   updatedAt?: string | null;
   lastMessage?: DMMessage | null;
-  participants: DMUser[];
+  participants?: DMUser[];
+  unread?: number;
 };
 
-async function fetchThreads(): Promise<DMThread[]> {
+async function fetchThreads(): Promise<{ threads: DMThread[] }> {
   const r = await fetch("/api/dm/threads", { credentials: "include" });
   if (!r.ok) throw new Error(`Failed to load threads (${r.status})`);
   return r.json();
 }
 
-async function startThread(payload: { toUsername: string; text?: string }) {
-  // backend may implement one of:
-  //  - POST /api/dm/threads { toUsername, text? }
-  //  - POST /api/dm/new { toUsername, text? }
-  // We’ll try /threads first, then fall back.
-  const tryPost = async (url: string) => {
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(payload),
-    });
-    if (!r.ok) throw new Error(`${url} ${r.status}`);
-    return r.json() as Promise<{ threadId: string }>;
-  };
+async function lookupUserByUsername(username: string): Promise<DMUser> {
+  const r = await fetch(`/api/users/username/${encodeURIComponent(username)}`, {
+    credentials: "include",
+  });
+  if (!r.ok) throw new Error(`User "${username}" not found`);
+  return r.json();
+}
 
-  try {
-    return await tryPost("/api/dm/threads");
-  } catch {
-    return await tryPost("/api/dm/new");
-  }
+async function startThread(toUsername: string): Promise<{ threadId: string }> {
+  // First, lookup the user by username to get their ID
+  const user = await lookupUserByUsername(toUsername);
+
+  // Then create the thread with their ID
+  const r = await fetch("/api/dm/threads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ participantIds: [user.id] }),
+  });
+  if (!r.ok) throw new Error(`Failed to create thread (${r.status})`);
+  return r.json();
 }
 
 function ThreadRow({ thread, meId }: { thread: DMThread; meId?: string }) {
   const other = React.useMemo(() => {
+    if (!thread.participants || thread.participants.length === 0) return null;
     const others = thread.participants.filter((p) => p.id !== meId);
     return others[0] ?? thread.participants[0] ?? null;
   }, [thread.participants, meId]);
@@ -72,7 +74,7 @@ function ThreadRow({ thread, meId }: { thread: DMThread; meId?: string }) {
     other?.username ||
     (thread.isGroup ? "Group" : "Conversation");
 
-  const preview = thread.lastMessage?.text ?? "No messages yet";
+  const preview = thread.lastMessage?.body ?? "No messages yet";
   const ts = thread.lastMessage?.createdAt ?? thread.createdAt;
 
   return (
@@ -108,26 +110,25 @@ export default function DMInboxPage() {
   });
 
   const [toUsername, setToUsername] = React.useState("");
-  const [firstMessage, setFirstMessage] = React.useState("");
 
   const createMutation = useMutation({
-    mutationFn: (payload: { toUsername: string; text?: string }) =>
-      startThread(payload),
+    mutationFn: (username: string) => startThread(username),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["dm", "threads"] });
+      setToUsername("");
       window.location.href = `/messages/${res.threadId}`;
     },
   });
 
-  const threads = data ?? [];
+  const threads = data?.threads ?? [];
   const [filter, setFilter] = React.useState("");
 
   const filtered = React.useMemo(() => {
     if (!filter.trim()) return threads;
     const q = filter.toLowerCase();
     return threads.filter((t) => {
-      const names = t.participants.map((p) => (p.displayName || p.username || "").toLowerCase());
-      const text = t.lastMessage?.text?.toLowerCase() ?? "";
+      const names = (t.participants ?? []).map((p) => (p.displayName || p.username || "").toLowerCase());
+      const text = t.lastMessage?.body?.toLowerCase() ?? "";
       return names.some((n) => n.includes(q)) || text.includes(q);
     });
   }, [threads, filter]);
@@ -154,26 +155,21 @@ export default function DMInboxPage() {
           <CardTitle className="text-base">Start a new conversation</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <div className="flex gap-2">
             <Input
               placeholder="Recipient username (e.g., chefsire)"
               value={toUsername}
               onChange={(e) => setToUsername(e.target.value)}
-            />
-            <Input
-              placeholder="First message (optional)"
-              value={firstMessage}
-              onChange={(e) => setFirstMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && toUsername.trim() && !createMutation.isPending) {
+                  createMutation.mutate(toUsername.trim());
+                }
+              }}
+              className="flex-1"
             />
             <Button
-              disabled={!toUsername || createMutation.isPending}
-              onClick={() =>
-                createMutation.mutate({
-                  toUsername: toUsername.trim(),
-                  text: firstMessage.trim() || undefined,
-                })
-              }
-              className="w-full md:w-auto"
+              disabled={!toUsername.trim() || createMutation.isPending}
+              onClick={() => createMutation.mutate(toUsername.trim())}
             >
               <Send className="h-4 w-4 mr-2" />
               Message
