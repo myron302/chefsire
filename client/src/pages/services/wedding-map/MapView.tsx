@@ -1,10 +1,14 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 /**
- * Lightweight, BiteMap-style Google Maps loader:
- * - If window.google.maps exists, reuse it (so BiteMap remains untouched).
- * - Else, fetch key from /api/google/maps-script and inject once.
- * - Uses AdvancedMarkerElement (no legacy Marker warnings).
+ * BiteMap-compatible Google Maps loader
+ * - Reuses existing window.google.maps if BiteMap already injected it
+ * - Otherwise tries, in order:
+ *   1) window.GMAPS_KEY (global)
+ *   2) import.meta.env.VITE_GOOGLE_MAPS_API_KEY (Vite)
+ *   3) GET /api/google/maps-script  (same endpoint BiteMap typically uses)
+ * - Uses AdvancedMarkerElement (no legacy Marker warnings)
+ * - Never references window.google until fully loaded (fixes "cannot read 'maps'")
  */
 
 type LatLng = { lat: number; lng: number };
@@ -26,39 +30,38 @@ type Props = {
 declare global {
   interface Window {
     google?: any;
+    GMAPS_KEY?: string;
   }
 }
 
 const GMAPS_SCRIPT_SELECTOR = 'script[src*="maps.googleapis.com/maps/api/js"]';
 
-async function ensureGoogleMapsLoaded(): Promise<void> {
-  // Already loaded
-  if (window.google?.maps) return;
+let gmapsLoadPromise: Promise<void> | null = null;
 
-  // Existing script tag present? Wait for it.
-  const existingScript = document.querySelector<HTMLScriptElement>(GMAPS_SCRIPT_SELECTOR);
-  if (existingScript) {
-    await waitForGoogle();
-    return;
+async function getGmapsKey(): Promise<string | null> {
+  // 1) Global key
+  if (typeof window !== "undefined") {
+    const k = (window as any).GMAPS_KEY;
+    if (k && String(k).trim()) return String(k).trim();
   }
-
-  // Fetch key from the same server endpoint BiteMap uses
-  const resp = await fetch("/api/google/maps-script");
-  if (!resp.ok) throw new Error("Google Maps key not detected");
-  const key = (await resp.text()).trim();
-  if (!key) throw new Error("Google Maps key not detected");
-
-  // Inject script (avoid duplicates)
-  const script = document.createElement("script");
-  // Using new libraries param including marker + places (no legacy Marker/Autocomplete warnings)
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
-    key
-  )}&v=weekly&libraries=marker,places`;
-  script.async = true;
-  script.defer = true;
-  document.head.appendChild(script);
-
-  await waitForGoogle();
+  // 2) Vite env
+  try {
+    const viteKey = (import.meta as any)?.env?.VITE_GOOGLE_MAPS_API_KEY;
+    if (viteKey && String(viteKey).trim()) return String(viteKey).trim();
+  } catch {
+    /* noop */
+  }
+  // 3) Server endpoint (BiteMap-style)
+  try {
+    const resp = await fetch("/api/google/maps-script");
+    if (resp.ok) {
+      const txt = (await resp.text()).trim();
+      if (txt) return txt;
+    }
+  } catch {
+    /* noop */
+  }
+  return null;
 }
 
 function waitForGoogle(): Promise<void> {
@@ -78,75 +81,102 @@ function waitForGoogle(): Promise<void> {
   });
 }
 
+async function ensureGoogleMapsLoaded(): Promise<void> {
+  if (window.google?.maps) return;
+
+  // If a Maps <script> already exists, just wait for it.
+  const existing = document.querySelector<HTMLScriptElement>(GMAPS_SCRIPT_SELECTOR);
+  if (existing) {
+    await waitForGoogle();
+    return;
+  }
+
+  // Avoid multiple injects across re-renders
+  if (gmapsLoadPromise) {
+    await gmapsLoadPromise;
+    return;
+  }
+
+  gmapsLoadPromise = (async () => {
+    const key = await getGmapsKey();
+    if (!key) throw new Error("Google Maps key not detected");
+
+    const script = document.createElement("script");
+    // Use weekly, and the modern libraries (marker for AdvancedMarkerElement, places if you need it later)
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+      key
+    )}&v=weekly&libraries=marker,places`;
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
+
+    await waitForGoogle();
+  })();
+
+  await gmapsLoadPromise;
+}
+
 export default function MapView({
   center,
   zoom = 12,
   markers,
   onMarkerClick,
-  fitToMarkers = true
+  fitToMarkers = true,
 }: Props) {
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
   const [error, setError] = useState<string | null>(null);
-
   const markerObjsRef = useRef<any[]>([]);
-
-  // Recompute bounds when markers change
-  const bounds = useMemo(() => {
-    const b = new (window.google?.maps?.LatLngBounds || (class {
-      extend() {}
-    }))();
-    markers.forEach((m) => b.extend(new window.google.maps.LatLng(m.position.lat, m.position.lng)));
-    return b;
-  }, [markers]);
 
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
+        // 1) Ensure Maps is loaded (no window.google usage before this)
         await ensureGoogleMapsLoaded();
         if (cancelled) return;
 
-        // Create map once
+        const gm = window.google;
+        if (!gm?.maps) throw new Error("Google Maps not available");
+
+        // 2) Create map once
         if (!mapRef.current && mapDivRef.current) {
-          mapRef.current = new window.google.maps.Map(mapDivRef.current, {
+          mapRef.current = new gm.maps.Map(mapDivRef.current, {
             center,
             zoom,
-            mapId: undefined // optional: set your Cloud MapID here if you have styles
+            mapId: undefined, // Optionally set your Cloud Map ID for styling
           });
         }
 
-        // Clear old markers
+        // 3) Clear old markers
         markerObjsRef.current.forEach((mk) => {
-          if (mk.map) mk.map = null;
+          // AdvancedMarkerElement is removed by setting map = null
+          try {
+            if (mk.map) mk.map = null;
+          } catch {
+            /* ignore */
+          }
         });
         markerObjsRef.current = [];
 
-        // Add Advanced markers
-        const { AdvancedMarkerElement } = window.google.maps.marker;
-
+        // 4) Add new markers (AdvancedMarkerElement)
+        const { AdvancedMarkerElement } = gm.maps.marker;
         markers.forEach((m) => {
           const marker = new AdvancedMarkerElement({
             map: mapRef.current,
             position: m.position,
             title: m.title || "",
           });
-
-          marker.addListener("gmp-click", () => {
-            onMarkerClick?.(m);
-          });
-
+          marker.addListener("gmp-click", () => onMarkerClick?.(m));
           markerObjsRef.current.push(marker);
         });
 
-        // Fit bounds
+        // 5) Fit bounds or default center/zoom
         if (fitToMarkers && markers.length > 1) {
-          const fitBounds = new window.google.maps.LatLngBounds();
-          markers.forEach((m) =>
-            fitBounds.extend(new window.google.maps.LatLng(m.position.lat, m.position.lng))
-          );
-          mapRef.current.fitBounds(fitBounds, { top: 64, bottom: 64, left: 64, right: 64 });
+          const bounds = new gm.maps.LatLngBounds();
+          markers.forEach((m) => bounds.extend(new gm.maps.LatLng(m.position.lat, m.position.lng)));
+          mapRef.current.fitBounds(bounds, { top: 64, bottom: 64, left: 64, right: 64 });
         } else if (markers.length === 1) {
           mapRef.current.setCenter(markers[0].position);
           mapRef.current.setZoom(14);
@@ -154,6 +184,8 @@ export default function MapView({
           mapRef.current.setCenter(center);
           mapRef.current.setZoom(zoom);
         }
+
+        setError(null);
       } catch (e: any) {
         setError(e?.message || "Map failed to load");
       }
@@ -174,13 +206,11 @@ export default function MapView({
           <div className="max-w-md text-center p-6 rounded-lg border bg-card shadow-sm">
             <h3 className="font-semibold mb-2">Google Maps not detected</h3>
             <p className="text-sm text-muted-foreground">
-              This page loads Maps the same way as BiteMap (via <code>/api/google/maps-script</code>).
-              Visit <strong>/bitemap</strong> once to ensure the key is working, or confirm that the server
-              has <code>GOOGLE_MAPS_API_KEY</code> set. Then refresh this page.
+              This page loads Maps the same way as BiteMap. Make sure either{" "}
+              <code>window.GMAPS_KEY</code> or <code>VITE_GOOGLE_MAPS_API_KEY</code> is set, or that{" "}
+              <code>/api/google/maps-script</code> returns your key. Then refresh.
             </p>
-            <p className="text-xs text-muted-foreground mt-3">
-              Error: {error}
-            </p>
+            <p className="text-xs text-muted-foreground mt-3">Error: {error}</p>
           </div>
         </div>
       )}
