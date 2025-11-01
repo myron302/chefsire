@@ -137,7 +137,10 @@ export default function DMInboxPage() {
     <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
       <div className="flex items-center gap-2">
         <Mail className="h-5 w-5" />
-        <h1 className="text-xl font-semibold">Messages</h1>
+        <h1 className="text-xl font-semibold">
+          <span className="hidden sm:inline">Royal Table Talk</span>
+          <span className="sm:hidden">Table Talk</span>
+        </h1>
       </div>
 
       {/* Search */}

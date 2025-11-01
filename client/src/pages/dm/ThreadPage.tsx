@@ -89,7 +89,8 @@ export default function DMThreadPage({ params }: Params) {
         <Link href="/messages">
           <a className="inline-flex items-center gap-2 text-sm hover:underline">
             <ArrowLeft className="h-4 w-4" />
-            Back to Messages
+            <span className="hidden sm:inline">Back to Royal Table Talk</span>
+            <span className="sm:hidden">Back to Table Talk</span>
           </a>
         </Link>
       </div>
