@@ -152,30 +152,30 @@ export default function WeddingPlanning() {
       : vendors.filter(v => v.type === selectedVendorType);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="max-w-7xl mx-auto px-3 md:px-4 py-4 md:py-8">
       {showTrialBanner && (
-        <Card className="mb-6 border-2 border-purple-500 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <Sparkles className="w-8 h-8 text-purple-600" />
-                  <Badge className="absolute -top-2 -right-2 bg-green-500 text-white">FREE</Badge>
+        <Card className="mb-4 md:mb-6 border-2 border-purple-500 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
+          <CardContent className="p-3 md:p-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-2 md:gap-3 flex-1">
+                <div className="relative flex-shrink-0">
+                  <Sparkles className="w-6 h-6 md:w-8 md:h-8 text-purple-600" />
+                  <Badge className="absolute -top-1 -right-1 md:-top-2 md:-right-2 bg-green-500 text-white text-[10px] md:text-xs">FREE</Badge>
                 </div>
-                <div>
-                  <h3 className="font-bold text-lg">Start Your 14-Day Premium Trial</h3>
-                  <p className="text-sm text-muted-foreground">
+                <div className="min-w-0">
+                  <h3 className="font-bold text-sm md:text-lg">Start Your 14-Day Premium Trial</h3>
+                  <p className="text-xs md:text-sm text-muted-foreground line-clamp-2">
                     Unlimited vendor messaging • Priority responses • Advanced planning tools
                   </p>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setShowTrialBanner(false)}>
-                  <X className="w-4 h-4" />
+              <div className="flex gap-2 w-full sm:w-auto">
+                <Button variant="outline" size="sm" onClick={() => setShowTrialBanner(false)} className="flex-shrink-0">
+                  <X className="w-3 h-3 md:w-4 md:h-4" />
                 </Button>
-                <Button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white" size="sm">
-                  <Zap className="w-4 h-4 mr-2" />
-                  Start Free Trial
+                <Button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white flex-1 sm:flex-none" size="sm">
+                  <Zap className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                  <span className="text-xs md:text-sm">Start Free Trial</span>
                 </Button>
               </div>
             </div>
@@ -184,27 +184,33 @@ export default function WeddingPlanning() {
       )}
 
       <div className="mb-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+        <div className="mb-6">
+          <div className="mb-4">
+            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
               Wedding Planning Hub
             </h1>
-            <p className="text-muted-foreground mt-2">
+            <p className="text-muted-foreground mt-2 text-sm md:text-base">
               Find and book the perfect vendors for your special day
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowBudgetCalculator(!showBudgetCalculator)}>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowBudgetCalculator(!showBudgetCalculator)}
+              className="w-full sm:w-auto"
+            >
               <DollarSign className="w-4 h-4 mr-2" />
-              Budget Calculator
+              <span className="hidden sm:inline">Budget Calculator</span>
+              <span className="sm:hidden">Budget</span>
             </Button>
-            <Link href="/catering/wedding-map">
-              <Button variant="outline">
+            <Link href="/catering/wedding-map" className="w-full sm:w-auto">
+              <Button variant="outline" className="w-full">
                 <MapPin className="w-4 h-4 mr-2" />
-                Open Vendor Map
+                <span className="hidden sm:inline">Open Vendor Map</span>
+                <span className="sm:hidden">Map</span>
               </Button>
             </Link>
-            <Button className="bg-gradient-to-r from-pink-600 to-purple-600 text-white">
+            <Button className="bg-gradient-to-r from-pink-600 to-purple-600 text-white w-full sm:w-auto">
               <Heart className="w-4 h-4 mr-2" />
               Start Planning
             </Button>
@@ -212,23 +218,23 @@ export default function WeddingPlanning() {
         </div>
 
         <Card className="mb-6">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">Your Wedding Planning Progress</h3>
-              <span className="text-sm text-muted-foreground">3 of 7 vendors booked</span>
+          <CardContent className="p-4 md:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+              <h3 className="font-semibold text-sm md:text-base">Your Wedding Planning Progress</h3>
+              <span className="text-xs md:text-sm text-muted-foreground">3 of 7 vendors booked</span>
             </div>
             <Progress value={43} className="mb-4" />
-            <div className="grid grid-cols-7 gap-2">
+            <div className="grid grid-cols-4 md:grid-cols-7 gap-2 md:gap-3">
               {['Venue', 'Catering', 'Photo', 'Music', 'Flowers', 'Planner', 'Cake'].map((item, idx) => (
                 <div key={item} className="text-center">
                   <div
-                    className={`w-8 h-8 mx-auto rounded-full flex items-center justify-center mb-1 ${
+                    className={`w-7 h-7 md:w-8 md:h-8 mx-auto rounded-full flex items-center justify-center mb-1 ${
                       idx < 3 ? 'bg-green-500' : 'bg-gray-200'
                     }`}
                   >
-                    {idx < 3 && <Check className="w-4 h-4 text-white" />}
+                    {idx < 3 && <Check className="w-3 h-3 md:w-4 md:h-4 text-white" />}
                   </div>
-                  <span className="text-xs">{item}</span>
+                  <span className="text-[10px] md:text-xs">{item}</span>
                 </div>
               ))}
             </div>
@@ -285,10 +291,10 @@ export default function WeddingPlanning() {
         )}
 
         <Card className="mb-6">
-          <CardContent className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <CardContent className="p-4 md:p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
               <div>
-                <label className="text-sm font-medium mb-2 block">Event Date</label>
+                <label className="text-xs md:text-sm font-medium mb-2 block">Event Date</label>
                 <Input
                   type="date"
                   value={selectedDate}
@@ -298,7 +304,7 @@ export default function WeddingPlanning() {
               </div>
 
               <div>
-                <label className="text-sm font-medium mb-2 block">Guest Count</label>
+                <label className="text-xs md:text-sm font-medium mb-2 block">Guest Count</label>
                 <div className="flex items-center gap-2">
                   <Input
                     type="number"
@@ -306,12 +312,12 @@ export default function WeddingPlanning() {
                     onChange={(e) => setGuestCount([parseInt(e.target.value || '0', 10)])}
                     className="w-full"
                   />
-                  <Users className="w-4 h-4 text-muted-foreground" />
+                  <Users className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 </div>
               </div>
 
               <div>
-                <label className="text-sm font-medium mb-2 block">Location</label>
+                <label className="text-xs md:text-sm font-medium mb-2 block">Location</label>
                 <Select>
                   <SelectTrigger>
                     <SelectValue placeholder="Select area" />
@@ -326,7 +332,7 @@ export default function WeddingPlanning() {
               </div>
 
               <div>
-                <label className="text-sm font-medium mb-2 block">Style</label>
+                <label className="text-xs md:text-sm font-medium mb-2 block">Style</label>
                 <Select>
                   <SelectTrigger>
                     <SelectValue placeholder="Wedding style" />
@@ -389,33 +395,33 @@ export default function WeddingPlanning() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-8">
         {filteredVendors.map((vendor) => (
           <Card key={vendor.id} className="overflow-hidden hover:shadow-lg transition-shadow">
             <div className="relative">
-              <img src={vendor.image} alt={vendor.name} className="w-full h-48 object-cover" />
+              <img src={vendor.image} alt={vendor.name} className="w-full h-40 md:h-48 object-cover" />
               {vendor.sponsored && (
-                <Badge className="absolute top-2 left-2 bg-gradient-to-r from-yellow-500 to-orange-500">
+                <Badge className="absolute top-2 left-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-xs">
                   <TrendingUp className="w-3 h-3 mr-1" />
-                  Sponsored
+                  <span className="hidden sm:inline">Sponsored</span>
                 </Badge>
               )}
               {vendor.featured && !vendor.sponsored && (
-                <Badge className="absolute top-2 left-2 bg-gradient-to-r from-pink-600 to-purple-600">
+                <Badge className="absolute top-2 left-2 bg-gradient-to-r from-pink-600 to-purple-600 text-xs">
                   <Sparkles className="w-3 h-3 mr-1" />
-                  Featured
+                  <span className="hidden sm:inline">Featured</span>
                 </Badge>
               )}
               <Button
                 size="sm"
                 variant="secondary"
-                className="absolute top-2 right-2 rounded-full p-2"
+                className="absolute top-2 right-2 rounded-full p-1.5 md:p-2"
                 onClick={() => toggleSaveVendor(vendor.id)}
               >
-                <Bookmark className={`w-4 h-4 ${savedVendors.has(vendor.id) ? 'fill-current' : ''}`} />
+                <Bookmark className={`w-3 h-3 md:w-4 md:h-4 ${savedVendors.has(vendor.id) ? 'fill-current' : ''}`} />
               </Button>
               <Badge
-                className={`absolute bottom-2 left-2 ${
+                className={`absolute bottom-2 left-2 text-xs ${
                   (vendor as any).availability === 'Available'
                     ? 'bg-green-500'
                     : (vendor as any).availability === 'Limited'
@@ -427,35 +433,33 @@ export default function WeddingPlanning() {
               </Badge>
             </div>
 
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <h3 className="font-semibold text-lg flex items-center gap-1">
-                    {vendor.name}
-                    {(vendor as any).verified && <Shield className="w-4 h-4 text-blue-500" />}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">{(vendor as any).description}</p>
-                </div>
+            <CardContent className="p-3 md:p-4">
+              <div className="mb-2">
+                <h3 className="font-semibold text-base md:text-lg flex items-center gap-1">
+                  {vendor.name}
+                  {(vendor as any).verified && <Shield className="w-3 h-3 md:w-4 md:h-4 text-blue-500" />}
+                </h3>
+                <p className="text-xs md:text-sm text-muted-foreground line-clamp-2">{(vendor as any).description}</p>
               </div>
 
-              <div className="flex items-center gap-4 mb-3">
+              <div className="flex items-center gap-3 md:gap-4 mb-2 md:mb-3">
                 <div className="flex items-center gap-1">
-                  <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                  <span className="font-semibold">{vendor.rating}</span>
-                  <span className="text-sm text-muted-foreground">({vendor.reviews})</span>
+                  <Star className="w-3 h-3 md:w-4 md:h-4 fill-yellow-400 text-yellow-400" />
+                  <span className="font-semibold text-sm md:text-base">{vendor.rating}</span>
+                  <span className="text-xs md:text-sm text-muted-foreground">({vendor.reviews})</span>
                 </div>
-                <span className="text-sm font-medium">{vendor.priceRange}</span>
+                <span className="text-xs md:text-sm font-medium">{vendor.priceRange}</span>
               </div>
 
               {(vendor as any).amenities && (
-                <div className="flex flex-wrap gap-1 mb-3">
+                <div className="flex flex-wrap gap-1 mb-2 md:mb-3">
                   {(vendor as any).amenities.slice(0, 3).map((amenity: string) => (
-                    <Badge key={amenity} variant="secondary" className="text-xs">
+                    <Badge key={amenity} variant="secondary" className="text-[10px] md:text-xs">
                       {amenity}
                     </Badge>
                   ))}
                   {(vendor as any).amenities.length > 3 && (
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="secondary" className="text-[10px] md:text-xs">
                       +{(vendor as any).amenities.length - 3}
                     </Badge>
                   )}
@@ -463,32 +467,35 @@ export default function WeddingPlanning() {
               )}
 
               {(vendor as any).viewsToday && (
-                <Alert className="mb-3 p-2">
+                <Alert className="mb-2 md:mb-3 p-2">
                   <AlertCircle className="h-3 w-3" />
-                  <AlertDescription className="text-xs">
+                  <AlertDescription className="text-[10px] md:text-xs">
                     {(vendor as any).viewsToday} couples viewed today
                   </AlertDescription>
                 </Alert>
               )}
 
-              <div className="flex items-center justify-between pt-3 border-t">
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-3 border-t">
+                <div className="flex items-center gap-1 text-[10px] md:text-xs text-muted-foreground">
                   <Clock className="w-3 h-3" />
-                  Responds in {(vendor as any).responseTime}
+                  <span className="hidden sm:inline">Responds in {(vendor as any).responseTime}</span>
+                  <span className="sm:hidden">{(vendor as any).responseTime}</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 w-full sm:w-auto">
                   {requestedQuotes.has(vendor.id) ? (
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="secondary" className="text-[10px] md:text-xs">
                       Quote Requested
                     </Badge>
                   ) : (
                     <>
-                      <Button size="sm" variant="outline" onClick={() => requestQuote(vendor.id)}>
-                        Get Quote
+                      <Button size="sm" variant="outline" onClick={() => requestQuote(vendor.id)} className="flex-1 sm:flex-none text-xs">
+                        <span className="hidden sm:inline">Get Quote</span>
+                        <span className="sm:hidden">Quote</span>
                       </Button>
-                      <Link href="/catering/wedding-map">
-                        <Button size="sm" className="bg-gradient-to-r from-pink-600 to-purple-600">
-                          View Map
+                      <Link href="/catering/wedding-map" className="flex-1 sm:flex-none">
+                        <Button size="sm" className="bg-gradient-to-r from-pink-600 to-purple-600 w-full text-xs">
+                          <span className="hidden sm:inline">View Map</span>
+                          <span className="sm:hidden">Map</span>
                         </Button>
                       </Link>
                     </>
@@ -501,19 +508,19 @@ export default function WeddingPlanning() {
       </div>
 
       <Card className="mb-8">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Gift className="w-5 h-5" />
+        <CardHeader className="p-4 md:p-6">
+          <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+            <Gift className="w-4 h-4 md:w-5 md:h-5" />
             Gift Registry Hub
           </CardTitle>
-          <CardDescription>Manage all your registries in one place and share with guests</CardDescription>
+          <CardDescription className="text-xs md:text-sm">Manage all your registries in one place and share with guests</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
+        <CardContent className="p-4 md:p-6">
+          <div className="space-y-3 md:space-y-4">
             {registryLinks.map((registry) => (
-              <div key={registry.id} className="flex items-center gap-3">
-                <span className="text-2xl">{registry.icon}</span>
-                <div className="flex-1">
+              <div key={registry.id} className="flex items-center gap-2 md:gap-3">
+                <span className="text-xl md:text-2xl flex-shrink-0">{registry.icon}</span>
+                <div className="flex-1 min-w-0">
                   <Input
                     placeholder={`${registry.name} Registry URL`}
                     value={registry.url}
@@ -522,44 +529,47 @@ export default function WeddingPlanning() {
                         prev.map(r => (r.id === registry.id ? { ...r, url: e.target.value } : r))
                       );
                     }}
-                    className="w-full"
+                    className="w-full text-sm"
                   />
                 </div>
-                <Button size="sm" variant="ghost">
-                  <X className="w-4 h-4" />
+                <Button size="sm" variant="ghost" className="flex-shrink-0">
+                  <X className="w-3 h-3 md:w-4 md:h-4" />
                 </Button>
               </div>
             ))}
 
-            <Button variant="outline" className="w-full">
+            <Button variant="outline" className="w-full text-sm">
               <Plus className="w-4 h-4 mr-2" />
               Add Another Registry
             </Button>
 
-            <div className="border-t pt-4 mt-6">
-              <h4 className="font-medium mb-3">Share Your Registries</h4>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm">
-                  <Share2 className="w-4 h-4 mr-2" />
-                  Facebook
+            <div className="border-t pt-4 mt-4 md:mt-6">
+              <h4 className="font-medium mb-3 text-sm md:text-base">Share Your Registries</h4>
+              <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+                <Button variant="outline" size="sm" className="text-xs">
+                  <Share2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                  <span className="hidden sm:inline">Facebook</span>
+                  <span className="sm:hidden">FB</span>
                 </Button>
-                <Button variant="outline" size="sm">
-                  <Share2 className="w-4 h-4 mr-2" />
-                  Instagram
+                <Button variant="outline" size="sm" className="text-xs">
+                  <Share2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                  <span className="hidden sm:inline">Instagram</span>
+                  <span className="sm:hidden">IG</span>
                 </Button>
-                <Button variant="outline" size="sm">
-                  <Mail className="w-4 h-4 mr-2" />
+                <Button variant="outline" size="sm" className="text-xs">
+                  <Mail className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
                   Email
                 </Button>
-                <Button variant="outline" size="sm">
-                  <Link2 className="w-4 h-4 mr-2" />
-                  Copy Link
+                <Button variant="outline" size="sm" className="text-xs">
+                  <Link2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                  <span className="hidden sm:inline">Copy Link</span>
+                  <span className="sm:hidden">Copy</span>
                 </Button>
               </div>
 
               <Alert className="mt-4">
-                <Info className="h-4 w-4" />
-                <AlertDescription>
+                <Info className="h-3 w-3 md:h-4 md:w-4" />
+                <AlertDescription className="text-xs md:text-sm break-all">
                   Your unique registry page: <strong>chefsire.com/registry/sarah-john-2025</strong>
                 </AlertDescription>
               </Alert>
@@ -569,41 +579,41 @@ export default function WeddingPlanning() {
       </Card>
 
       <Card className="mb-8">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CalendarIcon className="w-5 h-5" />
+        <CardHeader className="p-4 md:p-6">
+          <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+            <CalendarIcon className="w-4 h-4 md:w-5 md:h-5" />
             Planning Calendar
           </CardTitle>
-          <CardDescription>Track important dates, appointments, and deadlines</CardDescription>
+          <CardDescription className="text-xs md:text-sm">Track important dates, appointments, and deadlines</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="grid md:grid-cols-2 gap-6">
+        <CardContent className="p-4 md:p-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
             <div>
-              <h4 className="font-medium mb-3">Upcoming Events</h4>
+              <h4 className="font-medium mb-3 text-sm md:text-base">Upcoming Events</h4>
               <div className="space-y-2">
                 {calendarEvents.map((event) => (
-                  <div key={event.id} className="flex items-start gap-3 p-3 bg-muted rounded-lg">
-                    <div className="text-center min-w-[50px]">
-                      <div className="text-xs text-muted-foreground">
+                  <div key={event.id} className="flex items-start gap-2 md:gap-3 p-2 md:p-3 bg-muted rounded-lg">
+                    <div className="text-center min-w-[40px] md:min-w-[50px]">
+                      <div className="text-[10px] md:text-xs text-muted-foreground">
                         {new Date(event.date).toLocaleDateString('en-US', { month: 'short' })}
                       </div>
-                      <div className="text-lg font-bold">{new Date(event.date).getDate()}</div>
+                      <div className="text-base md:text-lg font-bold">{new Date(event.date).getDate()}</div>
                     </div>
-                    <div className="flex-1">
-                      <p className="font-medium">{event.title}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-xs md:text-sm truncate">{event.title}</p>
                       <div className="flex items-center gap-2 mt-1">
                         <Badge
                           variant={
                             event.type === 'payment' ? 'destructive' : event.type === 'appointment' ? 'default' : 'secondary'
                           }
-                          className="text-xs"
+                          className="text-[10px] md:text-xs"
                         >
                           {event.type}
                         </Badge>
                         {event.reminder && <BellRing className="w-3 h-3 text-muted-foreground" />}
                       </div>
                     </div>
-                    <Button size="sm" variant="ghost">
+                    <Button size="sm" variant="ghost" className="p-1 md:p-2">
                       <X className="w-3 h-3" />
                     </Button>
                   </div>
@@ -612,12 +622,12 @@ export default function WeddingPlanning() {
             </div>
 
             <div>
-              <h4 className="font-medium mb-3">Add Event</h4>
-              <div className="space-y-3">
-                <Input type="date" placeholder="Date" />
-                <Input placeholder="Event title" />
+              <h4 className="font-medium mb-3 text-sm md:text-base">Add Event</h4>
+              <div className="space-y-2 md:space-y-3">
+                <Input type="date" placeholder="Date" className="text-sm" />
+                <Input placeholder="Event title" className="text-sm" />
                 <Select>
-                  <SelectTrigger>
+                  <SelectTrigger className="text-sm">
                     <SelectValue placeholder="Event type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -627,12 +637,12 @@ export default function WeddingPlanning() {
                     <SelectItem value="milestone">Milestone</SelectItem>
                   </SelectContent>
                 </Select>
-                <Textarea placeholder="Notes (optional)" className="h-20" />
+                <Textarea placeholder="Notes (optional)" className="h-16 md:h-20 text-sm" />
                 <div className="flex items-center gap-2">
                   <input type="checkbox" id="reminder" className="rounded" />
-                  <label htmlFor="reminder" className="text-sm">Set reminder</label>
+                  <label htmlFor="reminder" className="text-xs md:text-sm">Set reminder</label>
                 </div>
-                <Button className="w-full">
+                <Button className="w-full text-sm">
                   <Plus className="w-4 h-4 mr-2" />
                   Add to Calendar
                 </Button>
