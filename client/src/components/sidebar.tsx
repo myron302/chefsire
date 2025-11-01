@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
   { name: "🏠 Feed", href: "/feed" },
   { name: "🧭 Explore", href: "/explore" },
   { name: "🗺️ BiteMap", href: "/bitemap" },
+  { name: "💬 Royal Table Talk", href: "/messages" },
 
   {
     name: "🏆 Cookoff Arena",

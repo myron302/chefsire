@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Mail, Send, MessageSquare } from "lucide-react";
+import { Crown, Send, MessageSquare, Scroll } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
 
 type DMUser = {
@@ -19,7 +19,7 @@ type DMMessage = {
   id: string;
   threadId: string;
   senderId: string;
-  text: string;
+  body: string;
   createdAt: string;
 };
 
@@ -29,40 +29,42 @@ type DMThread = {
   createdAt: string;
   updatedAt?: string | null;
   lastMessage?: DMMessage | null;
-  participants: DMUser[];
+  participants?: DMUser[];
+  unread?: number;
 };
 
-async function fetchThreads(): Promise<DMThread[]> {
+async function fetchThreads(): Promise<{ threads: DMThread[] }> {
   const r = await fetch("/api/dm/threads", { credentials: "include" });
   if (!r.ok) throw new Error(`Failed to load threads (${r.status})`);
   return r.json();
 }
 
-async function startThread(payload: { toUsername: string; text?: string }) {
-  // backend may implement one of:
-  //  - POST /api/dm/threads { toUsername, text? }
-  //  - POST /api/dm/new { toUsername, text? }
-  // We’ll try /threads first, then fall back.
-  const tryPost = async (url: string) => {
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(payload),
-    });
-    if (!r.ok) throw new Error(`${url} ${r.status}`);
-    return r.json() as Promise<{ threadId: string }>;
-  };
+async function lookupUserByUsername(username: string): Promise<DMUser> {
+  const r = await fetch(`/api/users/username/${encodeURIComponent(username)}`, {
+    credentials: "include",
+  });
+  if (!r.ok) throw new Error(`User "${username}" not found`);
+  return r.json();
+}
 
-  try {
-    return await tryPost("/api/dm/threads");
-  } catch {
-    return await tryPost("/api/dm/new");
-  }
+async function startThread(toUsername: string): Promise<{ threadId: string }> {
+  // First, lookup the user by username to get their ID
+  const user = await lookupUserByUsername(toUsername);
+
+  // Then create the thread with their ID
+  const r = await fetch("/api/dm/threads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ participantIds: [user.id] }),
+  });
+  if (!r.ok) throw new Error(`Failed to create thread (${r.status})`);
+  return r.json();
 }
 
 function ThreadRow({ thread, meId }: { thread: DMThread; meId?: string }) {
   const other = React.useMemo(() => {
+    if (!thread.participants || thread.participants.length === 0) return null;
     const others = thread.participants.filter((p) => p.id !== meId);
     return others[0] ?? thread.participants[0] ?? null;
   }, [thread.participants, meId]);
@@ -72,24 +74,29 @@ function ThreadRow({ thread, meId }: { thread: DMThread; meId?: string }) {
     other?.username ||
     (thread.isGroup ? "Group" : "Conversation");
 
-  const preview = thread.lastMessage?.text ?? "No messages yet";
+  const preview = thread.lastMessage?.body ?? "No messages yet";
   const ts = thread.lastMessage?.createdAt ?? thread.createdAt;
 
   return (
     <Link href={`/messages/${thread.id}`}>
       <a className="block">
-        <Card className="hover:shadow transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <Card className="hover:shadow-lg hover:border-amber-300 transition-all duration-200 border border-amber-100 bg-gradient-to-r from-white to-orange-50/30">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
-              <span className="truncate">{name}</span>
+              <MessageSquare className="h-4 w-4 text-amber-600" />
+              <span className="truncate font-semibold text-gray-800">{name}</span>
+              {(thread.unread ?? 0) > 0 && (
+                <Badge className="bg-gradient-to-r from-fuchsia-600 to-rose-600 text-white">
+                  {thread.unread}
+                </Badge>
+              )}
             </CardTitle>
-            <Badge variant="secondary">
-              {new Date(ts).toLocaleString()}
+            <Badge variant="secondary" className="text-xs text-gray-600">
+              {new Date(ts).toLocaleDateString()}
             </Badge>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground line-clamp-2">{preview}</p>
+          <CardContent className="pt-0">
+            <p className="text-sm text-gray-600 line-clamp-2 italic">{preview}</p>
           </CardContent>
         </Card>
       </a>
@@ -108,35 +115,40 @@ export default function DMInboxPage() {
   });
 
   const [toUsername, setToUsername] = React.useState("");
-  const [firstMessage, setFirstMessage] = React.useState("");
 
   const createMutation = useMutation({
-    mutationFn: (payload: { toUsername: string; text?: string }) =>
-      startThread(payload),
+    mutationFn: (username: string) => startThread(username),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["dm", "threads"] });
+      setToUsername("");
       window.location.href = `/messages/${res.threadId}`;
     },
   });
 
-  const threads = data ?? [];
+  const threads = data?.threads ?? [];
   const [filter, setFilter] = React.useState("");
 
   const filtered = React.useMemo(() => {
     if (!filter.trim()) return threads;
     const q = filter.toLowerCase();
     return threads.filter((t) => {
-      const names = t.participants.map((p) => (p.displayName || p.username || "").toLowerCase());
-      const text = t.lastMessage?.text?.toLowerCase() ?? "";
+      const names = (t.participants ?? []).map((p) => (p.displayName || p.username || "").toLowerCase());
+      const text = t.lastMessage?.body?.toLowerCase() ?? "";
       return names.some((n) => n.includes(q)) || text.includes(q);
     });
   }, [threads, filter]);
 
   return (
     <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
-      <div className="flex items-center gap-2">
-        <Mail className="h-5 w-5" />
-        <h1 className="text-xl font-semibold">Messages</h1>
+      <div className="flex items-center gap-3">
+        <Crown className="h-6 w-6 text-amber-500" />
+        <h1
+          className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent"
+          style={{ fontFamily: "'Playfair Display', serif" }}
+        >
+          <span className="hidden sm:inline">Royal Table Talk</span>
+          <span className="sm:hidden">Table Talk</span>
+        </h1>
       </div>
 
       {/* Search */}
@@ -149,34 +161,35 @@ export default function DMInboxPage() {
       </div>
 
       {/* Compose */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Start a new conversation</CardTitle>
+      <Card className="border-2 border-amber-200 bg-gradient-to-br from-orange-50/50 to-red-50/50 shadow-lg">
+        <CardHeader className="border-b border-amber-200">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Scroll className="h-5 w-5 text-amber-600" />
+            <span className="bg-gradient-to-r from-orange-700 to-red-700 bg-clip-text text-transparent font-semibold">
+              Dispatch a New Message
+            </span>
+          </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+        <CardContent className="space-y-3 pt-4">
+          <div className="flex gap-2">
             <Input
               placeholder="Recipient username (e.g., chefsire)"
               value={toUsername}
               onChange={(e) => setToUsername(e.target.value)}
-            />
-            <Input
-              placeholder="First message (optional)"
-              value={firstMessage}
-              onChange={(e) => setFirstMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && toUsername.trim() && !createMutation.isPending) {
+                  createMutation.mutate(toUsername.trim());
+                }
+              }}
+              className="flex-1 border-amber-300 focus:border-amber-500 focus:ring-amber-500"
             />
             <Button
-              disabled={!toUsername || createMutation.isPending}
-              onClick={() =>
-                createMutation.mutate({
-                  toUsername: toUsername.trim(),
-                  text: firstMessage.trim() || undefined,
-                })
-              }
-              className="w-full md:w-auto"
+              disabled={!toUsername.trim() || createMutation.isPending}
+              onClick={() => createMutation.mutate(toUsername.trim())}
+              className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-semibold shadow-md"
             >
               <Send className="h-4 w-4 mr-2" />
-              Message
+              Dispatch
             </Button>
           </div>
           {createMutation.isError && (

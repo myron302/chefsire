@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Send } from "lucide-react";
+import { ArrowLeft, Send, Crown } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
 
 type Params = { params?: Record<string, string> };
@@ -20,50 +20,28 @@ type DMMessage = {
   id: string;
   threadId: string;
   senderId: string;
-  text: string;
+  body: string;
   createdAt: string;
   sender?: DMUser;
 };
 
-type DMThreadInfo = {
-  id: string;
-  participants: DMUser[];
-};
-
-async function fetchThread(threadId: string): Promise<DMThreadInfo> {
-  const r = await fetch(`/api/dm/threads/${threadId}`, { credentials: "include" });
-  if (!r.ok) throw new Error(`Failed to load thread (${r.status})`);
-  return r.json();
-}
-
-async function fetchMessages(threadId: string): Promise<DMMessage[]> {
-  const r = await fetch(`/api/dm/messages?threadId=${encodeURIComponent(threadId)}`, {
+async function fetchMessages(threadId: string): Promise<{ messages: DMMessage[] }> {
+  const r = await fetch(`/api/dm/threads/${threadId}/messages`, {
     credentials: "include",
   });
   if (!r.ok) throw new Error(`Failed to load messages (${r.status})`);
   return r.json();
 }
 
-async function sendMessage(payload: { threadId: string; text: string }) {
-  // backend may implement one of:
-  //  - POST /api/dm/messages { threadId, text }
-  //  - POST /api/dm/send { threadId, text }
-  const tryPost = async (url: string) => {
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(payload),
-    });
-    if (!r.ok) throw new Error(`${url} ${r.status}`);
-    return r.json();
-  };
-
-  try {
-    return await tryPost("/api/dm/messages");
-  } catch {
-    return await tryPost("/api/dm/send");
-  }
+async function sendMessage(threadId: string, text: string) {
+  const r = await fetch(`/api/dm/threads/${threadId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ text }),
+  });
+  if (!r.ok) throw new Error(`Failed to send message (${r.status})`);
+  return r.json();
 }
 
 function useAutoScroll(dep: unknown) {
@@ -81,18 +59,7 @@ export default function DMThreadPage({ params }: Params) {
   const qc = useQueryClient();
 
   const {
-    data: thread,
-    isLoading: loadingThread,
-    isError: threadError,
-    error: threadErr,
-  } = useQuery({
-    queryKey: ["dm", "thread", threadId],
-    queryFn: () => fetchThread(threadId),
-    enabled: !!threadId,
-  });
-
-  const {
-    data: messages,
+    data: messagesData,
     isLoading: loadingMessages,
     isError: messagesError,
     error: messagesErr,
@@ -103,27 +70,18 @@ export default function DMThreadPage({ params }: Params) {
     refetchInterval: 2500, // lightweight live updates
   });
 
+  const messages = messagesData?.messages ?? [];
+
   const [text, setText] = React.useState("");
   const sendMutation = useMutation({
-    mutationFn: (p: { threadId: string; text: string }) => sendMessage(p),
+    mutationFn: (text: string) => sendMessage(threadId, text),
     onSuccess: () => {
       setText("");
       qc.invalidateQueries({ queryKey: ["dm", "messages", threadId] });
     },
   });
 
-  const scrollerRef = useAutoScroll(messages?.length);
-
-  const title = React.useMemo(() => {
-    if (!thread) return "Conversation";
-    const others = thread.participants.filter((p) => p.id !== meId);
-    const label =
-      (others[0]?.displayName && others[0].displayName.trim()) ||
-      others[0]?.username ||
-      (thread.participants[0]?.displayName || thread.participants[0]?.username) ||
-      "Conversation";
-    return label;
-  }, [thread, meId]);
+  const scrollerRef = useAutoScroll(messages.length);
 
   return (
     <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-4">
@@ -131,53 +89,54 @@ export default function DMThreadPage({ params }: Params) {
         <Link href="/messages">
           <a className="inline-flex items-center gap-2 text-sm hover:underline">
             <ArrowLeft className="h-4 w-4" />
-            Back to Messages
+            <span className="hidden sm:inline">Back to Royal Table Talk</span>
+            <span className="sm:hidden">Back to Table Talk</span>
           </a>
         </Link>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{title}</CardTitle>
+      <Card className="border-2 border-amber-200 shadow-lg bg-gradient-to-br from-orange-50/30 to-red-50/30">
+        <CardHeader className="border-b border-amber-200">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Crown className="h-5 w-5 text-amber-600" />
+            <span className="bg-gradient-to-r from-orange-700 to-red-700 bg-clip-text text-transparent font-semibold">
+              Royal Conversation
+            </span>
+          </CardTitle>
         </CardHeader>
 
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-3 pt-4">
           {/* Messages list */}
           <div
             ref={scrollerRef}
-            className="h-[60vh] overflow-y-auto rounded border p-3 bg-background"
+            className="h-[60vh] overflow-y-auto rounded-lg border-2 border-amber-100 p-4 bg-white/80 backdrop-blur-sm"
           >
-            {loadingThread || loadingMessages ? (
+            {loadingMessages ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
             ) : null}
 
-            {threadError && (
-              <p className="text-sm text-red-600">
-                {(threadErr as Error)?.message || "Failed to load thread"}
-              </p>
-            )}
             {messagesError && (
               <p className="text-sm text-red-600">
                 {(messagesErr as Error)?.message || "Failed to load messages"}
               </p>
             )}
 
-            {(messages ?? []).map((m) => {
+            {messages.map((m) => {
               const mine = m.senderId === meId;
               return (
                 <div
                   key={m.id}
-                  className={`mb-2 flex ${mine ? "justify-end" : "justify-start"}`}
+                  className={`mb-3 flex ${mine ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${
+                    className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-md ${
                       mine
-                        ? "bg-primary text-primary-foreground rounded-br-sm"
-                        : "bg-muted rounded-bl-sm"
+                        ? "bg-gradient-to-br from-orange-600 to-red-600 text-white rounded-br-sm border-2 border-amber-400"
+                        : "bg-gradient-to-br from-purple-50 to-fuchsia-50 text-gray-800 rounded-bl-sm border-2 border-purple-200"
                     }`}
                   >
-                    <div className="whitespace-pre-wrap break-words">{m.text}</div>
-                    <div className="mt-1 text-[10px] opacity-70 text-right">
+                    <div className="whitespace-pre-wrap break-words leading-relaxed">{m.body}</div>
+                    <div className={`mt-1.5 text-[10px] text-right ${mine ? "text-amber-100" : "text-purple-400"}`}>
                       {new Date(m.createdAt).toLocaleString()}
                     </div>
                   </div>
@@ -185,34 +144,37 @@ export default function DMThreadPage({ params }: Params) {
               );
             })}
 
-            {!loadingMessages && (messages?.length ?? 0) === 0 && (
-              <p className="text-sm text-muted-foreground">No messages yet. Say hello!</p>
+            {!loadingMessages && messages.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <Crown className="h-12 w-12 text-amber-300 mb-3" />
+                <p className="text-sm text-gray-500 italic">No messages yet. Begin the royal discourse!</p>
+              </div>
             )}
           </div>
 
           {/* Composer */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 pt-2">
             <Input
-              placeholder="Write a message…"
+              placeholder="Compose your royal message…"
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   if (text.trim() && !sendMutation.isPending) {
-                    sendMutation.mutate({ threadId, text: text.trim() });
+                    sendMutation.mutate(text.trim());
                   }
                 }
               }}
+              className="border-amber-300 focus:border-amber-500 focus:ring-amber-500"
             />
             <Button
               disabled={!text.trim() || sendMutation.isPending}
-              onClick={() =>
-                sendMutation.mutate({ threadId, text: text.trim() })
-              }
+              onClick={() => sendMutation.mutate(text.trim())}
+              className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-semibold shadow-md"
             >
               <Send className="h-4 w-4 mr-1" />
-              Send
+              Dispatch
             </Button>
           </div>
           {sendMutation.isError && (
