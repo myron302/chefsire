@@ -279,7 +279,7 @@ const drinkTypes = [
     name: 'Pure Cold Brew',
     icon: Droplets,
     description: 'Classic cold-steeped coffee',
-    color: 'text-amber-400',
+    color: 'text-rose-400',
     timing: 'Smooth',
     focus: 'Low Acidity'
   },
@@ -288,7 +288,7 @@ const drinkTypes = [
     name: 'Flavored',
     icon: Sparkles,
     description: 'Cold brew with syrups and flavors',
-    color: 'text-amber-400',
+    color: 'text-rose-400',
     timing: 'Sweet',
     focus: 'Indulgent'
   },
@@ -297,7 +297,7 @@ const drinkTypes = [
     name: 'Specialty',
     icon: Crown,
     description: 'Unique cold brew preparations',
-    color: 'text-amber-400',
+    color: 'text-rose-400',
     timing: 'Premium',
     focus: 'Elevated'
   }
@@ -331,12 +331,12 @@ const allCaffeinatedSubcategories = [
 ];
 
 const coldBrewAdvantages = [
-  { icon: Droplets, title: 'Smooth & Low-Acid', description: 'Less acidic than hot-brewed coffee', color: 'text-amber-400' },
-  { icon: Zap, title: 'High Caffeine', description: 'More caffeine per ounce', color: 'text-amber-400' },
-  { icon: Clock, title: 'Long Shelf Life', description: 'Stays fresh for up to 2 weeks', color: 'text-amber-400' },
-  { icon: Sun, title: 'Perfect Iced', description: 'Never watered down by ice', color: 'text-amber-400' },
-  { icon: Heart, title: 'Versatile Base', description: 'Endless flavor combinations', color: 'text-amber-400' },
-  { icon: Target, title: 'Consistent', description: 'Same great taste every time', color: 'text-amber-400' }
+  { icon: Droplets, title: 'Smooth & Low-Acid', description: 'Less acidic than hot-brewed coffee', color: 'text-rose-400' },
+  { icon: Zap, title: 'High Caffeine', description: 'More caffeine per ounce', color: 'text-rose-400' },
+  { icon: Clock, title: 'Long Shelf Life', description: 'Stays fresh for up to 2 weeks', color: 'text-rose-400' },
+  { icon: Sun, title: 'Perfect Iced', description: 'Never watered down by ice', color: 'text-rose-400' },
+  { icon: Heart, title: 'Versatile Base', description: 'Endless flavor combinations', color: 'text-rose-400' },
+  { icon: Target, title: 'Consistent', description: 'Same great taste every time', color: 'text-rose-400' }
 ];
 
 export default function ColdBrewDrinksPage() {
@@ -494,7 +494,7 @@ export default function ColdBrewDrinksPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50">
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-red-50 to-pink-50">
       {/* Universal Search Modal */}
       {showUniversalSearch && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
@@ -517,7 +517,7 @@ export default function ColdBrewDrinksPage() {
         <RecipeKit
           open={showKit}
           onClose={() => { setShowKit(false); setSelectedRecipe(null); }}
-          accent="amber"
+          accent="rose"
           pointsReward={25}
           onComplete={handleCompleteRecipe}
           item={{
@@ -545,9 +545,9 @@ export default function ColdBrewDrinksPage() {
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <div className="flex items-center gap-2">
-                <Droplets className="h-6 w-6 text-amber-400" />
+                <Droplets className="h-6 w-6 text-rose-400" />
                 <h1 className="text-2xl font-bold text-gray-900">Cold Brew Drinks</h1>
-                <Badge className="bg-amber-100 text-amber-600 border-amber-200">Smooth & Refreshing</Badge>
+                <Badge className="bg-rose-100 text-rose-600 border-rose-200">Smooth & Refreshing</Badge>
               </div>
             </div>
 
@@ -566,7 +566,7 @@ export default function ColdBrewDrinksPage() {
                 <div className="w-px h-4 bg-gray-300" />
                 <span>{userProgress.totalPoints} XP</span>
               </div>
-              <Button size="sm" className="bg-amber-400 hover:bg-amber-500 text-white" onClick={handleSharePage}>
+              <Button size="sm" className="bg-rose-400 hover:bg-rose-500 text-white" onClick={handleSharePage}>
                 <Camera className="h-4 w-4 mr-2" />
                 Share Page
               </Button>
@@ -578,7 +578,7 @@ export default function ColdBrewDrinksPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
         {/* CROSS-HUB NAVIGATION */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+        <Card className="bg-gradient-to-r from-rose-50 to-red-50 border-rose-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -586,8 +586,8 @@ export default function ColdBrewDrinksPage() {
                 const Icon = hub.icon;
                 return (
                   <Link key={hub.id} href={hub.route}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
-                      <Icon className="h-4 w-4 mr-2 text-amber-400" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-rose-50 hover:border-rose-300">
+                      <Icon className="h-4 w-4 mr-2 text-rose-400" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{hub.name}</div>
                         <div className="text-xs text-gray-500">{hub.description}</div>
@@ -602,7 +602,7 @@ export default function ColdBrewDrinksPage() {
         </Card>
 
         {/* SISTER SUBPAGES NAVIGATION */}
-        <Card className="bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
+        <Card className="bg-gradient-to-r from-rose-50 to-pink-50 border-rose-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Caffeinated Drink Types</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -610,8 +610,8 @@ export default function ColdBrewDrinksPage() {
                 const Icon = subcategory.icon;
                 return (
                   <Link key={subcategory.id} href={subcategory.path}>
-                    <Button variant="outline" className="w-full justify-start hover:bg-amber-50 hover:border-amber-300">
-                      <Icon className="h-4 w-4 mr-2 text-amber-400" />
+                    <Button variant="outline" className="w-full justify-start hover:bg-rose-50 hover:border-rose-300">
+                      <Icon className="h-4 w-4 mr-2 text-rose-400" />
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{subcategory.name}</div>
                         <div className="text-xs text-gray-500">{subcategory.description}</div>
@@ -629,7 +629,7 @@ export default function ColdBrewDrinksPage() {
         <Card className="mb-8">
           <CardContent className="p-6">
             <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-              <Droplets className="h-6 w-6 text-amber-400" />
+              <Droplets className="h-6 w-6 text-rose-400" />
               Why Cold Brew?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -653,25 +653,25 @@ export default function ColdBrewDrinksPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">95</div>
+              <div className="text-2xl font-bold text-rose-400">95</div>
               <div className="text-sm text-gray-600">Avg Calories</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">200mg</div>
+              <div className="text-2xl font-bold text-rose-400">200mg</div>
               <div className="text-sm text-gray-600">Avg Caffeine</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">4.8★</div>
+              <div className="text-2xl font-bold text-rose-400">4.8★</div>
               <div className="text-sm text-gray-600">Avg Rating</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">{coldBrewDrinks.length}</div>
+              <div className="text-2xl font-bold text-rose-400">{coldBrewDrinks.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
@@ -815,7 +815,7 @@ export default function ColdBrewDrinksPage() {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <Badge className="bg-amber-100 text-amber-600 border-amber-200">{drink.drinkType}</Badge>
+                        <Badge className="bg-rose-100 text-rose-600 border-rose-200">{drink.drinkType}</Badge>
                         <Badge variant="outline">{drink.energyLevel}</Badge>
                         {drink.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
@@ -825,15 +825,15 @@ export default function ColdBrewDrinksPage() {
                       {/* Nutrition Grid */}
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
-                          <div className="font-bold text-amber-400">{drink.nutrition.calories}</div>
+                          <div className="font-bold text-rose-400">{drink.nutrition.calories}</div>
                           <div className="text-gray-500">Calories</div>
                         </div>
                         <div>
-                          <div className="font-bold text-amber-400">{drink.nutrition.caffeine}mg</div>
+                          <div className="font-bold text-rose-400">{drink.nutrition.caffeine}mg</div>
                           <div className="text-gray-500">Caffeine</div>
                         </div>
                         <div>
-                          <div className="font-bold text-amber-400">{drink.prepTime}m</div>
+                          <div className="font-bold text-rose-400">{drink.prepTime}m</div>
                           <div className="text-gray-500">Prep</div>
                         </div>
                       </div>
@@ -902,7 +902,7 @@ export default function ColdBrewDrinksPage() {
 
                               return (
                                 <li key={i} className="flex items-start gap-2">
-                                  <Check className="h-4 w-4 text-amber-400 mt-0.5" />
+                                  <Check className="h-4 w-4 text-rose-400 mt-0.5" />
                                   <span>
                                     <span className="text-amber-500 font-semibold">
                                       {show.amount} {show.unit}
@@ -964,14 +964,14 @@ export default function ColdBrewDrinksPage() {
                       <div className="space-y-2 mb-3 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Best Time:</span>
-                          <span className="font-medium text-amber-400">{drink.bestTime}</span>
+                          <span className="font-medium text-rose-400">{drink.bestTime}</span>
                         </div>
                       </div>
 
                       {/* Benefits Tags - BELOW DESCRIPTION */}
                       <div className="flex flex-wrap gap-1 mb-4">
                         {drink.benefits?.slice(0, 3).map((benefit: string, index: number) => (
-                          <Badge key={index} variant="secondary" className="text-xs bg-amber-100 text-amber-600 hover:bg-amber-200">
+                          <Badge key={index} variant="secondary" className="text-xs bg-rose-100 text-rose-600 hover:bg-amber-200">
                             {benefit}
                           </Badge>
                         ))}
@@ -980,7 +980,7 @@ export default function ColdBrewDrinksPage() {
                       {/* Make Drink Button */}
                       <div className="mt-3">
                         <Button
-                          className="w-full bg-amber-400 hover:bg-amber-500 text-white"
+                          className="w-full bg-rose-400 hover:bg-rose-500 text-white"
                           onClick={() => openRecipeModal(drink)}
                         >
                           <Droplets className="h-4 w-4 mr-2" />
@@ -1004,19 +1004,19 @@ export default function ColdBrewDrinksPage() {
                 <Card key={type.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="text-center">
-                      <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <Icon className="h-6 w-6 text-amber-400" />
+                      <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <Icon className="h-6 w-6 text-rose-400" />
                       </div>
                       <CardTitle className="text-lg">{type.name}</CardTitle>
                       <p className="text-sm text-gray-600">{type.description}</p>
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-center bg-amber-50 p-3 rounded-lg mb-4">
+                    <div className="text-center bg-rose-50 p-3 rounded-lg mb-4">
                       <div className="text-sm font-medium text-gray-700 mb-1">Focus</div>
-                      <div className="text-lg font-bold text-amber-400">{type.focus}</div>
+                      <div className="text-lg font-bold text-rose-400">{type.focus}</div>
                     </div>
-                    <Button className="w-full bg-amber-400 hover:bg-amber-500 text-white" onClick={() => setActiveTab('browse')}>
+                    <Button className="w-full bg-rose-400 hover:bg-rose-500 text-white" onClick={() => setActiveTab('browse')}>
                       Explore {type.name}
                     </Button>
                   </CardContent>
@@ -1033,8 +1033,8 @@ export default function ColdBrewDrinksPage() {
               <Card key={benefit.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader>
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-amber-100 rounded-lg">
-                      <Heart className="h-6 w-6 text-amber-400" />
+                    <div className="p-2 bg-rose-100 rounded-lg">
+                      <Heart className="h-6 w-6 text-rose-400" />
                     </div>
                     <div>
                       <CardTitle className="text-lg">{benefit.name}</CardTitle>
@@ -1043,11 +1043,11 @@ export default function ColdBrewDrinksPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center bg-amber-50 p-3 rounded-lg mb-4">
+                  <div className="text-center bg-rose-50 p-3 rounded-lg mb-4">
                     <div className="text-sm font-medium text-gray-700 mb-1">Perfect For</div>
-                    <div className="text-lg font-bold text-amber-400">Cold Brew Lovers</div>
+                    <div className="text-lg font-bold text-rose-400">Cold Brew Lovers</div>
                   </div>
-                  <Button className="w-full bg-amber-400 hover:bg-amber-500 text-white" onClick={() => setActiveTab('browse')}>
+                  <Button className="w-full bg-rose-400 hover:bg-rose-500 text-white" onClick={() => setActiveTab('browse')}>
                     View {benefit.name}
                   </Button>
                 </CardContent>
@@ -1069,7 +1069,7 @@ export default function ColdBrewDrinksPage() {
                       className="w-full h-full object-cover"
                     />
                   )}
-                  <Badge className="absolute top-4 left-4 bg-amber-400 text-white">Featured</Badge>
+                  <Badge className="absolute top-4 left-4 bg-rose-400 text-white">Featured</Badge>
                 </div>
 
                 <CardHeader>
@@ -1079,7 +1079,7 @@ export default function ColdBrewDrinksPage() {
 
                 <CardContent>
                   <Button
-                    className="w-full bg-amber-400 hover:bg-amber-500 text-white"
+                    className="w-full bg-rose-400 hover:bg-rose-500 text-white"
                     onClick={() => openRecipeModal(drink)}
                   >
                     <Droplets className="h-4 w-4 mr-2" />
@@ -1095,7 +1095,7 @@ export default function ColdBrewDrinksPage() {
         {activeTab === 'trending' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {trendingDrinks.map(drink => (
-              <Card key={drink.id} className="hover:shadow-lg transition-shadow border-2 border-amber-200">
+              <Card key={drink.id} className="hover:shadow-lg transition-shadow border-2 border-rose-200">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -1108,7 +1108,7 @@ export default function ColdBrewDrinksPage() {
 
                 <CardContent>
                   <Button
-                    className="w-full bg-amber-400 hover:bg-amber-500 text-white"
+                    className="w-full bg-rose-400 hover:bg-rose-500 text-white"
                     onClick={() => openRecipeModal(drink)}
                   >
                     <Droplets className="h-4 w-4 mr-2" />
@@ -1121,19 +1121,19 @@ export default function ColdBrewDrinksPage() {
         )}
 
         {/* Your Progress */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+        <Card className="bg-gradient-to-r from-rose-50 to-red-50 border-rose-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold mb-2">Your Progress</h3>
                 <div className="flex items-center gap-4">
-                  <Badge variant="outline" className="text-amber-400">
+                  <Badge variant="outline" className="text-rose-400">
                     Level {userProgress.level}
                   </Badge>
-                  <Badge variant="outline" className="text-amber-400">
+                  <Badge variant="outline" className="text-rose-400">
                     {userProgress.totalPoints} XP
                   </Badge>
-                  <Badge variant="outline" className="text-amber-400">
+                  <Badge variant="outline" className="text-rose-400">
                     {userProgress.totalDrinksMade} Drinks Made
                   </Badge>
                 </div>
