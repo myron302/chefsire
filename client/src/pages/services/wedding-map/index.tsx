@@ -1,11 +1,11 @@
 /* client/src/pages/services/wedding-map/index.tsx */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* global google */
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapPin, Search, Camera, Music, Flower, Heart, Users,
   Star, Shield, Phone, Globe, Navigation, List, Grid,
-  Sparkles, X, MapPinned, Shirt, Crown
+  Sparkles, X, MapPinned, Shirt, Crown, Map as MapIcon
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -21,9 +21,9 @@ import {
   useJsApiLoader,
 } from "@react-google-maps/api";
 
-/** -----------------------------
- * Vendor seed data (same as yours)
- * ----------------------------- */
+/** -------------------------------------
+ * Seed data (as you had it)
+ * ------------------------------------- */
 const weddingVendors = {
   venues: [
     {
@@ -268,20 +268,34 @@ const getCategoryIcon = (category: string) => {
 };
 
 /** -------------------------------------
- * Key resolution: Vite env → window fallback
+ * Pull a key the same way BiteMap likely does.
+ * Also tolerate global google already loaded.
  * ------------------------------------- */
-function getBrowserMapsKey(): string | undefined {
-  const fromVite = (import.meta as any)?.env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
-  const fromWindow = (globalThis as any)?.GMAPS_KEY as string | undefined;
-  return fromVite || fromWindow;
+function getMapsKey(): string | undefined {
+  // Vite style
+  const v1 = (import.meta as any)?.env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+  const v2 = (import.meta as any)?.env?.VITE_MAPS_KEY as string | undefined;
+  const v3 = (import.meta as any)?.env?.PUBLIC_GOOGLE_MAPS_API_KEY as string | undefined;
+  // Global fallbacks
+  const w = globalThis as any;
+  const g1 = w?.GMAPS_KEY as string | undefined;
+  const g2 = w?.GOOGLE_MAPS_API_KEY as string | undefined;
+  // Meta tag optional
+  const meta = typeof document !== "undefined"
+    ? document.querySelector('meta[name="google-maps-api-key"]') as HTMLMetaElement | null
+    : null;
+  const v4 = meta?.content;
+  return v1 || v2 || v3 || g1 || g2 || v4;
 }
 
+const mapsReady = () => typeof window !== "undefined" && (window as any).google?.maps;
+
 /** -------------------------------------
- * Subcomponent that loads Maps and renders
- * Autocomplete + Map (so google is defined)
+ * Map+Search section:
+ * - If google already present → skip loader
+ * - Else, use loader with detected key
  * ------------------------------------- */
-function LoadedMapsSection({
-  apiKey,
+function MapSearchSection({
   filteredVendors,
   locationQuery,
   setLocationQuery,
@@ -290,8 +304,8 @@ function LoadedMapsSection({
   searchQuery,
   setSearchQuery,
   onMarkerClick,
+  apiKey,
 }: {
-  apiKey: string;
   filteredVendors: AnyVendor[];
   locationQuery: string;
   setLocationQuery: (v: string) => void;
@@ -300,18 +314,23 @@ function LoadedMapsSection({
   searchQuery: string;
   setSearchQuery: (v: string) => void;
   onMarkerClick: (v: AnyVendor) => void;
+  apiKey?: string;
 }) {
+  const haveGlobal = mapsReady();
+  const shouldUseLoader = !haveGlobal && !!apiKey;
+
   const { isLoaded, loadError } = useJsApiLoader({
     id: "chefsire-maps",
-    googleMapsApiKey: apiKey,
-    libraries: ["places", "marker"] as any,
+    googleMapsApiKey: apiKey || "",         // ignored if script already on page
+    libraries: ["places", "marker"] as any,  // match BiteMap libs
   });
 
+  const ready = haveGlobal || isLoaded;
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
   const onPlaceChanged = () => {
     try {
-      const place = autocompleteRef.current?.getPlace();
+      const place = autocompleteRef.current?.getPlace?.();
       const loc = place?.geometry?.location;
       if (loc) {
         setCenter({ lat: loc.lat(), lng: loc.lng() });
@@ -322,9 +341,8 @@ function LoadedMapsSection({
     }
   };
 
-  // --- Search Bar (kept visually the same) ---
   const SearchBar = (
-    <Card className="mb-6">
+    <Card className="mb-4">
       <CardContent className="p-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="md:col-span-2">
@@ -340,11 +358,12 @@ function LoadedMapsSection({
           </div>
 
           <div>
-            {isLoaded ? (
+            {ready ? (
+              // NOTE: Autocomplete is legacy but still fine if BiteMap uses it.
+              // If your project switches to PlaceAutocompleteElement later, we can migrate.
               <Autocomplete
                 onLoad={(ac) => (autocompleteRef.current = ac)}
                 onPlaceChanged={onPlaceChanged}
-                options={{}}
               >
                 <div className="relative">
                   <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -379,7 +398,8 @@ function LoadedMapsSection({
     </Card>
   );
 
-  if (loadError) {
+  // Loader error
+  if (!haveGlobal && shouldUseLoader && loadError) {
     return (
       <>
         {SearchBar}
@@ -388,8 +408,7 @@ function LoadedMapsSection({
             <div className="text-center px-6">
               <p className="font-semibold mb-1">Maps failed to load</p>
               <p className="text-sm text-muted-foreground">
-                Check that this referrer is allowed and that <code>Maps JavaScript API</code> and{" "}
-                <code>Places API</code> are enabled.
+                Confirm this referrer is allowed, and <code>Maps JavaScript API</code> + <code>Places API</code> are enabled.
               </p>
             </div>
           </CardContent>
@@ -398,7 +417,7 @@ function LoadedMapsSection({
     );
   }
 
-  if (!isLoaded) {
+  if (!ready) {
     return (
       <>
         {SearchBar}
@@ -414,13 +433,11 @@ function LoadedMapsSection({
   return (
     <>
       {SearchBar}
-
       <Card className="h-[600px] overflow-hidden">
         <CardContent className="p-0 h-full">
           <GoogleMap
             center={center}
             zoom={12}
-            onLoad={() => {}}
             mapContainerStyle={{ width: "100%", height: "600px" }}
             options={{ mapTypeControl: false, streetViewControl: false, fullscreenControl: false }}
           >
@@ -440,19 +457,18 @@ function LoadedMapsSection({
 }
 
 /** -------------------------------------
- * Main page
+ * Main page with Map/Grid/List toggle
  * ------------------------------------- */
 export default function WeddingVendorMap() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [locationQuery, setLocationQuery] = useState("Hartford, CT");
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [viewMode, setViewMode] = useState<"map" | "grid" | "list">("map");
   const [selectedVendor, setSelectedVendor] = useState<AnyVendor | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [savedVendors, setSavedVendors] = useState<Set<number>>(new Set());
   const [center, setCenter] = useState<{ lat: number; lng: number }>({ lat: 41.7658, lng: -72.6734 });
 
-  // flatten vendors
   const allVendors: AnyVendor[] = useMemo(
     () => [
       ...weddingVendors.venues,
@@ -467,7 +483,7 @@ export default function WeddingVendorMap() {
 
   const filteredVendors = useMemo(() => {
     return allVendors.filter((vendor) => {
-      const matchesCategory = selectedCategory === "all" || vendor.category === selectedCategory;
+      const matchesCategory = selectedCategory === "all" || (vendor as any).category === selectedCategory;
       const q = searchQuery.trim().toLowerCase();
       const matchesSearch =
         !q ||
@@ -491,24 +507,49 @@ export default function WeddingVendorMap() {
     });
   };
 
-  const apiKey = getBrowserMapsKey();
+  const apiKey = getMapsKey();
+
+  // If BiteMap injected the script, we can silently proceed even with no key.
+  const haveGlobal = mapsReady();
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">
               Wedding Vendor Map
             </h1>
-            <p className="text-muted-foreground">Find and explore wedding vendors near you on the map</p>
+            <p className="text-muted-foreground">Find and explore wedding vendors near you</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-sm">
-              <MapPinned className="w-4 h-4 mr-1" />
-              {filteredVendors.length} vendors found
-            </Badge>
+
+          {/* View toggle: Map / Grid / List */}
+          <div className="flex gap-2">
+            <Button
+              variant={viewMode === "map" ? "default" : "outline"}
+              onClick={() => setViewMode("map")}
+              className="whitespace-nowrap"
+            >
+              <MapIcon className="w-4 h-4 mr-2" />
+              Map
+            </Button>
+            <Button
+              variant={viewMode === "grid" ? "default" : "outline"}
+              onClick={() => setViewMode("grid")}
+              className="whitespace-nowrap"
+            >
+              <Grid className="w-4 h-4 mr-2" />
+              Grid
+            </Button>
+            <Button
+              variant={viewMode === "list" ? "default" : "outline"}
+              onClick={() => setViewMode("list")}
+              className="whitespace-nowrap"
+            >
+              <List className="w-4 h-4 mr-2" />
+              List
+            </Button>
           </div>
         </div>
 
@@ -526,7 +567,7 @@ export default function WeddingVendorMap() {
                 <Icon className="w-4 h-4 mr-2" />
                 {config.label}
                 <Badge variant="secondary" className="ml-2">
-                  {key === "all" ? allVendors.length : allVendors.filter((v) => v.category === key).length}
+                  {key === "all" ? allVendors.length : allVendors.filter((v) => (v as any).category === key).length}
                 </Badge>
               </Button>
             );
@@ -534,148 +575,238 @@ export default function WeddingVendorMap() {
         </div>
       </div>
 
-      {/* Map + Vendor List */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        {/* Map + Search Section (left, spans 2 columns) */}
-        <div className="lg:col-span-2">
-          {apiKey ? (
-            <LoadedMapsSection
-              apiKey={apiKey}
-              filteredVendors={filteredVendors}
-              locationQuery={locationQuery}
-              setLocationQuery={setLocationQuery}
-              center={center}
-              setCenter={setCenter}
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              onMarkerClick={handleViewDetails}
-            />
-          ) : (
-            <>
-              {/* search bar without Google (key missing) */}
-              <Card className="mb-6">
-                <CardContent className="p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="md:col-span-2">
+      {/* ===== Views ===== */}
+      {viewMode === "map" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          {/* Map + search left */}
+          <div className="lg:col-span-2">
+            {(apiKey || haveGlobal) ? (
+              <MapSearchSection
+                apiKey={apiKey}
+                filteredVendors={filteredVendors}
+                locationQuery={locationQuery}
+                setLocationQuery={setLocationQuery}
+                center={center}
+                setCenter={setCenter}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                onMarkerClick={handleViewDetails}
+              />
+            ) : (
+              <>
+                {/* fallback if neither key nor global present */}
+                <Card className="mb-4">
+                  <CardContent className="p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="md:col-span-2">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                          <Input
+                            placeholder="Search by vendor name, specialty, or service..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                      </div>
                       <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                        <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                         <Input
-                          placeholder="Search by vendor name, specialty, or service..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Location (City, State)"
+                          value={locationQuery}
+                          onChange={(e) => setLocationQuery(e.target.value)}
                           className="pl-10"
                         />
                       </div>
                     </div>
-                    <div className="relative">
-                      <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                      <Input
-                        placeholder="Location (City, State)"
-                        value={locationQuery}
-                        onChange={(e) => setLocationQuery(e.target.value)}
-                        className="pl-10"
-                      />
+                  </CardContent>
+                </Card>
+                <Card className="h-[600px] overflow-hidden">
+                  <CardContent className="p-0 h-full flex items-center justify-center bg-muted/30 text-center px-6">
+                    <div>
+                      <p className="font-semibold mb-1">Google Maps not detected</p>
+                      <p className="text-sm text-muted-foreground">
+                        BiteMap usually injects Maps globally. Visit BiteMap once or set <code>VITE_GOOGLE_MAPS_API_KEY</code> / <code>window.GMAPS_KEY</code>.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </div>
+
+          {/* Side list right */}
+          <div className="lg:col-span-1">
+            <Card className="h-[600px] overflow-hidden flex flex-col">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Vendors List</CardTitle>
+                  <Badge variant="secondary" className="text-xs">
+                    <MapPinned className="w-3 h-3 mr-1" />
+                    {filteredVendors.length}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="flex-1 overflow-y-auto space-y-3">
+                {filteredVendors.map((vendor) => {
+                  const Icon = getCategoryIcon((vendor as any).category);
+                  return (
+                    <Card
+                      key={vendor.id}
+                      className="cursor-pointer hover:shadow-md transition-shadow"
+                      onClick={() => handleViewDetails(vendor)}
+                    >
+                      <CardContent className="p-3">
+                        <div className="flex items-start gap-3">
+                          <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
+                            <img src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <h4 className="font-semibold text-sm truncate flex items-center gap-1">
+                                {vendor.name}
+                                {(vendor as any).verified && <Shield className="w-3 h-3 text-blue-500 flex-shrink-0" />}
+                              </h4>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleSaveVendor(vendor.id as number);
+                                }}
+                              >
+                                <Heart
+                                  className={`w-4 h-4 ${savedVendors.has(vendor.id as number) ? "fill-red-500 text-red-500" : ""}`}
+                                />
+                              </Button>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                              <Icon className="w-3 h-3" />
+                              <span>{categoryConfig[(vendor as any).category]?.label}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className="flex items-center gap-1">
+                                <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                                <span className="text-xs font-medium">{(vendor as any).rating}</span>
+                                <span className="text-xs text-muted-foreground">({(vendor as any).reviews})</span>
+                              </div>
+                              <span className="text-xs font-medium">{(vendor as any).priceRange}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {viewMode === "grid" && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <Badge variant="secondary" className="text-xs">
+              {filteredVendors.length} Vendors
+            </Badge>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredVendors.map((vendor) => (
+              <Card key={vendor.id} className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer" onClick={() => handleViewDetails(vendor)}>
+                <div className="relative">
+                  <img src={vendor.image} alt={vendor.name} className="w-full h-48 object-cover" />
+                  {(vendor as any).verified && (
+                    <Badge className="absolute top-2 left-2 bg-blue-600">
+                      <Shield className="w-3 h-3 mr-1" />
+                      Verified
+                    </Badge>
+                  )}
+                </div>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <h3 className="font-semibold text-lg">{vendor.name}</h3>
+                      <p className="text-sm text-muted-foreground">{vendor.address}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSaveVendor(vendor.id as number);
+                      }}
+                    >
+                      <Heart className={`w-4 h-4 ${savedVendors.has(vendor.id as number) ? "fill-red-500 text-red-500" : ""}`} />
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-1">
+                      <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                      <span className="font-semibold">{(vendor as any).rating}</span>
+                      <span className="text-sm text-muted-foreground">({(vendor as any).reviews})</span>
+                    </div>
+                    <span className="text-sm font-medium">{(vendor as any).priceRange}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {viewMode === "list" && (
+        <div className="mb-8 space-y-3">
+          {filteredVendors.map((vendor) => {
+            const Icon = getCategoryIcon((vendor as any).category);
+            return (
+              <Card key={vendor.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleViewDetails(vendor)}>
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-4">
+                    <div className="w-24 h-24 rounded-lg overflow-hidden flex-shrink-0">
+                      <img src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <h4 className="font-semibold text-base flex items-center gap-1">
+                          {vendor.name}
+                          {(vendor as any).verified && <Shield className="w-4 h-4 text-blue-500" />}
+                        </h4>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSaveVendor(vendor.id as number);
+                          }}
+                        >
+                          <Heart className={`w-4 h-4 ${savedVendors.has(vendor.id as number) ? "fill-red-500 text-red-500" : ""}`} />
+                        </Button>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{vendor.address}</p>
+                      <div className="flex items-center gap-3 mt-2">
+                        <div className="flex items-center gap-1">
+                          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                          <span className="font-semibold">{(vendor as any).rating}</span>
+                          <span className="text-sm text-muted-foreground">({(vendor as any).reviews})</span>
+                        </div>
+                        <span className="text-sm font-medium">{(vendor as any).priceRange}</span>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Icon className="w-3 h-3" />
+                          <span>{categoryConfig[(vendor as any).category]?.label}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
               </Card>
-
-              <Card className="h-[600px] overflow-hidden">
-                <CardContent className="p-0 h-full flex items-center justify-center bg-muted/30 text-center px-6">
-                  <div>
-                    <p className="font-semibold mb-1">Google Maps key not detected</p>
-                    <p className="text-sm text-muted-foreground">
-                      Set <code>VITE_GOOGLE_MAPS_API_KEY</code> (or define <code>window.GMAPS_KEY</code>) and reload.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </>
-          )}
+            );
+          })}
         </div>
-
-        {/* Vendor List Section (right) */}
-        <div className="lg:col-span-1">
-          <Card className="h-[600px] overflow-hidden flex flex-col">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Vendors List</CardTitle>
-                <div className="flex gap-1">
-                  <Button
-                    size="sm"
-                    variant={viewMode === "list" ? "default" : "ghost"}
-                    onClick={() => setViewMode("list")}
-                  >
-                    <List className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={viewMode === "grid" ? "default" : "ghost"}
-                    onClick={() => setViewMode("grid")}
-                  >
-                    <Grid className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="flex-1 overflow-y-auto space-y-3">
-              {filteredVendors.map((vendor) => {
-                const Icon = getCategoryIcon((vendor as any).category);
-                return (
-                  <Card
-                    key={vendor.id}
-                    className="cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => handleViewDetails(vendor)}
-                  >
-                    <CardContent className="p-3">
-                      <div className="flex items-start gap-3">
-                        <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
-                          <img src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
-                            <h4 className="font-semibold text-sm truncate flex items-center gap-1">
-                              {vendor.name}
-                              {("verified" in vendor && (vendor as any).verified) && (
-                                <Shield className="w-3 h-3 text-blue-500 flex-shrink-0" />
-                              )}
-                            </h4>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 w-6 p-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleSaveVendor(vendor.id as number);
-                              }}
-                            >
-                              <Heart
-                                className={`w-4 h-4 ${savedVendors.has(vendor.id as number) ? "fill-red-500 text-red-500" : ""}`}
-                              />
-                            </Button>
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                            <Icon className="w-3 h-3" />
-                            <span>{categoryConfig[(vendor as any).category]?.label}</span>
-                          </div>
-                          <div className="flex items-center gap-2 mt-1">
-                            <div className="flex items-center gap-1">
-                              <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                              <span className="text-xs font-medium">{(vendor as any).rating}</span>
-                              <span className="text-xs text-muted-foreground">({(vendor as any).reviews})</span>
-                            </div>
-                            <span className="text-xs font-medium">{(vendor as any).priceRange}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      )}
 
       {/* Vendor Details Modal */}
       <Dialog open={showDetails} onOpenChange={setShowDetails}>
@@ -687,9 +818,7 @@ export default function WeddingVendorMap() {
                   <div>
                     <DialogTitle className="text-2xl flex items-center gap-2">
                       {selectedVendor.name}
-                      {("verified" in selectedVendor && (selectedVendor as any).verified) && (
-                        <Shield className="w-5 h-5 text-blue-500" />
-                      )}
+                      {(selectedVendor as any).verified && <Shield className="w-5 h-5 text-blue-500" />}
                     </DialogTitle>
                     <DialogDescription className="flex items-center gap-2 mt-2">
                       <MapPin className="w-4 h-4" />
@@ -697,32 +826,25 @@ export default function WeddingVendorMap() {
                     </DialogDescription>
                   </div>
                   <Button size="sm" variant="ghost" onClick={() => toggleSaveVendor(selectedVendor.id as number)}>
-                    <Heart
-                      className={`w-5 h-5 ${savedVendors.has(selectedVendor.id as number) ? "fill-red-500 text-red-500" : ""}`}
-                    />
+                    <Heart className={`w-5 h-5 ${savedVendors.has(selectedVendor.id as number) ? "fill-red-500 text-red-500" : ""}`} />
                   </Button>
                 </div>
               </DialogHeader>
 
               <div className="space-y-4">
-                {/* Image */}
                 <div className="w-full h-64 rounded-lg overflow-hidden">
                   <img src={selectedVendor.image} alt={selectedVendor.name} className="w-full h-full object-cover" />
                 </div>
 
-                {/* Rating and Price */}
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1">
                     <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
                     <span className="font-bold text-lg">{(selectedVendor as any).rating}</span>
                     <span className="text-muted-foreground">({(selectedVendor as any).reviews} reviews)</span>
                   </div>
-                  <Badge variant="secondary" className="text-sm">
-                    {(selectedVendor as any).priceRange}
-                  </Badge>
+                  <Badge variant="secondary" className="text-sm">{(selectedVendor as any).priceRange}</Badge>
                 </div>
 
-                {/* Category-specific info */}
                 {("capacity" in selectedVendor) && (
                   <div className="flex items-center gap-2">
                     <Users className="w-4 h-4 text-muted-foreground" />
@@ -742,7 +864,6 @@ export default function WeddingVendorMap() {
                   </div>
                 )}
 
-                {/* Amenities/Services/Packages/Brands */}
                 {((selectedVendor as any).amenities ||
                   (selectedVendor as any).services ||
                   (selectedVendor as any).packages ||
@@ -764,15 +885,12 @@ export default function WeddingVendorMap() {
                         (selectedVendor as any).packages ||
                         (selectedVendor as any).brands
                       )?.map((item: string) => (
-                        <Badge key={item} variant="outline">
-                          {item}
-                        </Badge>
+                        <Badge key={item} variant="outline">{item}</Badge>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* Contact Info */}
                 <div className="border-t pt-4">
                   <h4 className="font-semibold mb-3">Contact Information</h4>
                   <div className="space-y-2">
@@ -800,7 +918,6 @@ export default function WeddingVendorMap() {
                   </div>
                 </div>
 
-                {/* Action Buttons */}
                 <div className="flex gap-2 pt-4">
                   <Button className="flex-1 bg-gradient-to-r from-pink-600 to-purple-600">Request Quote</Button>
                   <Button variant="outline" className="flex-1">
@@ -809,7 +926,6 @@ export default function WeddingVendorMap() {
                   </Button>
                 </div>
 
-                {/* Address Box */}
                 <div className="border rounded-lg p-4 bg-muted/30">
                   <div className="flex items-center gap-2 mb-2">
                     <MapPin className="w-4 h-4 text-muted-foreground" />
@@ -827,7 +943,7 @@ export default function WeddingVendorMap() {
         </DialogContent>
       </Dialog>
 
-      {/* Saved Vendors Section */}
+      {/* Saved Vendors */}
       {savedVendors.size > 0 && (
         <Card className="mb-8">
           <CardHeader>
