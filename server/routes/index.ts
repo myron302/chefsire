@@ -11,6 +11,7 @@ import postsRouter from "./posts";
 import pantryRouter from "./pantry";
 import allergiesRouter from "./allergies";
 import mealPlansRouter from "./meal-plans";
+import clubsRouter from "./clubs";
 import marketplaceRouter from "./marketplace";
 import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
@@ -51,6 +52,7 @@ r.use("/posts", postsRouter);
 r.use("/pantry", pantryRouter);
 r.use("/allergies", allergiesRouter);
 r.use("/meal-plans", mealPlansRouter);
+r.use("/clubs", clubsRouter);
 r.use("/marketplace", marketplaceRouter);
 r.use("/substitutions", substitutionsRouter);
 r.use("/drinks", drinksRouter);
@@ -91,6 +93,7 @@ if (process.env.NODE_ENV !== "production") {
         "/pantry/*",
         "/allergies/*",    // Allergy Profiles & Smart Substitutions
         "/meal-plans/*",   // Meal Plan Marketplace
+        "/clubs/*",        // Clubs & Challenges
         "/marketplace/*",
         "/substitutions/*",
         "/drinks/*",
