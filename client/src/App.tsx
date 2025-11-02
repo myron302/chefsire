@@ -40,6 +40,7 @@ import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
 import Pantry from "@/pages/pantry";
 import RecipeMatches from "@/pages/pantry/recipe-matches";
 import HouseholdPantry from "@/pages/pantry/household";
+import AllergiesDashboard from "@/pages/allergies";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import NotFound from "@/pages/not-found";
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
@@ -333,6 +334,9 @@ function AppRouter() {
             <Pantry />
           </ErrorBoundary>
         </Route>
+
+        {/* Allergies Routes */}
+        <Route path="/allergies" component={AllergiesDashboard} />
 
         <Route path="/store" component={Marketplace} />
         <Route path="/marketplace" component={Marketplace} />
