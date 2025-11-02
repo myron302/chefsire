@@ -22,6 +22,7 @@ import {
   Leaf,
   Apple,
   Wine,
+  Coffee,
   ArrowRight,
   X,
   Check,
@@ -58,6 +59,7 @@ const scaleAmount = (baseAmount: number | string, servings: number) => {
 // Navigation data
 const otherDrinkHubs = [
   { id: "smoothies", name: "Smoothies", icon: Apple, route: "/drinks/smoothies", description: "Fruit & veggie blends" },
+  { id: "caffeinated", name: "Caffeinated Drinks", icon: Coffee, route: "/drinks/caffeinated", description: "Coffee, tea & energy" },
   { id: "detoxes", name: "Detox Drinks", icon: Leaf, route: "/drinks/detoxes", description: "Cleansing & wellness" },
   {
     id: "potables",
