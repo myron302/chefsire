@@ -44,6 +44,15 @@ export const otherDrinkHubs: DrinkCategory[] = [
     route: '/drinks/potent-potables',
     color: 'bg-purple-500',
     count: '1247 recipes'
+  },
+  {
+    id: 'all-drinks',
+    name: 'All Drinks',
+    description: 'Browse everything',
+    icon: Sparkles,
+    route: '/drinks',
+    color: 'bg-pink-500',
+    count: 'All categories'
   }
 ];
 
