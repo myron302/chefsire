@@ -366,7 +366,7 @@ export default function WeddingVendorMap() {
                   <Icon className="w-4 h-4" />
                   <span className="text-sm">{cfg.label}</span>
                 </div>
-                <Badge variant="secondary" className="text-xs">
+                <Badge variant="secondary" className="text-xs hidden sm:flex">
                   {count}
                 </Badge>
               </Button>

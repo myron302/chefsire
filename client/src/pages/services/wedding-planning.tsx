@@ -370,7 +370,7 @@ export default function WeddingPlanning() {
                 <Icon className="w-4 h-4" />
                 <span className="text-sm">{category.label}</span>
               </div>
-              <Badge variant="secondary" className="text-xs">
+              <Badge variant="secondary" className="text-xs hidden sm:flex">
                 {count}
               </Badge>
             </Button>
