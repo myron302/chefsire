@@ -32,6 +32,7 @@ import {
   Link as LinkIcon,
   Video,
   Play,
+  MessageCircle,
 } from "lucide-react";
 import type { User, PostWithUser } from "@shared/schema";
 
@@ -375,12 +376,22 @@ export default function Profile() {
                 )}
               </div>
             ) : (
-              <Button
-                className="bg-primary text-primary-foreground"
-                data-testid={`button-follow-user-${displayUser.id}`}
-              >
-                Follow
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation(`/messages?new=${displayUser.username}`)}
+                  data-testid={`button-message-user-${displayUser.id}`}
+                >
+                  <MessageCircle className="h-4 w-4 mr-2" />
+                  Message
+                </Button>
+                <Button
+                  className="bg-primary text-primary-foreground"
+                  data-testid={`button-follow-user-${displayUser.id}`}
+                >
+                  Follow
+                </Button>
+              </div>
             )}
           </div>
 
@@ -466,7 +477,7 @@ export default function Profile() {
 
       {/* Tabs */}
       <Tabs defaultValue="photos" className="w-full">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-4 md:grid-cols-8">
           <TabsTrigger value="photos" className="flex items-center space-x-2" data-testid="tab-photos">
             <Image className="h-4 w-4" />
             <span className="hidden sm:inline">Photos</span>
@@ -487,6 +498,12 @@ export default function Profile() {
             <Trophy className="h-4 w-4" />
             <span className="hidden sm:inline">Cookoffs</span>
           </TabsTrigger>
+          {isOwnProfile && (
+            <TabsTrigger value="messages" className="flex items-center space-x-2" data-testid="tab-messages">
+              <MessageCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">Messages</span>
+            </TabsTrigger>
+          )}
           <TabsTrigger value="saved" className="flex items-center space-x-2" data-testid="tab-saved">
             <Star className="h-4 w-4" />
             <span className="hidden sm:inline">Saved</span>
@@ -818,6 +835,38 @@ export default function Profile() {
             </div>
           )}
         </TabsContent>
+
+        {/* MESSAGES */}
+        {isOwnProfile && (
+          <TabsContent value="messages" className="mt-6">
+            <Card className="border-2 border-amber-200 bg-gradient-to-br from-orange-50/50 to-red-50/50">
+              <CardHeader className="border-b border-amber-200">
+                <CardTitle className="flex items-center gap-2">
+                  <Crown className="w-5 h-5 text-amber-600" />
+                  <span className="bg-gradient-to-r from-orange-700 to-red-700 bg-clip-text text-transparent">
+                    Royal Table Talk
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="text-center py-8">
+                  <MessageCircle className="w-16 h-16 mx-auto mb-4 text-amber-400" />
+                  <h3 className="text-lg font-semibold mb-2">Your Royal Conversations</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Manage your messages and connect with fellow chefs
+                  </p>
+                  <Button
+                    onClick={() => setLocation("/messages")}
+                    className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-semibold shadow-md"
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    Open Messages
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         {/* STORE */}
         <TabsContent value="store" className="mt-6">

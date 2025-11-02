@@ -131,14 +131,16 @@ export default function Layout({ children }: LayoutProps) {
                   >
                     <Bell className="h-5 w-5 text-muted-foreground" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="p-2 hover:bg-muted rounded-full"
-                    aria-label="Messages"
-                  >
-                    <MessageCircle className="h-5 h-5 text-muted-foreground" />
-                  </Button>
+                  <Link href="/messages">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="p-2 hover:bg-muted rounded-full"
+                      aria-label="Royal Table Talk"
+                    >
+                      <MessageCircle className="h-5 w-5 text-muted-foreground" />
+                    </Button>
+                  </Link>
 
                   {/* User menu */}
                   <div
@@ -220,6 +222,14 @@ export default function Layout({ children }: LayoutProps) {
                                   className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                                 >
                                   🗺️ BiteMap
+                                </Link>
+
+                                <Link
+                                  href="/messages"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                                >
+                                  💬 Royal Table Talk
                                 </Link>
 
                                 {/* Competitions */}
