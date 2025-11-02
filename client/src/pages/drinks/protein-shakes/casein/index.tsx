@@ -58,7 +58,7 @@ const scaleAmount = (baseAmount: number | string, servings: number) => {
 // Navigation data
 const otherDrinkHubs = [
   { id: "smoothies", name: "Smoothies", icon: Apple, route: "/drinks/smoothies", description: "Fruit & veggie blends" },
-  { id: "detoxes", name: "Detox Drinks", icon: Leaf, route: "/drinks/detoxes", description: "Cleansing & wellness" },
+  { id: "caffeinated", name: "Caffeinated Drinks", icon: Coffee, route: "/drinks/caffeinated", description: "Coffee, tea & energy" },
   {
     id: "potables",
     name: "Potent Potables",

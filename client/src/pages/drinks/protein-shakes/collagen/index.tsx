@@ -910,15 +910,7 @@ export default function CollagenProteinPage() {
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <CardTitle className="text-lg mb-1">{shake.name}</CardTitle>
-
-                          {/* Benefits directly below the title */}
-                          {shake.benefits.length > 0 && (
-                            <div className="mt-0.5 mb-2 text-xs text-gray-600">
-                              Benefits: {shake.benefits.join(' · ')}
-                            </div>
-                          )}
-
-                          <p className="text-sm text-gray-600">{shake.flavor}</p>
+                          <p className="text-sm text-gray-600 mb-2">{shake.description}</p>
                         </div>
                         <Button
                           variant="ghost"
@@ -941,10 +933,16 @@ export default function CollagenProteinPage() {
                           <Heart className={`h-5 w-5 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
                         </Button>
                       </div>
+
+                      <div className="flex items-center gap-2 mb-3">
+                        <Badge className="bg-pink-100 text-pink-600 border-pink-200">{shake.source}</Badge>
+                        <Badge variant="outline">{shake.flavor}</Badge>
+                        {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                      </div>
                     </CardHeader>
 
                     <CardContent>
-                      {/* Quick stats */}
+                      {/* Nutrition */}
                       <div className="grid grid-cols-4 gap-2 text-center mb-4">
                         <div>
                           <div className="font-bold text-pink-600">{shake.nutrition.collagen}g</div>
@@ -952,26 +950,35 @@ export default function CollagenProteinPage() {
                         </div>
                         <div>
                           <div className="font-bold text-blue-600">{shake.nutrition.calories}</div>
-                          <div className="text-xs text-gray-500">Calories</div>
+                          <div className="text-xs text-gray-500">Cal</div>
                         </div>
                         <div>
-                          <div className="font-bold text-purple-600">{shake.bioavailability}%</div>
-                          <div className="text-xs text-gray-500">Bio</div>
+                          <div className="font-bold text-green-600">{shake.nutrition.vitamin_c || '—'}{shake.nutrition.vitamin_c ? '%':''}</div>
+                          <div className="text-xs text-gray-500">Vit C</div>
                         </div>
                         <div>
-                          <div className="font-bold text-amber-600">${shake.price}</div>
+                          <div className="font-bold text-purple-600">${shake.price}</div>
                           <div className="text-xs text-gray-500">Price</div>
                         </div>
                       </div>
 
-                      {/* Rating + Difficulty row */}
-                      <div className="flex items-center justify-between mb-4">
+                      {/* Benefits Tags */}
+                      <div className="flex flex-wrap gap-1 mb-4">
+                        {shake.benefits?.slice(0, 4).map((benefit: string, index: number) => (
+                          <Badge key={index} variant="secondary" className="text-xs bg-pink-100 text-pink-600 hover:bg-pink-200">
+                            {benefit}
+                          </Badge>
+                        ))}
+                      </div>
+
+                      {/* RATING & DIFFICULTY - Immediately above recipe card */}
+                      <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-1">
                           <Star className="h-4 w-4 text-yellow-400 fill-current" />
                           <span className="font-medium">{shake.rating}</span>
                           <span className="text-gray-500 text-sm">({shake.reviews})</span>
                         </div>
-                        <Badge variant="outline" className="text-xs">{shake.difficulty}</Badge>
+                        <Badge variant="outline">{shake.difficulty}</Badge>
                       </div>
 
                       {/* RecipeKit component - handles both preview and modal */}
