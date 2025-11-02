@@ -360,11 +360,11 @@ export default function WeddingVendorMap() {
                 key={key}
                 variant={isSelected ? "default" : "outline"}
                 onClick={() => setSelectedCategory(key)}
-                className="w-full flex items-center justify-between"
+                className="w-full flex items-center justify-center sm:justify-between"
               >
                 <div className="flex items-center gap-2">
                   <Icon className="w-4 h-4" />
-                  <span className="text-sm">{cfg.label}</span>
+                  <span className="text-xs sm:text-sm hidden sm:inline">{cfg.label}</span>
                 </div>
                 <Badge variant="secondary" className="text-xs hidden sm:flex">
                   {count}

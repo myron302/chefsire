@@ -363,12 +363,12 @@ export default function WeddingPlanning() {
               key={category.value}
               variant={isSelected ? 'default' : 'outline'}
               onClick={() => setSelectedVendorType(category.value)}
-              className="w-full flex items-center justify-between"
+              className="w-full flex items-center justify-center sm:justify-between"
               size="sm"
             >
               <div className="flex items-center gap-2">
                 <Icon className="w-4 h-4" />
-                <span className="text-sm">{category.label}</span>
+                <span className="text-xs sm:text-sm hidden sm:inline">{category.label}</span>
               </div>
               <Badge variant="secondary" className="text-xs hidden sm:flex">
                 {count}
