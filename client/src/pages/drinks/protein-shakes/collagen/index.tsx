@@ -962,15 +962,6 @@ export default function CollagenProteinPage() {
                         </div>
                       </div>
 
-                      {/* Benefits Tags */}
-                      <div className="flex flex-wrap gap-1 mb-4">
-                        {shake.benefits?.slice(0, 4).map((benefit: string, index: number) => (
-                          <Badge key={index} variant="secondary" className="text-xs bg-pink-100 text-pink-600 hover:bg-pink-200">
-                            {benefit}
-                          </Badge>
-                        ))}
-                      </div>
-
                       {/* RATING & DIFFICULTY - Immediately above recipe card */}
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-1">

@@ -1006,7 +1006,7 @@ export default function PlantBasedProteinPage() {
                       {/* Tags moved below recipe box */}
                       <div className="flex flex-wrap gap-1 mb-4">
                         {shake.certifications.map((cert: string, index: number) => (
-                          <Badge key={index} variant="outline" className="text-xs">{cert}</Badge>
+                          <Badge key={index} variant="secondary" className="text-xs bg-green-100 text-green-600">{cert}</Badge>
                         ))}
                       </div>
 
