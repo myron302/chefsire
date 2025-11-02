@@ -116,13 +116,13 @@ export default function WeddingPlanning() {
   ];
 
   const vendorCategories = [
-    { value: 'all', label: 'All Vendors', icon: Sparkles },
+    { value: 'all', label: 'All', icon: Sparkles },
     { value: 'caterer', label: 'Catering', icon: ChefHat },
     { value: 'venue', label: 'Venues', icon: MapPin },
-    { value: 'photographer', label: 'Photography', icon: Camera },
-    { value: 'dj', label: 'Entertainment', icon: Music },
-    { value: 'florist', label: 'Florals', icon: Flower },
-    { value: 'planner', label: 'Planners', icon: Heart }
+    { value: 'photographer', label: 'Photo', icon: Camera },
+    { value: 'dj', label: 'DJ & Music', icon: Music },
+    { value: 'florist', label: 'Florist', icon: Flower },
+    { value: 'planner', label: 'Planner', icon: Heart }
   ];
 
   const budgetBreakdown = [
@@ -363,14 +363,14 @@ export default function WeddingPlanning() {
               key={category.value}
               variant={isSelected ? 'default' : 'outline'}
               onClick={() => setSelectedVendorType(category.value)}
-              className="w-full flex items-center justify-center sm:justify-between"
+              className="w-full flex items-center justify-center sm:justify-between px-2"
               size="sm"
             >
-              <div className="flex items-center gap-2">
-                <Icon className="w-4 h-4" />
-                <span className="text-xs sm:text-sm hidden sm:inline">{category.label}</span>
+              <div className="flex items-center gap-1 min-w-0">
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                <span className="text-xs sm:text-sm hidden sm:inline truncate">{category.label}</span>
               </div>
-              <Badge variant="secondary" className="text-xs hidden sm:flex">
+              <Badge variant="secondary" className="text-xs hidden sm:flex flex-shrink-0">
                 {count}
               </Badge>
             </Button>

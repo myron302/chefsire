@@ -37,7 +37,10 @@ import ExplorePage from "@/pages/explore/ExplorePage";
 import RecipesListPage from "@/pages/recipes/RecipesListPage";
 import RecipesFiltersPage from "@/pages/recipes/RecipesFiltersPage";
 import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
-import Pantry from "@/components/Pantry";
+import Pantry from "@/pages/pantry";
+import RecipeMatches from "@/pages/pantry/recipe-matches";
+import HouseholdPantry from "@/pages/pantry/household";
+import AllergiesDashboard from "@/pages/allergies";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import NotFound from "@/pages/not-found";
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
@@ -322,11 +325,18 @@ function AppRouter() {
 
         {/* Misc */}
         <Route path="/create" component={CreatePost} />
+
+        {/* Pantry Routes */}
+        <Route path="/pantry/recipe-matches" component={RecipeMatches} />
+        <Route path="/pantry/household" component={HouseholdPantry} />
         <Route path="/pantry">
           <ErrorBoundary>
             <Pantry />
           </ErrorBoundary>
         </Route>
+
+        {/* Allergies Routes */}
+        <Route path="/allergies" component={AllergiesDashboard} />
 
         <Route path="/store" component={Marketplace} />
         <Route path="/marketplace" component={Marketplace} />

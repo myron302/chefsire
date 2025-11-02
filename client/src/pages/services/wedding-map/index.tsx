@@ -49,13 +49,13 @@ type PlaceResultLite = {
 };
 
 const categoryConfig: Record<VendorCategoryKey, { label: string; icon: any; query: string }> = {
-  all:          { label: "All Vendors",        icon: Sparkles,     query: "wedding venue OR photographer OR wedding dj OR florist OR bridal shop OR tuxedo shop" },
-  venue:        { label: "Venues",             icon: MapPin,       query: "wedding venue OR event venue OR banquet hall" },
-  photographer: { label: "Photographers",      icon: Camera,       query: "wedding photographer OR photographer" },
-  dj:           { label: "DJs & Entertainment",icon: Music,        query: "wedding dj OR dj services" },
-  florist:      { label: "Florists",           icon: Flower2,      query: "florist wedding OR florist" },
-  dressShop:    { label: "Dress Shops",        icon: ShoppingBag,  query: "bridal shop OR wedding dress shop" },
-  tuxedoShop:   { label: "Tuxedo Shops",       icon: Shirt,        query: "tuxedo shop OR formal wear" },
+  all:          { label: "All",           icon: Sparkles,     query: "wedding venue OR photographer OR wedding dj OR florist OR bridal shop OR tuxedo shop" },
+  venue:        { label: "Venues",        icon: MapPin,       query: "wedding venue OR event venue OR banquet hall" },
+  photographer: { label: "Photo",         icon: Camera,       query: "wedding photographer OR photographer" },
+  dj:           { label: "DJ & Music",    icon: Music,        query: "wedding dj OR dj services" },
+  florist:      { label: "Florist",       icon: Flower2,      query: "florist wedding OR florist" },
+  dressShop:    { label: "Dresses",       icon: ShoppingBag,  query: "bridal shop OR wedding dress shop" },
+  tuxedoShop:   { label: "Tuxedos",       icon: Shirt,        query: "tuxedo shop OR formal wear" },
 };
 
 // ---------- Helpers ----------
@@ -360,13 +360,13 @@ export default function WeddingVendorMap() {
                 key={key}
                 variant={isSelected ? "default" : "outline"}
                 onClick={() => setSelectedCategory(key)}
-                className="w-full flex items-center justify-center sm:justify-between"
+                className="w-full flex items-center justify-center sm:justify-between px-2"
               >
-                <div className="flex items-center gap-2">
-                  <Icon className="w-4 h-4" />
-                  <span className="text-xs sm:text-sm hidden sm:inline">{cfg.label}</span>
+                <div className="flex items-center gap-1 min-w-0">
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  <span className="text-xs sm:text-sm hidden sm:inline truncate">{cfg.label}</span>
                 </div>
-                <Badge variant="secondary" className="text-xs hidden sm:flex">
+                <Badge variant="secondary" className="text-xs hidden sm:flex flex-shrink-0">
                   {count}
                 </Badge>
               </Button>
