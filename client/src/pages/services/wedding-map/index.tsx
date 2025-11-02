@@ -347,7 +347,7 @@ export default function WeddingVendorMap() {
         </Card>
 
         {/* Category Filters */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
+        <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-6">
           {(
             Object.keys(categoryConfig) as VendorCategoryKey[]
           ).map((key) => {
