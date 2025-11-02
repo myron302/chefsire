@@ -22,6 +22,7 @@ import {
   Leaf,
   Apple,
   Wine,
+  Coffee,
   ArrowRight,
   X,
   Check,
