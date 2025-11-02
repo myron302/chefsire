@@ -1054,7 +1054,7 @@ export default function PlantBasedProteinPage() {
                         <h4 className="font-semibold text-sm mb-2">Key Benefits:</h4>
                         <div className="flex flex-wrap gap-1">
                           {type.benefits.map((benefit, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">{benefit}</Badge>
+                            <Badge key={index} variant="secondary" className="text-xs bg-green-100 text-green-600">{benefit}</Badge>
                           ))}
                         </div>
                       </div>

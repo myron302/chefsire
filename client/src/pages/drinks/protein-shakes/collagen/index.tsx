@@ -1081,7 +1081,7 @@ export default function CollagenProteinPage() {
                         <h4 className="font-semibold text-sm mb-2">Benefits:</h4>
                         <div className="flex flex-wrap gap-1">
                           {type.benefits.map((benefit, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
+                            <Badge key={index} variant="secondary" className="text-xs bg-pink-100 text-pink-600">
                               {benefit}
                             </Badge>
                           ))}
@@ -1157,7 +1157,7 @@ export default function CollagenProteinPage() {
                         <h4 className="font-semibold text-sm mb-2">Benefits:</h4>
                         <div className="flex flex-wrap gap-1">
                           {source.benefits.map((benefit, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
+                            <Badge key={index} variant="secondary" className="text-xs bg-pink-100 text-pink-600">
                               {benefit}
                             </Badge>
                           ))}
