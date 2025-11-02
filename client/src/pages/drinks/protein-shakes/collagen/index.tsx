@@ -1027,7 +1027,7 @@ export default function CollagenProteinPage() {
                       {/* Tags (certifications) */}
                       <div className="flex flex-wrap gap-1 mb-4">
                         {shake.certifications.map((cert: string) => (
-                          <Badge key={cert} variant="secondary" className="text-xs">{cert}</Badge>
+                          <Badge key={cert} variant="secondary" className="text-xs bg-pink-100 text-pink-600">{cert}</Badge>
                         ))}
                       </div>
 
@@ -1357,7 +1357,7 @@ export default function CollagenProteinPage() {
                   {/* Tags (certifications) */}
                   <div className="flex flex-wrap gap-1 mb-4">
                     {shake.certifications.map((cert: string) => (
-                      <Badge key={cert} variant="secondary" className="text-xs">{cert}</Badge>
+                      <Badge key={cert} variant="secondary" className="text-xs bg-pink-100 text-pink-600">{cert}</Badge>
                     ))}
                   </div>
 
