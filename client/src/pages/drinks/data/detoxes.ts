@@ -231,7 +231,7 @@ export const infusedWaters: DetoxRecipe[] = [
     nutrition: {
       calories: 15,
       sugar: 4,
-      vitamin_c: 'Very High',
+      vitamin_c: 250,
       electrolytes: 'Low'
     },
     ingredients: ['Orange (1/2 sliced)', 'Grapefruit (1/4 sliced)', 'Lime (1/2 sliced)', 'Lemon (1/2 sliced)', 'Cold Water (32 oz)'],
