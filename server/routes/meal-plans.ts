@@ -155,7 +155,7 @@ router.get("/meal-plans", async (req: Request, res: Response) => {
       .leftJoin(mealPlanReviews, eq(mealPlanBlueprints.id, mealPlanReviews.blueprintId))
       .where(eq(mealPlanBlueprints.status, "published"))
       .groupBy(mealPlanBlueprints.id, users.id)
-      .\$dynamic();
+      .$dynamic();
 
     const plans = await query;
 

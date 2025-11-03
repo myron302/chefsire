@@ -325,7 +325,7 @@ router.get("/challenges", async (req: Request, res: Response) => {
       .leftJoin(challengeProgress, eq(challenges.id, challengeProgress.challengeId))
       .groupBy(challenges.id)
       .orderBy(desc(challenges.startDate))
-      .\$dynamic();
+      .$dynamic();
 
     let filtered = await allChallenges;
 
