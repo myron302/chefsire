@@ -91,8 +91,8 @@ router.get("/clubs/:id", async (req: Request, res: Response) => {
 
     const [stats] = await db
       .select({
-        memberCount: sql<number>\`count(distinct \${clubMemberships.id})\`,
-        postCount: sql<number>\`count(distinct \${clubPosts.id})\`,
+        memberCount: sql<number>`count(distinct ${clubMemberships.id})`,
+        postCount: sql<number>`count(distinct ${clubPosts.id})`,
       })
       .from(clubs)
       .leftJoin(clubMemberships, eq(clubs.id, clubMemberships.clubId))
@@ -224,11 +224,11 @@ router.get("/my-clubs", requireAuth, async (req: Request, res: Response) => {
       .select({
         club: clubs,
         membership: clubMemberships,
-        memberCount: sql<number>\`count(distinct m.id)\`,
+        memberCount: sql<number>`count(distinct m.id)`,
       })
       .from(clubMemberships)
       .innerJoin(clubs, eq(clubMemberships.clubId, clubs.id))
-      .leftJoin(clubMemberships.as("m"), eq(clubs.id, sql\`m.club_id\`))
+      .leftJoin(clubMemberships.as("m"), eq(clubs.id, sql`m.club_id`))
       .where(eq(clubMemberships.userId, userId))
       .groupBy(clubs.id, clubMemberships.id)
       .orderBy(desc(clubMemberships.joinedAt));
@@ -319,7 +319,7 @@ router.get("/challenges", async (req: Request, res: Response) => {
     const allChallenges = await db
       .select({
         challenge: challenges,
-        participantCount: sql<number>\`count(distinct \${challengeProgress.userId})\`,
+        participantCount: sql<number>`count(distinct ${challengeProgress.userId})`,
       })
       .from(challenges)
       .leftJoin(challengeProgress, eq(challenges.id, challengeProgress.challengeId))
@@ -365,8 +365,8 @@ router.get("/challenges/:id", async (req: Request, res: Response) => {
 
     const [stats] = await db
       .select({
-        participantCount: sql<number>\`count(distinct \${challengeProgress.userId})\`,
-        completedCount: sql<number>\`count(*) filter (where \${challengeProgress.isCompleted} = true)\`,
+        participantCount: sql<number>`count(distinct ${challengeProgress.userId})`,
+        completedCount: sql<number>`count(*) filter (where ${challengeProgress.isCompleted} = true)`,
       })
       .from(challengeProgress)
       .where(eq(challengeProgress.challengeId, challengeId));
