@@ -8,7 +8,7 @@ import recipesRouter from "./recipes";
 import bitesRouter from "./bites";
 import usersRouter from "./users";
 import postsRouter from "./posts";
-import pantryRouter from "./pantry";
+// import pantryRouter from "./pantry"; // DISABLED: Requires database tables
 import marketplaceRouter from "./marketplace";
 import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
@@ -46,7 +46,7 @@ r.use("/recipes", recipesRouter);
 r.use("/bites", bitesRouter);
 r.use("/users", usersRouter);
 r.use("/posts", postsRouter);
-r.use("/pantry", pantryRouter);
+// r.use("/pantry", pantryRouter); // DISABLED: Requires database tables
 r.use("/marketplace", marketplaceRouter);
 r.use("/substitutions", substitutionsRouter);
 r.use("/drinks", drinksRouter);
