@@ -134,7 +134,8 @@ export const infusedWaters: DetoxRecipe[] = [
     bestTime: 'All Day',
     duration: 'Daily',
     temperature: 'Cold',
-    category: 'Classic Infusions'
+    category: 'Classic Infusions',
+    allergens: []
   },
   {
     id: 'water-2',
@@ -161,7 +162,8 @@ export const infusedWaters: DetoxRecipe[] = [
     bestTime: 'Afternoon',
     duration: 'Daily',
     temperature: 'Cold',
-    category: 'Fruity Infusions'
+    category: 'Fruity Infusions',
+    allergens: []
   },
   {
     id: 'water-3',
@@ -188,7 +190,8 @@ export const infusedWaters: DetoxRecipe[] = [
     bestTime: 'Morning',
     duration: 'Daily',
     temperature: 'Warm',
-    category: 'Detox Waters'
+    category: 'Detox Waters',
+    allergens: []
   },
   {
     id: 'water-4',
@@ -215,7 +218,8 @@ export const infusedWaters: DetoxRecipe[] = [
     bestTime: 'Anytime',
     duration: 'Daily',
     temperature: 'Cold',
-    category: 'Fruity Infusions'
+    category: 'Fruity Infusions',
+    allergens: []
   },
   {
     id: 'water-5',
@@ -242,7 +246,8 @@ export const infusedWaters: DetoxRecipe[] = [
     bestTime: 'Morning',
     duration: 'Daily',
     temperature: 'Cold',
-    category: 'Citrus Infusions'
+    category: 'Citrus Infusions',
+    allergens: []
   },
   {
     id: 'water-6',
@@ -269,7 +274,8 @@ export const infusedWaters: DetoxRecipe[] = [
     bestTime: 'Post-Workout',
     duration: 'Daily',
     temperature: 'Cold',
-    category: 'Tropical Infusions'
+    category: 'Tropical Infusions',
+    allergens: []
   },
   {
     id: 'water-7',
@@ -296,7 +302,8 @@ export const infusedWaters: DetoxRecipe[] = [
     bestTime: 'Evening',
     duration: 'Seasonal',
     temperature: 'Warm',
-    category: 'Warm Infusions'
+    category: 'Warm Infusions',
+    allergens: []
   },
   {
     id: 'water-8',
@@ -323,7 +330,8 @@ export const infusedWaters: DetoxRecipe[] = [
     bestTime: 'Summer Days',
     duration: 'Seasonal',
     temperature: 'Cold',
-    category: 'Summer Infusions'
+    category: 'Summer Infusions',
+    allergens: []
   },
   {
     id: 'water-9',
@@ -350,7 +358,8 @@ export const infusedWaters: DetoxRecipe[] = [
     bestTime: 'Evening',
     duration: 'As Needed',
     temperature: 'Warm',
-    category: 'Herbal Infusions'
+    category: 'Herbal Infusions',
+    allergens: []
   },
   {
     id: 'water-10',
@@ -377,7 +386,8 @@ export const infusedWaters: DetoxRecipe[] = [
     bestTime: 'Mid-Morning',
     duration: 'Daily',
     temperature: 'Cold',
-    category: 'Tea Infusions'
+    category: 'Tea Infusions',
+    allergens: []
   }
 ];
 
