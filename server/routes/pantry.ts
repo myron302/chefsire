@@ -11,7 +11,7 @@ import {
   users
 } from "@db/schema";
 import { eq, and, sql, desc, asc, lte, gte, or, inArray } from "drizzle-orm";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth } from "../middleware";
 
 const router = Router();
 
