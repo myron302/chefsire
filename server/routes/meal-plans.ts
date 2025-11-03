@@ -85,8 +85,9 @@ router.get("/my-plans", requireAuth, async (req: Request, res: Response) => {
     const plans = await db
       .select({
         blueprint: mealPlanBlueprints,
-        avgRating: sql<number>`avg(${mealPlanReviews.rating})`,
-        reviewCount: sql<number>`count(distinct ${mealPlanReviews.id})`,
+        // ⬇️ removed generic to avoid esbuild TS-parse error
+        avgRating: sql`avg(${mealPlanReviews.rating})`,
+        reviewCount: sql`count(distinct ${mealPlanReviews.id})`,
       })
       .from(mealPlanBlueprints)
       .leftJoin(mealPlanReviews, eq(mealPlanBlueprints.id, mealPlanReviews.blueprintId))
@@ -147,8 +148,9 @@ router.get("/meal-plans", async (req: Request, res: Response) => {
           username: users.username,
           displayName: users.displayName,
         },
-        avgRating: sql<number>`avg(${mealPlanReviews.rating})`,
-        reviewCount: sql<number>`count(distinct ${mealPlanReviews.id})`,
+        // ⬇️ removed generic to avoid esbuild TS-parse error
+        avgRating: sql`avg(${mealPlanReviews.rating})`,
+        reviewCount: sql`count(distinct ${mealPlanReviews.id})`,
       })
       .from(mealPlanBlueprints)
       .innerJoin(users, eq(mealPlanBlueprints.creatorId, users.id))
@@ -249,8 +251,9 @@ router.get("/meal-plans/:id", async (req: Request, res: Response) => {
 
     const [ratingStats] = await db
       .select({
-        avgRating: sql<number>`avg(${mealPlanReviews.rating})`,
-        totalReviews: sql<number>`count(*)`,
+        // ⬇️ removed generic to avoid esbuild TS-parse error
+        avgRating: sql`avg(${mealPlanReviews.rating})`,
+        totalReviews: sql`count(*)`,
       })
       .from(mealPlanReviews)
       .where(eq(mealPlanReviews.blueprintId, planId));
@@ -260,8 +263,8 @@ router.get("/meal-plans/:id", async (req: Request, res: Response) => {
       version,
       reviews,
       ratingStats: {
-        avgRating: ratingStats.avgRating || 0,
-        totalReviews: ratingStats.totalReviews || 0,
+        avgRating: (ratingStats as any).avgRating || 0,
+        totalReviews: (ratingStats as any).totalReviews || 0,
       },
     });
   } catch (error) {
@@ -430,8 +433,9 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
 
     const [totals] = await db
       .select({
-        totalSales: sql<number>`sum(${creatorAnalytics.totalSales})`,
-        totalRevenue: sql<number>`sum(${creatorAnalytics.totalRevenueCents})`,
+        // ⬇️ removed generic to avoid esbuild TS-parse error
+        totalSales: sql`sum(${creatorAnalytics.totalSales})`,
+        totalRevenue: sql`sum(${creatorAnalytics.totalRevenueCents})`,
       })
       .from(creatorAnalytics)
       .where(eq(creatorAnalytics.creatorId, userId));
@@ -446,7 +450,7 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
     const topPlans = await db
       .select({
         blueprint: mealPlanBlueprints,
-        totalRevenue: sql<number>`${mealPlanBlueprints.salesCount} * ${mealPlanBlueprints.priceInCents}`,
+        totalRevenue: sql`${mealPlanBlueprints.salesCount} * ${mealPlanBlueprints.priceInCents}`,
       })
       .from(mealPlanBlueprints)
       .where(eq(mealPlanBlueprints.creatorId, userId))
@@ -455,8 +459,8 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
 
     res.json({
       totals: {
-        totalSales: totals.totalSales || 0,
-        totalRevenueCents: totals.totalRevenue || 0,
+        totalSales: (totals as any)?.totalSales || 0,
+        totalRevenueCents: (totals as any)?.totalRevenue || 0,
       },
       daily,
       topPlans,
