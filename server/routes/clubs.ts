@@ -27,15 +27,15 @@ router.get("/clubs", async (req: Request, res: Response) => {
     const allClubs = await db
       .select({
         club: clubs,
-        memberCount: sql<number>\`count(distinct \${clubMemberships.id})\`,
-        postCount: sql<number>\`count(distinct \${clubPosts.id})\`,
+        memberCount: sql<number>`count(distinct ${clubMemberships.id})`,
+        postCount: sql<number>`count(distinct ${clubPosts.id})`,
       })
       .from(clubs)
       .leftJoin(clubMemberships, eq(clubs.id, clubMemberships.clubId))
       .leftJoin(clubPosts, eq(clubs.id, clubPosts.clubId))
       .where(eq(clubs.isPublic, true))
       .groupBy(clubs.id)
-      .\$dynamic();
+      .$dynamic();
 
     let filtered = await allClubs;
 

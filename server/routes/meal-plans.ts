@@ -85,8 +85,8 @@ router.get("/my-plans", requireAuth, async (req: Request, res: Response) => {
     const plans = await db
       .select({
         blueprint: mealPlanBlueprints,
-        avgRating: sql<number>\`avg(\${mealPlanReviews.rating})\`,
-        reviewCount: sql<number>\`count(distinct \${mealPlanReviews.id})\`,
+        avgRating: sql<number>`avg(${mealPlanReviews.rating})`,
+        reviewCount: sql<number>`count(distinct ${mealPlanReviews.id})`,
       })
       .from(mealPlanBlueprints)
       .leftJoin(mealPlanReviews, eq(mealPlanBlueprints.id, mealPlanReviews.blueprintId))
