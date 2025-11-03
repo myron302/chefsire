@@ -147,8 +147,8 @@ router.get("/meal-plans", async (req: Request, res: Response) => {
           username: users.username,
           displayName: users.displayName,
         },
-        avgRating: sql<number>\`avg(\${mealPlanReviews.rating})\`,
-        reviewCount: sql<number>\`count(distinct \${mealPlanReviews.id})\`,
+        avgRating: sql<number>`avg(${mealPlanReviews.rating})`,
+        reviewCount: sql<number>`count(distinct ${mealPlanReviews.id})`,
       })
       .from(mealPlanBlueprints)
       .innerJoin(users, eq(mealPlanBlueprints.creatorId, users.id))
@@ -249,8 +249,8 @@ router.get("/meal-plans/:id", async (req: Request, res: Response) => {
 
     const [ratingStats] = await db
       .select({
-        avgRating: sql<number>\`avg(\${mealPlanReviews.rating})\`,
-        totalReviews: sql<number>\`count(*)\`,
+        avgRating: sql<number>`avg(${mealPlanReviews.rating})`,
+        totalReviews: sql<number>`count(*)`,
       })
       .from(mealPlanReviews)
       .where(eq(mealPlanReviews.blueprintId, planId));
@@ -309,13 +309,13 @@ router.post("/meal-plans/:id/purchase", requireAuth, async (req: Request, res: R
         pricePaidCents: plan.priceInCents,
         paymentStatus: "completed",
         paymentMethod: paymentMethod || "stripe",
-        transactionId: \`sim_\${Date.now()}_\${Math.random().toString(36).substring(7)}\`,
+        transactionId: `sim_${Date.now()}_${Math.random().toString(36).substring(7)}`,
       })
       .returning();
 
     await db
       .update(mealPlanBlueprints)
-      .set({ salesCount: sql\`\${mealPlanBlueprints.salesCount} + 1\` })
+      .set({ salesCount: sql`${mealPlanBlueprints.salesCount} + 1` })
       .where(eq(mealPlanBlueprints.id, planId));
 
     await db
@@ -329,8 +329,8 @@ router.post("/meal-plans/:id/purchase", requireAuth, async (req: Request, res: R
       .onConflictDoUpdate({
         target: [creatorAnalytics.creatorId, creatorAnalytics.date],
         set: {
-          totalSales: sql\`\${creatorAnalytics.totalSales} + 1\`,
-          totalRevenueCents: sql\`\${creatorAnalytics.totalRevenueCents} + \${plan.priceInCents}\`,
+          totalSales: sql`${creatorAnalytics.totalSales} + 1`,
+          totalRevenueCents: sql`${creatorAnalytics.totalRevenueCents} + ${plan.priceInCents}`,
         },
       });
 
@@ -430,8 +430,8 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
 
     const [totals] = await db
       .select({
-        totalSales: sql<number>\`sum(\${creatorAnalytics.totalSales})\`,
-        totalRevenue: sql<number>\`sum(\${creatorAnalytics.totalRevenueCents})\`,
+        totalSales: sql<number>`sum(${creatorAnalytics.totalSales})`,
+        totalRevenue: sql<number>`sum(${creatorAnalytics.totalRevenueCents})`,
       })
       .from(creatorAnalytics)
       .where(eq(creatorAnalytics.creatorId, userId));
@@ -446,7 +446,7 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
     const topPlans = await db
       .select({
         blueprint: mealPlanBlueprints,
-        totalRevenue: sql<number>\`\${mealPlanBlueprints.salesCount} * \${mealPlanBlueprints.priceInCents}\`,
+        totalRevenue: sql<number>`${mealPlanBlueprints.salesCount} * ${mealPlanBlueprints.priceInCents}`,
       })
       .from(mealPlanBlueprints)
       .where(eq(mealPlanBlueprints.creatorId, userId))
