@@ -220,6 +220,9 @@ router.get("/my-clubs", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
 
+    // Create alias for clubMemberships to count total members
+    const m = clubMemberships.as("m");
+
     const userClubs = await db
       .select({
         club: clubs,
@@ -228,7 +231,7 @@ router.get("/my-clubs", requireAuth, async (req: Request, res: Response) => {
       })
       .from(clubMemberships)
       .innerJoin(clubs, eq(clubMemberships.clubId, clubs.id))
-      .leftJoin(clubMemberships.as("m"), eq(clubs.id, sql`m.club_id`))
+      .leftJoin(m, eq(clubs.id, m.clubId))
       .where(eq(clubMemberships.userId, userId))
       .groupBy(clubs.id, clubMemberships.id)
       .orderBy(desc(clubMemberships.joinedAt));
