@@ -6,84 +6,67 @@ import compression from "compression";
 import morgan from "morgan";
 import path from "node:path";
 import fs from "node:fs";
+import { createRequire } from "node:module"; // 👈 allow require in ESM
+const require = createRequire(import.meta.url);
 
 const app = express();
+
 app.set("trust proxy", true);
 
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(compression());
-if (process.env.NODE_ENV !== "production") app.use(morgan("dev"));
 
-// --- Health ---
+if (process.env.NODE_ENV !== "production") {
+  app.use(morgan("dev"));
+}
+
+// Health
 app.get("/healthz", (_req: Request, res: Response) => {
   res.status(200).json({ ok: true, env: process.env.NODE_ENV || "development" });
 });
 
 /**
- * Mount /api in a way that cannot crash the process.
- * We mount a stub first; then we *attempt* to load the real routers.
- * If loading fails, the stub returns 503 + a diagnostic. Frontend still serves.
+ * Mount API routes with a hard guard.
+ * If any router import crashes at load time, we keep the app alive and expose a clear error at /api/*
  */
-const api = express.Router();
-let apiLoaded = false;
-let apiLoadError: Error | null = null;
-
-// Diagnostic always available
-api.get("/_diag", (_req, res) => {
-  res.json({
-    status: apiLoaded ? "ok" : "degraded",
-    error: apiLoadError ? (apiLoadError.message || String(apiLoadError)) : null,
-    timestamp: new Date().toISOString(),
+let routesMounted = false;
+try {
+  // NOTE: esbuild will rewrite this during bundling; no .ts/.js extension needed.
+  // We avoid `import routes from "./routes"` so that load-time errors are catchable.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const mod = require("./routes");
+  const routes = mod.default ?? mod;
+  app.use("/api", routes);
+  routesMounted = true;
+  console.log("[ChefSire] API routes mounted");
+} catch (err) {
+  console.error("[ChefSire] Failed to load API routes:", err);
+  app.all("/api/*", (_req: Request, res: Response) => {
+    res.status(503).json({
+      error: "API routes failed to load",
+      hint:
+        process.env.NODE_ENV === "production"
+          ? "Check server logs for the exact router that failed to initialize."
+          : String(err),
+    });
   });
-});
+}
 
-// Fallback banner for "/api" root when degraded
-api.get("/", (_req, res) => {
+// Optional API banner (at /api)
+app.get("/api", (_req, res) => {
   res.json({
     name: "ChefSire API",
-    status: apiLoaded ? "running" : "degraded",
+    status: routesMounted ? "running" : "degraded",
     timestamp: new Date().toISOString(),
   });
 });
 
-// Stub handler that only triggers while degraded
-api.use((req, res, next) => {
-  if (apiLoaded) return next();
-  res.status(503).json({
-    error: "API routes failed to load",
-    hint: "Check server logs for the exact router that failed to initialize.",
-    path: req.path,
-  });
-});
-
-// Mount the /api router now (stubbed for the moment)
-app.use("/api", api);
-
-// Try to attach real routers without crashing the app
-(async () => {
-  try {
-    // NOTE: esbuild bundles this. If it throws during module init, we stay degraded.
-    const routesMod = await import("./routes");
-    const realRoutes = routesMod.default;
-    if (!realRoutes) throw new Error("routes/index.ts did not export default router");
-
-    // Once loaded, let requests flow to real routes
-    api.use(realRoutes);
-    apiLoaded = true;
-    apiLoadError = null;
-    console.log("[ChefSire] API routes mounted successfully.");
-  } catch (e: any) {
-    apiLoaded = false;
-    apiLoadError = e instanceof Error ? e : new Error(String(e));
-    console.error("[ChefSire] Failed to mount API routes:\n", apiLoadError?.stack || apiLoadError?.message || e);
-  }
-})();
-
-// --- Static client (../dist/public) ---
+// Serve built client at ../dist/public (App Root is /httpdocs/server)
 const clientDir = path.resolve(process.cwd(), "../dist/public");
 const hasClient = fs.existsSync(clientDir);
+
 if (hasClient) {
   app.use(
     express.static(clientDir, {
@@ -91,12 +74,12 @@ if (hasClient) {
         if (filePath.includes(`${path.sep}assets${path.sep}`)) {
           res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
         }
-      },
+      }
     })
   );
 }
 
-// SPA fallback (but never swallow /api/*)
+// SPA fallback for any non-API route
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api")) return next();
   if (!hasClient) {
@@ -107,11 +90,12 @@ app.get("*", (req, res, next) => {
   res.sendFile(path.join(clientDir, "index.html"));
 });
 
-// FINAL: 404 for unknown API endpoints (only after real routes are mounted)
-app.all("/api/*", (_req: Request, res: Response) => {
-  // If degraded, the stub above already responded with 503; this line is for the healthy case.
-  res.status(404).json({ error: "API endpoint not found" });
-});
+// FINAL: 404 for unknown API paths (only if routes mounted)
+if (routesMounted) {
+  app.all("/api/*", (_req: Request, res: Response) => {
+    res.status(404).json({ error: "API endpoint not found" });
+  });
+}
 
 // Global error handler
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
