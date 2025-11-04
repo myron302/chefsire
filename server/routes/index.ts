@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const r = Router();
 
-/** Track which routers mounted (or failed) for easy diagnostics */
+/** Track which routers mounted (or failed) for diagnostics */
 type MountResult = { name: string; basePath: string | null; ok: boolean; reason?: string };
 const diag: MountResult[] = [];
 
@@ -34,7 +34,7 @@ function safeMount(
 }
 
 /** ---- Mount everything defensively ---- */
-// AUTH (mounted at root so it exposes /auth/*)
+// AUTH (root so it exposes /auth/*)
 safeMount("auth", null, "./auth");
 
 // Core
