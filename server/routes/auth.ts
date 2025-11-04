@@ -2,7 +2,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 
-// ---- helpers (safe) ----
+// -------- helpers (safe, no side effects) --------
 function normEmail(e: string) {
   return (e || "").trim().toLowerCase();
 }
@@ -19,14 +19,14 @@ const ALLOWED_TITLES = new Set([
   "royal-chef","court-master","noble-chef","imperial-chef","majestic-chef","chef",
 ]);
 
-// 🔁 Lazy loaders so the file can be required without executing heavy deps
+// -------- lazy loaders (critical change) --------
 async function getAuthService() {
   const mod = await import("../services/auth.service");
-  return mod.AuthService ?? mod.default;
+  return (mod as any).AuthService ?? (mod as any).default;
 }
 async function getStorage() {
   const mod = await import("../storage");
-  return (mod as any).storage ?? mod.default;
+  return (mod as any).storage ?? (mod as any).default;
 }
 
 const router = Router();
