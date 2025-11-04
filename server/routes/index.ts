@@ -1,7 +1,25 @@
 // server/routes/index.ts
 import { Router } from "express";
-import { createRequire } from "node:module";
-const require = createRequire(import.meta.url);
+
+// Import all routers statically (required for esbuild bundling)
+import authRouter from "./auth.js";
+import recipesRouter from "./recipes.js";
+import bitesRouter from "./bites.js";
+import usersRouter from "./users.js";
+import postsRouter from "./posts.js";
+import pantryRouter from "./pantry.js";
+import allergiesRouter from "./allergies.js";
+import mealPlansRouter from "./meal-plans.js";
+import clubsRouter from "./clubs.js";
+import marketplaceRouter from "./marketplace.js";
+import substitutionsRouter from "./substitutions.js";
+import drinksRouter from "./drinks.js";
+import lookupRouter from "./lookup.js";
+import exportListRouter from "./exportList.js";
+import { googleRouter } from "./google.js";
+import competitionsRouter from "./competitions.js";
+import storesRouter from "./stores.js";
+import storesCrudRouter from "./stores-crud.js";
 
 type LoadResult = {
   name: string;
@@ -14,12 +32,8 @@ const r = Router();
 const results: LoadResult[] = [];
 
 /** Mounts a router with try/catch so a bad module can't take down the app */
-function safeMount(name: string, mountPath: string, modulePath: string) {
+function safeMount(name: string, mountPath: string, router: any) {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mod = require(modulePath);
-    const router = (mod && (mod.default ?? mod)) as any;
-
     if (!router || typeof router !== "function") {
       throw new Error(`Module did not export an Express router`);
     }
@@ -32,16 +46,14 @@ function safeMount(name: string, mountPath: string, modulePath: string) {
     }
 
     results.push({ name, mountPath: mountPath || "(root)", ok: true });
-    // eslint-disable-next-line no-console
     console.log(`[routes] mounted ${name} at ${mountPath || "(root)"}`);
   } catch (e: any) {
     const msg = e?.message ? String(e.message) : String(e);
     results.push({ name, mountPath: mountPath || "(root)", ok: false, error: msg });
-    // eslint-disable-next-line no-console
-    console.error(`[routes] FAILED to load ${name} from ${modulePath}:`, e);
+    console.error(`[routes] FAILED to mount ${name}:`, e);
 
     // Keep API alive: return 503 for this router's subtree
-    const base = mountPath || "/"; // root-mounted routers define their own subpaths
+    const base = mountPath || "/";
     r.all(`${base}*`, (_req, res) =>
       res.status(503).json({
         error: "router_failed_to_load",
@@ -53,36 +65,36 @@ function safeMount(name: string, mountPath: string, modulePath: string) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Mount everything with guards — identical mount points as before    */
+/* Mount everything with guards                                        */
 /* ------------------------------------------------------------------ */
 
 // AUTH (root so it exposes /auth/*)
-safeMount("auth", "", "./auth");
+safeMount("auth", "", authRouter);
 
 // Core features
-safeMount("recipes", "/recipes", "./recipes");
-safeMount("bites", "/bites", "./bites");
-safeMount("users", "/users", "./users");
-safeMount("posts", "/posts", "./posts");
-safeMount("pantry", "/pantry", "./pantry");
-safeMount("allergies", "/allergies", "./allergies");
-safeMount("meal-plans", "/meal-plans", "./meal-plans");
-safeMount("clubs", "/clubs", "./clubs");
-safeMount("marketplace", "/marketplace", "./marketplace");
-safeMount("substitutions", "/substitutions", "./substitutions");
-safeMount("drinks", "/drinks", "./drinks");
+safeMount("recipes", "/recipes", recipesRouter);
+safeMount("bites", "/bites", bitesRouter);
+safeMount("users", "/users", usersRouter);
+safeMount("posts", "/posts", postsRouter);
+safeMount("pantry", "/pantry", pantryRouter);
+safeMount("allergies", "/allergies", allergiesRouter);
+safeMount("meal-plans", "/meal-plans", mealPlansRouter);
+safeMount("clubs", "/clubs", clubsRouter);
+safeMount("marketplace", "/marketplace", marketplaceRouter);
+safeMount("substitutions", "/substitutions", substitutionsRouter);
+safeMount("drinks", "/drinks", drinksRouter);
 
 // Integrations
-safeMount("lookup", "/lookup", "./lookup");
-safeMount("exportList", "/export", "./exportList");
-safeMount("google", "/google", "./google");
+safeMount("lookup", "/lookup", lookupRouter);
+safeMount("exportList", "/export", exportListRouter);
+safeMount("google", "/google", googleRouter);
 
 // Competitions
-safeMount("competitions", "/competitions", "./competitions");
+safeMount("competitions", "/competitions", competitionsRouter);
 
 // Stores
-safeMount("stores (public)", "/stores", "./stores");
-safeMount("stores-crud (admin)", "/stores-crud", "./stores-crud");
+safeMount("stores (public)", "/stores", storesRouter);
+safeMount("stores-crud (admin)", "/stores-crud", storesCrudRouter);
 
 // Dev / health for routers
 r.get("/_router-health", (_req, res) => {
