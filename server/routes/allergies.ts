@@ -2,7 +2,7 @@ import express, { type Request, type Response } from "express";
 import { db } from "@db";
 import { eq, and, or, inArray } from "drizzle-orm";
 import { familyMembers, allergenProfiles, recipeAllergens, userSubstitutionPreferences, productAllergens, recipes } from "@db/schema";
-import { requireAuth } from "../middleware";
+import { requireAuth } from "../middleware/index";
 
 const router = express.Router();
 
