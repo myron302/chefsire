@@ -1,8 +1,7 @@
 // server/routes/auth.ts
 import { Router } from "express";
-import bcrypt from "bcryptjs";
 
-// -------- helpers (safe, no side effects) --------
+// ---------- small helpers (no side effects) ----------
 function normEmail(e: string) {
   return (e || "").trim().toLowerCase();
 }
@@ -19,14 +18,18 @@ const ALLOWED_TITLES = new Set([
   "royal-chef","court-master","noble-chef","imperial-chef","majestic-chef","chef",
 ]);
 
-// -------- lazy loaders (critical change) --------
-async function getAuthService() {
-  const mod = await import("../services/auth.service");
-  return (mod as any).AuthService ?? (mod as any).default;
+// ---------- lazy loaders (critical: avoid boot-time crashes) ----------
+async function getBcrypt() {
+  const mod = await import("bcryptjs");
+  return (mod as any).default ?? (mod as any);
 }
 async function getStorage() {
   const mod = await import("../storage");
   return (mod as any).storage ?? (mod as any).default;
+}
+async function getAuthService() {
+  const mod = await import("../services/auth.service");
+  return (mod as any).AuthService ?? (mod as any).default;
 }
 
 const router = Router();
@@ -52,6 +55,7 @@ router.post("/auth/signup", async (req, res) => {
     }
 
     const storage = await getStorage();
+    const bcrypt = await getBcrypt();
     const normalizedEmail = normEmail(email);
     const handle = slugify(username);
 
@@ -61,9 +65,7 @@ router.post("/auth/signup", async (req, res) => {
     const storageAny = storage as any;
     if (typeof storageAny.findByUsername === "function") {
       const existingByUsername = await storageAny.findByUsername(handle);
-      if (existingByUsername) {
-        return res.status(400).json({ error: "Username already taken" });
-      }
+      if (existingByUsername) return res.status(400).json({ error: "Username already taken" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -126,6 +128,7 @@ router.post("/auth/login", async (req, res) => {
     }
 
     const storage = await getStorage();
+    const bcrypt = await getBcrypt();
     const normalizedEmail = normEmail(email);
     const user = await storage.findByEmail(normalizedEmail);
 
@@ -156,6 +159,7 @@ router.post("/auth/resend-verification", async (req, res) => {
     if (!email?.trim()) return res.status(400).json({ error: "Email is required" });
 
     const storage = await getStorage();
+    const AuthService = await getAuthService();
     const normalizedEmail = normEmail(email);
     const user = await storage.findByEmail(normalizedEmail);
 
@@ -165,7 +169,6 @@ router.post("/auth/resend-verification", async (req, res) => {
       return res.status(400).json({ error: "Email is already verified" });
     }
 
-    const AuthService = await getAuthService();
     const result = await AuthService.createAndSendVerification(user.id, normalizedEmail);
     if (result.success) {
       return res.json({ message: "Verification email sent" });
