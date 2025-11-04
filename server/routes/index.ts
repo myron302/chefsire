@@ -1,3 +1,4 @@
+// server/routes/index.ts
 import { Router } from "express";
 
 // AUTH ROUTES
@@ -8,7 +9,7 @@ import recipesRouter from "./recipes";
 import bitesRouter from "./bites";
 import usersRouter from "./users";
 import postsRouter from "./posts";
-import pantryRouter from "./pantry";
+// import pantryRouter from "./pantry"; // ⛔ disabled until pantry tables exist in Neon
 import allergiesRouter from "./allergies";
 import mealPlansRouter from "./meal-plans";
 import clubsRouter from "./clubs";
@@ -49,7 +50,7 @@ r.use("/recipes", recipesRouter);
 r.use("/bites", bitesRouter);
 r.use("/users", usersRouter);
 r.use("/posts", postsRouter);
-r.use("/pantry", pantryRouter);
+// r.use("/pantry", pantryRouter); // ⛔ disabled until Neon pantry tables are created
 r.use("/allergies", allergiesRouter);
 r.use("/meal-plans", mealPlansRouter);
 r.use("/clubs", clubsRouter);
@@ -90,7 +91,7 @@ if (process.env.NODE_ENV !== "production") {
         "/bites/*",
         "/users/*",
         "/posts/*",
-        "/pantry/*",
+        // "/pantry/*",  // disabled
         "/allergies/*",    // Allergy Profiles & Smart Substitutions
         "/meal-plans/*",   // Meal Plan Marketplace
         "/clubs/*",        // Clubs & Challenges
