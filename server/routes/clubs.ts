@@ -1,3 +1,4 @@
+// server/routes/clubs.ts
 import express, { type Request, type Response } from "express";
 import { db } from "@db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -27,7 +28,6 @@ router.get("/clubs", async (req: Request, res: Response) => {
     const allClubs = await db
       .select({
         club: clubs,
-        // ⬇️ removed generic to avoid esbuild TS-parse error
         memberCount: sql`count(distinct ${clubMemberships.id})`,
         postCount: sql`count(distinct ${clubPosts.id})`,
       })
@@ -92,7 +92,6 @@ router.get("/clubs/:id", async (req: Request, res: Response) => {
 
     const [stats] = await db
       .select({
-        // ⬇️ removed generic here too
         memberCount: sql`count(distinct ${clubMemberships.id})`,
         postCount: sql`count(distinct ${clubPosts.id})`,
       })
@@ -429,6 +428,123 @@ router.post("/challenges/:id/join", requireAuth, async (req: Request, res: Respo
 router.post("/challenges/:id/progress", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    dial = req.body  # NOTE: placeholder made earlier wasn't here; keeping original structure
-  except Exception as e:
-    pass ​:contentReference[oaicite:0]{index=0}​
+    const challengeId = req.params.id;
+    const { step, recipeId } = req.body;
+
+    const [progress] = await db
+      .select()
+      .from(challengeProgress)
+      .where(and(eq(challengeProgress.challengeId, challengeId), eq(challengeProgress.userId, userId)))
+      .limit(1);
+
+    if (!progress) {
+      return res.status(404).json({ message: "You are not participating in this challenge" });
+    }
+
+    const completedSteps = progress.completedSteps || [];
+    completedSteps.push({
+      step,
+      completedAt: new Date().toISOString(),
+      recipeId: recipeId || null,
+    });
+
+    const newProgress = progress.currentProgress + 1;
+
+    const [challenge] = await db.select().from(challenges).where(eq(challenges.id, challengeId)).limit(1);
+    const requirements = challenge?.requirements || [];
+    const totalRequired = requirements.reduce((sum, req: any) => sum + (req.target || 1), 0);
+    const isCompleted = newProgress >= totalRequired;
+
+    const [updated] = await db
+      .update(challengeProgress)
+      .set({
+        currentProgress: newProgress,
+        completedSteps,
+        isCompleted,
+        completedAt: isCompleted ? new Date().toISOString() : null,
+      })
+      .where(eq(challengeProgress.id, progress.id))
+      .returning();
+
+    if (isCompleted && challenge?.rewards) {
+      for (const reward of challenge.rewards as any[]) {
+        if (reward.type === "badge") {
+          await db.insert(userBadges).values({
+            userId,
+            badgeId: reward.value,
+          }).onConflictDoNothing();
+        }
+      }
+    }
+
+    res.json({ progress: updated });
+  } catch (error) {
+    console.error("Error updating challenge progress:", error);
+    res.status(500).json({ message: "Failed to update progress" });
+  }
+});
+
+// Get user's challenge progress
+router.get("/my-challenges", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    const userChallenges = await db
+      .select({
+        challenge: challenges,
+        progress: challengeProgress,
+      })
+      .from(challengeProgress)
+      .innerJoin(challenges, eq(challengeProgress.challengeId, challenges.id))
+      .where(eq(challengeProgress.userId, userId))
+      .orderBy(desc(challengeProgress.startedAt));
+
+    res.json({ challenges: userChallenges });
+  } catch (error) {
+    console.error("Error fetching user challenges:", error);
+    res.status(500).json({ message: "Failed to fetch challenges" });
+  }
+});
+
+// ============================================================
+// BADGES
+// ============================================================
+
+// Get all badges
+router.get("/badges", async (_req: Request, res: Response) => {
+  try {
+    const allBadges = await db
+      .select()
+      .from(badges)
+      .orderBy(badges.tier, badges.name);
+
+    res.json({ badges: allBadges });
+  } catch (error) {
+    console.error("Error fetching badges:", error);
+    res.status(500).json({ message: "Failed to fetch badges" });
+  }
+});
+
+// Get user's badges
+router.get("/my-badges", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    const userBadgesList = await db
+      .select({
+        userBadge: userBadges,
+        badge: badges,
+      })
+      .from(userBadges)
+      .innerJoin(badges, eq(userBadges.badgeId, badges.id))
+      .where(eq(userBadges.userId, userId))
+      .orderBy(desc(userBadges.earnedAt));
+
+    res.json({ badges: userBadgesList });
+  } catch (error) {
+    console.error("Error fetching user badges:", error);
+    res.status(500).json({ message: "Failed to fetch badges" });
+  }
+});
+
+export default router;
