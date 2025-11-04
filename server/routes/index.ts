@@ -1,100 +1,97 @@
 // server/routes/index.ts
 import { Router } from "express";
+import { createRequire } from "node:module";
 
-// AUTH ROUTES
-import authRouter from "./auth";
-
-// Core feature routers
-import recipesRouter from "./recipes";
-import bitesRouter from "./bites";
-import usersRouter from "./users";
-import postsRouter from "./posts";
-// import pantryRouter from "./pantry"; // ⛔ disabled until pantry tables exist in Neon
-import allergiesRouter from "./allergies";
-import mealPlansRouter from "./meal-plans";
-import clubsRouter from "./clubs";
-import marketplaceRouter from "./marketplace";
-import substitutionsRouter from "./substitutions";
-import drinksRouter from "./drinks";
-
-// Integrations
-import lookupRouter from "./lookup";
-import exportRouter from "./exportList";
-import { googleRouter } from "./google";
-
-// Competitions
-import competitionsRouter from "./competitions";
-
-// Stores
-import storesPublicRouter from "./stores";       // public: GET /:handle
-import storesCrudRouter from "./stores-crud";    // admin CRUD
-
-// Dev mail health-check route
-import devMailcheckRouter from "./dev.mailcheck";
-
-// 🔔 DMs (NEW)
-import dmRouter from "./dm";
-
+const require = createRequire(import.meta.url);
 const r = Router();
 
-/**
- * Mounted under `/api` by app.ts:
- *   app.use("/api", routes)
- */
+/** Track which routers mounted (or failed) for easy diagnostics */
+type MountResult = { name: string; basePath: string | null; ok: boolean; reason?: string };
+const diag: MountResult[] = [];
 
-// ---- AUTH (mounted at root so it exposes /auth/*) ----
-r.use(authRouter);
+function safeMount(
+  name: string,
+  basePath: string | null,
+  modulePath: string,
+  exportName?: string
+) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require(modulePath);
+    const router = exportName ? mod[exportName] : (mod.default ?? mod);
+    if (!router) throw new Error(`Missing export ${exportName ?? "default"} from ${modulePath}`);
 
-// ---- Core features ----
-r.use("/recipes", recipesRouter);
-r.use("/bites", bitesRouter);
-r.use("/users", usersRouter);
-r.use("/posts", postsRouter);
-// r.use("/pantry", pantryRouter); // ⛔ disabled until Neon pantry tables are created
-r.use("/allergies", allergiesRouter);
-r.use("/meal-plans", mealPlansRouter);
-r.use("/clubs", clubsRouter);
-r.use("/marketplace", marketplaceRouter);
-r.use("/substitutions", substitutionsRouter);
-r.use("/drinks", drinksRouter);
+    if (basePath) r.use(basePath, router);
+    else r.use(router);
 
-// ---- Integrations ----
-r.use("/lookup", lookupRouter);
-r.use("/export", exportRouter);
-r.use("/google", googleRouter);
+    diag.push({ name, basePath, ok: true });
+    console.log(`[routes] Mounted ${name} at ${basePath ?? "(root)"}`);
+  } catch (e: any) {
+    const reason = e?.message || String(e);
+    diag.push({ name, basePath, ok: false, reason });
+    console.error(`[routes] FAILED to mount ${name}: ${reason}`);
+  }
+}
 
-// ---- Competitions ----
-r.use("/competitions", competitionsRouter);
+/** ---- Mount everything defensively ---- */
+// AUTH (mounted at root so it exposes /auth/*)
+safeMount("auth", null, "./auth");
 
-// ---- Stores ----
-// public storefront endpoints: /api/stores/:handle
-r.use("/stores", storesPublicRouter);
-// admin CRUD endpoints: /api/stores-crud/*
-r.use("/stores-crud", storesCrudRouter);
+// Core
+safeMount("recipes", "/recipes", "./recipes");
+safeMount("bites", "/bites", "./bites");
+safeMount("users", "/users", "./users");
+safeMount("posts", "/posts", "./posts");
+safeMount("pantry", "/pantry", "./pantry");
+safeMount("allergies", "/allergies", "./allergies");
+safeMount("meal-plans", "/meal-plans", "./meal-plans");
+safeMount("clubs", "/clubs", "./clubs");
+safeMount("marketplace", "/marketplace", "./marketplace");
+safeMount("substitutions", "/substitutions", "./substitutions");
+safeMount("drinks", "/drinks", "./drinks");
 
-// ---- Dev helpers ----
-r.use(devMailcheckRouter);
+// Integrations
+safeMount("lookup", "/lookup", "./lookup");
+safeMount("export", "/export", "./exportList");
+safeMount("google", "/google", "./google", "googleRouter");
 
-// ---- DMs (NEW) ----
-// All DM endpoints will live under /api/dm/*
-r.use("/dm", dmRouter);
+// Competitions
+safeMount("competitions", "/competitions", "./competitions");
 
-// ---- Optional: dev-only route list ----
+// Stores
+safeMount("stores-public", "/stores", "./stores");
+safeMount("stores-crud", "/stores-crud", "./stores-crud");
+
+// Dev / health helpers
+safeMount("dev.mailcheck", null, "./dev.mailcheck");
+
+// DMs
+safeMount("dm", "/dm", "./dm");
+
+/** ---- Diagnostics ---- */
+r.get("/_diag", (_req, res) => {
+  res.json({
+    ok: diag.every(d => d.ok),
+    failed: diag.filter(d => !d.ok).map(d => ({ name: d.name, basePath: d.basePath, reason: d.reason })),
+    mounted: diag.filter(d => d.ok).map(d => ({ name: d.name, basePath: d.basePath })),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Optional: list known base paths in dev
 if (process.env.NODE_ENV !== "production") {
   r.get("/_routes", (_req, res) => {
     res.json({
-      ok: true,
-      mountedAt: "/api",
       endpoints: [
         "/auth/*",
         "/recipes/*",
         "/bites/*",
         "/users/*",
         "/posts/*",
-        // "/pantry/*",  // disabled
-        "/allergies/*",    // Allergy Profiles & Smart Substitutions
-        "/meal-plans/*",   // Meal Plan Marketplace
-        "/clubs/*",        // Clubs & Challenges
+        "/pantry/*",
+        "/allergies/*",
+        "/meal-plans/*",
+        "/clubs/*",
         "/marketplace/*",
         "/substitutions/*",
         "/drinks/*",
@@ -102,11 +99,12 @@ if (process.env.NODE_ENV !== "production") {
         "/export/*",
         "/google/*",
         "/competitions/*",
-        "/stores/*",       // public
-        "/stores-crud/*",  // admin
+        "/stores/*",
+        "/stores-crud/*",
         "/auth/_mail-verify",
-        "/dm/*"            // 🔔 NEW
+        "/dm/*",
       ],
+      diag,
     });
   });
 }
