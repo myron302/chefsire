@@ -1,9 +1,8 @@
 // server/routes/auth.ts
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { storage } from "../storage";
 
-// --- helpers ---
+// ---- helpers (safe) ----
 function normEmail(e: string) {
   return (e || "").trim().toLowerCase();
 }
@@ -20,34 +19,28 @@ const ALLOWED_TITLES = new Set([
   "royal-chef","court-master","noble-chef","imperial-chef","majestic-chef","chef",
 ]);
 
-// 🔁 LAZY import to prevent boot-time crashes from taking down the API
+// 🔁 Lazy loaders so the file can be required without executing heavy deps
 async function getAuthService() {
   const mod = await import("../services/auth.service");
-  return mod.AuthService; // named export (default exists too, but this is explicit)
+  return mod.AuthService ?? mod.default;
+}
+async function getStorage() {
+  const mod = await import("../storage");
+  return (mod as any).storage ?? mod.default;
 }
 
 const router = Router();
 
 /**
  * POST /auth/signup
- * Body: { firstName, lastName, username, email, password, selectedTitle? }
  */
 router.post("/auth/signup", async (req, res) => {
   try {
     const {
-      firstName,
-      lastName,
-      username,
-      email,
-      password,
-      selectedTitle,
+      firstName, lastName, username, email, password, selectedTitle,
     } = (req.body ?? {}) as {
-      firstName?: string;
-      lastName?: string;
-      username?: string;
-      email?: string;
-      password?: string;
-      selectedTitle?: string | null;
+      firstName?: string; lastName?: string; username?: string;
+      email?: string; password?: string; selectedTitle?: string | null;
     };
 
     if (!firstName?.trim()) return res.status(400).json({ error: "First name is required" });
@@ -58,13 +51,12 @@ router.post("/auth/signup", async (req, res) => {
       return res.status(400).json({ error: "Password must be at least 6 characters" });
     }
 
+    const storage = await getStorage();
     const normalizedEmail = normEmail(email);
     const handle = slugify(username);
 
     const existingByEmail = await storage.findByEmail(normalizedEmail);
-    if (existingByEmail) {
-      return res.status(400).json({ error: "Email already registered" });
-    }
+    if (existingByEmail) return res.status(400).json({ error: "Email already registered" });
 
     const storageAny = storage as any;
     if (typeof storageAny.findByUsername === "function") {
@@ -75,14 +67,12 @@ router.post("/auth/signup", async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
     const cleanTitle =
       selectedTitle && ALLOWED_TITLES.has(String(selectedTitle))
         ? String(selectedTitle)
         : null;
 
-    const displayName =
-      `${firstName.trim()} ${lastName.trim()}`.trim() || handle;
+    const displayName = `${firstName.trim()} ${lastName.trim()}`.trim() || handle;
 
     const newUser = await storage.createUser({
       email: normalizedEmail,
@@ -96,7 +86,6 @@ router.post("/auth/signup", async (req, res) => {
       emailVerifiedAt: null,
     });
 
-    // Lazy load ONLY when needed
     const AuthService = await getAuthService();
     const result = await AuthService.createAndSendVerification(newUser.id, normalizedEmail);
 
@@ -128,41 +117,29 @@ router.post("/auth/signup", async (req, res) => {
 
 /**
  * POST /auth/login
- * Body: { email, password }
  */
 router.post("/auth/login", async (req, res) => {
   try {
-    const { email, password } = (req.body ?? {}) as {
-      email?: string;
-      password?: string;
-    };
-
+    const { email, password } = (req.body ?? {}) as { email?: string; password?: string };
     if (!email?.trim() || !password) {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
+    const storage = await getStorage();
     const normalizedEmail = normEmail(email);
     const user = await storage.findByEmail(normalizedEmail);
 
-    if (!user) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
+    if (!user) return res.status(401).json({ error: "Invalid email or password" });
     if (!user.emailVerifiedAt) {
       return res.status(403).json({ error: "Please verify your email to log in." });
     }
 
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
+    if (!ok) return res.status(401).json({ error: "Invalid email or password" });
 
     return res.json({
       success: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-      },
+      user: { id: user.id, email: user.email, username: user.username },
     });
   } catch (err) {
     console.error("Error during /auth/login:", err);
@@ -172,21 +149,18 @@ router.post("/auth/login", async (req, res) => {
 
 /**
  * POST /auth/resend-verification
- * Body: { email }
  */
 router.post("/auth/resend-verification", async (req, res) => {
   try {
     const { email } = (req.body ?? {}) as { email?: string };
-    if (!email?.trim()) {
-      return res.status(400).json({ error: "Email is required" });
-    }
+    if (!email?.trim()) return res.status(400).json({ error: "Email is required" });
+
+    const storage = await getStorage();
     const normalizedEmail = normEmail(email);
     const user = await storage.findByEmail(normalizedEmail);
 
-    // Avoid enumeration:
-    if (!user) {
-      return res.json({ message: "If that email exists, a verification email has been sent." });
-    }
+    // Avoid enumeration
+    if (!user) return res.json({ message: "If that email exists, a verification email has been sent." });
     if (user.emailVerifiedAt) {
       return res.status(400).json({ error: "Email is already verified" });
     }
@@ -196,9 +170,7 @@ router.post("/auth/resend-verification", async (req, res) => {
     if (result.success) {
       return res.json({ message: "Verification email sent" });
     } else {
-      return res.status(500).json({
-        error: "Failed to send verification email. Please try again later.",
-      });
+      return res.status(500).json({ error: "Failed to send verification email. Please try again later." });
     }
   } catch (err) {
     console.error("Error during /auth/resend-verification:", err);
@@ -212,9 +184,7 @@ router.post("/auth/resend-verification", async (req, res) => {
 router.get("/auth/verify-email", async (req, res) => {
   try {
     const token = typeof req.query.token === "string" ? req.query.token : "";
-    if (!token) {
-      return res.status(400).send("Invalid verification link");
-    }
+    if (!token) return res.status(400).send("Invalid verification link");
 
     const AuthService = await getAuthService();
     const result = await AuthService.verifyEmailToken(token);
