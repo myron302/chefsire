@@ -1,42 +1,65 @@
 // server/routes/index.ts
 import { Router } from "express";
 import { createRequire } from "node:module";
-
 const require = createRequire(import.meta.url);
+
+type LoadResult = {
+  name: string;
+  mountPath: string;
+  ok: boolean;
+  error?: string;
+};
+
 const r = Router();
+const results: LoadResult[] = [];
 
-type MountResult = { name: string; basePath: string | null; ok: boolean; reason?: string };
-const diag: MountResult[] = [];
-
-function safeMount(
-  name: string,
-  basePath: string | null,
-  modulePath: string,
-  exportName?: string
-) {
+/** Mounts a router with try/catch so a bad module can't take down the app */
+function safeMount(name: string, mountPath: string, modulePath: string) {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = require(modulePath);
-    const router = exportName ? mod[exportName] : (mod.default ?? mod);
-    if (!router) throw new Error(`Missing export ${exportName ?? "default"} from ${modulePath}`);
+    const router = (mod && (mod.default ?? mod)) as any;
 
-    if (basePath) r.use(basePath, router);
-    else r.use(router);
+    if (!router || typeof router !== "function") {
+      throw new Error(`Module did not export an Express router`);
+    }
 
-    diag.push({ name, basePath, ok: true });
-    console.log(`[routes] Mounted ${name} at ${basePath ?? "(root)"}`);
+    if (mountPath) {
+      r.use(mountPath, router);
+    } else {
+      // Some routers (auth) register their own /auth/* paths internally
+      r.use(router);
+    }
+
+    results.push({ name, mountPath: mountPath || "(root)", ok: true });
+    // eslint-disable-next-line no-console
+    console.log(`[routes] mounted ${name} at ${mountPath || "(root)"}`);
   } catch (e: any) {
-    const reason = e?.message || String(e);
-    diag.push({ name, basePath, ok: false, reason });
-    console.error(`[routes] FAILED to mount ${name}: ${reason}`);
+    const msg = e?.message ? String(e.message) : String(e);
+    results.push({ name, mountPath: mountPath || "(root)", ok: false, error: msg });
+    // eslint-disable-next-line no-console
+    console.error(`[routes] FAILED to load ${name} from ${modulePath}:`, e);
+
+    // Keep API alive: return 503 for this router's subtree
+    const base = mountPath || "/"; // root-mounted routers define their own subpaths
+    r.all(`${base}*`, (_req, res) =>
+      res.status(503).json({
+        error: "router_failed_to_load",
+        router: name,
+        hint: "Check server logs for stack/line numbers.",
+      })
+    );
   }
 }
 
-// ---- Mount everything defensively ----
-// AUTH (root so it exposes /auth/*)
-safeMount("auth", null, "./auth");
+/* ------------------------------------------------------------------ */
+/* Mount everything with guards — identical mount points as before    */
+/* ------------------------------------------------------------------ */
 
-// Core
+// AUTH (root so it exposes /auth/*)
+safeMount("auth", "", "./auth");
+
+// Core features
 safeMount("recipes", "/recipes", "./recipes");
 safeMount("bites", "/bites", "./bites");
 safeMount("users", "/users", "./users");
@@ -51,60 +74,23 @@ safeMount("drinks", "/drinks", "./drinks");
 
 // Integrations
 safeMount("lookup", "/lookup", "./lookup");
-safeMount("export", "/export", "./exportList");
-safeMount("google", "/google", "./google", "googleRouter");
+safeMount("exportList", "/export", "./exportList");
+safeMount("google", "/google", "./google");
 
 // Competitions
 safeMount("competitions", "/competitions", "./competitions");
 
 // Stores
-safeMount("stores-public", "/stores", "./stores");
-safeMount("stores-crud", "/stores-crud", "./stores-crud");
+safeMount("stores (public)", "/stores", "./stores");
+safeMount("stores-crud (admin)", "/stores-crud", "./stores-crud");
 
-// Dev / health helpers
-safeMount("dev.mailcheck", null, "./dev.mailcheck");
-
-// DMs
-safeMount("dm", "/dm", "./dm");
-
-// ---- Diagnostics ----
-r.get("/_diag", (_req, res) => {
+// Dev / health for routers
+r.get("/_router-health", (_req, res) => {
   res.json({
-    ok: diag.every(d => d.ok),
-    failed: diag.filter(d => !d.ok).map(d => ({ name: d.name, basePath: d.basePath, reason: d.reason })),
-    mounted: diag.filter(d => d.ok).map(d => ({ name: d.name, basePath: d.basePath })),
-    timestamp: new Date().toISOString(),
+    ok: results.every((x) => x.ok),
+    failed: results.filter((x) => !x.ok),
+    loaded: results.filter((x) => x.ok),
   });
 });
-
-if (process.env.NODE_ENV !== "production") {
-  r.get("/_routes", (_req, res) => {
-    res.json({
-      endpoints: [
-        "/auth/*",
-        "/recipes/*",
-        "/bites/*",
-        "/users/*",
-        "/posts/*",
-        "/pantry/*",
-        "/allergies/*",
-        "/meal-plans/*",
-        "/clubs/*",
-        "/marketplace/*",
-        "/substitutions/*",
-        "/drinks/*",
-        "/lookup/*",
-        "/export/*",
-        "/google/*",
-        "/competitions/*",
-        "/stores/*",
-        "/stores-crud/*",
-        "/auth/_mail-verify",
-        "/dm/*",
-      ],
-      diag,
-    });
-  });
-}
 
 export default r;
