@@ -58,7 +58,7 @@ function safeMount(name: string, mountPath: string, router: any) {
       res.status(503).json({
         error: "router_failed_to_load",
         router: name,
-        hint: "Check server logs for stack/line numbers.",
+        hint: "See server logs for stack/line numbers.",
       })
     );
   }
