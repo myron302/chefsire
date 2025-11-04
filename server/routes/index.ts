@@ -1,113 +1,115 @@
+// server/routes/index.ts
 import { Router } from "express";
 
-// AUTH ROUTES
-import authRouter from "./auth";
+// Import all routers (keep `.js` specifiers to match your build)
+import authRouter from "./auth.js";
+import recipesRouter from "./recipes.js";
+import bitesRouter from "./bites.js";
+import usersRouter from "./users.js";
+import postsRouter from "./posts.js";
+import pantryRouter from "./pantry.js";
+import allergiesRouter from "./allergies.js";
+import mealPlansRouter from "./meal-plans.js";
+import clubsRouter from "./clubs.js";
+import marketplaceRouter from "./marketplace.js";
+import substitutionsRouter from "./substitutions.js";
+import drinksRouter from "./drinks.js";
+import lookupRouter from "./lookup.js";
+import exportListRouter from "./exportList.js";
+import restaurantsRouter from "./restaurants.js";        // ← added
+import { googleRouter } from "./google.js";
+import competitionsRouter from "./competitions.js";
+import storesRouter from "./stores.js";
+import storesCrudRouter from "./stores-crud.js";
+// If you have Square/payments:
+import squareRouter from "./square.js";
 
-// Core feature routers
-import recipesRouter from "./recipes";
-import bitesRouter from "./bites";
-import usersRouter from "./users";
-import postsRouter from "./posts";
-import pantryRouter from "./pantry";
-import allergiesRouter from "./allergies";
-import mealPlansRouter from "./meal-plans";
-import clubsRouter from "./clubs";
-import marketplaceRouter from "./marketplace";
-import substitutionsRouter from "./substitutions";
-import drinksRouter from "./drinks";
-
-// Integrations
-import lookupRouter from "./lookup";
-import exportRouter from "./exportList";
-import { googleRouter } from "./google";
-
-// Competitions
-import competitionsRouter from "./competitions";
-
-// Stores
-import storesPublicRouter from "./stores";       // public: GET /:handle
-import storesCrudRouter from "./stores-crud";    // admin CRUD
-
-// Dev mail health-check route
-import devMailcheckRouter from "./dev.mailcheck";
-
-// 🔔 DMs (NEW)
-import dmRouter from "./dm";
+type LoadResult = {
+  name: string;
+  mountPath: string;
+  ok: boolean;
+  error?: string;
+};
 
 const r = Router();
+const results: LoadResult[] = [];
 
 /**
- * Mounted under `/api` by app.ts:
- *   app.use("/api", routes)
+ * Mounts a router with try/catch so a bad module can't take down the app.
+ * If mounting fails, that subtree responds 503 with a hint.
  */
+function safeMount(name: string, mountPath: string, router: any) {
+  try {
+    if (!router || typeof router !== "function") {
+      throw new Error(`Module did not export an Express router`);
+    }
+    if (mountPath) {
+      r.use(mountPath, router);
+    } else {
+      // Some routers (auth) register their own /auth/* paths internally
+      r.use(router);
+    }
+    results.push({ name, mountPath: mountPath || "(root)", ok: true });
+    console.log(`[routes] mounted ${name} at ${mountPath || "(root)"}`);
+  } catch (e: any) {
+    const msg = e?.message ? String(e.message) : String(e);
+    results.push({ name, mountPath: mountPath || "(root)", ok: false, error: msg });
+    console.error(`[routes] FAILED to mount ${name}:`, e);
 
-// ---- AUTH (mounted at root so it exposes /auth/*) ----
-r.use(authRouter);
-
-// ---- Core features ----
-r.use("/recipes", recipesRouter);
-r.use("/bites", bitesRouter);
-r.use("/users", usersRouter);
-r.use("/posts", postsRouter);
-r.use("/pantry", pantryRouter);
-r.use("/allergies", allergiesRouter);
-r.use("/meal-plans", mealPlansRouter);
-r.use("/clubs", clubsRouter);
-r.use("/marketplace", marketplaceRouter);
-r.use("/substitutions", substitutionsRouter);
-r.use("/drinks", drinksRouter);
-
-// ---- Integrations ----
-r.use("/lookup", lookupRouter);
-r.use("/export", exportRouter);
-r.use("/google", googleRouter);
-
-// ---- Competitions ----
-r.use("/competitions", competitionsRouter);
-
-// ---- Stores ----
-// public storefront endpoints: /api/stores/:handle
-r.use("/stores", storesPublicRouter);
-// admin CRUD endpoints: /api/stores-crud/*
-r.use("/stores-crud", storesCrudRouter);
-
-// ---- Dev helpers ----
-r.use(devMailcheckRouter);
-
-// ---- DMs (NEW) ----
-// All DM endpoints will live under /api/dm/*
-r.use("/dm", dmRouter);
-
-// ---- Optional: dev-only route list ----
-if (process.env.NODE_ENV !== "production") {
-  r.get("/_routes", (_req, res) => {
-    res.json({
-      ok: true,
-      mountedAt: "/api",
-      endpoints: [
-        "/auth/*",
-        "/recipes/*",
-        "/bites/*",
-        "/users/*",
-        "/posts/*",
-        "/pantry/*",
-        "/allergies/*",    // Allergy Profiles & Smart Substitutions
-        "/meal-plans/*",   // Meal Plan Marketplace
-        "/clubs/*",        // Clubs & Challenges
-        "/marketplace/*",
-        "/substitutions/*",
-        "/drinks/*",
-        "/lookup/*",
-        "/export/*",
-        "/google/*",
-        "/competitions/*",
-        "/stores/*",       // public
-        "/stores-crud/*",  // admin
-        "/auth/_mail-verify",
-        "/dm/*"            // 🔔 NEW
-      ],
-    });
-  });
+    // Keep API alive: return 503 for this router's subtree
+    const base = mountPath || "/";
+    r.all(`${base}*`, (_req, res) =>
+      res.status(503).json({
+        error: "router_failed_to_load",
+        router: name,
+        hint: "Check server logs for stack/line numbers.",
+        message: msg,
+      })
+    );
+  }
 }
+
+/* ------------------------------------------------------------------ */
+/* Mount everything with guards                                        */
+/* ------------------------------------------------------------------ */
+
+// AUTH (root so it exposes /auth/*)
+safeMount("auth", "", authRouter);
+
+// Core resources (prefixed)
+safeMount("recipes", "/recipes", recipesRouter);
+safeMount("bites", "/bites", bitesRouter);
+safeMount("users", "/users", usersRouter);
+safeMount("posts", "/posts", postsRouter);
+safeMount("pantry", "/pantry", pantryRouter);
+safeMount("allergies", "/allergies", allergiesRouter);
+safeMount("meal-plans", "/meal-plans", mealPlansRouter);
+safeMount("clubs", "/clubs", clubsRouter);
+safeMount("marketplace", "/marketplace", marketplaceRouter);
+safeMount("substitutions", "/substitutions", substitutionsRouter);
+safeMount("drinks", "/drinks", drinksRouter);
+
+// Integrations / utilities
+safeMount("lookup", "/lookup", lookupRouter);
+safeMount("exportList", "/export", exportListRouter);
+safeMount("restaurants", "/restaurants", restaurantsRouter);  // ← added
+
+// BiteMap (Google proxy used by BiteMap page)
+safeMount("google", "/google", googleRouter);
+
+// Competitions / Stores / Payments
+safeMount("competitions", "/competitions", competitionsRouter);
+safeMount("stores (public)", "/stores", storesRouter);
+safeMount("stores-crud (admin)", "/stores-crud", storesCrudRouter);
+safeMount("square", "/square", squareRouter);
+
+// Dev / router health
+r.get("/_router-health", (_req, res) => {
+  res.json({
+    ok: results.every((x) => x.ok),
+    failed: results.filter((x) => !x.ok),
+    loaded: results.filter((x) => x.ok),
+  });
+});
 
 export default r;
