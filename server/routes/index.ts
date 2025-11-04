@@ -5,7 +5,6 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const r = Router();
 
-/** Track which routers mounted (or failed) for diagnostics */
 type MountResult = { name: string; basePath: string | null; ok: boolean; reason?: string };
 const diag: MountResult[] = [];
 
@@ -33,7 +32,7 @@ function safeMount(
   }
 }
 
-/** ---- Mount everything defensively ---- */
+// ---- Mount everything defensively ----
 // AUTH (root so it exposes /auth/*)
 safeMount("auth", null, "./auth");
 
@@ -68,7 +67,7 @@ safeMount("dev.mailcheck", null, "./dev.mailcheck");
 // DMs
 safeMount("dm", "/dm", "./dm");
 
-/** ---- Diagnostics ---- */
+// ---- Diagnostics ----
 r.get("/_diag", (_req, res) => {
   res.json({
     ok: diag.every(d => d.ok),
@@ -78,7 +77,6 @@ r.get("/_diag", (_req, res) => {
   });
 });
 
-// Optional: list known base paths in dev
 if (process.env.NODE_ENV !== "production") {
   r.get("/_routes", (_req, res) => {
     res.json({
