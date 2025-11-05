@@ -1,8 +1,8 @@
 // server/routes/auth.ts
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { storage } from "../storage.js";
-import { AuthService } from "../services/auth.service.js";
+import { storage } from "../storage";
+import { AuthService } from "../services/auth.service";
 
 // ---------- small helpers (no side effects) ----------
 function normEmail(e: string) {
