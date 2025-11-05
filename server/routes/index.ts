@@ -1,4 +1,4 @@
-// server/routes/index.ts — testing without pantry, clubs, allergies, meal-plans
+// server/routes/index.ts — testing without auth
 import { Router } from "express";
 
 // Core feature routers
@@ -23,7 +23,7 @@ import storesCrudRouter from "./stores-crud";
 import squareRouter from "./square";
 
 // Auth routes (mounted at root to expose /auth/*)
-import authRouter from "./auth";
+// import authRouter from "./auth";  // COMMENTED OUT FOR TESTING
 
 const r = Router();
 
@@ -33,7 +33,7 @@ const r = Router();
  */
 
 // Auth first (some routes include their own /auth/* paths)
-r.use(authRouter);
+// r.use(authRouter);  // COMMENTED OUT FOR TESTING
 
 // Core resources
 r.use("/recipes", recipesRouter);
@@ -69,7 +69,7 @@ if (process.env.NODE_ENV !== "production") {
       ok: true,
       mountedAt: "/api",
       endpoints: [
-        "/auth/*",
+        // "/auth/*",  // COMMENTED OUT
         "/recipes/*",
         "/bites/*",
         "/users/*",
