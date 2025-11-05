@@ -1,4 +1,4 @@
-// server/routes/index.ts — testing without pantry, clubs, allergies
+// server/routes/index.ts — testing without pantry, clubs, allergies, meal-plans
 import { Router } from "express";
 
 // Core feature routers
@@ -8,7 +8,7 @@ import usersRouter from "./users";
 import postsRouter from "./posts";
 // import pantryRouter from "./pantry";  // COMMENTED OUT FOR TESTING
 // import allergiesRouter from "./allergies";  // COMMENTED OUT FOR TESTING
-import mealPlansRouter from "./meal-plans";
+// import mealPlansRouter from "./meal-plans";  // COMMENTED OUT FOR TESTING
 // import clubsRouter from "./clubs";  // COMMENTED OUT FOR TESTING
 import marketplaceRouter from "./marketplace";
 import substitutionsRouter from "./substitutions";
@@ -42,7 +42,7 @@ r.use("/users", usersRouter);
 r.use("/posts", postsRouter);
 // r.use("/pantry", pantryRouter);  // COMMENTED OUT FOR TESTING
 // r.use("/allergies", allergiesRouter);  // COMMENTED OUT FOR TESTING
-r.use("/meal-plans", mealPlansRouter);
+// r.use("/meal-plans", mealPlansRouter);  // COMMENTED OUT FOR TESTING
 // r.use("/clubs", clubsRouter);  // COMMENTED OUT FOR TESTING
 r.use("/marketplace", marketplaceRouter);
 r.use("/substitutions", substitutionsRouter);
@@ -76,7 +76,7 @@ if (process.env.NODE_ENV !== "production") {
         "/posts/*",
         // "/pantry/*",  // COMMENTED OUT
         // "/allergies/*",  // COMMENTED OUT
-        "/meal-plans/*",
+        // "/meal-plans/*",  // COMMENTED OUT
         // "/clubs/*",  // COMMENTED OUT
         "/marketplace/*",
         "/substitutions/*",
