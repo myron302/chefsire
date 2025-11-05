@@ -1,5 +1,8 @@
 // server/routes/auth.ts
 import { Router } from "express";
+import bcrypt from "bcryptjs";
+import { storage } from "../storage.js";
+import { AuthService } from "../services/auth.service.js";
 
 // ---------- small helpers (no side effects) ----------
 function normEmail(e: string) {
@@ -17,20 +20,6 @@ const ALLOWED_TITLES = new Set([
   "duke","duchess","lord","lady","knight","dame",
   "royal-chef","court-master","noble-chef","imperial-chef","majestic-chef","chef",
 ]);
-
-// ---------- lazy loaders (critical: avoid boot-time crashes) ----------
-async function getBcrypt() {
-  const mod = await import("bcryptjs");
-  return (mod as any).default ?? (mod as any);
-}
-async function getStorage() {
-  const mod = await import("../storage");
-  return (mod as any).storage ?? (mod as any).default;
-}
-async function getAuthService() {
-  const mod = await import("../services/auth.service");
-  return (mod as any).AuthService ?? (mod as any).default;
-}
 
 const router = Router();
 
@@ -54,8 +43,6 @@ router.post("/auth/signup", async (req, res) => {
       return res.status(400).json({ error: "Password must be at least 6 characters" });
     }
 
-    const storage = await getStorage();
-    const bcrypt = await getBcrypt();
     const normalizedEmail = normEmail(email);
     const handle = slugify(username);
 
@@ -88,7 +75,6 @@ router.post("/auth/signup", async (req, res) => {
       emailVerifiedAt: null,
     });
 
-    const AuthService = await getAuthService();
     const result = await AuthService.createAndSendVerification(newUser.id, normalizedEmail);
 
     if (result.success) {
@@ -127,8 +113,6 @@ router.post("/auth/login", async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    const storage = await getStorage();
-    const bcrypt = await getBcrypt();
     const normalizedEmail = normEmail(email);
     const user = await storage.findByEmail(normalizedEmail);
 
@@ -158,8 +142,6 @@ router.post("/auth/resend-verification", async (req, res) => {
     const { email } = (req.body ?? {}) as { email?: string };
     if (!email?.trim()) return res.status(400).json({ error: "Email is required" });
 
-    const storage = await getStorage();
-    const AuthService = await getAuthService();
     const normalizedEmail = normEmail(email);
     const user = await storage.findByEmail(normalizedEmail);
 
@@ -189,7 +171,6 @@ router.get("/auth/verify-email", async (req, res) => {
     const token = typeof req.query.token === "string" ? req.query.token : "";
     if (!token) return res.status(400).send("Invalid verification link");
 
-    const AuthService = await getAuthService();
     const result = await AuthService.verifyEmailToken(token);
     if (!result.success) {
       return res.status(400).send(result.error || "Invalid or expired verification link");
