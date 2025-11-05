@@ -2,28 +2,28 @@
 import { Router } from "express";
 
 // Core feature routers
-import recipesRouter from "./recipes.js";
-import bitesRouter from "./bites.js";
-import usersRouter from "./users.js";
-import postsRouter from "./posts.js";
-import pantryRouter from "./pantry.js";
-import allergiesRouter from "./allergies.js";
-import mealPlansRouter from "./meal-plans.js";
-import clubsRouter from "./clubs.js";
-import marketplaceRouter from "./marketplace.js";
-import substitutionsRouter from "./substitutions.js";
-import drinksRouter from "./drinks.js";
-import lookupRouter from "./lookup.js";
-import exportListRouter from "./exportList.js";
-import restaurantsRouter from "./restaurants.js";
-import { googleRouter } from "./google.js";
-import competitionsRouter from "./competitions.js";
-import storesRouter from "./stores.js";
-import storesCrudRouter from "./stores-crud.js";
-import squareRouter from "./square.js";
+import recipesRouter from "./recipes";
+import bitesRouter from "./bites";
+import usersRouter from "./users";
+import postsRouter from "./posts";
+import pantryRouter from "./pantry";
+import allergiesRouter from "./allergies";
+import mealPlansRouter from "./meal-plans";
+import clubsRouter from "./clubs";
+import marketplaceRouter from "./marketplace";
+import substitutionsRouter from "./substitutions";
+import drinksRouter from "./drinks";
+import lookupRouter from "./lookup";
+import exportListRouter from "./exportList";
+import restaurantsRouter from "./restaurants";
+import { googleRouter } from "./google";
+import competitionsRouter from "./competitions";
+import storesRouter from "./stores";
+import storesCrudRouter from "./stores-crud";
+import squareRouter from "./square";
 
 // Auth routes (mounted at root to expose /auth/*)
-import authRouter from "./auth.js";
+import authRouter from "./auth";
 
 const r = Router();
 
