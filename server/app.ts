@@ -6,7 +6,7 @@ import compression from "compression";
 import morgan from "morgan";
 import path from "node:path";
 import fs from "node:fs";
-import routes from "./routes/index.js";
+import routes from "./routes";
 
 const app = express();
 
@@ -28,15 +28,6 @@ app.get("/healthz", (_req: Request, res: Response) => {
 
 // API routes (mounted under /api)
 app.use("/api", routes);
-
-// Optional API banner (at /api)
-app.get("/api", (_req, res) => {
-  res.json({
-    name: "ChefSire API",
-    status: "running",
-    timestamp: new Date().toISOString(),
-  });
-});
 
 // Serve built client at ../dist/public (App Root is /httpdocs/server)
 const clientDir = path.resolve(process.cwd(), "../dist/public");
