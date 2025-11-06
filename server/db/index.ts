@@ -6,22 +6,28 @@ import * as schema from "../../shared/schema";
 
 let DATABASE_URL = process.env.DATABASE_URL?.trim();
 
+// If DATABASE_URL is not present, warn but do NOT throw — export null-safe values.
 if (!DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL is missing. Set it in Plesk → Node.js → Custom environment variables, " +
+  // Keep process running — DB-backed endpoints will return 503 via storage/getDb
+  console.warn(
+    "WARNING: DATABASE_URL is missing. Set it in Plesk → Node.js → Custom environment variables, " +
     "or create /httpdocs/server/.env with DATABASE_URL=... (for NPM scripts)."
   );
 }
 
-if (!/[?&]sslmode=/.test(DATABASE_URL)) {
+if (DATABASE_URL && !/[?&]sslmode=/.test(DATABASE_URL)) {
   DATABASE_URL += (DATABASE_URL.includes("?") ? "&" : "?") + "sslmode=require";
 }
 
-export const pool = new Pool({ connectionString: DATABASE_URL });
-export const db = drizzle(pool, { schema });
+// Only create pool/db if DATABASE_URL is provided
+export const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL }) : (null as any);
+export const db = pool ? drizzle(pool, { schema }) : (null as any);
 
+// Gracefully end pool only when it's present
 process.on("beforeExit", () => {
-  try { pool.end(); } catch {}
+  try {
+    if (pool && typeof pool.end === "function") pool.end();
+  } catch {}
 });
 
-export * from "../../shared/schema";
+export * from "./"; // keep existing exports if any (adjust as needed)
