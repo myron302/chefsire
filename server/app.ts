@@ -1,3 +1,4 @@
+// server/app.ts
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -15,6 +16,7 @@ app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(compression());
+
 if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));
 }
@@ -27,27 +29,23 @@ let routesMounted = false;
 
 try {
   const mod = require2("./routes");
-  // support either CommonJS export or ESM default
-  const routes = (mod as any).default ?? mod;
+  const routes = (mod && (mod as any).default) ? (mod as any).default : mod;
   app.use("/api", routes);
   routesMounted = true;
   console.log("[ChefSire] API routes mounted");
-} catch (err) {
+} catch (err: any) {
   console.error("[ChefSire] Failed to load API routes:", err);
-  // DEBUG: write full stack to a tmp file so you can read it via SSH/Plesk
-  try {
-    const body = err && (err as Error).stack ? (err as Error).stack : String(err);
-    fs.writeFileSync("/tmp/chefsire-route-error.log", body);
-  } catch (writeErr) {
-    /* ignore write errors */
-  }
+
+  // NOTE: temporary debug write removed.
+  // Previously we wrote the stack to /tmp/chefsire-route-error.log here.
+  // That debug write has been removed so the process can't be killed or leak stack files.
+
   app.all("/api/*", (_req, res) => {
     res.status(503).json({
       error: "API routes failed to load",
-      hint:
-        process.env.NODE_ENV === "production"
-          ? "Check server logs for the exact router that failed to initialize."
-          : String(err),
+      hint: process.env.NODE_ENV === "production"
+        ? "Check server logs for the exact router that failed to initialize."
+        : String(err),
     });
   });
 }
@@ -91,7 +89,7 @@ if (routesMounted) {
   });
 }
 
-app.use((err: unknown, _req: any, res: any, _next: any) => {
+app.use((err: any, _req: any, res: any, _next: any) => {
   const isProd = process.env.NODE_ENV === "production";
   const message = err instanceof Error ? err.message : "Unknown error";
   const stack = err instanceof Error ? err.stack : undefined;
@@ -99,7 +97,7 @@ app.use((err: unknown, _req: any, res: any, _next: any) => {
   res.status(500).json({
     error: "Internal Server Error",
     message: isProd ? "An unexpected error occurred." : message,
-    ...(isProd ? {} : { stack }),
+    ...(!isProd ? { stack } : {}),
   });
 });
 
