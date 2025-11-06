@@ -1,4 +1,3 @@
-// server/routes/index.ts
 import { Router } from "express";
 
 // Core feature routers
@@ -7,23 +6,26 @@ import bitesRouter from "./bites";
 import usersRouter from "./users";
 import postsRouter from "./posts";
 import pantryRouter from "./pantry";
-import allergiesRouter from "./allergies";
-import mealPlansRouter from "./meal-plans";
-import clubsRouter from "./clubs";
 import marketplaceRouter from "./marketplace";
 import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
-import lookupRouter from "./lookup";
-import exportListRouter from "./exportList";
-import restaurantsRouter from "./restaurants";
-import { googleRouter } from "./google";
-import competitionsRouter from "./competitions";
-import storesRouter from "./stores";
-import storesCrudRouter from "./stores-crud";
-import squareRouter from "./square";
 
-// Auth routes (mounted at root to expose /auth/*)
+// AUTH ROUTES
 import authRouter from "./auth";
+
+// Integrations
+import lookupRouter from "./lookup";
+import exportRouter from "./exportList";
+import { googleRouter } from "./google";
+
+// Competitions
+import competitionsRouter from "./competitions";
+
+// Stores (user storefronts)
+import storesRouter from "./stores-crud";
+
+// Square (subscriptions / checkout links)
+import squareRouter from "./stores";
 
 const r = Router();
 
@@ -32,37 +34,50 @@ const r = Router();
  *   app.use("/api", routes)
  */
 
-// Auth first (some routes include their own /auth/* paths)
+// AUTH - mount auth routes
 r.use(authRouter);
 
-// Core resources
+// Recipes routes (prefixed)
 r.use("/recipes", recipesRouter);
+
+// Bites (social stories) - prefixed
 r.use("/bites", bitesRouter);
+
+// Users - prefixed
 r.use("/users", usersRouter);
+
+// Posts - prefixed
 r.use("/posts", postsRouter);
+
+// Pantry - prefixed
 r.use("/pantry", pantryRouter);
-r.use("/allergies", allergiesRouter);
-r.use("/meal-plans", mealPlansRouter);
-r.use("/clubs", clubsRouter);
+
+// Marketplace - prefixed
 r.use("/marketplace", marketplaceRouter);
+
+// Substitutions - prefixed
 r.use("/substitutions", substitutionsRouter);
+
+// Drinks - prefixed
 r.use("/drinks", drinksRouter);
 
-// Integrations / utilities
+// Integrations with explicit prefixes
 r.use("/lookup", lookupRouter);
-r.use("/export", exportListRouter);
-r.use("/restaurants", restaurantsRouter);
+r.use("/export", exportRouter);
 
-// BiteMap (Google proxy)
+// IMPORTANT: Google router for BiteMap
 r.use("/google", googleRouter);
 
-// Competitions / Stores / Payments
+// Competitions
 r.use("/competitions", competitionsRouter);
+
+// Stores (public viewer + owner writes)
 r.use("/stores", storesRouter);
-r.use("/stores-crud", storesCrudRouter);
+
+// Square (payments/subscriptions)
 r.use("/square", squareRouter);
 
-// Dev helper
+// Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {
   r.get("/_routes", (_req, res) => {
     res.json({
@@ -75,19 +90,14 @@ if (process.env.NODE_ENV !== "production") {
         "/users/*",
         "/posts/*",
         "/pantry/*",
-        "/allergies/*",
-        "/meal-plans/*",
-        "/clubs/*",
         "/marketplace/*",
         "/substitutions/*",
         "/drinks/*",
         "/lookup/*",
         "/export/*",
-        "/restaurants/*",
         "/google/*",
         "/competitions/*",
         "/stores/*",
-        "/stores-crud/*",
         "/square/*",
       ],
     });
