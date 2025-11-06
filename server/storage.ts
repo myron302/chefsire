@@ -1,4 +1,5 @@
 // server/storage.ts — COMPLETE FILE WITH DRINKS
+import "./lib/load-env";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool } from "@neondatabase/serverless";
 import { eq, desc, and, or, sql, asc, ilike } from "drizzle-orm";
