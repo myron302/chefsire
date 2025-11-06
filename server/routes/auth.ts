@@ -1,105 +1,93 @@
-// server/routes/auth.ts
+// server/routes/auth.ts - WITH MAILER (won't crash if email fails)
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { storage } from "../storage";
 import { AuthService } from "../services/auth.service";
 
-// ---------- small helpers (no side effects) ----------
-function normEmail(e: string) {
-  return (e || "").trim().toLowerCase();
-}
-function slugify(raw: string) {
-  return String(raw)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)+/g, "")
-    .slice(0, 32);
-}
-const ALLOWED_TITLES = new Set([
-  "king","queen","prince","princess","sire","your-majesty","your-highness",
-  "duke","duchess","lord","lady","knight","dame",
-  "royal-chef","court-master","noble-chef","imperial-chef","majestic-chef","chef",
-]);
-
 const router = Router();
+
+// Map slug values to pretty labels for the space version
+const TITLE_LABELS: Record<string, string> = {
+  "king": "King",
+  "queen": "Queen",
+  "prince": "Prince",
+  "princess": "Princess",
+  "duke": "Duke",
+  "duchess": "Duchess",
+  "lord": "Lord",
+  "lady": "Lady",
+  "sir": "Sir",
+  "dame": "Dame",
+  "baron": "Baron",
+  "baroness": "Baroness",
+};
 
 /**
  * POST /auth/signup
  */
 router.post("/auth/signup", async (req, res) => {
+  const { firstName, lastName, username, email, password, selectedTitle } = req.body ?? {};
+
   try {
-    const {
-      firstName, lastName, username, email, password, selectedTitle,
-    } = (req.body ?? {}) as {
-      firstName?: string; lastName?: string; username?: string;
-      email?: string; password?: string; selectedTitle?: string | null;
-    };
-
-    if (!firstName?.trim()) return res.status(400).json({ error: "First name is required" });
-    if (!lastName?.trim())  return res.status(400).json({ error: "Last name is required" });
-    if (!username?.trim())  return res.status(400).json({ error: "Username is required" });
-    if (!email?.trim())     return res.status(400).json({ error: "Email is required" });
-    if (!password || password.length < 6) {
-      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
     }
 
-    const normalizedEmail = normEmail(email);
-    const handle = slugify(username);
-
-    const existingByEmail = await storage.findByEmail(normalizedEmail);
-    if (existingByEmail) return res.status(400).json({ error: "Email already registered" });
-
-    const storageAny = storage as any;
-    if (typeof storageAny.findByUsername === "function") {
-      const existingByUsername = await storageAny.findByUsername(handle);
-      if (existingByUsername) return res.status(400).json({ error: "Username already taken" });
+    if (!firstName || !lastName) {
+      return res.status(400).json({ error: "First and last name are required" });
     }
 
+    if (!username) {
+      return res.status(400).json({ error: "Username is required" });
+    }
+
+    // Check if user already exists
+    const existing = await storage.findByEmail(email);
+    if (existing) {
+      return res.status(400).json({ error: "Email already registered" });
+    }
+
+    // Use the username EXACTLY as the user typed it!
+    const finalUsername = username.trim();
+    const displayName = finalUsername; // Display the username they chose
+
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-    const cleanTitle =
-      selectedTitle && ALLOWED_TITLES.has(String(selectedTitle))
-        ? String(selectedTitle)
-        : null;
 
-    const displayName = `${firstName.trim()} ${lastName.trim()}`.trim() || handle;
-
+    // Create user
     const newUser = await storage.createUser({
-      email: normalizedEmail,
+      email: email.toLowerCase().trim(),
       password: hashedPassword,
-      username: handle,
-      displayName,
+      username: finalUsername,
+      displayName: displayName,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
-      royalTitle: cleanTitle,
+      royalTitle: selectedTitle || null,
       showFullName: false,
       emailVerifiedAt: null,
     });
 
-    const result = await AuthService.createAndSendVerification(newUser.id, normalizedEmail);
+    // Create and send verification email
+    const result = await AuthService.createAndSendVerification(newUser.id, email);
 
     if (result.success) {
-      return res.status(201).json({
+      console.log('✅ Verification email sent to:', email);
+      res.status(201).json({
         message: "Account created! Please check your email to verify your account.",
         userId: newUser.id,
       });
     } else {
-      return res.status(201).json({
-        message:
-          "Account created! Email sending is currently unavailable. Contact support for verification.",
+      // Email failed but account was created - log error but don't fail signup
+      console.error('⚠️ Email sending failed:', result.error);
+      res.status(201).json({
+        message: "Account created! Email sending is currently unavailable. Contact support for verification.",
         userId: newUser.id,
-        emailError: result.error || "Email service unavailable",
+        emailError: "Email service unavailable",
       });
     }
-  } catch (err) {
-    console.error("Error during /auth/signup:", err);
-    const msg = String((err as any)?.toString?.() || "");
-    if (msg.includes("users_username_key")) {
-      return res.status(400).json({ error: "Username already taken" });
-    }
-    if (msg.includes("users_email_key")) {
-      return res.status(400).json({ error: "Email already registered" });
-    }
-    return res.status(500).json({ error: "Failed to create account" });
+  } catch (error) {
+    console.error("Error during signup:", error);
+    res.status(500).json({ error: "Failed to create account" });
   }
 });
 
@@ -108,58 +96,39 @@ router.post("/auth/signup", async (req, res) => {
  */
 router.post("/auth/login", async (req, res) => {
   try {
-    const { email, password } = (req.body ?? {}) as { email?: string; password?: string };
-    if (!email?.trim() || !password) {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    const normalizedEmail = normEmail(email);
-    const user = await storage.findByEmail(normalizedEmail);
+    const user = await storage.findByEmail(email);
+    if (!user) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
 
-    if (!user) return res.status(401).json({ error: "Invalid email or password" });
+    // Check if email verified
     if (!user.emailVerifiedAt) {
       return res.status(403).json({ error: "Please verify your email to log in." });
     }
 
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(401).json({ error: "Invalid email or password" });
+    // Verify password
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
 
-    return res.json({
+    res.json({
       success: true,
-      user: { id: user.id, email: user.email, username: user.username },
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+      },
     });
-  } catch (err) {
-    console.error("Error during /auth/login:", err);
-    return res.status(500).json({ error: "Login failed" });
-  }
-});
-
-/**
- * POST /auth/resend-verification
- */
-router.post("/auth/resend-verification", async (req, res) => {
-  try {
-    const { email } = (req.body ?? {}) as { email?: string };
-    if (!email?.trim()) return res.status(400).json({ error: "Email is required" });
-
-    const normalizedEmail = normEmail(email);
-    const user = await storage.findByEmail(normalizedEmail);
-
-    // Avoid enumeration
-    if (!user) return res.json({ message: "If that email exists, a verification email has been sent." });
-    if (user.emailVerifiedAt) {
-      return res.status(400).json({ error: "Email is already verified" });
-    }
-
-    const result = await AuthService.createAndSendVerification(user.id, normalizedEmail);
-    if (result.success) {
-      return res.json({ message: "Verification email sent" });
-    } else {
-      return res.status(500).json({ error: "Failed to send verification email. Please try again later." });
-    }
-  } catch (err) {
-    console.error("Error during /auth/resend-verification:", err);
-    return res.status(500).json({ error: "Failed to resend verification email" });
+  } catch (error) {
+    console.error("Error during login:", error);
+    res.status(500).json({ error: "Login failed" });
   }
 });
 
@@ -168,18 +137,60 @@ router.post("/auth/resend-verification", async (req, res) => {
  */
 router.get("/auth/verify-email", async (req, res) => {
   try {
-    const token = typeof req.query.token === "string" ? req.query.token : "";
-    if (!token) return res.status(400).send("Invalid verification link");
+    const { token } = req.query;
 
-    const result = await AuthService.verifyEmailToken(token);
-    if (!result.success) {
-      return res.status(400).send(result.error || "Invalid or expired verification link");
+    if (!token || typeof token !== "string") {
+      return res.status(400).send("Invalid verification link");
     }
 
-    return res.redirect("/verify/success");
-  } catch (err) {
-    console.error("Error verifying email:", err);
-    return res.status(500).send("Verification failed");
+    const result = await AuthService.verifyEmailToken(token);
+
+    if (!result.success) {
+      return res.status(400).send(result.error);
+    }
+
+    console.log('✅ Email verified for user:', result.userId);
+    res.redirect("/verify/success");
+  } catch (error) {
+    console.error("Error verifying email:", error);
+    res.status(500).send("Verification failed");
+  }
+});
+
+/**
+ * POST /auth/resend-verification
+ */
+router.post("/auth/resend-verification", async (req, res) => {
+  const { email } = req.body ?? {};
+
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  try {
+    const user = await storage.findByEmail(email);
+
+    if (!user) {
+      return res.json({ message: "If that email exists, a verification email has been sent." });
+    }
+
+    if (user.emailVerifiedAt) {
+      return res.status(400).json({ error: "Email is already verified" });
+    }
+
+    // Create and send verification email
+    const result = await AuthService.createAndSendVerification(user.id, email);
+
+    if (result.success) {
+      console.log('✅ Verification email resent to:', email);
+      res.json({ message: "Verification email sent" });
+    } else {
+      console.error('⚠️ Failed to resend email:', result.error);
+      res.status(500).json({ error: "Failed to send verification email. Please try again later." });
+    }
+  } catch (error) {
+    console.error("Error resending verification:", error);
+    res.status(500).json({ error: "Failed to resend verification email" });
   }
 });
 
