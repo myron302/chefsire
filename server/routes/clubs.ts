@@ -1,6 +1,6 @@
 // server/routes/clubs.ts
 import express, { type Request, type Response } from "express";
-import { db } from "@db";
+import { db } from "../db/index.js";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import {
   clubs,
@@ -11,7 +11,7 @@ import {
   badges,
   userBadges,
   users
-} from "@db/schema";
+} from "../../shared/schema.js";
 import { requireAuth } from "../middleware";
 
 const router = express.Router();

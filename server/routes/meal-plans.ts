@@ -1,5 +1,5 @@
 import express, { type Request, type Response } from "express";
-import { db } from "@db";
+import { db } from "../db/index.js";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import {
   mealPlanBlueprints,
@@ -9,7 +9,7 @@ import {
   creatorAnalytics,
   users,
   recipes
-} from "@db/schema";
+} from "../../shared/schema.js";
 import { requireAuth } from "../middleware";
 
 const router = express.Router();

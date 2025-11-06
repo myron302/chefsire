@@ -15,7 +15,7 @@ r.get("/users/:id/pantry", async (req, res) => {
     const items = await storage.getPantryItems(req.params.id);
     res.json({ pantryItems: items, total: items.length });
   } catch (error) {
-    console.error("pantry/list error", e);
+    console.error("pantry/list error", error);
     res.status(500).json({ message: "Failed to fetch pantry items" });
   }
 });
@@ -82,7 +82,7 @@ r.delete("/pantry/:itemId", async (req, res) => {
     if (!ok) return res.status(404).json({ message: "Pantry item not found" });
     res.json({ message: "Pantry item deleted" });
   } catch (error) {
-    console.error("pantry/delete error", e);
+    console.error("pantry/delete error", error);
     res.status(500).json({ message: "Failed to delete pantry item" });
   }
 });
@@ -94,7 +94,7 @@ r.get("/users/:id/pantry/expiring", async (req, res) => {
     const items = await storage.getExpiringItems(req.params.id, isNaN(days) ? 7 : days);
     res.json({ expiringItems: items, daysAhead: days, total: items.length });
   } catch (error) {
-    console.error("pantry/expiring error", e);
+    console.error("pantry/expiring error", error);
     res.status(500).json({ message: "Failed to fetch expiring items" });
   }
 });

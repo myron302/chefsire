@@ -1,7 +1,7 @@
 import express, { type Request, type Response } from "express";
-import { db } from "@db";
+import { db } from "../db/index.js";
 import { eq, and, or, inArray } from "drizzle-orm";
-import { familyMembers, allergenProfiles, recipeAllergens, userSubstitutionPreferences, productAllergens, recipes } from "@db/schema";
+import { familyMembers, allergenProfiles, recipeAllergens, userSubstitutionPreferences, productAllergens, recipes } from "../../shared/schema.js";
 import { requireAuth } from "../middleware/index";
 
 const router = express.Router();
