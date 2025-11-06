@@ -26,8 +26,9 @@ export const db = pool ? drizzle(pool, { schema }) : (null as any);
 // Gracefully end pool only when it's present
 process.on("beforeExit", () => {
   try {
-    if (pool && typeof pool.end === "function") pool.end();
+    if (pool && typeof (pool as any).end === "function") (pool as any).end();
   } catch {}
 });
 
-export * from "./"; // keep existing exports if any (adjust as needed)
+// NOTE: keep exports compatible with the rest of your codebase
+export * from "./";
