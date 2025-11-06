@@ -412,29 +412,29 @@ export default function PantryDashboard() {
                     </div>
                   </div>
 
-                  <div className="space-y-2 text-sm">
+                  <div className="grid gap-2 text-sm">
                     {item.quantity && item.unit && (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Package className="w-4 h-4 flex-shrink-0" />
-                        <span className="truncate">{item.quantity} {item.unit}</span>
+                      <div className="flex items-center gap-3">
+                        <Package className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                        <span className="text-muted-foreground">{item.quantity} {item.unit}</span>
                       </div>
                     )}
 
                     {item.location && (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <MapPin className="w-4 h-4 flex-shrink-0" />
-                        <span className="truncate">{item.location}</span>
+                      <div className="flex items-center gap-3">
+                        <MapPin className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                        <span className="text-muted-foreground">{item.location}</span>
                       </div>
                     )}
 
                     {item.expirationDate && (
-                      <div className="flex items-start gap-2">
-                        <Calendar className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 flex-1 min-w-0">
-                          <span className="text-muted-foreground text-xs sm:text-sm truncate">
+                      <div className="flex items-center gap-3">
+                        <Calendar className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="text-muted-foreground text-sm">
                             Expires {format(new Date(item.expirationDate), "MMM d, yyyy")}
                           </span>
-                          <Badge className={`text-xs ${expiryStatus.color} w-fit`}>
+                          <Badge className={`text-xs ${expiryStatus.color} ml-auto`}>
                             {expiryStatus.label}
                           </Badge>
                         </div>
@@ -442,17 +442,19 @@ export default function PantryDashboard() {
                     )}
 
                     {item.estimatedCost && (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <DollarSign className="w-4 h-4 flex-shrink-0" />
-                        <span className="truncate">${item.estimatedCost}</span>
+                      <div className="flex items-center gap-3">
+                        <DollarSign className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                        <span className="text-muted-foreground">${item.estimatedCost}</span>
                       </div>
                     )}
 
                     {item.householdId && (
-                      <Badge variant="secondary" className="text-xs w-fit">
-                        <Users className="w-3 h-3 mr-1 flex-shrink-0" />
-                        <span className="truncate">Household Item</span>
-                      </Badge>
+                      <div className="flex items-center gap-3">
+                        <Users className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                        <Badge variant="secondary" className="text-xs">
+                          Household Item
+                        </Badge>
+                      </div>
                     )}
                   </div>
 
