@@ -166,23 +166,23 @@ export default function PantryDashboard() {
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
           <div>
-            <h1 className="text-4xl font-bold">My Pantry</h1>
+            <h1 className="text-3xl md:text-4xl font-bold">My Pantry</h1>
             <p className="text-muted-foreground mt-1">
               Track ingredients, reduce waste, cook smarter
             </p>
           </div>
-          <div className="flex gap-2">
-            <Link href="/pantry/scanner">
-              <Button variant="outline">
+          <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+            <Link href="/pantry/scanner" className="flex-1 sm:flex-none">
+              <Button variant="outline" className="w-full sm:w-auto">
                 <ScanLine className="w-4 h-4 mr-2" />
-                Scan Barcode
+                <span className="whitespace-nowrap">Scan Barcode</span>
               </Button>
             </Link>
             <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
               <DialogTrigger asChild>
-                <Button>
+                <Button className="flex-1 sm:flex-none w-full sm:w-auto">
                   <Plus className="w-4 h-4 mr-2" />
                   Add Item
                 </Button>
@@ -415,41 +415,43 @@ export default function PantryDashboard() {
                   <div className="space-y-2 text-sm">
                     {item.quantity && item.unit && (
                       <div className="flex items-center gap-2 text-muted-foreground">
-                        <Package className="w-4 h-4" />
-                        <span>{item.quantity} {item.unit}</span>
+                        <Package className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">{item.quantity} {item.unit}</span>
                       </div>
                     )}
 
                     {item.location && (
                       <div className="flex items-center gap-2 text-muted-foreground">
-                        <MapPin className="w-4 h-4" />
-                        <span>{item.location}</span>
+                        <MapPin className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">{item.location}</span>
                       </div>
                     )}
 
                     {item.expirationDate && (
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4" />
-                        <span className="text-muted-foreground">
-                          Expires {format(new Date(item.expirationDate), "MMM d, yyyy")}
-                        </span>
-                        <Badge className={`text-xs ${expiryStatus.color}`}>
-                          {expiryStatus.label}
-                        </Badge>
+                      <div className="flex items-start gap-2">
+                        <Calendar className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 flex-1 min-w-0">
+                          <span className="text-muted-foreground text-xs sm:text-sm truncate">
+                            Expires {format(new Date(item.expirationDate), "MMM d, yyyy")}
+                          </span>
+                          <Badge className={`text-xs ${expiryStatus.color} w-fit`}>
+                            {expiryStatus.label}
+                          </Badge>
+                        </div>
                       </div>
                     )}
 
                     {item.estimatedCost && (
                       <div className="flex items-center gap-2 text-muted-foreground">
-                        <DollarSign className="w-4 h-4" />
-                        <span>${item.estimatedCost}</span>
+                        <DollarSign className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">${item.estimatedCost}</span>
                       </div>
                     )}
 
                     {item.householdId && (
-                      <Badge variant="secondary" className="text-xs">
-                        <Users className="w-3 h-3 mr-1" />
-                        Household Item
+                      <Badge variant="secondary" className="text-xs w-fit">
+                        <Users className="w-3 h-3 mr-1 flex-shrink-0" />
+                        <span className="truncate">Household Item</span>
                       </Badge>
                     )}
                   </div>
