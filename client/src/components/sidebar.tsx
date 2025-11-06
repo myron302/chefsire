@@ -153,6 +153,7 @@ const NAV: NavItem[] = [
 
   { name: "🛒 Marketplace", href: "/marketplace" },
   { name: "💪 Nutrition", href: "/nutrition", isPremium: true },
+  { name: "❤️ Allergies", href: "/allergies" },
   { name: "👤 Profile", href: "/profile" },
 ];
 

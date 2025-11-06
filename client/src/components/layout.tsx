@@ -521,6 +521,15 @@ export default function Layout({ children }: LayoutProps) {
                                 >
                                   💪 Nutrition
                                 </Link>
+
+                                {/* Allergies */}
+                                <Link
+                                  href="/allergies"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                                >
+                                  ❤️ Allergies
+                                </Link>
                               </div>
                             </div>
 
