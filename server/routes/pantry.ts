@@ -43,9 +43,9 @@ r.post("/users/:id/pantry", async (req, res) => {
     });
 
     res.status(201).json({ message: "Pantry item added", item: created });
-  } catch (e: any) {
-    if (e?.issues) return res.status(400).json({ message: "Invalid item", errors: e.issues });
-    console.error("pantry/add error", e);
+  } catch (error: any) {
+    if (error?.issues) return res.status(400).json({ message: "Invalid item", errors: error.issues });
+    console.error("pantry/add error", error);
     res.status(500).json({ message: "Failed to add pantry item" });
   }
 });
@@ -68,9 +68,9 @@ r.put("/pantry/:itemId", async (req, res) => {
 
     if (!updated) return res.status(404).json({ message: "Pantry item not found" });
     res.json({ message: "Pantry item updated", item: updated });
-  } catch (e: any) {
-    if (e?.issues) return res.status(400).json({ message: "Invalid update", errors: e.issues });
-    console.error("pantry/update error", e);
+  } catch (error: any) {
+    if (error?.issues) return res.status(400).json({ message: "Invalid update", errors: error.issues });
+    console.error("pantry/update error", error);
     res.status(500).json({ message: "Failed to update pantry item" });
   }
 });

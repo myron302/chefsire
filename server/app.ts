@@ -1,17 +1,17 @@
 // server/app.ts
 import "dotenv/config";
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import compression from "compression";
 import morgan from "morgan";
-import path from "path";
-import fs from "fs";
-import { createRequire } from "module";
+import path from "node:path";
+import fs from "node:fs";
+import routes from "./routes";
 
-const require2 = createRequire(import.meta.url);
 const app = express();
 
 app.set("trust proxy", true);
+
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -21,43 +21,24 @@ if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));
 }
 
-app.get("/healthz", (_req, res) => {
+// Health
+app.get("/healthz", (_req: Request, res: Response) => {
   res.status(200).json({ ok: true, env: process.env.NODE_ENV || "development" });
 });
 
-let routesMounted = false;
+// API routes (mounted under /api)
+app.use("/api", routes);
 
-try {
-  const mod = require2("./routes");
-  const routes = (mod && (mod as any).default) ? (mod as any).default : mod;
-  app.use("/api", routes);
-  routesMounted = true;
-  console.log("[ChefSire] API routes mounted");
-} catch (err: any) {
-  console.error("[ChefSire] Failed to load API routes:", err);
-
-  // NOTE: temporary debug write removed.
-  // Previously we wrote the stack to /tmp/chefsire-route-error.log here.
-  // That debug write has been removed so the process can't be killed or leak stack files.
-
-  app.all("/api/*", (_req, res) => {
-    res.status(503).json({
-      error: "API routes failed to load",
-      hint: process.env.NODE_ENV === "production"
-        ? "Check server logs for the exact router that failed to initialize."
-        : String(err),
-    });
-  });
-}
-
+// Optional API banner (at /api)
 app.get("/api", (_req, res) => {
   res.json({
     name: "ChefSire API",
-    status: routesMounted ? "running" : "degraded",
+    status: "running",
     timestamp: new Date().toISOString(),
   });
 });
 
+// Serve built client at ../dist/public (App Root is /httpdocs/server)
 const clientDir = path.resolve(process.cwd(), "../dist/public");
 const hasClient = fs.existsSync(clientDir);
 
@@ -73,6 +54,7 @@ if (hasClient) {
   );
 }
 
+// SPA fallback for any non-API route
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api")) return next();
   if (!hasClient) {
@@ -83,21 +65,23 @@ app.get("*", (req, res, next) => {
   res.sendFile(path.join(clientDir, "index.html"));
 });
 
-if (routesMounted) {
-  app.all("/api/*", (_req, res) => {
-    res.status(404).json({ error: "API endpoint not found" });
-  });
-}
+// FINAL: 404 for unknown API paths (keep this at the end)
+app.all("/api/*", (_req: Request, res: Response) => {
+  res.status(404).json({ error: "API endpoint not found" });
+});
 
-app.use((err: any, _req: any, res: any, _next: any) => {
+// Global error handler
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const isProd = process.env.NODE_ENV === "production";
   const message = err instanceof Error ? err.message : "Unknown error";
   const stack = err instanceof Error ? err.stack : undefined;
+
   if (!isProd) console.error("[ERROR]", err);
+
   res.status(500).json({
     error: "Internal Server Error",
     message: isProd ? "An unexpected error occurred." : message,
-    ...(!isProd ? { stack } : {}),
+    ...(isProd ? {} : { stack }),
   });
 });
 
