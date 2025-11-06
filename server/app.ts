@@ -6,8 +6,9 @@ import compression from "compression";
 import morgan from "morgan";
 import path from "path";
 import fs from "fs";
-import routes from "./routes/index.js";
+import { createRequire } from "module";
 
+const require2 = createRequire(import.meta.url);
 const app = express();
 
 app.set("trust proxy", true);
@@ -27,6 +28,8 @@ app.get("/healthz", (_req, res) => {
 let routesMounted = false;
 
 try {
+  const mod = require2("./routes");
+  const routes = (mod && (mod as any).default) ? (mod as any).default : mod;
   app.use("/api", routes);
   routesMounted = true;
   console.log("[ChefSire] API routes mounted");
