@@ -878,32 +878,6 @@ export const insertUserBadgeSchema = createInsertSchema(userBadges).omit({
   earnedAt: true,
 });
 
-// Phase 1 insert schemas
-export const insertNotificationSchema = createInsertSchema(notifications).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertDailyQuestSchema = createInsertSchema(dailyQuests).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertQuestProgressSchema = createInsertSchema(questProgress).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertRecipeRemixSchema = createInsertSchema(recipeRemixes).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertAiSuggestionSchema = createInsertSchema(aiSuggestions).omit({
-  id: true,
-  createdAt: true,
-});
-
 /* =========================================================================
    ===== TYPES
    ========================================================================= */
@@ -1215,6 +1189,34 @@ export const aiSuggestions = pgTable(
     viewedIdx: index("ai_suggestions_viewed_idx").on(table.viewed),
   })
 );
+
+/* =========================================================================
+   ===== PHASE 1 INSERT SCHEMAS
+   ========================================================================= */
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertDailyQuestSchema = createInsertSchema(dailyQuests).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertQuestProgressSchema = createInsertSchema(questProgress).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertRecipeRemixSchema = createInsertSchema(recipeRemixes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAiSuggestionSchema = createInsertSchema(aiSuggestions).omit({
+  id: true,
+  createdAt: true,
+});
 
 /* =========================================================================
    ===== PHASE 1 TYPES
