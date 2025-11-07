@@ -129,7 +129,8 @@ export default function SettingsPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to update profile');
+        const errorMsg = data?.error || data?.message || 'Failed to update profile';
+        throw new Error(errorMsg);
       }
 
       // Update the user context with new data
