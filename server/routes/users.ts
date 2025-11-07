@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
+import { requireAuth } from "../middleware";
 
 const r = Router();
 
@@ -63,8 +64,13 @@ r.post("/", async (req, res) => {
   }
 });
 
-r.put("/:id", async (req, res) => {
+r.put("/:id", requireAuth, async (req, res) => {
   try {
+    // Security: users can only update their own profile
+    if (req.user!.id !== req.params.id) {
+      return res.status(403).json({ message: "You can only update your own profile" });
+    }
+
     const schema = z.object({
       username: z.string().optional(),
       displayName: z.string().optional(),
@@ -84,7 +90,10 @@ r.put("/:id", async (req, res) => {
         .json({ message: "Invalid user data", errors: error.issues });
     }
     console.error("PUT /users/:id error", error);
-    res.status(500).json({ message: "Failed to update user" });
+    res.status(500).json({
+      message: "Failed to update user",
+      error: error?.message || "Unknown error"
+    });
   }
 });
 
