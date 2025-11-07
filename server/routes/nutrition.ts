@@ -14,7 +14,7 @@ r.post("/users/:id/trial", async (req, res, next) => {
     const user = await storage.enableNutritionPremium(req.params.id, days);
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Nutrition premium trial activated", user, trialEndsAt: (user as any).nutritionTrialEnd });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -26,7 +26,7 @@ r.put("/users/:id/goals", async (req, res, next) => {
     const updated = await storage.updateNutritionGoals(req.params.id, req.body || {});
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Nutrition goals updated", user: updated });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -39,7 +39,7 @@ r.post("/log", async (req, res, next) => {
     if (!userId) return res.status(400).json({ message: "userId is required" });
     const entry = await storage.logNutrition(String(userId), log);
     res.status(201).json({ message: "Nutrition logged successfully", log: entry });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -65,7 +65,7 @@ r.get("/users/:id/daily/:date", async (req, res, next) => {
           ? { calorieProgress: Math.round((Number(summary.totalCalories || 0) / Number((user as any).dailyCalorieGoal)) * 100) }
           : null,
     });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -87,7 +87,7 @@ r.get("/users/:id/logs", async (req, res, next) => {
       },
       total: logs.length,
     });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 export default r;
