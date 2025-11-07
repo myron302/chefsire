@@ -362,6 +362,116 @@ export const productAllergens = pgTable(
   })
 );
 
+/* ===== CLUBS & COMMUNITIES ===== */
+export const clubs = pgTable(
+  "clubs",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    creatorId: varchar("creator_id").references(() => users.id).notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    category: text("category").default("general"),
+    rules: text("rules"),
+    coverImage: text("cover_image"),
+    isPublic: boolean("is_public").default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    creatorIdx: index("clubs_creator_idx").on(table.creatorId),
+    categoryIdx: index("clubs_category_idx").on(table.category),
+  })
+);
+
+export const clubMemberships = pgTable(
+  "club_memberships",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    clubId: varchar("club_id").references(() => clubs.id, { onDelete: "cascade" }).notNull(),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    role: text("role").default("member"),
+    joinedAt: timestamp("joined_at").defaultNow(),
+  },
+  (table) => ({
+    clubUserIdx: index("club_memberships_club_user_idx").on(table.clubId, table.userId),
+  })
+);
+
+export const clubPosts = pgTable(
+  "club_posts",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    clubId: varchar("club_id").references(() => clubs.id, { onDelete: "cascade" }).notNull(),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    content: text("content").notNull(),
+    imageUrl: text("image_url"),
+    likesCount: integer("likes_count").default(0),
+    commentsCount: integer("comments_count").default(0),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    clubIdx: index("club_posts_club_idx").on(table.clubId),
+    userIdx: index("club_posts_user_idx").on(table.userId),
+  })
+);
+
+export const challenges = pgTable(
+  "challenges",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    clubId: varchar("club_id").references(() => clubs.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    goal: text("goal").notNull(),
+    startDate: timestamp("start_date").notNull(),
+    endDate: timestamp("end_date").notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    clubIdx: index("challenges_club_idx").on(table.clubId),
+  })
+);
+
+export const challengeProgress = pgTable(
+  "challenge_progress",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    challengeId: varchar("challenge_id").references(() => challenges.id, { onDelete: "cascade" }).notNull(),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    progress: integer("progress").default(0),
+    completed: boolean("completed").default(false),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    challengeUserIdx: index("challenge_progress_challenge_user_idx").on(table.challengeId, table.userId),
+  })
+);
+
+export const badges = pgTable(
+  "badges",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    name: text("name").notNull().unique(),
+    description: text("description"),
+    icon: text("icon"),
+    rarity: text("rarity").default("common"),
+    createdAt: timestamp("created_at").defaultNow(),
+  }
+);
+
+export const userBadges = pgTable(
+  "user_badges",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    badgeId: varchar("badge_id").references(() => badges.id).notNull(),
+    earnedAt: timestamp("earned_at").defaultNow(),
+  },
+  (table) => ({
+    userBadgeIdx: index("user_badges_user_badge_idx").on(table.userId, table.badgeId),
+  })
+);
+
 /* ===== SUBSTITUTIONS ===== */
 export const substitutionIngredients = pgTable(
   "substitution_ingredients",
@@ -731,6 +841,43 @@ export const insertProductAllergenSchema = createInsertSchema(productAllergens).
   createdAt: true,
 });
 
+export const insertClubSchema = createInsertSchema(clubs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertClubMembershipSchema = createInsertSchema(clubMemberships).omit({
+  id: true,
+  joinedAt: true,
+});
+
+export const insertClubPostSchema = createInsertSchema(clubPosts).omit({
+  id: true,
+  likesCount: true,
+  commentsCount: true,
+  createdAt: true,
+});
+
+export const insertChallengeSchema = createInsertSchema(challenges).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertChallengeProgressSchema = createInsertSchema(challengeProgress).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertBadgeSchema = createInsertSchema(badges).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertUserBadgeSchema = createInsertSchema(userBadges).omit({
+  id: true,
+  earnedAt: true,
+});
+
 /* =========================================================================
    ===== TYPES
    ========================================================================= */
@@ -786,6 +933,20 @@ export type UserSubstitutionPreference = typeof userSubstitutionPreferences.$inf
 export type InsertUserSubstitutionPreference = z.infer<typeof insertUserSubstitutionPreferenceSchema>;
 export type ProductAllergen = typeof productAllergens.$inferSelect;
 export type InsertProductAllergen = z.infer<typeof insertProductAllergenSchema>;
+export type Club = typeof clubs.$inferSelect;
+export type InsertClub = z.infer<typeof insertClubSchema>;
+export type ClubMembership = typeof clubMemberships.$inferSelect;
+export type InsertClubMembership = z.infer<typeof insertClubMembershipSchema>;
+export type ClubPost = typeof clubPosts.$inferSelect;
+export type InsertClubPost = z.infer<typeof insertClubPostSchema>;
+export type Challenge = typeof challenges.$inferSelect;
+export type InsertChallenge = z.infer<typeof insertChallengeSchema>;
+export type ChallengeProgress = typeof challengeProgress.$inferSelect;
+export type InsertChallengeProgress = z.infer<typeof insertChallengeProgressSchema>;
+export type Badge = typeof badges.$inferSelect;
+export type InsertBadge = z.infer<typeof insertBadgeSchema>;
+export type UserBadge = typeof userBadges.$inferSelect;
+export type InsertUserBadge = z.infer<typeof insertUserBadgeSchema>;
 
 /* ===== NEW TYPE ===== */
 export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
