@@ -341,19 +341,19 @@ export default function Feed() {
 
       {/* Sidebar */}
       <aside className="hidden xl:block w-80 p-6 bg-card border-l border-border space-y-8">
-        {/* AI Suggestions */}
-        <section>
+        {/* TEMPORARILY DISABLED - Phase 1 components causing 502 on refresh */}
+        {/* TODO: Fix initialization timing before re-enabling */}
+        {/* <section>
           <ErrorBoundary>
             <AISuggestions />
           </ErrorBoundary>
         </section>
 
-        {/* Daily Quests */}
         <section>
           <ErrorBoundary>
             <DailyQuests />
           </ErrorBoundary>
-        </section>
+        </section> */}
 
         <section className="mb-8">
           <h3 className="font-semibold mb-4">Suggested Chefs</h3>
