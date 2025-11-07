@@ -1,20 +1,21 @@
 import { Router } from "express";
 
-// AUTH ROUTES
-import authRouter from "./auth";
-
 // Core feature routers
 import recipesRouter from "./recipes";
 import bitesRouter from "./bites";
 import usersRouter from "./users";
 import postsRouter from "./posts";
 import pantryRouter from "./pantry";
-import allergiesRouter from "./allergies";
-import mealPlansRouter from "./meal-plans";
-import clubsRouter from "./clubs";
 import marketplaceRouter from "./marketplace";
 import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
+import allergiesRouter from "./allergies";
+import nutritionRouter from "./nutrition";
+import dmRouter from "./dm";
+import clubsRouter from "./clubs";
+
+// AUTH ROUTES
+import authRouter from "./auth";
 
 // Integrations
 import lookupRouter from "./lookup";
@@ -24,15 +25,11 @@ import { googleRouter } from "./google";
 // Competitions
 import competitionsRouter from "./competitions";
 
-// Stores
-import storesPublicRouter from "./stores";       // public: GET /:handle
-import storesCrudRouter from "./stores-crud";    // admin CRUD
+// Stores (user storefronts)
+import storesRouter from "./stores-crud";
 
-// Dev mail health-check route
-import devMailcheckRouter from "./dev.mailcheck";
-
-// 🔔 DMs (NEW)
-import dmRouter from "./dm";
+// Square (subscriptions / checkout links)
+import squareRouter from "./stores";
 
 // ⚡ Phase 1: Daily Addiction Features
 import notificationsRouter from "./notifications";
@@ -47,50 +44,68 @@ const r = Router();
  *   app.use("/api", routes)
  */
 
-// ---- AUTH (mounted at root so it exposes /auth/*) ----
+// AUTH - mount auth routes
 r.use(authRouter);
 
-// ---- Core features ----
+// Recipes routes (prefixed)
 r.use("/recipes", recipesRouter);
+
+// Bites (social stories) - prefixed
 r.use("/bites", bitesRouter);
+
+// Users - prefixed
 r.use("/users", usersRouter);
+
+// Posts - prefixed
 r.use("/posts", postsRouter);
+
+// Pantry - prefixed
 r.use("/pantry", pantryRouter);
-r.use("/allergies", allergiesRouter);
-r.use("/meal-plans", mealPlansRouter);
-r.use("/clubs", clubsRouter);
+
+// Marketplace - prefixed
 r.use("/marketplace", marketplaceRouter);
+
+// Substitutions - prefixed
 r.use("/substitutions", substitutionsRouter);
+
+// Drinks - prefixed
 r.use("/drinks", drinksRouter);
 
-// ---- Integrations ----
-r.use("/lookup", lookupRouter);
-r.use("/export", exportRouter);
-r.use("/google", googleRouter);
+// Allergies - prefixed
+r.use("/allergies", allergiesRouter);
 
-// ---- Competitions ----
-r.use("/competitions", competitionsRouter);
+// Nutrition - prefixed
+r.use("/nutrition", nutritionRouter);
 
-// ---- Stores ----
-// public storefront endpoints: /api/stores/:handle
-r.use("/stores", storesPublicRouter);
-// admin CRUD endpoints: /api/stores-crud/*
-r.use("/stores-crud", storesCrudRouter);
-
-// ---- Dev helpers ----
-r.use(devMailcheckRouter);
-
-// ---- DMs (NEW) ----
-// All DM endpoints will live under /api/dm/*
+// DM (Direct Messages) - prefixed
 r.use("/dm", dmRouter);
 
-// ---- Phase 1: Daily Addiction Features ----
+// Clubs - prefixed
+r.use("/clubs", clubsRouter);
+
+// Integrations with explicit prefixes
+r.use("/lookup", lookupRouter);
+r.use("/export", exportRouter);
+
+// IMPORTANT: Google router for BiteMap
+r.use("/google", googleRouter);
+
+// Competitions
+r.use("/competitions", competitionsRouter);
+
+// Stores (public viewer + owner writes)
+r.use("/stores", storesRouter);
+
+// Square (payments/subscriptions)
+r.use("/square", squareRouter);
+
+// ⚡ Phase 1: Daily Addiction Features
 r.use("/notifications", notificationsRouter);
 r.use("/quests", questsRouter);
 r.use("/suggestions", suggestionsRouter);
 r.use("/remixes", remixesRouter);
 
-// ---- Optional: dev-only route list ----
+// Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {
   r.get("/_routes", (_req, res) => {
     res.json({
@@ -103,20 +118,19 @@ if (process.env.NODE_ENV !== "production") {
         "/users/*",
         "/posts/*",
         "/pantry/*",
-        "/allergies/*",    // Allergy Profiles & Smart Substitutions
-        "/meal-plans/*",   // Meal Plan Marketplace
-        "/clubs/*",        // Clubs & Challenges
         "/marketplace/*",
         "/substitutions/*",
         "/drinks/*",
+        "/allergies/*",
+        "/nutrition/*",
+        "/dm/*",
+        "/clubs/*",
         "/lookup/*",
         "/export/*",
         "/google/*",
         "/competitions/*",
-        "/stores/*",       // public
-        "/stores-crud/*",  // admin
-        "/auth/_mail-verify",
-        "/dm/*",           // 🔔 NEW
+        "/stores/*",
+        "/square/*",
         "/notifications/*", // ⚡ Phase 1
         "/quests/*",        // ⚡ Phase 1
         "/suggestions/*",   // ⚡ Phase 1

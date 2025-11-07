@@ -42,6 +42,8 @@ import RecipeMatches from "@/pages/pantry/recipe-matches";
 import HouseholdPantry from "@/pages/pantry/household";
 import AllergiesDashboard from "@/pages/allergies";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
+import ClubsPage from "@/pages/clubs";
+import ClubDetailPage from "@/pages/clubs/[id]";
 import NotFound from "@/pages/not-found";
 import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 
@@ -337,6 +339,10 @@ function AppRouter() {
 
         {/* Allergies Routes */}
         <Route path="/allergies" component={AllergiesDashboard} />
+
+        {/* Clubs Routes */}
+        <Route path="/clubs/:id" component={ClubDetailPage} />
+        <Route path="/clubs" component={ClubsPage} />
 
         <Route path="/store" component={Marketplace} />
         <Route path="/marketplace" component={Marketplace} />

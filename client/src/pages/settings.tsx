@@ -22,6 +22,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useUser } from '@/contexts/UserContext';
+import { useToast } from '@/hooks/use-toast';
 
 const FOOD_CATEGORIES = [
   'Italian', 'Mexican', 'Chinese', 'Japanese', 'Thai',
@@ -32,13 +33,15 @@ const FOOD_CATEGORIES = [
 ];
 
 export default function SettingsPage() {
-  const { user } = useUser();
+  const { user, updateUser } = useUser();
+  const { toast } = useToast();
   const [profile, setProfile] = useState({
     username: user?.username || '',
     displayName: user?.displayName || '',
     bio: user?.bio || '',
     avatar: user?.avatar || '',
   });
+  const [isSaving, setIsSaving] = useState(false);
 
   const [accountType, setAccountType] = useState<'personal' | 'business'>(
     user?.isChef ? 'business' : 'personal'
@@ -103,9 +106,55 @@ export default function SettingsPage() {
     );
   };
 
-  const handleSaveProfile = () => {
-    // TODO: API call to save profile
-    console.log('Saving profile:', profile);
+  const handleSaveProfile = async () => {
+    if (!user?.id) {
+      toast({ title: "Error", description: "You must be logged in to update your profile", variant: "destructive" });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/api/users/${user.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          username: profile.username,
+          displayName: profile.displayName,
+          bio: profile.bio,
+          avatar: profile.avatar,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const errorMsg = data?.error || data?.message || 'Failed to update profile';
+        throw new Error(errorMsg);
+      }
+
+      // Update the user context with new data
+      updateUser({
+        username: data.user.username,
+        displayName: data.user.displayName,
+        bio: data.user.bio,
+        avatar: data.user.avatar,
+      });
+
+      toast({
+        title: "✓ Profile updated",
+        description: "Your profile has been saved successfully",
+      });
+    } catch (error: any) {
+      console.error('Profile update error:', error);
+      toast({
+        title: "Failed to update profile",
+        description: error.message || "An error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleChangePassword = () => {
@@ -225,9 +274,13 @@ export default function SettingsPage() {
                   </p>
                 </div>
 
-                <Button onClick={handleSaveProfile} className="bg-orange-500 hover:bg-orange-600">
+                <Button
+                  onClick={handleSaveProfile}
+                  className="bg-orange-500 hover:bg-orange-600"
+                  disabled={isSaving}
+                >
                   <Save size={16} className="mr-2" />
-                  Save Profile
+                  {isSaving ? 'Saving...' : 'Save Profile'}
                 </Button>
               </CardContent>
             </Card>

@@ -1,5 +1,6 @@
+// server/routes/clubs.ts
 import express, { type Request, type Response } from "express";
-import { db } from "@db";
+import { db } from "../db/index.js";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import {
   clubs,
@@ -10,7 +11,7 @@ import {
   badges,
   userBadges,
   users
-} from "@db/schema";
+} from "../../shared/schema.js";
 import { requireAuth } from "../middleware";
 
 const router = express.Router();
@@ -27,8 +28,8 @@ router.get("/clubs", async (req: Request, res: Response) => {
     const allClubs = await db
       .select({
         club: clubs,
-        memberCount: sql<number>`count(distinct ${clubMemberships.id})`,
-        postCount: sql<number>`count(distinct ${clubPosts.id})`,
+        memberCount: sql`count(distinct ${clubMemberships.id})`,
+        postCount: sql`count(distinct ${clubPosts.id})`,
       })
       .from(clubs)
       .leftJoin(clubMemberships, eq(clubs.id, clubMemberships.clubId))
@@ -91,8 +92,8 @@ router.get("/clubs/:id", async (req: Request, res: Response) => {
 
     const [stats] = await db
       .select({
-        memberCount: sql<number>`count(distinct ${clubMemberships.id})`,
-        postCount: sql<number>`count(distinct ${clubPosts.id})`,
+        memberCount: sql`count(distinct ${clubMemberships.id})`,
+        postCount: sql`count(distinct ${clubPosts.id})`,
       })
       .from(clubs)
       .leftJoin(clubMemberships, eq(clubs.id, clubMemberships.clubId))
@@ -220,18 +221,15 @@ router.get("/my-clubs", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
 
-    // Create alias for clubMemberships to count total members
-    const m = clubMemberships.as("m");
-
     const userClubs = await db
       .select({
         club: clubs,
         membership: clubMemberships,
-        memberCount: sql<number>`count(distinct m.id)`,
+        memberCount: sql`count(distinct m.id)`,
       })
       .from(clubMemberships)
       .innerJoin(clubs, eq(clubMemberships.clubId, clubs.id))
-      .leftJoin(m, eq(clubs.id, m.clubId))
+      .leftJoin(clubMemberships.as("m"), eq(clubs.id, sql`m.club_id`))
       .where(eq(clubMemberships.userId, userId))
       .groupBy(clubs.id, clubMemberships.id)
       .orderBy(desc(clubMemberships.joinedAt));
@@ -322,7 +320,7 @@ router.get("/challenges", async (req: Request, res: Response) => {
     const allChallenges = await db
       .select({
         challenge: challenges,
-        participantCount: sql<number>`count(distinct ${challengeProgress.userId})`,
+        participantCount: sql`count(distinct ${challengeProgress.userId})`,
       })
       .from(challenges)
       .leftJoin(challengeProgress, eq(challenges.id, challengeProgress.challengeId))
@@ -368,8 +366,8 @@ router.get("/challenges/:id", async (req: Request, res: Response) => {
 
     const [stats] = await db
       .select({
-        participantCount: sql<number>`count(distinct ${challengeProgress.userId})`,
-        completedCount: sql<number>`count(*) filter (where ${challengeProgress.isCompleted} = true)`,
+        participantCount: sql`count(distinct ${challengeProgress.userId})`,
+        completedCount: sql`count(*) filter (where ${challengeProgress.isCompleted} = true)`,
       })
       .from(challengeProgress)
       .where(eq(challengeProgress.challengeId, challengeId));
@@ -513,7 +511,7 @@ router.get("/my-challenges", requireAuth, async (req: Request, res: Response) =>
 // ============================================================
 
 // Get all badges
-router.get("/badges", async (req: Request, res: Response) => {
+router.get("/badges", async (_req: Request, res: Response) => {
   try {
     const allBadges = await db
       .select()
