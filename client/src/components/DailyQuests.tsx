@@ -46,6 +46,7 @@ export default function DailyQuests() {
     queryKey: ["/api/quests/daily", user?.id],
     queryFn: () => fetchJSON<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>(`/api/quests/daily/${user?.id}`),
     enabled: !!user?.id,
+    retry: false, // Don't retry on error
     refetchInterval: 30000, // Refetch every 30 seconds to check for updates
   });
 
@@ -102,20 +103,10 @@ export default function DailyQuests() {
     );
   }
 
+  // Hide component if there's an error (e.g., tables don't exist yet)
   if (error) {
-    return (
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Trophy className="h-5 w-5 text-yellow-500" />
-            Daily Quests
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">Unable to load quests. Try again later.</p>
-        </CardContent>
-      </Card>
-    );
+    console.warn("Daily Quests error:", error);
+    return null;
   }
 
   // Ensure quests is always an array
