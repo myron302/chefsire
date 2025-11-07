@@ -51,7 +51,7 @@ async function postJSON<T>(url: string, data: any): Promise<T> {
 }
 
 export default function AISuggestions() {
-  const { user } = useUser();
+  const { user, loading } = useUser();
   const queryClient = useQueryClient();
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -62,7 +62,7 @@ export default function AISuggestions() {
   } = useQuery<{ suggestions: AISuggestion[] }>({
     queryKey: ["/api/suggestions/today", user?.id],
     queryFn: () => fetchJSON<{ suggestions: AISuggestion[] }>(`/api/suggestions/today/${user?.id}`),
-    enabled: !!user?.id,
+    enabled: !loading && !!user?.id, // Only fetch when loading is done AND user exists
     retry: false, // Don't retry on error
   });
 
@@ -106,6 +106,10 @@ export default function AISuggestions() {
     return colors[type] || "from-gray-500 to-gray-600";
   };
 
+  // Don't show while user context is loading
+  if (loading) return null;
+
+  // Don't show if user is logged out
   if (!user) return null;
 
   if (isLoading) {

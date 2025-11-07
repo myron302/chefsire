@@ -35,7 +35,7 @@ async function fetchJSON<T>(url: string): Promise<T> {
 }
 
 export default function DailyQuests() {
-  const { user } = useUser();
+  const { user, loading } = useUser();
   const queryClient = useQueryClient();
 
   const {
@@ -45,7 +45,7 @@ export default function DailyQuests() {
   } = useQuery<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>({
     queryKey: ["/api/quests/daily", user?.id],
     queryFn: () => fetchJSON<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>(`/api/quests/daily/${user?.id}`),
-    enabled: !!user?.id,
+    enabled: !loading && !!user?.id, // Only fetch when loading is done AND user exists
     retry: false, // Don't retry on error
     refetchInterval: 30000, // Refetch every 30 seconds to check for updates
   });
@@ -77,6 +77,10 @@ export default function DailyQuests() {
     return <Icon className="h-4 w-4" />;
   };
 
+  // Don't show while user context is loading
+  if (loading) return null;
+
+  // Don't show if user is logged out
   if (!user) return null;
 
   if (isLoading) {
