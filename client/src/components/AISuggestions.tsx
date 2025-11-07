@@ -56,20 +56,23 @@ export default function AISuggestions() {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const {
-    data: suggestions,
+    data: suggestionsResponse,
     isLoading,
     error,
-  } = useQuery<AISuggestion[]>({
-    queryKey: ["/api/suggestions/daily", user?.id],
-    queryFn: () => fetchJSON<AISuggestion[]>(`/api/suggestions/daily/${user?.id}`),
+  } = useQuery<{ suggestions: AISuggestion[] }>({
+    queryKey: ["/api/suggestions/today", user?.id],
+    queryFn: () => fetchJSON<{ suggestions: AISuggestion[] }>(`/api/suggestions/today/${user?.id}`),
     enabled: !!user?.id,
   });
 
+  // Extract suggestions array from response
+  const suggestions = suggestionsResponse?.suggestions;
+
   const dismissMutation = useMutation({
     mutationFn: (suggestionId: string) =>
-      postJSON(`/api/suggestions/${suggestionId}/dismiss`, {}),
+      postJSON(`/api/suggestions/${suggestionId}/dismiss`, { userId: user?.id }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/suggestions/daily", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suggestions/today", user?.id] });
     },
   });
 
@@ -118,11 +121,14 @@ export default function AISuggestions() {
     );
   }
 
-  if (error || !suggestions || suggestions.length === 0) {
+  // Ensure suggestions is always an array
+  const suggestionsArray = Array.isArray(suggestions) ? suggestions : [];
+
+  if (error || suggestionsArray.length === 0) {
     return null; // Don't show if no suggestions
   }
 
-  const activeSuggestions = suggestions.filter((s) => !s.dismissed);
+  const activeSuggestions = suggestionsArray.filter((s) => !s.dismissed);
 
   if (activeSuggestions.length === 0) {
     return null;
