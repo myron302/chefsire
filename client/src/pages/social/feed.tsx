@@ -8,6 +8,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Heart, Clock } from "lucide-react";
 import type { PostWithUser, User, Recipe } from "@shared/schema";
+import DailyQuests from "@/components/DailyQuests";
+import AISuggestions from "@/components/AISuggestions";
 
 const demoTrendingRecipes = [
   {
@@ -337,7 +339,17 @@ export default function Feed() {
       </div>
 
       {/* Sidebar */}
-      <aside className="hidden xl:block w-80 p-6 bg-card border-l border-border">
+      <aside className="hidden xl:block w-80 p-6 bg-card border-l border-border space-y-8">
+        {/* AI Suggestions */}
+        <section>
+          <AISuggestions />
+        </section>
+
+        {/* Daily Quests */}
+        <section>
+          <DailyQuests />
+        </section>
+
         <section className="mb-8">
           <h3 className="font-semibold mb-4">Suggested Chefs</h3>
           <div className="space-y-3">
