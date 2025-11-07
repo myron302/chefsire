@@ -28,7 +28,7 @@ type Notification = {
 };
 
 export default function NotificationBell() {
-  const { user } = useUser();
+  const { user, loading } = useUser();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -36,7 +36,8 @@ export default function NotificationBell() {
 
   // Connect to notification socket when user is available
   useEffect(() => {
-    if (!user?.id) return;
+    // Only connect if user context has finished loading AND user exists
+    if (loading || !user?.id) return;
 
     try {
       const notifSocket = getNotificationSocket(user.id);
@@ -78,7 +79,7 @@ export default function NotificationBell() {
     } catch (error) {
       console.warn("Failed to initialize notification socket:", error);
     }
-  }, [user?.id]);
+  }, [user?.id, loading]);
 
   const markAsRead = useCallback(
     (notificationId: string) => {
@@ -134,6 +135,22 @@ export default function NotificationBell() {
     return icons[type] || "🔔";
   };
 
+  // Show loading state while user context is loading
+  if (loading) {
+    return (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="p-2 hover:bg-muted rounded-full"
+        aria-label="Notifications"
+        disabled
+      >
+        <Bell className="h-5 w-5 text-muted-foreground opacity-50" />
+      </Button>
+    );
+  }
+
+  // Don't show if user is logged out
   if (!user) return null;
 
   return (
