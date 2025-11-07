@@ -21,6 +21,7 @@ const NAV: NavItem[] = [
   { name: "🧭 Explore", href: "/explore" },
   { name: "🗺️ BiteMap", href: "/bitemap" },
   { name: "💬 Royal Table Talk", href: "/messages" },
+  { name: "🏛️ Royal Clubs", href: "/clubs" },
 
   {
     name: "🏆 Cookoff Arena",

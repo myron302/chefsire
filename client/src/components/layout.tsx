@@ -232,6 +232,14 @@ export default function Layout({ children }: LayoutProps) {
                                   💬 Royal Table Talk
                                 </Link>
 
+                                <Link
+                                  href="/clubs"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                                >
+                                  🏛️ Royal Clubs
+                                </Link>
+
                                 {/* Competitions */}
                                 <div>
                                   <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
