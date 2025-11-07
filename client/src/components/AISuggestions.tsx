@@ -63,6 +63,7 @@ export default function AISuggestions() {
     queryKey: ["/api/suggestions/today", user?.id],
     queryFn: () => fetchJSON<{ suggestions: AISuggestion[] }>(`/api/suggestions/today/${user?.id}`),
     enabled: !!user?.id,
+    retry: false, // Don't retry on error
   });
 
   // Extract suggestions array from response
@@ -124,7 +125,13 @@ export default function AISuggestions() {
   // Ensure suggestions is always an array
   const suggestionsArray = Array.isArray(suggestions) ? suggestions : [];
 
-  if (error || suggestionsArray.length === 0) {
+  // Hide component if there's an error (e.g., tables don't exist yet)
+  if (error) {
+    console.warn("AI Suggestions error:", error);
+    return null;
+  }
+
+  if (suggestionsArray.length === 0) {
     return null; // Don't show if no suggestions
   }
 

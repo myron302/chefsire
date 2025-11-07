@@ -38,36 +38,46 @@ export default function NotificationBell() {
   useEffect(() => {
     if (!user?.id) return;
 
-    const notifSocket = getNotificationSocket(user.id);
-    setSocket(notifSocket);
+    try {
+      const notifSocket = getNotificationSocket(user.id);
+      setSocket(notifSocket);
 
-    // Listen for new notifications
-    notifSocket.on("notification", (notification: Notification) => {
-      setNotifications((prev) => [notification, ...prev]);
-      if (!notification.read) {
-        setUnreadCount((prev) => prev + 1);
-      }
-    });
+      // Listen for new notifications
+      notifSocket.on("notification", (notification: Notification) => {
+        setNotifications((prev) => [notification, ...prev]);
+        if (!notification.read) {
+          setUnreadCount((prev) => prev + 1);
+        }
+      });
 
-    // Listen for unread count updates
-    notifSocket.on("unread_count", ({ count }: { count: number }) => {
-      setUnreadCount(count);
-    });
+      // Listen for unread count updates
+      notifSocket.on("unread_count", ({ count }: { count: number }) => {
+        setUnreadCount(count);
+      });
 
-    // Request initial data
-    notifSocket.emit("get_recent", { limit: 20 });
-    notifSocket.emit("get_unread_count");
+      // Handle errors
+      notifSocket.on("connect_error", (error: any) => {
+        console.warn("Notification socket connection error:", error);
+      });
 
-    // Handle recent notifications response
-    notifSocket.on("recent_notifications", (data: Notification[]) => {
-      setNotifications(data);
-    });
+      // Request initial data
+      notifSocket.emit("get_recent", { limit: 20 });
+      notifSocket.emit("get_unread_count");
 
-    return () => {
-      notifSocket.off("notification");
-      notifSocket.off("unread_count");
-      notifSocket.off("recent_notifications");
-    };
+      // Handle recent notifications response
+      notifSocket.on("recent_notifications", (data: Notification[]) => {
+        setNotifications(data);
+      });
+
+      return () => {
+        notifSocket.off("notification");
+        notifSocket.off("unread_count");
+        notifSocket.off("recent_notifications");
+        notifSocket.off("connect_error");
+      };
+    } catch (error) {
+      console.warn("Failed to initialize notification socket:", error);
+    }
   }, [user?.id]);
 
   const markAsRead = useCallback(
