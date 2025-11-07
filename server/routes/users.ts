@@ -63,6 +63,31 @@ r.post("/", async (req, res) => {
   }
 });
 
+r.put("/:id", async (req, res) => {
+  try {
+    const schema = z.object({
+      username: z.string().optional(),
+      displayName: z.string().optional(),
+      bio: z.string().max(500).optional(),
+      avatar: z.string().optional(),
+      specialty: z.string().optional(),
+      isChef: z.boolean().optional(),
+    });
+    const body = schema.parse(req.body);
+    const updated = await storage.updateUser(req.params.id, body as any);
+    if (!updated) return res.status(404).json({ message: "User not found" });
+    res.json({ message: "Profile updated successfully", user: updated });
+  } catch (error: any) {
+    if (error?.issues) {
+      return res
+        .status(400)
+        .json({ message: "Invalid user data", errors: error.issues });
+    }
+    console.error("PUT /users/:id error", error);
+    res.status(500).json({ message: "Failed to update user" });
+  }
+});
+
 r.get("/:id/suggested", async (req, res) => {
   try {
     const limit = Number(req.query.limit ?? 5);
