@@ -11,6 +11,9 @@ import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
 import allergiesRouter from "./allergies";
 import nutritionRouter from "./nutrition";
+import dmRouter from "./dm";
+// TEMPORARILY DISABLED: Clubs route requires database tables (clubs, clubMemberships, badges, etc.)
+// import clubsRouter from "./clubs";
 
 // AUTH ROUTES
 import authRouter from "./auth";
@@ -69,6 +72,13 @@ r.use("/allergies", allergiesRouter);
 // Nutrition - prefixed
 r.use("/nutrition", nutritionRouter);
 
+// DM (Direct Messages) - prefixed
+r.use("/dm", dmRouter);
+
+// TEMPORARILY DISABLED: Clubs routes require database migration
+// // Clubs - prefixed
+// r.use("/clubs", clubsRouter);
+
 // Integrations with explicit prefixes
 r.use("/lookup", lookupRouter);
 r.use("/export", exportRouter);
@@ -103,6 +113,8 @@ if (process.env.NODE_ENV !== "production") {
         "/drinks/*",
         "/allergies/*",
         "/nutrition/*",
+        "/dm/*",
+        // "/clubs/*", // DISABLED: requires migration
         "/lookup/*",
         "/export/*",
         "/google/*",
