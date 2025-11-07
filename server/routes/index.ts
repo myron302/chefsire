@@ -9,6 +9,8 @@ import pantryRouter from "./pantry";
 import marketplaceRouter from "./marketplace";
 import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
+import allergiesRouter from "./allergies";
+import nutritionRouter from "./nutrition";
 
 // AUTH ROUTES
 import authRouter from "./auth";
@@ -61,6 +63,12 @@ r.use("/substitutions", substitutionsRouter);
 // Drinks - prefixed
 r.use("/drinks", drinksRouter);
 
+// Allergies - prefixed
+r.use("/allergies", allergiesRouter);
+
+// Nutrition - prefixed
+r.use("/nutrition", nutritionRouter);
+
 // Integrations with explicit prefixes
 r.use("/lookup", lookupRouter);
 r.use("/export", exportRouter);
@@ -93,6 +101,8 @@ if (process.env.NODE_ENV !== "production") {
         "/marketplace/*",
         "/substitutions/*",
         "/drinks/*",
+        "/allergies/*",
+        "/nutrition/*",
         "/lookup/*",
         "/export/*",
         "/google/*",

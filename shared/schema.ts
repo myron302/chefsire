@@ -282,6 +282,86 @@ export const nutritionLogs = pgTable(
   })
 );
 
+/* ===== ALLERGEN MANAGEMENT ===== */
+export const familyMembers = pgTable(
+  "family_members",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    name: text("name").notNull(),
+    relationship: text("relationship"),
+    dateOfBirth: timestamp("date_of_birth"),
+    species: text("species").default("human"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    userIdx: index("family_members_user_idx").on(table.userId),
+  })
+);
+
+export const allergenProfiles = pgTable(
+  "allergen_profiles",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    familyMemberId: varchar("family_member_id").references(() => familyMembers.id, { onDelete: "cascade" }).notNull(),
+    allergen: text("allergen").notNull(),
+    severity: text("severity").notNull(),
+    diagnosedBy: text("diagnosed_by"),
+    diagnosedDate: timestamp("diagnosed_date"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    familyMemberIdx: index("allergen_profiles_family_member_idx").on(table.familyMemberId),
+    allergenIdx: index("allergen_profiles_allergen_idx").on(table.allergen),
+  })
+);
+
+export const recipeAllergens = pgTable(
+  "recipe_allergens",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    recipeId: varchar("recipe_id").references(() => recipes.id, { onDelete: "cascade" }).notNull(),
+    allergens: jsonb("allergens").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    recipeIdx: index("recipe_allergens_recipe_idx").on(table.recipeId),
+  })
+);
+
+export const userSubstitutionPreferences = pgTable(
+  "user_substitution_preferences",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    originalIngredient: text("original_ingredient").notNull(),
+    substitutes: jsonb("substitutes").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    reason: text("reason"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    userIdx: index("user_sub_prefs_user_idx").on(table.userId),
+    ingredientIdx: index("user_sub_prefs_ingredient_idx").on(table.originalIngredient),
+  })
+);
+
+export const productAllergens = pgTable(
+  "product_allergens",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    barcode: text("barcode").notNull().unique(),
+    productName: text("product_name").notNull(),
+    allergens: jsonb("allergens").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    mayContain: jsonb("may_contain").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    barcodeIdx: index("product_allergens_barcode_idx").on(table.barcode),
+  })
+);
+
 /* ===== SUBSTITUTIONS ===== */
 export const substitutionIngredients = pgTable(
   "substitution_ingredients",
@@ -626,6 +706,31 @@ export const insertStoreSchema = createInsertSchema(stores).omit({
   updatedAt: true,
 });
 
+export const insertFamilyMemberSchema = createInsertSchema(familyMembers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAllergenProfileSchema = createInsertSchema(allergenProfiles).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertRecipeAllergenSchema = createInsertSchema(recipeAllergens).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertUserSubstitutionPreferenceSchema = createInsertSchema(userSubstitutionPreferences).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertProductAllergenSchema = createInsertSchema(productAllergens).omit({
+  id: true,
+  createdAt: true,
+});
+
 /* =========================================================================
    ===== TYPES
    ========================================================================= */
@@ -671,6 +776,16 @@ export type UserDrinkStats = typeof userDrinkStats.$inferSelect;
 export type InsertUserDrinkStats = z.infer<typeof insertUserDrinkStatsSchema>;
 export type Store = typeof stores.$inferSelect;
 export type InsertStore = z.infer<typeof insertStoreSchema>;
+export type FamilyMember = typeof familyMembers.$inferSelect;
+export type InsertFamilyMember = z.infer<typeof insertFamilyMemberSchema>;
+export type AllergenProfile = typeof allergenProfiles.$inferSelect;
+export type InsertAllergenProfile = z.infer<typeof insertAllergenProfileSchema>;
+export type RecipeAllergen = typeof recipeAllergens.$inferSelect;
+export type InsertRecipeAllergen = z.infer<typeof insertRecipeAllergenSchema>;
+export type UserSubstitutionPreference = typeof userSubstitutionPreferences.$inferSelect;
+export type InsertUserSubstitutionPreference = z.infer<typeof insertUserSubstitutionPreferenceSchema>;
+export type ProductAllergen = typeof productAllergens.$inferSelect;
+export type InsertProductAllergen = z.infer<typeof insertProductAllergenSchema>;
 
 /* ===== NEW TYPE ===== */
 export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
