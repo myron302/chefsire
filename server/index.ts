@@ -1,6 +1,8 @@
 // server/index.ts
 import "dotenv/config";
 import app from "./app";
+import { attachDmRealtime } from "./realtime/dmSocket";
+import { attachNotificationRealtime } from "./realtime/notificationSocket";
 
 const HAS_PASSENGER_PORT = !!process.env.PORT;
 const PORT = Number(process.env.PORT || 3001);
@@ -18,6 +20,13 @@ console.log(
 const server = app.listen(PORT, HOST, () => {
   console.log(`[ChefSire] Listening on http://${HOST}:${PORT}`);
 });
+
+// Attach WebSocket handlers
+attachDmRealtime(server);
+const notificationHelper = attachNotificationRealtime(server);
+
+// Export notification helper for use in other parts of the app
+export { notificationHelper };
 
 // Robust error handling—exit so Passenger restarts us and shows the real log line
 server.on("error", (err: any) => {

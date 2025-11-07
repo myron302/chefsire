@@ -34,6 +34,12 @@ import devMailcheckRouter from "./dev.mailcheck";
 // 🔔 DMs (NEW)
 import dmRouter from "./dm";
 
+// ⚡ Phase 1: Daily Addiction Features
+import notificationsRouter from "./notifications";
+import questsRouter from "./quests";
+import suggestionsRouter from "./suggestions";
+import remixesRouter from "./remixes";
+
 const r = Router();
 
 /**
@@ -78,6 +84,12 @@ r.use(devMailcheckRouter);
 // All DM endpoints will live under /api/dm/*
 r.use("/dm", dmRouter);
 
+// ---- Phase 1: Daily Addiction Features ----
+r.use("/notifications", notificationsRouter);
+r.use("/quests", questsRouter);
+r.use("/suggestions", suggestionsRouter);
+r.use("/remixes", remixesRouter);
+
 // ---- Optional: dev-only route list ----
 if (process.env.NODE_ENV !== "production") {
   r.get("/_routes", (_req, res) => {
@@ -104,7 +116,11 @@ if (process.env.NODE_ENV !== "production") {
         "/stores/*",       // public
         "/stores-crud/*",  // admin
         "/auth/_mail-verify",
-        "/dm/*"            // 🔔 NEW
+        "/dm/*",           // 🔔 NEW
+        "/notifications/*", // ⚡ Phase 1
+        "/quests/*",        // ⚡ Phase 1
+        "/suggestions/*",   // ⚡ Phase 1
+        "/remixes/*"        // ⚡ Phase 1
       ],
     });
   });
