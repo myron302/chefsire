@@ -10,6 +10,7 @@ import { Heart, Clock } from "lucide-react";
 import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 const demoTrendingRecipes = [
   {
@@ -342,12 +343,16 @@ export default function Feed() {
       <aside className="hidden xl:block w-80 p-6 bg-card border-l border-border space-y-8">
         {/* AI Suggestions */}
         <section>
-          <AISuggestions />
+          <ErrorBoundary>
+            <AISuggestions />
+          </ErrorBoundary>
         </section>
 
         {/* Daily Quests */}
         <section>
-          <DailyQuests />
+          <ErrorBoundary>
+            <DailyQuests />
+          </ErrorBoundary>
         </section>
 
         <section className="mb-8">
