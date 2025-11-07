@@ -39,15 +39,21 @@ export default function DailyQuests() {
   const queryClient = useQueryClient();
 
   const {
-    data: quests,
+    data: questsResponse,
     isLoading,
     error,
-  } = useQuery<QuestProgress[]>({
+  } = useQuery<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>({
     queryKey: ["/api/quests/daily", user?.id],
-    queryFn: () => fetchJSON<QuestProgress[]>(`/api/quests/daily/${user?.id}`),
+    queryFn: () => fetchJSON<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>(`/api/quests/daily/${user?.id}`),
     enabled: !!user?.id,
     refetchInterval: 30000, // Refetch every 30 seconds to check for updates
   });
+
+  // Extract and restructure quests array from response
+  const quests = questsResponse?.quests.map(({ progress, quest }) => ({
+    ...progress,
+    quest,
+  }));
 
   const getDifficultyColor = (difficulty: string) => {
     const colors: Record<string, string> = {
@@ -112,8 +118,10 @@ export default function DailyQuests() {
     );
   }
 
-  const activeQuests = quests?.filter((q) => q.status === "active") || [];
-  const completedToday = quests?.filter((q) => q.status === "completed") || [];
+  // Ensure quests is always an array
+  const questsArray = Array.isArray(quests) ? quests : [];
+  const activeQuests = questsArray.filter((q) => q.status === "active");
+  const completedToday = questsArray.filter((q) => q.status === "completed");
 
   return (
     <Card className="w-full">
@@ -140,7 +148,7 @@ export default function DailyQuests() {
           </div>
         ) : (
           <>
-            {quests?.map((questProgress) => {
+            {questsArray.map((questProgress) => {
               const progressPercent =
                 (questProgress.currentProgress / questProgress.targetProgress) * 100;
               const isCompleted = questProgress.status === "completed";
