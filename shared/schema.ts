@@ -878,6 +878,32 @@ export const insertUserBadgeSchema = createInsertSchema(userBadges).omit({
   earnedAt: true,
 });
 
+// Phase 1 insert schemas
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertDailyQuestSchema = createInsertSchema(dailyQuests).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertQuestProgressSchema = createInsertSchema(questProgress).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertRecipeRemixSchema = createInsertSchema(recipeRemixes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAiSuggestionSchema = createInsertSchema(aiSuggestions).omit({
+  id: true,
+  createdAt: true,
+});
+
 /* =========================================================================
    ===== TYPES
    ========================================================================= */
@@ -968,4 +994,255 @@ export type CustomDrinkWithUser = CustomDrink & {
   isLiked?: boolean;
   isSaved?: boolean;
   photos?: DrinkPhoto[];
+};
+
+/* ===== NEW EXTENDED TYPES ===== */
+export type PantryItemWithDetails = PantryItemEnhanced & {
+  barcodeData?: BarcodeLookup;
+  reminders?: ExpiryReminder[];
+};
+
+export type HouseholdWithMembers = Household & {
+  owner: User;
+  members: (HouseholdMember & { user: User })[];
+};
+
+export type FamilyMemberWithAllergens = FamilyMember & {
+  allergens: AllergenProfile[];
+};
+
+export type RecipeWithAllergens = Recipe & {
+  allergens: RecipeAllergen[];
+  isSafeFor?: { familyMemberId: string; memberName: string }[];
+};
+
+export type RecipeWithMatch = Recipe & {
+  matchScore?: number;
+  matchingIngredients?: string[];
+  missingIngredients?: string[];
+};
+
+export type MealPlanBlueprintWithCreator = MealPlanBlueprint & {
+  creator: User;
+  currentVersionData?: BlueprintVersion;
+  hasPurchased?: boolean;
+};
+
+export type MealPlanPurchaseWithDetails = MealPlanPurchase & {
+  blueprint: MealPlanBlueprint;
+  version: BlueprintVersion;
+  buyer: User;
+};
+
+export type MealPlanReviewWithUser = MealPlanReview & {
+  user: User;
+};
+
+export type ClubWithDetails = Club & {
+  owner: User;
+  isMember?: boolean;
+  membershipStatus?: string;
+};
+
+export type ClubPostWithUser = ClubPost & {
+  user: User;
+  recipe?: Recipe;
+  isLiked?: boolean;
+};
+
+export type ChallengeWithProgress = Challenge & {
+  creator: User;
+  userProgress?: ChallengeProgress;
+  isJoined?: boolean;
+};
+
+export type ChallengeProgressWithDetails = ChallengeProgress & {
+  challenge: Challenge;
+  user: User;
+};
+
+export type BadgeWithEarnedInfo = Badge & {
+  earnedAt?: string;
+  source?: string;
+};
+
+/* =========================================================================
+   ===== PHASE 1: DAILY ADDICTION FEATURES
+   ========================================================================= */
+
+// Notifications - Real-time user notifications
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    type: text("type").notNull(), // follow, like, comment, badge_earned, quest_completed, friend_activity, suggestion
+    title: text("title").notNull(),
+    message: text("message").notNull(),
+    imageUrl: text("image_url"),
+    linkUrl: text("link_url"),
+    metadata: jsonb("metadata").$type<Record<string, any>>().default(sql`'{}'::jsonb`),
+    read: boolean("read").default(false),
+    readAt: timestamp("read_at"),
+    priority: text("priority").default("normal"), // low, normal, high, urgent
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    userIdx: index("notifications_user_idx").on(table.userId),
+    readIdx: index("notifications_read_idx").on(table.read),
+    typeIdx: index("notifications_type_idx").on(table.type),
+    createdIdx: index("notifications_created_idx").on(table.createdAt),
+  })
+);
+
+// Daily Quests - Quick daily missions for engagement
+export const dailyQuests = pgTable(
+  "daily_quests",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    slug: text("slug").notNull().unique(),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    questType: text("quest_type").notNull(), // make_drink, try_category, use_ingredient, social_action, streak_milestone
+    category: text("category"), // drinks category if applicable
+    targetValue: integer("target_value").default(1), // how many to complete
+    xpReward: integer("xp_reward").default(50),
+    badgeReward: varchar("badge_reward").references(() => badges.id),
+    difficulty: text("difficulty").default("easy"), // easy, medium, hard
+    isActive: boolean("is_active").default(true),
+    recurringPattern: text("recurring_pattern"), // daily, weekly, weekend_only, weekday_only
+    metadata: jsonb("metadata").$type<{
+      ingredient?: string;
+      drinkCategory?: string;
+      weatherCondition?: string;
+      timeOfDay?: string;
+      requiredAction?: string;
+    }>().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex("daily_quest_slug_idx").on(table.slug),
+    activeIdx: index("daily_quest_active_idx").on(table.isActive),
+    typeIdx: index("daily_quest_type_idx").on(table.questType),
+  })
+);
+
+// Quest Progress - Track user daily quest completion
+export const questProgress = pgTable(
+  "quest_progress",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    questId: varchar("quest_id").references(() => dailyQuests.id, { onDelete: "cascade" }).notNull(),
+    date: timestamp("date").notNull(), // which day this quest was active for user
+    currentProgress: integer("current_progress").default(0),
+    targetProgress: integer("target_progress").notNull(),
+    status: text("status").default("active"), // active, completed, expired
+    completedAt: timestamp("completed_at"),
+    xpEarned: integer("xp_earned").default(0),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    userDateIdx: index("quest_progress_user_date_idx").on(table.userId, table.date),
+    questUserIdx: index("quest_progress_quest_user_idx").on(table.questId, table.userId),
+    statusIdx: index("quest_progress_status_idx").on(table.status),
+  })
+);
+
+// Recipe Remixes - Track recipe forks and variations
+export const recipeRemixes = pgTable(
+  "recipe_remixes",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    originalRecipeId: varchar("original_recipe_id").references(() => recipes.id).notNull(),
+    remixedRecipeId: varchar("remixed_recipe_id").references(() => recipes.id).notNull(),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    remixType: text("remix_type").default("variation"), // variation, dietary_conversion, portion_adjustment, ingredient_swap
+    changes: jsonb("changes").$type<{
+      addedIngredients?: string[];
+      removedIngredients?: string[];
+      modifiedIngredients?: Array<{ original: string; new: string; reason?: string }>;
+      nutritionChanges?: Record<string, number>;
+      prepTimeChange?: number;
+      difficultyChange?: string;
+      notes?: string;
+    }>().default(sql`'{}'::jsonb`),
+    likesCount: integer("likes_count").default(0),
+    savesCount: integer("saves_count").default(0),
+    remixCount: integer("remix_count").default(0), // how many times this remix was remixed
+    isPublic: boolean("is_public").default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    originalIdx: index("recipe_remix_original_idx").on(table.originalRecipeId),
+    remixedIdx: index("recipe_remix_remixed_idx").on(table.remixedRecipeId),
+    userIdx: index("recipe_remix_user_idx").on(table.userId),
+    publicIdx: index("recipe_remix_public_idx").on(table.isPublic),
+  })
+);
+
+// AI Suggestions - Smart daily personalized suggestions
+export const aiSuggestions = pgTable(
+  "ai_suggestions",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    date: timestamp("date").notNull(),
+    suggestionType: text("suggestion_type").notNull(), // morning_drink, post_workout, nutrition_gap, weather_based, mood_based
+    recipeId: varchar("recipe_id").references(() => recipes.id),
+    customDrinkId: varchar("custom_drink_id").references(() => customDrinks.id),
+    title: text("title").notNull(),
+    reason: text("reason").notNull(), // why this suggestion was made
+    confidence: decimal("confidence", { precision: 3, scale: 2 }), // 0.00-1.00
+    metadata: jsonb("metadata").$type<{
+      weather?: { temp: number; condition: string; };
+      nutritionGap?: { nutrient: string; current: number; target: number; };
+      mood?: string;
+      timeOfDay?: string;
+      recentActivity?: string;
+    }>().default(sql`'{}'::jsonb`),
+    viewed: boolean("viewed").default(false),
+    viewedAt: timestamp("viewed_at"),
+    accepted: boolean("accepted").default(false), // did user make this drink?
+    acceptedAt: timestamp("accepted_at"),
+    dismissed: boolean("dismissed").default(false),
+    dismissedAt: timestamp("dismissed_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    userDateIdx: index("ai_suggestions_user_date_idx").on(table.userId, table.date),
+    typeIdx: index("ai_suggestions_type_idx").on(table.suggestionType),
+    viewedIdx: index("ai_suggestions_viewed_idx").on(table.viewed),
+  })
+);
+
+/* =========================================================================
+   ===== PHASE 1 TYPES
+   ========================================================================= */
+export type Notification = typeof notifications.$inferSelect;
+export type DailyQuest = typeof dailyQuests.$inferSelect;
+export type QuestProgress = typeof questProgress.$inferSelect;
+export type RecipeRemix = typeof recipeRemixes.$inferSelect;
+export type AiSuggestion = typeof aiSuggestions.$inferSelect;
+
+export type NotificationWithDetails = Notification & {
+  relatedUser?: User;
+  relatedRecipe?: Recipe;
+};
+
+export type QuestProgressWithQuest = QuestProgress & {
+  quest: DailyQuest;
+};
+
+export type RecipeRemixWithDetails = RecipeRemix & {
+  originalRecipe: Recipe;
+  remixedRecipe: Recipe;
+  user: User;
+  isLiked?: boolean;
+  isSaved?: boolean;
+};
+
+export type AiSuggestionWithRecipe = AiSuggestion & {
+  recipe?: Recipe;
+  customDrink?: CustomDrink;
 };

@@ -31,6 +31,12 @@ import storesRouter from "./stores-crud";
 // Square (subscriptions / checkout links)
 import squareRouter from "./stores";
 
+// ⚡ Phase 1: Daily Addiction Features
+import notificationsRouter from "./notifications";
+import questsRouter from "./quests";
+import suggestionsRouter from "./suggestions";
+import remixesRouter from "./remixes";
+
 const r = Router();
 
 /**
@@ -93,6 +99,12 @@ r.use("/stores", storesRouter);
 // Square (payments/subscriptions)
 r.use("/square", squareRouter);
 
+// ⚡ Phase 1: Daily Addiction Features
+r.use("/notifications", notificationsRouter);
+r.use("/quests", questsRouter);
+r.use("/suggestions", suggestionsRouter);
+r.use("/remixes", remixesRouter);
+
 // Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {
   r.get("/_routes", (_req, res) => {
@@ -119,6 +131,10 @@ if (process.env.NODE_ENV !== "production") {
         "/competitions/*",
         "/stores/*",
         "/square/*",
+        "/notifications/*", // ⚡ Phase 1
+        "/quests/*",        // ⚡ Phase 1
+        "/suggestions/*",   // ⚡ Phase 1
+        "/remixes/*"        // ⚡ Phase 1
       ],
     });
   });
