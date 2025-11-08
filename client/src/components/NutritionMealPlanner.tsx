@@ -36,7 +36,7 @@ const NutritionMealPlanner = () => {
       fetchDailyNutrition();
       fetchGroceryList();
     }
-  }, [selectedDate, isPremium]);
+  }, [selectedDate, isPremium, user]);
 
   const fetchUserData = async () => {
     try {
