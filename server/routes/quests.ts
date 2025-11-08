@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { and, eq, desc, gte, sql } from "drizzle-orm";
 import { db } from "../db";
-import { dailyQuests, questProgress, userDrinkStats } from "../../shared/schema";
+import { dailyQuests, questProgress, userDrinkStats, notifications } from "../../shared/schema";
 import { requireAuth } from "../middleware";
 
 const router = Router();
@@ -136,6 +136,22 @@ router.post("/:questId/progress", requireAuth, async (req, res) => {
       .where(eq(dailyQuests.id, questId))
       .limit(1);
 
+    // Create notification for quest completion
+    if (isComplete) {
+      await db.insert(notifications).values({
+        userId,
+        type: "quest_complete",
+        title: "Quest Completed! 🎉",
+        message: `You completed "${quest?.title || "a quest"}" and earned ${progress.xpEarned} XP!`,
+        linkUrl: "/quests",
+        metadata: {
+          questId,
+          xpEarned: progress.xpEarned,
+        },
+        priority: "high",
+      });
+    }
+
     return res.json({
       progress: updated,
       quest,
@@ -206,6 +222,19 @@ async function assignDailyQuests(userId: string) {
 
   if (progressEntries.length > 0) {
     await db.insert(questProgress).values(progressEntries);
+
+    // Create notification for daily quests
+    await db.insert(notifications).values({
+      userId,
+      type: "daily_quests",
+      title: "New Daily Quests Available! 🎯",
+      message: `${questsToAssign.length} new quest${questsToAssign.length > 1 ? 's are' : ' is'} waiting for you!`,
+      linkUrl: "/quests",
+      metadata: {
+        questCount: questsToAssign.length,
+        questIds: questsToAssign.map(q => q.id),
+      },
+    });
   }
 
   return questsToAssign;

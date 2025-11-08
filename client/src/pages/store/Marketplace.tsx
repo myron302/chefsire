@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Editor, Frame, Element } from "@craftjs/core";
+import { Editor, Frame, Element, useEditor } from "@craftjs/core";
 import { Search, Filter, ShoppingCart, Star, MapPin, Package, Plus, TrendingUp, Users, DollarSign, Store, Crown, AlertCircle } from "lucide-react";
 import { Button as UIButton } from "@/components/ui/button";
 import { Card as UICard } from "@/components/ui/card";
@@ -34,12 +34,53 @@ const customRenderNode = ({ render }) => (
   </div>
 );
 
+// Inner component to access Editor state
+const SaveButton = ({ onSave, saving }) => {
+  const { query } = useEditor();
+
+  const handleClick = () => {
+    const json = query.serialize();
+    onSave(json);
+  };
+
+  return (
+    <UIButton
+      onClick={handleClick}
+      className="bg-orange-500 text-white hover:bg-orange-600"
+      disabled={saving}
+    >
+      {saving ? "Saving..." : "Save & Publish"}
+    </UIButton>
+  );
+};
+
 const StoreBuilder = ({ onBack, storeId }) => {
-  const [layout, setLayout] = useState(null);
+  const [initialLayout, setInitialLayout] = useState(null);
   const [saving, setSaving] = useState(false);
   const { user } = useUser();
 
-  const handleSave = async () => {
+  // Load existing layout when component mounts
+  useEffect(() => {
+    const loadLayout = async () => {
+      if (!storeId) return;
+      try {
+        const response = await fetch(`/api/stores-crud/${storeId}`, {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.store?.layout) {
+            setInitialLayout(data.store.layout);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading layout:", error);
+      }
+    };
+    loadLayout();
+  }, [storeId]);
+
+  const handleSave = async (editorState) => {
     if (!storeId || !user) {
       alert("Please create a store first");
       return;
@@ -47,9 +88,6 @@ const StoreBuilder = ({ onBack, storeId }) => {
 
     setSaving(true);
     try {
-      // Get the Craft.js state
-      const editorState = layout; // This will be the serialized Craft.js tree
-
       // Save to API
       const response = await fetch(`/api/stores-crud/${storeId}/layout`, {
         method: 'PATCH',
@@ -78,24 +116,18 @@ const StoreBuilder = ({ onBack, storeId }) => {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <button onClick={onBack} className="text-gray-600 hover:text-gray-900 mb-4 flex items-center">
-              ← Back to Dashboard
-            </button>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Store Builder</h1>
-            <p className="text-gray-600">Customize your storefront with drag-and-drop</p>
-          </div>
-          <UIButton
-            onClick={handleSave}
-            className="bg-orange-500 text-white hover:bg-orange-600"
-            disabled={saving}
-          >
-            {saving ? "Saving..." : "Save & Publish"}
-          </UIButton>
-        </div>
-
         <Editor resolver={resolver} onRender={customRenderNode}>
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <button onClick={onBack} className="text-gray-600 hover:text-gray-900 mb-4 flex items-center">
+                ← Back to Dashboard
+              </button>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Store Builder</h1>
+              <p className="text-gray-600">Customize your storefront with drag-and-drop</p>
+            </div>
+            <SaveButton onSave={handleSave} saving={saving} />
+          </div>
+
           <div className="flex gap-4">
             <div className="w-64 bg-white p-4 rounded-lg shadow">
               <h2 className="text-lg font-bold mb-4">Add Elements</h2>
@@ -117,7 +149,7 @@ const StoreBuilder = ({ onBack, storeId }) => {
 
             <div className="flex-1 bg-white p-4 rounded-lg shadow">
               <h2 className="text-lg font-bold mb-4">Your Store Preview</h2>
-              <Frame json={layout}>
+              <Frame json={initialLayout}>
                 <Element is={Container} canvas className="min-h-[500px] border border-dashed border-gray-300">
                   <Text text="Drop elements here to build your store" />
                 </Element>
