@@ -3,16 +3,14 @@ import { Router } from "express";
 import { and, eq, desc } from "drizzle-orm";
 import { db } from "../db";
 import { notifications } from "../../shared/schema";
+import { requireAuth } from "../middleware";
 
 const router = Router();
 
 // GET /api/notifications - Get user's notifications
-router.get("/", async (req, res) => {
+router.get("/", requireAuth, async (req, res) => {
   try {
-    const userId = req.query.userId as string;
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
+    const userId = req.user!.id;
 
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
@@ -50,12 +48,9 @@ router.get("/", async (req, res) => {
 });
 
 // GET /api/notifications/unread-count - Get unread count
-router.get("/unread-count", async (req, res) => {
+router.get("/unread-count", requireAuth, async (req, res) => {
   try {
-    const userId = req.query.userId as string;
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
+    const userId = req.user!.id;
 
     const unreadNotifs = await db
       .select()
@@ -69,14 +64,10 @@ router.get("/unread-count", async (req, res) => {
 });
 
 // PUT /api/notifications/:id/read - Mark notification as read
-router.put("/:id/read", async (req, res) => {
+router.put("/:id/read", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.body.userId;
-
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
+    const userId = req.user!.id;
 
     const [updated] = await db
       .update(notifications)
@@ -95,13 +86,9 @@ router.put("/:id/read", async (req, res) => {
 });
 
 // PUT /api/notifications/mark-all-read - Mark all as read
-router.put("/mark-all-read", async (req, res) => {
+router.put("/mark-all-read", requireAuth, async (req, res) => {
   try {
-    const userId = req.body.userId;
-
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
+    const userId = req.user!.id;
 
     await db
       .update(notifications)
@@ -115,14 +102,10 @@ router.put("/mark-all-read", async (req, res) => {
 });
 
 // DELETE /api/notifications/:id - Delete notification
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.query.userId as string;
-
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
+    const userId = req.user!.id;
 
     const [deleted] = await db
       .delete(notifications)
@@ -140,13 +123,9 @@ router.delete("/:id", async (req, res) => {
 });
 
 // DELETE /api/notifications/clear-all - Clear all notifications
-router.delete("/clear-all", async (req, res) => {
+router.delete("/clear-all", requireAuth, async (req, res) => {
   try {
-    const userId = req.query.userId as string;
-
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
+    const userId = req.user!.id;
 
     await db
       .delete(notifications)

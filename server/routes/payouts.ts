@@ -25,7 +25,6 @@ const getSquareClient = () => {
       : Environment.Sandbox
   });
 };
-
 /**
  * SELLER PAYOUT SYSTEM
  * --------------------

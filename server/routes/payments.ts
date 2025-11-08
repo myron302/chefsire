@@ -26,7 +26,6 @@ const getSquareClient = () => {
       : Environment.Sandbox
   });
 };
-
 /**
  * SQUARE PAYMENT PROCESSING
  * -------------------------

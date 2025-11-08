@@ -51,6 +51,11 @@ import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
 import Marketplace from "@/pages/store/Marketplace";
 import StoreViewer from "@/pages/store/StoreViewer";
 import StoreDashboard from "@/pages/store/StoreDashboard";
+import SellerDashboard from "@/pages/store/SellerDashboard";
+
+// Checkout & Products
+import CheckoutPage from "@/pages/checkout/CheckoutPage";
+import ProductPage from "@/pages/marketplace/ProductPage";
 
 // Settings page
 import Settings from "@/pages/settings";
@@ -138,6 +143,9 @@ import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole"
 import CreateCompetitionPage from "@/pages/competitions/CreateCompetitionPage";
 import CompetitionRoomPage from "@/pages/competitions/CompetitionRoomPage";
 import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage";
+
+// Leaderboards
+import LeaderboardPage from "@/pages/leaderboard/LeaderboardPage";
 
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
@@ -312,6 +320,9 @@ function AppRouter() {
         <Route path="/competitions/:id" component={CompetitionRoomPage} />
         <Route path="/competitions" component={CompetitionLibraryPage} />
 
+        {/* Leaderboards */}
+        <Route path="/leaderboard" component={LeaderboardPage} />
+
         {/* Recipes */}
         <Route path="/recipes/baby-food/:rest*">
           {() => <RecipesSection />}
@@ -344,8 +355,12 @@ function AppRouter() {
         <Route path="/clubs/:id" component={ClubDetailPage} />
         <Route path="/clubs" component={ClubsPage} />
 
-        <Route path="/store" component={Marketplace} />
+        {/* Marketplace & Store Routes */}
+        <Route path="/checkout" component={CheckoutPage} />
+        <Route path="/marketplace/product/:id" component={ProductPage} />
         <Route path="/marketplace" component={Marketplace} />
+        <Route path="/store/dashboard" component={SellerDashboard} />
+        <Route path="/store" component={Marketplace} />
 
         <Route path="/catering" component={CateringMarketplace} />
         <Route path="/catering/wedding-planning" component={WeddingPlanning} />

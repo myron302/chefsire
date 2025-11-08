@@ -84,7 +84,7 @@ r.get("/marketplace/products/:id", async (req, res) => {
     if (!prod) return res.status(404).json({ message: "Product not found" });
     res.json(prod);
   } catch (error) {
-    console.error("marketplace/get error", e);
+    console.error("marketplace/get error", error);
     res.status(500).json({ message: "Failed to fetch product" });
   }
 });
@@ -125,7 +125,7 @@ r.get("/marketplace/sellers/:sellerId/products", async (req, res) => {
     const items = await storage.getUserProducts(req.params.sellerId, offset, limit);
     res.json({ products: items, total: items.length, sellerId: req.params.sellerId });
   } catch (error) {
-    console.error("marketplace/seller products error", e);
+    console.error("marketplace/seller products error", error);
     res.status(500).json({ message: "Failed to fetch seller products" });
   }
 });
@@ -164,7 +164,7 @@ r.delete("/marketplace/products/:id", requireAuth, async (req, res) => {
     if (!ok) return res.status(404).json({ message: "Product not found" });
     res.json({ message: "Product deactivated" });
   } catch (error) {
-    console.error("marketplace/delete error", e);
+    console.error("marketplace/delete error", error);
     res.status(500).json({ message: "Failed to delete product" });
   }
 });
@@ -193,7 +193,7 @@ r.get("/marketplace/storefront/:username", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("marketplace/storefront error", e);
+    console.error("marketplace/storefront error", error);
     res.status(500).json({ message: "Failed to fetch storefront" });
   }
 });
@@ -212,7 +212,7 @@ r.get("/marketplace/categories", async (_req, res) => {
     };
     res.json({ categories: counts, totalProducts: all.length });
   } catch (error) {
-    console.error("marketplace/categories error", e);
+    console.error("marketplace/categories error", error);
     res.status(500).json({ message: "Failed to fetch categories" });
   }
 });
@@ -235,7 +235,7 @@ r.get("/marketplace/sellers/:sellerId/analytics", async (req, res) => {
     };
     res.json(analytics);
   } catch (error) {
-    console.error("marketplace/analytics error", e);
+    console.error("marketplace/analytics error", error);
     res.status(500).json({ message: "Failed to fetch analytics" });
   }
 });
