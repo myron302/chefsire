@@ -40,6 +40,8 @@ import remixesRouter from "./remixes";
 // 💰 Marketplace & Monetization
 import subscriptionsRouter from "./subscriptions";
 import ordersRouter from "./orders";
+import paymentsRouter from "./payments";
+import payoutsRouter from "./payouts";
 
 const r = Router();
 
@@ -112,6 +114,8 @@ r.use("/remixes", remixesRouter);
 // 💰 Marketplace & Monetization
 r.use("/subscriptions", subscriptionsRouter);
 r.use("/orders", ordersRouter);
+r.use("/payments", paymentsRouter);
+r.use("/payouts", payoutsRouter);
 
 // Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {
@@ -144,7 +148,9 @@ if (process.env.NODE_ENV !== "production") {
         "/suggestions/*",   // ⚡ Phase 1
         "/remixes/*",       // ⚡ Phase 1
         "/subscriptions/*", // 💰 Monetization
-        "/orders/*"         // 💰 Monetization
+        "/orders/*",        // 💰 Monetization
+        "/payments/*",      // 💰 Square payments
+        "/payouts/*"        // 💰 Seller payouts
       ],
     });
   });
