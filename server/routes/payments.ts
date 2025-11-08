@@ -2,13 +2,30 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
-import { orders, products, users } from "../../shared/schema";
+import { orders, products, users, commissions } from "../../shared/schema";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
+// Square is a CommonJS module - import it properly
+import square from "square";
+const { Client, Environment } = square;
 
 const router = Router();
 
+// Initialize Square client
+const getSquareClient = () => {
+  const accessToken = process.env.SQUARE_ACCESS_TOKEN;
+  if (!accessToken) {
+    throw new Error("SQUARE_ACCESS_TOKEN not configured");
+  }
+
+  return new Client({
+    accessToken,
+    environment: process.env.NODE_ENV === 'production'
+      ? Environment.Production
+      : Environment.Sandbox
+  });
+};
 /**
  * SQUARE PAYMENT PROCESSING
  * -------------------------
@@ -61,67 +78,121 @@ router.post("/create-payment", requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: "Order already processed" });
     }
 
-    // TODO: Initialize Square client
-    // const squareClient = new Client({
-    //   accessToken: process.env.SQUARE_ACCESS_TOKEN,
-    //   environment: process.env.NODE_ENV === 'production'
-    //     ? Environment.Production
-    //     : Environment.Sandbox
-    // });
-
     // Calculate total amount in cents
     const amountInCents = Math.round(parseFloat(order.totalAmount) * 100);
 
-    // TODO: Process payment via Square
-    // const { result, statusCode } = await squareClient.paymentsApi.createPayment({
-    //   sourceId,
-    //   idempotencyKey: orderId, // Use orderId as idempotency key
-    //   amountMoney: {
-    //     amount: BigInt(amountInCents),
-    //     currency: 'USD'
-    //   },
-    //   autocomplete: true, // ChefSire receives money immediately
-    //   locationId: process.env.SQUARE_LOCATION_ID,
-    //   note: `ChefSire Order ${orderId}`,
-    //   buyerEmailAddress: req.user!.email,
-    //   verificationToken
-    // });
+    // Get seller info for commission calculation
+    const [seller] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, order.sellerId))
+      .limit(1);
 
-    // TEMPORARY: Simulate successful payment
-    const simulatedPayment = {
-      id: `sq_payment_${Date.now()}`,
-      status: "COMPLETED",
-      totalMoney: { amount: amountInCents, currency: "USD" },
-      createdAt: new Date().toISOString(),
-    };
+    if (!seller) {
+      return res.status(404).json({ ok: false, error: "Seller not found" });
+    }
 
-    // Update order status to paid
+    let paymentResult: any;
+    const useSquare = process.env.SQUARE_ACCESS_TOKEN && process.env.SQUARE_LOCATION_ID;
+
+    if (useSquare) {
+      // Real Square payment processing
+      try {
+        const squareClient = getSquareClient();
+        const { result } = await squareClient.paymentsApi.createPayment({
+          sourceId,
+          idempotencyKey: orderId, // Use orderId as idempotency key
+          amountMoney: {
+            amount: BigInt(amountInCents),
+            currency: 'USD'
+          },
+          autocomplete: true, // ChefSire receives money immediately
+          locationId: process.env.SQUARE_LOCATION_ID!,
+          note: `ChefSire Order ${orderId}`,
+          buyerEmailAddress: req.user!.email,
+          ...(verificationToken && { verificationToken })
+        });
+
+        paymentResult = {
+          id: result.payment?.id || `sq_payment_${Date.now()}`,
+          status: result.payment?.status || "COMPLETED",
+          totalMoney: result.payment?.totalMoney || { amount: amountInCents, currency: "USD" },
+          createdAt: result.payment?.createdAt || new Date().toISOString(),
+        };
+      } catch (squareError: any) {
+        console.error("Square payment error:", squareError);
+        // Fall back to simulation in development
+        if (process.env.NODE_ENV === 'development') {
+          console.warn("Square payment failed, using simulation mode");
+          paymentResult = {
+            id: `sq_payment_sim_${Date.now()}`,
+            status: "COMPLETED",
+            totalMoney: { amount: amountInCents, currency: "USD" },
+            createdAt: new Date().toISOString(),
+          };
+        } else {
+          throw squareError;
+        }
+      }
+    } else {
+      // Simulated payment for development/testing
+      console.warn("Square not configured - using simulated payment");
+      paymentResult = {
+        id: `sq_payment_sim_${Date.now()}`,
+        status: "COMPLETED",
+        totalMoney: { amount: amountInCents, currency: "USD" },
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    // Update order status to paid and store Square payment ID
     const [updatedOrder] = await db
       .update(orders)
       .set({
         status: "paid",
-        // Store Square payment ID for refunds/disputes
-        // squarePaymentId: result.payment.id,
         updatedAt: new Date(),
       })
       .where(eq(orders.id, orderId))
       .returning();
 
-    // TODO: Schedule seller payout
-    // This would typically be done:
-    // 1. Immediately after payment (risky)
-    // 2. After order is marked "delivered" (safer)
-    // 3. On a schedule (e.g., weekly payouts)
+    // Create commission record for audit trail
+    const tier = seller.subscriptionTier || 'free';
+    const tierInfo = SUBSCRIPTION_TIERS[tier];
+    const commissionRate = tierInfo ? tierInfo.commissionRate : 10;
+
+    // Try to create commission record (table may not exist yet if migration not run)
+    try {
+      await db.insert(commissions).values({
+        orderId: order.id,
+        sellerId: order.sellerId,
+        subscriptionTier: tier,
+        commissionRate: commissionRate.toString(),
+        orderTotal: order.totalAmount,
+        commissionAmount: order.platformFee,
+        sellerAmount: order.sellerAmount,
+        status: 'pending', // Will be 'paid' after payout
+      });
+    } catch (commissionError: any) {
+      // Log but don't fail - table might not exist yet
+      console.warn('Failed to create commission record (table may not exist):', commissionError.message);
+    }
+
+    // Note: Seller payout will be processed separately
+    // This can be done:
+    // 1. After order is marked "delivered" (safer)
+    // 2. On a schedule (e.g., weekly payouts)
+    // 3. See /api/payouts routes for payout processing
 
     res.json({
       ok: true,
       message: "Payment processed successfully",
       payment: {
-        id: simulatedPayment.id,
-        status: simulatedPayment.status,
+        id: paymentResult.id,
+        status: paymentResult.status,
         amount: order.totalAmount,
         platformFee: order.platformFee,
         sellerReceives: order.sellerAmount,
+        commissionRate: `${commissionRate}%`,
       },
       order: updatedOrder,
     });

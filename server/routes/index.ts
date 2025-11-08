@@ -154,6 +154,8 @@ if (process.env.NODE_ENV !== "production") {
         "/suggestions/*",   // ⚡ Phase 1
         "/remixes/*",       // ⚡ Phase 1
         "/leaderboard/*",   // ⚡ Gamification
+        "/achievements/*",  // ⚡ Gamification
+        "/streaks/*",       // ⚡ Gamification
         "/subscriptions/*", // 💰 Monetization
         "/orders/*",        // 💰 Monetization
         "/payments/*",      // 💰 Square payments
