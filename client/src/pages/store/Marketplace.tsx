@@ -34,12 +34,45 @@ const customRenderNode = ({ render }) => (
   </div>
 );
 
-const StoreBuilder = ({ onBack }) => {
+const StoreBuilder = ({ onBack, storeId }) => {
   const [layout, setLayout] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const { user } = useUser();
 
   const handleSave = async () => {
-    // TODO: serialize Craft.js tree and save to your /api/stores/:id/layout
-    console.log("Store layout saved");
+    if (!storeId || !user) {
+      alert("Please create a store first");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // Get the Craft.js state
+      const editorState = layout; // This will be the serialized Craft.js tree
+
+      // Save to API
+      const response = await fetch(`/api/stores-crud/${storeId}/layout`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ layout: editorState })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Store layout saved successfully", data);
+        alert("Store layout saved!");
+      } else {
+        const error = await response.json();
+        console.error("Failed to save:", error);
+        alert("Failed to save store layout");
+      }
+    } catch (error) {
+      console.error("Error saving layout:", error);
+      alert("Error saving store layout");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -53,8 +86,12 @@ const StoreBuilder = ({ onBack }) => {
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Store Builder</h1>
             <p className="text-gray-600">Customize your storefront with drag-and-drop</p>
           </div>
-          <UIButton onClick={handleSave} className="bg-orange-500 text-white hover:bg-orange-600">
-            Save & Publish
+          <UIButton
+            onClick={handleSave}
+            className="bg-orange-500 text-white hover:bg-orange-600"
+            disabled={saving}
+          >
+            {saving ? "Saving..." : "Save & Publish"}
           </UIButton>
         </div>
 
