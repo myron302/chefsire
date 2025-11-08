@@ -123,18 +123,18 @@ router.post("/auth/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // Generate JWT token
+    // Create JWT token
     const token = jwt.sign(
       {
         id: user.id,
         email: user.email,
-        username: user.username
+        username: user.username,
       },
       JWT_SECRET,
       { expiresIn: "7d" } // Token expires in 7 days
     );
 
-    // Set cookie
+    // Set token as HTTP-only cookie
     res.cookie("auth_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
