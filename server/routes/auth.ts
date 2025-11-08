@@ -5,11 +5,11 @@ import jwt from "jsonwebtoken";
 import { storage } from "../storage";
 import { AuthService } from "../services/auth.service";
 
-const router = Router();
-
-// JWT secret (same as in middleware)
-const RAW_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || "";
+const RAW_SECRET =
+  process.env.JWT_SECRET || process.env.SESSION_SECRET || "";
 const JWT_SECRET = RAW_SECRET.trim() || "CHEFSIRE_DEV_FALLBACK_SECRET";
+
+const router = Router();
 
 // Map slug values to pretty labels for the space version
 const TITLE_LABELS: Record<string, string> = {
@@ -144,6 +144,7 @@ router.post("/auth/login", async (req, res) => {
 
     res.json({
       success: true,
+      token, // Also send token in response for optional use
       user: {
         id: user.id,
         email: user.email,
@@ -186,6 +187,25 @@ router.get("/auth/verify-email", async (req, res) => {
 });
 
 /**
+ * POST /auth/logout
+ */
+router.post("/auth/logout", async (req, res) => {
+  try {
+    // Clear the auth cookie
+    res.clearCookie("auth_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    });
+
+    res.json({ success: true, message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Error during logout:", error);
+    res.status(500).json({ error: "Logout failed" });
+  }
+});
+
+/**
  * POST /auth/resend-verification
  */
 router.post("/auth/resend-verification", async (req, res) => {
@@ -220,20 +240,6 @@ router.post("/auth/resend-verification", async (req, res) => {
     console.error("Error resending verification:", error);
     res.status(500).json({ error: "Failed to resend verification email" });
   }
-});
-
-/**
- * POST /auth/logout
- */
-router.post("/auth/logout", (req, res) => {
-  // Clear the auth_token cookie
-  res.clearCookie("auth_token", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-  });
-
-  res.json({ success: true, message: "Logged out successfully" });
 });
 
 export default router;
