@@ -1,10 +1,15 @@
 // server/routes/auth.ts - WITH MAILER (won't crash if email fails)
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import { storage } from "../storage";
 import { AuthService } from "../services/auth.service";
 
 const router = Router();
+
+// JWT secret (same as in middleware)
+const RAW_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || "";
+const JWT_SECRET = RAW_SECRET.trim() || "CHEFSIRE_DEV_FALLBACK_SECRET";
 
 // Map slug values to pretty labels for the space version
 const TITLE_LABELS: Record<string, string> = {
@@ -118,12 +123,35 @@ router.post("/auth/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
+    // Create JWT token
+    const token = jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+      },
+      JWT_SECRET,
+      { expiresIn: "7d" } // Token expires in 7 days
+    );
+
+    // Set token as HTTP-only cookie
+    res.cookie("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+    });
+
     res.json({
       success: true,
       user: {
         id: user.id,
         email: user.email,
         username: user.username,
+        displayName: user.displayName,
+        royalTitle: user.royalTitle,
+        avatar: user.avatar,
+        bio: user.bio,
       },
     });
   } catch (error) {
@@ -192,6 +220,20 @@ router.post("/auth/resend-verification", async (req, res) => {
     console.error("Error resending verification:", error);
     res.status(500).json({ error: "Failed to resend verification email" });
   }
+});
+
+/**
+ * POST /auth/logout
+ */
+router.post("/auth/logout", (req, res) => {
+  // Clear the auth_token cookie
+  res.clearCookie("auth_token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+  });
+
+  res.json({ success: true, message: "Logged out successfully" });
 });
 
 export default router;
