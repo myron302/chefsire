@@ -12,7 +12,10 @@ const app = express();
 
 app.set("trust proxy", true);
 
-app.use(cors());
+app.use(cors({
+  credentials: true,
+  origin: process.env.CLIENT_URL || true, // Allow configured origin or all origins in dev
+}));
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(compression());

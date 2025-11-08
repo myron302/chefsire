@@ -158,7 +158,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => persist(null);
+  const logout = async () => {
+    try {
+      // Call server to clear auth cookie
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (e) {
+      console.error("Logout error:", e);
+    } finally {
+      // Always clear local user data
+      persist(null);
+    }
+  };
 
   const updateUser = (updates: Partial<User>) => {
     setUser((prev) => {
