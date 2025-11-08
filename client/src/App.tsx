@@ -52,6 +52,7 @@ import Marketplace from "@/pages/store/Marketplace";
 import StoreViewer from "@/pages/store/StoreViewer";
 import StoreDashboard from "@/pages/store/StoreDashboard";
 import SellerDashboard from "@/pages/store/SellerDashboard";
+import StoreCreatePage from "@/pages/store/StoreCreatePage";
 
 // Checkout & Products
 import CheckoutPage from "@/pages/checkout/CheckoutPage";
@@ -359,7 +360,10 @@ function AppRouter() {
         <Route path="/checkout" component={CheckoutPage} />
         <Route path="/marketplace/product/:id" component={ProductPage} />
         <Route path="/marketplace" component={Marketplace} />
+        <Route path="/store/create" component={StoreCreatePage} />
+        <Route path="/store/setup" component={StoreCreatePage} />
         <Route path="/store/dashboard" component={SellerDashboard} />
+        <Route path="/store/:username" component={StoreViewer} />
         <Route path="/store" component={Marketplace} />
 
         <Route path="/catering" component={CateringMarketplace} />
