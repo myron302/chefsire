@@ -3,6 +3,7 @@ import { Router } from "express";
 import { and, eq, desc, gte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { dailyQuests, questProgress, userDrinkStats } from "../../shared/schema";
+import { requireAuth } from "../middleware";
 
 const router = Router();
 
@@ -21,10 +22,10 @@ router.get("/", async (req, res) => {
   }
 });
 
-// GET /api/quests/daily/:userId - Get today's quests for user
-router.get("/daily/:userId", async (req, res) => {
+// GET /api/quests/daily - Get today's quests for user
+router.get("/daily", requireAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user!.id;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -71,14 +72,11 @@ router.get("/daily/:userId", async (req, res) => {
 });
 
 // POST /api/quests/:questId/progress - Update quest progress
-router.post("/:questId/progress", async (req, res) => {
+router.post("/:questId/progress", requireAuth, async (req, res) => {
   try {
     const { questId } = req.params;
-    const { userId, increment = 1 } = req.body;
-
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
+    const { increment = 1 } = req.body;
+    const userId = req.user!.id;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -150,8 +148,9 @@ router.post("/:questId/progress", async (req, res) => {
 });
 
 // POST /api/quests/create - Create a new quest (admin)
-router.post("/create", async (req, res) => {
+router.post("/create", requireAuth, async (req, res) => {
   try {
+    // TODO: Add admin role check here
     const questData = req.body;
 
     const [quest] = await db
