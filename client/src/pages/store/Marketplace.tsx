@@ -5,6 +5,7 @@ import { Button as UIButton } from "@/components/ui/button";
 import { Card as UICard } from "@/components/ui/card";
 import { useUser } from "@/contexts/UserContext";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 
 // Custom store components for the builder
 const Container = ({ children }) => <div className="p-4 border border-gray-200 rounded">{children}</div>;
@@ -533,6 +534,7 @@ const Marketplace = () => {
 
 const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
   const { user, updateUser } = useUser(); // { subscription, productCount, trialEndDate }
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"products" | "orders" | "analytics" | "store-builder" | "subscription" | "store">(
     "products"
   );
@@ -559,6 +561,43 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
       console.error('Failed to load store:', error);
     } finally {
       setStoreLoading(false);
+    }
+  };
+
+  // Simple trial activation without payment
+  const handleStartTrial = async () => {
+    if (!user) {
+      toast({
+        variant: "destructive",
+        description: "Please log in to start your trial",
+      });
+      return;
+    }
+
+    try {
+      // For now, just update the local user context
+      // In production, you'd call a backend endpoint to record the trial
+      const trialEnds = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      updateUser({ subscription: "pro", trialEndDate: trialEnds.toISOString() });
+
+      setShowUpgradeModal(false);
+
+      toast({
+        description: "🎉 30-day store trial activated! Create your store to start selling.",
+      });
+
+      // Redirect to store creation if they don't have a store
+      setTimeout(() => {
+        if (!userStore) {
+          window.location.href = "/store/create";
+        }
+      }, 1500);
+    } catch (error) {
+      console.error('Error starting trial:', error);
+      toast({
+        variant: "destructive",
+        description: "Failed to start trial. Please try again.",
+      });
     }
   };
 
@@ -652,7 +691,7 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
               </div>
               <p className="mb-4">Start your 30-day free trial to create your store and sell products.</p>
               <div className="flex gap-4">
-                <button onClick={() => handleUpgrade("pro", true)} className="bg-orange-500 text-white px-4 py-2 rounded">
+                <button onClick={handleStartTrial} className="bg-orange-500 text-white px-4 py-2 rounded">
                   Start 30-Day Trial
                 </button>
                 <button onClick={() => setShowUpgradeModal(false)} className="border px-4 py-2 rounded">
