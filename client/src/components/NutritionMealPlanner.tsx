@@ -40,7 +40,11 @@ const NutritionMealPlanner = () => {
 
   const fetchUserData = async () => {
     try {
-      setIsPremium(false); // Set based on actual user subscription
+      // Check if user has paid subscription (any tier except free)
+      const tier = user?.subscriptionTier || 'free';
+      const hasPaidPlan = tier !== 'free';
+      setIsPremium(hasPaidPlan);
+
       setNutritionGoals({
         dailyCalorieGoal: 2000,
         macroGoals: { protein: 150, carbs: 200, fat: 65 }

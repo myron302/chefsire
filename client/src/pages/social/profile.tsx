@@ -223,7 +223,7 @@ export default function Profile() {
 
   // Store (mock)
   const { data: storeData } = useQuery<{ store: Store | null }>({
-    queryKey: ["/api/stores/by-user", profileUserId],
+    queryKey: ["/api/stores/user", profileUserId],
     queryFn: async () => ({
       store: {
         id: "store-1",

@@ -199,7 +199,7 @@ const Marketplace = () => {
         const productsWithStores = await Promise.all(
           (data.products || []).map(async (product: any) => {
             try {
-              const storeResponse = await fetch(`/api/stores/by-user/${product.sellerId}`);
+              const storeResponse = await fetch(`/api/stores/user/${product.sellerId}`);
               if (storeResponse.ok) {
                 const storeData = await storeResponse.json();
                 return { ...product, store: storeData.store };
@@ -260,7 +260,7 @@ const Marketplace = () => {
     
     // Check if user already has a store
     try {
-      const response = await fetch(`/api/stores/by-user/${user.id}`);
+      const response = await fetch(`/api/stores/user/${user.id}`);
       if (response.ok) {
         const data = await response.json();
         if (data.store) {
@@ -550,7 +550,7 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
 
   const loadUserStore = async () => {
     try {
-      const response = await fetch(`/api/stores/by-user/${user.id}`);
+      const response = await fetch(`/api/stores/user/${user.id}`);
       if (response.ok) {
         const data = await response.json();
         setUserStore(data.store);
