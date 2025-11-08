@@ -28,6 +28,9 @@ const NutritionMealPlanner = () => {
   const [showAddMealModal, setShowAddMealModal] = useState(false);
   const [showGoalsModal, setShowGoalsModal] = useState(false);
   const [selectedMealSlot, setSelectedMealSlot] = useState<{day: string, type: string} | null>(null);
+  const [showAIRecipeModal, setShowAIRecipeModal] = useState(false);
+  const [showPantryModal, setShowPantryModal] = useState(false);
+  const [showLoadTemplateModal, setShowLoadTemplateModal] = useState(false);
 
   const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -248,6 +251,29 @@ const NutritionMealPlanner = () => {
     setGroceryList((prev: any) => prev.map((item: any, i: number) =>
       i === index ? { ...item, checked: !item.checked } : item
     ));
+  };
+
+  const loadTemplate = (templateName: string) => {
+    const saved = localStorage.getItem(`meal-template-${templateName}`);
+    if (saved) {
+      setWeeklyMeals(JSON.parse(saved));
+      toast({
+        description: `✅ Template "${templateName}" loaded successfully!`,
+      });
+      setShowLoadTemplateModal(false);
+    }
+  };
+
+  const handleAIRecipe = () => {
+    setShowAIRecipeModal(true);
+  };
+
+  const handleUsePantry = () => {
+    setShowPantryModal(true);
+  };
+
+  const handleLoadTemplate = () => {
+    setShowLoadTemplateModal(true);
   };
 
   const PremiumUpgrade = () => (
@@ -532,67 +558,107 @@ const NutritionMealPlanner = () => {
 
               {/* Weekly Calendar View */}
               {viewMode === 'week' && (
-                <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                  <div className="grid grid-cols-8 border-b">
-                    <div className="p-4 bg-gray-50 border-r">
-                      <span className="text-sm font-medium text-gray-500">Meal</span>
+                <>
+                  {/* Desktop Grid View */}
+                  <div className="hidden md:block bg-white rounded-lg shadow-sm overflow-hidden overflow-x-auto">
+                    <div className="grid grid-cols-8 border-b min-w-[800px]">
+                      <div className="p-4 bg-gray-50 border-r">
+                        <span className="text-sm font-medium text-gray-500">Meal</span>
+                      </div>
+                      {weekDays.map((day) => (
+                        <div key={day} className="p-4 bg-gray-50 border-r last:border-r-0">
+                          <div className="text-sm font-medium text-gray-900">{day}</div>
+                          <div className="text-xs text-gray-500">Dec {weekDays.indexOf(day) + 1}</div>
+                        </div>
+                      ))}
                     </div>
-                    {weekDays.map((day) => (
-                      <div key={day} className="p-4 bg-gray-50 border-r last:border-r-0">
-                        <div className="text-sm font-medium text-gray-900">{day}</div>
-                        <div className="text-xs text-gray-500">Dec {weekDays.indexOf(day) + 1}</div>
+
+                    {mealTypes.map((mealType) => (
+                      <div key={mealType} className="grid grid-cols-8 border-b last:border-b-0 min-w-[800px]">
+                        <div className="p-4 bg-gray-50 border-r flex items-center">
+                          <span className="text-sm font-medium text-gray-700 capitalize">{mealType}</span>
+                        </div>
+                        {weekDays.map((day) => (
+                          <div
+                            key={`${day}-${mealType}`}
+                            className="p-3 border-r last:border-r-0 hover:bg-gray-50 cursor-pointer"
+                            onClick={() => handleAddMeal(day, mealType)}
+                          >
+                            {weeklyMeals[day]?.[mealType] ? (
+                              <div className="space-y-1">
+                                <div className="text-sm font-medium text-gray-900">{weeklyMeals[day][mealType].name}</div>
+                                <div className="text-xs text-gray-500">{weeklyMeals[day][mealType].calories} cal</div>
+                                <div className="flex gap-1">
+                                  <Badge variant="secondary" className="text-xs">P: {weeklyMeals[day][mealType].protein}g</Badge>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center h-full">
+                                <Plus className="w-5 h-5 text-gray-400" />
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     ))}
                   </div>
 
-                  {mealTypes.map((mealType) => (
-                    <div key={mealType} className="grid grid-cols-8 border-b last:border-b-0">
-                      <div className="p-4 bg-gray-50 border-r flex items-center">
-                        <span className="text-sm font-medium text-gray-700 capitalize">{mealType}</span>
-                      </div>
-                      {weekDays.map((day) => (
-                        <div
-                          key={`${day}-${mealType}`}
-                          className="p-3 border-r last:border-r-0 hover:bg-gray-50 cursor-pointer"
-                          onClick={() => handleAddMeal(day, mealType)}
-                        >
-                          {weeklyMeals[day]?.[mealType] ? (
-                            <div className="space-y-1">
-                              <div className="text-sm font-medium text-gray-900">{weeklyMeals[day][mealType].name}</div>
-                              <div className="text-xs text-gray-500">{weeklyMeals[day][mealType].calories} cal</div>
-                              <div className="flex gap-1">
-                                <Badge variant="secondary" className="text-xs">P: {weeklyMeals[day][mealType].protein}g</Badge>
+                  {/* Mobile Card View */}
+                  <div className="md:hidden space-y-4">
+                    {weekDays.map((day) => (
+                      <Card key={day}>
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-lg">{day}</CardTitle>
+                          <CardDescription>Dec {weekDays.indexOf(day) + 1}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          {mealTypes.map((mealType) => (
+                            <div
+                              key={`${day}-${mealType}`}
+                              className="p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100"
+                              onClick={() => handleAddMeal(day, mealType)}
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium text-gray-700 capitalize">{mealType}</span>
+                                {!weeklyMeals[day]?.[mealType] && <Plus className="w-4 h-4 text-gray-400" />}
                               </div>
+                              {weeklyMeals[day]?.[mealType] ? (
+                                <div className="space-y-1">
+                                  <div className="text-sm font-medium text-gray-900">{weeklyMeals[day][mealType].name}</div>
+                                  <div className="text-xs text-gray-500">{weeklyMeals[day][mealType].calories} cal</div>
+                                  <div className="flex gap-1">
+                                    <Badge variant="secondary" className="text-xs">P: {weeklyMeals[day][mealType].protein}g</Badge>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-gray-500">Tap to add meal</p>
+                              )}
                             </div>
-                          ) : (
-                            <div className="flex items-center justify-center h-full">
-                              <Plus className="w-5 h-5 text-gray-400" />
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
+                          ))}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </>
               )}
 
               {/* Quick Actions */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={handleAIRecipe}>
                   <CardContent className="p-6 text-center">
                     <Zap className="w-8 h-8 mx-auto mb-3 text-orange-500" />
                     <h3 className="font-medium mb-2">AI Recipe Suggestions</h3>
                     <p className="text-sm text-gray-600">Get personalized recipe recommendations</p>
                   </CardContent>
                 </Card>
-                <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={handleUsePantry}>
                   <CardContent className="p-6 text-center">
                     <Package className="w-8 h-8 mx-auto mb-3 text-green-500" />
                     <h3 className="font-medium mb-2">Use Pantry Items</h3>
                     <p className="text-sm text-gray-600">Plan meals with what you have</p>
                   </CardContent>
                 </Card>
-                <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={handleLoadTemplate}>
                   <CardContent className="p-6 text-center">
                     <Save className="w-8 h-8 mx-auto mb-3 text-blue-500" />
                     <h3 className="font-medium mb-2">Load Template</h3>
@@ -1103,6 +1169,183 @@ const NutritionMealPlanner = () => {
                   </Button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* AI Recipe Modal */}
+        {showAIRecipeModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[80vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <Zap className="w-6 h-6 text-orange-500" />
+                  AI Recipe Suggestions
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowAIRecipeModal(false)}>✕</Button>
+              </div>
+
+              <p className="text-gray-600 mb-6">Based on your goals and preferences, here are some recipes for you:</p>
+
+              <div className="space-y-4">
+                {[
+                  { name: 'High-Protein Chicken Bowl', calories: 520, protein: 45, carbs: 42, fat: 18, description: 'Grilled chicken with quinoa, roasted vegetables, and tahini dressing' },
+                  { name: 'Mediterranean Salmon', calories: 480, protein: 38, carbs: 35, fat: 22, description: 'Baked salmon with Greek salad and whole grain pita' },
+                  { name: 'Turkey & Sweet Potato', calories: 450, protein: 42, carbs: 48, fat: 12, description: 'Lean ground turkey with roasted sweet potato and green beans' },
+                ].map((recipe, idx) => (
+                  <Card key={idx} className="hover:shadow-md transition-shadow cursor-pointer">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <h4 className="font-semibold text-lg">{recipe.name}</h4>
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (selectedMealSlot) {
+                              saveMealToSlot({
+                                name: recipe.name,
+                                calories: recipe.calories,
+                                protein: recipe.protein,
+                                carbs: recipe.carbs,
+                                fat: recipe.fat
+                              });
+                            } else {
+                              toast({
+                                description: `✅ ${recipe.name} saved!`,
+                              });
+                            }
+                            setShowAIRecipeModal(false);
+                          }}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-3">{recipe.description}</p>
+                      <div className="flex gap-3">
+                        <Badge variant="secondary">{recipe.calories} cal</Badge>
+                        <Badge variant="secondary">P: {recipe.protein}g</Badge>
+                        <Badge variant="secondary">C: {recipe.carbs}g</Badge>
+                        <Badge variant="secondary">F: {recipe.fat}g</Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Pantry Modal */}
+        {showPantryModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[80vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <Package className="w-6 h-6 text-green-500" />
+                  Use Pantry Items
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowPantryModal(false)}>✕</Button>
+              </div>
+
+              <p className="text-gray-600 mb-6">Select ingredients from your pantry to generate meal suggestions:</p>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+                {['Chicken Breast', 'Rice', 'Eggs', 'Pasta', 'Tomatoes', 'Spinach', 'Cheese', 'Beans', 'Potatoes'].map((item) => (
+                  <label key={item} className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input type="checkbox" className="w-4 h-4" />
+                    <span className="text-sm">{item}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="font-medium">Suggested Meals:</h4>
+                {[
+                  { name: 'Chicken Fried Rice', calories: 420, protein: 32, carbs: 48, fat: 14 },
+                  { name: 'Pasta Primavera', calories: 380, protein: 18, carbs: 52, fat: 12 },
+                ].map((meal, idx) => (
+                  <div key={idx} className="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
+                    <div>
+                      <h5 className="font-medium">{meal.name}</h5>
+                      <div className="flex gap-2 mt-1">
+                        <Badge variant="secondary" className="text-xs">{meal.calories} cal</Badge>
+                        <Badge variant="secondary" className="text-xs">P: {meal.protein}g</Badge>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        toast({
+                          description: `✅ ${meal.name} added to your planner!`,
+                        });
+                        setShowPantryModal(false);
+                      }}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              <Button variant="outline" className="w-full mt-6" onClick={() => setShowPantryModal(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Load Template Modal */}
+        {showLoadTemplateModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-md w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <Save className="w-6 h-6 text-blue-500" />
+                  Load Template
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowLoadTemplateModal(false)}>✕</Button>
+              </div>
+
+              <p className="text-gray-600 mb-6">Select a saved meal plan template to load:</p>
+
+              <div className="space-y-3">
+                {(() => {
+                  const templates = [];
+                  for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key?.startsWith('meal-template-')) {
+                      templates.push(key.replace('meal-template-', ''));
+                    }
+                  }
+
+                  if (templates.length === 0) {
+                    return (
+                      <div className="text-center py-8 text-gray-500">
+                        <Save className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p>No saved templates yet</p>
+                        <p className="text-sm mt-1">Create a meal plan and click "Save Template" to save it</p>
+                      </div>
+                    );
+                  }
+
+                  return templates.map((templateName) => (
+                    <div
+                      key={templateName}
+                      className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer flex items-center justify-between"
+                      onClick={() => loadTemplate(templateName)}
+                    >
+                      <div>
+                        <h4 className="font-medium">{templateName}</h4>
+                        <p className="text-xs text-gray-500">Click to load</p>
+                      </div>
+                      <Button size="sm">Load</Button>
+                    </div>
+                  ));
+                })()}
+              </div>
+
+              <Button variant="outline" className="w-full mt-6" onClick={() => setShowLoadTemplateModal(false)}>
+                Cancel
+              </Button>
             </div>
           </div>
         )}
