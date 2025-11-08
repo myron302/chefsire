@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
+import { SUBSCRIPTION_TIERS } from "./subscriptions";
 
 const r = Router();
 
@@ -14,6 +15,32 @@ const r = Router();
 r.post("/marketplace/products", requireAuth, async (req, res) => {
   try {
     const sellerId = req.user!.id; // Use authenticated user
+
+    // Check tier limits before allowing product creation
+    const seller = await storage.getUser(sellerId);
+    if (!seller) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const tierName = (seller as any).subscriptionTier || "free";
+    const tierInfo = SUBSCRIPTION_TIERS[tierName as keyof typeof SUBSCRIPTION_TIERS];
+
+    // Check product limit
+    if (tierInfo.limits.maxProducts !== -1) {
+      const existingProducts = await storage.getUserProducts(sellerId, 0, tierInfo.limits.maxProducts + 1);
+
+      if (existingProducts.length >= tierInfo.limits.maxProducts) {
+        return res.status(403).json({
+          message: `Product limit reached. ${tierInfo.name} tier allows ${tierInfo.limits.maxProducts} products.`,
+          error: "tier_limit_reached",
+          currentTier: tierName,
+          limit: tierInfo.limits.maxProducts,
+          current: existingProducts.length,
+          upgradeMessage: "Upgrade your subscription to list more products"
+        });
+      }
+    }
+
     const schema = z.object({
       name: z.string().min(1),
       description: z.string().optional(),
@@ -32,7 +59,17 @@ r.post("/marketplace/products", requireAuth, async (req, res) => {
 
     const body = schema.parse(req.body);
     const product = await storage.createProduct({ ...body, sellerId } as any);
-    res.status(201).json({ message: "Product created", product });
+
+    res.status(201).json({
+      message: "Product created successfully",
+      product,
+      tierInfo: {
+        name: tierInfo.name,
+        productsRemaining: tierInfo.limits.maxProducts === -1 ?
+          "unlimited" :
+          tierInfo.limits.maxProducts - (existingProducts.length + 1)
+      }
+    });
   } catch (e: any) {
     if (e?.issues) return res.status(400).json({ message: "Invalid product data", errors: e.issues });
     console.error("marketplace/create error", e);
