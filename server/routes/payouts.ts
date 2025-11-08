@@ -5,7 +5,9 @@ import { db } from "../db";
 import { orders, users, payouts, commissions, paymentMethods } from "../../shared/schema";
 import { eq, and, inArray, isNull } from "drizzle-orm";
 import { requireAuth } from "../middleware";
-import { Client, Environment } from "square";
+// Square is a CommonJS module - import it properly
+import square from "square";
+const { Client, Environment } = square;
 
 const router = Router();
 
