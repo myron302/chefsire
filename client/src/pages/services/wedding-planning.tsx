@@ -31,6 +31,11 @@ export default function WeddingPlanning() {
   const [showTrialBanner, setShowTrialBanner] = useState(true);
   const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
 
+  const handleStartTrial = () => {
+    // Redirect to marketplace to view subscription plans
+    window.location.href = '/marketplace';
+  };
+
   const [registryLinks, setRegistryLinks] = useState([
     { id: 1, name: 'Amazon', url: '', icon: '🎁' },
     { id: 2, name: 'Target', url: '', icon: '🎯' },
@@ -173,7 +178,11 @@ export default function WeddingPlanning() {
                 <Button variant="outline" size="sm" onClick={() => setShowTrialBanner(false)} className="flex-shrink-0">
                   <X className="w-3 h-3 md:w-4 md:h-4" />
                 </Button>
-                <Button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white flex-1 sm:flex-none" size="sm">
+                <Button
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 text-white flex-1 sm:flex-none"
+                  size="sm"
+                  onClick={handleStartTrial}
+                >
                   <Zap className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
                   <span className="text-xs md:text-sm">Start Free Trial</span>
                 </Button>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Calendar, Plus, Target, TrendingUp, Clock, Users, ChefHat, Star, Lock, Crown,
   ShoppingCart, CheckCircle, BarChart3, PieChart, Download, Filter, Save,
-  AlertCircle, Package, Utensils, CalendarDays, Zap, ListChecks, Settings
+  AlertCircle, Package, Utensils, CalendarDays, Zap, ListChecks, Settings, Camera
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
