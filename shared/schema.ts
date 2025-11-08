@@ -663,6 +663,116 @@ export const stores = pgTable(
   })
 );
 
+/* ===== PAYMENT METHODS ===== */
+export const paymentMethods = pgTable(
+  "payment_methods",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    provider: text("provider").notNull(), // square, stripe, paypal
+    providerId: text("provider_id").notNull(), // external account ID from provider
+    accountStatus: text("account_status").default("pending"), // pending, active, disabled, rejected
+    accountType: text("account_type"), // individual, business
+    accountEmail: text("account_email"),
+    accountDetails: jsonb("account_details").$type<{
+      merchantId?: string;
+      locationId?: string;
+      accessToken?: string; // encrypted
+      refreshToken?: string; // encrypted
+      tokenExpiresAt?: string;
+    }>(),
+    isDefault: boolean("is_default").default(false),
+    verifiedAt: timestamp("verified_at"),
+    lastVerifiedAt: timestamp("last_verified_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => ({
+    userIdx: index("payment_methods_user_idx").on(t.userId),
+    providerIdx: index("payment_methods_provider_idx").on(t.provider),
+    statusIdx: index("payment_methods_status_idx").on(t.accountStatus),
+  })
+);
+
+/* ===== COMMISSIONS ===== */
+export const commissions = pgTable(
+  "commissions",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    orderId: varchar("order_id").references(() => orders.id).notNull(),
+    sellerId: varchar("seller_id").references(() => users.id).notNull(),
+    subscriptionTier: text("subscription_tier").notNull(),
+    commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }).notNull(), // percentage
+    orderTotal: decimal("order_total", { precision: 10, scale: 2 }).notNull(),
+    commissionAmount: decimal("commission_amount", { precision: 10, scale: 2 }).notNull(),
+    sellerAmount: decimal("seller_amount", { precision: 10, scale: 2 }).notNull(),
+    payoutId: varchar("payout_id").references(() => payouts.id),
+    status: text("status").default("pending"), // pending, paid, refunded
+    createdAt: timestamp("created_at").defaultNow(),
+    paidAt: timestamp("paid_at"),
+  },
+  (t) => ({
+    orderIdx: index("commissions_order_idx").on(t.orderId),
+    sellerIdx: index("commissions_seller_idx").on(t.sellerId),
+    payoutIdx: index("commissions_payout_idx").on(t.payoutId),
+    statusIdx: index("commissions_status_idx").on(t.status),
+  })
+);
+
+/* ===== PAYOUTS ===== */
+export const payouts = pgTable(
+  "payouts",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    sellerId: varchar("seller_id").references(() => users.id).notNull(),
+    paymentMethodId: varchar("payment_method_id").references(() => paymentMethods.id),
+    amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+    currency: text("currency").default("USD"),
+    provider: text("provider").notNull(), // square, stripe, paypal
+    providerPayoutId: text("provider_payout_id"), // external payout ID from provider
+    status: text("status").default("pending"), // pending, processing, completed, failed, cancelled
+    failureReason: text("failure_reason"),
+    scheduledFor: timestamp("scheduled_for"),
+    processedAt: timestamp("processed_at"),
+    completedAt: timestamp("completed_at"),
+    metadata: jsonb("metadata").$type<{
+      ordersCount?: number;
+      dateRange?: { from: string; to: string };
+      accountDetails?: Record<string, any>;
+    }>(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    sellerIdx: index("payouts_seller_idx").on(t.sellerId),
+    statusIdx: index("payouts_status_idx").on(t.status),
+    scheduledIdx: index("payouts_scheduled_idx").on(t.scheduledFor),
+    providerPayoutIdx: index("payouts_provider_payout_idx").on(t.providerPayoutId),
+  })
+);
+
+/* ===== PAYOUT SCHEDULES ===== */
+export const payoutSchedules = pgTable(
+  "payout_schedules",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    sellerId: varchar("seller_id").references(() => users.id, { onDelete: "cascade" }).notNull().unique(),
+    frequency: text("frequency").default("weekly"), // daily, weekly, biweekly, monthly
+    dayOfWeek: integer("day_of_week"), // 0-6 for weekly (Sunday = 0)
+    dayOfMonth: integer("day_of_month"), // 1-31 for monthly
+    minimumAmount: decimal("minimum_amount", { precision: 10, scale: 2 }).default("25.00"), // minimum payout threshold
+    isActive: boolean("is_active").default(true),
+    lastPayoutAt: timestamp("last_payout_at"),
+    nextPayoutAt: timestamp("next_payout_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => ({
+    sellerIdx: index("payout_schedules_seller_idx").on(t.sellerId),
+    activeIdx: index("payout_schedules_active_idx").on(t.isActive),
+    nextPayoutIdx: index("payout_schedules_next_payout_idx").on(t.nextPayoutAt),
+  })
+);
+
 /* ===== ✅ NEW: EMAIL VERIFICATION TOKENS ===== */
 export const emailVerificationTokens = pgTable(
   "email_verification_tokens",
@@ -816,6 +926,28 @@ export const insertStoreSchema = createInsertSchema(stores).omit({
   updatedAt: true,
 });
 
+export const insertPaymentMethodSchema = createInsertSchema(paymentMethods).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCommissionSchema = createInsertSchema(commissions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPayoutSchema = createInsertSchema(payouts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPayoutScheduleSchema = createInsertSchema(payoutSchedules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertFamilyMemberSchema = createInsertSchema(familyMembers).omit({
   id: true,
   createdAt: true,
@@ -923,6 +1055,14 @@ export type UserDrinkStats = typeof userDrinkStats.$inferSelect;
 export type InsertUserDrinkStats = z.infer<typeof insertUserDrinkStatsSchema>;
 export type Store = typeof stores.$inferSelect;
 export type InsertStore = z.infer<typeof insertStoreSchema>;
+export type PaymentMethod = typeof paymentMethods.$inferSelect;
+export type InsertPaymentMethod = z.infer<typeof insertPaymentMethodSchema>;
+export type Commission = typeof commissions.$inferSelect;
+export type InsertCommission = z.infer<typeof insertCommissionSchema>;
+export type Payout = typeof payouts.$inferSelect;
+export type InsertPayout = z.infer<typeof insertPayoutSchema>;
+export type PayoutSchedule = typeof payoutSchedules.$inferSelect;
+export type InsertPayoutSchedule = z.infer<typeof insertPayoutScheduleSchema>;
 export type FamilyMember = typeof familyMembers.$inferSelect;
 export type InsertFamilyMember = z.infer<typeof insertFamilyMemberSchema>;
 export type AllergenProfile = typeof allergenProfiles.$inferSelect;
