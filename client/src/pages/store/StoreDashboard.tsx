@@ -50,10 +50,10 @@ export default function StoreDashboard() {
 
     try {
       // Load store info
-      const storeRes = await fetch(`/api/stores/by-user/${user.id}`);
+      const storeRes = await fetch(`/api/stores/user/${user.id}`);
       if (storeRes.ok) {
         const storeData = await storeRes.json();
-        setStore(storeData);
+        setStore(storeData.store);
 
         // Load stats (mock for now)
         setStats({
