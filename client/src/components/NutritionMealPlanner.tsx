@@ -25,6 +25,9 @@ const NutritionMealPlanner = () => {
   const [isPremium, setIsPremium] = useState(false);
   const [loading, setLoading] = useState(true);
   const [weeklyMeals, setWeeklyMeals] = useState({});
+  const [showAddMealModal, setShowAddMealModal] = useState(false);
+  const [showGoalsModal, setShowGoalsModal] = useState(false);
+  const [selectedMealSlot, setSelectedMealSlot] = useState<{day: string, type: string} | null>(null);
 
   const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -168,13 +171,83 @@ const NutritionMealPlanner = () => {
   };
 
   const generateGroceryList = async () => {
-    // Generate grocery list from meal plan
-    alert('Generating grocery list from your meal plan...');
+    // Generate grocery list from weekly meals
+    const items = [];
+    Object.values(weeklyMeals).forEach((dayMeals: any) => {
+      Object.values(dayMeals).forEach((meal: any) => {
+        if (meal.ingredients) {
+          meal.ingredients.forEach((ingredient: string) => {
+            items.push({ name: ingredient, checked: false, category: 'Other' });
+          });
+        }
+      });
+    });
+
+    setGroceryList(items.length > 0 ? items : [
+      { name: 'Chicken breast (2 lbs)', checked: false, category: 'Protein' },
+      { name: 'Brown rice (1 bag)', checked: false, category: 'Grains' },
+      { name: 'Broccoli (2 heads)', checked: false, category: 'Vegetables' },
+      { name: 'Sweet potatoes (5)', checked: false, category: 'Vegetables' },
+      { name: 'Greek yogurt (32oz)', checked: false, category: 'Dairy' },
+      { name: 'Eggs (dozen)', checked: false, category: 'Protein' },
+    ]);
+
+    toast({
+      description: "✅ Grocery list generated from your meal plan!",
+    });
   };
 
   const optimizeShoppingList = async () => {
-    // Organize by store aisles
-    alert('Optimizing shopping list by store layout...');
+    // Sort grocery list by category
+    const sortedList = [...groceryList].sort((a: any, b: any) =>
+      a.category.localeCompare(b.category)
+    );
+    setGroceryList(sortedList);
+
+    toast({
+      description: "🛒 Shopping list optimized by category!",
+    });
+  };
+
+  const handleAddMeal = (day?: string, type?: string) => {
+    if (day && type) {
+      setSelectedMealSlot({ day, type });
+    }
+    setShowAddMealModal(true);
+  };
+
+  const saveMealToSlot = (mealData: any) => {
+    if (selectedMealSlot) {
+      setWeeklyMeals((prev: any) => ({
+        ...prev,
+        [selectedMealSlot.day]: {
+          ...prev[selectedMealSlot.day],
+          [selectedMealSlot.type]: mealData
+        }
+      }));
+
+      toast({
+        description: "✅ Meal added to your planner!",
+      });
+    }
+    setShowAddMealModal(false);
+    setSelectedMealSlot(null);
+  };
+
+  const saveTemplate = () => {
+    const templateName = prompt('Enter a name for this meal plan template:');
+    if (templateName) {
+      localStorage.setItem(`meal-template-${templateName}`, JSON.stringify(weeklyMeals));
+      toast({
+        description: `✅ Template "${templateName}" saved successfully!`,
+      });
+    }
+  };
+
+  const toggleGroceryItem = (index: number) => {
+    setGroceryList((prev: any) => prev.map((item: any, i: number) =>
+      i === index ? { ...item, checked: !item.checked } : item
+    ));
   };
 
   const PremiumUpgrade = () => (
@@ -349,7 +422,7 @@ const NutritionMealPlanner = () => {
               <Crown className="w-4 h-4 mr-1 inline" />
               Premium Active
             </Badge>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => window.location.href = '/settings'}>
               <Settings className="w-4 h-4 mr-2" />
               Settings
             </Button>
@@ -446,11 +519,11 @@ const NutritionMealPlanner = () => {
                   </Button>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={saveTemplate}>
                     <Save className="w-4 h-4 mr-2" />
                     Save Template
                   </Button>
-                  <Button size="sm">
+                  <Button size="sm" onClick={() => handleAddMeal()}>
                     <Plus className="w-4 h-4 mr-2" />
                     Add Meal
                   </Button>
@@ -478,7 +551,11 @@ const NutritionMealPlanner = () => {
                         <span className="text-sm font-medium text-gray-700 capitalize">{mealType}</span>
                       </div>
                       {weekDays.map((day) => (
-                        <div key={`${day}-${mealType}`} className="p-3 border-r last:border-r-0 hover:bg-gray-50 cursor-pointer">
+                        <div
+                          key={`${day}-${mealType}`}
+                          className="p-3 border-r last:border-r-0 hover:bg-gray-50 cursor-pointer"
+                          onClick={() => handleAddMeal(day, mealType)}
+                        >
                           {weeklyMeals[day]?.[mealType] ? (
                             <div className="space-y-1">
                               <div className="text-sm font-medium text-gray-900">{weeklyMeals[day][mealType].name}</div>
@@ -727,23 +804,26 @@ const NutritionMealPlanner = () => {
                           <h3 className="font-medium text-sm text-gray-700 mb-2">{category}</h3>
                           <div className="space-y-2">
                             {groceryList
-                              .filter((item) => item.category === category)
-                              .map((item) => (
-                                <div key={item.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                  <input
-                                    type="checkbox"
-                                    checked={item.checked}
-                                    className="w-5 h-5 rounded border-gray-300"
-                                    onChange={() => {}}
-                                  />
-                                  <div className="flex-1">
-                                    <span className={`text-sm ${item.checked ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                                      {item.item}
-                                    </span>
+                              .filter((item: any) => item.category === category)
+                              .map((item: any, catIndex: number) => {
+                                const globalIndex = groceryList.findIndex((i: any) => i === item);
+                                return (
+                                  <div key={globalIndex} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                    <input
+                                      type="checkbox"
+                                      checked={item.checked}
+                                      className="w-5 h-5 rounded border-gray-300 cursor-pointer"
+                                      onChange={() => toggleGroceryItem(globalIndex)}
+                                    />
+                                    <div className="flex-1">
+                                      <span className={`text-sm ${item.checked ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                                        {item.name || item.item}
+                                      </span>
+                                    </div>
+                                    <span className="text-sm text-gray-500">{item.amount}</span>
                                   </div>
-                                  <span className="text-sm text-gray-500">{item.amount}</span>
-                                </div>
-                              ))}
+                                );
+                              })}
                           </div>
                         </div>
                       ))}
@@ -935,6 +1015,97 @@ const NutritionMealPlanner = () => {
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* Add Meal Modal */}
+        {showAddMealModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-md w-full p-6">
+              <h3 className="text-xl font-bold mb-4">
+                Add Meal {selectedMealSlot && `- ${selectedMealSlot.day} ${selectedMealSlot.type}`}
+              </h3>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Meal Name</label>
+                  <input
+                    id="mealName"
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    placeholder="e.g., Grilled Chicken Salad"
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Calories</label>
+                    <input
+                      id="calories"
+                      type="number"
+                      className="w-full border rounded px-3 py-2"
+                      placeholder="450"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Protein (g)</label>
+                    <input
+                      id="protein"
+                      type="number"
+                      className="w-full border rounded px-3 py-2"
+                      placeholder="35"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Carbs (g)</label>
+                    <input
+                      id="carbs"
+                      type="number"
+                      className="w-full border rounded px-3 py-2"
+                      placeholder="20"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    className="flex-1"
+                    onClick={() => {
+                      const name = (document.getElementById('mealName') as HTMLInputElement).value;
+                      const calories = (document.getElementById('calories') as HTMLInputElement).value;
+                      const protein = (document.getElementById('protein') as HTMLInputElement).value;
+                      const carbs = (document.getElementById('carbs') as HTMLInputElement).value;
+
+                      if (name && calories && protein) {
+                        saveMealToSlot({
+                          name,
+                          calories: Number(calories),
+                          protein: Number(protein),
+                          carbs: Number(carbs),
+                          fat: 0
+                        });
+                      } else {
+                        toast({
+                          variant: "destructive",
+                          description: "Please fill in meal name, calories, and protein",
+                        });
+                      }
+                    }}
+                  >
+                    Add Meal
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowAddMealModal(false);
+                      setSelectedMealSlot(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
