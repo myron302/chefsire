@@ -483,8 +483,8 @@ export default function Profile() {
         </div>
       )}
 
-      {/* Active Subscriptions - only show on own profile */}
-      {isOwnProfile && (currentUser?.nutritionPremium || currentUser?.subscription !== 'free') && (
+      {/* Active Subscriptions - only show on own profile and if they have subscriptions */}
+      {isOwnProfile && (currentUser?.nutritionPremium || (currentUser?.subscription && currentUser.subscription !== 'free')) && (
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -574,20 +574,6 @@ export default function Profile() {
                 )}
               </div>
             )}
-
-            {/* Wedding Planning (Always Free) */}
-            <div className="flex items-center justify-between p-4 bg-pink-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-pink-100 rounded-lg">
-                  <Heart className="w-5 h-5 text-pink-600" />
-                </div>
-                <div>
-                  <h4 className="font-semibold">Wedding Planning</h4>
-                  <p className="text-sm text-muted-foreground">Free - All features unlocked</p>
-                </div>
-              </div>
-              <Badge className="bg-green-100 text-green-800">FREE</Badge>
-            </div>
           </CardContent>
         </Card>
       )}
