@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
+import { requireAuth } from "../middleware";
 
 const r = Router();
 
@@ -10,10 +11,10 @@ const r = Router();
  */
 
 // Create product
-r.post("/marketplace/products", async (req, res) => {
+r.post("/marketplace/products", requireAuth, async (req, res) => {
   try {
+    const sellerId = req.user!.id; // Use authenticated user
     const schema = z.object({
-      sellerId: z.string(),
       name: z.string().min(1),
       description: z.string().optional(),
       price: z.string().regex(/^\d+(\.\d{1,2})?$/),
@@ -30,7 +31,7 @@ r.post("/marketplace/products", async (req, res) => {
     });
 
     const body = schema.parse(req.body);
-    const product = await storage.createProduct(body as any);
+    const product = await storage.createProduct({ ...body, sellerId } as any);
     res.status(201).json({ message: "Product created", product });
   } catch (e: any) {
     if (e?.issues) return res.status(400).json({ message: "Invalid product data", errors: e.issues });
@@ -93,7 +94,7 @@ r.get("/marketplace/sellers/:sellerId/products", async (req, res) => {
 });
 
 // Update product
-r.put("/marketplace/products/:id", async (req, res) => {
+r.put("/marketplace/products/:id", requireAuth, async (req, res) => {
   try {
     const schema = z.object({
       name: z.string().min(1).optional(),
@@ -120,7 +121,7 @@ r.put("/marketplace/products/:id", async (req, res) => {
 });
 
 // Deactivate product
-r.delete("/marketplace/products/:id", async (req, res) => {
+r.delete("/marketplace/products/:id", requireAuth, async (req, res) => {
   try {
     const ok = await storage.deleteProduct(req.params.id);
     if (!ok) return res.status(404).json({ message: "Product not found" });

@@ -37,6 +37,10 @@ import questsRouter from "./quests";
 import suggestionsRouter from "./suggestions";
 import remixesRouter from "./remixes";
 
+// 💰 Marketplace & Monetization
+import subscriptionsRouter from "./subscriptions";
+import ordersRouter from "./orders";
+
 const r = Router();
 
 /**
@@ -105,6 +109,10 @@ r.use("/quests", questsRouter);
 r.use("/suggestions", suggestionsRouter);
 r.use("/remixes", remixesRouter);
 
+// 💰 Marketplace & Monetization
+r.use("/subscriptions", subscriptionsRouter);
+r.use("/orders", ordersRouter);
+
 // Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {
   r.get("/_routes", (_req, res) => {
@@ -134,7 +142,9 @@ if (process.env.NODE_ENV !== "production") {
         "/notifications/*", // ⚡ Phase 1
         "/quests/*",        // ⚡ Phase 1
         "/suggestions/*",   // ⚡ Phase 1
-        "/remixes/*"        // ⚡ Phase 1
+        "/remixes/*",       // ⚡ Phase 1
+        "/subscriptions/*", // 💰 Monetization
+        "/orders/*"         // 💰 Monetization
       ],
     });
   });
