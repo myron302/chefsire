@@ -113,17 +113,27 @@ router.post("/process-seller-payout", requireAuth, async (req, res) => {
     );
 
     // Check if seller has a payment method connected
-    const [paymentMethod] = await db
-      .select()
-      .from(paymentMethods)
-      .where(
-        and(
-          eq(paymentMethods.userId, sellerId),
-          eq(paymentMethods.isDefault, true),
-          eq(paymentMethods.accountStatus, 'active')
+    let paymentMethod: any;
+    try {
+      [paymentMethod] = await db
+        .select()
+        .from(paymentMethods)
+        .where(
+          and(
+            eq(paymentMethods.userId, sellerId),
+            eq(paymentMethods.isDefault, true),
+            eq(paymentMethods.accountStatus, 'active')
+          )
         )
-      )
-      .limit(1);
+        .limit(1);
+    } catch (error: any) {
+      // Table doesn't exist yet - return error indicating migration needed
+      return res.status(503).json({
+        ok: false,
+        error: "Payment system not fully configured. Please run database migration.",
+        details: "Run: npm run db:migrate"
+      });
+    }
 
     if (!paymentMethod) {
       return res.status(400).json({
@@ -261,11 +271,26 @@ router.get("/my-payouts", requireAuth, async (req, res) => {
     const sellerId = req.user!.id;
 
     // Query payouts table
-    const sellerPayouts = await db
-      .select()
-      .from(payouts)
-      .where(eq(payouts.sellerId, sellerId))
-      .orderBy(payouts.createdAt);
+    let sellerPayouts: any[];
+    try {
+      sellerPayouts = await db
+        .select()
+        .from(payouts)
+        .where(eq(payouts.sellerId, sellerId))
+        .orderBy(payouts.createdAt);
+    } catch (error: any) {
+      // Table doesn't exist yet - return empty state
+      return res.json({
+        ok: true,
+        summary: {
+          totalPaidOut: "0.00",
+          pendingPayouts: "0.00",
+          payoutCount: 0,
+        },
+        payouts: [],
+        message: "Payout system not fully configured. Run database migration to enable this feature."
+      });
+    }
 
     const totalPaidOut = sellerPayouts
       .filter(p => p.status === 'completed')

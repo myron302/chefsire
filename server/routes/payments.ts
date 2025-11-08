@@ -159,16 +159,22 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     const tierInfo = SUBSCRIPTION_TIERS[tier];
     const commissionRate = tierInfo ? tierInfo.commissionRate : 10;
 
-    await db.insert(commissions).values({
-      orderId: order.id,
-      sellerId: order.sellerId,
-      subscriptionTier: tier,
-      commissionRate: commissionRate.toString(),
-      orderTotal: order.totalAmount,
-      commissionAmount: order.platformFee,
-      sellerAmount: order.sellerAmount,
-      status: 'pending', // Will be 'paid' after payout
-    });
+    // Try to create commission record (table may not exist yet if migration not run)
+    try {
+      await db.insert(commissions).values({
+        orderId: order.id,
+        sellerId: order.sellerId,
+        subscriptionTier: tier,
+        commissionRate: commissionRate.toString(),
+        orderTotal: order.totalAmount,
+        commissionAmount: order.platformFee,
+        sellerAmount: order.sellerAmount,
+        status: 'pending', // Will be 'paid' after payout
+      });
+    } catch (commissionError: any) {
+      // Log but don't fail - table might not exist yet
+      console.warn('Failed to create commission record (table may not exist):', commissionError.message);
+    }
 
     // Note: Seller payout will be processed separately
     // This can be done:
