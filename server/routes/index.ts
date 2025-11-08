@@ -36,6 +36,8 @@ import notificationsRouter from "./notifications";
 import questsRouter from "./quests";
 import suggestionsRouter from "./suggestions";
 import remixesRouter from "./remixes";
+import leaderboardRouter from "./leaderboard";
+import achievementsRouter from "./achievements";
 
 // 💰 Marketplace & Monetization
 import subscriptionsRouter from "./subscriptions";
@@ -110,6 +112,8 @@ r.use("/notifications", notificationsRouter);
 r.use("/quests", questsRouter);
 r.use("/suggestions", suggestionsRouter);
 r.use("/remixes", remixesRouter);
+r.use("/leaderboard", leaderboardRouter);
+r.use("/achievements", achievementsRouter);
 
 // 💰 Marketplace & Monetization
 r.use("/subscriptions", subscriptionsRouter);
@@ -147,6 +151,7 @@ if (process.env.NODE_ENV !== "production") {
         "/quests/*",        // ⚡ Phase 1
         "/suggestions/*",   // ⚡ Phase 1
         "/remixes/*",       // ⚡ Phase 1
+        "/leaderboard/*",   // ⚡ Gamification
         "/subscriptions/*", // 💰 Monetization
         "/orders/*",        // 💰 Monetization
         "/payments/*",      // 💰 Square payments

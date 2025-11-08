@@ -144,6 +144,9 @@ import CreateCompetitionPage from "@/pages/competitions/CreateCompetitionPage";
 import CompetitionRoomPage from "@/pages/competitions/CompetitionRoomPage";
 import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage";
 
+// Leaderboards
+import LeaderboardPage from "@/pages/leaderboard/LeaderboardPage";
+
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
   React.useEffect(() => setLocation(to), [to, setLocation]);
@@ -316,6 +319,9 @@ function AppRouter() {
         <Route path="/competitions/library" component={CompetitionLibraryPage} />
         <Route path="/competitions/:id" component={CompetitionRoomPage} />
         <Route path="/competitions" component={CompetitionLibraryPage} />
+
+        {/* Leaderboards */}
+        <Route path="/leaderboard" component={LeaderboardPage} />
 
         {/* Recipes */}
         <Route path="/recipes/baby-food/:rest*">
