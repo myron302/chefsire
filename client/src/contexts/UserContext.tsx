@@ -8,6 +8,9 @@ type User = {
   royalTitle?: string | null;
   avatar?: string | null;
   bio?: string | null;
+  subscriptionTier?: string;
+  nutritionPremium?: boolean;
+  nutritionTrialEndsAt?: string;
 };
 
 type UserContextType = {

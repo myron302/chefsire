@@ -40,10 +40,26 @@ const NutritionMealPlanner = () => {
 
   const fetchUserData = async () => {
     try {
-      // Check if user has paid subscription (any tier except free)
-      const tier = user?.subscriptionTier || 'free';
-      const hasPaidPlan = tier !== 'free';
-      setIsPremium(hasPaidPlan);
+      // Check if user has nutrition premium (either through trial or paid subscription)
+      const hasNutritionAccess = user?.nutritionPremium || false;
+
+      // Check if trial is still valid
+      if (hasNutritionAccess && user?.nutritionTrialEndsAt) {
+        const trialEnd = new Date(user.nutritionTrialEndsAt);
+        const now = new Date();
+        if (now > trialEnd) {
+          // Trial has expired
+          setIsPremium(false);
+          toast({
+            variant: "destructive",
+            title: "Trial Expired",
+            description: "Your nutrition trial has ended. Upgrade to continue using premium features.",
+          });
+          return;
+        }
+      }
+
+      setIsPremium(hasNutritionAccess);
 
       setNutritionGoals({
         dailyCalorieGoal: 2000,
@@ -116,14 +132,27 @@ const NutritionMealPlanner = () => {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
       });
 
       if (response.ok) {
         const data = await response.json();
         setIsPremium(true);
+
+        // Update user context with new trial data
+        const updatedUser = {
+          ...user,
+          nutritionPremium: true,
+          nutritionTrialEndsAt: data.trialEndsAt
+        };
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+
         toast({
           description: "30-day nutrition trial activated! Enjoy premium features.",
         });
+
+        // Refresh the page to update UI
+        window.location.reload();
       } else {
         const error = await response.json();
         toast({

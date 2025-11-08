@@ -32,8 +32,11 @@ export default function WeddingPlanning() {
   const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
 
   const handleStartTrial = () => {
-    // Redirect to marketplace to view subscription plans
-    window.location.href = '/marketplace';
+    // Wedding planning features are free - just dismiss the banner
+    // In the future, this could activate premium wedding features
+    setShowTrialBanner(false);
+    // Could also show a toast message
+    // toast({ description: "All wedding planning features are free to use!" });
   };
 
   const [registryLinks, setRegistryLinks] = useState([
