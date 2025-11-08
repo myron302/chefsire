@@ -483,6 +483,115 @@ export default function Profile() {
         </div>
       )}
 
+      {/* Active Subscriptions - only show on own profile */}
+      {isOwnProfile && (currentUser?.nutritionPremium || currentUser?.subscription !== 'free') && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Crown className="w-5 h-5 text-orange-500" />
+              Active Subscriptions
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Nutrition Premium */}
+            {currentUser?.nutritionPremium && (
+              <div className="flex items-center justify-between p-4 bg-orange-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-orange-100 rounded-lg">
+                    <Target className="w-5 h-5 text-orange-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold">Nutrition Premium</h4>
+                    <p className="text-sm text-muted-foreground">
+                      {currentUser.nutritionTrialEndsAt ? (
+                        <>
+                          Trial expires: {new Date(currentUser.nutritionTrialEndsAt).toLocaleDateString('en-US', {
+                            month: 'long',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </>
+                      ) : (
+                        'Active subscription'
+                      )}
+                    </p>
+                  </div>
+                </div>
+                {currentUser.nutritionTrialEndsAt && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (confirm('Are you sure you want to cancel your nutrition trial?')) {
+                        // In production, call API to cancel
+                        alert('Cancellation feature coming soon');
+                      }
+                    }}
+                  >
+                    Cancel Trial
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Store Subscription */}
+            {currentUser?.subscription && currentUser.subscription !== 'free' && (
+              <div className="flex items-center justify-between p-4 bg-purple-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <StoreIcon className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold">Store {titleCase(currentUser.subscription)}</h4>
+                    <p className="text-sm text-muted-foreground">
+                      {currentUser.trialEndDate ? (
+                        <>
+                          Trial expires: {new Date(currentUser.trialEndDate).toLocaleDateString('en-US', {
+                            month: 'long',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </>
+                      ) : (
+                        'Active subscription'
+                      )}
+                    </p>
+                  </div>
+                </div>
+                {currentUser.trialEndDate && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (confirm('Are you sure you want to cancel your store trial?')) {
+                        // In production, call API to cancel
+                        alert('Cancellation feature coming soon');
+                      }
+                    }}
+                  >
+                    Cancel Trial
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Wedding Planning (Always Free) */}
+            <div className="flex items-center justify-between p-4 bg-pink-50 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-pink-100 rounded-lg">
+                  <Heart className="w-5 h-5 text-pink-600" />
+                </div>
+                <div>
+                  <h4 className="font-semibold">Wedding Planning</h4>
+                  <p className="text-sm text-muted-foreground">Free - All features unlocked</p>
+                </div>
+              </div>
+              <Badge className="bg-green-100 text-green-800">FREE</Badge>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Tabs */}
       <Tabs defaultValue="photos" className="w-full">
         <TabsList className="grid w-full grid-cols-4 md:grid-cols-8">

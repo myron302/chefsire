@@ -13,7 +13,7 @@ import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
 
 const NutritionMealPlanner = () => {
-  const { user } = useUser();
+  const { user, updateUser } = useUser();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('planner');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -137,22 +137,20 @@ const NutritionMealPlanner = () => {
 
       if (response.ok) {
         const data = await response.json();
-        setIsPremium(true);
 
         // Update user context with new trial data
-        const updatedUser = {
-          ...user,
+        updateUser({
           nutritionPremium: true,
           nutritionTrialEndsAt: data.trialEndsAt
-        };
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-
-        toast({
-          description: "30-day nutrition trial activated! Enjoy premium features.",
         });
 
-        // Refresh the page to update UI
-        window.location.reload();
+        // Update local state
+        setIsPremium(true);
+
+        // Show confirmation toast
+        toast({
+          description: "🎉 30-day nutrition trial activated! Enjoy premium features.",
+        });
       } else {
         const error = await response.json();
         toast({

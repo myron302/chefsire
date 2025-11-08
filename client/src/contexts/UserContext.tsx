@@ -11,6 +11,8 @@ type User = {
   subscriptionTier?: string;
   nutritionPremium?: boolean;
   nutritionTrialEndsAt?: string;
+  subscription?: string;
+  trialEndDate?: string;
 };
 
 type UserContextType = {
@@ -105,6 +107,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
         royalTitle: data.user.royalTitle ?? null,
         avatar: data.user.avatar ?? null,
         bio: data.user.bio ?? null,
+        nutritionPremium: data.user.nutritionPremium,
+        nutritionTrialEndsAt: data.user.nutritionTrialEndsAt,
       };
 
       persist(cleanUser);
