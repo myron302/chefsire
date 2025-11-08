@@ -38,6 +38,7 @@ import suggestionsRouter from "./suggestions";
 import remixesRouter from "./remixes";
 import leaderboardRouter from "./leaderboard";
 import achievementsRouter from "./achievements";
+import streaksRouter from "./streaks";
 
 // 💰 Marketplace & Monetization
 import subscriptionsRouter from "./subscriptions";
@@ -114,6 +115,7 @@ r.use("/suggestions", suggestionsRouter);
 r.use("/remixes", remixesRouter);
 r.use("/leaderboard", leaderboardRouter);
 r.use("/achievements", achievementsRouter);
+r.use("/streaks", streaksRouter);
 
 // 💰 Marketplace & Monetization
 r.use("/subscriptions", subscriptionsRouter);
