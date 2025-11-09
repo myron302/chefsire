@@ -299,8 +299,6 @@ function AppRouter() {
 
         <Route path="/profile/:userId?" component={Profile} />
         <Route path="/settings" component={Settings} />
-        <Route path="/store/dashboard" component={StoreDashboard} />
-        <Route path="/store/:username" component={StoreViewer} />
         <Route path="/" component={Feed} />
         <Route path="/feed" component={Feed} />
         <Route path="/explore" component={ExplorePage} />

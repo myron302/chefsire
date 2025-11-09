@@ -32,8 +32,9 @@ export default function StoreCreatePage() {
 
   useEffect(() => {
     // Check subscription tier access
-    const tier = user?.subscriptionTier || 'free';
-    setHasAccess(tier !== 'free');
+    const tier = user?.subscription || user?.subscriptionTier || 'free';
+    const hasValidTrial = user?.trialEndDate && new Date(user.trialEndDate) > new Date();
+    setHasAccess(tier !== 'free' || hasValidTrial);
   }, [user]);
 
   useEffect(() => {
@@ -50,7 +51,7 @@ export default function StoreCreatePage() {
     if (!user?.id) return;
 
     try {
-      const response = await fetch(`/api/stores/by-user/${user.id}`);
+      const response = await fetch(`/api/stores/user/${user.id}`);
       if (response.ok) {
         const data = await response.json();
         if (data.store) {
