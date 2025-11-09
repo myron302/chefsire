@@ -254,11 +254,11 @@ const Marketplace = () => {
     }
 
     if (!canSell) {
-      // Show upgrade modal or redirect to subscription
-      setView("sell");
+      // Show tier selection modal for upgrade
+      setShowUpgradeModal(true);
       return;
     }
-    
+
     // Check if user already has a store
     try {
       const response = await fetch(`/api/stores/user/${user.id}`);

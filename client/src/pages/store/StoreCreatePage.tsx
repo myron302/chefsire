@@ -25,6 +25,7 @@ export default function StoreCreatePage() {
   const [handleAvailable, setHandleAvailable] = useState<boolean | null>(null);
   const [error, setError] = useState('');
   const [hasAccess, setHasAccess] = useState(true);
+  const [showTierModal, setShowTierModal] = useState(false);
 
   useEffect(() => {
     checkExistingStore();
@@ -239,7 +240,7 @@ export default function StoreCreatePage() {
               <Button
                 className="ml-4 bg-orange-500 hover:bg-orange-600"
                 size="sm"
-                onClick={() => setLocation('/marketplace')}
+                onClick={() => setShowTierModal(true)}
               >
                 View Plans
               </Button>
@@ -405,6 +406,179 @@ export default function StoreCreatePage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Tier Selection Modal */}
+        {showTierModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-2xl font-bold">Choose Your Store Plan</h3>
+                  <button onClick={() => setShowTierModal(false)} className="text-gray-400 hover:text-gray-600">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Starter Tier */}
+                  <div className="border-2 border-gray-200 rounded-lg p-6 hover:border-orange-500 transition-colors">
+                    <div className="text-center mb-6">
+                      <h4 className="text-xl font-bold mb-2">Starter</h4>
+                      <div className="text-3xl font-bold text-orange-600">$19<span className="text-base text-gray-500">/mo</span></div>
+                      <p className="text-sm text-gray-600 mt-2">Perfect for getting started</p>
+                    </div>
+                    <ul className="space-y-3 mb-6">
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Up to 50 products</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Basic store customization</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Order management</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Basic analytics</span>
+                      </li>
+                    </ul>
+                    <Button
+                      className="w-full bg-orange-500 hover:bg-orange-600"
+                      onClick={() => {
+                        if (!user) return;
+                        const trialEnd = new Date();
+                        trialEnd.setDate(trialEnd.getDate() + 30);
+                        user.subscription = "starter";
+                        user.trialEndDate = trialEnd.toISOString();
+                        localStorage.setItem("user", JSON.stringify(user));
+                        setShowTierModal(false);
+                        setHasAccess(true);
+                        toast({
+                          title: "Trial activated!",
+                          description: "30-day Starter trial activated. Create your store now!",
+                        });
+                      }}
+                    >
+                      Start Free Trial
+                    </Button>
+                  </div>
+
+                  {/* Professional Tier */}
+                  <div className="border-2 border-orange-500 rounded-lg p-6 relative">
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-medium">
+                      Most Popular
+                    </div>
+                    <div className="text-center mb-6">
+                      <h4 className="text-xl font-bold mb-2">Professional</h4>
+                      <div className="text-3xl font-bold text-orange-600">$49<span className="text-base text-gray-500">/mo</span></div>
+                      <p className="text-sm text-gray-600 mt-2">For growing businesses</p>
+                    </div>
+                    <ul className="space-y-3 mb-6">
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Up to 500 products</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Advanced customization</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Priority support</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Advanced analytics</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Marketing tools</span>
+                      </li>
+                    </ul>
+                    <Button
+                      className="w-full bg-orange-500 hover:bg-orange-600"
+                      onClick={() => {
+                        if (!user) return;
+                        const trialEnd = new Date();
+                        trialEnd.setDate(trialEnd.getDate() + 30);
+                        user.subscription = "pro";
+                        user.trialEndDate = trialEnd.toISOString();
+                        localStorage.setItem("user", JSON.stringify(user));
+                        setShowTierModal(false);
+                        setHasAccess(true);
+                        toast({
+                          title: "Trial activated!",
+                          description: "30-day Pro trial activated. Create your store now!",
+                        });
+                      }}
+                    >
+                      Start Free Trial
+                    </Button>
+                  </div>
+
+                  {/* Enterprise Tier */}
+                  <div className="border-2 border-gray-200 rounded-lg p-6 hover:border-orange-500 transition-colors">
+                    <div className="text-center mb-6">
+                      <h4 className="text-xl font-bold mb-2">Enterprise</h4>
+                      <div className="text-3xl font-bold text-orange-600">$99<span className="text-base text-gray-500">/mo</span></div>
+                      <p className="text-sm text-gray-600 mt-2">For large operations</p>
+                    </div>
+                    <ul className="space-y-3 mb-6">
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Unlimited products</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Full customization</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">24/7 dedicated support</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">White-label options</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">API access</span>
+                      </li>
+                    </ul>
+                    <Button
+                      className="w-full bg-orange-500 hover:bg-orange-600"
+                      onClick={() => {
+                        if (!user) return;
+                        const trialEnd = new Date();
+                        trialEnd.setDate(trialEnd.getDate() + 30);
+                        user.subscription = "enterprise";
+                        user.trialEndDate = trialEnd.toISOString();
+                        localStorage.setItem("user", JSON.stringify(user));
+                        setShowTierModal(false);
+                        setHasAccess(true);
+                        toast({
+                          title: "Trial activated!",
+                          description: "30-day Enterprise trial activated. Create your store now!",
+                        });
+                      }}
+                    >
+                      Start Free Trial
+                    </Button>
+                  </div>
+                </div>
+
+                <p className="text-center text-sm text-gray-500 mt-6">
+                  All plans include 30-day free trial • No credit card required • Cancel anytime
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
