@@ -457,26 +457,28 @@ const NutritionMealPlanner = () => {
 
         {/* Navigation Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-5 mb-8">
-            <TabsTrigger value="planner">
-              <Calendar className="w-4 h-4 mr-2" />
-              Meal Planner
+          <TabsList className="grid w-full grid-cols-5 mb-8 h-auto">
+            <TabsTrigger value="planner" className="flex-col sm:flex-row gap-1 sm:gap-2 py-3">
+              <Calendar className="w-4 h-4" />
+              <span className="text-xs sm:text-sm">Planner</span>
             </TabsTrigger>
-            <TabsTrigger value="nutrition">
-              <Target className="w-4 h-4 mr-2" />
-              Nutrition
+            <TabsTrigger value="nutrition" className="flex-col sm:flex-row gap-1 sm:gap-2 py-3">
+              <Target className="w-4 h-4" />
+              <span className="text-xs sm:text-sm">Nutrition</span>
             </TabsTrigger>
-            <TabsTrigger value="grocery">
-              <ShoppingCart className="w-4 h-4 mr-2" />
-              Grocery List
+            <TabsTrigger value="grocery" className="flex-col sm:flex-row gap-1 sm:gap-2 py-3">
+              <ShoppingCart className="w-4 h-4" />
+              <span className="text-xs sm:text-sm">Grocery</span>
             </TabsTrigger>
-            <TabsTrigger value="prep">
-              <Clock className="w-4 h-4 mr-2" />
-              Meal Prep
+            <TabsTrigger value="prep" className="flex-col sm:flex-row gap-1 sm:gap-2 py-3">
+              <Clock className="w-4 h-4" />
+              <span className="text-xs sm:text-sm hidden sm:inline">Meal Prep</span>
+              <span className="text-xs sm:hidden">Prep</span>
             </TabsTrigger>
-            <TabsTrigger value="analytics">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Analytics
+            <TabsTrigger value="analytics" className="flex-col sm:flex-row gap-1 sm:gap-2 py-3">
+              <BarChart3 className="w-4 h-4" />
+              <span className="text-xs sm:text-sm hidden sm:inline">Analytics</span>
+              <span className="text-xs sm:hidden">Stats</span>
             </TabsTrigger>
           </TabsList>
 
