@@ -53,6 +53,7 @@ import StoreViewer from "@/pages/store/StoreViewer";
 import StoreDashboard from "@/pages/store/StoreDashboard";
 import SellerDashboard from "@/pages/store/SellerDashboard";
 import StoreCreatePage from "@/pages/store/StoreCreatePage";
+import ProductFormPage from "@/pages/store/ProductFormPage";
 
 // Checkout & Products
 import CheckoutPage from "@/pages/checkout/CheckoutPage";
@@ -360,6 +361,7 @@ function AppRouter() {
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/store/create" component={StoreCreatePage} />
         <Route path="/store/setup" component={StoreCreatePage} />
+        <Route path="/store/products/:id" component={ProductFormPage} />
         <Route path="/store/dashboard" component={SellerDashboard} />
         <Route path="/store/:username" component={StoreViewer} />
         <Route path="/store" component={Marketplace} />
