@@ -472,6 +472,7 @@ export default function StoreCreatePage() {
                     </Button>
                   </div>
 
+
                   {/* Starter Tier */}
                   <div className="border-2 border-gray-200 rounded-lg p-6 hover:border-orange-500 transition-colors">
                     <div className="text-center mb-6">
