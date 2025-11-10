@@ -32,10 +32,11 @@ export default function StoreCreatePage() {
   }, [user]);
 
   useEffect(() => {
-    // Check subscription tier access
-    const tier = user?.subscription || user?.subscriptionTier || 'free';
+    // Check subscription tier access - all users can create stores now (free tier available)
+    const tier = user?.subscription || user?.subscriptionTier;
     const hasValidTrial = user?.trialEndDate && new Date(user.trialEndDate) > new Date();
-    setHasAccess(tier !== 'free' || hasValidTrial);
+    // Users have access if they have any subscription tier OR a valid trial
+    setHasAccess(!!tier || hasValidTrial || !!user);
   }, [user]);
 
   useEffect(() => {
@@ -421,7 +422,56 @@ export default function StoreCreatePage() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  {/* FREE Tier */}
+                  <div className="border-2 border-gray-200 rounded-lg p-6 hover:border-orange-500 transition-colors">
+                    <div className="text-center mb-6">
+                      <h4 className="text-xl font-bold mb-2">Free</h4>
+                      <div className="text-3xl font-bold text-orange-600">$0<span className="text-base text-gray-500">/mo</span></div>
+                      <p className="text-sm text-gray-600 mt-2">Start selling today</p>
+                    </div>
+                    <ul className="space-y-3 mb-6">
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Up to 25 products</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Basic storefront</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">15% commission on shipped sales</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">0% on pickup/in-store sales</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Digital products supported</span>
+                      </li>
+                    </ul>
+                    <Button
+                      className="w-full bg-orange-500 hover:bg-orange-600"
+                      onClick={() => {
+                        if (!user) return;
+                        updateUser({
+                          subscription: "free",
+                          trialEndDate: null
+                        });
+                        setShowTierModal(false);
+                        setHasAccess(true);
+                        toast({
+                          title: "Free tier activated!",
+                          description: "Start creating your store now!",
+                        });
+                      }}
+                    >
+                      Start Free
+                    </Button>
+                  </div>
+
                   {/* Starter Tier */}
                   <div className="border-2 border-gray-200 rounded-lg p-6 hover:border-orange-500 transition-colors">
                     <div className="text-center mb-6">
@@ -432,15 +482,19 @@ export default function StoreCreatePage() {
                     <ul className="space-y-3 mb-6">
                       <li className="flex items-start gap-2">
                         <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm">Up to 50 products</span>
+                        <span className="text-sm">Up to 100 products</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm">Basic store customization</span>
+                        <span className="text-sm">10% commission on shipped sales</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm">Order management</span>
+                        <span className="text-sm">0% on pickup/in-store sales</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">Custom store branding</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
@@ -482,7 +536,15 @@ export default function StoreCreatePage() {
                     <ul className="space-y-3 mb-6">
                       <li className="flex items-start gap-2">
                         <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm">Up to 500 products</span>
+                        <span className="text-sm">Unlimited products</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">5% commission on shipped sales</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">0% on pickup/in-store sales</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
@@ -490,15 +552,7 @@ export default function StoreCreatePage() {
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm">Priority support</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm">Advanced analytics</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm">Marketing tools</span>
+                        <span className="text-sm">Priority support & analytics</span>
                       </li>
                     </ul>
                     <Button
@@ -537,19 +591,19 @@ export default function StoreCreatePage() {
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm">Full customization</span>
+                        <span className="text-sm">2% commission on shipped sales</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">0% on pickup/in-store sales</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">White-label & API access</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
                         <span className="text-sm">24/7 dedicated support</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm">White-label options</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm">API access</span>
                       </li>
                     </ul>
                     <Button
