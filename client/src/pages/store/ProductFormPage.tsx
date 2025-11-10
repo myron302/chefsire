@@ -18,13 +18,18 @@ export default function ProductFormPage() {
 
   const [loading, setLoading] = useState(false);
   const [loadingProduct, setLoadingProduct] = useState(!!productId);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     price: '',
     inventory: '',
     category: '',
-    imageUrl: ''
+    imageUrl: '',
+    productCategory: 'physical',
+    deliveryMethods: ['shipped'] as string[],
+    digitalFileUrl: '',
+    digitalFileName: ''
   });
 
   useEffect(() => {
@@ -44,7 +49,11 @@ export default function ProductFormPage() {
           price: data.price?.toString() || '',
           inventory: data.inventory?.toString() || '',
           category: data.category || '',
-          imageUrl: data.imageUrl || ''
+          imageUrl: data.imageUrl || '',
+          productCategory: data.productCategory || 'physical',
+          deliveryMethods: data.deliveryMethods || ['shipped'],
+          digitalFileUrl: data.digitalFileUrl || '',
+          digitalFileName: data.digitalFileName || ''
         });
       }
     } catch (error) {
@@ -59,9 +68,78 @@ export default function ProductFormPage() {
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleDeliveryMethodToggle = (method: string) => {
+    setFormData(prev => {
+      const methods = prev.deliveryMethods.includes(method)
+        ? prev.deliveryMethods.filter(m => m !== method)
+        : [...prev.deliveryMethods, method];
+
+      // Ensure at least one method is selected
+      return {
+        ...prev,
+        deliveryMethods: methods.length > 0 ? methods : prev.deliveryMethods
+      };
+    });
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file size (max 100MB)
+    const maxSize = 100 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast({
+        title: "File too large",
+        description: "Please upload a file smaller than 100MB",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setUploadingFile(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const data = await response.json();
+
+      setFormData(prev => ({
+        ...prev,
+        digitalFileUrl: data.url,
+        digitalFileName: file.name
+      }));
+
+      toast({
+        title: "File uploaded",
+        description: `${file.name} uploaded successfully`
+      });
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      toast({
+        title: "Upload failed",
+        description: "Failed to upload file. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setUploadingFile(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -106,6 +184,27 @@ export default function ProductFormPage() {
       return;
     }
 
+    // Validate delivery methods
+    if (formData.deliveryMethods.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please select at least one delivery method",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validate digital products
+    if ((formData.productCategory === 'digital' || formData.productCategory === 'cookbook') &&
+        !formData.digitalFileUrl.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Digital products require a file URL",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -125,7 +224,14 @@ export default function ProductFormPage() {
           price: price,
           inventory: inventory,
           category: formData.category.trim() || 'general',
-          imageUrl: formData.imageUrl.trim() || null
+          imageUrl: formData.imageUrl.trim() || null,
+          productCategory: formData.productCategory,
+          deliveryMethods: formData.deliveryMethods,
+          digitalFileUrl: formData.digitalFileUrl.trim() || null,
+          digitalFileName: formData.digitalFileName.trim() || null,
+          isDigital: formData.productCategory === 'digital' || formData.productCategory === 'cookbook',
+          inStoreOnly: formData.deliveryMethods.length === 1 &&
+                       (formData.deliveryMethods[0] === 'pickup' || formData.deliveryMethods[0] === 'in_store')
         })
       });
 
@@ -277,6 +383,133 @@ export default function ProductFormPage() {
                   className="mt-1"
                 />
               </div>
+
+              {/* Product Type */}
+              <div>
+                <Label htmlFor="productCategory">Product Type *</Label>
+                <select
+                  id="productCategory"
+                  name="productCategory"
+                  value={formData.productCategory}
+                  onChange={handleInputChange}
+                  className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  required
+                >
+                  <option value="physical">Physical Product</option>
+                  <option value="digital">Digital Product</option>
+                  <option value="cookbook">Digital Cookbook</option>
+                  <option value="course">Online Course</option>
+                  <option value="ingredient">Ingredient/Raw Material</option>
+                  <option value="tool">Kitchen Tool/Equipment</option>
+                </select>
+                <p className="text-sm text-gray-500 mt-1">
+                  {formData.productCategory === 'digital' || formData.productCategory === 'cookbook'
+                    ? 'Commission: 10% (FREE tier) • 5% (Starter) • 3% (Pro) • 0% (Enterprise)'
+                    : 'Physical products have varying commission based on delivery method'}
+                </p>
+              </div>
+
+              {/* Delivery Methods */}
+              <div>
+                <Label>Available Delivery Methods *</Label>
+                <div className="mt-2 space-y-2">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="method-shipped"
+                      checked={formData.deliveryMethods.includes('shipped')}
+                      onChange={() => handleDeliveryMethodToggle('shipped')}
+                      className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="method-shipped" className="ml-2 text-sm">
+                      <span className="font-medium">Shipping Available</span>
+                      <span className="text-gray-500 ml-2">
+                        • Commission: 15% (FREE) • 10% (Starter) • 5% (Pro) • 2% (Enterprise)
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="method-pickup"
+                      checked={formData.deliveryMethods.includes('pickup')}
+                      onChange={() => handleDeliveryMethodToggle('pickup')}
+                      className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="method-pickup" className="ml-2 text-sm">
+                      <span className="font-medium">Pickup Available</span>
+                      <span className="text-green-600 ml-2">• 0% commission on all tiers</span>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="method-in-store"
+                      checked={formData.deliveryMethods.includes('in_store')}
+                      onChange={() => handleDeliveryMethodToggle('in_store')}
+                      className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="method-in-store" className="ml-2 text-sm">
+                      <span className="font-medium">In-Store Only</span>
+                      <span className="text-green-600 ml-2">• 0% commission on all tiers</span>
+                    </label>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500 mt-2">
+                  Select all methods that apply. Pickup and in-store sales have 0% commission!
+                </p>
+              </div>
+
+              {/* Digital File Upload (for digital products) */}
+              {(formData.productCategory === 'digital' || formData.productCategory === 'cookbook') && (
+                <div>
+                  <Label htmlFor="digitalFile">Digital File *</Label>
+                  <div className="mt-1">
+                    {formData.digitalFileUrl ? (
+                      <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span className="text-sm text-green-700 font-medium">{formData.digitalFileName || 'File uploaded'}</span>
+                        <button
+                          type="button"
+                          onClick={() => setFormData(prev => ({ ...prev, digitalFileUrl: '', digitalFileName: '' }))}
+                          className="ml-auto text-red-600 hover:text-red-700 text-sm"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <input
+                          type="file"
+                          id="digitalFile"
+                          onChange={handleFileUpload}
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.mp4,.mov,.avi,.zip,.epub"
+                          disabled={uploadingFile}
+                          className="block w-full text-sm text-gray-500
+                            file:mr-4 file:py-2 file:px-4
+                            file:rounded-md file:border-0
+                            file:text-sm file:font-semibold
+                            file:bg-orange-50 file:text-orange-700
+                            hover:file:bg-orange-100
+                            cursor-pointer"
+                        />
+                        {uploadingFile && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <Loader2 className="w-5 h-5 text-orange-500 animate-spin" />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Upload PDF, DOC, Excel, video files, or ZIP archives (max 100MB)
+                  </p>
+                </div>
+              )}
 
               {/* Image URL */}
               <div>
