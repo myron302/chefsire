@@ -29,14 +29,14 @@ router.get("/user/:userId", async (req, res) => {
   }
 });
 
-// POST /api/stores-crud - Create a store
+// POST /api/stores - Create a store
 router.post("/", async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ ok: false, error: "Not authenticated" });
     }
 
-    // Check if user has access to store builder
+    // Get user's subscription tier from their user record
     const [user] = await db
       .select()
       .from(users)
@@ -47,25 +47,16 @@ router.post("/", async (req, res) => {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
 
-    const tierName = user.subscriptionTier || "free";
-    const tierInfo = SUBSCRIPTION_TIERS[tierName as keyof typeof SUBSCRIPTION_TIERS];
-
-    if (!tierInfo.limits.storeBuilder) {
-      return res.status(403).json({
-        ok: false,
-        error: "Store builder not available on Free tier",
-        message: "Upgrade to Starter tier or higher to create a custom store",
-        currentTier: tierName,
-        requiredFeature: "storeBuilder",
-        upgradeUrl: "/api/subscriptions/tiers"
-      });
-    }
+    // Determine subscription tier (free, starter, pro, enterprise)
+    // Check both subscriptionTier and subscription fields for backwards compatibility
+    const userTier = (user as any).subscription || user.subscriptionTier || "free";
 
     const { handle, name, bio } = req.body;
     if (!handle || !name) {
       return res.status(400).json({ ok: false, error: "Handle and name required" });
     }
 
+    // Create store with user's subscription tier
     const [newStore] = await db
       .insert(stores)
       .values({
@@ -73,6 +64,7 @@ router.post("/", async (req, res) => {
         handle,
         name,
         bio: bio || null,
+        subscriptionTier: userTier
       })
       .returning();
 

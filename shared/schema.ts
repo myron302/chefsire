@@ -148,10 +148,14 @@ export const products = pgTable(
     description: text("description"),
     price: decimal("price", { precision: 10, scale: 2 }).notNull(),
     category: text("category").notNull(),
+    productCategory: text("product_category").default("physical"), // physical, digital, cookbook, course, ingredient, tool
     images: jsonb("images").$type<string[]>().default(sql`'[]'::jsonb`),
     inventory: integer("inventory").default(0),
     shippingEnabled: boolean("shipping_enabled").default(true),
     localPickupEnabled: boolean("local_pickup_enabled").default(false),
+    inStoreOnly: boolean("in_store_only").default(false),
+    isDigital: boolean("is_digital").default(false),
+    digitalFileUrl: text("digital_file_url"), // For digital products like cookbooks
     pickupLocation: text("pickup_location"),
     pickupInstructions: text("pickup_instructions"),
     shippingCost: decimal("shipping_cost", { precision: 8, scale: 2 }),
@@ -164,6 +168,7 @@ export const products = pgTable(
   },
   (table) => ({
     categoryIdx: index("products_category_idx").on(table.category),
+    productCategoryIdx: index("products_product_category_idx").on(table.productCategory),
     sellerIdx: index("products_seller_idx").on(table.sellerId),
     pickupLocationIdx: index("products_pickup_location_idx").on(table.pickupLocation),
   })
@@ -180,6 +185,7 @@ export const orders = pgTable(
     totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
     platformFee: decimal("platform_fee", { precision: 8, scale: 2 }).notNull(),
     sellerAmount: decimal("seller_amount", { precision: 10, scale: 2 }).notNull(),
+    deliveryMethod: text("delivery_method").notNull().default("shipped"), // shipped, pickup, in_store, digital
     shippingAddress: jsonb("shipping_address").$type<{
       street: string;
       city: string;
