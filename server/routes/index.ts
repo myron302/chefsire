@@ -49,6 +49,9 @@ import ordersRouter from "./orders";
 import paymentsRouter from "./payments";
 import payoutsRouter from "./payouts";
 
+// File uploads
+import uploadRouter from "./upload";
+
 const r = Router();
 
 /**
@@ -125,6 +128,9 @@ r.use("/subscriptions", subscriptionsRouter);
 r.use("/orders", ordersRouter);
 r.use("/payments", paymentsRouter);
 r.use("/payouts", payoutsRouter);
+
+// File uploads
+r.use("/upload", uploadRouter);
 
 // Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {

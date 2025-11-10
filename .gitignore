@@ -12,3 +12,4 @@ server/.env
 *.env
 !.env.example
 !server/.env.example
+/uploads
