@@ -11,7 +11,7 @@ import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
 
 export default function StoreCreatePage() {
-  const { user } = useUser();
+  const { user, updateUser } = useUser();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
@@ -453,9 +453,10 @@ export default function StoreCreatePage() {
                         if (!user) return;
                         const trialEnd = new Date();
                         trialEnd.setDate(trialEnd.getDate() + 30);
-                        user.subscription = "starter";
-                        user.trialEndDate = trialEnd.toISOString();
-                        localStorage.setItem("user", JSON.stringify(user));
+                        updateUser({
+                          subscription: "starter",
+                          trialEndDate: trialEnd.toISOString()
+                        });
                         setShowTierModal(false);
                         setHasAccess(true);
                         toast({
@@ -506,9 +507,10 @@ export default function StoreCreatePage() {
                         if (!user) return;
                         const trialEnd = new Date();
                         trialEnd.setDate(trialEnd.getDate() + 30);
-                        user.subscription = "pro";
-                        user.trialEndDate = trialEnd.toISOString();
-                        localStorage.setItem("user", JSON.stringify(user));
+                        updateUser({
+                          subscription: "pro",
+                          trialEndDate: trialEnd.toISOString()
+                        });
                         setShowTierModal(false);
                         setHasAccess(true);
                         toast({
@@ -556,9 +558,10 @@ export default function StoreCreatePage() {
                         if (!user) return;
                         const trialEnd = new Date();
                         trialEnd.setDate(trialEnd.getDate() + 30);
-                        user.subscription = "enterprise";
-                        user.trialEndDate = trialEnd.toISOString();
-                        localStorage.setItem("user", JSON.stringify(user));
+                        updateUser({
+                          subscription: "enterprise",
+                          trialEndDate: trialEnd.toISOString()
+                        });
                         setShowTierModal(false);
                         setHasAccess(true);
                         toast({
