@@ -142,7 +142,7 @@ export default function StoreCreatePage() {
     setError('');
 
     try {
-      const response = await fetch('/api/stores-crud', {
+      const response = await fetch('/api/stores', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
