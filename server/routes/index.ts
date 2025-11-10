@@ -31,6 +31,9 @@ import storesRouter from "./stores-crud";
 // Square (subscriptions / checkout links)
 import squareRouter from "./stores";
 
+// Auth middleware
+import { requireAuth } from "../middleware/auth";
+
 // ⚡ Phase 1: Daily Addiction Features
 import notificationsRouter from "./notifications";
 import questsRouter from "./quests";
@@ -102,8 +105,8 @@ r.use("/google", googleRouter);
 // Competitions
 r.use("/competitions", competitionsRouter);
 
-// Stores (public viewer + owner writes)
-r.use("/stores", storesRouter);
+// Stores (public viewer + owner writes) - requires authentication
+r.use("/stores", requireAuth, storesRouter);
 
 // Square (payments/subscriptions)
 r.use("/square", squareRouter);
