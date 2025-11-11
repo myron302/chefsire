@@ -44,8 +44,9 @@ r.post("/marketplace/products", requireAuth, async (req, res) => {
     const schema = z.object({
       name: z.string().min(1),
       description: z.string().optional(),
-      price: z.string().regex(/^\d+(\.\d{1,2})?$/),
-      category: z.enum(["spices", "ingredients", "cookware", "cookbooks", "sauces", "other"]),
+      price: z.union([z.number(), z.string().regex(/^\d+(\.\d{1,2})?$/)]).transform(val => typeof val === 'number' ? val.toString() : val),
+      category: z.string().optional().default("other"),
+      imageUrl: z.string().optional().nullable(),
       images: z.array(z.string().url()).default([]),
       inventory: z.number().min(0).default(0),
       shippingEnabled: z.boolean().default(true),
@@ -55,6 +56,13 @@ r.post("/marketplace/products", requireAuth, async (req, res) => {
       shippingCost: z.string().optional(),
       isExternal: z.boolean().default(false),
       externalUrl: z.string().url().optional(),
+      // New fields from frontend
+      productCategory: z.string().optional(),
+      deliveryMethods: z.array(z.string()).optional(),
+      digitalFileUrl: z.string().optional().nullable(),
+      digitalFileName: z.string().optional().nullable(),
+      isDigital: z.boolean().optional(),
+      inStoreOnly: z.boolean().optional(),
     });
 
     const body = schema.parse(req.body);
@@ -136,7 +144,9 @@ r.put("/marketplace/products/:id", requireAuth, async (req, res) => {
     const schema = z.object({
       name: z.string().min(1).optional(),
       description: z.string().optional(),
-      price: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
+      price: z.union([z.number(), z.string().regex(/^\d+(\.\d{1,2})?$/)]).transform(val => typeof val === 'number' ? val.toString() : val).optional(),
+      category: z.string().optional(),
+      imageUrl: z.string().optional().nullable(),
       inventory: z.number().min(0).optional(),
       shippingEnabled: z.boolean().optional(),
       localPickupEnabled: z.boolean().optional(),
@@ -144,6 +154,13 @@ r.put("/marketplace/products/:id", requireAuth, async (req, res) => {
       pickupInstructions: z.string().optional(),
       shippingCost: z.string().optional(),
       isActive: z.boolean().optional(),
+      // New fields from frontend
+      productCategory: z.string().optional(),
+      deliveryMethods: z.array(z.string()).optional(),
+      digitalFileUrl: z.string().optional().nullable(),
+      digitalFileName: z.string().optional().nullable(),
+      isDigital: z.boolean().optional(),
+      inStoreOnly: z.boolean().optional(),
     });
 
     const updates = schema.parse(req.body);
