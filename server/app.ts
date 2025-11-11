@@ -6,7 +6,12 @@ import compression from "compression";
 import morgan from "morgan";
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import routes from "./routes";
+
+// Define __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -49,8 +54,28 @@ if (!fs.existsSync(uploadsDir)) {
 app.use("/uploads", express.static(uploadsDir));
 
 // Serve built client at dist/public
-const clientDir = path.resolve(process.cwd(), "dist/public");
-const hasClient = fs.existsSync(clientDir);
+// Try multiple possible locations for the client build
+const possibleClientDirs = [
+  path.resolve(process.cwd(), "dist/public"),      // If running from project root
+  path.resolve(process.cwd(), "../dist/public"),   // If running from server/ directory
+  path.resolve(__dirname, "../../dist/public"),    // Relative to bundled server location
+];
+
+let clientDir = "";
+let hasClient = false;
+
+for (const dir of possibleClientDirs) {
+  if (fs.existsSync(dir)) {
+    clientDir = dir;
+    hasClient = true;
+    console.log('[INFO] Found client bundle at:', dir);
+    break;
+  }
+}
+
+if (!hasClient) {
+  console.warn('[WARN] Client bundle not found. Checked:', possibleClientDirs);
+}
 
 if (hasClient) {
   app.use(
