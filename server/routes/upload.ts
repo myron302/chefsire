@@ -2,7 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import path from "path";
 import { randomUUID } from "crypto";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth } from "../middleware";
 import fs from "fs";
 
 const router = Router();
