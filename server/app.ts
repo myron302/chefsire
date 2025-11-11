@@ -6,7 +6,12 @@ import compression from "compression";
 import morgan from "morgan";
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import routes from "./routes";
+
+// Define __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
