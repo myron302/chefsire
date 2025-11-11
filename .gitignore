@@ -13,3 +13,4 @@ server/.env
 !.env.example
 !server/.env.example
 /uploads
+/tmp
