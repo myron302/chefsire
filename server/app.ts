@@ -55,6 +55,7 @@ app.use("/uploads", express.static(uploadsDir));
 
 // Serve built client at dist/public
 // Try multiple possible locations for the client build
+// This will automatically find the correct path in any deployment environment
 const possibleClientDirs = [
   path.resolve(process.cwd(), "dist/public"),      // If running from project root
   path.resolve(process.cwd(), "../dist/public"),   // If running from server/ directory
