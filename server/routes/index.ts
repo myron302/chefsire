@@ -50,8 +50,7 @@ import paymentsRouter from "./payments";
 import payoutsRouter from "./payouts";
 
 // File uploads
-// TEMPORARILY DISABLED - causes Passenger crash
-// import uploadRouter from "./upload";
+import uploadRouter from "./upload";
 
 const r = Router();
 
@@ -131,8 +130,7 @@ r.use("/payments", paymentsRouter);
 r.use("/payouts", payoutsRouter);
 
 // File uploads
-// TEMPORARILY DISABLED - causes Passenger crash
-// r.use("/upload", uploadRouter);
+r.use("/upload", uploadRouter);
 
 // Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {

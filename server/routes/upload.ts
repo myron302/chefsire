@@ -1,5 +1,4 @@
 import { Router } from "express";
-import multer from "multer";
 import path from "path";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middleware";
@@ -10,6 +9,9 @@ const router = Router();
 // POST /api/upload - Upload a file
 router.post("/", requireAuth, async (req, res) => {
   try {
+    // Dynamically import multer to avoid Passenger startup issues
+    const multer = (await import("multer")).default;
+
     // Configure multer for file uploads (lazy initialization)
     const storage = multer.diskStorage({
       destination: (req, file, cb) => {
