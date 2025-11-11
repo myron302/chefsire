@@ -43,10 +43,15 @@ app.get("/api", (_req, res) => {
 
 // Serve uploaded files
 const uploadsDir = path.resolve(process.cwd(), "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  app.use("/uploads", express.static(uploadsDir));
+} catch (error) {
+  console.error("[uploads] Failed to create uploads directory:", error);
+  console.warn("[uploads] File uploads may not work. Check directory permissions.");
 }
-app.use("/uploads", express.static(uploadsDir));
 
 // Serve built client at ../dist/public (App Root is /httpdocs/server)
 const clientDir = path.resolve(process.cwd(), "../dist/public");
