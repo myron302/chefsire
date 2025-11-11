@@ -49,8 +49,28 @@ if (!fs.existsSync(uploadsDir)) {
 app.use("/uploads", express.static(uploadsDir));
 
 // Serve built client at dist/public
-const clientDir = path.resolve(process.cwd(), "dist/public");
-const hasClient = fs.existsSync(clientDir);
+// Try multiple possible locations for the client build
+const possibleClientDirs = [
+  path.resolve(process.cwd(), "dist/public"),      // If running from project root
+  path.resolve(process.cwd(), "../dist/public"),   // If running from server/ directory
+  path.resolve(__dirname, "../../dist/public"),    // Relative to bundled server location
+];
+
+let clientDir = "";
+let hasClient = false;
+
+for (const dir of possibleClientDirs) {
+  if (fs.existsSync(dir)) {
+    clientDir = dir;
+    hasClient = true;
+    console.log('[INFO] Found client bundle at:', dir);
+    break;
+  }
+}
+
+if (!hasClient) {
+  console.warn('[WARN] Client bundle not found. Checked:', possibleClientDirs);
+}
 
 if (hasClient) {
   app.use(
