@@ -1,27 +1,23 @@
 import { Router } from "express";
+import multer from "multer";
 import path from "path";
 import { randomUUID } from "crypto";
-import { requireAuth } from "../middleware";
+import { requireAuth } from "../middleware/auth";
 import fs from "fs";
-import multer from "multer";
 
 const router = Router();
 
-// Configure multer storage at module load time (not per-request)
+// Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(process.cwd(), 'uploads');
 
     // Create uploads directory if it doesn't exist
-    try {
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-      cb(null, uploadDir);
-    } catch (error) {
-      console.error('[upload] Failed to create uploads directory:', error);
-      cb(error as Error, uploadDir);
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
     }
+
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueName = `${randomUUID()}${path.extname(file.originalname)}`;
@@ -29,7 +25,6 @@ const storage = multer.diskStorage({
   }
 });
 
-// Configure multer once at module initialization
 const upload = multer({
   storage,
   limits: {
@@ -61,17 +56,9 @@ const upload = multer({
   }
 });
 
-// Create the middleware once
-const uploadSingle = upload.single('file');
-
 // POST /api/upload - Upload a file
-router.post("/", requireAuth, (req, res) => {
-  uploadSingle(req, res, (err) => {
-    if (err) {
-      console.error("Error uploading file:", err);
-      return res.status(500).json({ ok: false, error: err.message || "Failed to upload file" });
-    }
-
+router.post("/", requireAuth, upload.single('file'), async (req, res) => {
+  try {
     if (!req.file) {
       return res.status(400).json({ ok: false, error: "No file uploaded" });
     }
@@ -86,7 +73,10 @@ router.post("/", requireAuth, (req, res) => {
       size: req.file.size,
       mimetype: req.file.mimetype
     });
-  });
+  } catch (error: any) {
+    console.error("Error uploading file:", error);
+    res.status(500).json({ ok: false, error: error.message || "Failed to upload file" });
+  }
 });
 
 export default router;
