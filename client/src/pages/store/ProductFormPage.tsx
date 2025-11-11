@@ -115,12 +115,10 @@ export default function ProductFormPage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
-        throw new Error(errorData.error || `Upload failed with status ${response.status}`);
+        throw new Error('Upload failed');
       }
 
       const data = await response.json();
-      console.log('Upload response:', data);
 
       setFormData(prev => ({
         ...prev,
@@ -132,11 +130,11 @@ export default function ProductFormPage() {
         title: "File uploaded",
         description: `${file.name} uploaded successfully`
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error uploading file:', error);
       toast({
         title: "Upload failed",
-        description: error.message || "Failed to upload file. Please try again.",
+        description: "Failed to upload file. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -201,7 +199,7 @@ export default function ProductFormPage() {
         !formData.digitalFileUrl.trim()) {
       toast({
         title: "Validation Error",
-        description: "Please upload a file for digital products",
+        description: "Digital products require a file URL",
         variant: "destructive"
       });
       return;

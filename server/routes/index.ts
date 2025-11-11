@@ -108,8 +108,8 @@ r.use("/google", googleRouter);
 // Competitions
 r.use("/competitions", competitionsRouter);
 
-// Stores (public viewer + owner writes)
-r.use("/stores", storesRouter);
+// Stores (public viewer + owner writes) - requires authentication
+r.use("/stores", requireAuth, storesRouter);
 
 // Square (payments/subscriptions)
 r.use("/square", squareRouter);

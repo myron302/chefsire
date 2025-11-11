@@ -44,11 +44,9 @@ r.post("/marketplace/products", requireAuth, async (req, res) => {
     const schema = z.object({
       name: z.string().min(1),
       description: z.string().optional(),
-      price: z.number().or(z.string().regex(/^\d+(\.\d{1,2})?$/)),
-      category: z.string().default("other"),
-      productCategory: z.string().optional(),
+      price: z.string().regex(/^\d+(\.\d{1,2})?$/),
+      category: z.enum(["spices", "ingredients", "cookware", "cookbooks", "sauces", "other"]),
       images: z.array(z.string().url()).default([]),
-      imageUrl: z.string().nullable().optional(),
       inventory: z.number().min(0).default(0),
       shippingEnabled: z.boolean().default(true),
       localPickupEnabled: z.boolean().default(false),
@@ -57,12 +55,6 @@ r.post("/marketplace/products", requireAuth, async (req, res) => {
       shippingCost: z.string().optional(),
       isExternal: z.boolean().default(false),
       externalUrl: z.string().url().optional(),
-      // Digital product fields
-      digitalFileUrl: z.string().nullable().optional(),
-      digitalFileName: z.string().nullable().optional(),
-      isDigital: z.boolean().optional(),
-      deliveryMethods: z.array(z.string()).optional(),
-      inStoreOnly: z.boolean().optional(),
     });
 
     const body = schema.parse(req.body);
@@ -144,10 +136,7 @@ r.put("/marketplace/products/:id", requireAuth, async (req, res) => {
     const schema = z.object({
       name: z.string().min(1).optional(),
       description: z.string().optional(),
-      price: z.number().or(z.string().regex(/^\d+(\.\d{1,2})?$/)).optional(),
-      category: z.string().optional(),
-      productCategory: z.string().optional(),
-      imageUrl: z.string().nullable().optional(),
+      price: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
       inventory: z.number().min(0).optional(),
       shippingEnabled: z.boolean().optional(),
       localPickupEnabled: z.boolean().optional(),
@@ -155,12 +144,6 @@ r.put("/marketplace/products/:id", requireAuth, async (req, res) => {
       pickupInstructions: z.string().optional(),
       shippingCost: z.string().optional(),
       isActive: z.boolean().optional(),
-      // Digital product fields
-      digitalFileUrl: z.string().nullable().optional(),
-      digitalFileName: z.string().nullable().optional(),
-      isDigital: z.boolean().optional(),
-      deliveryMethods: z.array(z.string()).optional(),
-      inStoreOnly: z.boolean().optional(),
     });
 
     const updates = schema.parse(req.body);

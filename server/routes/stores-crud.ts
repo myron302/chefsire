@@ -3,7 +3,6 @@ import { db } from "../db";
 import { stores, users } from "../../shared/schema.js";
 import { eq } from "drizzle-orm";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
-import { requireAuth } from "../middleware";
 
 const router = Router();
 
@@ -31,7 +30,7 @@ router.get("/user/:userId", async (req, res) => {
 });
 
 // POST /api/stores - Create a store
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ ok: false, error: "Not authenticated" });
@@ -80,7 +79,7 @@ router.post("/", requireAuth, async (req, res) => {
 });
 
 // PATCH /api/stores-crud/:id - Update store details
-router.patch("/:id", requireAuth, async (req, res) => {
+router.patch("/:id", async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ ok: false, error: "Not authenticated" });
@@ -116,7 +115,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
 });
 
 // PATCH /api/stores-crud/:id/layout - Update store layout
-router.patch("/:id/layout", requireAuth, async (req, res) => {
+router.patch("/:id/layout", async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ ok: false, error: "Not authenticated" });
@@ -150,7 +149,7 @@ router.patch("/:id/layout", requireAuth, async (req, res) => {
 });
 
 // PATCH /api/stores-crud/:id/publish - Toggle published status
-router.patch("/:id/publish", requireAuth, async (req, res) => {
+router.patch("/:id/publish", async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ ok: false, error: "Not authenticated" });
