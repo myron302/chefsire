@@ -199,7 +199,7 @@ export default function ProductFormPage() {
         !formData.digitalFileUrl.trim()) {
       toast({
         title: "Validation Error",
-        description: "Digital products require a file URL",
+        description: "Please upload a file for digital products",
         variant: "destructive"
       });
       return;
