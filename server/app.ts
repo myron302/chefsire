@@ -48,8 +48,8 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use("/uploads", express.static(uploadsDir));
 
-// Serve built client at ../dist/public (App Root is /httpdocs/server)
-const clientDir = path.resolve(process.cwd(), "../dist/public");
+// Serve built client at dist/public
+const clientDir = path.resolve(process.cwd(), "dist/public");
 const hasClient = fs.existsSync(clientDir);
 
 if (hasClient) {
@@ -70,7 +70,7 @@ app.get("*", (req, res, next) => {
   if (!hasClient) {
     return res
       .status(200)
-      .send("Client bundle not found. Build UI with `npm run build` to populate /httpdocs/dist/public.");
+      .send("Client bundle not found. Build UI with `npm run build` to populate dist/public.");
   }
   res.sendFile(path.join(clientDir, "index.html"));
 });
