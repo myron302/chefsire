@@ -3,7 +3,7 @@ import { db } from "../db";
 import { stores, users } from "../../shared/schema.js";
 import { eq } from "drizzle-orm";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth } from "../middleware";
 
 const router = Router();
 
