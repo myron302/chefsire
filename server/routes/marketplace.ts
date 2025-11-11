@@ -45,7 +45,7 @@ r.post("/marketplace/products", requireAuth, async (req, res) => {
       name: z.string().min(1),
       description: z.string().optional(),
       price: z.number().or(z.string().regex(/^\d+(\.\d{1,2})?$/)),
-      category: z.string().optional(),
+      category: z.string().default("other"),
       productCategory: z.string().optional(),
       images: z.array(z.string().url()).default([]),
       imageUrl: z.string().nullable().optional(),
