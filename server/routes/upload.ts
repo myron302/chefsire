@@ -57,26 +57,43 @@ const upload = multer({
 });
 
 // POST /api/upload - Upload a file
-router.post("/", requireAuth, upload.single('file'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ ok: false, error: "No file uploaded" });
+router.post("/", requireAuth, (req, res) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error("Upload error:", err);
+
+      // Handle Multer errors specifically
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ ok: false, error: "File is too large. Maximum size is 100MB." });
+        }
+        return res.status(400).json({ ok: false, error: `Upload error: ${err.message}` });
+      }
+
+      // Handle file filter errors
+      return res.status(400).json({ ok: false, error: err.message || "Invalid file type" });
     }
 
-    // Generate URL for the uploaded file
-    const fileUrl = `/uploads/${req.file.filename}`;
+    try {
+      if (!req.file) {
+        return res.status(400).json({ ok: false, error: "No file uploaded" });
+      }
 
-    res.json({
-      ok: true,
-      url: fileUrl,
-      filename: req.file.originalname,
-      size: req.file.size,
-      mimetype: req.file.mimetype
-    });
-  } catch (error: any) {
-    console.error("Error uploading file:", error);
-    res.status(500).json({ ok: false, error: error.message || "Failed to upload file" });
-  }
+      // Generate URL for the uploaded file
+      const fileUrl = `/uploads/${req.file.filename}`;
+
+      res.json({
+        ok: true,
+        url: fileUrl,
+        filename: req.file.originalname,
+        size: req.file.size,
+        mimetype: req.file.mimetype
+      });
+    } catch (error: any) {
+      console.error("Error processing upload:", error);
+      res.status(500).json({ ok: false, error: error.message || "Failed to process upload" });
+    }
+  });
 });
 
 export default router;

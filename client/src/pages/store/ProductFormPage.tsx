@@ -32,6 +32,24 @@ export default function ProductFormPage() {
     digitalFileName: ''
   });
 
+  // Auto-select digital download when product category changes to digital
+  useEffect(() => {
+    if (formData.productCategory === 'digital' || formData.productCategory === 'cookbook') {
+      setFormData(prev => ({
+        ...prev,
+        deliveryMethods: ['digital_download']
+      }));
+    } else if (formData.deliveryMethods.includes('digital_download') &&
+               formData.productCategory !== 'digital' &&
+               formData.productCategory !== 'cookbook') {
+      // Remove digital_download if changing back to physical
+      setFormData(prev => ({
+        ...prev,
+        deliveryMethods: ['shipped']
+      }));
+    }
+  }, [formData.productCategory]);
+
   useEffect(() => {
     if (productId) {
       loadProduct();
@@ -105,20 +123,21 @@ export default function ProductFormPage() {
     setUploadingFile(true);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', file);
 
       const response = await fetch('/api/upload', {
         method: 'POST',
         credentials: 'include',
-        body: formData
+        body: uploadFormData
       });
 
-      if (!response.ok) {
-        throw new Error('Upload failed');
-      }
-
       const data = await response.json();
+
+      if (!response.ok) {
+        // Show specific error from server if available
+        throw new Error(data.error || `Upload failed with status ${response.status}`);
+      }
 
       setFormData(prev => ({
         ...prev,
@@ -132,13 +151,16 @@ export default function ProductFormPage() {
       });
     } catch (error) {
       console.error('Error uploading file:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to upload file. Please try again.";
       toast({
         title: "Upload failed",
-        description: "Failed to upload file. Please try again.",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
       setUploadingFile(false);
+      // Reset the file input so the same file can be selected again if needed
+      e.target.value = '';
     }
   };
 
@@ -413,52 +435,78 @@ export default function ProductFormPage() {
               <div>
                 <Label>Available Delivery Methods *</Label>
                 <div className="mt-2 space-y-2">
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="method-shipped"
-                      checked={formData.deliveryMethods.includes('shipped')}
-                      onChange={() => handleDeliveryMethodToggle('shipped')}
-                      className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="method-shipped" className="ml-2 text-sm">
-                      <span className="font-medium">Shipping Available</span>
-                      <span className="text-gray-500 ml-2">
-                        • Commission: 15% (FREE) • 10% (Starter) • 5% (Pro) • 2% (Enterprise)
-                      </span>
-                    </label>
-                  </div>
+                  {/* Digital Download - only show for digital products */}
+                  {(formData.productCategory === 'digital' || formData.productCategory === 'cookbook') && (
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="method-digital"
+                        checked={formData.deliveryMethods.includes('digital_download')}
+                        onChange={() => handleDeliveryMethodToggle('digital_download')}
+                        className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="method-digital" className="ml-2 text-sm">
+                        <span className="font-medium">Digital Download</span>
+                        <span className="text-blue-600 ml-2">
+                          • Instant delivery • Commission: 10% (FREE) • 5% (Starter) • 3% (Pro) • 0% (Enterprise)
+                        </span>
+                      </label>
+                    </div>
+                  )}
 
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="method-pickup"
-                      checked={formData.deliveryMethods.includes('pickup')}
-                      onChange={() => handleDeliveryMethodToggle('pickup')}
-                      className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="method-pickup" className="ml-2 text-sm">
-                      <span className="font-medium">Pickup Available</span>
-                      <span className="text-green-600 ml-2">• 0% commission on all tiers</span>
-                    </label>
-                  </div>
+                  {/* Physical delivery methods - only show for non-digital products */}
+                  {formData.productCategory !== 'digital' && formData.productCategory !== 'cookbook' && (
+                    <>
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="method-shipped"
+                          checked={formData.deliveryMethods.includes('shipped')}
+                          onChange={() => handleDeliveryMethodToggle('shipped')}
+                          className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="method-shipped" className="ml-2 text-sm">
+                          <span className="font-medium">Shipping Available</span>
+                          <span className="text-gray-500 ml-2">
+                            • Commission: 15% (FREE) • 10% (Starter) • 5% (Pro) • 2% (Enterprise)
+                          </span>
+                        </label>
+                      </div>
 
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="method-in-store"
-                      checked={formData.deliveryMethods.includes('in_store')}
-                      onChange={() => handleDeliveryMethodToggle('in_store')}
-                      className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="method-in-store" className="ml-2 text-sm">
-                      <span className="font-medium">In-Store Only</span>
-                      <span className="text-green-600 ml-2">• 0% commission on all tiers</span>
-                    </label>
-                  </div>
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="method-pickup"
+                          checked={formData.deliveryMethods.includes('pickup')}
+                          onChange={() => handleDeliveryMethodToggle('pickup')}
+                          className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="method-pickup" className="ml-2 text-sm">
+                          <span className="font-medium">Pickup Available</span>
+                          <span className="text-green-600 ml-2">• 0% commission on all tiers</span>
+                        </label>
+                      </div>
+
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="method-in-store"
+                          checked={formData.deliveryMethods.includes('in_store')}
+                          onChange={() => handleDeliveryMethodToggle('in_store')}
+                          className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="method-in-store" className="ml-2 text-sm">
+                          <span className="font-medium">In-Store Only</span>
+                          <span className="text-green-600 ml-2">• 0% commission on all tiers</span>
+                        </label>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <p className="text-sm text-gray-500 mt-2">
-                  Select all methods that apply. Pickup and in-store sales have 0% commission!
+                  {(formData.productCategory === 'digital' || formData.productCategory === 'cookbook')
+                    ? 'Digital products are delivered instantly via download link.'
+                    : 'Select all methods that apply. Pickup and in-store sales have 0% commission!'}
                 </p>
               </div>
 

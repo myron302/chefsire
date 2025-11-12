@@ -48,20 +48,47 @@ r.post("/marketplace/products", requireAuth, async (req, res) => {
       category: z.enum(["spices", "ingredients", "cookware", "cookbooks", "sauces", "other"]),
       images: z.array(z.string().url()).default([]),
       inventory: z.number().min(0).default(0),
-      shippingEnabled: z.boolean().default(true),
-      localPickupEnabled: z.boolean().default(false),
+      imageUrl: z.string().optional(), // Additional field from frontend
+      shippingEnabled: z.boolean().optional(),
+      localPickupEnabled: z.boolean().optional(),
       pickupLocation: z.string().optional(),
       pickupInstructions: z.string().optional(),
       shippingCost: z.string().optional(),
       isExternal: z.boolean().default(false),
       externalUrl: z.string().url().optional(),
-      productCategory: z.enum(["physical", "digital"]).default("physical"),
+      productCategory: z.enum(["physical", "digital", "cookbook", "course", "ingredient", "tool"]).default("physical"),
       digitalFileUrl: z.string().optional(),
       digitalFileName: z.string().optional(),
+      // Accept delivery methods array from frontend
+      deliveryMethods: z.array(z.string()).optional(),
+      isDigital: z.boolean().optional(),
+      inStoreOnly: z.boolean().optional(),
     });
 
     const body = schema.parse(req.body);
-    const product = await storage.createProduct({ ...body, sellerId } as any);
+
+    // Convert deliveryMethods array to individual boolean fields
+    const deliveryData: any = {};
+    if (body.deliveryMethods && body.deliveryMethods.length > 0) {
+      deliveryData.shippingEnabled = body.deliveryMethods.includes('shipped');
+      deliveryData.localPickupEnabled = body.deliveryMethods.includes('pickup');
+      deliveryData.inStoreOnly = body.deliveryMethods.includes('in_store') &&
+                                  !body.deliveryMethods.includes('shipped') &&
+                                  !body.deliveryMethods.includes('pickup');
+      deliveryData.isDigital = body.deliveryMethods.includes('digital_download');
+    }
+
+    // If imageUrl is provided, add to images array
+    const images = body.imageUrl && !body.images.includes(body.imageUrl)
+      ? [body.imageUrl, ...body.images]
+      : body.images;
+
+    const product = await storage.createProduct({
+      ...body,
+      ...deliveryData,
+      images,
+      sellerId
+    } as any);
 
     res.status(201).json({
       message: "Product created successfully",
@@ -141,18 +168,48 @@ r.put("/marketplace/products/:id", requireAuth, async (req, res) => {
       description: z.string().optional(),
       price: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
       inventory: z.number().min(0).optional(),
+      category: z.string().optional(),
+      imageUrl: z.string().optional(),
+      images: z.array(z.string().url()).optional(),
       shippingEnabled: z.boolean().optional(),
       localPickupEnabled: z.boolean().optional(),
       pickupLocation: z.string().optional(),
       pickupInstructions: z.string().optional(),
       shippingCost: z.string().optional(),
       isActive: z.boolean().optional(),
-      productCategory: z.enum(["physical", "digital"]).optional(),
+      productCategory: z.enum(["physical", "digital", "cookbook", "course", "ingredient", "tool"]).optional(),
       digitalFileUrl: z.string().optional(),
       digitalFileName: z.string().optional(),
+      deliveryMethods: z.array(z.string()).optional(),
+      isDigital: z.boolean().optional(),
+      inStoreOnly: z.boolean().optional(),
     });
 
-    const updates = schema.parse(req.body);
+    const body = schema.parse(req.body);
+
+    // Convert deliveryMethods array to individual boolean fields
+    const deliveryData: any = {};
+    if (body.deliveryMethods && body.deliveryMethods.length > 0) {
+      deliveryData.shippingEnabled = body.deliveryMethods.includes('shipped');
+      deliveryData.localPickupEnabled = body.deliveryMethods.includes('pickup');
+      deliveryData.inStoreOnly = body.deliveryMethods.includes('in_store') &&
+                                  !body.deliveryMethods.includes('shipped') &&
+                                  !body.deliveryMethods.includes('pickup');
+      deliveryData.isDigital = body.deliveryMethods.includes('digital_download');
+    }
+
+    // If imageUrl is provided, add to images array
+    let images = body.images;
+    if (body.imageUrl && images && !images.includes(body.imageUrl)) {
+      images = [body.imageUrl, ...images];
+    }
+
+    const updates = {
+      ...body,
+      ...deliveryData,
+      ...(images ? { images } : {})
+    };
+
     const product = await storage.updateProduct(req.params.id, updates);
     if (!product) return res.status(404).json({ message: "Product not found" });
     res.json({ message: "Product updated", product });
