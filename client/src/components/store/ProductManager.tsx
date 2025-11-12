@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash, Image as ImageIcon, Package } from 'lucide-react';
+import { Link } from 'wouter';
 import { Product } from '../../types/store';
 import { getStoreProducts, createProduct, updateProduct, deleteProduct } from '../../lib/store/products';
 
@@ -69,13 +70,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ storeId }) => {
           <h1 className="text-2xl font-bold">Products</h1>
           <p className="text-gray-600">Manage your store products</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Product
-        </button>
       </div>
 
       {/* Product Grid */}
@@ -135,12 +129,11 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ storeId }) => {
           <Package className="mx-auto w-12 h-12 text-gray-400" />
           <h3 className="mt-4 font-medium text-gray-900">No products yet</h3>
           <p className="text-gray-500 mt-1">Add your first product to get started</p>
-          <button
-            onClick={() => setShowForm(true)}
-            className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Add Your First Product
-          </button>
+          <Link href="/store/products/new">
+            <button className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+              Add Your First Product
+            </button>
+          </Link>
         </div>
       )}
 
