@@ -55,6 +55,9 @@ r.post("/marketplace/products", requireAuth, async (req, res) => {
       shippingCost: z.string().optional(),
       isExternal: z.boolean().default(false),
       externalUrl: z.string().url().optional(),
+      productCategory: z.enum(["physical", "digital"]).default("physical"),
+      digitalFileUrl: z.string().optional(),
+      digitalFileName: z.string().optional(),
     });
 
     const body = schema.parse(req.body);
@@ -144,6 +147,9 @@ r.put("/marketplace/products/:id", requireAuth, async (req, res) => {
       pickupInstructions: z.string().optional(),
       shippingCost: z.string().optional(),
       isActive: z.boolean().optional(),
+      productCategory: z.enum(["physical", "digital"]).optional(),
+      digitalFileUrl: z.string().optional(),
+      digitalFileName: z.string().optional(),
     });
 
     const updates = schema.parse(req.body);
