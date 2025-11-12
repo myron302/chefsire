@@ -361,6 +361,7 @@ function AppRouter() {
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/store/create" component={StoreCreatePage} />
         <Route path="/store/setup" component={StoreCreatePage} />
+        <Route path="/store/products/new" component={ProductFormPage} />
         <Route path="/store/products/:id" component={ProductFormPage} />
         <Route path="/store/dashboard" component={SellerDashboard} />
         <Route path="/store/:username" component={StoreViewer} />

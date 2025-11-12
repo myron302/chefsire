@@ -220,10 +220,12 @@ export default function StoreDashboard() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>Product Management</CardTitle>
-                  <Button className="bg-orange-500 hover:bg-orange-600">
-                    <Plus size={16} className="mr-2" />
-                    Add Product
-                  </Button>
+                  <Link href="/store/products/new">
+                    <Button className="bg-orange-500 hover:bg-orange-600">
+                      <Plus size={16} className="mr-2" />
+                      Add Product
+                    </Button>
+                  </Link>
                 </div>
               </CardHeader>
               <CardContent>
@@ -267,15 +269,17 @@ export default function StoreDashboard() {
 
         {/* Quick Actions */}
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-            <CardContent className="pt-6">
-              <Edit className="text-orange-500 mb-3" size={24} />
-              <h3 className="font-semibold mb-2">Customize Store</h3>
-              <p className="text-sm text-gray-600">
-                Update your store's appearance and branding
-              </p>
-            </CardContent>
-          </Card>
+          <Link href="/store/settings">
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+              <CardContent className="pt-6">
+                <Edit className="text-orange-500 mb-3" size={24} />
+                <h3 className="font-semibold mb-2">Customize Store</h3>
+                <p className="text-sm text-gray-600">
+                  Update your store's appearance and branding
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
 
           <Card className="hover:shadow-lg transition-shadow cursor-pointer">
             <CardContent className="pt-6">
