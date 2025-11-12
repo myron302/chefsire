@@ -266,7 +266,7 @@ const Marketplace = () => {
         const data = await response.json();
         if (data.store) {
           // User has a store, go to seller dashboard
-          setView("sell");
+          window.location.href = "/store/dashboard";
         } else {
           // User needs to create a store first
           window.location.href = "/store/create";
