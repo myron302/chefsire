@@ -245,7 +245,7 @@ export default function ProductFormPage() {
           description: formData.description.trim(),
           price: price,
           inventory: inventory,
-          category: formData.category.trim() || 'general',
+          category: formData.category.trim() || 'other',
           imageUrl: formData.imageUrl.trim() || null,
           productCategory: formData.productCategory,
           deliveryMethods: formData.deliveryMethods,
