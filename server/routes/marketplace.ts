@@ -101,9 +101,10 @@ r.post("/products", requireAuth, async (req, res) => {
       }
     });
   } catch (e: any) {
-    if (e?.issues) return res.status(400).json({ message: "Invalid product data", errors: e.issues });
-    console.error("marketplace/create error", e);
-    res.status(500).json({ message: "Failed to create product" });
+    if (e?.issues) return res.status(400).json({ error: "Invalid product data", details: e.issues });
+    console.error("marketplace/create error:", e);
+    console.error("Error details:", e.message, e.stack);
+    res.status(500).json({ error: e.message || "Failed to create product" });
   }
 });
 
@@ -211,12 +212,13 @@ r.put("/products/:id", requireAuth, async (req, res) => {
     };
 
     const product = await storage.updateProduct(req.params.id, updates);
-    if (!product) return res.status(404).json({ message: "Product not found" });
+    if (!product) return res.status(404).json({ error: "Product not found" });
     res.json({ message: "Product updated", product });
   } catch (e: any) {
-    if (e?.issues) return res.status(400).json({ message: "Invalid update data", errors: e.issues });
-    console.error("marketplace/update error", e);
-    res.status(500).json({ message: "Failed to update product" });
+    if (e?.issues) return res.status(400).json({ error: "Invalid update data", details: e.issues });
+    console.error("marketplace/update error:", e);
+    console.error("Error details:", e.message, e.stack);
+    res.status(500).json({ error: e.message || "Failed to update product" });
   }
 });
 
