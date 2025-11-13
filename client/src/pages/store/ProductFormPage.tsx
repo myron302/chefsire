@@ -243,7 +243,7 @@ export default function ProductFormPage() {
         body: JSON.stringify({
           name: formData.name.trim(),
           description: formData.description.trim(),
-          price: price,
+          price: formData.price.trim(),
           inventory: inventory,
           category: formData.category.trim() || 'other',
           imageUrl: formData.imageUrl.trim() || null,
