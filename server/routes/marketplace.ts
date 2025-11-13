@@ -11,6 +11,16 @@ const r = Router();
  * Marketplace CRUD + search + simple analytics
  */
 
+// Helper function to add deliveryMethods array to product objects
+function addDeliveryMethods(product: any) {
+  const deliveryMethods: string[] = [];
+  if (product.shippingEnabled) deliveryMethods.push('shipped');
+  if (product.localPickupEnabled) deliveryMethods.push('pickup');
+  if (product.inStoreOnly) deliveryMethods.push('in_store');
+  if (product.isDigital) deliveryMethods.push('digital_download');
+  return { ...product, deliveryMethods };
+}
+
 // Create product
 r.post("/products", requireAuth, async (req, res) => {
   try {
@@ -92,7 +102,7 @@ r.post("/products", requireAuth, async (req, res) => {
 
     res.status(201).json({
       message: "Product created successfully",
-      product,
+      product: addDeliveryMethods(product),
       tierInfo: {
         name: tierInfo.name,
         productsRemaining: tierInfo.limits.maxProducts === -1 ?
@@ -113,7 +123,7 @@ r.get("/products/:id", async (req, res) => {
   try {
     const prod = await storage.getProductWithSeller(req.params.id);
     if (!prod) return res.status(404).json({ message: "Product not found" });
-    res.json(prod);
+    res.json(addDeliveryMethods(prod));
   } catch (error) {
     console.error("marketplace/get error", error);
     res.status(500).json({ message: "Failed to fetch product" });
@@ -140,7 +150,9 @@ r.get("/products", async (req, res) => {
       filters.limit
     );
 
-    res.json({ products, total: products.length, filters });
+    // Add deliveryMethods array to each product
+    const productsWithDelivery = products.map(addDeliveryMethods);
+    res.json({ products: productsWithDelivery, total: productsWithDelivery.length, filters });
   } catch (e: any) {
     if (e?.issues) return res.status(400).json({ message: "Invalid search parameters", errors: e.issues });
     console.error("marketplace/search error", e);
@@ -154,7 +166,9 @@ r.get("/sellers/:sellerId/products", async (req, res) => {
     const offset = Number(req.query.offset ?? 0);
     const limit = Number(req.query.limit ?? 20);
     const items = await storage.getUserProducts(req.params.sellerId, offset, limit);
-    res.json({ products: items, total: items.length, sellerId: req.params.sellerId });
+    // Add deliveryMethods array to each product
+    const itemsWithDelivery = items.map(addDeliveryMethods);
+    res.json({ products: itemsWithDelivery, total: itemsWithDelivery.length, sellerId: req.params.sellerId });
   } catch (error) {
     console.error("marketplace/seller products error", error);
     res.status(500).json({ message: "Failed to fetch seller products" });
@@ -213,7 +227,7 @@ r.put("/products/:id", requireAuth, async (req, res) => {
 
     const product = await storage.updateProduct(req.params.id, updates);
     if (!product) return res.status(404).json({ error: "Product not found" });
-    res.json({ message: "Product updated", product });
+    res.json({ message: "Product updated", product: addDeliveryMethods(product) });
   } catch (e: any) {
     if (e?.issues) return res.status(400).json({ error: "Invalid update data", details: e.issues });
     console.error("marketplace/update error:", e);
@@ -253,7 +267,7 @@ r.get("/storefront/:username", async (req, res) => {
           isChef: user.isChef,
           followersCount: user.followersCount,
         },
-        products,
+        products: products.map(addDeliveryMethods),
         subscriptionTier: (user as any).subscriptionTier,
       },
     });
