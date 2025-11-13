@@ -45,7 +45,7 @@ r.post("/products", requireAuth, async (req, res) => {
       name: z.string().min(1),
       description: z.string().optional(),
       price: z.string().regex(/^\d+(\.\d{1,2})?$/),
-      category: z.enum(["spices", "ingredients", "cookware", "cookbooks", "sauces", "other"]),
+      category: z.string().default("other"), // Accept any string, default to "other"
       images: z.array(z.string().url()).default([]),
       inventory: z.number().min(0).default(0),
       imageUrl: z.string().optional(), // Additional field from frontend
