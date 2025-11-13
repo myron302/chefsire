@@ -12,7 +12,7 @@ const r = Router();
  */
 
 // Create product
-r.post("/marketplace/products", requireAuth, async (req, res) => {
+r.post("/products", requireAuth, async (req, res) => {
   try {
     const sellerId = req.user!.id; // Use authenticated user
 
@@ -45,20 +45,50 @@ r.post("/marketplace/products", requireAuth, async (req, res) => {
       name: z.string().min(1),
       description: z.string().optional(),
       price: z.string().regex(/^\d+(\.\d{1,2})?$/),
-      category: z.enum(["spices", "ingredients", "cookware", "cookbooks", "sauces", "other"]),
+      category: z.string().default("other"), // Accept any string, default to "other"
       images: z.array(z.string().url()).default([]),
       inventory: z.number().min(0).default(0),
-      shippingEnabled: z.boolean().default(true),
-      localPickupEnabled: z.boolean().default(false),
+      imageUrl: z.string().optional(), // Additional field from frontend
+      shippingEnabled: z.boolean().optional(),
+      localPickupEnabled: z.boolean().optional(),
       pickupLocation: z.string().optional(),
       pickupInstructions: z.string().optional(),
       shippingCost: z.string().optional(),
       isExternal: z.boolean().default(false),
       externalUrl: z.string().url().optional(),
+      productCategory: z.enum(["physical", "digital", "cookbook", "course", "ingredient", "tool"]).default("physical"),
+      digitalFileUrl: z.string().optional(),
+      digitalFileName: z.string().optional(),
+      // Accept delivery methods array from frontend
+      deliveryMethods: z.array(z.string()).optional(),
+      isDigital: z.boolean().optional(),
+      inStoreOnly: z.boolean().optional(),
     });
 
     const body = schema.parse(req.body);
-    const product = await storage.createProduct({ ...body, sellerId } as any);
+
+    // Convert deliveryMethods array to individual boolean fields
+    const deliveryData: any = {};
+    if (body.deliveryMethods && body.deliveryMethods.length > 0) {
+      deliveryData.shippingEnabled = body.deliveryMethods.includes('shipped');
+      deliveryData.localPickupEnabled = body.deliveryMethods.includes('pickup');
+      deliveryData.inStoreOnly = body.deliveryMethods.includes('in_store') &&
+                                  !body.deliveryMethods.includes('shipped') &&
+                                  !body.deliveryMethods.includes('pickup');
+      deliveryData.isDigital = body.deliveryMethods.includes('digital_download');
+    }
+
+    // If imageUrl is provided, add to images array
+    const images = body.imageUrl && !body.images.includes(body.imageUrl)
+      ? [body.imageUrl, ...body.images]
+      : body.images;
+
+    const product = await storage.createProduct({
+      ...body,
+      ...deliveryData,
+      images,
+      sellerId
+    } as any);
 
     res.status(201).json({
       message: "Product created successfully",
@@ -78,7 +108,7 @@ r.post("/marketplace/products", requireAuth, async (req, res) => {
 });
 
 // Read product (with seller)
-r.get("/marketplace/products/:id", async (req, res) => {
+r.get("/products/:id", async (req, res) => {
   try {
     const prod = await storage.getProductWithSeller(req.params.id);
     if (!prod) return res.status(404).json({ message: "Product not found" });
@@ -90,7 +120,7 @@ r.get("/marketplace/products/:id", async (req, res) => {
 });
 
 // Search products
-r.get("/marketplace/products", async (req, res) => {
+r.get("/products", async (req, res) => {
   try {
     const schema = z.object({
       query: z.string().optional(),
@@ -118,7 +148,7 @@ r.get("/marketplace/products", async (req, res) => {
 });
 
 // Seller's products
-r.get("/marketplace/sellers/:sellerId/products", async (req, res) => {
+r.get("/sellers/:sellerId/products", async (req, res) => {
   try {
     const offset = Number(req.query.offset ?? 0);
     const limit = Number(req.query.limit ?? 20);
@@ -131,22 +161,55 @@ r.get("/marketplace/sellers/:sellerId/products", async (req, res) => {
 });
 
 // Update product
-r.put("/marketplace/products/:id", requireAuth, async (req, res) => {
+r.put("/products/:id", requireAuth, async (req, res) => {
   try {
     const schema = z.object({
       name: z.string().min(1).optional(),
       description: z.string().optional(),
       price: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
       inventory: z.number().min(0).optional(),
+      category: z.string().optional(),
+      imageUrl: z.string().optional(),
+      images: z.array(z.string().url()).optional(),
       shippingEnabled: z.boolean().optional(),
       localPickupEnabled: z.boolean().optional(),
       pickupLocation: z.string().optional(),
       pickupInstructions: z.string().optional(),
       shippingCost: z.string().optional(),
       isActive: z.boolean().optional(),
+      productCategory: z.enum(["physical", "digital", "cookbook", "course", "ingredient", "tool"]).optional(),
+      digitalFileUrl: z.string().optional(),
+      digitalFileName: z.string().optional(),
+      deliveryMethods: z.array(z.string()).optional(),
+      isDigital: z.boolean().optional(),
+      inStoreOnly: z.boolean().optional(),
     });
 
-    const updates = schema.parse(req.body);
+    const body = schema.parse(req.body);
+
+    // Convert deliveryMethods array to individual boolean fields
+    const deliveryData: any = {};
+    if (body.deliveryMethods && body.deliveryMethods.length > 0) {
+      deliveryData.shippingEnabled = body.deliveryMethods.includes('shipped');
+      deliveryData.localPickupEnabled = body.deliveryMethods.includes('pickup');
+      deliveryData.inStoreOnly = body.deliveryMethods.includes('in_store') &&
+                                  !body.deliveryMethods.includes('shipped') &&
+                                  !body.deliveryMethods.includes('pickup');
+      deliveryData.isDigital = body.deliveryMethods.includes('digital_download');
+    }
+
+    // If imageUrl is provided, add to images array
+    let images = body.images;
+    if (body.imageUrl && images && !images.includes(body.imageUrl)) {
+      images = [body.imageUrl, ...images];
+    }
+
+    const updates = {
+      ...body,
+      ...deliveryData,
+      ...(images ? { images } : {})
+    };
+
     const product = await storage.updateProduct(req.params.id, updates);
     if (!product) return res.status(404).json({ message: "Product not found" });
     res.json({ message: "Product updated", product });
@@ -158,7 +221,7 @@ r.put("/marketplace/products/:id", requireAuth, async (req, res) => {
 });
 
 // Deactivate product
-r.delete("/marketplace/products/:id", requireAuth, async (req, res) => {
+r.delete("/products/:id", requireAuth, async (req, res) => {
   try {
     const ok = await storage.deleteProduct(req.params.id);
     if (!ok) return res.status(404).json({ message: "Product not found" });
@@ -170,7 +233,7 @@ r.delete("/marketplace/products/:id", requireAuth, async (req, res) => {
 });
 
 // Storefront by username
-r.get("/marketplace/storefront/:username", async (req, res) => {
+r.get("/storefront/:username", async (req, res) => {
   try {
     const user = await storage.getUserByUsername(req.params.username);
     if (!user) return res.status(404).json({ message: "Storefront not found" });
@@ -199,7 +262,7 @@ r.get("/marketplace/storefront/:username", async (req, res) => {
 });
 
 // Categories (simple aggregation)
-r.get("/marketplace/categories", async (_req, res) => {
+r.get("/categories", async (_req, res) => {
   try {
     const all = await storage.searchProducts(undefined, undefined, undefined, 0, 1000);
     const counts = {
@@ -218,7 +281,7 @@ r.get("/marketplace/categories", async (_req, res) => {
 });
 
 // Simple seller analytics
-r.get("/marketplace/sellers/:sellerId/analytics", async (req, res) => {
+r.get("/sellers/:sellerId/analytics", async (req, res) => {
   try {
     const user = await storage.getUser(req.params.sellerId);
     if (!user) return res.status(404).json({ message: "Seller not found" });
