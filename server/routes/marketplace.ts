@@ -124,7 +124,7 @@ r.get("/products", async (req, res) => {
   try {
     const schema = z.object({
       query: z.string().optional(),
-      category: z.enum(["spices", "ingredients", "cookware", "cookbooks", "sauces", "other"]).optional(),
+      category: z.enum(["spices", "ingredients", "cookware", "cookbooks", "sauces", "baked_goods", "prepared_foods", "beverages", "other"]).optional(),
       location: z.string().optional(),
       offset: z.coerce.number().min(0).default(0),
       limit: z.coerce.number().min(1).max(50).default(20),
@@ -271,6 +271,9 @@ r.get("/categories", async (_req, res) => {
       cookware: all.filter((p: any) => p.category === "cookware").length,
       cookbooks: all.filter((p: any) => p.category === "cookbooks").length,
       sauces: all.filter((p: any) => p.category === "sauces").length,
+      baked_goods: all.filter((p: any) => p.category === "baked_goods").length,
+      prepared_foods: all.filter((p: any) => p.category === "prepared_foods").length,
+      beverages: all.filter((p: any) => p.category === "beverages").length,
       other: all.filter((p: any) => p.category === "other").length,
     };
     res.json({ categories: counts, totalProducts: all.length });
