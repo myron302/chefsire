@@ -156,6 +156,7 @@ export const products = pgTable(
     inStoreOnly: boolean("in_store_only").default(false),
     isDigital: boolean("is_digital").default(false),
     digitalFileUrl: text("digital_file_url"), // For digital products like cookbooks
+    digitalFileName: text("digital_file_name"), // Original filename of the digital product
     pickupLocation: text("pickup_location"),
     pickupInstructions: text("pickup_instructions"),
     shippingCost: decimal("shipping_cost", { precision: 8, scale: 2 }),
