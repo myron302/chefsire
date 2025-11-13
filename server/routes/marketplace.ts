@@ -12,7 +12,7 @@ const r = Router();
  */
 
 // Create product
-r.post("/marketplace/products", requireAuth, async (req, res) => {
+r.post("/products", requireAuth, async (req, res) => {
   try {
     const sellerId = req.user!.id; // Use authenticated user
 
@@ -108,7 +108,7 @@ r.post("/marketplace/products", requireAuth, async (req, res) => {
 });
 
 // Read product (with seller)
-r.get("/marketplace/products/:id", async (req, res) => {
+r.get("/products/:id", async (req, res) => {
   try {
     const prod = await storage.getProductWithSeller(req.params.id);
     if (!prod) return res.status(404).json({ message: "Product not found" });
@@ -120,7 +120,7 @@ r.get("/marketplace/products/:id", async (req, res) => {
 });
 
 // Search products
-r.get("/marketplace/products", async (req, res) => {
+r.get("/products", async (req, res) => {
   try {
     const schema = z.object({
       query: z.string().optional(),
@@ -148,7 +148,7 @@ r.get("/marketplace/products", async (req, res) => {
 });
 
 // Seller's products
-r.get("/marketplace/sellers/:sellerId/products", async (req, res) => {
+r.get("/sellers/:sellerId/products", async (req, res) => {
   try {
     const offset = Number(req.query.offset ?? 0);
     const limit = Number(req.query.limit ?? 20);
@@ -161,7 +161,7 @@ r.get("/marketplace/sellers/:sellerId/products", async (req, res) => {
 });
 
 // Update product
-r.put("/marketplace/products/:id", requireAuth, async (req, res) => {
+r.put("/products/:id", requireAuth, async (req, res) => {
   try {
     const schema = z.object({
       name: z.string().min(1).optional(),
@@ -221,7 +221,7 @@ r.put("/marketplace/products/:id", requireAuth, async (req, res) => {
 });
 
 // Deactivate product
-r.delete("/marketplace/products/:id", requireAuth, async (req, res) => {
+r.delete("/products/:id", requireAuth, async (req, res) => {
   try {
     const ok = await storage.deleteProduct(req.params.id);
     if (!ok) return res.status(404).json({ message: "Product not found" });
@@ -233,7 +233,7 @@ r.delete("/marketplace/products/:id", requireAuth, async (req, res) => {
 });
 
 // Storefront by username
-r.get("/marketplace/storefront/:username", async (req, res) => {
+r.get("/storefront/:username", async (req, res) => {
   try {
     const user = await storage.getUserByUsername(req.params.username);
     if (!user) return res.status(404).json({ message: "Storefront not found" });
@@ -262,7 +262,7 @@ r.get("/marketplace/storefront/:username", async (req, res) => {
 });
 
 // Categories (simple aggregation)
-r.get("/marketplace/categories", async (_req, res) => {
+r.get("/categories", async (_req, res) => {
   try {
     const all = await storage.searchProducts(undefined, undefined, undefined, 0, 1000);
     const counts = {
@@ -281,7 +281,7 @@ r.get("/marketplace/categories", async (_req, res) => {
 });
 
 // Simple seller analytics
-r.get("/marketplace/sellers/:sellerId/analytics", async (req, res) => {
+r.get("/sellers/:sellerId/analytics", async (req, res) => {
   try {
     const user = await storage.getUser(req.params.sellerId);
     if (!user) return res.status(404).json({ message: "Seller not found" });
