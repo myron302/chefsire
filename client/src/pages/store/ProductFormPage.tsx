@@ -396,14 +396,24 @@ export default function ProductFormPage() {
               {/* Category */}
               <div>
                 <Label htmlFor="category">Category</Label>
-                <Input
+                <select
                   id="category"
                   name="category"
                   value={formData.category}
                   onChange={handleInputChange}
-                  placeholder="e.g., Baked Goods, Spices, Ingredients"
-                  className="mt-1"
-                />
+                  className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                >
+                  <option value="">Select a category</option>
+                  <option value="spices">Spices & Seasonings</option>
+                  <option value="ingredients">Ingredients</option>
+                  <option value="cookware">Cookware & Tools</option>
+                  <option value="cookbooks">Cookbooks</option>
+                  <option value="sauces">Sauces & Condiments</option>
+                  <option value="baked_goods">Baked Goods</option>
+                  <option value="prepared_foods">Prepared Foods</option>
+                  <option value="beverages">Beverages</option>
+                  <option value="other">Other</option>
+                </select>
               </div>
 
               {/* Product Type */}
