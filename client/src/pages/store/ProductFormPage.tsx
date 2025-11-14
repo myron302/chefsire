@@ -25,12 +25,13 @@ export default function ProductFormPage() {
     price: '',
     inventory: '',
     category: '',
-    imageUrl: '',
+    images: [] as string[],
     productCategory: 'physical',
     deliveryMethods: ['shipped'] as string[],
     digitalFileUrl: '',
     digitalFileName: ''
   });
+  const [newImageUrl, setNewImageUrl] = useState('');
 
   // Auto-select digital download when product category changes to digital
   useEffect(() => {
@@ -67,7 +68,7 @@ export default function ProductFormPage() {
           price: data.price?.toString() || '',
           inventory: data.inventory?.toString() || '',
           category: data.category || '',
-          imageUrl: data.imageUrl || '',
+          images: data.images || [],
           productCategory: data.productCategory || 'physical',
           deliveryMethods: data.deliveryMethods || ['shipped'],
           digitalFileUrl: data.digitalFileUrl || '',
@@ -102,6 +103,56 @@ export default function ProductFormPage() {
         ...prev,
         deliveryMethods: methods.length > 0 ? methods : prev.deliveryMethods
       };
+    });
+  };
+
+  const handleAddImage = () => {
+    if (!newImageUrl.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid image URL",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (formData.images.length >= 5) {
+      toast({
+        title: "Limit Reached",
+        description: "You can add up to 5 images per product",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      new URL(newImageUrl); // Validate URL
+      setFormData(prev => ({
+        ...prev,
+        images: [...prev.images, newImageUrl.trim()]
+      }));
+      setNewImageUrl('');
+      toast({
+        title: "Image Added",
+        description: "Image URL added successfully"
+      });
+    } catch {
+      toast({
+        title: "Invalid URL",
+        description: "Please enter a valid URL",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index)
+    }));
+    toast({
+      title: "Image Removed",
+      description: "Image removed successfully"
     });
   };
 
@@ -246,7 +297,7 @@ export default function ProductFormPage() {
           price: formData.price.trim(),
           inventory: inventory,
           category: formData.category.trim() || 'other',
-          imageUrl: formData.imageUrl.trim() || null,
+          images: formData.images,
           productCategory: formData.productCategory,
           deliveryMethods: formData.deliveryMethods,
           digitalFileUrl: formData.digitalFileUrl.trim() || null,
@@ -569,28 +620,75 @@ export default function ProductFormPage() {
                 </div>
               )}
 
-              {/* Image URL */}
+              {/* Product Images */}
               <div>
-                <Label htmlFor="imageUrl">Image URL (optional)</Label>
-                <Input
-                  id="imageUrl"
-                  name="imageUrl"
-                  type="url"
-                  value={formData.imageUrl}
-                  onChange={handleInputChange}
-                  placeholder="https://example.com/image.jpg"
-                  className="mt-1"
-                />
-                {formData.imageUrl && (
-                  <div className="mt-2">
-                    <img
-                      src={formData.imageUrl}
-                      alt="Preview"
-                      className="w-32 h-32 object-cover rounded-lg border"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
+                <Label>Product Images (up to 5)</Label>
+
+                {/* Display existing images */}
+                {formData.images.length > 0 && (
+                  <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {formData.images.map((imageUrl, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={imageUrl}
+                          alt={`Product ${index + 1}`}
+                          className="w-full h-32 object-cover rounded-lg border"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveImage(index)}
+                          className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label="Remove image"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                        {index === 0 && (
+                          <span className="absolute bottom-1 left-1 bg-blue-500 text-white text-xs px-2 py-1 rounded">
+                            Primary
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add new image */}
+                {formData.images.length < 5 && (
+                  <div className="mt-3">
+                    <div className="flex gap-2">
+                      <Input
+                        type="url"
+                        value={newImageUrl}
+                        onChange={(e) => setNewImageUrl(e.target.value)}
+                        placeholder="https://example.com/image.jpg"
+                        className="flex-1"
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddImage();
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleAddImage}
+                        variant="outline"
+                        className="whitespace-nowrap"
+                      >
+                        Add Image
+                      </Button>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {formData.images.length === 0
+                        ? "Add product images. The first image will be the primary image."
+                        : `${5 - formData.images.length} more image${5 - formData.images.length === 1 ? '' : 's'} can be added`
+                      }
+                    </p>
                   </div>
                 )}
               </div>
