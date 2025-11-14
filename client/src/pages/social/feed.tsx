@@ -340,22 +340,23 @@ export default function Feed() {
       </div>
 
       {/* Sidebar */}
-      <aside className="hidden xl:block w-80 p-6 bg-card border-l border-border space-y-8">
-        {/* Phase 1: Daily Addiction Features */}
-        <section>
-          <ErrorBoundary>
-            <AISuggestions />
-          </ErrorBoundary>
-        </section>
+      <aside className="hidden xl:block w-80 bg-card border-l border-border overflow-y-auto max-h-screen">
+        <div className="p-6 space-y-8">
+          {/* Phase 1: Daily Addiction Features */}
+          <section>
+            <ErrorBoundary>
+              <DailyQuests />
+            </ErrorBoundary>
+          </section>
 
-        <section>
-          <ErrorBoundary>
-            <DailyQuests />
-          </ErrorBoundary>
-        </section>
+          <section>
+            <ErrorBoundary>
+              <AISuggestions />
+            </ErrorBoundary>
+          </section>
 
-        <section className="mb-8">
-          <h3 className="font-semibold mb-4">Suggested Chefs</h3>
+          <section className="mb-8">
+            <h3 className="font-semibold mb-4">Suggested Chefs</h3>
           <div className="space-y-3">
             {displaySuggestedUsers.slice(0, 5).map((user) => (
               <div key={user.id} className="flex items-center justify-between">
@@ -438,6 +439,7 @@ export default function Feed() {
             )}
           </div>
         </section>
+        </div>
       </aside>
     </div>
   );
