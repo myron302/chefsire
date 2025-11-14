@@ -78,7 +78,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ storeId }) => {
               </div>
               
               <div className="flex gap-2 mt-4">
-                <Link href={`/store/products/${product.id}`}>
+                <Link href={`/store/products/edit/${product.id}`}>
                   <button className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 transition-colors">
                     <Edit className="w-4 h-4" />
                     Edit
