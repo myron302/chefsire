@@ -289,14 +289,9 @@ const Marketplace = () => {
     }
   };
 
-  // Handle product click - navigate to product page in store
+  // Handle product click - navigate to product page
   const handleProductClick = (product: any) => {
-    if (product.store) {
-      window.location.href = `/store/${product.store.handle}/product/${product.id}`;
-    } else {
-      // Fallback to product details page
-      window.location.href = `/product/${product.id}`;
-    }
+    window.location.href = `/marketplace/product/${product.id}`;
   };
 
   if (view === "sell") return <SellerDashboard onBack={() => setView("browse")} />;

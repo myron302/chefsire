@@ -348,11 +348,15 @@ export default function ProductFormPage() {
       const data = await response.json();
 
       if (!response.ok) {
+        const errorDetails = data.details ?
+          `\n${data.details.map((d: any) => `${d.path?.join('.')}: ${d.message}`).join('\n')}` :
+          '';
         toast({
           title: "Error",
-          description: data.error || 'Failed to save product',
+          description: `${data.error || 'Failed to save product'}${errorDetails}`,
           variant: "destructive"
         });
+        console.error('Product save error:', data);
         return;
       }
 
