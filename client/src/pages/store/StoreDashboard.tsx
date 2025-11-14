@@ -55,14 +55,29 @@ export default function StoreDashboard() {
         const storeData = await storeRes.json();
         setStore(storeData.store);
 
-        // Load stats (mock for now)
-        setStats({
-          totalProducts: 12,
-          publishedProducts: 10,
-          totalViews: 1247,
-          totalSales: 43,
-          revenue: 2156.50,
-        });
+        // Load actual product stats
+        const productsRes = await fetch(`/api/marketplace/products/seller/${user.id}`);
+        if (productsRes.ok) {
+          const productsData = await productsRes.json();
+          const products = productsData.products || [];
+
+          setStats({
+            totalProducts: products.length,
+            publishedProducts: products.filter((p: any) => p.isActive).length,
+            totalViews: 0, // TODO: Implement view tracking
+            totalSales: 0, // TODO: Implement sales tracking
+            revenue: 0, // TODO: Implement revenue tracking
+          });
+        } else {
+          // If products endpoint fails, set zeros
+          setStats({
+            totalProducts: 0,
+            publishedProducts: 0,
+            totalViews: 0,
+            totalSales: 0,
+            revenue: 0,
+          });
+        }
       }
     } catch (error) {
       console.error('Failed to load store:', error);
@@ -223,7 +238,7 @@ export default function StoreDashboard() {
                   <Link href="/store/products/new">
                     <Button className="bg-orange-500 hover:bg-orange-600">
                       <Plus size={16} className="mr-2" />
-                      Add Product
+                      {stats.totalProducts === 0 ? 'Add Your First Product' : 'Add Product'}
                     </Button>
                   </Link>
                 </div>

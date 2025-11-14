@@ -730,7 +730,6 @@ export default function ProductFormPage() {
                         id="imageFileUpload"
                         type="file"
                         accept="image/*"
-                        capture="environment"
                         onChange={handleImageFileUpload}
                         disabled={uploadingFile}
                         className="hidden"
