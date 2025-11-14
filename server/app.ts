@@ -6,13 +6,21 @@ import compression from "compression";
 import morgan from "morgan";
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import routes from "./routes";
+
+// Define __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
 app.set("trust proxy", true);
 
-app.use(cors());
+app.use(cors({
+  credentials: true,
+  origin: process.env.CLIENT_URL || true, // Allow configured origin or all origins in dev
+}));
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(compression());
@@ -38,9 +46,36 @@ app.get("/api", (_req, res) => {
   });
 });
 
-// Serve built client at ../dist/public (App Root is /httpdocs/server)
-const clientDir = path.resolve(process.cwd(), "../dist/public");
-const hasClient = fs.existsSync(clientDir);
+// Serve uploaded files
+const uploadsDir = path.resolve(process.cwd(), "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use("/uploads", express.static(uploadsDir));
+
+// Serve built client at dist/public
+// Try multiple possible locations for the client build
+const possibleClientDirs = [
+  path.resolve(process.cwd(), "dist/public"),      // If running from project root
+  path.resolve(process.cwd(), "../dist/public"),   // If running from server/ directory
+  path.resolve(__dirname, "../../dist/public"),    // Relative to bundled server location
+];
+
+let clientDir = "";
+let hasClient = false;
+
+for (const dir of possibleClientDirs) {
+  if (fs.existsSync(dir)) {
+    clientDir = dir;
+    hasClient = true;
+    console.log('[INFO] Found client bundle at:', dir);
+    break;
+  }
+}
+
+if (!hasClient) {
+  console.warn('[WARN] Client bundle not found. Checked:', possibleClientDirs);
+}
 
 if (hasClient) {
   app.use(
@@ -60,7 +95,7 @@ app.get("*", (req, res, next) => {
   if (!hasClient) {
     return res
       .status(200)
-      .send("Client bundle not found. Build UI with `npm run build` to populate /httpdocs/dist/public.");
+      .send("Client bundle not found. Build UI with `npm run build` to populate dist/public.");
   }
   res.sendFile(path.join(clientDir, "index.html"));
 });

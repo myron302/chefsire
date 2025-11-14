@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { db } from "../db";
-import { stores } from "../../shared/schema.js";
+import { stores, users } from "../../shared/schema.js";
 import { eq } from "drizzle-orm";
+import { SUBSCRIPTION_TIERS } from "./subscriptions";
+import { requireAuth } from "../middleware/auth";
 
 const router = Router();
 
@@ -10,6 +12,7 @@ const router = Router();
  * -----------------
  * Handles create, update, publish, and layout editing for user storefronts.
  * Private (requires authentication).
+ * Requires Starter tier or higher for store builder access.
  */
 
 // GET /api/stores-crud/user/:userId - Get user's store (for owner)
@@ -27,18 +30,34 @@ router.get("/user/:userId", async (req, res) => {
   }
 });
 
-// POST /api/stores-crud - Create a store
-router.post("/", async (req, res) => {
+// POST /api/stores - Create a store
+router.post("/", requireAuth, async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ ok: false, error: "Not authenticated" });
     }
+
+    // Get user's subscription tier from their user record
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, req.user.id))
+      .limit(1);
+
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "User not found" });
+    }
+
+    // Determine subscription tier (free, starter, pro, enterprise)
+    // Check both subscriptionTier and subscription fields for backwards compatibility
+    const userTier = (user as any).subscription || user.subscriptionTier || "free";
 
     const { handle, name, bio } = req.body;
     if (!handle || !name) {
       return res.status(400).json({ ok: false, error: "Handle and name required" });
     }
 
+    // Create store with user's subscription tier
     const [newStore] = await db
       .insert(stores)
       .values({
@@ -46,6 +65,7 @@ router.post("/", async (req, res) => {
         handle,
         name,
         bio: bio || null,
+        subscriptionTier: userTier
       })
       .returning();
 
@@ -60,7 +80,7 @@ router.post("/", async (req, res) => {
 });
 
 // PATCH /api/stores-crud/:id - Update store details
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", requireAuth, async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ ok: false, error: "Not authenticated" });
@@ -96,7 +116,7 @@ router.patch("/:id", async (req, res) => {
 });
 
 // PATCH /api/stores-crud/:id/layout - Update store layout
-router.patch("/:id/layout", async (req, res) => {
+router.patch("/:id/layout", requireAuth, async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ ok: false, error: "Not authenticated" });
@@ -130,7 +150,7 @@ router.patch("/:id/layout", async (req, res) => {
 });
 
 // PATCH /api/stores-crud/:id/publish - Toggle published status
-router.patch("/:id/publish", async (req, res) => {
+router.patch("/:id/publish", requireAuth, async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ ok: false, error: "Not authenticated" });

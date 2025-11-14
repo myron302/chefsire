@@ -19,8 +19,10 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Link } from 'wouter';
+import { useToast } from '@/hooks/use-toast';
 
 export default function WeddingPlanning() {
+  const { toast } = useToast();
   const [selectedVendorType, setSelectedVendorType] = useState('all');
   const [budgetRange, setBudgetRange] = useState([5000, 50000]);
   const [guestCount, setGuestCount] = useState([100]);
@@ -28,8 +30,22 @@ export default function WeddingPlanning() {
   const [savedVendors, setSavedVendors] = useState(new Set<number>());
   const [activeView, setActiveView] = useState('grid');
   const [showBudgetCalculator, setShowBudgetCalculator] = useState(false);
-  const [showTrialBanner, setShowTrialBanner] = useState(true);
+  const [showTrialBanner, setShowTrialBanner] = useState(() => {
+    // Check if user has dismissed the banner before
+    return localStorage.getItem('weddingTrialBannerDismissed') !== 'true';
+  });
   const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
+
+  const handleStartTrial = () => {
+    // Wedding planning features are free - just dismiss the banner permanently
+    setShowTrialBanner(false);
+    localStorage.setItem('weddingTrialBannerDismissed', 'true');
+
+    // Show confirmation toast
+    toast({
+      description: "🎉 All wedding planning features are completely free! Enjoy unlimited access.",
+    });
+  };
 
   const [registryLinks, setRegistryLinks] = useState([
     { id: 1, name: 'Amazon', url: '', icon: '🎁' },
@@ -170,10 +186,22 @@ export default function WeddingPlanning() {
                 </div>
               </div>
               <div className="flex gap-2 w-full sm:w-auto">
-                <Button variant="outline" size="sm" onClick={() => setShowTrialBanner(false)} className="flex-shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowTrialBanner(false);
+                    localStorage.setItem('weddingTrialBannerDismissed', 'true');
+                  }}
+                  className="flex-shrink-0"
+                >
                   <X className="w-3 h-3 md:w-4 md:h-4" />
                 </Button>
-                <Button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white flex-1 sm:flex-none" size="sm">
+                <Button
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 text-white flex-1 sm:flex-none"
+                  size="sm"
+                  onClick={handleStartTrial}
+                >
                   <Zap className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
                   <span className="text-xs md:text-sm">Start Free Trial</span>
                 </Button>

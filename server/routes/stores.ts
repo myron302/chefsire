@@ -17,8 +17,11 @@ router.get("/:handle", async (req, res) => {
       return res.status(404).json({ ok: false, error: "Store not found" });
     }
 
-    // Only show published stores to public
-    if (!store.published) {
+    // Check if the requesting user is the store owner
+    const isOwner = req.user && req.user.id === store.userId;
+
+    // Only show unpublished stores to the owner
+    if (!store.published && !isOwner) {
       return res.status(404).json({ ok: false, error: "Store not available" });
     }
 

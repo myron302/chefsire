@@ -3,6 +3,7 @@ import { Router } from "express";
 import { and, eq, desc, sql } from "drizzle-orm";
 import { db } from "../db";
 import { recipeRemixes, recipes, users } from "../../shared/schema";
+import { requireAuth } from "../middleware";
 
 const router = Router();
 
@@ -62,13 +63,12 @@ router.get("/recipe/:recipeId", async (req, res) => {
   }
 });
 
-// GET /api/remixes/user/:userId - Get user's remixes
-router.get("/user/:userId", async (req, res) => {
+// GET /api/remixes/my-remixes - Get authenticated user's remixes
+router.get("/my-remixes", requireAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
-    const includePrivate = req.query.includePrivate === "true";
+    const userId = req.user!.id;
 
-    let query = db
+    const remixes = await db
       .select({
         remix: recipeRemixes,
         originalRecipe: recipes,
@@ -78,24 +78,31 @@ router.get("/user/:userId", async (req, res) => {
       .where(eq(recipeRemixes.userId, userId))
       .orderBy(desc(recipeRemixes.createdAt));
 
-    if (!includePrivate) {
-      query = db
-        .select({
-          remix: recipeRemixes,
-          originalRecipe: recipes,
-        })
-        .from(recipeRemixes)
-        .innerJoin(recipes, eq(recipeRemixes.originalRecipeId, recipes.id))
-        .where(
-          and(
-            eq(recipeRemixes.userId, userId),
-            eq(recipeRemixes.isPublic, true)
-          )
-        )
-        .orderBy(desc(recipeRemixes.createdAt)) as any;
-    }
+    return res.json({ remixes });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
 
-    const remixes = await query;
+// GET /api/remixes/user/:userId - Get user's PUBLIC remixes only
+router.get("/user/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const remixes = await db
+      .select({
+        remix: recipeRemixes,
+        originalRecipe: recipes,
+      })
+      .from(recipeRemixes)
+      .innerJoin(recipes, eq(recipeRemixes.originalRecipeId, recipes.id))
+      .where(
+        and(
+          eq(recipeRemixes.userId, userId),
+          eq(recipeRemixes.isPublic, true)
+        )
+      )
+      .orderBy(desc(recipeRemixes.createdAt));
 
     return res.json({ remixes });
   } catch (error: any) {
@@ -104,20 +111,20 @@ router.get("/user/:userId", async (req, res) => {
 });
 
 // POST /api/remixes - Create a new remix
-router.post("/", async (req, res) => {
+router.post("/", requireAuth, async (req, res) => {
   try {
     const {
       originalRecipeId,
       remixedRecipeId,
-      userId,
       remixType,
       changes,
       isPublic = true,
     } = req.body;
+    const userId = req.user!.id;
 
-    if (!originalRecipeId || !remixedRecipeId || !userId) {
+    if (!originalRecipeId || !remixedRecipeId) {
       return res.status(400).json({
-        error: "originalRecipeId, remixedRecipeId, and userId are required",
+        error: "originalRecipeId and remixedRecipeId are required",
       });
     }
 
@@ -165,14 +172,11 @@ router.post("/", async (req, res) => {
 });
 
 // PUT /api/remixes/:id - Update a remix
-router.put("/:id", async (req, res) => {
+router.put("/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId, ...updates } = req.body;
-
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
+    const updates = req.body;
+    const userId = req.user!.id;
 
     const [updated] = await db
       .update(recipeRemixes)
@@ -191,14 +195,10 @@ router.put("/:id", async (req, res) => {
 });
 
 // DELETE /api/remixes/:id - Delete a remix
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.query.userId as string;
-
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
+    const userId = req.user!.id;
 
     const [deleted] = await db
       .delete(recipeRemixes)

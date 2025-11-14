@@ -1,8 +1,13 @@
 // server/routes/auth.ts - WITH MAILER (won't crash if email fails)
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import { storage } from "../storage";
 import { AuthService } from "../services/auth.service";
+
+const RAW_SECRET =
+  process.env.JWT_SECRET || process.env.SESSION_SECRET || "";
+const JWT_SECRET = RAW_SECRET.trim() || "CHEFSIRE_DEV_FALLBACK_SECRET";
 
 const router = Router();
 
@@ -118,12 +123,38 @@ router.post("/auth/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
+    // Create JWT token
+    const token = jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+      },
+      JWT_SECRET,
+      { expiresIn: "7d" } // Token expires in 7 days
+    );
+
+    // Set token as HTTP-only cookie
+    res.cookie("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+    });
+
     res.json({
       success: true,
+      token, // Also send token in response for optional use
       user: {
         id: user.id,
         email: user.email,
         username: user.username,
+        displayName: user.displayName,
+        royalTitle: user.royalTitle,
+        avatar: user.avatar,
+        bio: user.bio,
+        nutritionPremium: user.nutritionPremium,
+        nutritionTrialEndsAt: user.nutritionTrialEndsAt,
       },
     });
   } catch (error) {
@@ -154,6 +185,25 @@ router.get("/auth/verify-email", async (req, res) => {
   } catch (error) {
     console.error("Error verifying email:", error);
     res.status(500).send("Verification failed");
+  }
+});
+
+/**
+ * POST /auth/logout
+ */
+router.post("/auth/logout", async (req, res) => {
+  try {
+    // Clear the auth cookie
+    res.clearCookie("auth_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    });
+
+    res.json({ success: true, message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Error during logout:", error);
+    res.status(500).json({ error: "Logout failed" });
   }
 });
 

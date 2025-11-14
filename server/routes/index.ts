@@ -31,11 +31,26 @@ import storesRouter from "./stores-crud";
 // Square (subscriptions / checkout links)
 import squareRouter from "./stores";
 
+// Auth middleware
+import { requireAuth } from "../middleware/auth";
+
 // ⚡ Phase 1: Daily Addiction Features
 import notificationsRouter from "./notifications";
 import questsRouter from "./quests";
 import suggestionsRouter from "./suggestions";
 import remixesRouter from "./remixes";
+import leaderboardRouter from "./leaderboard";
+import achievementsRouter from "./achievements";
+import streaksRouter from "./streaks";
+
+// 💰 Marketplace & Monetization
+import subscriptionsRouter from "./subscriptions";
+import ordersRouter from "./orders";
+import paymentsRouter from "./payments";
+import payoutsRouter from "./payouts";
+
+// File uploads
+import uploadRouter from "./upload";
 
 const r = Router();
 
@@ -104,6 +119,18 @@ r.use("/notifications", notificationsRouter);
 r.use("/quests", questsRouter);
 r.use("/suggestions", suggestionsRouter);
 r.use("/remixes", remixesRouter);
+r.use("/leaderboard", leaderboardRouter);
+r.use("/achievements", achievementsRouter);
+r.use("/streaks", streaksRouter);
+
+// 💰 Marketplace & Monetization
+r.use("/subscriptions", subscriptionsRouter);
+r.use("/orders", ordersRouter);
+r.use("/payments", paymentsRouter);
+r.use("/payouts", payoutsRouter);
+
+// File uploads
+r.use("/upload", uploadRouter);
 
 // Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {
@@ -134,7 +161,14 @@ if (process.env.NODE_ENV !== "production") {
         "/notifications/*", // ⚡ Phase 1
         "/quests/*",        // ⚡ Phase 1
         "/suggestions/*",   // ⚡ Phase 1
-        "/remixes/*"        // ⚡ Phase 1
+        "/remixes/*",       // ⚡ Phase 1
+        "/leaderboard/*",   // ⚡ Gamification
+        "/achievements/*",  // ⚡ Gamification
+        "/streaks/*",       // ⚡ Gamification
+        "/subscriptions/*", // 💰 Monetization
+        "/orders/*",        // 💰 Monetization
+        "/payments/*",      // 💰 Square payments
+        "/payouts/*"        // 💰 Seller payouts
       ],
     });
   });

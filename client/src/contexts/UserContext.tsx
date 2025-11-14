@@ -8,6 +8,11 @@ type User = {
   royalTitle?: string | null;
   avatar?: string | null;
   bio?: string | null;
+  subscriptionTier?: string;
+  nutritionPremium?: boolean;
+  nutritionTrialEndsAt?: string;
+  subscription?: string;
+  trialEndDate?: string;
 };
 
 type UserContextType = {
@@ -102,6 +107,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
         royalTitle: data.user.royalTitle ?? null,
         avatar: data.user.avatar ?? null,
         bio: data.user.bio ?? null,
+        nutritionPremium: data.user.nutritionPremium,
+        nutritionTrialEndsAt: data.user.nutritionTrialEndsAt,
       };
 
       persist(cleanUser);
@@ -158,15 +165,45 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => persist(null);
+  const logout = async () => {
+    try {
+      // Call server to clear the auth cookie
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (e) {
+      console.error("Logout API call failed:", e);
+    }
+    // Always clear local storage even if API call fails
+    persist(null);
+  };
 
-  const updateUser = (updates: Partial<User>) => {
+  const updateUser = async (updates: Partial<User>) => {
     setUser((prev) => {
       if (!prev) return prev;
       const merged = { ...prev, ...updates };
       localStorage.setItem("user", JSON.stringify(merged));
       return merged;
     });
+
+    // Persist to server
+    try {
+      if (user?.id) {
+        const response = await fetch(`/api/users/${user.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(updates),
+        });
+
+        if (!response.ok) {
+          console.error("Failed to update user on server:", await response.text());
+        }
+      }
+    } catch (error) {
+      console.error("Error updating user on server:", error);
+    }
   };
 
   return (

@@ -50,19 +50,34 @@ export default function StoreDashboard() {
 
     try {
       // Load store info
-      const storeRes = await fetch(`/api/stores/by-user/${user.id}`);
+      const storeRes = await fetch(`/api/stores/user/${user.id}`);
       if (storeRes.ok) {
         const storeData = await storeRes.json();
-        setStore(storeData);
+        setStore(storeData.store);
 
-        // Load stats (mock for now)
-        setStats({
-          totalProducts: 12,
-          publishedProducts: 10,
-          totalViews: 1247,
-          totalSales: 43,
-          revenue: 2156.50,
-        });
+        // Load actual product stats
+        const productsRes = await fetch(`/api/marketplace/sellers/${user.id}/products`);
+        if (productsRes.ok) {
+          const productsData = await productsRes.json();
+          const products = productsData.products || [];
+
+          setStats({
+            totalProducts: products.length,
+            publishedProducts: products.filter((p: any) => p.isActive).length,
+            totalViews: 0, // TODO: Implement view tracking
+            totalSales: 0, // TODO: Implement sales tracking
+            revenue: 0, // TODO: Implement revenue tracking
+          });
+        } else {
+          // If products endpoint fails, set zeros
+          setStats({
+            totalProducts: 0,
+            publishedProducts: 0,
+            totalViews: 0,
+            totalSales: 0,
+            revenue: 0,
+          });
+        }
       }
     } catch (error) {
       console.error('Failed to load store:', error);
@@ -220,14 +235,16 @@ export default function StoreDashboard() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>Product Management</CardTitle>
-                  <Button className="bg-orange-500 hover:bg-orange-600">
-                    <Plus size={16} className="mr-2" />
-                    Add Product
-                  </Button>
+                  <Link href="/store/products/new">
+                    <Button className="bg-orange-500 hover:bg-orange-600">
+                      <Plus size={16} className="mr-2" />
+                      {stats.totalProducts === 0 ? 'Add Your First Product' : 'Add Product'}
+                    </Button>
+                  </Link>
                 </div>
               </CardHeader>
               <CardContent>
-                <ProductManager storeId={store.id} />
+                <ProductManager sellerId={user.id} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -267,15 +284,17 @@ export default function StoreDashboard() {
 
         {/* Quick Actions */}
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-            <CardContent className="pt-6">
-              <Edit className="text-orange-500 mb-3" size={24} />
-              <h3 className="font-semibold mb-2">Customize Store</h3>
-              <p className="text-sm text-gray-600">
-                Update your store's appearance and branding
-              </p>
-            </CardContent>
-          </Card>
+          <Link href="/store/settings">
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+              <CardContent className="pt-6">
+                <Edit className="text-orange-500 mb-3" size={24} />
+                <h3 className="font-semibold mb-2">Customize Store</h3>
+                <p className="text-sm text-gray-600">
+                  Update your store's appearance and branding
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
 
           <Card className="hover:shadow-lg transition-shadow cursor-pointer">
             <CardContent className="pt-6">

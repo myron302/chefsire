@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "../db";
+import { requireAuth } from "../middleware";
 import {
   dmThreads,
   dmParticipants,
@@ -11,18 +12,12 @@ import {
 
 const r = Router();
 
-// Replace with your real auth (req.user?.id). We also accept x-user-id header for now.
-function getUserId(req: any): string | null {
-  return (req.user?.id || req.headers["x-user-id"] || null) as string | null;
-}
-
 /**
  * GET /api/dm/threads
  * List the current user's DM threads with lastMessage + unread count.
  */
-r.get("/threads", async (req, res) => {
-  const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ ok: false, error: "unauthorized" });
+r.get("/threads", requireAuth, async (req, res) => {
+  const userId = req.user!.id;
 
   // All participant rows for this user
   const parts = await db
@@ -37,6 +32,43 @@ r.get("/threads", async (req, res) => {
     .select()
     .from(dmThreads)
     .where(inArray(dmThreads.id, threadIds));
+
+  // Load all participants for these threads
+  const allParticipants = await db
+    .select()
+    .from(dmParticipants)
+    .where(inArray(dmParticipants.threadId, threadIds));
+
+  // Get unique user IDs from participants
+  const participantUserIds = Array.from(new Set(allParticipants.map(p => p.userId)));
+
+  // Import users table to get user details
+  const { users } = await import("../../shared/schema");
+
+  // Load user details for all participants (only if we have any)
+  const participantUsers = participantUserIds.length > 0
+    ? await db
+        .select({
+          id: users.id,
+          username: users.username,
+          displayName: users.displayName,
+          avatar: users.avatar,
+        })
+        .from(users)
+        .where(inArray(users.id, participantUserIds))
+    : [];
+
+  // Create a map of thread ID to participants with user details
+  const participantsByThread = new Map<string, typeof participantUsers>();
+  for (const thread of threads) {
+    const threadParticipantIds = allParticipants
+      .filter(p => p.threadId === thread.id)
+      .map(p => p.userId);
+    participantsByThread.set(
+      thread.id,
+      participantUsers.filter(u => threadParticipantIds.includes(u.id))
+    );
+  }
 
   // Pull recent messages across all my threads once (avoid N+1)
   const recentMessages = await db
@@ -74,6 +106,7 @@ r.get("/threads", async (req, res) => {
       ...t,
       lastMessage: lastByThread.get(t.id) || null,
       unread: unreadByThread[t.id] || 0,
+      participants: participantsByThread.get(t.id) || [],
     })),
   });
 });
@@ -82,9 +115,8 @@ r.get("/threads", async (req, res) => {
  * GET /api/dm/threads/:id/messages?take=30&before=ISO_DATE
  * Paged messages (newest→oldest on wire; we reverse for display).
  */
-r.get("/threads/:id/messages", async (req, res) => {
-  const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ ok: false, error: "unauthorized" });
+r.get("/threads/:id/messages", requireAuth, async (req, res) => {
+  const userId = req.user!.id;
 
   const { id } = req.params;
   const take = Math.min(Number(req.query.take) || 30, 100);
@@ -117,9 +149,8 @@ r.get("/threads/:id/messages", async (req, res) => {
  * Create a thread (reuses 1:1 when possible).
  * body: { participantIds: string[], title?: string, isGroup?: boolean }
  */
-r.post("/threads", async (req, res) => {
-  const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ ok: false, error: "unauthorized" });
+r.post("/threads", requireAuth, async (req, res) => {
+  const userId = req.user!.id;
 
   const body = z
     .object({
@@ -170,9 +201,8 @@ r.post("/threads", async (req, res) => {
  * Send a message in a thread (must be a member).
  * body: { text: string, attachments?: {name,url,type?}[] }
  */
-r.post("/threads/:id/messages", async (req, res) => {
-  const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ ok: false, error: "unauthorized" });
+r.post("/threads/:id/messages", requireAuth, async (req, res) => {
+  const userId = req.user!.id;
 
   const { id } = req.params;
   const body = z
@@ -214,9 +244,8 @@ r.post("/threads/:id/messages", async (req, res) => {
  * POST /api/dm/threads/:id/read
  * body: { lastReadMessageId?: string }
  */
-r.post("/threads/:id/read", async (req, res) => {
-  const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ ok: false, error: "unauthorized" });
+r.post("/threads/:id/read", requireAuth, async (req, res) => {
+  const userId = req.user!.id;
 
   const { id } = req.params;
   const body = z.object({ lastReadMessageId: z.string().optional() }).parse(req.body);

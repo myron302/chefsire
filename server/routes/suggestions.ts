@@ -3,13 +3,14 @@ import { Router } from "express";
 import { and, eq, desc, gte, lte } from "drizzle-orm";
 import { db } from "../db";
 import { aiSuggestions, recipes, customDrinks, userDrinkStats, nutritionLogs, users } from "../../shared/schema";
+import { requireAuth } from "../middleware";
 
 const router = Router();
 
-// GET /api/suggestions/today/:userId - Get today's AI suggestions
-router.get("/today/:userId", async (req, res) => {
+// GET /api/suggestions/today - Get today's AI suggestions
+router.get("/today", requireAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user!.id;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -38,14 +39,10 @@ router.get("/today/:userId", async (req, res) => {
 });
 
 // POST /api/suggestions/:id/accept - Mark suggestion as accepted (user made the drink)
-router.post("/:id/accept", async (req, res) => {
+router.post("/:id/accept", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId } = req.body;
-
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
+    const userId = req.user!.id;
 
     const [updated] = await db
       .update(aiSuggestions)
@@ -69,14 +66,10 @@ router.post("/:id/accept", async (req, res) => {
 });
 
 // POST /api/suggestions/:id/dismiss - Dismiss a suggestion
-router.post("/:id/dismiss", async (req, res) => {
+router.post("/:id/dismiss", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId } = req.body;
-
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
+    const userId = req.user!.id;
 
     const [updated] = await db
       .update(aiSuggestions)
@@ -99,10 +92,10 @@ router.post("/:id/dismiss", async (req, res) => {
   }
 });
 
-// POST /api/suggestions/generate/:userId - Manually trigger suggestion generation
-router.post("/generate/:userId", async (req, res) => {
+// POST /api/suggestions/generate - Manually trigger suggestion generation
+router.post("/generate", requireAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user!.id;
     const suggestions = await generateDailySuggestions(userId);
     return res.json({ suggestions });
   } catch (error: any) {
