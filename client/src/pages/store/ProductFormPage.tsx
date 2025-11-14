@@ -13,8 +13,9 @@ export default function ProductFormPage() {
   const { user } = useUser();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const [, params] = useRoute('/store/products/:id');
-  const productId = params?.id === 'new' ? null : params?.id;
+  const [, paramsNew] = useRoute('/store/products/new');
+  const [, paramsEdit] = useRoute('/store/products/edit/:id');
+  const productId = paramsEdit?.id || null;
 
   const [loading, setLoading] = useState(false);
   const [loadingProduct, setLoadingProduct] = useState(!!productId);
@@ -31,7 +32,6 @@ export default function ProductFormPage() {
     digitalFileUrl: '',
     digitalFileName: ''
   });
-  const [newImageUrl, setNewImageUrl] = useState('');
 
   // Auto-select digital download when product category changes to digital
   useEffect(() => {
@@ -104,45 +104,6 @@ export default function ProductFormPage() {
         deliveryMethods: methods.length > 0 ? methods : prev.deliveryMethods
       };
     });
-  };
-
-  const handleAddImage = () => {
-    if (!newImageUrl.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter a valid image URL",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (formData.images.length >= 5) {
-      toast({
-        title: "Limit Reached",
-        description: "You can add up to 5 images per product",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    try {
-      new URL(newImageUrl); // Validate URL
-      setFormData(prev => ({
-        ...prev,
-        images: [...prev.images, newImageUrl.trim()]
-      }));
-      setNewImageUrl('');
-      toast({
-        title: "Image Added",
-        description: "Image URL added successfully"
-      });
-    } catch {
-      toast({
-        title: "Invalid URL",
-        description: "Please enter a valid URL",
-        variant: "destructive"
-      });
-    }
   };
 
   const handleRemoveImage = (index: number) => {
@@ -735,77 +696,46 @@ export default function ProductFormPage() {
 
                 {/* Add new image */}
                 {formData.images.length < 5 && (
-                  <div className="mt-3 space-y-3">
+                  <div className="mt-3">
                     {/* File Upload Option */}
-                    <div>
-                      <label
-                        htmlFor="imageFileUpload"
-                        className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-orange-400 transition-colors"
-                      >
-                        <div className="text-center">
-                          {uploadingFile ? (
-                            <div className="flex items-center gap-2">
-                              <Loader2 className="w-5 h-5 text-orange-500 animate-spin" />
-                              <span className="text-sm text-gray-600">Uploading...</span>
-                            </div>
-                          ) : (
-                            <>
-                              <svg className="mx-auto w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                              <p className="mt-1 text-sm text-gray-600">
-                                <span className="font-medium text-orange-500">Upload an image</span> or take a photo
-                              </p>
-                              <p className="text-xs text-gray-500">PNG, JPG, GIF up to 10MB</p>
-                            </>
-                          )}
-                        </div>
-                        <input
-                          id="imageFileUpload"
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          onChange={handleImageFileUpload}
-                          disabled={uploadingFile}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
-
-                    {/* URL Input Option */}
-                    <div>
-                      <p className="text-sm text-gray-500 mb-2">Or add image from URL:</p>
-                      <div className="flex gap-2">
-                        <Input
-                          type="url"
-                          value={newImageUrl}
-                          onChange={(e) => setNewImageUrl(e.target.value)}
-                          placeholder="https://example.com/image.jpg"
-                          className="flex-1"
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleAddImage();
-                            }
-                          }}
-                        />
-                        <Button
-                          type="button"
-                          onClick={handleAddImage}
-                          variant="outline"
-                          className="whitespace-nowrap"
-                        >
-                          Add Image
-                        </Button>
+                    <label
+                      htmlFor="imageFileUpload"
+                      className="flex items-center justify-center w-full px-4 py-8 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-orange-400 transition-colors"
+                    >
+                      <div className="text-center">
+                        {uploadingFile ? (
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="w-5 h-5 text-orange-500 animate-spin" />
+                            <span className="text-sm text-gray-600">Uploading...</span>
+                          </div>
+                        ) : (
+                          <>
+                            <svg className="mx-auto w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <p className="mt-3 text-base text-gray-700 font-medium">
+                              Click to upload or take a photo
+                            </p>
+                            <p className="mt-1 text-sm text-gray-500">PNG, JPG, GIF up to 10MB</p>
+                            <p className="mt-2 text-xs text-gray-400">
+                              {formData.images.length === 0
+                                ? "First image will be the primary image"
+                                : `${5 - formData.images.length} more image${5 - formData.images.length === 1 ? '' : 's'} can be added`
+                              }
+                            </p>
+                          </>
+                        )}
                       </div>
-                    </div>
-
-                    <p className="text-sm text-gray-500">
-                      {formData.images.length === 0
-                        ? "Add product images. The first image will be the primary image."
-                        : `${5 - formData.images.length} more image${5 - formData.images.length === 1 ? '' : 's'} can be added`
-                      }
-                    </p>
+                      <input
+                        id="imageFileUpload"
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleImageFileUpload}
+                        disabled={uploadingFile}
+                        className="hidden"
+                      />
+                    </label>
                   </div>
                 )}
               </div>
