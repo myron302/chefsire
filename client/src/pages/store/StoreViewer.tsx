@@ -1,11 +1,13 @@
 // client/src/pages/store/StoreViewer.tsx
 import * as React from "react";
 import { useEffect, useState } from "react";
-import { useRoute } from "wouter";
+import { useRoute, Link } from "wouter";
 import { Editor, Frame, Element } from "@craftjs/core";
 import { Button as UIButton } from "@/components/ui/button";
 import { Card as UICard } from "@/components/ui/card";
-import { Package } from "lucide-react";
+import { Package, Edit as EditIcon } from "lucide-react";
+import { useUser } from "@/contexts/UserContext";
+import { Badge } from "@/components/ui/badge";
 
 // --- Public read-only resolver (same parts as builder) ---
 const Container = ({ children }) => (
@@ -40,9 +42,11 @@ type Store = {
 };
 
 export default function StoreViewer() {
+  const { user } = useUser();
   const [, params] = useRoute("/store/:handle");
   const handle = params?.handle ?? "";
   const [store, setStore] = useState<Store | null>(null);
+  const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -52,7 +56,17 @@ export default function StoreViewer() {
         const res = await fetch(`/api/stores/${handle}`);
         if (res.ok) {
           const data = await res.json();
-          if (mounted) setStore(data.store ?? null);
+          if (mounted) {
+            setStore(data.store ?? null);
+            // Load products for this store
+            if (data.store?.userId) {
+              const productsRes = await fetch(`/api/marketplace/sellers/${data.store.userId}/products`);
+              if (productsRes.ok) {
+                const productsData = await productsRes.json();
+                setProducts(productsData.products || []);
+              }
+            }
+          }
         } else {
           if (mounted) setStore(null);
         }
@@ -76,7 +90,19 @@ export default function StoreViewer() {
     );
   }
 
-  if (!store || (!store.published && !store.layout)) {
+  if (!store) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center text-gray-600 p-6">
+        <Package className="w-12 h-12 mb-4 text-gray-400" />
+        <p>This store was not found.</p>
+      </div>
+    );
+  }
+
+  const isOwner = user && user.id === store.userId;
+
+  // Only show unpublished stores to the owner
+  if (!store.published && !isOwner) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center text-gray-600 p-6">
         <Package className="w-12 h-12 mb-4 text-gray-400" />
@@ -89,21 +115,94 @@ export default function StoreViewer() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
         <div className="max-w-6xl mx-auto px-4 py-6">
-          <h1 className="text-2xl font-bold text-gray-900">{store.name}</h1>
-          {store.bio && <p className="text-gray-600 mt-1">{store.bio}</p>}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">{store.name}</h1>
+              {store.bio && <p className="text-gray-600 mt-1">{store.bio}</p>}
+              {!store.published && isOwner && (
+                <Badge variant="secondary" className="mt-2">Draft - Not Published</Badge>
+              )}
+            </div>
+            {isOwner && (
+              <Link href="/store/dashboard">
+                <UIButton variant="outline">
+                  <EditIcon className="w-4 h-4 mr-2" />
+                  Manage Store
+                </UIButton>
+              </Link>
+            )}
+          </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
-        {/* Read-only CraftJS render */}
-        <Editor enabled={false} resolver={resolver}>
-          <Frame json={store.layout}>
-            {/* Fallback if no layout */}
-            <Element is={Container} canvas className="min-h-[400px] border border-dashed border-gray-300 bg-white">
-              <Text text="Store is empty. Check back soon!" />
-            </Element>
-          </Frame>
-        </Editor>
+        {/* Store Layout */}
+        {store.layout ? (
+          <div className="mb-8">
+            <Editor enabled={false} resolver={resolver}>
+              <Frame json={store.layout}>
+                <Element is={Container} canvas className="min-h-[200px]">
+                  <Text text="Store layout loading..." />
+                </Element>
+              </Frame>
+            </Editor>
+          </div>
+        ) : (
+          <div className="mb-8 p-8 border-2 border-dashed border-gray-300 rounded-lg text-center">
+            <p className="text-gray-500">No custom layout yet</p>
+            {isOwner && (
+              <Link href="/store/dashboard">
+                <UIButton className="mt-4">Customize Store</UIButton>
+              </Link>
+            )}
+          </div>
+        )}
+
+        {/* Products Section */}
+        <div>
+          <h2 className="text-2xl font-bold mb-6">Products</h2>
+          {products.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-lg border">
+              <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600">No products yet</p>
+              {isOwner && (
+                <Link href="/store/products/new">
+                  <UIButton className="mt-4 bg-orange-500 hover:bg-orange-600">
+                    Add Your First Product
+                  </UIButton>
+                </Link>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {products.map((product) => (
+                <div key={product.id} className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-lg transition-shadow">
+                  {product.images?.length > 0 ? (
+                    <img src={product.images[0]} alt={product.name} className="w-full h-48 object-cover" />
+                  ) : (
+                    <div className="w-full h-48 bg-gray-200 flex items-center justify-center">
+                      <Package className="w-12 h-12 text-gray-400" />
+                    </div>
+                  )}
+                  <div className="p-4">
+                    <h3 className="font-semibold text-lg mb-2">{product.name}</h3>
+                    {product.description && (
+                      <p className="text-gray-600 text-sm mb-3 line-clamp-2">{product.description}</p>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xl font-bold text-orange-600">
+                        ${parseFloat(product.price).toFixed(2)}
+                      </span>
+                      <Link href={`/marketplace/product/${product.id}`}>
+                        <UIButton size="sm">View Details</UIButton>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );
