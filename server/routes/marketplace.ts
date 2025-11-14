@@ -58,17 +58,17 @@ r.post("/products", requireAuth, async (req, res) => {
       category: z.string().default("other"), // Accept any string, default to "other"
       images: z.array(z.string().url()).default([]),
       inventory: z.number().min(0).default(0),
-      imageUrl: z.string().optional(), // Additional field from frontend
+      imageUrl: z.string().optional().nullable(), // Allow empty string
       shippingEnabled: z.boolean().optional(),
       localPickupEnabled: z.boolean().optional(),
       pickupLocation: z.string().optional(),
       pickupInstructions: z.string().optional(),
       shippingCost: z.string().optional(),
       isExternal: z.boolean().default(false),
-      externalUrl: z.string().url().optional(),
+      externalUrl: z.string().url().optional().or(z.literal("")),
       productCategory: z.enum(["physical", "digital", "cookbook", "course", "ingredient", "tool"]).default("physical"),
-      digitalFileUrl: z.string().optional(),
-      digitalFileName: z.string().optional(),
+      digitalFileUrl: z.string().optional().nullable(),
+      digitalFileName: z.string().optional().nullable(),
       // Accept delivery methods array from frontend
       deliveryMethods: z.array(z.string()).optional(),
       isDigital: z.boolean().optional(),
@@ -88,8 +88,8 @@ r.post("/products", requireAuth, async (req, res) => {
       deliveryData.isDigital = body.deliveryMethods.includes('digital_download');
     }
 
-    // If imageUrl is provided, add to images array
-    const images = body.imageUrl && !body.images.includes(body.imageUrl)
+    // If imageUrl is provided and valid, add to images array
+    const images = (body.imageUrl && body.imageUrl.trim() && !body.images.includes(body.imageUrl))
       ? [body.imageUrl, ...body.images]
       : body.images;
 
@@ -184,7 +184,7 @@ r.put("/products/:id", requireAuth, async (req, res) => {
       price: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
       inventory: z.number().min(0).optional(),
       category: z.string().optional(),
-      imageUrl: z.string().optional(),
+      imageUrl: z.string().optional().nullable(),
       images: z.array(z.string().url()).optional(),
       shippingEnabled: z.boolean().optional(),
       localPickupEnabled: z.boolean().optional(),
@@ -193,8 +193,8 @@ r.put("/products/:id", requireAuth, async (req, res) => {
       shippingCost: z.string().optional(),
       isActive: z.boolean().optional(),
       productCategory: z.enum(["physical", "digital", "cookbook", "course", "ingredient", "tool"]).optional(),
-      digitalFileUrl: z.string().optional(),
-      digitalFileName: z.string().optional(),
+      digitalFileUrl: z.string().optional().nullable(),
+      digitalFileName: z.string().optional().nullable(),
       deliveryMethods: z.array(z.string()).optional(),
       isDigital: z.boolean().optional(),
       inStoreOnly: z.boolean().optional(),
@@ -213,9 +213,9 @@ r.put("/products/:id", requireAuth, async (req, res) => {
       deliveryData.isDigital = body.deliveryMethods.includes('digital_download');
     }
 
-    // If imageUrl is provided, add to images array
+    // If imageUrl is provided and valid, add to images array
     let images = body.images;
-    if (body.imageUrl && images && !images.includes(body.imageUrl)) {
+    if (body.imageUrl && body.imageUrl.trim() && images && !images.includes(body.imageUrl)) {
       images = [body.imageUrl, ...images];
     }
 
