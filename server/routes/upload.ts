@@ -83,8 +83,10 @@ router.post("/", requireAuth, (req, res) => {
         return res.status(400).json({ ok: false, error: "No file uploaded" });
       }
 
-      // Generate URL for the uploaded file
-      const fileUrl = `/uploads/${req.file.filename}`;
+      // Generate full URL for the uploaded file
+      const protocol = req.protocol;
+      const host = req.get('host');
+      const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
 
       res.json({
         ok: true,
