@@ -26,8 +26,8 @@ export const createProduct = async (productData: Omit<Product, 'id' | 'created_a
   return data.product;
 };
 
-export const getStoreProducts = async (storeId: string): Promise<Product[]> => {
-  const response = await fetch(`/api/marketplace/sellers/${storeId}/products`, {
+export const getStoreProducts = async (sellerId: string): Promise<Product[]> => {
+  const response = await fetch(`/api/marketplace/sellers/${sellerId}/products`, {
     credentials: 'include',
   });
 

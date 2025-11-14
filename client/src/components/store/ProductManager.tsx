@@ -5,20 +5,20 @@ import { Product } from '../../types/store';
 import { getStoreProducts, deleteProduct } from '../../lib/store/products';
 
 interface ProductManagerProps {
-  storeId: string;
+  sellerId: string;
 }
 
-export const ProductManager: React.FC<ProductManagerProps> = ({ storeId }) => {
+export const ProductManager: React.FC<ProductManagerProps> = ({ sellerId }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     loadProducts();
-  }, [storeId]);
+  }, [sellerId]);
 
   const loadProducts = async () => {
     try {
-      const storeProducts = await getStoreProducts(storeId);
+      const storeProducts = await getStoreProducts(sellerId);
       setProducts(storeProducts);
     } catch (error) {
       console.error('Failed to load products:', error);
