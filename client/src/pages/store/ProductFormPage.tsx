@@ -156,6 +156,82 @@ export default function ProductFormPage() {
     });
   };
 
+  const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: "Invalid File Type",
+        description: "Please upload an image file (JPG, PNG, GIF, etc.)",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validate file size (max 10MB for images)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast({
+        title: "File too large",
+        description: "Please upload an image smaller than 10MB",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (formData.images.length >= 5) {
+      toast({
+        title: "Limit Reached",
+        description: "You can add up to 5 images per product",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setUploadingFile(true);
+
+    try {
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', file);
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: uploadFormData
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `Upload failed with status ${response.status}`);
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        images: [...prev.images, data.url]
+      }));
+
+      toast({
+        title: "Image Uploaded",
+        description: `${file.name} uploaded successfully`
+      });
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to upload image. Please try again.";
+      toast({
+        title: "Upload failed",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setUploadingFile(false);
+      // Reset the file input
+      e.target.value = '';
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -659,31 +735,72 @@ export default function ProductFormPage() {
 
                 {/* Add new image */}
                 {formData.images.length < 5 && (
-                  <div className="mt-3">
-                    <div className="flex gap-2">
-                      <Input
-                        type="url"
-                        value={newImageUrl}
-                        onChange={(e) => setNewImageUrl(e.target.value)}
-                        placeholder="https://example.com/image.jpg"
-                        className="flex-1"
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddImage();
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        onClick={handleAddImage}
-                        variant="outline"
-                        className="whitespace-nowrap"
+                  <div className="mt-3 space-y-3">
+                    {/* File Upload Option */}
+                    <div>
+                      <label
+                        htmlFor="imageFileUpload"
+                        className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-orange-400 transition-colors"
                       >
-                        Add Image
-                      </Button>
+                        <div className="text-center">
+                          {uploadingFile ? (
+                            <div className="flex items-center gap-2">
+                              <Loader2 className="w-5 h-5 text-orange-500 animate-spin" />
+                              <span className="text-sm text-gray-600">Uploading...</span>
+                            </div>
+                          ) : (
+                            <>
+                              <svg className="mx-auto w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              <p className="mt-1 text-sm text-gray-600">
+                                <span className="font-medium text-orange-500">Upload an image</span> or take a photo
+                              </p>
+                              <p className="text-xs text-gray-500">PNG, JPG, GIF up to 10MB</p>
+                            </>
+                          )}
+                        </div>
+                        <input
+                          id="imageFileUpload"
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={handleImageFileUpload}
+                          disabled={uploadingFile}
+                          className="hidden"
+                        />
+                      </label>
                     </div>
-                    <p className="text-sm text-gray-500 mt-1">
+
+                    {/* URL Input Option */}
+                    <div>
+                      <p className="text-sm text-gray-500 mb-2">Or add image from URL:</p>
+                      <div className="flex gap-2">
+                        <Input
+                          type="url"
+                          value={newImageUrl}
+                          onChange={(e) => setNewImageUrl(e.target.value)}
+                          placeholder="https://example.com/image.jpg"
+                          className="flex-1"
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddImage();
+                            }
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          onClick={handleAddImage}
+                          variant="outline"
+                          className="whitespace-nowrap"
+                        >
+                          Add Image
+                        </Button>
+                      </div>
+                    </div>
+
+                    <p className="text-sm text-gray-500">
                       {formData.images.length === 0
                         ? "Add product images. The first image will be the primary image."
                         : `${5 - formData.images.length} more image${5 - formData.images.length === 1 ? '' : 's'} can be added`

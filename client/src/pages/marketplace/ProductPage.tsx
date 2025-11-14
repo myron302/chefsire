@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   Minus,
   Plus,
+  Edit,
 } from "lucide-react";
 
 export default function ProductPage() {
@@ -106,15 +107,26 @@ export default function ProductPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Back button */}
-        <Button
-          variant="ghost"
-          onClick={() => navigate("/marketplace")}
-          className="mb-6"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Marketplace
-        </Button>
+        {/* Back button and Edit */}
+        <div className="flex items-center justify-between mb-6">
+          <Button
+            variant="ghost"
+            onClick={() => navigate("/marketplace")}
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Marketplace
+          </Button>
+
+          {user && product.sellerId === user.id && (
+            <Button
+              variant="outline"
+              onClick={() => navigate(`/store/products/edit/${product.id}`)}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Edit Product
+            </Button>
+          )}
+        </div>
 
         <div className="grid md:grid-cols-2 gap-8">
           {/* Left - Images */}
