@@ -56,7 +56,7 @@ export default function StoreDashboard() {
         setStore(storeData.store);
 
         // Load actual product stats
-        const productsRes = await fetch(`/api/marketplace/products/seller/${user.id}`);
+        const productsRes = await fetch(`/api/marketplace/sellers/${user.id}/products`);
         if (productsRes.ok) {
           const productsData = await productsRes.json();
           const products = productsData.products || [];
@@ -244,7 +244,7 @@ export default function StoreDashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <ProductManager storeId={store.id} />
+                <ProductManager sellerId={user.id} />
               </CardContent>
             </Card>
           </TabsContent>
