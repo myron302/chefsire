@@ -35,20 +35,20 @@ r.post("/products", requireAuth, async (req, res) => {
     const tierName = (seller as any).subscriptionTier || "free";
     const tierInfo = SUBSCRIPTION_TIERS[tierName as keyof typeof SUBSCRIPTION_TIERS];
 
-    // Check product limit
-    if (tierInfo.limits.maxProducts !== -1) {
-      const existingProducts = await storage.getUserProducts(sellerId, 0, tierInfo.limits.maxProducts + 1);
+    // Check product limit - get existing products for all tiers
+    const existingProducts = tierInfo.limits.maxProducts !== -1
+      ? await storage.getUserProducts(sellerId, 0, tierInfo.limits.maxProducts + 1)
+      : [];
 
-      if (existingProducts.length >= tierInfo.limits.maxProducts) {
-        return res.status(403).json({
-          message: `Product limit reached. ${tierInfo.name} tier allows ${tierInfo.limits.maxProducts} products.`,
-          error: "tier_limit_reached",
-          currentTier: tierName,
-          limit: tierInfo.limits.maxProducts,
-          current: existingProducts.length,
-          upgradeMessage: "Upgrade your subscription to list more products"
-        });
-      }
+    if (tierInfo.limits.maxProducts !== -1 && existingProducts.length >= tierInfo.limits.maxProducts) {
+      return res.status(403).json({
+        message: `Product limit reached. ${tierInfo.name} tier allows ${tierInfo.limits.maxProducts} products.`,
+        error: "tier_limit_reached",
+        currentTier: tierName,
+        limit: tierInfo.limits.maxProducts,
+        current: existingProducts.length,
+        upgradeMessage: "Upgrade your subscription to list more products"
+      });
     }
 
     const schema = z.object({
@@ -56,9 +56,8 @@ r.post("/products", requireAuth, async (req, res) => {
       description: z.string().optional(),
       price: z.string().regex(/^\d+(\.\d{1,2})?$/),
       category: z.string().default("other"), // Accept any string, default to "other"
-      images: z.array(z.string().url()).default([]),
+      images: z.array(z.string().url()).max(5).default([]),
       inventory: z.number().min(0).default(0),
-      imageUrl: z.string().optional().nullable(), // Allow empty string
       shippingEnabled: z.boolean().optional(),
       localPickupEnabled: z.boolean().optional(),
       pickupLocation: z.string().optional(),
@@ -88,15 +87,9 @@ r.post("/products", requireAuth, async (req, res) => {
       deliveryData.isDigital = body.deliveryMethods.includes('digital_download');
     }
 
-    // If imageUrl is provided and valid, add to images array
-    const images = (body.imageUrl && body.imageUrl.trim() && !body.images.includes(body.imageUrl))
-      ? [body.imageUrl, ...body.images]
-      : body.images;
-
     const product = await storage.createProduct({
       ...body,
       ...deliveryData,
-      images,
       sellerId
     } as any);
 
@@ -184,8 +177,7 @@ r.put("/products/:id", requireAuth, async (req, res) => {
       price: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
       inventory: z.number().min(0).optional(),
       category: z.string().optional(),
-      imageUrl: z.string().optional().nullable(),
-      images: z.array(z.string().url()).optional(),
+      images: z.array(z.string().url()).max(5).optional(),
       shippingEnabled: z.boolean().optional(),
       localPickupEnabled: z.boolean().optional(),
       pickupLocation: z.string().optional(),
@@ -213,16 +205,9 @@ r.put("/products/:id", requireAuth, async (req, res) => {
       deliveryData.isDigital = body.deliveryMethods.includes('digital_download');
     }
 
-    // If imageUrl is provided and valid, add to images array
-    let images = body.images;
-    if (body.imageUrl && body.imageUrl.trim() && images && !images.includes(body.imageUrl)) {
-      images = [body.imageUrl, ...images];
-    }
-
     const updates = {
       ...body,
-      ...deliveryData,
-      ...(images ? { images } : {})
+      ...deliveryData
     };
 
     const product = await storage.updateProduct(req.params.id, updates);
