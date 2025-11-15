@@ -3,7 +3,7 @@ import { db } from "../db";
 import { stores, users } from "../../shared/schema.js";
 import { eq } from "drizzle-orm";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, optionalAuth } from "../middleware/auth";
 
 const router = Router();
 
@@ -15,7 +15,8 @@ const router = Router();
  * Requires Starter tier or higher for store builder access.
  */
 
-// GET /api/stores-crud/user/:userId - Get user's store (for owner)
+// GET /api/stores/user/:userId - Get user's store (for owner)
+// NOTE: This route must come BEFORE /:handle to avoid matching conflicts
 router.get("/user/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -26,6 +27,33 @@ router.get("/user/:userId", async (req, res) => {
     res.json({ ok: true, store: store || null });
   } catch (error) {
     console.error("Error fetching user store:", error);
+    res.status(500).json({ ok: false, error: "Failed to fetch store" });
+  }
+});
+
+// GET /api/stores/:handle - Public view of a store (with optional auth)
+router.get("/:handle", optionalAuth, async (req, res) => {
+  try {
+    const { handle } = req.params;
+    const store = await db.query.stores.findFirst({
+      where: eq(stores.handle, handle),
+    });
+
+    if (!store) {
+      return res.status(404).json({ ok: false, error: "Store not found" });
+    }
+
+    // Check if the requesting user is the store owner
+    const isOwner = req.user && req.user.id === store.userId;
+
+    // Only show unpublished stores to the owner
+    if (!store.published && !isOwner) {
+      return res.status(404).json({ ok: false, error: "Store not available" });
+    }
+
+    res.json({ ok: true, store });
+  } catch (error) {
+    console.error("Error fetching store:", error);
     res.status(500).json({ ok: false, error: "Failed to fetch store" });
   }
 });
