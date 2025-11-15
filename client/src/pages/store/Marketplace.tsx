@@ -386,24 +386,26 @@ const Marketplace = () => {
           </div>
 
           {/* Categories */}
-          <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide">
-            {categoryList.map((category) => (
-              <button
-                key={category.id}
-                onClick={() => setActiveCategory(category.id)}
-                className={`flex items-center space-x-2 px-3 md:px-4 py-2 rounded-full whitespace-nowrap transition-colors text-sm ${
-                  activeCategory === category.id ? "bg-orange-500 text-white" : "bg-white text-gray-700 hover:bg-orange-50"
-                }`}
-              >
-                <category.icon className="w-4 h-4" />
-                <span className="font-medium">{category.name}</span>
-                {category.id !== "all" && categories[category.id] && (
-                  <span className="text-xs bg-black bg-opacity-20 rounded-full px-2 py-0.5">
-                    {categories[category.id]}
-                  </span>
-                )}
-              </button>
-            ))}
+          <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
+            <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide">
+              {categoryList.map((category) => (
+                <button
+                  key={category.id}
+                  onClick={() => setActiveCategory(category.id)}
+                  className={`flex items-center space-x-2 px-3 md:px-4 py-2 rounded-full whitespace-nowrap transition-colors text-sm flex-shrink-0 ${
+                    activeCategory === category.id ? "bg-orange-500 text-white" : "bg-white text-gray-700 hover:bg-orange-50"
+                  }`}
+                >
+                  <category.icon className="w-4 h-4 flex-shrink-0" />
+                  <span className="font-medium">{category.name}</span>
+                  {category.id !== "all" && categories[category.id] && (
+                    <span className="text-xs bg-black bg-opacity-20 rounded-full px-2 py-0.5">
+                      {categories[category.id]}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
