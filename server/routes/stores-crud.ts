@@ -115,7 +115,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
     }
 
     const { id } = req.params;
-    const { name, bio, theme } = req.body;
+    const { name, bio, theme, customization, layout } = req.body;
 
     const existing = await db.query.stores.findFirst({
       where: eq(stores.id, id),
@@ -125,14 +125,25 @@ router.patch("/:id", requireAuth, async (req, res) => {
       return res.status(403).json({ ok: false, error: "Not authorized" });
     }
 
+    // Build update object - only include fields that are provided
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
+
+    if (name !== undefined) updateData.name = name;
+    if (bio !== undefined) updateData.bio = bio;
+    if (theme !== undefined) updateData.theme = theme;
+
+    // Support both customization and layout fields
+    if (customization !== undefined) {
+      updateData.layout = { ...existing.layout, ...customization };
+    } else if (layout !== undefined) {
+      updateData.layout = layout;
+    }
+
     const [updated] = await db
       .update(stores)
-      .set({
-        name: name ?? existing.name,
-        bio: bio ?? existing.bio,
-        theme: theme ?? existing.theme,
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(eq(stores.id, id))
       .returning();
 
