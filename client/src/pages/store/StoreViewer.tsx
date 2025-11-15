@@ -115,9 +115,9 @@ export default function StoreViewer() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
         <div className="max-w-6xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{store.name}</h1>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex-1">
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900">{store.name}</h1>
               {store.bio && <p className="text-gray-600 mt-1">{store.bio}</p>}
               {!store.published && isOwner && (
                 <Badge variant="secondary" className="mt-2">Draft - Not Published</Badge>
@@ -125,7 +125,7 @@ export default function StoreViewer() {
             </div>
             {isOwner && (
               <Link href="/store/dashboard">
-                <UIButton variant="outline">
+                <UIButton variant="outline" className="w-full md:w-auto">
                   <EditIcon className="w-4 h-4 mr-2" />
                   Manage Store
                 </UIButton>

@@ -167,22 +167,22 @@ export default function StoreDashboard() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold">Store Dashboard</h1>
+              <h1 className="text-2xl md:text-3xl font-bold">Store Dashboard</h1>
               <p className="text-gray-600 mt-1">
                 Manage your store: {store.name}
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <Link href={`/store/${store.handle}`}>
-                <Button variant="outline">
+                <Button variant="outline" className="w-full sm:w-auto">
                   <Eye size={16} className="mr-2" />
                   View Store
                 </Button>
               </Link>
               <Link href="/store/settings">
-                <Button variant="outline">
+                <Button variant="outline" className="w-full sm:w-auto">
                   <Settings size={16} className="mr-2" />
                   Settings
                 </Button>
@@ -191,7 +191,7 @@ export default function StoreDashboard() {
           </div>
 
           {/* Status Badge and Publish Toggle */}
-          <div className="mt-4 flex items-center gap-3">
+          <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <Badge
               variant={store.published ? 'default' : 'secondary'}
               className={store.published ? 'bg-green-600' : 'bg-gray-400'}
