@@ -96,7 +96,7 @@ export default function SellerDashboard() {
     if (!store?.id) return;
 
     try {
-      const response = await fetch(`/api/stores-crud/${store.id}`, {
+      const response = await fetch(`/api/stores/${store.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
