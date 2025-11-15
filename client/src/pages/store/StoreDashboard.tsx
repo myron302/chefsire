@@ -360,7 +360,13 @@ export default function StoreDashboard() {
             </Card>
           </Link>
 
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+          <Card
+            className="hover:shadow-lg transition-shadow cursor-pointer"
+            onClick={() => toast({
+              title: "Coming Soon",
+              description: "Customer insights and analytics will be available in a future update",
+            })}
+          >
             <CardContent className="pt-6">
               <Users className="text-blue-500 mb-3" size={24} />
               <h3 className="font-semibold mb-2">Customer Insights</h3>
@@ -370,7 +376,13 @@ export default function StoreDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+          <Card
+            className="hover:shadow-lg transition-shadow cursor-pointer"
+            onClick={() => toast({
+              title: "Coming Soon",
+              description: "Marketing tools will be available in a future update",
+            })}
+          >
             <CardContent className="pt-6">
               <AlertCircle className="text-purple-500 mb-3" size={24} />
               <h3 className="font-semibold mb-2">Marketing Tools</h3>
