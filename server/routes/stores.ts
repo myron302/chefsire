@@ -2,11 +2,12 @@ import { Router } from "express";
 import { db } from "../db";
 import { stores } from "../../shared/schema.js";
 import { eq } from "drizzle-orm";
+import { optionalAuth } from "../middleware";
 
 const router = Router();
 
 // GET /api/stores/:handle - Public view of a store
-router.get("/:handle", async (req, res) => {
+router.get("/:handle", optionalAuth, async (req, res) => {
   try {
     const { handle } = req.params;
     const store = await db.query.stores.findFirst({

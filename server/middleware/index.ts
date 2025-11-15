@@ -1,5 +1,5 @@
 // server/middleware/index.ts
-export { requireAuth } from "./auth";
+export { requireAuth, optionalAuth } from "./auth";
 export { errorHandler } from "./error-handler";
 export { validateRequest } from "./validation";
 
