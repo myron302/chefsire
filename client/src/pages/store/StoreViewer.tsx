@@ -8,6 +8,7 @@ import { Card as UICard } from "@/components/ui/card";
 import { Package, Edit as EditIcon } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
 import { Badge } from "@/components/ui/badge";
+import { THEMES } from "@/components/store/ThemeSelector";
 
 // --- Public read-only resolver (same parts as builder) ---
 const Container = ({ children }) => (
@@ -48,6 +49,15 @@ export default function StoreViewer() {
   const [store, setStore] = useState<Store | null>(null);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Get theme colors based on store's theme setting
+  const getThemeColors = () => {
+    const themeId = (store?.theme as any) || 'modern';
+    const theme = THEMES.find(t => t.id === themeId);
+    return theme?.colors || THEMES[0].colors; // Default to modern if not found
+  };
+
+  const themeColors = store ? getThemeColors() : THEMES[0].colors;
 
   useEffect(() => {
     let mounted = true;
@@ -112,20 +122,22 @@ export default function StoreViewer() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b">
+    <div className="min-h-screen" style={{ backgroundColor: themeColors.accent }}>
+      <header className="border-b" style={{
+        background: `linear-gradient(135deg, ${themeColors.primary} 0%, ${themeColors.secondary} 100%)`
+      }}>
         <div className="max-w-6xl mx-auto px-4 py-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex-1">
-              <h1 className="text-xl md:text-2xl font-bold text-gray-900">{store.name}</h1>
-              {store.bio && <p className="text-gray-600 mt-1">{store.bio}</p>}
+              <h1 className="text-xl md:text-2xl font-bold text-white">{store.name}</h1>
+              {store.bio && <p className="text-white/90 mt-1">{store.bio}</p>}
               {!store.published && isOwner && (
                 <Badge variant="secondary" className="mt-2">Draft - Not Published</Badge>
               )}
             </div>
             {isOwner && (
               <Link href="/store/dashboard">
-                <UIButton variant="outline" className="w-full md:w-auto">
+                <UIButton variant="outline" className="w-full md:w-auto bg-white hover:bg-white/90">
                   <EditIcon className="w-4 h-4 mr-2" />
                   Manage Store
                 </UIButton>
@@ -167,7 +179,7 @@ export default function StoreViewer() {
               <p className="text-gray-600">No products yet</p>
               {isOwner && (
                 <Link href="/store/products/new">
-                  <UIButton className="mt-4 bg-orange-500 hover:bg-orange-600">
+                  <UIButton className="mt-4" style={{ backgroundColor: themeColors.primary }}>
                     Add Your First Product
                   </UIButton>
                 </Link>
@@ -190,11 +202,13 @@ export default function StoreViewer() {
                       <p className="text-gray-600 text-sm mb-3 line-clamp-2">{product.description}</p>
                     )}
                     <div className="flex items-center justify-between">
-                      <span className="text-xl font-bold text-orange-600">
+                      <span className="text-xl font-bold" style={{ color: themeColors.primary }}>
                         ${parseFloat(product.price).toFixed(2)}
                       </span>
                       <Link href={`/marketplace/product/${product.id}`}>
-                        <UIButton size="sm">View Details</UIButton>
+                        <UIButton size="sm" style={{ backgroundColor: themeColors.primary }}>
+                          View Details
+                        </UIButton>
                       </Link>
                     </div>
                   </div>
