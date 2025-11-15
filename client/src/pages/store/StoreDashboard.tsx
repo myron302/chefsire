@@ -13,6 +13,8 @@ import {
   BarChart3,
   ShoppingCart,
   AlertCircle,
+  Globe,
+  EyeOff,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useUser } from '@/contexts/UserContext';
 import { ProductManager } from '@/components/store/ProductManager';
+import { useToast } from '@/hooks/use-toast';
 
 interface DashboardStats {
   totalProducts: number;
@@ -31,6 +34,7 @@ interface DashboardStats {
 
 export default function StoreDashboard() {
   const { user } = useUser();
+  const { toast } = useToast();
   const [store, setStore] = useState<any>(null);
   const [stats, setStats] = useState<DashboardStats>({
     totalProducts: 0,
@@ -40,6 +44,7 @@ export default function StoreDashboard() {
     revenue: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     loadStoreData();
@@ -83,6 +88,46 @@ export default function StoreDashboard() {
       console.error('Failed to load store:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTogglePublish = async () => {
+    if (!store) return;
+
+    setPublishing(true);
+    try {
+      const response = await fetch(`/api/stores/${store.id}/publish`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ published: !store.published }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setStore(data.store);
+        toast({
+          title: data.store.published ? "Store Published" : "Store Unpublished",
+          description: data.store.published
+            ? "Your store is now visible to everyone!"
+            : "Your store is now hidden from the public",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to update store status",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error toggling publish:', error);
+      toast({
+        title: "Error",
+        description: "An error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -145,14 +190,33 @@ export default function StoreDashboard() {
             </div>
           </div>
 
-          {/* Status Badge */}
-          <div className="mt-4">
+          {/* Status Badge and Publish Toggle */}
+          <div className="mt-4 flex items-center gap-3">
             <Badge
               variant={store.published ? 'default' : 'secondary'}
               className={store.published ? 'bg-green-600' : 'bg-gray-400'}
             >
               {store.published ? 'Published' : 'Unpublished'}
             </Badge>
+            <Button
+              onClick={handleTogglePublish}
+              disabled={publishing}
+              variant={store.published ? 'outline' : 'default'}
+              className={!store.published ? 'bg-green-600 hover:bg-green-700' : ''}
+              size="sm"
+            >
+              {store.published ? (
+                <>
+                  <EyeOff size={14} className="mr-2" />
+                  Unpublish Store
+                </>
+              ) : (
+                <>
+                  <Globe size={14} className="mr-2" />
+                  Publish Store
+                </>
+              )}
+            </Button>
           </div>
         </div>
 
