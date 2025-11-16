@@ -361,66 +361,70 @@ export default function DetoxesHub() {
           <div className="grid md:grid-cols-3 gap-6">
             {detoxSubcategories.map((category) => (
               <Link key={category.id} href={category.path}>
-                <Card
-                  className={`cursor-pointer transition-all duration-300 hover:shadow-xl ${category.borderColor} border-2 rounded-2xl overflow-hidden bg-gradient-to-br ${category.bgColor} to-white`}
+                <Card 
+                  className={`cursor-pointer transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${category.borderColor} overflow-hidden`}
                   onMouseEnter={() => setHoveredCard(category.id)}
                   onMouseLeave={() => setHoveredCard(null)}
                 >
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className={`p-4 bg-white rounded-2xl shadow-lg`}>
-                        <category.icon className={`h-10 w-10 ${category.textColor}`} />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        {category.trending && (
-                          <Badge className="bg-green-500 text-white text-xs border-0 shadow-md">
-                            <Flame className="h-3 w-3 mr-1" />
-                            Trending
-                          </Badge>
-                        )}
-                        {category.featured && (
-                          <Badge className="bg-teal-500 text-white text-xs border-0 shadow-md">
-                            <Sparkles className="h-3 w-3 mr-1" />
-                            Featured
-                          </Badge>
-                        )}
+                  <div className="relative h-48 overflow-hidden">
+                    {category.image && (
+                      <img
+                        src={category.image}
+                        alt={category.name}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                      />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                    <div className="absolute top-3 left-3 flex gap-2">
+                      {category.trending && (
+                        <Badge className="bg-red-500 text-white text-xs">
+                          <Flame className="h-3 w-3 mr-1" />
+                          Trending
+                        </Badge>
+                      )}
+                      {category.featured && (
+                        <Badge className="bg-yellow-500 text-white text-xs">
+                          <Star className="h-3 w-3 mr-1" />
+                          Featured
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="absolute bottom-3 right-3">
+                      <div className={`p-3 rounded-full ${category.bgColor} border ${category.borderColor}`}>
+                        <category.icon className={`h-6 w-6 ${category.textColor}`} />
                       </div>
                     </div>
-                    <CardTitle className="text-2xl font-bold mb-2">{category.name}</CardTitle>
-                    <p className="text-sm text-gray-700">{category.description}</p>
+                  </div>
+
+                  <CardHeader>
+                    <CardTitle className="text-xl flex items-center justify-between">
+                      {category.name}
+                      <Badge variant="outline">{category.count} recipes</Badge>
+                    </CardTitle>
+                    <p className="text-gray-600">{category.description}</p>
                   </CardHeader>
 
-                  <CardContent className="pt-0">
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                      <div className="bg-white p-3 rounded-xl shadow-sm">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Droplets className={`h-4 w-4 ${category.textColor}`} />
-                          <span className="text-xs text-gray-600">Calories</span>
-                        </div>
-                        <div className={`text-xl font-bold ${category.textColor}`}>{category.avgCalories}</div>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
+                        <div className={`text-lg font-bold ${category.textColor}`}>{category.avgCalories}</div>
+                        <div className="text-xs text-gray-600">Calories</div>
                       </div>
-                      <div className="bg-white p-3 rounded-xl shadow-sm">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Clock className="h-4 w-4 text-blue-500" />
-                          <span className="text-xs text-gray-600">Duration</span>
-                        </div>
-                        <div className="text-xl font-bold text-gray-800">{category.duration}</div>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
+                        <div className={`text-lg font-bold ${category.textColor}`}>{category.duration}</div>
+                        <div className="text-xs text-gray-600">Duration</div>
                       </div>
-                    </div>
-
-                    <div className="bg-white p-4 rounded-xl shadow-sm mb-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Target className={`h-5 w-5 ${category.textColor}`} />
-                          <span className="text-sm font-semibold text-gray-700">Main Benefit</span>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
+                        <div className={`text-lg font-bold ${category.textColor}`}>
+                          <Trophy className="h-5 w-5 mx-auto" />
                         </div>
-                        <Badge variant="outline" className={`${category.textColor} border-2`}>{category.topBenefit}</Badge>
+                        <div className="text-xs text-gray-600">Top Rated</div>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">{category.count} Detox Recipes</span>
-                      <Trophy className="h-5 w-5 text-yellow-500" />
+                    <div className={`flex items-center gap-2 p-2 rounded ${category.bgColor}`}>
+                      <Target className={`h-4 w-4 ${category.textColor}`} />
+                      <span className="text-sm font-medium">{category.topBenefit}</span>
                     </div>
                   </CardContent>
                 </Card>
