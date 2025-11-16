@@ -367,16 +367,13 @@ export default function DetoxesHub() {
                   onMouseLeave={() => setHoveredCard(null)}
                 >
                   <div className="relative h-48 overflow-hidden">
-                    {category.image ? (
-                      <img 
-                        src={category.image} 
+                    {category.image && (
+                      <img
+                        src={category.image}
                         alt={category.name}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                        }}
                       />
-                    ) : null}
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                     <div className="absolute top-3 left-3 flex gap-2">
                       {category.trending && (
