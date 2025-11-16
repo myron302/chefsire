@@ -324,13 +324,13 @@ export default function DetoxesHub() {
               <GlassWater className="h-6 w-6 text-purple-600" />
               Explore Other Drink Categories
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {otherDrinkHubs.map((hub) => {
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {otherDrinkHubs.filter(hub => hub.id !== 'detoxes').map((hub) => {
                 const Icon = hub.icon;
                 return (
                   <Link key={hub.id} href={hub.route}>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
                     >
                       <div className="flex items-center gap-3 w-full">
