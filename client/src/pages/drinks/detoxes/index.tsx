@@ -5,18 +5,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Link } from 'wouter';
-import { 
-  Droplets, Leaf, Heart, Sparkles, Clock, Users, Trophy, 
+import {
+  Droplets, Leaf, Heart, Sparkles, Clock, Users, Trophy,
   Star, Flame, Target, Award, TrendingUp, Activity, Zap,
   ArrowLeft, Apple, Sun, Moon, Wind, FlaskConical, Coffee,
-  GlassWater, Dumbbell, IceCream, ArrowRight, Wine, Home
+  GlassWater, Dumbbell, IceCream, ArrowRight, Wine, Home,
+  X, CheckCircle
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import { otherDrinkHubs, detoxSubcategories } from '../data/detoxes';
 
 export default function DetoxesHub() {
-  const { userProgress, addDrinkToJournal } = useDrinks();
+  const { userProgress, addDrinkToJournal, incrementDrinksMade, addPoints } = useDrinks();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  const [selectedProgram, setSelectedProgram] = useState<string | null>(null);
+  const [showProgramModal, setShowProgramModal] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const popularDetoxes = [
     { name: 'Lemon Ginger Blast', type: 'Morning', time: '5 min', rating: 4.9 },
@@ -34,10 +38,229 @@ export default function DetoxesHub() {
     { icon: Target, title: 'Weight Management', description: 'Jumpstart healthy weight goals' }
   ];
 
+  const cleanseProgramsData = [
+    {
+      id: '1-day',
+      duration: '1 Day',
+      title: 'Quick Reset',
+      servings: 6,
+      color: 'green',
+      description: 'Perfect for a quick refresh and digestive reset',
+      benefits: ['Gentle cleanse', 'Digestive reset', 'Energy boost'],
+      schedule: [
+        { time: '7:00 AM', drink: 'Lemon Ginger Detox Water' },
+        { time: '9:00 AM', drink: 'Green Detox Elixir' },
+        { time: '12:00 PM', drink: 'Beet & Carrot Liver Flush' },
+        { time: '3:00 PM', drink: 'Cucumber Mint Refresher' },
+        { time: '6:00 PM', drink: 'Citrus Immunity Boost' },
+        { time: '8:00 PM', drink: 'Morning Metabolism Boost Tea' }
+      ]
+    },
+    {
+      id: '3-day',
+      duration: '3 Days',
+      title: 'Deep Cleanse',
+      servings: 18,
+      color: 'blue',
+      description: 'Comprehensive detox for full body reset',
+      benefits: ['Full body reset', 'Deep cleansing', 'Renewed energy'],
+      schedule: [
+        { time: 'Daily Morning', drink: 'Green Detox Elixir + Morning Metabolism Boost Tea' },
+        { time: 'Daily Midday', drink: 'Beet & Carrot Liver Flush + Cucumber Mint Refresher' },
+        { time: 'Daily Evening', drink: 'Citrus Immunity Boost + Gentle Evening Cleanse Tea' }
+      ]
+    },
+    {
+      id: '7-day',
+      duration: '7 Days',
+      title: 'Complete Reset',
+      servings: 42,
+      color: 'purple',
+      description: 'Total transformation with guided daily protocol',
+      benefits: ['Total transformation', 'Maximum detox', 'Lifestyle reset'],
+      schedule: [
+        { time: 'Week Plan', drink: 'Customized daily rotation of all detox juices, teas, and waters' },
+        { time: 'Daily Goal', drink: '6 servings per day with structured meal plan' },
+        { time: 'Support', drink: 'Daily tips and motivation included' }
+      ]
+    }
+  ];
+
+  const startCleanse = async (programId: string) => {
+    const program = cleanseProgramsData.find(p => p.id === programId);
+    if (!program) return;
+
+    setSelectedProgram(programId);
+    setShowProgramModal(true);
+  };
+
+  const confirmCleanse = async () => {
+    const program = cleanseProgramsData.find(p => p.id === selectedProgram);
+    if (!program) return;
+
+    try {
+      // Save cleanse program to backend
+      const response = await fetch('/api/custom-drinks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `${program.duration} ${program.title} Program`,
+          category: 'detox-program',
+          drinkType: 'cleanse-program',
+          duration: program.duration,
+          servings: program.servings,
+          schedule: program.schedule,
+          benefits: program.benefits,
+          description: program.description,
+          isPublic: false,
+          isProgramActive: true,
+          startDate: new Date().toISOString()
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to start cleanse program');
+      }
+
+      // Award points based on program duration
+      const points = programId === '1-day' ? 100 : programId === '3-day' ? 250 : 500;
+      addPoints(points);
+      incrementDrinksMade();
+
+      setShowProgramModal(false);
+      setShowSuccess(true);
+      setTimeout(() => {
+        setShowSuccess(false);
+        setSelectedProgram(null);
+      }, 3000);
+    } catch (error) {
+      console.error('Failed to start cleanse:', error);
+      alert('Failed to start cleanse program. Please try again.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50">
+
+      {/* Success Modal */}
+      {showSuccess && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+          <div className="bg-gradient-to-r from-green-400 to-blue-500 text-white p-8 rounded-3xl shadow-2xl animate-bounce">
+            <div className="text-center">
+              <Sparkles className="w-20 h-20 mx-auto mb-4" />
+              <h2 className="text-3xl font-bold mb-2">Cleanse Program Started!</h2>
+              <p className="text-xl">
+                {selectedProgram === '1-day' && '+100 XP earned!'}
+                {selectedProgram === '3-day' && '+250 XP earned!'}
+                {selectedProgram === '7-day' && '+500 XP earned!'}
+              </p>
+              <p className="text-sm mt-2">Check your journal for the daily schedule</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Program Details Modal */}
+      {showProgramModal && selectedProgram && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <CardContent className="p-6">
+              {cleanseProgramsData.filter(p => p.id === selectedProgram).map((program) => (
+                <div key={program.id}>
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h2 className="text-2xl font-bold mb-2">{program.duration} {program.title}</h2>
+                      <p className="text-gray-600">{program.description}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowProgramModal(false);
+                        setSelectedProgram(null);
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="mb-6">
+                    <h3 className="font-semibold mb-3 flex items-center gap-2">
+                      <Heart className={`h-5 w-5 text-${program.color}-600`} />
+                      Benefits
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {program.benefits.map((benefit, idx) => (
+                        <div key={idx} className={`p-3 rounded-lg bg-${program.color}-50 border border-${program.color}-200`}>
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className={`h-4 w-4 text-${program.color}-600`} />
+                            <span className="text-sm font-medium">{benefit}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mb-6">
+                    <h3 className="font-semibold mb-3 flex items-center gap-2">
+                      <Clock className={`h-5 w-5 text-${program.color}-600`} />
+                      Schedule
+                    </h3>
+                    <div className="space-y-3">
+                      {program.schedule.map((item, idx) => (
+                        <div key={idx} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                          <div className={`text-sm font-semibold text-${program.color}-600 min-w-[120px]`}>
+                            {item.time}
+                          </div>
+                          <div className="text-sm text-gray-700">{item.drink}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className={`p-4 rounded-lg bg-${program.color}-50 border border-${program.color}-200 mb-6`}>
+                    <div className="flex items-start gap-3">
+                      <Droplets className={`h-5 w-5 text-${program.color}-600 mt-0.5`} />
+                      <div>
+                        <h4 className="font-semibold mb-1">Program Details</h4>
+                        <ul className="text-sm text-gray-700 space-y-1">
+                          <li>• Duration: {program.duration}</li>
+                          <li>• Total servings: {program.servings}</li>
+                          <li>• Daily commitment: 10-15 minutes</li>
+                          <li>• Difficulty: Easy</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => {
+                        setShowProgramModal(false);
+                        setSelectedProgram(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      className={`flex-1 bg-${program.color}-600 hover:bg-${program.color}-700`}
+                      onClick={confirmCleanse}
+                    >
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Start Program
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-        
+
         {/* UNIFORM HERO SECTION */}
         <div className="bg-gradient-to-r from-green-600 via-teal-600 to-blue-600 text-white py-12 px-6 rounded-xl shadow-2xl">
           <div className="max-w-7xl mx-auto">
@@ -303,7 +526,10 @@ export default function DetoxesHub() {
                     Gentle cleanse
                   </li>
                 </ul>
-                <Button className="w-full mt-4 bg-green-600 hover:bg-green-700">
+                <Button
+                  className="w-full mt-4 bg-green-600 hover:bg-green-700"
+                  onClick={() => startCleanse('1-day')}
+                >
                   Start 1-Day Cleanse
                 </Button>
               </div>
@@ -330,7 +556,10 @@ export default function DetoxesHub() {
                     Full body reset
                   </li>
                 </ul>
-                <Button className="w-full mt-4 bg-blue-600 hover:bg-blue-700">
+                <Button
+                  className="w-full mt-4 bg-blue-600 hover:bg-blue-700"
+                  onClick={() => startCleanse('3-day')}
+                >
                   Start 3-Day Cleanse
                 </Button>
               </div>
@@ -354,7 +583,10 @@ export default function DetoxesHub() {
                     Total transformation
                   </li>
                 </ul>
-                <Button className="w-full mt-4 bg-purple-600 hover:bg-purple-700">
+                <Button
+                  className="w-full mt-4 bg-purple-600 hover:bg-purple-700"
+                  onClick={() => startCleanse('7-day')}
+                >
                   Start 7-Day Cleanse
                 </Button>
               </div>

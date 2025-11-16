@@ -14,6 +14,7 @@ import {
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import { otherDrinkHubs } from '../data/detoxes';
 
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
@@ -167,79 +168,30 @@ export default function PotentPotablesPage() {
                 <GlassWater className="h-6 w-6 text-purple-600" />
                 Explore Other Drink Categories
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Link href="/drinks/smoothies">
-                  <Button
-                    variant="outline"
-                    className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-                  >
-                    <div className="flex items-center gap-3 w-full">
-                      <div className="p-2 bg-purple-600 rounded-lg">
-                        <Apple className="h-5 w-5 text-white" />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <div className="font-bold text-base">Smoothies</div>
-                        <div className="text-xs text-gray-600">Fruit & veggie blends</div>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <div className="text-xs text-gray-500 ml-11">132 recipes</div>
-                  </Button>
-                </Link>
-                <Link href="/drinks/protein-shakes">
-                  <Button
-                    variant="outline"
-                    className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-                  >
-                    <div className="flex items-center gap-3 w-full">
-                      <div className="p-2 bg-blue-600 rounded-lg">
-                        <Dumbbell className="h-5 w-5 text-white" />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <div className="font-bold text-base">Protein Shakes</div>
-                        <div className="text-xs text-gray-600">Build muscle & recover</div>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <div className="text-xs text-gray-500 ml-11">98 recipes</div>
-                  </Button>
-                </Link>
-                <Link href="/drinks/detoxes">
-                  <Button
-                    variant="outline"
-                    className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-                  >
-                    <div className="flex items-center gap-3 w-full">
-                      <div className="p-2 bg-green-600 rounded-lg">
-                        <Droplets className="h-5 w-5 text-white" />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <div className="font-bold text-base">Detox Drinks</div>
-                        <div className="text-xs text-gray-600">Cleanse & refresh</div>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <div className="text-xs text-gray-500 ml-11">26 recipes</div>
-                  </Button>
-                </Link>
-                <Link href="/drinks/caffeinated">
-                  <Button
-                    variant="outline"
-                    className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-                  >
-                    <div className="flex items-center gap-3 w-full">
-                      <div className="p-2 bg-amber-600 rounded-lg">
-                        <Coffee className="h-5 w-5 text-white" />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <div className="font-bold text-base">Caffeinated Drinks</div>
-                        <div className="text-xs text-gray-600">Coffee, tea & energy drinks</div>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <div className="text-xs text-gray-500 ml-11">186 recipes</div>
-                  </Button>
-                </Link>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {otherDrinkHubs.filter(hub => hub.id !== 'potent-potables').map((hub) => {
+                  const Icon = hub.icon;
+                  return (
+                    <Link key={hub.id} href={hub.route}>
+                      <Button
+                        variant="outline"
+                        className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                      >
+                        <div className="flex items-center gap-3 w-full">
+                          <div className={`p-2 ${hub.color} rounded-lg`}>
+                            <Icon className="h-5 w-5 text-white" />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <div className="font-bold text-base">{hub.name}</div>
+                            <div className="text-xs text-gray-600">{hub.description}</div>
+                          </div>
+                          <ArrowRight className="h-4 w-4 text-gray-400" />
+                        </div>
+                        <div className="text-xs text-gray-500 ml-11">{hub.count}</div>
+                      </Button>
+                    </Link>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
