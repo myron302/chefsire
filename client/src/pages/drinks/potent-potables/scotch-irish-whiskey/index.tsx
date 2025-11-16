@@ -860,7 +860,7 @@ export default function ScotchIrishWhiskeyPage() {
             <div className="space-y-4">
               <div>
                 <h3 className="font-semibold mb-2 text-gray-700">Categories</h3>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                   <Button
                     variant={selectedCategory === null ? "default" : "outline"}
                     size="sm"
@@ -885,7 +885,7 @@ export default function ScotchIrishWhiskeyPage() {
 
               <div>
                 <h3 className="font-semibold mb-2 text-gray-700">Difficulty</h3>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                   <Button
                     variant={selectedDifficulty === null ? "default" : "outline"}
                     size="sm"

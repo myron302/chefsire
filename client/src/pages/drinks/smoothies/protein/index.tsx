@@ -684,18 +684,18 @@ export default function ProteinSmoothiesPage() {
               <CardContent className="p-4">
                 <div className="flex flex-col md:flex-row gap-4">
                   <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
                     <Input
                       placeholder="Search protein smoothies..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 h-12 text-base"
                     />
                   </div>
                   
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white w-full sm:w-auto"
                       value={selectedProteinType}
                       onChange={(e) => setSelectedProteinType(e.target.value)}
                     >
@@ -706,7 +706,7 @@ export default function ProteinSmoothiesPage() {
                     </select>
 
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white w-full sm:w-auto"
                       value={selectedGoal}
                       onChange={(e) => setSelectedGoal(e.target.value)}
                     >
@@ -717,7 +717,7 @@ export default function ProteinSmoothiesPage() {
                     </select>
                     
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white w-full sm:w-auto"
                       value={minProtein}
                       onChange={(e) => {
                         const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
@@ -732,7 +732,7 @@ export default function ProteinSmoothiesPage() {
                     </select>
                     
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white w-full sm:w-auto"
                       value={maxCalories}
                       onChange={(e) => {
                         const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
@@ -747,7 +747,7 @@ export default function ProteinSmoothiesPage() {
                     </select>
 
                     <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white w-full sm:w-auto"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
                     >

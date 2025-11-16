@@ -437,7 +437,7 @@ export default function VirginDrinksPage() {
                   <div className="flex-1">
                     <h2 className="text-3xl font-bold text-gray-900 mb-2">{selectedDrink.name}</h2>
                     <p className="text-gray-700 mb-3">{selectedDrink.description}</p>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                       <Badge className="bg-emerald-600">{selectedDrink.category}</Badge>
                       <Badge variant="outline">{selectedDrink.difficulty}</Badge>
                       {selectedDrink.vegan && (
@@ -532,7 +532,7 @@ export default function VirginDrinksPage() {
 
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-3">Flavor Profile</h3>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                     {selectedDrink.profile.map((flavor, index) => (
                       <Badge key={index} variant="secondary" className="text-sm">
                         {flavor}
@@ -661,7 +661,7 @@ export default function VirginDrinksPage() {
             <div className="space-y-4">
               <div>
                 <h3 className="font-semibold mb-2 text-gray-700">Categories</h3>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                   <Button
                     variant={selectedCategory === null ? "default" : "outline"}
                     size="sm"
@@ -686,7 +686,7 @@ export default function VirginDrinksPage() {
 
               <div>
                 <h3 className="font-semibold mb-2 text-gray-700">Difficulty</h3>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                   <Button
                     variant={selectedDifficulty === null ? "default" : "outline"}
                     size="sm"
@@ -795,7 +795,7 @@ export default function VirginDrinksPage() {
                     <span className="text-sm text-gray-500">({drink.reviews.toLocaleString()})</span>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                     {drink.profile.slice(0, 3).map((tag, index) => (
                       <Badge key={index} variant="secondary" className="text-xs">
                         {tag}
@@ -803,7 +803,7 @@ export default function VirginDrinksPage() {
                     ))}
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                     {drink.vegan && (
                       <Badge className="bg-green-100 text-green-700 hover:bg-green-200">
                         <Leaf className="w-3 h-3 mr-1" />
@@ -985,7 +985,7 @@ export default function VirginDrinksPage() {
                   of traditional spirits. Brands like Seedlip, Ritual, and Lyre's offer botanical distillates, 
                   non-alcoholic gin alternatives, and spirit-free versions of whiskey, rum, and tequila.
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                   <Badge variant="outline" className="text-xs">Seedlip (Botanical)</Badge>
                   <Badge variant="outline" className="text-xs">Ritual Zero Proof</Badge>
                   <Badge variant="outline" className="text-xs">Lyre's Non-Alcoholic</Badge>

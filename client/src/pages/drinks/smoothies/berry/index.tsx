@@ -704,18 +704,18 @@ export default function BerrySmoothiesPage() {
               <CardContent className="p-4">
                 <div className="flex flex-col md:flex-row gap-4">
                   <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
                     <Input
                       placeholder="Search berry smoothies..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 h-12 text-base"
                     />
                   </div>
-                  
-                  <div className="flex flex-wrap gap-2">
-                    <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
+                    <select
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white w-full sm:w-auto"
                       value={selectedBerryType}
                       onChange={(e) => setSelectedBerryType(e.target.value)}
                     >
@@ -725,8 +725,8 @@ export default function BerrySmoothiesPage() {
                       ))}
                     </select>
 
-                    <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                    <select
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white w-full sm:w-auto"
                       value={selectedBenefit}
                       onChange={(e) => setSelectedBenefit(e.target.value)}
                     >
@@ -735,9 +735,9 @@ export default function BerrySmoothiesPage() {
                         <option key={benefit.id} value={benefit.name}>{benefit.name}</option>
                       ))}
                     </select>
-                    
-                    <select 
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+
+                    <select
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white w-full sm:w-auto"
                       value={maxCalories}
                       onChange={(e) => {
                         const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
