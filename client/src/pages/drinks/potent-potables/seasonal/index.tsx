@@ -920,7 +920,7 @@ export default function SeasonalCocktailsPage() {
                   placeholder="Search seasonal cocktails..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 h-12 text-base"
                 />
               </div>
             </div>
@@ -1170,7 +1170,7 @@ export default function SeasonalCocktailsPage() {
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
                       <Button 
                         className="flex-1 bg-purple-600 hover:bg-purple-700"
                         onClick={(e) => {

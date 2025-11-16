@@ -654,18 +654,18 @@ export default function ClassicCocktailsPage() {
               {/* Search and Filters */}
               <div className="flex flex-col md:flex-row gap-4 mb-6">
                 <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
                   <Input
                     placeholder="Search classic cocktails..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 h-12 text-base"
                   />
                 </div>
                 
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
                   <select 
-                    className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm w-full sm:w-auto"
                     value={selectedEra}
                     onChange={(e) => setSelectedEra(e.target.value)}
                   >
@@ -676,7 +676,7 @@ export default function ClassicCocktailsPage() {
                   </select>
                   
                   <select 
-                    className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm w-full sm:w-auto"
                     value={selectedCategory}
                     onChange={(e) => setSelectedCategory(e.target.value)}
                   >
@@ -687,7 +687,7 @@ export default function ClassicCocktailsPage() {
                   </select>
                   
                   <select 
-                    className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm w-full sm:w-auto"
                     value={selectedDifficulty}
                     onChange={(e) => setSelectedDifficulty(e.target.value)}
                   >
@@ -698,7 +698,7 @@ export default function ClassicCocktailsPage() {
                   </select>
                   
                   <select 
-                    className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm w-full sm:w-auto"
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
                   >
@@ -936,7 +936,7 @@ export default function ClassicCocktailsPage() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex gap-2">
+                        <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
                           <Button 
                             className="flex-1 bg-blue-600 hover:bg-blue-700"
                             onClick={(e) => {
@@ -1273,7 +1273,7 @@ export default function ClassicCocktailsPage() {
                         <GlassWater className="w-5 h-5 text-blue-500" />
                         Flavor Profile
                       </h3>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                         {selectedCocktail.profile.map(trait => (
                           <Badge key={trait} className="bg-blue-100 text-blue-700 border-blue-300">
                             {trait}

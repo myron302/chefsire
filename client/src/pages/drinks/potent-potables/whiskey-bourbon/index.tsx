@@ -681,7 +681,7 @@ export default function WhiskeyBourbonPage() {
                   placeholder="Search whiskey cocktails..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 h-12 text-base"
                 />
               </div>
             </div>
@@ -978,7 +978,7 @@ export default function WhiskeyBourbonPage() {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
                       <Button 
                         className="flex-1 bg-amber-600 hover:bg-amber-700"
                         onClick={(e) => {
