@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'wouter';
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -18,14 +18,130 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import { otherDrinkHubs } from '../data/detoxes';
 
 const caffeinatedSubcategories = [
-  { id: 'espresso', name: 'Espresso Drinks', icon: Coffee, count: 32, route: '/drinks/caffeinated/espresso', description: 'Classic espresso-based beverages' },
-  { id: 'cold-brew', name: 'Cold Brew', icon: GlassWater, count: 18, route: '/drinks/caffeinated/cold-brew', description: 'Smooth cold coffee drinks' },
-  { id: 'tea', name: 'Tea', icon: Leaf, count: 28, route: '/drinks/caffeinated/tea', description: 'Hot and iced tea varieties' },
-  { id: 'matcha', name: 'Matcha', icon: Sparkles, count: 16, route: '/drinks/caffeinated/matcha', description: 'Japanese green tea powder drinks' },
-  { id: 'energy', name: 'Energy Drinks', icon: Zap, count: 24, route: '/drinks/caffeinated/energy', description: 'Natural energy boosters' },
-  { id: 'specialty', name: 'Specialty Coffee', icon: Star, count: 20, route: '/drinks/caffeinated/specialty', description: 'Unique coffee creations' },
-  { id: 'lattes', name: 'Lattes & Cappuccinos', icon: Milk, count: 26, route: '/drinks/caffeinated/lattes', description: 'Milk-based coffee drinks' },
-  { id: 'iced', name: 'Iced Coffee', icon: Droplet, count: 22, route: '/drinks/caffeinated/iced', description: 'Refreshing iced coffee drinks' }
+  {
+    id: 'espresso',
+    name: 'Espresso Drinks',
+    icon: Coffee,
+    count: 32,
+    route: '/drinks/caffeinated/espresso',
+    description: 'Classic espresso-based beverages',
+    image: 'https://images.unsplash.com/photo-1511920170033-f8396924c348?w=600&h=400&fit=crop',
+    bgColor: 'bg-amber-50',
+    borderColor: 'border-amber-200',
+    textColor: 'text-amber-600',
+    trending: true,
+    avgCalories: 120,
+    avgTime: '4 min',
+    topBenefit: 'Classic Energy'
+  },
+  {
+    id: 'cold-brew',
+    name: 'Cold Brew',
+    icon: GlassWater,
+    count: 18,
+    route: '/drinks/caffeinated/cold-brew',
+    description: 'Smooth cold coffee drinks',
+    image: 'https://images.unsplash.com/photo-1517487881594-2787fef5ebf7?w=600&h=400&fit=crop',
+    bgColor: 'bg-blue-50',
+    borderColor: 'border-blue-200',
+    textColor: 'text-blue-600',
+    featured: true,
+    avgCalories: 80,
+    avgTime: '2 min',
+    topBenefit: 'Smooth Boost'
+  },
+  {
+    id: 'tea',
+    name: 'Tea',
+    icon: Leaf,
+    count: 28,
+    route: '/drinks/caffeinated/tea',
+    description: 'Hot and iced tea varieties',
+    image: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=600&h=400&fit=crop',
+    bgColor: 'bg-green-50',
+    borderColor: 'border-green-200',
+    textColor: 'text-green-600',
+    avgCalories: 50,
+    avgTime: '5 min',
+    topBenefit: 'Antioxidants'
+  },
+  {
+    id: 'matcha',
+    name: 'Matcha',
+    icon: Sparkles,
+    count: 16,
+    route: '/drinks/caffeinated/matcha',
+    description: 'Japanese green tea powder drinks',
+    image: 'https://images.unsplash.com/photo-1536013564743-4f0b72d6b95f?w=600&h=400&fit=crop',
+    bgColor: 'bg-emerald-50',
+    borderColor: 'border-emerald-200',
+    textColor: 'text-emerald-600',
+    trending: true,
+    avgCalories: 90,
+    avgTime: '3 min',
+    topBenefit: 'Calm Energy'
+  },
+  {
+    id: 'energy',
+    name: 'Energy Drinks',
+    icon: Zap,
+    count: 24,
+    route: '/drinks/caffeinated/energy',
+    description: 'Natural energy boosters',
+    image: 'https://images.unsplash.com/photo-1622484211443-76c4deea5047?w=600&h=400&fit=crop',
+    bgColor: 'bg-yellow-50',
+    borderColor: 'border-yellow-200',
+    textColor: 'text-yellow-600',
+    avgCalories: 150,
+    avgTime: '2 min',
+    topBenefit: 'Max Energy'
+  },
+  {
+    id: 'specialty',
+    name: 'Specialty Coffee',
+    icon: Star,
+    count: 20,
+    route: '/drinks/caffeinated/specialty',
+    description: 'Unique coffee creations',
+    image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=600&h=400&fit=crop',
+    bgColor: 'bg-purple-50',
+    borderColor: 'border-purple-200',
+    textColor: 'text-purple-600',
+    featured: true,
+    avgCalories: 200,
+    avgTime: '6 min',
+    topBenefit: 'Artisan Craft'
+  },
+  {
+    id: 'lattes',
+    name: 'Lattes & Cappuccinos',
+    icon: Milk,
+    count: 26,
+    route: '/drinks/caffeinated/lattes',
+    description: 'Milk-based coffee drinks',
+    image: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=600&h=400&fit=crop',
+    bgColor: 'bg-orange-50',
+    borderColor: 'border-orange-200',
+    textColor: 'text-orange-600',
+    avgCalories: 180,
+    avgTime: '5 min',
+    topBenefit: 'Creamy Comfort'
+  },
+  {
+    id: 'iced',
+    name: 'Iced Coffee',
+    icon: Droplet,
+    count: 22,
+    route: '/drinks/caffeinated/iced',
+    description: 'Refreshing iced coffee drinks',
+    image: 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=600&h=400&fit=crop',
+    bgColor: 'bg-cyan-50',
+    borderColor: 'border-cyan-200',
+    textColor: 'text-cyan-600',
+    avgCalories: 100,
+    avgTime: '3 min',
+    topBenefit: 'Cool Refresh'
+  }
 ];
 
 const ingredients = {
@@ -154,6 +270,7 @@ export default function CaffeinatedDrinksPage() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
   const addIngredient = (ingredient, category) => {
     const newIngredient = { ...ingredient, category, id: Date.now() };
@@ -484,31 +601,104 @@ export default function CaffeinatedDrinksPage() {
         </div>
 
         {/* Caffeinated Subcategories */}
-        <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
-          <CardContent className="p-6">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Coffee className="w-5 h-5 text-amber-600" />
-              Explore Caffeinated Drink Types
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {caffeinatedSubcategories.map((subcategory) => {
-                const Icon = subcategory.icon;
-                return (
-                  <Link key={subcategory.id} href={subcategory.route}>
-                    <Card className="hover:shadow-lg transition-all cursor-pointer border-2 hover:border-amber-400">
-                      <CardContent className="p-4 text-center">
-                        <Icon className="h-8 w-8 mx-auto mb-2 text-amber-600" />
-                        <div className="font-medium text-sm mb-1">{subcategory.name}</div>
-                        <div className="text-xs text-gray-500">{subcategory.count} recipes</div>
-                        <div className="text-xs text-gray-400 mt-2">{subcategory.description}</div>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+            <Coffee className="h-6 w-6 text-amber-600" />
+            Browse Caffeinated Drink Types
+          </h2>
+          <div className="grid md:grid-cols-4 gap-6">
+            {caffeinatedSubcategories.map((category) => {
+              const Icon = category.icon;
+              return (
+                <Link key={category.id} href={category.route}>
+                  <Card
+                    className={`cursor-pointer transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${category.borderColor} overflow-hidden`}
+                    onMouseEnter={() => setHoveredCard(category.id)}
+                    onMouseLeave={() => setHoveredCard(null)}
+                  >
+                    <div className="relative h-48 overflow-hidden">
+                      {category.image && (
+                        <img
+                          src={category.image}
+                          alt={category.name}
+                          className={`w-full h-full object-cover transition-transform duration-300 ${
+                            hoveredCard === category.id ? 'scale-110' : 'scale-100'
+                          }`}
+                        />
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+
+                      {category.trending && (
+                        <div className="absolute top-3 left-3">
+                          <Badge className="bg-orange-500 text-white border-0">
+                            <TrendingUp className="h-3 w-3 mr-1" />
+                            Trending
+                          </Badge>
+                        </div>
+                      )}
+
+                      {category.featured && (
+                        <div className="absolute top-3 left-3">
+                          <Badge className="bg-purple-500 text-white border-0">
+                            <Star className="h-3 w-3 mr-1" />
+                            Featured
+                          </Badge>
+                        </div>
+                      )}
+
+                      <div className="absolute bottom-3 right-3">
+                        <div className={`p-2 bg-white/90 rounded-full`}>
+                          <Icon className={`h-5 w-5 ${category.textColor}`} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <CardHeader>
+                      <CardTitle className="text-xl flex items-center justify-between">
+                        {category.name}
+                        <Badge variant="outline">{category.count} recipes</Badge>
+                      </CardTitle>
+                      <p className="text-gray-600">{category.description}</p>
+                    </CardHeader>
+
+                    <CardContent>
+                      <div className="grid grid-cols-3 gap-3 mb-4">
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1 mb-1">
+                            <Flame className="h-4 w-4 text-orange-500" />
+                            <span className="text-sm font-bold">{category.avgCalories}</span>
+                          </div>
+                          <div className="text-xs text-gray-500">Calories</div>
+                        </div>
+
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1 mb-1">
+                            <Clock className="h-4 w-4 text-blue-500" />
+                            <span className="text-sm font-bold">{category.avgTime}</span>
+                          </div>
+                          <div className="text-xs text-gray-500">Prep Time</div>
+                        </div>
+
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1 mb-1">
+                            <Trophy className="h-4 w-4 text-yellow-500" />
+                            <span className="text-sm font-bold">4.7</span>
+                          </div>
+                          <div className="text-xs text-gray-500">Rating</div>
+                        </div>
+                      </div>
+
+                      <div className={`flex items-center gap-2 p-2 rounded ${category.bgColor}`}>
+                        <Target className={`h-4 w-4 ${category.textColor}`} />
+                        <span className="text-sm font-medium">{category.topBenefit}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Daily Challenge */}
         <Card className="bg-gradient-to-r from-amber-500 to-orange-600 text-white border-0">
