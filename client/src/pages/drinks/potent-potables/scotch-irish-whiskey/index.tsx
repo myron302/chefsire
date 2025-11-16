@@ -855,64 +855,48 @@ export default function ScotchIrishWhiskeyPage() {
             </CardContent>
           </Card>
 
-          {/* Filters */}
-          <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold mb-2 text-gray-700">Categories</h3>
-                <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
-                  <Button
-                    variant={selectedCategory === null ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSelectedCategory(null)}
-                    className={selectedCategory === null ? "bg-orange-700" : ""}
-                  >
-                    All
-                  </Button>
-                  {categories.map(category => (
-                    <Button
-                      key={category}
-                      variant={selectedCategory === category ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setSelectedCategory(category)}
-                      className={selectedCategory === category ? "bg-orange-700" : ""}
-                    >
-                      {category}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold mb-2 text-gray-700">Difficulty</h3>
-                <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
-                  <Button
-                    variant={selectedDifficulty === null ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSelectedDifficulty(null)}
-                    className={selectedDifficulty === null ? "bg-orange-700" : ""}
-                  >
-                    All Levels
-                  </Button>
-                  {difficulties.map(diff => (
-                    <Button
-                      key={diff}
-                      variant={selectedDifficulty === diff ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setSelectedDifficulty(diff)}
-                      className={selectedDifficulty === diff ? "bg-orange-700" : ""}
-                    >
-                      {diff}
-                    </Button>
-                  ))}
-                </div>
+          {/* Filters and Sort */}
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Input
+                  placeholder="Search Scotch & Irish cocktails..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 h-12 text-base"
+                />
               </div>
             </div>
-          </div>
-
-          {/* Results Count */}
-          <div className="mb-4 text-gray-600">
-            Showing {filteredCocktails.length} of {scotchIrishCocktails.length} cocktails
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+              <select
+                value={selectedCategory || 'all'}
+                onChange={(e) => setSelectedCategory(e.target.value === 'all' ? null : e.target.value)}
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-auto"
+              >
+                <option value="all">All Categories</option>
+                {categories.map(category => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
+              <select
+                value={selectedDifficulty || 'all'}
+                onChange={(e) => setSelectedDifficulty(e.target.value === 'all' ? null : e.target.value)}
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-auto"
+              >
+                <option value="all">All Levels</option>
+                {difficulties.map(diff => (
+                  <option key={diff} value={diff}>{diff}</option>
+                ))}
+              </select>
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+              >
+                <Target className="w-4 h-4 mr-2" />
+                More Filters
+              </Button>
+            </div>
           </div>
 
           {/* Cocktails Grid */}

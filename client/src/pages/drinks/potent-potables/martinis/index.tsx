@@ -597,10 +597,10 @@ export default function MartinisPage() {
           </div>
 
           {/* Filters and Sort */}
-          <div className="flex gap-4 mb-6 items-center flex-wrap">
-            <div className="flex-1 min-w-[200px]">
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <Input
                   placeholder="Search martinis..."
                   value={searchQuery}
@@ -609,42 +609,45 @@ export default function MartinisPage() {
                 />
               </div>
             </div>
-            <select 
-              value={selectedSpirit}
-              onChange={(e) => setSelectedSpirit(e.target.value)}
-              className="px-4 py-2 border rounded-lg bg-white"
-            >
-              {spirits.map(spirit => (
-                <option key={spirit} value={spirit}>{spirit}</option>
-              ))}
-            </select>
-            <select 
-              value={selectedMethod}
-              onChange={(e) => setSelectedMethod(e.target.value)}
-              className="px-4 py-2 border rounded-lg bg-white"
-            >
-              {methods.map(method => (
-                <option key={method} value={method}>{method}</option>
-              ))}
-            </select>
-            <select 
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="px-4 py-2 border rounded-lg bg-white"
-            >
-              <option value="trending">Most Popular</option>
-              <option value="rating">Highest Rated</option>
-              <option value="alcohol-low">Lowest ABV</option>
-              <option value="alcohol-high">Highest ABV</option>
-              <option value="cost-low">Most Budget-Friendly</option>
-            </select>
-            <Button 
-              variant="outline"
-              onClick={() => setShowFilters(!showFilters)}
-            >
-              <Target className="w-4 h-4 mr-2" />
-              {showFilters ? 'Hide' : 'Show'} Filters
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+              <select
+                value={selectedSpirit}
+                onChange={(e) => setSelectedSpirit(e.target.value)}
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-auto"
+              >
+                {spirits.map(spirit => (
+                  <option key={spirit} value={spirit}>{spirit}</option>
+                ))}
+              </select>
+              <select
+                value={selectedMethod}
+                onChange={(e) => setSelectedMethod(e.target.value)}
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-auto"
+              >
+                {methods.map(method => (
+                  <option key={method} value={method}>{method}</option>
+                ))}
+              </select>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-auto"
+              >
+                <option value="trending">Most Popular</option>
+                <option value="rating">Highest Rated</option>
+                <option value="alcohol-low">Lowest ABV</option>
+                <option value="alcohol-high">Highest ABV</option>
+                <option value="cost-low">Most Budget-Friendly</option>
+              </select>
+              <Button
+                variant="outline"
+                onClick={() => setShowFilters(!showFilters)}
+                className="w-full sm:w-auto"
+              >
+                <Target className="w-4 h-4 mr-2" />
+                {showFilters ? 'Hide' : 'Show'} Filters
+              </Button>
+            </div>
           </div>
 
           {/* Advanced Filters */}

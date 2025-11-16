@@ -550,18 +550,20 @@ export default function DaiquiriPage() {
           {activeTab === "browse" && (
             <div>
               <div className="flex flex-col md:flex-row gap-4 mb-6">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
-                  <Input
-                    placeholder="Search daiquiris…"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 h-12 text-base"
-                  />
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <Input
+                      placeholder="Search daiquiris…"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 h-12 text-base"
+                    />
+                  </div>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
                   <select
-                    className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm w-full sm:w-auto"
+                    className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-auto"
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
                   >
