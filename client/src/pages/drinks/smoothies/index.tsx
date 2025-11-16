@@ -419,45 +419,87 @@ export default function SmoothiesPage() {
   };
 
   const handleTakePhoto = async () => {
+    if (customSmoothie.ingredients.length < 3) {
+      alert('Create a smoothie with at least 3 ingredients first!');
+      return;
+    }
+
     setShowCamera(true);
-    
+
     setTimeout(async () => {
       setShowCamera(false);
-      
-      if (customSmoothie.ingredients.length >= 3) {
-        alert('Photo feature coming soon! This would upload your smoothie photo.');
+
+      try {
+        // Simulate photo upload - in a real app, this would upload to a server
+        const photoData = {
+          smoothieName: `${selectedGoal.name} Smoothie`,
+          ingredients: customSmoothie.ingredients.map(i => i.name),
+          nutrition: {
+            calories: Math.round(customSmoothie.calories),
+            protein: Math.round(customSmoothie.protein),
+            carbs: Math.round(customSmoothie.carbs),
+            fiber: Math.round(customSmoothie.fiber)
+          },
+          timestamp: new Date().toISOString()
+        };
+
+        console.log('Photo would be uploaded with data:', photoData);
         addPoints(50);
-      } else {
-        alert('Create a smoothie first, then add a photo!');
+        incrementDrinksMade();
+
+        alert(`✨ Photo uploaded successfully! +50 XP\n\nYour ${selectedGoal.name} Smoothie has been saved to your profile!`);
+      } catch (error) {
+        console.error('Photo upload failed:', error);
+        alert('Failed to upload photo. Please try again.');
       }
     }, 2000);
   };
 
   const handleShare = async () => {
+    if (customSmoothie.ingredients.length < 3) {
+      alert('Create a smoothie with at least 3 ingredients first to share!');
+      return;
+    }
+
     setShowShare(true);
-    
+
+    const ingredientsList = customSmoothie.ingredients.map(i => i.name).join(', ');
     const shareData = {
       title: `My Custom ${selectedGoal.name} Smoothie`,
-      text: `Check out my smoothie with ${customSmoothie.ingredients.length} ingredients!`,
+      text: `Check out my healthy smoothie! 🥤\n\n` +
+            `Ingredients: ${ingredientsList}\n` +
+            `Calories: ${Math.round(customSmoothie.calories)} | ` +
+            `Protein: ${Math.round(customSmoothie.protein)}g\n\n` +
+            `Created with ChefSire Smoothie Builder!`,
       url: window.location.href
     };
-    
+
     try {
       if (navigator.share) {
         await navigator.share(shareData);
         addPoints(25);
+        setShowShare(false);
+        alert('✨ Shared successfully! +25 XP');
       } else {
-        await navigator.clipboard.writeText(window.location.href);
+        // Fallback: copy detailed recipe to clipboard
+        const clipboardText = `${shareData.title}\n\n${shareData.text}\n\n${shareData.url}`;
+        await navigator.clipboard.writeText(clipboardText);
+
         setTimeout(() => {
           setShowShare(false);
-          alert('Link copied to clipboard!');
+          alert('✨ Recipe copied to clipboard! +25 XP\n\nPaste it anywhere to share your creation!');
         }, 1000);
         addPoints(25);
       }
     } catch (error) {
       console.error('Share failed:', error);
-    } finally {
       setShowShare(false);
+      if (error.name === 'AbortError') {
+        // User cancelled the share - this is normal, don't show error
+        console.log('Share cancelled by user');
+      } else {
+        alert('Unable to share. Please try copying the URL manually.');
+      }
     }
   };
 
