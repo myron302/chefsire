@@ -582,8 +582,8 @@ export default function TequilaMezcalPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <Input
                   placeholder="Search tequila & mezcal cocktails..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 h-12 text-base"
                 />
               </div>
