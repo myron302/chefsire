@@ -4,11 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { 
-  Baby, Heart, Star, Leaf, Apple, Droplets, Cookie, 
+import {
+  Baby, Heart, Star, Leaf, Apple, Droplets, Cookie,
   Clock, Users, Award, Sparkles, Target, Calendar,
   AlertCircle, CheckCircle, Info, ArrowRight, PlayCircle,
-  Utensils, Snowflake, Thermometer, Scale
+  Utensils, Snowflake, Thermometer, Scale, TrendingUp, Trophy, Flame
 } from 'lucide-react';
 
 const ageStages = [
@@ -17,24 +17,23 @@ const ageStages = [
     name: 'First Foods (4-6 Months)',
     route: '/recipes/baby-food/purees',
     icon: Droplets,
-    color: 'from-pink-400 to-rose-400',
     bgColor: 'bg-pink-50',
     textColor: 'text-pink-600',
     borderColor: 'border-pink-200',
     description: 'Single-ingredient purees for first tastes',
     texture: 'Smooth Purees',
     recipeCount: 24,
-    featured: true,
-    milestones: ['First foods', 'Iron-fortified', 'Single ingredients'],
+    trending: true,
+    image: 'https://images.unsplash.com/photo-1568569350062-ebfa3cb195df?w=600&h=400&fit=crop',
     averageCalories: 45,
-    examples: ['Sweet Potato', 'Avocado', 'Banana']
+    avgTime: '15 min',
+    topBenefit: 'First Tastes'
   },
   {
     id: 'mashed',
     name: 'Exploring Textures (6-8 Months)',
     route: '/recipes/baby-food/mashed',
     icon: Apple,
-    color: 'from-orange-400 to-amber-400',
     bgColor: 'bg-orange-50',
     textColor: 'text-orange-600',
     borderColor: 'border-orange-200',
@@ -42,33 +41,33 @@ const ageStages = [
     texture: 'Mashed & Lumpy',
     recipeCount: 32,
     featured: true,
-    milestones: ['Combination foods', 'Thicker textures', 'Allergen introduction'],
+    image: 'https://images.unsplash.com/photo-1603833665858-e61d17a86224?w=600&h=400&fit=crop',
     averageCalories: 65,
-    examples: ['Apple & Pear', 'Chicken & Veggies', 'Yogurt Blends']
+    avgTime: '18 min',
+    topBenefit: 'Texture Learning'
   },
   {
     id: 'finger-foods',
     name: 'Self-Feeding (8-12 Months)',
     route: '/recipes/baby-food/finger-foods',
     icon: Cookie,
-    color: 'from-green-400 to-emerald-400',
     bgColor: 'bg-green-50',
     textColor: 'text-green-600',
     borderColor: 'border-green-200',
     description: 'Soft finger foods for independent eating',
     texture: 'Soft Chunks',
     recipeCount: 28,
-    featured: true,
-    milestones: ['Pincer grasp', 'Self-feeding', 'Family foods'],
+    trending: true,
+    image: 'https://images.unsplash.com/photo-1551218372-3f4d5c4c3c7c?w=600&h=400&fit=crop',
     averageCalories: 85,
-    examples: ['Veggie Tots', 'Mini Muffins', 'Soft Pasta']
+    avgTime: '22 min',
+    topBenefit: 'Independence'
   },
   {
     id: 'toddler',
     name: 'Toddler Meals (12+ Months)',
     route: '/recipes/baby-food/toddler',
     icon: Utensils,
-    color: 'from-blue-400 to-cyan-400',
     bgColor: 'bg-blue-50',
     textColor: 'text-blue-600',
     borderColor: 'border-blue-200',
@@ -76,9 +75,10 @@ const ageStages = [
     texture: 'Regular Foods',
     recipeCount: 36,
     featured: true,
-    milestones: ['Family meals', 'More variety', 'Self-feeding mastery'],
+    image: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=600&h=400&fit=crop',
     averageCalories: 120,
-    examples: ['Mini Pizzas', 'Pasta Bakes', 'Sandwich Quarters']
+    avgTime: '25 min',
+    topBenefit: 'Family Meals'
   }
 ];
 
@@ -229,6 +229,7 @@ export default function BabyFoodHub() {
   const [selectedStage, setSelectedStage] = useState(ageStages[0]);
   const [showOrganic, setShowOrganic] = useState(false);
   const [babyAge, setBabyAge] = useState(4);
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
   const filteredStages = ageStages.filter(stage => {
     if (babyAge < 6) return stage.id === 'purees';
@@ -311,79 +312,99 @@ export default function BabyFoodHub() {
         <div className="mb-8">
           <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
             <Calendar className="h-6 w-6 text-purple-600" />
-            Choose Your Baby's Stage
+            Browse Baby Food Stages
           </h2>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {filteredStages.map(stage => {
               const Icon = stage.icon;
               const isAvailable = filteredStages.includes(stage);
-              
+
               return (
                 <Link key={stage.id} href={stage.route}>
-                  <Card className={`cursor-pointer transition-all hover:shadow-xl hover:-translate-y-1 ${
-                    !isAvailable ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}>
-                    <div className={`h-2 bg-gradient-to-r ${stage.color}`} />
-                    <CardContent className="p-6">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className={`p-3 rounded-full ${stage.bgColor}`}>
-                          <Icon className={`h-8 w-8 ${stage.textColor}`} />
-                        </div>
-                        {stage.featured && (
-                          <Badge className="bg-purple-500">
-                            <Star className="h-3 w-3 mr-1" />
-                            Popular
+                  <Card
+                    className={`cursor-pointer transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${stage.borderColor} overflow-hidden ${
+                      !isAvailable ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    onMouseEnter={() => setHoveredCard(stage.id)}
+                    onMouseLeave={() => setHoveredCard(null)}
+                  >
+                    <div className="relative h-48 overflow-hidden">
+                      {stage.image && (
+                        <img
+                          src={stage.image}
+                          alt={stage.name}
+                          className={`w-full h-full object-cover transition-transform duration-300 ${
+                            hoveredCard === stage.id ? 'scale-110' : 'scale-100'
+                          }`}
+                        />
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+
+                      {stage.trending && (
+                        <div className="absolute top-3 left-3">
+                          <Badge className="bg-orange-500 text-white border-0">
+                            <TrendingUp className="h-3 w-3 mr-1" />
+                            Trending
                           </Badge>
-                        )}
+                        </div>
+                      )}
+
+                      {stage.featured && (
+                        <div className="absolute top-3 left-3">
+                          <Badge className="bg-purple-500 text-white border-0">
+                            <Star className="h-3 w-3 mr-1" />
+                            Featured
+                          </Badge>
+                        </div>
+                      )}
+
+                      <div className="absolute bottom-3 right-3">
+                        <div className={`p-2 bg-white/90 rounded-full`}>
+                          <Icon className={`h-5 w-5 ${stage.textColor}`} />
+                        </div>
                       </div>
-                      
-                      <h3 className="text-lg font-bold mb-2">{stage.name}</h3>
-                      <p className="text-sm text-gray-600 mb-3">{stage.description}</p>
-                      
-                      <div className="mb-3">
-                        <div className="text-xs text-gray-500 mb-1">Texture Level</div>
-                        <Badge variant="outline" className="text-xs">{stage.texture}</Badge>
-                      </div>
-                      
-                      <div className="mb-4">
-                        <div className="text-xs font-medium text-gray-700 mb-2">Key Milestones:</div>
-                        <div className="space-y-1">
-                          {stage.milestones.map((milestone, idx) => (
-                            <div key={idx} className="flex items-center gap-1 text-xs text-gray-600">
-                              <CheckCircle className="h-3 w-3 text-green-500" />
-                              {milestone}
-                            </div>
-                          ))}
+                    </div>
+
+                    <CardHeader>
+                      <CardTitle className="text-xl flex items-center justify-between">
+                        {stage.name}
+                        <Badge variant="outline">{stage.recipeCount} recipes</Badge>
+                      </CardTitle>
+                      <p className="text-gray-600">{stage.description}</p>
+                    </CardHeader>
+
+                    <CardContent>
+                      <div className="grid grid-cols-3 gap-3 mb-4">
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1 mb-1">
+                            <Flame className="h-4 w-4 text-orange-500" />
+                            <span className="text-sm font-bold">{stage.averageCalories}</span>
+                          </div>
+                          <div className="text-xs text-gray-500">Calories</div>
+                        </div>
+
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1 mb-1">
+                            <Clock className="h-4 w-4 text-blue-500" />
+                            <span className="text-sm font-bold">{stage.avgTime}</span>
+                          </div>
+                          <div className="text-xs text-gray-500">Prep Time</div>
+                        </div>
+
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1 mb-1">
+                            <Trophy className="h-4 w-4 text-yellow-500" />
+                            <span className="text-sm font-bold">4.9</span>
+                          </div>
+                          <div className="text-xs text-gray-500">Rating</div>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 mb-4">
-                        <div className="text-center p-2 bg-gray-50 rounded">
-                          <div className="font-bold text-lg">{stage.recipeCount}</div>
-                          <div className="text-xs text-gray-600">Recipes</div>
-                        </div>
-                        <div className="text-center p-2 bg-gray-50 rounded">
-                          <div className="font-bold text-lg">{stage.averageCalories}</div>
-                          <div className="text-xs text-gray-600">Avg Cal</div>
-                        </div>
+                      <div className={`flex items-center gap-2 p-2 rounded ${stage.bgColor}`}>
+                        <Target className={`h-4 w-4 ${stage.textColor}`} />
+                        <span className="text-sm font-medium">{stage.topBenefit}</span>
                       </div>
-
-                      <div className="mb-4">
-                        <div className="text-xs font-medium text-gray-700 mb-1">Examples:</div>
-                        <div className="flex flex-wrap gap-1">
-                          {stage.examples.map((example, idx) => (
-                            <Badge key={idx} variant="outline" className="text-xs">
-                              {example}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      <Button className={`w-full bg-gradient-to-r ${stage.color}`}>
-                        <ArrowRight className="h-4 w-4 mr-2" />
-                        Explore Recipes
-                      </Button>
                     </CardContent>
                   </Card>
                 </Link>
