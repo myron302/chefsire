@@ -649,10 +649,11 @@ export default function GinCocktailsPage() {
                 variant="outline"
                 onClick={() => setShowFilters(!showFilters)}
                 className="w-full sm:w-auto"
-            >
-              <Target className="w-4 h-4 mr-2" />
-              {showFilters ? 'Hide' : 'Show'} Filters
-            </Button>
+              >
+                <Target className="w-4 h-4 mr-2" />
+                {showFilters ? 'Hide' : 'Show'} Filters
+              </Button>
+            </div>
           </div>
 
           {/* Advanced Filters */}
