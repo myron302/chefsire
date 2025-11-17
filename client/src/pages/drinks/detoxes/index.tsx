@@ -366,15 +366,17 @@ export default function DetoxesHub() {
                   onMouseEnter={() => setHoveredCard(category.id)}
                   onMouseLeave={() => setHoveredCard(null)}
                 >
-                  <div className="relative h-48 overflow-hidden">
-                    {category.image && (
-                      <img
-                        src={category.image}
-                        alt={category.name}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                      />
-                    )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                  <div className={`relative h-48 overflow-hidden bg-gradient-to-br ${category.bgColor === 'bg-orange-50' ? 'from-orange-200 via-orange-300 to-amber-400' : category.bgColor === 'bg-green-50' ? 'from-green-200 via-emerald-300 to-teal-400' : 'from-blue-200 via-cyan-300 to-sky-400'}`}>
+                    {/* Decorative pattern */}
+                    <div className="absolute inset-0 opacity-20" style={{
+                      backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 80%, white 1px, transparent 1px)',
+                      backgroundSize: '50px 50px'
+                    }} />
+                    {/* Large centered icon */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <category.icon className="w-24 h-24 text-white opacity-40" />
+                    </div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                     <div className="absolute top-3 left-3 flex gap-2">
                       {category.trending && (
                         <Badge className="bg-red-500 text-white text-xs">
