@@ -580,6 +580,7 @@ export default function MocktailsPage() {
   const [selectedMocktail, setSelectedMocktail] = useState<typeof mocktails[0] | null>(null);
   const [calorieRange, setCalorieRange] = useState([0, 150]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
