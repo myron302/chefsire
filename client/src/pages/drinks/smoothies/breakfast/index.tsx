@@ -841,7 +841,7 @@ export default function BreakfastSmoothiesPage() {
                   <Card key={smoothie.id} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <div className="flex-1">
+                        <div className="md:max-w-md md:flex-1">
                           <CardTitle className="text-lg mb-1">{smoothie.name}</CardTitle>
                           <p className="text-sm text-gray-600 mb-2">{smoothie.description}</p>
                         </div>
@@ -1151,7 +1151,7 @@ export default function BreakfastSmoothiesPage() {
               <Card key={smoothie.id} className="hover:shadow-lg transition-shadow border-2 border-purple-200">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                    <div className="md:max-w-md md:flex-1">
                       <CardTitle className="text-lg mb-1">{smoothie.name}</CardTitle>
                       <p className="text-sm text-gray-600 mb-2">{smoothie.description}</p>
                     </div>

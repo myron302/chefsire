@@ -615,7 +615,7 @@ export default function SpritzMimosasPage() {
 
           {/* Filters and Sort */}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
-            <div className="flex-1">
+            <div className="md:max-w-md md:flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <Input
@@ -626,7 +626,7 @@ export default function SpritzMimosasPage() {
                 />
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 md:min-w-fit">
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
@@ -784,7 +784,7 @@ export default function SpritzMimosasPage() {
                       ))}
                     </div>
 
-                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 md:min-w-fit">
                       <Button 
                         className="flex-1 bg-yellow-600 hover:bg-yellow-700"
                         onClick={(e) => {

@@ -434,7 +434,7 @@ export default function VirginDrinksPage() {
                 
                 <div className="flex items-start gap-4">
                   <Sparkles className="w-16 h-16 text-emerald-600 flex-shrink-0" />
-                  <div className="flex-1">
+                  <div className="md:max-w-md md:flex-1">
                     <h2 className="text-3xl font-bold text-gray-900 mb-2">{selectedDrink.name}</h2>
                     <p className="text-gray-700 mb-3">{selectedDrink.description}</p>
                     <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
@@ -659,7 +659,7 @@ export default function VirginDrinksPage() {
         <div className="max-w-7xl mx-auto px-4 py-6">
           {/* Filters and Sort */}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
-            <div className="flex-1">
+            <div className="md:max-w-md md:flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <Input
@@ -670,7 +670,7 @@ export default function VirginDrinksPage() {
                 />
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 md:min-w-fit">
               <select
                 value={selectedCategory || 'all'}
                 onChange={(e) => setSelectedCategory(e.target.value === 'all' ? null : e.target.value)}
