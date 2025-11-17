@@ -1017,7 +1017,6 @@ export default function GinCocktailsPage() {
             </CardContent>
           </Card>
         </div>
-        </div>
       </div>
     </RequireAgeGate>
   );
