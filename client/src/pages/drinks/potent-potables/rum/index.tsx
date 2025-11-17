@@ -879,62 +879,58 @@ export default function RumCocktailsPage() {
               const servings = servingsById[cocktail.id] ?? (cocktail.recipe?.servings || 1);
 
               return (
-                <Card 
-                  key={cocktail.id} 
-                  className="hover:shadow-lg transition-all duration-300 overflow-hidden group cursor-pointer"
+                <Card
+                  key={cocktail.id}
+                  className="hover:shadow-lg transition-all cursor-pointer bg-white border-orange-100 hover:border-orange-300"
                   onClick={() => handleCocktailClick(cocktail)}
                 >
-                  <div className="relative bg-gradient-to-br from-amber-100 to-orange-100 p-6 h-48 flex items-center justify-center">
-                    <Palmtree className="w-20 h-20 text-orange-600 group-hover:scale-110 transition-transform" />
-                    {cocktail.trending && (
-                      <Badge className="absolute top-3 left-3 bg-red-500">
-                        <TrendingUp className="w-3 h-3 mr-1" />
-                        Trending
-                      </Badge>
-                    )}
-                    {cocktail.iba_official && (
-                      <Badge className="absolute top-3 right-3 bg-blue-600">
-                        <Award className="w-3 h-3 mr-1" />
-                        IBA
-                      </Badge>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="absolute bottom-3 right-3 bg-white/80 hover:bg-white"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        addToFavorites({
-                          id: cocktail.id,
-                          name: cocktail.name,
-                          category: 'rum-cocktails',
-                          timestamp: Date.now()
-                        });
-                      }}
-                    >
-                      <Heart
-                        className={`w-5 h-5 ${
-                          isFavorite(cocktail.id)
-                            ? 'fill-red-500 text-red-500'
-                            : 'text-gray-600'
-                        }`}
-                      />
-                    </Button>
-                  </div>
-
                   <CardHeader>
                     <div className="flex items-start justify-between mb-2">
-                      <CardTitle className="text-xl">{cocktail.name}</CardTitle>
-                      <Badge variant="outline" className="ml-2">
-                        {cocktail.difficulty}
-                      </Badge>
+                      <CardTitle className="text-lg">{cocktail.name}</CardTitle>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          addToFavorites({
+                            id: cocktail.id,
+                            name: cocktail.name,
+                            category: 'Rum Cocktails',
+                            timestamp: Date.now()
+                          });
+                        }}
+                      >
+                        <Heart className={`w-4 h-4 ${isFavorite(cocktail.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                      </Button>
                     </div>
-                    <p className="text-sm text-gray-600">{cocktail.description}</p>
+                    <div className="flex gap-2 mb-2">
+                      <Badge className="bg-orange-100 text-orange-700">{cocktail.category}</Badge>
+                      {cocktail.trending && (
+                        <Badge className="bg-red-500">
+                          <TrendingUp className="w-3 h-3 mr-1" />
+                          Trending
+                        </Badge>
+                      )}
+                      {cocktail.featured && (
+                        <Badge className="bg-orange-500">
+                          <GlassWater className="w-3 h-3 mr-1" />
+                          Featured
+                        </Badge>
+                      )}
+                      {cocktail.iba_official && (
+                        <Badge className="bg-blue-600">
+                          <Award className="w-3 h-3 mr-1" />
+                          IBA
+                        </Badge>
+                      )}
+                    </div>
                   </CardHeader>
 
-                  <CardContent className="space-y-4">
+                  <CardContent>
+                    <p className="text-sm text-gray-600 mb-4">{cocktail.description}</p>
+
                     {/* Key Info */}
-                    <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                    <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                       <div>
                         <div className="font-bold text-orange-600">{cocktail.abv}</div>
                         <div className="text-gray-500">ABV</div>
