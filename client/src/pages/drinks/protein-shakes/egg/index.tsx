@@ -652,9 +652,9 @@ export default function EggProteinPage() {
                   className="pl-10 h-12 text-base"
                 />
               </div>
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 md:min-w-fit">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 flex-1">
                 <select
-                  className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm w-full sm:w-auto"
+                  className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                   value={filterTag}
                   onChange={(e) => setFilterTag(e.target.value)}
                 >
@@ -664,7 +664,7 @@ export default function EggProteinPage() {
                   ))}
                 </select>
                 <select
-                  className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm w-full sm:w-auto"
+                  className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
                 >
@@ -688,7 +688,7 @@ export default function EggProteinPage() {
               <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
-                    <div className="md:max-w-md md:flex-1">
+                    <div className="md:max-w-sm">
                       <CardTitle className="text-lg mb-1">{recipe.name}</CardTitle>
                       <p className="text-sm text-gray-600 mb-2">{recipe.flavor}</p>
                     </div>
