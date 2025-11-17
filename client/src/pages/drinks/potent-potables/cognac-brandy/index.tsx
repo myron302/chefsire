@@ -682,7 +682,7 @@ export default function CognacBrandyPage() {
             <div>
               {/* Filters and Sort */}
               <div className="flex flex-col md:flex-row gap-4 mb-6">
-                <div className="flex-1">
+                <div className="md:max-w-md md:flex-1">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <Input
@@ -694,7 +694,7 @@ export default function CognacBrandyPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 md:min-w-fit">
                   <select
                     className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-auto"
                     value={sortBy}
@@ -722,7 +722,7 @@ export default function CognacBrandyPage() {
                     >
                       <CardHeader className="pb-2">
                         <div className="flex items-start justify-between">
-                          <div className="flex-1">
+                          <div className="md:max-w-md md:flex-1">
                             <CardTitle className="text-lg mb-1">{cocktail.name}</CardTitle>
                             <p className="text-sm text-gray-600 mb-2">{cocktail.description}</p>
                           </div>
@@ -916,7 +916,7 @@ export default function CognacBrandyPage() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+                        <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 md:min-w-fit">
                           <Button 
                             className="flex-1 bg-orange-600 hover:bg-orange-700"
                             onClick={(e) => {

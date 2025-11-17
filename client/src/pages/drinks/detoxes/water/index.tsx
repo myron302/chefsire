@@ -380,7 +380,7 @@ export default function DetoxWatersPage() {
                     />
                   </div>
                   
-                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 md:min-w-fit">
                     <select 
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm w-full sm:w-auto"
                       value={selectedWaterType}
@@ -431,7 +431,7 @@ export default function DetoxWatersPage() {
                   <Card key={water.id} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <div className="flex-1">
+                        <div className="md:max-w-md md:flex-1">
                           <CardTitle className="text-lg mb-1">{water.name}</CardTitle>
                           <p className="text-sm text-gray-600 mb-2">{water.description}</p>
                         </div>
