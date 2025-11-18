@@ -46,8 +46,9 @@ import streaksRouter from "./streaks";
 // 💰 Marketplace & Monetization
 import subscriptionsRouter from "./subscriptions";
 import ordersRouter from "./orders";
-import paymentsRouter from "./payments";
-import payoutsRouter from "./payouts";
+// TEMPORARILY COMMENTED OUT - square package not installed
+// import paymentsRouter from "./payments";
+// import payoutsRouter from "./payouts";
 
 // File uploads
 import uploadRouter from "./upload";
@@ -126,8 +127,9 @@ r.use("/streaks", streaksRouter);
 // 💰 Marketplace & Monetization
 r.use("/subscriptions", subscriptionsRouter);
 r.use("/orders", ordersRouter);
-r.use("/payments", paymentsRouter);
-r.use("/payouts", payoutsRouter);
+// TEMPORARILY COMMENTED OUT - square package not installed
+// r.use("/payments", paymentsRouter);
+// r.use("/payouts", payoutsRouter);
 
 // File uploads
 r.use("/upload", uploadRouter);

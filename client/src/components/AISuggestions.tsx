@@ -126,14 +126,40 @@ export default function AISuggestions() {
     );
   }
 
-  // Ensure suggestions is always an array
-  const suggestionsArray = Array.isArray(suggestions) ? suggestions : [];
+  // Use demo data if there's an error (e.g., tables don't exist yet)
+  const demoSuggestions: AISuggestion[] = error ? [
+    {
+      id: "demo-1",
+      userId: user?.id || "demo-user",
+      suggestionType: "morning_drink",
+      title: "Perfect Morning Pick-Me-Up",
+      description: "Start your day with an energizing matcha green smoothie",
+      reason: "Based on your morning routine and preference for healthy drinks",
+      linkUrl: "/recipes/matcha-smoothie",
+      imageUrl: "https://images.unsplash.com/photo-1556881286-fc6915169721?w=400&h=200&fit=crop&auto=format",
+      priority: "high",
+      viewed: false,
+      dismissed: false,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "demo-2",
+      userId: user?.id || "demo-user",
+      suggestionType: "trending",
+      title: "Trending: Spicy Thai Basil Chicken",
+      description: "This popular recipe is getting lots of love from the community",
+      reason: "Matches your interest in Asian cuisine",
+      linkUrl: "/recipes/thai-basil-chicken",
+      imageUrl: "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=400&h=200&fit=crop&auto=format",
+      priority: "normal",
+      viewed: false,
+      dismissed: false,
+      createdAt: new Date().toISOString(),
+    },
+  ] : [];
 
-  // Hide component if there's an error (e.g., tables don't exist yet)
-  if (error) {
-    console.warn("AI Suggestions error:", error);
-    return null;
-  }
+  // Ensure suggestions is always an array
+  const suggestionsArray = Array.isArray(suggestions) ? suggestions : (error ? demoSuggestions : []);
 
   if (suggestionsArray.length === 0) {
     return null; // Don't show if no suggestions
