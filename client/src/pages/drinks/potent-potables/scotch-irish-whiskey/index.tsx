@@ -857,7 +857,7 @@ export default function ScotchIrishWhiskeyPage() {
 
           {/* Filters and Sort */}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
-            <div className="md:max-w-sm">
+            <div className="md:max-w-2xl md:flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <Input
@@ -868,11 +868,11 @@ export default function ScotchIrishWhiskeyPage() {
                 />
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 flex-1">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
               <select
                 value={selectedCategory || 'all'}
                 onChange={(e) => setSelectedCategory(e.target.value === 'all' ? null : e.target.value)}
-                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm whitespace-nowrap"
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm min-w-[180px]"
               >
                 <option value="all">All Categories</option>
                 {categories.map(category => (
@@ -882,7 +882,7 @@ export default function ScotchIrishWhiskeyPage() {
               <select
                 value={selectedDifficulty || 'all'}
                 onChange={(e) => setSelectedDifficulty(e.target.value === 'all' ? null : e.target.value)}
-                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm whitespace-nowrap"
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm min-w-[180px]"
               >
                 <option value="all">All Levels</option>
                 {difficulties.map(diff => (
@@ -891,7 +891,7 @@ export default function ScotchIrishWhiskeyPage() {
               </select>
               <Button
                 variant="outline"
-                className="whitespace-nowrap"
+                className="min-w-[140px]"
               >
                 <Target className="w-4 h-4 mr-2" />
                 More Filters
