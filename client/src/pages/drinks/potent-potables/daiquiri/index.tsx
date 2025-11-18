@@ -550,7 +550,7 @@ export default function DaiquiriPage() {
           {activeTab === "browse" && (
             <div>
               <div className="flex flex-col md:flex-row gap-4 mb-6">
-                <div className="md:max-w-2xl md:flex-1">
+                <div className="md:max-w-3xl md:flex-1">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <Input
@@ -563,7 +563,7 @@ export default function DaiquiriPage() {
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
                   <select
-                    className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm min-w-[180px]"
+                    className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-[240px]"
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
                   >
@@ -583,7 +583,7 @@ export default function DaiquiriPage() {
                     <Card key={c.id} className="hover:shadow-lg transition-shadow">
                       <CardHeader className="pb-2">
                         <div className="flex items-start justify-between">
-                          <div className="md:max-w-2xl md:flex-1">
+                          <div className="md:max-w-3xl md:flex-1">
                             <CardTitle className="text-lg mb-1">{c.name}</CardTitle>
                             <p className="text-sm text-gray-600 mb-2">{c.description}</p>
                           </div>

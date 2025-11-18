@@ -757,7 +757,7 @@ export default function CollagenProteinPage() {
               <div className="bg-amber-100 p-3 rounded-lg">
                 <Zap className="h-6 w-6 text-amber-600" />
               </div>
-              <div className="md:max-w-2xl md:flex-1">
+              <div className="md:max-w-3xl md:flex-1">
                 <h3 className="text-lg font-bold mb-2">About Leucine & Collagen Absorption</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
@@ -908,7 +908,7 @@ export default function CollagenProteinPage() {
                   <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <div className="md:max-w-2xl md:flex-1">
+                        <div className="md:max-w-3xl md:flex-1">
                           <CardTitle className="text-lg mb-1">{shake.name}</CardTitle>
                           <p className="text-sm text-gray-600 mb-2">{shake.description}</p>
                         </div>

@@ -740,7 +740,7 @@ export default function LiqueursPage() {
 
           {/* Filters and Sort */}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
-            <div className="md:max-w-2xl md:flex-1">
+            <div className="md:max-w-3xl md:flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <Input
@@ -755,7 +755,7 @@ export default function LiqueursPage() {
               <select
                 value={selectedMethod}
                 onChange={(e) => setSelectedMethod(e.target.value)}
-                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm min-w-[180px]"
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-[240px]"
               >
                 {methods.map(method => (
                   <option key={method} value={method}>{method}</option>
@@ -764,7 +764,7 @@ export default function LiqueursPage() {
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm min-w-[180px]"
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-[240px]"
               >
                 <option value="trending">Most Popular</option>
                 <option value="rating">Highest Rated</option>
@@ -775,7 +775,7 @@ export default function LiqueursPage() {
               <Button
                 variant="outline"
                 onClick={() => setShowFilters(!showFilters)}
-                className="min-w-[140px]"
+                className="w-full sm:w-auto"
               >
                 <Target className="w-4 h-4 mr-2" />
                 {showFilters ? 'Hide' : 'Show'} Filters

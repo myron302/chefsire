@@ -770,7 +770,7 @@ export default function DetoxJuicesPage() {
                   <Card key={juice.id} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <div className="md:max-w-2xl md:flex-1">
+                        <div className="md:max-w-3xl md:flex-1">
                           <CardTitle className="text-lg mb-1">{juice.name}</CardTitle>
                           <p className="text-sm text-gray-600 mb-2">{juice.description}</p>
                         </div>
