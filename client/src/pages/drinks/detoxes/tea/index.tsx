@@ -596,7 +596,7 @@ export default function DetoxTeasPage() {
                     />
                   </div>
                   
-                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 flex-1">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
                     <select 
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={selectedTeaType}
@@ -658,7 +658,7 @@ export default function DetoxTeasPage() {
                   <Card key={tea.id} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <div className="md:max-w-sm">
+                        <div className="md:max-w-2xl md:flex-1">
                           <CardTitle className="text-lg mb-1">{tea.name}</CardTitle>
                           <p className="text-sm text-gray-600 mb-2">{tea.description}</p>
                         </div>

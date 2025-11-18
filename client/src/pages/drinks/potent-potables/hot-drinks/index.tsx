@@ -567,7 +567,7 @@ export default function HotDrinksPage() {
 
           {/* Filters and Sort */}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
-            <div className="md:max-w-sm">
+            <div className="md:max-w-2xl md:flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <Input
@@ -578,11 +578,11 @@ export default function HotDrinksPage() {
                 />
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 flex-1">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
               <select
                 value={selectedMethod}
                 onChange={(e) => setSelectedMethod(e.target.value)}
-                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm whitespace-nowrap"
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm min-w-[180px]"
               >
                 {methods.map(method => (
                   <option key={method} value={method}>{method}</option>
@@ -591,7 +591,7 @@ export default function HotDrinksPage() {
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm whitespace-nowrap"
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm min-w-[180px]"
               >
                 <option value="trending">Most Popular</option>
                 <option value="rating">Highest Rated</option>
@@ -602,7 +602,7 @@ export default function HotDrinksPage() {
               <Button
                 variant="outline"
                 onClick={() => setShowFilters(!showFilters)}
-                className="whitespace-nowrap"
+                className="min-w-[140px]"
               >
                 <Target className="w-4 h-4 mr-2" />
                 {showFilters ? 'Hide' : 'Show'} Filters
@@ -865,7 +865,7 @@ export default function HotDrinksPage() {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 flex-1">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
                       <Button 
                         className="flex-1 bg-red-700 hover:bg-red-800"
                         onClick={(e) => {
