@@ -715,7 +715,7 @@ export default function BerrySmoothiesPage() {
 
                   <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                     <select
-                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white w-full sm:w-auto"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedBerryType}
                       onChange={(e) => setSelectedBerryType(e.target.value)}
                     >
@@ -726,7 +726,7 @@ export default function BerrySmoothiesPage() {
                     </select>
 
                     <select
-                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white w-full sm:w-auto"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedBenefit}
                       onChange={(e) => setSelectedBenefit(e.target.value)}
                     >
@@ -737,7 +737,7 @@ export default function BerrySmoothiesPage() {
                     </select>
 
                     <select
-                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white w-full sm:w-auto"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={maxCalories}
                       onChange={(e) => {
                         const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
@@ -785,7 +785,7 @@ export default function BerrySmoothiesPage() {
                   <Card key={smoothie.id} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <div className="md:max-w-md md:flex-1">
+                        <div className="md:max-w-sm">
                           <CardTitle className="text-lg mb-1">{smoothie.name}</CardTitle>
                           <p className="text-sm text-gray-600 mb-2">{smoothie.description}</p>
                         </div>
@@ -1089,7 +1089,7 @@ export default function BerrySmoothiesPage() {
               <Card key={smoothie.id} className="hover:shadow-lg transition-shadow border-2 border-red-200">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
-                    <div className="md:max-w-md md:flex-1">
+                    <div className="md:max-w-sm">
                       <CardTitle className="text-lg mb-1">{smoothie.name}</CardTitle>
                       <p className="text-sm text-gray-600 mb-2">{smoothie.description}</p>
                     </div>

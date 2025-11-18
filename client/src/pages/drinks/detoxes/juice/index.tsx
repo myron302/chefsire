@@ -693,9 +693,9 @@ export default function DetoxJuicesPage() {
                     />
                   </div>
                   
-                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 md:min-w-fit">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 flex-1">
                     <select 
-                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm w-full sm:w-auto"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={selectedDetoxType}
                       onChange={(e) => setSelectedDetoxType(e.target.value)}
                     >
@@ -711,7 +711,7 @@ export default function DetoxJuicesPage() {
                     </select>
                     
                     <select 
-                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm w-full sm:w-auto"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={selectedCategory}
                       onChange={(e) => setSelectedCategory(e.target.value)}
                     >
@@ -723,7 +723,7 @@ export default function DetoxJuicesPage() {
                     </select>
                     
                     <select 
-                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm w-full sm:w-auto"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={detoxIntensity[0]}
                       onChange={(e) => setDetoxIntensity([e.target.value])}
                     >
@@ -734,7 +734,7 @@ export default function DetoxJuicesPage() {
                     </select>
                     
                     <select 
-                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm w-full sm:w-auto"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={maxCalories}
                       onChange={(e) => setMaxCalories(Number(e.target.value))}
                     >
@@ -747,7 +747,7 @@ export default function DetoxJuicesPage() {
                     </select>
                     
                     <select 
-                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm w-full sm:w-auto"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value)}
                     >
@@ -770,7 +770,7 @@ export default function DetoxJuicesPage() {
                   <Card key={juice.id} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <div className="md:max-w-md md:flex-1">
+                        <div className="md:max-w-sm">
                           <CardTitle className="text-lg mb-1">{juice.name}</CardTitle>
                           <p className="text-sm text-gray-600 mb-2">{juice.description}</p>
                         </div>
