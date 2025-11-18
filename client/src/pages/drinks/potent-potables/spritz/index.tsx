@@ -596,7 +596,7 @@ export default function SpritzMimosasPage() {
           </div>
 
           {/* Categories */}
-          <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+          <div className="flex flex-col sm:flex-row gap-2 mb-6 sm:overflow-x-auto pb-2">
             {spritzCategories.map(category => {
               const Icon = category.icon;
               return (
