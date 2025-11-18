@@ -658,7 +658,7 @@ export default function VodkaCocktailsPage() {
           </div>
 
           {/* Categories */}
-          <div className="flex flex-col sm:flex-row gap-2 mb-6 pb-2">
+          <div className="flex flex-col sm:flex-row gap-2 mb-6 sm:overflow-x-auto pb-2">
             {vodkaCategories.map(category => {
               const Icon = category.icon;
               return (
