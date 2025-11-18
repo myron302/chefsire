@@ -684,7 +684,7 @@ export default function MatchaPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
             { id: 'drink-types', label: 'Matcha Types', icon: Sparkles },
