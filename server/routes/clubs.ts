@@ -12,7 +12,7 @@ import {
   userBadges,
   users
 } from "../../shared/schema.js";
-import { requireAuth } from "../middleware";
+import { requireAuth } from "../middleware/index";
 
 const router = express.Router();
 

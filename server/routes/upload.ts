@@ -84,8 +84,9 @@ router.post("/", requireAuth, (req, res) => {
       }
 
       // Generate full URL for the uploaded file
-      const protocol = req.protocol;
-      const host = req.get('host');
+      // Check for forwarded headers (when behind proxy like Plesk)
+      const protocol = req.get('x-forwarded-proto') || req.protocol;
+      const host = req.get('x-forwarded-host') || req.get('host');
       const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
 
       res.json({

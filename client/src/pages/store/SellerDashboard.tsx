@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Package, DollarSign, TrendingUp, ShoppingCart, Crown, Plus, Settings, Palette } from "lucide-react";
+import { Package, DollarSign, TrendingUp, ShoppingCart, Crown, Plus, Settings, Palette, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/contexts/UserContext";
 import ThemeSelector from "@/components/store/ThemeSelector";
+import StoreCustomization from "@/components/store/StoreCustomization";
 
 export default function SellerDashboard() {
   const { user } = useUser();
@@ -96,7 +97,7 @@ export default function SellerDashboard() {
     if (!store?.id) return;
 
     try {
-      const response = await fetch(`/api/stores-crud/${store.id}`, {
+      const response = await fetch(`/api/stores/${store.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -112,6 +113,31 @@ export default function SellerDashboard() {
     } catch (error) {
       console.error("Theme update error:", error);
       alert("Failed to update theme");
+    }
+  };
+
+  const handleCustomizationUpdate = async (updates: any) => {
+    if (!store?.id) return;
+
+    try {
+      const response = await fetch(`/api/stores/${store.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(updates)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setStore(data.store);
+        alert("Customization saved successfully!");
+      } else {
+        const error = await response.json();
+        alert(`Failed to save: ${error.error}`);
+      }
+    } catch (error) {
+      console.error("Save error:", error);
+      alert("Failed to save customization");
     }
   };
 
@@ -138,21 +164,54 @@ export default function SellerDashboard() {
           <p className="text-gray-600">Manage your subscription, customize your store, and track performance</p>
         </div>
 
-        <Tabs defaultValue="subscription" className="space-y-6">
+        <Tabs defaultValue="customize" className="space-y-6">
           <TabsList>
+            <TabsTrigger value="customize">
+              <Sparkles className="h-4 w-4 mr-2" />
+              Customize
+            </TabsTrigger>
+            <TabsTrigger value="theme">
+              <Palette className="h-4 w-4 mr-2" />
+              Theme
+            </TabsTrigger>
             <TabsTrigger value="subscription">
               <Crown className="h-4 w-4 mr-2" />
               Subscription
-            </TabsTrigger>
-            <TabsTrigger value="customization">
-              <Palette className="h-4 w-4 mr-2" />
-              Customization
             </TabsTrigger>
             <TabsTrigger value="analytics">
               <TrendingUp className="h-4 w-4 mr-2" />
               Analytics
             </TabsTrigger>
           </TabsList>
+
+          {/* Customize Tab - NEW! */}
+          <TabsContent value="customize" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Store Customization</CardTitle>
+                <CardDescription>Make your store unique with custom branding, sections, and layouts</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <StoreCustomization store={store} onUpdate={handleCustomizationUpdate} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Theme Tab */}
+          <TabsContent value="theme" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Store Theme</CardTitle>
+                <CardDescription>Choose a pre-designed theme for your store</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ThemeSelector
+                  selectedTheme={selectedTheme}
+                  onSelectTheme={handleThemeChange}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* Subscription Tab */}
           <TabsContent value="subscription"  className="space-y-6">
@@ -251,22 +310,6 @@ export default function SellerDashboard() {
             )}
           </CardContent>
         </Card>
-          </TabsContent>
-
-          {/* Customization Tab */}
-          <TabsContent value="customization" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Store Theme Customization</CardTitle>
-                <CardDescription>Choose a theme that matches your brand and style</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ThemeSelector
-                  selectedTheme={selectedTheme}
-                  onSelectTheme={handleThemeChange}
-                />
-              </CardContent>
-            </Card>
           </TabsContent>
 
           {/* Analytics Tab */}

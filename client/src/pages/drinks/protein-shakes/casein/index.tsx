@@ -987,18 +987,18 @@ export default function CaseinProteinPage() {
             {/* Search and Filters */}
             <div className="flex flex-col md:flex-row gap-4 mb-6">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
                 <Input
                   placeholder="Search casein proteins..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 h-12 text-base"
                 />
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
                 <select
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                   value={selectedProteinType}
                   onChange={(e) => setSelectedProteinType(e.target.value)}
                 >
@@ -1009,7 +1009,7 @@ export default function CaseinProteinPage() {
                 </select>
 
                 <select
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                   value={selectedGoal}
                   onChange={(e) => setSelectedGoal(e.target.value)}
                 >
@@ -1020,7 +1020,7 @@ export default function CaseinProteinPage() {
                 </select>
 
                 <select
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
                 >
@@ -1042,7 +1042,7 @@ export default function CaseinProteinPage() {
                   <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <div className="flex-1">
+                        <div className="md:max-w-3xl md:flex-1">
                           <CardTitle className="text-lg mb-1">{shake.name}</CardTitle>
                           <p className="text-sm text-gray-600 mb-2">{shake.description}</p>
                         </div>

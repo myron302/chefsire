@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
+  <defs>
+    <linearGradient id="teaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#90ee90;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2d5016;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="600" height="400" fill="url(#teaGrad)"/>
+  <g transform="translate(180, 80)">
+    <!-- Tea cup -->
+    <path d="M 80 180 Q 75 140, 80 100 L 200 100 Q 205 140, 200 180 Z" fill="#8fbc8f" opacity="0.7"/>
+    <ellipse cx="140" cy="180" rx="60" ry="15" fill="#6b8e6b" opacity="0.8"/>
+    <!-- Handle -->
+    <path d="M 200 120 Q 240 120, 240 150 Q 240 180, 200 180" fill="none" stroke="#8fbc8f" stroke-width="12" opacity="0.7"/>
+    <!-- Steam -->
+    <path d="M 110 90 Q 105 70, 110 50" fill="none" stroke="white" stroke-width="3" opacity="0.6"/>
+    <path d="M 140 85 Q 135 65, 140 45" fill="none" stroke="white" stroke-width="3" opacity="0.6"/>
+    <path d="M 170 90 Q 165 70, 170 50" fill="none" stroke="white" stroke-width="3" opacity="0.6"/>
+  </g>
+  <text x="300" y="350" font-family="Arial, sans-serif" font-size="32" fill="white" text-anchor="middle" opacity="0.9">Herbal Detox Tea</text>
+</svg>

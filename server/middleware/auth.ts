@@ -119,3 +119,23 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return res.status(401).json({ error: "Unauthorized", code });
   }
 }
+
+/** Optional auth - populates req.user if logged in, but doesn't fail if not */
+export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
+  try {
+    const token = extractToken(req);
+    if (!token) {
+      return next(); // No token, that's fine
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    if (decoded && decoded.id) {
+      req.user = { id: decoded.id, email: decoded.email, username: decoded.username };
+    }
+
+    next();
+  } catch (e) {
+    // Invalid token, just continue without user
+    next();
+  }
+}

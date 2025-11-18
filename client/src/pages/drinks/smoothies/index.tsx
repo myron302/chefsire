@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'wouter';
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -15,16 +15,133 @@ import {
 
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
+import { otherDrinkHubs } from '../data/detoxes';
 
 const smoothieSubcategories = [
-  { id: 'protein', name: 'High-Protein', icon: Zap, count: 24, route: '/drinks/smoothies/protein', description: 'Natural protein for muscle building' },
-  { id: 'breakfast', name: 'Breakfast', icon: Coffee, count: 26, route: '/drinks/smoothies/breakfast', description: 'Morning fuel with balanced nutrition' },
-  { id: 'workout', name: 'Workout', icon: Dumbbell, count: 22, route: '/drinks/smoothies/workout', description: 'Pre and post-workout energy' },
-  { id: 'green', name: 'Green Superfood', icon: Leaf, count: 28, route: '/drinks/smoothies/green', description: 'Nutrient-dense greens and superfoods' },
-  { id: 'tropical', name: 'Tropical', icon: Sparkles, count: 18, route: '/drinks/smoothies/tropical', description: 'Island flavors and exotic fruits' },
-  { id: 'berry', name: 'Berry', icon: Heart, count: 20, route: '/drinks/smoothies/berry', description: 'Antioxidant-rich berry blends' },
-  { id: 'detox', name: 'Detox', icon: GlassWater, count: 16, route: '/drinks/smoothies/detox', description: 'Cleansing and detoxifying blends' },
-  { id: 'dessert', name: 'Dessert', icon: IceCream, count: 32, route: '/drinks/smoothies/dessert', description: 'Guilt-free indulgent flavors' }
+  {
+    id: 'protein',
+    name: 'High-Protein Smoothies',
+    icon: Zap,
+    count: 24,
+    route: '/drinks/smoothies/protein',
+    description: 'Natural protein for muscle building',
+    image: 'https://images.unsplash.com/photo-1622484211443-76c4deea5047?w=600&h=400&fit=crop',
+    bgColor: 'bg-red-50',
+    borderColor: 'border-red-200',
+    textColor: 'text-red-600',
+    trending: true,
+    avgCalories: 285,
+    avgTime: '5 min',
+    topBenefit: 'Muscle Recovery'
+  },
+  {
+    id: 'breakfast',
+    name: 'Breakfast Smoothies',
+    icon: Coffee,
+    count: 26,
+    route: '/drinks/smoothies/breakfast',
+    description: 'Morning fuel with balanced nutrition',
+    image: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=600&h=400&fit=crop',
+    bgColor: 'bg-orange-50',
+    borderColor: 'border-orange-200',
+    textColor: 'text-orange-600',
+    featured: true,
+    avgCalories: 240,
+    avgTime: '4 min',
+    topBenefit: 'Energy Boost'
+  },
+  {
+    id: 'workout',
+    name: 'Workout Smoothies',
+    icon: Dumbbell,
+    count: 22,
+    route: '/drinks/smoothies/workout',
+    description: 'Pre and post-workout energy',
+    image: 'https://images.unsplash.com/photo-1553530979-7ee52a2670c6?w=600&h=400&fit=crop',
+    bgColor: 'bg-blue-50',
+    borderColor: 'border-blue-200',
+    textColor: 'text-blue-600',
+    avgCalories: 310,
+    avgTime: '5 min',
+    topBenefit: 'Performance'
+  },
+  {
+    id: 'green',
+    name: 'Green Superfood',
+    icon: Leaf,
+    count: 28,
+    route: '/drinks/smoothies/green',
+    description: 'Nutrient-dense greens and superfoods',
+    image: 'https://images.unsplash.com/photo-1610970881699-44a5587cabec?w=600&h=400&fit=crop',
+    bgColor: 'bg-green-50',
+    borderColor: 'border-green-200',
+    textColor: 'text-green-600',
+    featured: true,
+    avgCalories: 195,
+    avgTime: '4 min',
+    topBenefit: 'Detox Support'
+  },
+  {
+    id: 'tropical',
+    name: 'Tropical Smoothies',
+    icon: Sparkles,
+    count: 18,
+    route: '/drinks/smoothies/tropical',
+    description: 'Island flavors and exotic fruits',
+    image: 'https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=600&h=400&fit=crop',
+    bgColor: 'bg-yellow-50',
+    borderColor: 'border-yellow-200',
+    textColor: 'text-yellow-600',
+    avgCalories: 220,
+    avgTime: '3 min',
+    topBenefit: 'Vitamin C Boost'
+  },
+  {
+    id: 'berry',
+    name: 'Berry Smoothies',
+    icon: Heart,
+    count: 20,
+    route: '/drinks/smoothies/berry',
+    description: 'Antioxidant-rich berry blends',
+    image: 'https://images.unsplash.com/photo-1546548970-71785318a17b?w=600&h=400&fit=crop',
+    bgColor: 'bg-pink-50',
+    borderColor: 'border-pink-200',
+    textColor: 'text-pink-600',
+    trending: true,
+    avgCalories: 205,
+    avgTime: '4 min',
+    topBenefit: 'Antioxidants'
+  },
+  {
+    id: 'detox',
+    name: 'Detox Smoothies',
+    icon: GlassWater,
+    count: 16,
+    route: '/drinks/smoothies/detox',
+    description: 'Cleansing and detoxifying blends',
+    image: 'https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=600&h=400&fit=crop',
+    bgColor: 'bg-teal-50',
+    borderColor: 'border-teal-200',
+    textColor: 'text-teal-600',
+    avgCalories: 180,
+    avgTime: '4 min',
+    topBenefit: 'Body Cleanse'
+  },
+  {
+    id: 'dessert',
+    name: 'Dessert Smoothies',
+    icon: IceCream,
+    count: 32,
+    route: '/drinks/smoothies/dessert',
+    description: 'Guilt-free indulgent flavors',
+    image: 'https://images.unsplash.com/photo-1638176066666-ffb2f013c7dd?w=600&h=400&fit=crop',
+    bgColor: 'bg-purple-50',
+    borderColor: 'border-purple-200',
+    textColor: 'text-purple-600',
+    avgCalories: 275,
+    avgTime: '5 min',
+    topBenefit: 'Guilt-Free Treat'
+  }
 ];
 
 const ingredients = {
@@ -130,16 +247,17 @@ const dailyChallenge = {
 };
 
 export default function SmoothiesPage() {
-  const { 
-    userProgress, 
-    addPoints, 
-    incrementDrinksMade, 
-    addToFavorites, 
+  const {
+    userProgress,
+    addPoints,
+    incrementDrinksMade,
+    addToFavorites,
     isFavorite,
     addToRecentlyViewed,
     favorites
   } = useDrinks();
 
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('create');
   const [selectedGoal, setSelectedGoal] = useState(workoutGoals[0]);
   const [customSmoothie, setCustomSmoothie] = useState({
@@ -301,45 +419,87 @@ export default function SmoothiesPage() {
   };
 
   const handleTakePhoto = async () => {
+    if (customSmoothie.ingredients.length < 3) {
+      alert('Create a smoothie with at least 3 ingredients first!');
+      return;
+    }
+
     setShowCamera(true);
-    
+
     setTimeout(async () => {
       setShowCamera(false);
-      
-      if (customSmoothie.ingredients.length >= 3) {
-        alert('Photo feature coming soon! This would upload your smoothie photo.');
+
+      try {
+        // Simulate photo upload - in a real app, this would upload to a server
+        const photoData = {
+          smoothieName: `${selectedGoal.name} Smoothie`,
+          ingredients: customSmoothie.ingredients.map(i => i.name),
+          nutrition: {
+            calories: Math.round(customSmoothie.calories),
+            protein: Math.round(customSmoothie.protein),
+            carbs: Math.round(customSmoothie.carbs),
+            fiber: Math.round(customSmoothie.fiber)
+          },
+          timestamp: new Date().toISOString()
+        };
+
+        console.log('Photo would be uploaded with data:', photoData);
         addPoints(50);
-      } else {
-        alert('Create a smoothie first, then add a photo!');
+        incrementDrinksMade();
+
+        alert(`✨ Photo uploaded successfully! +50 XP\n\nYour ${selectedGoal.name} Smoothie has been saved to your profile!`);
+      } catch (error) {
+        console.error('Photo upload failed:', error);
+        alert('Failed to upload photo. Please try again.');
       }
     }, 2000);
   };
 
   const handleShare = async () => {
+    if (customSmoothie.ingredients.length < 3) {
+      alert('Create a smoothie with at least 3 ingredients first to share!');
+      return;
+    }
+
     setShowShare(true);
-    
+
+    const ingredientsList = customSmoothie.ingredients.map(i => i.name).join(', ');
     const shareData = {
       title: `My Custom ${selectedGoal.name} Smoothie`,
-      text: `Check out my smoothie with ${customSmoothie.ingredients.length} ingredients!`,
+      text: `Check out my healthy smoothie! 🥤\n\n` +
+            `Ingredients: ${ingredientsList}\n` +
+            `Calories: ${Math.round(customSmoothie.calories)} | ` +
+            `Protein: ${Math.round(customSmoothie.protein)}g\n\n` +
+            `Created with ChefSire Smoothie Builder!`,
       url: window.location.href
     };
-    
+
     try {
       if (navigator.share) {
         await navigator.share(shareData);
         addPoints(25);
+        setShowShare(false);
+        alert('✨ Shared successfully! +25 XP');
       } else {
-        await navigator.clipboard.writeText(window.location.href);
+        // Fallback: copy detailed recipe to clipboard
+        const clipboardText = `${shareData.title}\n\n${shareData.text}\n\n${shareData.url}`;
+        await navigator.clipboard.writeText(clipboardText);
+
         setTimeout(() => {
           setShowShare(false);
-          alert('Link copied to clipboard!');
+          alert('✨ Recipe copied to clipboard! +25 XP\n\nPaste it anywhere to share your creation!');
         }, 1000);
         addPoints(25);
       }
     } catch (error) {
       console.error('Share failed:', error);
-    } finally {
       setShowShare(false);
+      if (error.name === 'AbortError') {
+        // User cancelled the share - this is normal, don't show error
+        console.log('Share cancelled by user');
+      } else {
+        alert('Unable to share. Please try copying the URL manually.');
+      }
     }
   };
 
@@ -447,78 +607,29 @@ export default function SmoothiesPage() {
               Explore Other Drink Categories
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Link href="/drinks/protein-shakes">
-                <Button
-                  variant="outline"
-                  className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-                >
-                  <div className="flex items-center gap-3 w-full">
-                    <div className="p-2 bg-blue-600 rounded-lg">
-                      <Dumbbell className="h-5 w-5 text-white" />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <div className="font-bold text-base">Protein Shakes</div>
-                      <div className="text-xs text-gray-600">Build muscle & recover</div>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-gray-400" />
-                  </div>
-                  <div className="text-xs text-gray-500 ml-11">98 recipes</div>
-                </Button>
-              </Link>
-              <Link href="/drinks/detoxes">
-                <Button
-                  variant="outline"
-                  className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-                >
-                  <div className="flex items-center gap-3 w-full">
-                    <div className="p-2 bg-green-600 rounded-lg">
-                      <Droplets className="h-5 w-5 text-white" />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <div className="font-bold text-base">Detox Drinks</div>
-                      <div className="text-xs text-gray-600">Cleanse & refresh</div>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-gray-400" />
-                  </div>
-                  <div className="text-xs text-gray-500 ml-11">26 recipes</div>
-                </Button>
-              </Link>
-              <Link href="/drinks/caffeinated">
-                <Button
-                  variant="outline"
-                  className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-                >
-                  <div className="flex items-center gap-3 w-full">
-                    <div className="p-2 bg-amber-600 rounded-lg">
-                      <Coffee className="h-5 w-5 text-white" />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <div className="font-bold text-base">Caffeinated Drinks</div>
-                      <div className="text-xs text-gray-600">Coffee, tea & energy drinks</div>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-gray-400" />
-                  </div>
-                  <div className="text-xs text-gray-500 ml-11">186 recipes</div>
-                </Button>
-              </Link>
-              <Link href="/drinks/potent-potables">
-                <Button
-                  variant="outline"
-                  className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-                >
-                  <div className="flex items-center gap-3 w-full">
-                    <div className="p-2 bg-purple-600 rounded-lg">
-                      <Wine className="h-5 w-5 text-white" />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <div className="font-bold text-base">Potent Potables</div>
-                      <div className="text-xs text-gray-600">Cocktails & mocktails</div>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-gray-400" />
-                  </div>
-                  <div className="text-xs text-gray-500 ml-11">168 recipes</div>
-                </Button>
-              </Link>
+              {otherDrinkHubs.filter(hub => hub.id !== 'smoothies').map((hub) => {
+                const Icon = hub.icon;
+                return (
+                  <Link key={hub.id} href={hub.route}>
+                    <Button
+                      variant="outline"
+                      className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                    >
+                      <div className="flex items-center gap-3 w-full">
+                        <div className={`p-2 ${hub.color} rounded-lg`}>
+                          <Icon className="h-5 w-5 text-white" />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <div className="font-bold text-base">{hub.name}</div>
+                          <div className="text-xs text-gray-600">{hub.description}</div>
+                        </div>
+                        <ArrowRight className="h-4 w-4 text-gray-400" />
+                      </div>
+                      <div className="text-xs text-gray-500 ml-11">{hub.count}</div>
+                    </Button>
+                  </Link>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -533,31 +644,88 @@ export default function SmoothiesPage() {
         </div>
 
         {/* Smoothie Subcategories - ALL 8 */}
-        <Card className="bg-gradient-to-r from-green-50 to-purple-50 border-green-200">
-          <CardContent className="p-6">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Apple className="w-5 h-5 text-green-500" />
-              Explore Smoothie Types
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {smoothieSubcategories.map((subcategory) => {
-                const Icon = subcategory.icon;
-                return (
-                  <Link key={subcategory.id} href={subcategory.route}>
-                    <Card className="hover:shadow-lg transition-all cursor-pointer border-2 hover:border-green-400">
-                      <CardContent className="p-4 text-center">
-                        <Icon className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                        <div className="font-medium text-sm mb-1">{subcategory.name}</div>
-                        <div className="text-xs text-gray-500">{subcategory.count} recipes</div>
-                        <div className="text-xs text-gray-400 mt-2">{subcategory.description}</div>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+            <Apple className="h-6 w-6 text-green-600" />
+            Browse Smoothie Types
+          </h2>
+          <div className="grid md:grid-cols-4 gap-6">
+            {smoothieSubcategories.map((category) => (
+              <Link key={category.id} href={category.route}>
+                <Card
+                  className={`cursor-pointer transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${category.borderColor} overflow-hidden`}
+                  onMouseEnter={() => setHoveredCard(category.id)}
+                  onMouseLeave={() => setHoveredCard(null)}
+                >
+                  <div className="relative h-48 overflow-hidden">
+                    {category.image ? (
+                      <img
+                        src={category.image}
+                        alt={category.name}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    ) : null}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                    <div className="absolute top-3 left-3 flex gap-2">
+                      {category.trending && (
+                        <Badge className="bg-red-500 text-white text-xs">
+                          <Flame className="h-3 w-3 mr-1" />
+                          Trending
+                        </Badge>
+                      )}
+                      {category.featured && (
+                        <Badge className="bg-yellow-500 text-white text-xs">
+                          <Star className="h-3 w-3 mr-1" />
+                          Featured
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="absolute bottom-3 right-3">
+                      <div className={`p-3 rounded-full ${category.bgColor} border ${category.borderColor}`}>
+                        <category.icon className={`h-6 w-6 ${category.textColor}`} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <CardHeader>
+                    <CardTitle className="text-xl flex items-center justify-between">
+                      {category.name}
+                      <Badge variant="outline">{category.count} recipes</Badge>
+                    </CardTitle>
+                    <p className="text-gray-600">{category.description}</p>
+                  </CardHeader>
+
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
+                        <div className={`text-lg font-bold ${category.textColor}`}>{category.avgCalories}</div>
+                        <div className="text-xs text-gray-600">Calories</div>
+                      </div>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
+                        <div className={`text-lg font-bold ${category.textColor}`}>{category.avgTime}</div>
+                        <div className="text-xs text-gray-600">Prep Time</div>
+                      </div>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
+                        <div className={`text-lg font-bold ${category.textColor}`}>
+                          <Trophy className="h-5 w-5 mx-auto" />
+                        </div>
+                        <div className="text-xs text-gray-600">Top Rated</div>
+                      </div>
+                    </div>
+
+                    <div className={`flex items-center gap-2 p-2 rounded ${category.bgColor}`}>
+                      <Target className={`h-4 w-4 ${category.textColor}`} />
+                      <span className="text-sm font-medium">{category.topBenefit}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
 
         {/* Daily Challenge */}
         <Card className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0">

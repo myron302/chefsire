@@ -855,64 +855,48 @@ export default function ScotchIrishWhiskeyPage() {
             </CardContent>
           </Card>
 
-          {/* Filters */}
-          <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold mb-2 text-gray-700">Categories</h3>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant={selectedCategory === null ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSelectedCategory(null)}
-                    className={selectedCategory === null ? "bg-orange-700" : ""}
-                  >
-                    All
-                  </Button>
-                  {categories.map(category => (
-                    <Button
-                      key={category}
-                      variant={selectedCategory === category ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setSelectedCategory(category)}
-                      className={selectedCategory === category ? "bg-orange-700" : ""}
-                    >
-                      {category}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold mb-2 text-gray-700">Difficulty</h3>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant={selectedDifficulty === null ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSelectedDifficulty(null)}
-                    className={selectedDifficulty === null ? "bg-orange-700" : ""}
-                  >
-                    All Levels
-                  </Button>
-                  {difficulties.map(diff => (
-                    <Button
-                      key={diff}
-                      variant={selectedDifficulty === diff ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setSelectedDifficulty(diff)}
-                      className={selectedDifficulty === diff ? "bg-orange-700" : ""}
-                    >
-                      {diff}
-                    </Button>
-                  ))}
-                </div>
+          {/* Filters and Sort */}
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="md:max-w-3xl md:flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Input
+                  placeholder="Search Scotch & Irish cocktails..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 h-12 text-base"
+                />
               </div>
             </div>
-          </div>
-
-          {/* Results Count */}
-          <div className="mb-4 text-gray-600">
-            Showing {filteredCocktails.length} of {scotchIrishCocktails.length} cocktails
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+              <select
+                value={selectedCategory || 'all'}
+                onChange={(e) => setSelectedCategory(e.target.value === 'all' ? null : e.target.value)}
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-[240px]"
+              >
+                <option value="all">All Categories</option>
+                {categories.map(category => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
+              <select
+                value={selectedDifficulty || 'all'}
+                onChange={(e) => setSelectedDifficulty(e.target.value === 'all' ? null : e.target.value)}
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-[240px]"
+              >
+                <option value="all">All Levels</option>
+                {difficulties.map(diff => (
+                  <option key={diff} value={diff}>{diff}</option>
+                ))}
+              </select>
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+              >
+                <Target className="w-4 h-4 mr-2" />
+                More Filters
+              </Button>
+            </div>
           </div>
 
           {/* Cocktails Grid */}
@@ -922,62 +906,58 @@ export default function ScotchIrishWhiskeyPage() {
               const servings = servingsById[cocktail.id] ?? (cocktail.recipe?.servings || 1);
 
               return (
-                <Card 
-                  key={cocktail.id} 
-                  className="hover:shadow-lg transition-all duration-300 overflow-hidden group cursor-pointer"
+                <Card
+                  key={cocktail.id}
+                  className="hover:shadow-lg transition-all cursor-pointer bg-white border-amber-100 hover:border-amber-300"
                   onClick={() => handleCocktailClick(cocktail)}
                 >
-                  <div className="relative bg-gradient-to-br from-amber-100 to-orange-100 p-6 h-48 flex items-center justify-center">
-                    <Castle className="w-20 h-20 text-orange-700 group-hover:scale-110 transition-transform" />
-                    {cocktail.trending && (
-                      <Badge className="absolute top-3 left-3 bg-red-500">
-                        <TrendingUp className="w-3 h-3 mr-1" />
-                        Trending
-                      </Badge>
-                    )}
-                    {cocktail.iba_official && (
-                      <Badge className="absolute top-3 right-3 bg-blue-600">
-                        <Award className="w-3 h-3 mr-1" />
-                        IBA
-                      </Badge>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="absolute bottom-3 right-3 bg-white/80 hover:bg-white"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        addToFavorites({
-                          id: cocktail.id,
-                          name: cocktail.name,
-                          category: 'scotch-irish-whiskey',
-                          timestamp: Date.now()
-                        });
-                      }}
-                    >
-                      <Heart
-                        className={`w-5 h-5 ${
-                          isFavorite(cocktail.id)
-                            ? 'fill-red-500 text-red-500'
-                            : 'text-gray-600'
-                        }`}
-                      />
-                    </Button>
-                  </div>
-
                   <CardHeader>
                     <div className="flex items-start justify-between mb-2">
-                      <CardTitle className="text-xl">{cocktail.name}</CardTitle>
-                      <Badge variant="outline" className="ml-2">
-                        {cocktail.difficulty}
-                      </Badge>
+                      <CardTitle className="text-lg">{cocktail.name}</CardTitle>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          addToFavorites({
+                            id: cocktail.id,
+                            name: cocktail.name,
+                            category: 'Scotch & Irish Whiskey',
+                            timestamp: Date.now()
+                          });
+                        }}
+                      >
+                        <Heart className={`w-4 h-4 ${isFavorite(cocktail.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                      </Button>
                     </div>
-                    <p className="text-sm text-gray-600">{cocktail.description}</p>
+                    <div className="flex gap-2 mb-2">
+                      <Badge className="bg-amber-100 text-amber-700">{cocktail.category}</Badge>
+                      {cocktail.trending && (
+                        <Badge className="bg-red-500">
+                          <TrendingUp className="w-3 h-3 mr-1" />
+                          Trending
+                        </Badge>
+                      )}
+                      {cocktail.featured && (
+                        <Badge className="bg-amber-500">
+                          <GlassWater className="w-3 h-3 mr-1" />
+                          Featured
+                        </Badge>
+                      )}
+                      {cocktail.iba_official && (
+                        <Badge className="bg-blue-600">
+                          <Award className="w-3 h-3 mr-1" />
+                          IBA
+                        </Badge>
+                      )}
+                    </div>
                   </CardHeader>
 
-                  <CardContent className="space-y-4">
+                  <CardContent>
+                    <p className="text-sm text-gray-600 mb-4">{cocktail.description}</p>
+
                     {/* Key Info */}
-                    <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                    <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                       <div>
                         <div className="font-bold text-amber-600">{cocktail.abv}</div>
                         <div className="text-gray-500">ABV</div>

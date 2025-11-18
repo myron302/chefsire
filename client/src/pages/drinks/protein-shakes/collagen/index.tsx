@@ -757,7 +757,7 @@ export default function CollagenProteinPage() {
               <div className="bg-amber-100 p-3 rounded-lg">
                 <Zap className="h-6 w-6 text-amber-600" />
               </div>
-              <div className="flex-1">
+              <div className="md:max-w-3xl md:flex-1">
                 <h3 className="text-lg font-bold mb-2">About Leucine & Collagen Absorption</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
@@ -838,19 +838,19 @@ export default function CollagenProteinPage() {
             {/* Search and Filters */}
             <div className="flex flex-col md:flex-row gap-4 mb-6">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
                 <Input
                   placeholder="Search collagen proteins..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 h-12 text-base"
                 />
               </div>
-              
-              <div className="flex gap-2">
+
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
                 {/* Collagen Type Dropdown (includes Multi-Type) */}
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                <select
+                  className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                   value={selectedCollagenType}
                   onChange={(e) => setSelectedCollagenType(e.target.value)}
                 >
@@ -860,9 +860,9 @@ export default function CollagenProteinPage() {
                   <option value="Type III">Type III</option>
                   <option value="Multi">Multi-Type</option>
                 </select>
-                
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+
+                <select
+                  className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                   value={selectedSource}
                   onChange={(e) => setSelectedSource(e.target.value)}
                 >
@@ -872,9 +872,9 @@ export default function CollagenProteinPage() {
                   <option value="Chicken">Chicken</option>
                   <option value="Plant">Plant-Based</option>
                 </select>
-                
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+
+                <select
+                  className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                   value={selectedGoal}
                   onChange={(e) => setSelectedGoal(e.target.value)}
                 >
@@ -884,9 +884,9 @@ export default function CollagenProteinPage() {
                   <option value="Anti-Aging">Anti-Aging</option>
                   <option value="Beauty">Beauty</option>
                 </select>
-                
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+
+                <select
+                  className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
                 >
@@ -908,7 +908,7 @@ export default function CollagenProteinPage() {
                   <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <div className="flex-1">
+                        <div className="md:max-w-3xl md:flex-1">
                           <CardTitle className="text-lg mb-1">{shake.name}</CardTitle>
                           <p className="text-sm text-gray-600 mb-2">{shake.description}</p>
                         </div>

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
+  <defs>
+    <linearGradient id="waterGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#87ceeb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1e90ff;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="600" height="400" fill="url(#waterGrad)"/>
+  <g transform="translate(150, 80)">
+    <!-- Glass -->
+    <path d="M 100 80 L 120 240 L 180 240 L 200 80 Z" fill="#b0e0e6" opacity="0.5"/>
+    <ellipse cx="150" cy="80" rx="50" ry="15" fill="#87ceeb" opacity="0.6"/>
+    <ellipse cx="150" cy="240" rx="30" ry="10" fill="#4682b4" opacity="0.7"/>
+    <!-- Cucumber slices -->
+    <circle cx="140" cy="140" r="20" fill="#90ee90" opacity="0.7"/>
+    <circle cx="140" cy="140" r="15" fill="#98fb98" opacity="0.6"/>
+    <circle cx="160" cy="180" r="18" fill="#90ee90" opacity="0.7"/>
+    <circle cx="160" cy="180" r="13" fill="#98fb98" opacity="0.6"/>
+    <!-- Lemon slice -->
+    <circle cx="150" cy="210" r="22" fill="#fff44f" opacity="0.7"/>
+    <path d="M 150 188 L 150 232 M 128 210 L 172 210 M 135 195 L 165 225 M 135 225 L 165 195" stroke="#ffd700" stroke-width="2" opacity="0.6"/>
+  </g>
+  <text x="300" y="350" font-family="Arial, sans-serif" font-size="32" fill="white" text-anchor="middle" opacity="0.9">Infused Detox Water</text>
+</svg>

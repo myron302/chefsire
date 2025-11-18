@@ -301,15 +301,15 @@ const Marketplace = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Marketplace</h1>
-              <p className="text-gray-600">Discover unique ingredients and cooking tools from fellow chefs</p>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+            <div className="flex-1">
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Marketplace</h1>
+              <p className="text-gray-600 text-sm md:text-base">Discover unique ingredients and cooking tools from fellow chefs</p>
             </div>
             <div className="flex space-x-3">
               <button
                 onClick={handleStartSelling}
-                className="bg-orange-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors flex items-center"
+                className="bg-orange-500 text-white px-4 md:px-6 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors flex items-center text-sm md:text-base whitespace-nowrap"
               >
                 <Store className="w-4 h-4 mr-2" />
                 Start Selling
@@ -368,7 +368,7 @@ const Marketplace = () => {
           </div>
 
           {/* Search + Filters */}
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
+          <div className="flex flex-col sm:flex-row gap-3 mb-6">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
               <input
@@ -376,34 +376,36 @@ const Marketplace = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search for ingredients, tools, or sellers..."
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm md:text-base"
               />
             </div>
-            <button className="px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center">
+            <button className="w-full sm:w-auto px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center whitespace-nowrap">
               <Filter className="w-4 h-4 mr-2" />
               Filters
             </button>
           </div>
 
           {/* Categories */}
-          <div className="flex space-x-2 overflow-x-auto pb-2">
-            {categoryList.map((category) => (
-              <button
-                key={category.id}
-                onClick={() => setActiveCategory(category.id)}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-full whitespace-nowrap transition-colors ${
-                  activeCategory === category.id ? "bg-orange-500 text-white" : "bg-white text-gray-700 hover:bg-orange-50"
-                }`}
-              >
-                <category.icon className="w-4 h-4" />
-                <span className="text-sm font-medium">{category.name}</span>
-                {category.id !== "all" && categories[category.id] && (
-                  <span className="text-xs bg-black bg-opacity-20 rounded-full px-2 py-0.5">
-                    {categories[category.id]}
-                  </span>
-                )}
-              </button>
-            ))}
+          <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
+            <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide">
+              {categoryList.map((category) => (
+                <button
+                  key={category.id}
+                  onClick={() => setActiveCategory(category.id)}
+                  className={`flex items-center space-x-2 px-3 md:px-4 py-2 rounded-full whitespace-nowrap transition-colors text-sm flex-shrink-0 ${
+                    activeCategory === category.id ? "bg-orange-500 text-white" : "bg-white text-gray-700 hover:bg-orange-50"
+                  }`}
+                >
+                  <category.icon className="w-4 h-4 flex-shrink-0" />
+                  <span className="font-medium">{category.name}</span>
+                  {category.id !== "all" && categories[category.id] && (
+                    <span className="text-xs bg-black bg-opacity-20 rounded-full px-2 py-0.5">
+                      {categories[category.id]}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

@@ -912,45 +912,48 @@ export default function SeasonalCocktailsPage() {
           </div>
 
           {/* Filters and Sort */}
-          <div className="flex gap-4 mb-6 items-center flex-wrap">
-            <div className="flex-1 min-w-[200px]">
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="md:max-w-3xl md:flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <Input
                   placeholder="Search seasonal cocktails..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 h-12 text-base"
                 />
               </div>
             </div>
-            <select 
-              value={selectedTemperature}
-              onChange={(e) => setSelectedTemperature(e.target.value)}
-              className="px-4 py-2 border rounded-lg bg-white"
-            >
-              <option value="All">All Temperatures</option>
-              <option value="Hot">Hot</option>
-              <option value="Cold">Cold</option>
-              <option value="Frozen">Frozen</option>
-            </select>
-            <select 
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="px-4 py-2 border rounded-lg bg-white"
-            >
-              <option value="trending">Most Popular</option>
-              <option value="rating">Highest Rated</option>
-              <option value="calories-low">Lowest Calories</option>
-              <option value="cost-low">Most Budget-Friendly</option>
-              <option value="time-quick">Quickest Prep</option>
-            </select>
-            <Button 
-              variant="outline"
-              onClick={() => setSelectedSeason('All')}
-            >
-              View All Seasons
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+              <select
+                value={selectedTemperature}
+                onChange={(e) => setSelectedTemperature(e.target.value)}
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-[240px]"
+              >
+                <option value="All">All Temperatures</option>
+                <option value="Hot">Hot</option>
+                <option value="Cold">Cold</option>
+                <option value="Frozen">Frozen</option>
+              </select>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-[240px]"
+              >
+                <option value="trending">Most Popular</option>
+                <option value="rating">Highest Rated</option>
+                <option value="calories-low">Lowest Calories</option>
+                <option value="cost-low">Most Budget-Friendly</option>
+                <option value="time-quick">Quickest Prep</option>
+              </select>
+              <Button
+                variant="outline"
+                onClick={() => setSelectedSeason('All')}
+                className="w-full sm:w-auto"
+              >
+                View All Seasons
+              </Button>
+            </div>
           </div>
 
           {/* Cocktails Grid */}
@@ -1170,7 +1173,7 @@ export default function SeasonalCocktailsPage() {
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
                       <Button 
                         className="flex-1 bg-purple-600 hover:bg-purple-700"
                         onClick={(e) => {

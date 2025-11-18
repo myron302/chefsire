@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Link } from 'wouter';
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -9,11 +9,12 @@ import {
   Sparkles, Clock, Users, Trophy, Heart, Star,
   Target, Flame, Droplets, Wine, ArrowRight,
   GlassWater, Martini, ChefHat, ArrowLeft, Home,
-  FlaskConical, Leaf, Apple, Zap, Coffee, Dumbbell
+  FlaskConical, Leaf, Apple, Zap, Coffee, Dumbbell, TrendingUp
 } from 'lucide-react';
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import { otherDrinkHubs } from '../data/detoxes';
 
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
@@ -30,21 +31,238 @@ const parseIngredient = (ingredient: string): Measured => {
 };
 
 const potentPotablesSubcategories = [
-  { id: 'vodka', name: 'Vodka', icon: Droplets, count: 12, route: '/drinks/potent-potables/vodka', color: 'from-cyan-500 to-blue-500', description: 'Clean & versatile' },
-  { id: 'gin', name: 'Gin', icon: Droplets, count: 10, route: '/drinks/potent-potables/gin', color: 'from-blue-400 to-teal-400', description: 'Botanical spirits' },
-  { id: 'whiskey-bourbon', name: 'Whiskey & Bourbon', icon: Wine, count: 12, route: '/drinks/potent-potables/whiskey-bourbon', color: 'from-amber-500 to-orange-500', description: 'Kentucky classics' },
-  { id: 'tequila-mezcal', name: 'Tequila & Mezcal', icon: Flame, count: 12, route: '/drinks/potent-potables/tequila-mezcal', color: 'from-lime-500 to-green-500', description: 'Agave spirits' },
-  { id: 'rum', name: 'Rum', icon: GlassWater, count: 12, route: '/drinks/potent-potables/rum', color: 'from-orange-500 to-red-500', description: 'Caribbean vibes' },
-  { id: 'cognac-brandy', name: 'Cognac & Brandy', icon: Wine, count: 12, route: '/drinks/potent-potables/cognac-brandy', color: 'from-orange-600 to-red-600', description: 'French elegance' },
-  { id: 'daiquiri', name: 'Daiquiri', icon: Droplets, count: 8, route: '/drinks/potent-potables/daiquiri', color: 'from-lime-400 to-cyan-400', description: 'Rum classics' },
-  { id: 'martinis', name: 'Martinis', icon: Martini, count: 8, route: '/drinks/potent-potables/martinis', color: 'from-purple-500 to-pink-500', description: 'Timeless classics' },
-  { id: 'scotch-irish-whiskey', name: 'Scotch & Irish', icon: Wine, count: 12, route: '/drinks/potent-potables/scotch-irish-whiskey', color: 'from-amber-600 to-yellow-700', description: 'UK whiskeys' },
-  { id: 'liqueurs', name: 'Liqueurs', icon: Wine, count: 15, route: '/drinks/potent-potables/liqueurs', color: 'from-purple-600 to-pink-600', description: 'Sweet spirits' },
-  { id: 'spritz', name: 'Spritz & Mimosas', icon: Sparkles, count: 10, route: '/drinks/potent-potables/spritz', color: 'from-yellow-400 to-orange-400', description: 'Bubbly brunch' },
-  { id: 'hot-drinks', name: 'Hot Drinks', icon: Coffee, count: 8, route: '/drinks/potent-potables/hot-drinks', color: 'from-red-700 to-amber-700', description: 'Warm cocktails' },
-  { id: 'cocktails', name: 'Classic Cocktails', icon: GlassWater, count: 15, route: '/drinks/potent-potables/cocktails', color: 'from-blue-500 to-indigo-500', description: 'Timeless recipes' },
-  { id: 'seasonal', name: 'Seasonal', icon: Sparkles, count: 10, route: '/drinks/potent-potables/seasonal', color: 'from-teal-500 to-cyan-500', description: 'Holiday specials' },
-  { id: 'mocktails', name: 'Mocktails', icon: Sparkles, count: 12, route: '/drinks/potent-potables/mocktails', color: 'from-green-500 to-emerald-500', description: 'Zero-proof' }
+  {
+    id: 'vodka',
+    name: 'Vodka',
+    icon: Droplets,
+    count: 12,
+    route: '/drinks/potent-potables/vodka',
+    description: 'Clean & versatile',
+    image: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=600&h=400&fit=crop',
+    bgColor: 'bg-cyan-50',
+    borderColor: 'border-cyan-200',
+    textColor: 'text-cyan-600',
+    trending: true,
+    avgCalories: 180,
+    avgTime: '3 min',
+    topBenefit: 'Versatile Base'
+  },
+  {
+    id: 'gin',
+    name: 'Gin',
+    icon: Droplets,
+    count: 10,
+    route: '/drinks/potent-potables/gin',
+    description: 'Botanical spirits',
+    image: 'https://images.unsplash.com/photo-1551538827-9c037cb4f32a?w=600&h=400&fit=crop',
+    bgColor: 'bg-teal-50',
+    borderColor: 'border-teal-200',
+    textColor: 'text-teal-600',
+    featured: true,
+    avgCalories: 170,
+    avgTime: '4 min',
+    topBenefit: 'Botanical Blend'
+  },
+  {
+    id: 'whiskey-bourbon',
+    name: 'Whiskey & Bourbon',
+    icon: Wine,
+    count: 12,
+    route: '/drinks/potent-potables/whiskey-bourbon',
+    description: 'Kentucky classics',
+    image: 'https://images.unsplash.com/photo-1527281400098-808424fc2815?w=600&h=400&fit=crop',
+    bgColor: 'bg-amber-50',
+    borderColor: 'border-amber-200',
+    textColor: 'text-amber-600',
+    trending: true,
+    avgCalories: 200,
+    avgTime: '5 min',
+    topBenefit: 'Classic Strength'
+  },
+  {
+    id: 'tequila-mezcal',
+    name: 'Tequila & Mezcal',
+    icon: Flame,
+    count: 12,
+    route: '/drinks/potent-potables/tequila-mezcal',
+    description: 'Agave spirits',
+    image: 'https://images.unsplash.com/photo-1551024601-bec78aea704b?w=600&h=400&fit=crop',
+    bgColor: 'bg-lime-50',
+    borderColor: 'border-lime-200',
+    textColor: 'text-lime-600',
+    avgCalories: 190,
+    avgTime: '3 min',
+    topBenefit: 'Agave Power'
+  },
+  {
+    id: 'rum',
+    name: 'Rum',
+    icon: GlassWater,
+    count: 12,
+    route: '/drinks/potent-potables/rum',
+    description: 'Caribbean vibes',
+    image: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=600&h=400&fit=crop',
+    bgColor: 'bg-orange-50',
+    borderColor: 'border-orange-200',
+    textColor: 'text-orange-600',
+    featured: true,
+    avgCalories: 210,
+    avgTime: '6 min',
+    topBenefit: 'Tropical Vibes'
+  },
+  {
+    id: 'cognac-brandy',
+    name: 'Cognac & Brandy',
+    icon: Wine,
+    count: 12,
+    route: '/drinks/potent-potables/cognac-brandy',
+    description: 'French elegance',
+    image: 'https://images.unsplash.com/photo-1569529465841-dfecdab7503b?w=600&h=400&fit=crop',
+    bgColor: 'bg-red-50',
+    borderColor: 'border-red-200',
+    textColor: 'text-red-600',
+    avgCalories: 220,
+    avgTime: '4 min',
+    topBenefit: 'Refined Taste'
+  },
+  {
+    id: 'daiquiri',
+    name: 'Daiquiri',
+    icon: Droplets,
+    count: 8,
+    route: '/drinks/potent-potables/daiquiri',
+    description: 'Rum classics',
+    image: 'https://images.unsplash.com/photo-1536935338788-846bb9981813?w=600&h=400&fit=crop',
+    bgColor: 'bg-cyan-50',
+    borderColor: 'border-cyan-200',
+    textColor: 'text-cyan-600',
+    avgCalories: 160,
+    avgTime: '3 min',
+    topBenefit: 'Refreshing Citrus'
+  },
+  {
+    id: 'martinis',
+    name: 'Martinis',
+    icon: Martini,
+    count: 8,
+    route: '/drinks/potent-potables/martinis',
+    description: 'Timeless classics',
+    image: 'https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=600&h=400&fit=crop',
+    bgColor: 'bg-purple-50',
+    borderColor: 'border-purple-200',
+    textColor: 'text-purple-600',
+    featured: true,
+    avgCalories: 150,
+    avgTime: '2 min',
+    topBenefit: 'Sophisticated'
+  },
+  {
+    id: 'scotch-irish-whiskey',
+    name: 'Scotch & Irish',
+    icon: Wine,
+    count: 12,
+    route: '/drinks/potent-potables/scotch-irish-whiskey',
+    description: 'UK whiskeys',
+    image: 'https://images.unsplash.com/photo-1582946526295-02e0d3a8fdd0?w=600&h=400&fit=crop',
+    bgColor: 'bg-yellow-50',
+    borderColor: 'border-yellow-200',
+    textColor: 'text-yellow-600',
+    avgCalories: 195,
+    avgTime: '4 min',
+    topBenefit: 'Smoky Notes'
+  },
+  {
+    id: 'liqueurs',
+    name: 'Liqueurs',
+    icon: Wine,
+    count: 15,
+    route: '/drinks/potent-potables/liqueurs',
+    description: 'Sweet spirits',
+    image: 'https://images.unsplash.com/photo-1560508801-bbaf5f39cb6a?w=600&h=400&fit=crop',
+    bgColor: 'bg-pink-50',
+    borderColor: 'border-pink-200',
+    textColor: 'text-pink-600',
+    avgCalories: 240,
+    avgTime: '5 min',
+    topBenefit: 'Sweet Indulgence'
+  },
+  {
+    id: 'spritz',
+    name: 'Spritz & Mimosas',
+    icon: Sparkles,
+    count: 10,
+    route: '/drinks/potent-potables/spritz',
+    description: 'Bubbly brunch',
+    image: 'https://images.unsplash.com/photo-1558346490-a72e53ae2d4f?w=600&h=400&fit=crop',
+    bgColor: 'bg-yellow-50',
+    borderColor: 'border-yellow-200',
+    textColor: 'text-yellow-600',
+    trending: true,
+    avgCalories: 140,
+    avgTime: '2 min',
+    topBenefit: 'Bubbly Fun'
+  },
+  {
+    id: 'hot-drinks',
+    name: 'Hot Drinks',
+    icon: Coffee,
+    count: 8,
+    route: '/drinks/potent-potables/hot-drinks',
+    description: 'Warm cocktails',
+    image: 'https://images.unsplash.com/photo-1574271143515-e7a6c1d6511c?w=600&h=400&fit=crop',
+    bgColor: 'bg-red-50',
+    borderColor: 'border-red-200',
+    textColor: 'text-red-600',
+    avgCalories: 230,
+    avgTime: '7 min',
+    topBenefit: 'Cozy Warmth'
+  },
+  {
+    id: 'cocktails',
+    name: 'Classic Cocktails',
+    icon: GlassWater,
+    count: 15,
+    route: '/drinks/potent-potables/cocktails',
+    description: 'Timeless recipes',
+    image: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=600&h=400&fit=crop',
+    bgColor: 'bg-indigo-50',
+    borderColor: 'border-indigo-200',
+    textColor: 'text-indigo-600',
+    avgCalories: 185,
+    avgTime: '4 min',
+    topBenefit: 'Time Honored'
+  },
+  {
+    id: 'seasonal',
+    name: 'Seasonal',
+    icon: Sparkles,
+    count: 10,
+    route: '/drinks/potent-potables/seasonal',
+    description: 'Holiday specials',
+    image: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=600&h=400&fit=crop',
+    bgColor: 'bg-teal-50',
+    borderColor: 'border-teal-200',
+    textColor: 'text-teal-600',
+    avgCalories: 175,
+    avgTime: '5 min',
+    topBenefit: 'Festive Spirit'
+  },
+  {
+    id: 'mocktails',
+    name: 'Mocktails',
+    icon: Sparkles,
+    count: 12,
+    route: '/drinks/potent-potables/mocktails',
+    description: 'Zero-proof',
+    image: 'https://images.unsplash.com/photo-1544145945-f90425340c7e?w=600&h=400&fit=crop',
+    bgColor: 'bg-emerald-50',
+    borderColor: 'border-emerald-200',
+    textColor: 'text-emerald-600',
+    featured: true,
+    avgCalories: 120,
+    avgTime: '4 min',
+    topBenefit: 'Guilt Free'
+  }
 ];
 
 const featuredCocktails = [
@@ -78,6 +296,7 @@ export default function PotentPotablesPage() {
   const { userProgress, addToFavorites, isFavorite, favorites, incrementDrinksMade, addPoints } = useDrinks();
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
   const cocktailsWithMeasurements = useMemo(() => {
     return featuredCocktails.map((c) => {
@@ -168,78 +387,29 @@ export default function PotentPotablesPage() {
                 Explore Other Drink Categories
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Link href="/drinks/smoothies">
-                  <Button
-                    variant="outline"
-                    className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-                  >
-                    <div className="flex items-center gap-3 w-full">
-                      <div className="p-2 bg-purple-600 rounded-lg">
-                        <Apple className="h-5 w-5 text-white" />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <div className="font-bold text-base">Smoothies</div>
-                        <div className="text-xs text-gray-600">Fruit & veggie blends</div>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <div className="text-xs text-gray-500 ml-11">132 recipes</div>
-                  </Button>
-                </Link>
-                <Link href="/drinks/protein-shakes">
-                  <Button
-                    variant="outline"
-                    className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-                  >
-                    <div className="flex items-center gap-3 w-full">
-                      <div className="p-2 bg-blue-600 rounded-lg">
-                        <Dumbbell className="h-5 w-5 text-white" />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <div className="font-bold text-base">Protein Shakes</div>
-                        <div className="text-xs text-gray-600">Build muscle & recover</div>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <div className="text-xs text-gray-500 ml-11">98 recipes</div>
-                  </Button>
-                </Link>
-                <Link href="/drinks/detoxes">
-                  <Button
-                    variant="outline"
-                    className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-                  >
-                    <div className="flex items-center gap-3 w-full">
-                      <div className="p-2 bg-green-600 rounded-lg">
-                        <Droplets className="h-5 w-5 text-white" />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <div className="font-bold text-base">Detox Drinks</div>
-                        <div className="text-xs text-gray-600">Cleanse & refresh</div>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <div className="text-xs text-gray-500 ml-11">26 recipes</div>
-                  </Button>
-                </Link>
-                <Link href="/drinks/caffeinated">
-                  <Button
-                    variant="outline"
-                    className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-                  >
-                    <div className="flex items-center gap-3 w-full">
-                      <div className="p-2 bg-amber-600 rounded-lg">
-                        <Coffee className="h-5 w-5 text-white" />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <div className="font-bold text-base">Caffeinated Drinks</div>
-                        <div className="text-xs text-gray-600">Coffee, tea & energy drinks</div>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <div className="text-xs text-gray-500 ml-11">186 recipes</div>
-                  </Button>
-                </Link>
+                {otherDrinkHubs.filter(hub => hub.id !== 'potent-potables').map((hub) => {
+                  const Icon = hub.icon;
+                  return (
+                    <Link key={hub.id} href={hub.route}>
+                      <Button
+                        variant="outline"
+                        className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                      >
+                        <div className="flex items-center gap-3 w-full">
+                          <div className={`p-2 ${hub.color} rounded-lg`}>
+                            <Icon className="h-5 w-5 text-white" />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <div className="font-bold text-base">{hub.name}</div>
+                            <div className="text-xs text-gray-600">{hub.description}</div>
+                          </div>
+                          <ArrowRight className="h-4 w-4 text-gray-400" />
+                        </div>
+                        <div className="text-xs text-gray-500 ml-11">{hub.count}</div>
+                      </Button>
+                    </Link>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -248,41 +418,104 @@ export default function PotentPotablesPage() {
             <UniversalSearch onSelectDrink={(drink) => console.log('Selected:', drink)} placeholder="Search all drinks or find cocktail inspiration..." className="w-full" />
           </div>
 
-          <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
-            <CardContent className="p-6">
-              <div className="text-center mb-6">
-                <h3 className="text-2xl font-bold mb-2 flex items-center justify-center gap-2">
-                  <GlassWater className="w-6 h-6 text-purple-500" />Explore Spirit Categories
-                </h3>
-                <p className="text-gray-600 max-w-2xl mx-auto">
-                  Dive into our comprehensive collection of cocktails organized by spirit type. Each category features classic recipes and modern twists.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 max-w-6xl mx-auto">
-                {potentPotablesSubcategories.map((subcategory) => {
-                  const Icon = subcategory.icon;
-                  return (
-                    <Link key={subcategory.id} href={subcategory.route}>
-                      <Card className="group cursor-pointer hover:shadow-xl transition-all hover:-translate-y-2 overflow-hidden border-2 h-full">
-                        <div className={`h-24 bg-gradient-to-br ${subcategory.color} p-4 flex items-center justify-center relative overflow-hidden`}>
-                          <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-all"></div>
-                          <Icon className="h-12 w-12 text-white group-hover:scale-125 transition-transform relative z-10" />
-                        </div>
-                        <CardContent className="p-3">
-                          <div className="font-semibold text-sm mb-1 group-hover:text-purple-600 transition-colors">{subcategory.name}</div>
-                          <div className="text-xs text-gray-600 mb-2">{subcategory.description}</div>
-                          <div className="flex items-center justify-between text-xs">
-                            <Badge variant="secondary" className="text-xs">{subcategory.count} recipes</Badge>
-                            <ArrowRight className="h-3 w-3 text-gray-400 group-hover:translate-x-1 transition-transform" />
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+              <GlassWater className="h-6 w-6 text-purple-600" />
+              Browse Spirit Categories
+            </h2>
+            <div className="grid md:grid-cols-5 gap-6">
+              {potentPotablesSubcategories.map((category) => {
+                const Icon = category.icon;
+                return (
+                  <Link key={category.id} href={category.route}>
+                    <Card
+                      className={`cursor-pointer transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${category.borderColor} overflow-hidden`}
+                      onMouseEnter={() => setHoveredCard(category.id)}
+                      onMouseLeave={() => setHoveredCard(null)}
+                    >
+                      <div className="relative h-48 overflow-hidden">
+                        {category.image && (
+                          <img
+                            src={category.image}
+                            alt={category.name}
+                            className={`w-full h-full object-cover transition-transform duration-300 ${
+                              hoveredCard === category.id ? 'scale-110' : 'scale-100'
+                            }`}
+                          />
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+
+                        {category.trending && (
+                          <div className="absolute top-3 left-3">
+                            <Badge className="bg-orange-500 text-white border-0">
+                              <TrendingUp className="h-3 w-3 mr-1" />
+                              Trending
+                            </Badge>
                           </div>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
+                        )}
+
+                        {category.featured && (
+                          <div className="absolute top-3 left-3">
+                            <Badge className="bg-purple-500 text-white border-0">
+                              <Star className="h-3 w-3 mr-1" />
+                              Featured
+                            </Badge>
+                          </div>
+                        )}
+
+                        <div className="absolute bottom-3 right-3">
+                          <div className={`p-2 bg-white/90 rounded-full`}>
+                            <Icon className={`h-5 w-5 ${category.textColor}`} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <CardHeader>
+                        <CardTitle className="text-xl flex items-center justify-between">
+                          {category.name}
+                          <Badge variant="outline">{category.count} recipes</Badge>
+                        </CardTitle>
+                        <p className="text-gray-600">{category.description}</p>
+                      </CardHeader>
+
+                      <CardContent>
+                        <div className="grid grid-cols-3 gap-3 mb-4">
+                          <div className="text-center">
+                            <div className="flex items-center justify-center gap-1 mb-1">
+                              <Flame className="h-4 w-4 text-orange-500" />
+                              <span className="text-sm font-bold">{category.avgCalories}</span>
+                            </div>
+                            <div className="text-xs text-gray-500">Calories</div>
+                          </div>
+
+                          <div className="text-center">
+                            <div className="flex items-center justify-center gap-1 mb-1">
+                              <Clock className="h-4 w-4 text-blue-500" />
+                              <span className="text-sm font-bold">{category.avgTime}</span>
+                            </div>
+                            <div className="text-xs text-gray-500">Prep Time</div>
+                          </div>
+
+                          <div className="text-center">
+                            <div className="flex items-center justify-center gap-1 mb-1">
+                              <Trophy className="h-4 w-4 text-yellow-500" />
+                              <span className="text-sm font-bold">4.9</span>
+                            </div>
+                            <div className="text-xs text-gray-500">Rating</div>
+                          </div>
+                        </div>
+
+                        <div className={`flex items-center gap-2 p-2 rounded ${category.bgColor}`}>
+                          <Target className={`h-4 w-4 ${category.textColor}`} />
+                          <span className="text-sm font-medium">{category.topBenefit}</span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
 
           {favorites.filter(f => f.category === 'potent-potables' || f.category === 'cocktails').length > 0 && (
             <Card className="bg-gradient-to-r from-purple-100 to-pink-100 border-purple-200">
