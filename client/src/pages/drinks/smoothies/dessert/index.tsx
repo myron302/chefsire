@@ -774,7 +774,7 @@ export default function DessertSmoothiesPage() {
                 key={tab.id}
                 variant="ghost"
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 ${activeTab === tab.id ? 'bg-white shadow-sm !text-gray-900 hover:!text-gray-900' : ''}`}
+                className={`flex-1 ${activeTab === tab.id ? 'bg-pink-500 shadow-sm !text-white hover:!text-white hover:bg-pink-600' : ''}`}
               >
                 <Icon className="h-4 w-4 mr-2" />
                 {tab.label}
