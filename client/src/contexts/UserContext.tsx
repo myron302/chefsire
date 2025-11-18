@@ -8,6 +8,10 @@ type User = {
   royalTitle?: string | null;
   avatar?: string | null;
   bio?: string | null;
+  // Marketplace/Store fields
+  subscription?: 'free' | 'starter' | 'professional' | 'enterprise' | 'premium_plus';
+  trialEndDate?: string;
+  productCount?: number;
 };
 
 type UserContextType = {
@@ -102,6 +106,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
         royalTitle: data.user.royalTitle ?? null,
         avatar: data.user.avatar ?? null,
         bio: data.user.bio ?? null,
+        subscription: data.user.subscription || data.user.subscriptionTier || 'free',
+        trialEndDate: data.user.trialEndDate || data.user.subscriptionEndsAt,
+        productCount: data.user.productCount || 0,
       };
 
       persist(cleanUser);
