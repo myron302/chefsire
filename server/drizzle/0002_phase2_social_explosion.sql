@@ -131,6 +131,34 @@ CREATE INDEX IF NOT EXISTS "event_leaderboard_points_idx" ON "event_leaderboard"
 CREATE UNIQUE INDEX IF NOT EXISTS "event_leaderboard_unique_idx" ON "event_leaderboard" ("event_id", "user_id");
 
 -- ============================================================================
+-- COMPETITIONS & ENTRIES: Base competition system
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS "competitions" (
+  "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  "title" text NOT NULL,
+  "description" text,
+  "start_date" timestamp NOT NULL,
+  "end_date" timestamp NOT NULL,
+  "status" text DEFAULT 'draft', -- draft, active, judging, completed
+  "created_by" varchar REFERENCES "users"("id"),
+  "created_at" timestamp DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS "competition_entries" (
+  "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  "competition_id" varchar NOT NULL REFERENCES "competitions"("id") ON DELETE CASCADE,
+  "user_id" varchar NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+  "recipe_id" varchar REFERENCES "recipes"("id"),
+  "title" text NOT NULL,
+  "description" text,
+  "image_url" text,
+  "submitted_at" timestamp DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS "competition_entries_competition_idx" ON "competition_entries" ("competition_id");
+CREATE INDEX IF NOT EXISTS "competition_entries_user_idx" ON "competition_entries" ("user_id");
+
+-- ============================================================================
 -- ENHANCED COMPETITIONS: Voting and judging system
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS "competition_votes" (
