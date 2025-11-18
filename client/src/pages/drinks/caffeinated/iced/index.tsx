@@ -797,7 +797,7 @@ export default function IcedCoffeePage() {
                   <Card key={drink.id} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <div className="md:max-w-2xl md:flex-1">
+                        <div className="md:max-w-3xl md:flex-1">
                           <CardTitle className="text-lg mb-1">{drink.name}</CardTitle>
                           <p className="text-sm text-gray-600 mb-2">{drink.description}</p>
                         </div>
@@ -1100,7 +1100,7 @@ export default function IcedCoffeePage() {
               <Card key={drink.id} className="hover:shadow-lg transition-shadow border-2 border-cyan-200">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
-                    <div className="md:max-w-2xl md:flex-1">
+                    <div className="md:max-w-3xl md:flex-1">
                       <CardTitle className="text-lg mb-1">{drink.name}</CardTitle>
                       <p className="text-sm text-gray-600 mb-2">{drink.description}</p>
                     </div>
