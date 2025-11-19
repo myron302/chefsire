@@ -553,10 +553,14 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
 
   // Load user's store
   useEffect(() => {
-    loadUserStore();
-  }, [user.id]);
+    if (user?.id) {
+      loadUserStore();
+    }
+  }, [user?.id]);
 
   const loadUserStore = async () => {
+    if (!user?.id) return;
+
     try {
       const response = await fetch(`/api/stores/user/${user.id}`);
       if (response.ok) {
@@ -648,8 +652,8 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
     }
   };
 
-  const canAddProduct = user.subscription !== "free" || user.productCount < 5;
-  const trialDaysLeft = user.trialEndDate ? Math.ceil((new Date(user.trialEndDate).getTime() - Date.now()) / 86400000) : 0;
+  const canAddProduct = user?.subscription !== "free" || (user?.productCount || 0) < 5;
+  const trialDaysLeft = user?.trialEndDate ? Math.ceil((new Date(user.trialEndDate).getTime() - Date.now()) / 86400000) : 0;
 
   if (showBuilder) return <StoreBuilder onBack={() => setShowBuilder(false)} />;
 
