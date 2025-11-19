@@ -1,6 +1,7 @@
 // server/routes/follows.ts
 import { Router } from "express";
 import { storage } from "../storage";
+import { notificationService } from "../services/notification.service";
 
 const r = Router();
 
@@ -15,8 +16,27 @@ r.post("/", async (req, res, next) => {
       return res.status(400).json({ message: "followerId and followingId are required" });
     }
     const follow = await storage.followUser(followerId, followingId);
+
+    // Notify the user being followed
+    const follower = await storage.getUser(followerId);
+    if (follower) {
+      notificationService.notifyUser(
+        followingId,
+        {
+          type: "follow",
+          title: `${follower.username} started following you!`,
+          message: "Check out their profile",
+          imageUrl: follower.avatar || undefined,
+          linkUrl: `/social/profile/${followerId}`,
+          metadata: {
+            followerId,
+          },
+        }
+      ).catch(err => console.error("Failed to notify user about new follower:", err));
+    }
+
     res.status(201).json(follow);
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -27,7 +47,7 @@ r.delete("/:followerId/:followingId", async (req, res, next) => {
     const ok = await storage.unfollowUser(req.params.followerId, req.params.followingId);
     if (!ok) return res.status(404).json({ message: "Follow relationship not found" });
     res.json({ message: "User unfollowed successfully" });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -38,7 +58,7 @@ r.get("/:followerId/:followingId", async (req, res, next) => {
   try {
     const isFollowing = await storage.isFollowing(req.params.followerId, req.params.followingId);
     res.json({ isFollowing });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -59,7 +79,7 @@ r.get("/user/:userId/followers", async (req, res, next) => {
       offset,
       limit,
     });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -80,7 +100,7 @@ r.get("/user/:userId/following", async (req, res, next) => {
       offset,
       limit,
     });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -106,7 +126,7 @@ r.get("/user/:userId/stats", async (req, res, next) => {
     }
 
     res.json({ followersCount, followingCount });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 export default r;
