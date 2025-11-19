@@ -678,7 +678,7 @@ export default function ColdBrewDrinksPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
             { id: 'drink-types', label: 'Drink Types', icon: Droplets },
@@ -690,9 +690,9 @@ export default function ColdBrewDrinksPage() {
             return (
               <Button
                 key={tab.id}
-                variant={activeTab === tab.id ? "default" : "ghost"}
+                variant="ghost"
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 ${activeTab === tab.id ? 'bg-white shadow-sm' : ''}`}
+                className={`flex-1 ${activeTab === tab.id ? 'bg-rose-500 shadow-sm !text-white hover:!text-white hover:bg-rose-600' : ''}`}
               >
                 <Icon className="h-4 w-4 mr-2" />
                 {tab.label}
@@ -708,18 +708,18 @@ export default function ColdBrewDrinksPage() {
               <CardContent className="p-4">
                 <div className="flex flex-col md:flex-row gap-4">
                   <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
                     <Input
                       placeholder="Search cold brew drinks..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 h-12 text-base"
                     />
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                     <select
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedDrinkType}
                       onChange={(e) => setSelectedDrinkType(e.target.value)}
                     >
@@ -730,7 +730,7 @@ export default function ColdBrewDrinksPage() {
                     </select>
 
                     <select
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedBenefit}
                       onChange={(e) => setSelectedBenefit(e.target.value)}
                     >
@@ -741,7 +741,7 @@ export default function ColdBrewDrinksPage() {
                     </select>
 
                     <select
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={maxCalories}
                       onChange={(e) => {
                         const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
@@ -765,7 +765,7 @@ export default function ColdBrewDrinksPage() {
                     </label>
 
                     <select
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
                     >
@@ -789,7 +789,7 @@ export default function ColdBrewDrinksPage() {
                   <Card key={drink.id} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <div className="flex-1">
+                        <div className="md:max-w-3xl md:flex-1">
                           <CardTitle className="text-lg mb-1">{drink.name}</CardTitle>
                           <p className="text-sm text-gray-600 mb-2">{drink.description}</p>
                         </div>
@@ -1098,7 +1098,7 @@ export default function ColdBrewDrinksPage() {
               <Card key={drink.id} className="hover:shadow-lg transition-shadow border-2 border-rose-200">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                    <div className="md:max-w-3xl md:flex-1">
                       <CardTitle className="text-lg mb-1">{drink.name}</CardTitle>
                       <p className="text-sm text-gray-600 mb-2">{drink.description}</p>
                     </div>

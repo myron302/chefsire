@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'wouter';
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -16,6 +16,7 @@ import {
 
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
+import { otherDrinkHubs } from '../data/detoxes';
 
 type Params = { params?: Record<string, string> };
 
@@ -116,12 +117,99 @@ const popularRecipes = [
 ];
 
 const proteinSubcategories = [
-  { id: 'whey', name: 'Whey Protein', icon: Zap, count: 6, route: '/drinks/protein-shakes/whey', description: 'Fast absorption, post-workout' },
-  { id: 'plant', name: 'Plant-Based', icon: Leaf, count: 6, route: '/drinks/protein-shakes/plant-based', description: 'Vegan, allergen-friendly' },
-  { id: 'casein', name: 'Casein', icon: Moon, count: 6, route: '/drinks/protein-shakes/casein', description: 'Slow release, nighttime' },
-  { id: 'collagen', name: 'Collagen', icon: Sparkles, count: 6, route: '/drinks/protein-shakes/collagen', description: 'Beauty & joint support' },
-  { id: 'egg', name: 'Egg Protein', icon: Target, count: 6, route: '/drinks/protein-shakes/egg', description: 'Complete amino, lactose-free' },
-  { id: 'beef', name: 'Beef Protein', icon: Flame, count: 6, route: '/drinks/protein-shakes/beef', description: 'Natural creatine, carnivore' }
+  {
+    id: 'whey',
+    name: 'Whey Protein',
+    icon: Zap,
+    count: 6,
+    route: '/drinks/protein-shakes/whey',
+    description: 'Fast absorption, post-workout',
+    image: 'https://images.unsplash.com/photo-1579722821273-0f6c7d44362f?w=600&h=400&fit=crop',
+    bgColor: 'bg-blue-50',
+    borderColor: 'border-blue-200',
+    textColor: 'text-blue-600',
+    trending: true,
+    avgCalories: 320,
+    avgTime: '3 min',
+    topBenefit: 'Muscle Recovery'
+  },
+  {
+    id: 'plant',
+    name: 'Plant-Based',
+    icon: Leaf,
+    count: 6,
+    route: '/drinks/protein-shakes/plant-based',
+    description: 'Vegan, allergen-friendly',
+    image: 'https://images.unsplash.com/photo-1610970881699-44a5587cabec?w=600&h=400&fit=crop',
+    bgColor: 'bg-green-50',
+    borderColor: 'border-green-200',
+    textColor: 'text-green-600',
+    featured: true,
+    avgCalories: 280,
+    avgTime: '4 min',
+    topBenefit: 'Plant Power'
+  },
+  {
+    id: 'casein',
+    name: 'Casein',
+    icon: Moon,
+    count: 6,
+    route: '/drinks/protein-shakes/casein',
+    description: 'Slow release, nighttime',
+    image: 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=600&h=400&fit=crop',
+    bgColor: 'bg-purple-50',
+    borderColor: 'border-purple-200',
+    textColor: 'text-purple-600',
+    avgCalories: 300,
+    avgTime: '3 min',
+    topBenefit: 'Night Recovery'
+  },
+  {
+    id: 'collagen',
+    name: 'Collagen',
+    icon: Sparkles,
+    count: 6,
+    route: '/drinks/protein-shakes/collagen',
+    description: 'Beauty & joint support',
+    image: 'https://images.unsplash.com/photo-1622484211443-76c4deea5047?w=600&h=400&fit=crop',
+    bgColor: 'bg-pink-50',
+    borderColor: 'border-pink-200',
+    textColor: 'text-pink-600',
+    trending: true,
+    avgCalories: 240,
+    avgTime: '2 min',
+    topBenefit: 'Skin & Joints'
+  },
+  {
+    id: 'egg',
+    name: 'Egg Protein',
+    icon: Target,
+    count: 6,
+    route: '/drinks/protein-shakes/egg',
+    description: 'Complete amino, lactose-free',
+    image: 'https://images.unsplash.com/photo-1612929633738-8fe44f7ec841?w=600&h=400&fit=crop',
+    bgColor: 'bg-yellow-50',
+    borderColor: 'border-yellow-200',
+    textColor: 'text-yellow-600',
+    avgCalories: 310,
+    avgTime: '3 min',
+    topBenefit: 'Complete Amino'
+  },
+  {
+    id: 'beef',
+    name: 'Beef Protein',
+    icon: Flame,
+    count: 6,
+    route: '/drinks/protein-shakes/beef',
+    description: 'Natural creatine, carnivore',
+    image: 'https://images.unsplash.com/photo-1623428187969-5da2dcea5ebf?w=600&h=400&fit=crop',
+    bgColor: 'bg-red-50',
+    borderColor: 'border-red-200',
+    textColor: 'text-red-600',
+    avgCalories: 350,
+    avgTime: '3 min',
+    topBenefit: 'Creatine Boost'
+  }
 ];
 
 export default function ProteinShakesPage({ params }: Params) {
@@ -144,6 +232,7 @@ export default function ProteinShakesPage({ params }: Params) {
   const [showNutrition, setShowNutrition] = useState(false);
   const [dailyProteinGoal] = useState(150);
   const [consumedProtein, setConsumedProtein] = useState(85);
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
   const type = params?.type?.replaceAll("-", " ");
   const recommendations = getRecommendations('protein-shakes');
@@ -284,84 +373,29 @@ export default function ProteinShakesPage({ params }: Params) {
             Explore Other Drink Categories
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Link href="/drinks/smoothies">
-              <Button
-                variant="outline"
-                className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-              >
-                <div className="flex items-center gap-3 w-full">
-                  <div className="p-2 bg-purple-600 rounded-lg">
-                    <Apple className="h-5 w-5 text-white" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <div className="font-bold text-base">Smoothies</div>
-                    <div className="text-xs text-gray-600">Fruit & veggie blends</div>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-gray-400" />
-                </div>
-                <div className="text-xs text-gray-500 ml-11">132 recipes</div>
-              </Button>
-            </Link>
-            <Link href="/drinks/detoxes">
-              <Button
-                variant="outline"
-                className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-              >
-                <div className="flex items-center gap-3 w-full">
-                  <div className="p-2 bg-green-600 rounded-lg">
-                    <Droplets className="h-5 w-5 text-white" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <div className="font-bold text-base">Detox Drinks</div>
-                    <div className="text-xs text-gray-600">Cleanse & refresh</div>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-gray-400" />
-                </div>
-                <div className="text-xs text-gray-500 ml-11">26 recipes</div>
-              </Button>
-            </Link>
-            <Link href="/drinks/caffeinated">
-              <Button
-                variant="outline"
-                className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-              >
-                <div className="flex items-center gap-3 w-full">
-                  <div className="p-2 bg-amber-600 rounded-lg">
-                    <Coffee className="h-5 w-5 text-white" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <div className="font-bold text-base">Caffeinated Drinks</div>
-                    <div className="text-xs text-gray-600">Coffee, tea & energy drinks</div>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-gray-400" />
-                </div>
-                <div className="text-xs text-gray-500 ml-11">186 recipes</div>
-              </Button>
-            </Link>
-            <Link href="/drinks/caffeinated">
-              <Button variant="outline" size="sm" className="gap-2">
-                <Flame className="w-4 h-4" />
-                Caffeinated
-              </Button>
-            </Link>
-            <Link href="/drinks/potent-potables">
-              <Button
-                variant="outline"
-                className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
-              >
-                <div className="flex items-center gap-3 w-full">
-                  <div className="p-2 bg-purple-600 rounded-lg">
-                    <Wine className="h-5 w-5 text-white" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <div className="font-bold text-base">Potent Potables</div>
-                    <div className="text-xs text-gray-600">Cocktails & mocktails</div>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-gray-400" />
-                </div>
-                <div className="text-xs text-gray-500 ml-11">168 recipes</div>
-              </Button>
-            </Link>
+            {otherDrinkHubs.filter(hub => hub.id !== 'protein-shakes').map((hub) => {
+              const Icon = hub.icon;
+              return (
+                <Link key={hub.id} href={hub.route}>
+                  <Button
+                    variant="outline"
+                    className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                  >
+                    <div className="flex items-center gap-3 w-full">
+                      <div className={`p-2 ${hub.color} rounded-lg`}>
+                        <Icon className="h-5 w-5 text-white" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className="font-bold text-base">{hub.name}</div>
+                        <div className="text-xs text-gray-600">{hub.description}</div>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <div className="text-xs text-gray-500 ml-11">{hub.count}</div>
+                  </Button>
+                </Link>
+              );
+            })}
           </div>
         </CardContent>
       </Card>
@@ -376,34 +410,104 @@ export default function ProteinShakesPage({ params }: Params) {
       </div>
 
       {/* Protein Subcategories Navigation */}
-      <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
-        <CardContent className="p-6">
-          <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-            <FlaskConical className="w-5 h-5 text-blue-500" />
-            Explore Protein Types
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-            {proteinSubcategories.map((subcategory) => {
-              const Icon = subcategory.icon;
-              return (
-                <Link key={subcategory.id} href={subcategory.route}>
-                  <Button
-                    variant="outline"
-                    className="h-auto p-4 flex flex-col items-center gap-2 hover:bg-blue-50 hover:border-blue-300 w-full"
-                  >
-                    <Icon className="h-6 w-6 text-blue-600" />
-                    <div className="text-center">
-                      <div className="font-medium text-sm">{subcategory.name}</div>
-                      <div className="text-xs text-gray-500">{subcategory.count} recipes</div>
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+          <FlaskConical className="h-6 w-6 text-blue-600" />
+          Browse Protein Types
+        </h2>
+        <div className="grid md:grid-cols-3 gap-6">
+          {proteinSubcategories.map((category) => {
+            const Icon = category.icon;
+            return (
+              <Link key={category.id} href={category.route}>
+                <Card
+                  className={`cursor-pointer transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${category.borderColor} overflow-hidden`}
+                  onMouseEnter={() => setHoveredCard(category.id)}
+                  onMouseLeave={() => setHoveredCard(null)}
+                >
+                  <div className="relative h-48 overflow-hidden">
+                    {category.image && (
+                      <img
+                        src={category.image}
+                        alt={category.name}
+                        className={`w-full h-full object-cover transition-transform duration-300 ${
+                          hoveredCard === category.id ? 'scale-110' : 'scale-100'
+                        }`}
+                      />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+
+                    {category.trending && (
+                      <div className="absolute top-3 left-3">
+                        <Badge className="bg-orange-500 text-white border-0">
+                          <TrendingUp className="h-3 w-3 mr-1" />
+                          Trending
+                        </Badge>
+                      </div>
+                    )}
+
+                    {category.featured && (
+                      <div className="absolute top-3 left-3">
+                        <Badge className="bg-purple-500 text-white border-0">
+                          <Star className="h-3 w-3 mr-1" />
+                          Featured
+                        </Badge>
+                      </div>
+                    )}
+
+                    <div className="absolute bottom-3 right-3">
+                      <div className={`p-2 bg-white/90 rounded-full`}>
+                        <Icon className={`h-5 w-5 ${category.textColor}`} />
+                      </div>
                     </div>
-                    <ArrowRight className="h-3 w-3 text-gray-400" />
-                  </Button>
-                </Link>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+                  </div>
+
+                  <CardHeader>
+                    <CardTitle className="text-xl flex items-center justify-between">
+                      {category.name}
+                      <Badge variant="outline">{category.count} recipes</Badge>
+                    </CardTitle>
+                    <p className="text-gray-600">{category.description}</p>
+                  </CardHeader>
+
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                      <div className="text-center">
+                        <div className="flex items-center justify-center gap-1 mb-1">
+                          <Flame className="h-4 w-4 text-orange-500" />
+                          <span className="text-sm font-bold">{category.avgCalories}</span>
+                        </div>
+                        <div className="text-xs text-gray-500">Calories</div>
+                      </div>
+
+                      <div className="text-center">
+                        <div className="flex items-center justify-center gap-1 mb-1">
+                          <Clock className="h-4 w-4 text-blue-500" />
+                          <span className="text-sm font-bold">{category.avgTime}</span>
+                        </div>
+                        <div className="text-xs text-gray-500">Prep Time</div>
+                      </div>
+
+                      <div className="text-center">
+                        <div className="flex items-center justify-center gap-1 mb-1">
+                          <Trophy className="h-4 w-4 text-yellow-500" />
+                          <span className="text-sm font-bold">4.8</span>
+                        </div>
+                        <div className="text-xs text-gray-500">Rating</div>
+                      </div>
+                    </div>
+
+                    <div className={`flex items-center gap-2 p-2 rounded ${category.bgColor}`}>
+                      <Target className={`h-4 w-4 ${category.textColor}`} />
+                      <span className="text-sm font-medium">{category.topBenefit}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Rest of the content remains the same... */}
       {favorites.filter(f => f.category === 'protein-shakes').length > 0 && (

@@ -3,6 +3,7 @@ import { db } from "../db";
 import { stores, users } from "../../shared/schema.js";
 import { eq } from "drizzle-orm";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
+import { requireAuth, optionalAuth } from "../middleware/auth";
 
 const router = Router();
 
@@ -14,7 +15,8 @@ const router = Router();
  * Requires Starter tier or higher for store builder access.
  */
 
-// GET /api/stores-crud/user/:userId - Get user's store (for owner)
+// GET /api/stores/user/:userId - Get user's store (for owner)
+// NOTE: This route must come BEFORE /:handle to avoid matching conflicts
 router.get("/user/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -29,14 +31,41 @@ router.get("/user/:userId", async (req, res) => {
   }
 });
 
-// POST /api/stores-crud - Create a store
-router.post("/", async (req, res) => {
+// GET /api/stores/:handle - Public view of a store (with optional auth)
+router.get("/:handle", optionalAuth, async (req, res) => {
+  try {
+    const { handle } = req.params;
+    const store = await db.query.stores.findFirst({
+      where: eq(stores.handle, handle),
+    });
+
+    if (!store) {
+      return res.status(404).json({ ok: false, error: "Store not found" });
+    }
+
+    // Check if the requesting user is the store owner
+    const isOwner = req.user && req.user.id === store.userId;
+
+    // Only show unpublished stores to the owner
+    if (!store.published && !isOwner) {
+      return res.status(404).json({ ok: false, error: "Store not available" });
+    }
+
+    res.json({ ok: true, store });
+  } catch (error) {
+    console.error("Error fetching store:", error);
+    res.status(500).json({ ok: false, error: "Failed to fetch store" });
+  }
+});
+
+// POST /api/stores - Create a store
+router.post("/", requireAuth, async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ ok: false, error: "Not authenticated" });
     }
 
-    // Check if user has access to store builder
+    // Get user's subscription tier from their user record
     const [user] = await db
       .select()
       .from(users)
@@ -47,25 +76,16 @@ router.post("/", async (req, res) => {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
 
-    const tierName = user.subscriptionTier || "free";
-    const tierInfo = SUBSCRIPTION_TIERS[tierName as keyof typeof SUBSCRIPTION_TIERS];
-
-    if (!tierInfo.limits.storeBuilder) {
-      return res.status(403).json({
-        ok: false,
-        error: "Store builder not available on Free tier",
-        message: "Upgrade to Starter tier or higher to create a custom store",
-        currentTier: tierName,
-        requiredFeature: "storeBuilder",
-        upgradeUrl: "/api/subscriptions/tiers"
-      });
-    }
+    // Determine subscription tier (free, starter, pro, enterprise)
+    // Check both subscriptionTier and subscription fields for backwards compatibility
+    const userTier = (user as any).subscription || user.subscriptionTier || "free";
 
     const { handle, name, bio } = req.body;
     if (!handle || !name) {
       return res.status(400).json({ ok: false, error: "Handle and name required" });
     }
 
+    // Create store with user's subscription tier
     const [newStore] = await db
       .insert(stores)
       .values({
@@ -73,6 +93,7 @@ router.post("/", async (req, res) => {
         handle,
         name,
         bio: bio || null,
+        subscriptionTier: userTier
       })
       .returning();
 
@@ -87,14 +108,14 @@ router.post("/", async (req, res) => {
 });
 
 // PATCH /api/stores-crud/:id - Update store details
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", requireAuth, async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ ok: false, error: "Not authenticated" });
     }
 
     const { id } = req.params;
-    const { name, bio, theme } = req.body;
+    const { name, bio, theme, customization, layout } = req.body;
 
     const existing = await db.query.stores.findFirst({
       where: eq(stores.id, id),
@@ -104,14 +125,25 @@ router.patch("/:id", async (req, res) => {
       return res.status(403).json({ ok: false, error: "Not authorized" });
     }
 
+    // Build update object - only include fields that are provided
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
+
+    if (name !== undefined) updateData.name = name;
+    if (bio !== undefined) updateData.bio = bio;
+    if (theme !== undefined) updateData.theme = theme;
+
+    // Support both customization and layout fields
+    if (customization !== undefined) {
+      updateData.layout = { ...existing.layout, ...customization };
+    } else if (layout !== undefined) {
+      updateData.layout = layout;
+    }
+
     const [updated] = await db
       .update(stores)
-      .set({
-        name: name ?? existing.name,
-        bio: bio ?? existing.bio,
-        theme: theme ?? existing.theme,
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(eq(stores.id, id))
       .returning();
 
@@ -123,7 +155,7 @@ router.patch("/:id", async (req, res) => {
 });
 
 // PATCH /api/stores-crud/:id/layout - Update store layout
-router.patch("/:id/layout", async (req, res) => {
+router.patch("/:id/layout", requireAuth, async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ ok: false, error: "Not authenticated" });
@@ -157,7 +189,7 @@ router.patch("/:id/layout", async (req, res) => {
 });
 
 // PATCH /api/stores-crud/:id/publish - Toggle published status
-router.patch("/:id/publish", async (req, res) => {
+router.patch("/:id/publish", requireAuth, async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ ok: false, error: "Not authenticated" });

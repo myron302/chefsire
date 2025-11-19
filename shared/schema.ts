@@ -148,10 +148,15 @@ export const products = pgTable(
     description: text("description"),
     price: decimal("price", { precision: 10, scale: 2 }).notNull(),
     category: text("category").notNull(),
+    productCategory: text("product_category").default("physical"), // physical, digital, cookbook, course, ingredient, tool
     images: jsonb("images").$type<string[]>().default(sql`'[]'::jsonb`),
     inventory: integer("inventory").default(0),
     shippingEnabled: boolean("shipping_enabled").default(true),
     localPickupEnabled: boolean("local_pickup_enabled").default(false),
+    inStoreOnly: boolean("in_store_only").default(false),
+    isDigital: boolean("is_digital").default(false),
+    digitalFileUrl: text("digital_file_url"), // For digital products like cookbooks
+    digitalFileName: text("digital_file_name"), // Original filename of the digital product
     pickupLocation: text("pickup_location"),
     pickupInstructions: text("pickup_instructions"),
     shippingCost: decimal("shipping_cost", { precision: 8, scale: 2 }),
@@ -164,6 +169,7 @@ export const products = pgTable(
   },
   (table) => ({
     categoryIdx: index("products_category_idx").on(table.category),
+    productCategoryIdx: index("products_product_category_idx").on(table.productCategory),
     sellerIdx: index("products_seller_idx").on(table.sellerId),
     pickupLocationIdx: index("products_pickup_location_idx").on(table.pickupLocation),
   })
@@ -180,6 +186,7 @@ export const orders = pgTable(
     totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
     platformFee: decimal("platform_fee", { precision: 8, scale: 2 }).notNull(),
     sellerAmount: decimal("seller_amount", { precision: 10, scale: 2 }).notNull(),
+    deliveryMethod: text("delivery_method").notNull().default("shipped"), // shipped, pickup, in_store, digital
     shippingAddress: jsonb("shipping_address").$type<{
       street: string;
       city: string;
@@ -404,6 +411,7 @@ export const clubPosts = pgTable(
     userId: varchar("user_id").references(() => users.id).notNull(),
     content: text("content").notNull(),
     imageUrl: text("image_url"),
+    recipeId: varchar("recipe_id").references(() => recipes.id, { onDelete: "set null" }),
     likesCount: integer("likes_count").default(0),
     commentsCount: integer("comments_count").default(0),
     createdAt: timestamp("created_at").defaultNow(),
@@ -422,6 +430,9 @@ export const challenges = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     goal: text("goal").notNull(),
+    requirements: jsonb("requirements").$type<any[]>().default(sql`'[]'::jsonb`),
+    rewards: jsonb("rewards").$type<any[]>().default(sql`'[]'::jsonb`),
+    tier: text("tier").default("bronze"),
     startDate: timestamp("start_date").notNull(),
     endDate: timestamp("end_date").notNull(),
     createdAt: timestamp("created_at").defaultNow(),
@@ -438,8 +449,13 @@ export const challengeProgress = pgTable(
     challengeId: varchar("challenge_id").references(() => challenges.id, { onDelete: "cascade" }).notNull(),
     userId: varchar("user_id").references(() => users.id).notNull(),
     progress: integer("progress").default(0),
+    currentProgress: integer("current_progress").default(0),
+    currentStreak: integer("current_streak").default(0),
+    completedSteps: jsonb("completed_steps").$type<any[]>().default(sql`'[]'::jsonb`),
     completed: boolean("completed").default(false),
+    isCompleted: boolean("is_completed").default(false),
     completedAt: timestamp("completed_at"),
+    startedAt: timestamp("started_at").defaultNow(),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
@@ -455,6 +471,7 @@ export const badges = pgTable(
     description: text("description"),
     icon: text("icon"),
     rarity: text("rarity").default("common"),
+    tier: text("tier").default("bronze"),
     createdAt: timestamp("created_at").defaultNow(),
   }
 );

@@ -13,6 +13,8 @@ import {
   BarChart3,
   ShoppingCart,
   AlertCircle,
+  Globe,
+  EyeOff,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useUser } from '@/contexts/UserContext';
 import { ProductManager } from '@/components/store/ProductManager';
+import { useToast } from '@/hooks/use-toast';
 
 interface DashboardStats {
   totalProducts: number;
@@ -31,6 +34,7 @@ interface DashboardStats {
 
 export default function StoreDashboard() {
   const { user } = useUser();
+  const { toast } = useToast();
   const [store, setStore] = useState<any>(null);
   const [stats, setStats] = useState<DashboardStats>({
     totalProducts: 0,
@@ -40,6 +44,7 @@ export default function StoreDashboard() {
     revenue: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     loadStoreData();
@@ -50,24 +55,79 @@ export default function StoreDashboard() {
 
     try {
       // Load store info
-      const storeRes = await fetch(`/api/stores/by-user/${user.id}`);
+      const storeRes = await fetch(`/api/stores/user/${user.id}`);
       if (storeRes.ok) {
         const storeData = await storeRes.json();
-        setStore(storeData);
+        setStore(storeData.store);
 
-        // Load stats (mock for now)
-        setStats({
-          totalProducts: 12,
-          publishedProducts: 10,
-          totalViews: 1247,
-          totalSales: 43,
-          revenue: 2156.50,
-        });
+        // Load actual product stats
+        const productsRes = await fetch(`/api/marketplace/sellers/${user.id}/products`);
+        if (productsRes.ok) {
+          const productsData = await productsRes.json();
+          const products = productsData.products || [];
+
+          setStats({
+            totalProducts: products.length,
+            publishedProducts: products.filter((p: any) => p.isActive).length,
+            totalViews: 0, // TODO: Implement view tracking
+            totalSales: 0, // TODO: Implement sales tracking
+            revenue: 0, // TODO: Implement revenue tracking
+          });
+        } else {
+          // If products endpoint fails, set zeros
+          setStats({
+            totalProducts: 0,
+            publishedProducts: 0,
+            totalViews: 0,
+            totalSales: 0,
+            revenue: 0,
+          });
+        }
       }
     } catch (error) {
       console.error('Failed to load store:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTogglePublish = async () => {
+    if (!store) return;
+
+    setPublishing(true);
+    try {
+      const response = await fetch(`/api/stores/${store.id}/publish`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ published: !store.published }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setStore(data.store);
+        toast({
+          title: data.store.published ? "Store Published" : "Store Unpublished",
+          description: data.store.published
+            ? "Your store is now visible to everyone!"
+            : "Your store is now hidden from the public",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to update store status",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error toggling publish:', error);
+      toast({
+        title: "Error",
+        description: "An error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -107,22 +167,22 @@ export default function StoreDashboard() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold">Store Dashboard</h1>
+              <h1 className="text-2xl md:text-3xl font-bold">Store Dashboard</h1>
               <p className="text-gray-600 mt-1">
                 Manage your store: {store.name}
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <Link href={`/store/${store.handle}`}>
-                <Button variant="outline">
+                <Button variant="outline" className="w-full sm:w-auto">
                   <Eye size={16} className="mr-2" />
                   View Store
                 </Button>
               </Link>
               <Link href="/store/settings">
-                <Button variant="outline">
+                <Button variant="outline" className="w-full sm:w-auto">
                   <Settings size={16} className="mr-2" />
                   Settings
                 </Button>
@@ -130,14 +190,33 @@ export default function StoreDashboard() {
             </div>
           </div>
 
-          {/* Status Badge */}
-          <div className="mt-4">
+          {/* Status Badge and Publish Toggle */}
+          <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <Badge
               variant={store.published ? 'default' : 'secondary'}
               className={store.published ? 'bg-green-600' : 'bg-gray-400'}
             >
               {store.published ? 'Published' : 'Unpublished'}
             </Badge>
+            <Button
+              onClick={handleTogglePublish}
+              disabled={publishing}
+              variant={store.published ? 'outline' : 'default'}
+              className={!store.published ? 'bg-green-600 hover:bg-green-700' : ''}
+              size="sm"
+            >
+              {store.published ? (
+                <>
+                  <EyeOff size={14} className="mr-2" />
+                  Unpublish Store
+                </>
+              ) : (
+                <>
+                  <Globe size={14} className="mr-2" />
+                  Publish Store
+                </>
+              )}
+            </Button>
           </div>
         </div>
 
@@ -220,14 +299,16 @@ export default function StoreDashboard() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>Product Management</CardTitle>
-                  <Button className="bg-orange-500 hover:bg-orange-600">
-                    <Plus size={16} className="mr-2" />
-                    Add Product
-                  </Button>
+                  <Link href="/store/products/new">
+                    <Button className="bg-orange-500 hover:bg-orange-600">
+                      <Plus size={16} className="mr-2" />
+                      {stats.totalProducts === 0 ? 'Add Your First Product' : 'Add Product'}
+                    </Button>
+                  </Link>
                 </div>
               </CardHeader>
               <CardContent>
-                <ProductManager storeId={store.id} />
+                <ProductManager sellerId={user.id} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -267,17 +348,25 @@ export default function StoreDashboard() {
 
         {/* Quick Actions */}
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-            <CardContent className="pt-6">
-              <Edit className="text-orange-500 mb-3" size={24} />
-              <h3 className="font-semibold mb-2">Customize Store</h3>
-              <p className="text-sm text-gray-600">
-                Update your store's appearance and branding
-              </p>
-            </CardContent>
-          </Card>
+          <Link href="/store/settings">
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+              <CardContent className="pt-6">
+                <Edit className="text-orange-500 mb-3" size={24} />
+                <h3 className="font-semibold mb-2">Customize Store</h3>
+                <p className="text-sm text-gray-600">
+                  Update your store's appearance and branding
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
 
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+          <Card
+            className="hover:shadow-lg transition-shadow cursor-pointer"
+            onClick={() => toast({
+              title: "Coming Soon",
+              description: "Customer insights and analytics will be available in a future update",
+            })}
+          >
             <CardContent className="pt-6">
               <Users className="text-blue-500 mb-3" size={24} />
               <h3 className="font-semibold mb-2">Customer Insights</h3>
@@ -287,7 +376,13 @@ export default function StoreDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+          <Card
+            className="hover:shadow-lg transition-shadow cursor-pointer"
+            onClick={() => toast({
+              title: "Coming Soon",
+              description: "Marketing tools will be available in a future update",
+            })}
+          >
             <CardContent className="pt-6">
               <AlertCircle className="text-purple-500 mb-3" size={24} />
               <h3 className="font-semibold mb-2">Marketing Tools</h3>

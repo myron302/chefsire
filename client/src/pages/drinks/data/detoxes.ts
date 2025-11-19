@@ -1,9 +1,9 @@
 // client/src/pages/drinks/data/detoxes.ts
-import { 
-  Droplets, Leaf, Heart, Sparkles, Clock, Users, Trophy, 
+import {
+  Droplets, Leaf, Heart, Sparkles, Clock, Users, Trophy,
   Star, Flame, Target, Award, TrendingUp, Activity, Zap,
   ArrowLeft, Apple, Sun, Moon, Wind, FlaskConical, Coffee,
-  GlassWater, Dumbbell, IceCream, ArrowRight, Waves
+  GlassWater, Dumbbell, IceCream, ArrowRight, Waves, Wine
 } from 'lucide-react';
 import { DetoxRecipe, DrinkCategory, DetoxSubcategory, WaterType, DetoxType } from '../types/detox';
 
@@ -15,7 +15,7 @@ export const otherDrinkHubs: DrinkCategory[] = [
     description: 'Nutrient-packed blends',
     icon: Apple,
     route: '/drinks/smoothies',
-    color: 'bg-green-500',
+    color: 'bg-purple-600',
     count: '847 recipes'
   },
   {
@@ -24,8 +24,17 @@ export const otherDrinkHubs: DrinkCategory[] = [
     description: 'Fitness-focused nutrition',
     icon: Dumbbell,
     route: '/drinks/protein-shakes',
-    color: 'bg-blue-500',
+    color: 'bg-blue-600',
     count: '523 recipes'
+  },
+  {
+    id: 'detoxes',
+    name: 'Detox Drinks',
+    description: 'Cleanse & refresh',
+    icon: Droplets,
+    route: '/drinks/detoxes',
+    color: 'bg-green-600',
+    count: '26 recipes'
   },
   {
     id: 'caffeinated',
@@ -39,20 +48,11 @@ export const otherDrinkHubs: DrinkCategory[] = [
   {
     id: 'potent-potables',
     name: 'Potent Potables',
-    description: 'Cocktails & beverages',
-    icon: GlassWater,
+    description: 'Cocktails & mocktails',
+    icon: Wine,
     route: '/drinks/potent-potables',
-    color: 'bg-purple-500',
+    color: 'bg-purple-600',
     count: '1247 recipes'
-  },
-  {
-    id: 'all-drinks',
-    name: 'All Drinks',
-    description: 'Browse everything',
-    icon: Sparkles,
-    route: '/drinks',
-    color: 'bg-pink-500',
-    count: 'All categories'
   }
 ];
 
@@ -63,7 +63,7 @@ export const detoxSubcategories: DetoxSubcategory[] = [
     name: 'Detox Juices',
     description: 'Cold-pressed juices for deep cleansing',
     icon: Apple,
-    image: 'https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=600&h=400&fit=crop',
+    image: '/images/detox-juice.svg',
     path: '/drinks/detoxes/juice',
     count: 8,
     bgColor: 'bg-orange-50',
@@ -79,7 +79,7 @@ export const detoxSubcategories: DetoxSubcategory[] = [
     name: 'Detox Teas',
     description: 'Herbal infusions for gentle detoxification',
     icon: Coffee,
-    image: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=600&h=400&fit=crop',
+    image: '/images/detox-tea.svg',
     path: '/drinks/detoxes/tea',
     count: 8,
     bgColor: 'bg-green-50',
@@ -95,7 +95,7 @@ export const detoxSubcategories: DetoxSubcategory[] = [
     name: 'Detox Infused Waters',
     description: 'Fruit and herb infused hydration',
     icon: Droplets,
-    image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=600&h=400&fit=crop',
+    image: '/images/detox-water.svg',
     path: '/drinks/detoxes/water',
     count: 10,
     bgColor: 'bg-blue-50',

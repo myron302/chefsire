@@ -107,14 +107,69 @@ export default function DailyQuests() {
     );
   }
 
-  // Hide component if there's an error (e.g., tables don't exist yet)
-  if (error) {
-    console.warn("Daily Quests error:", error);
-    return null;
-  }
+  // Use demo data if there's an error (e.g., tables don't exist yet)
+  const demoQuests: QuestProgress[] = error ? [
+    {
+      id: "demo-1",
+      questId: "quest-1",
+      userId: user?.id || "demo-user",
+      currentProgress: 0,
+      targetProgress: 3,
+      status: "active",
+      xpEarned: 0,
+      quest: {
+        id: "quest-1",
+        slug: "make-morning-drink",
+        title: "Morning Ritual",
+        description: "Make 3 drinks before noon",
+        questType: "make_drink",
+        targetValue: 3,
+        xpReward: 100,
+        difficulty: "easy",
+      },
+    },
+    {
+      id: "demo-2",
+      questId: "quest-2",
+      userId: user?.id || "demo-user",
+      currentProgress: 1,
+      targetProgress: 5,
+      status: "active",
+      xpEarned: 0,
+      quest: {
+        id: "quest-2",
+        slug: "try-new-recipe",
+        title: "Recipe Explorer",
+        description: "Try 5 new recipes this week",
+        questType: "try_category",
+        targetValue: 5,
+        xpReward: 150,
+        difficulty: "medium",
+      },
+    },
+    {
+      id: "demo-3",
+      questId: "quest-3",
+      userId: user?.id || "demo-user",
+      currentProgress: 2,
+      targetProgress: 2,
+      status: "completed",
+      xpEarned: 50,
+      quest: {
+        id: "quest-3",
+        slug: "social-butterfly",
+        title: "Social Butterfly",
+        description: "Comment on 2 posts from other chefs",
+        questType: "social_action",
+        targetValue: 2,
+        xpReward: 50,
+        difficulty: "easy",
+      },
+    },
+  ] : [];
 
   // Ensure quests is always an array
-  const questsArray = Array.isArray(quests) ? quests : [];
+  const questsArray = Array.isArray(quests) ? quests : (error ? demoQuests : []);
   const activeQuests = questsArray.filter((q) => q.status === "active");
   const completedToday = questsArray.filter((q) => q.status === "completed");
 

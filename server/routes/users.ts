@@ -78,6 +78,9 @@ r.put("/:id", requireAuth, async (req, res) => {
       avatar: z.string().optional(),
       specialty: z.string().optional(),
       isChef: z.boolean().optional(),
+      subscription: z.string().optional(),
+      subscriptionTier: z.string().optional(),
+      trialEndDate: z.string().optional().nullable(),
     });
     const body = schema.parse(req.body);
     const updated = await storage.updateUser(req.params.id, body as any);

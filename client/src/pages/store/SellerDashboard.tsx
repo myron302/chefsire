@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Package, DollarSign, TrendingUp, ShoppingCart, Crown, Plus, Settings } from "lucide-react";
+import { Package, DollarSign, TrendingUp, ShoppingCart, Crown, Plus, Settings, Palette, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/contexts/UserContext";
+import ThemeSelector from "@/components/store/ThemeSelector";
+import StoreCustomization from "@/components/store/StoreCustomization";
 
 export default function SellerDashboard() {
   const { user } = useUser();
@@ -11,6 +14,8 @@ export default function SellerDashboard() {
   const [sales, setSales] = useState<any[]>([]);
   const [tier, setTier] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedTheme, setSelectedTheme] = useState("modern");
+  const [store, setStore] = useState<any>(null);
 
   useEffect(() => {
     if (user?.id) {
@@ -21,6 +26,16 @@ export default function SellerDashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
+      // Fetch store info
+      const storeRes = await fetch(`/api/stores/user/${user!.id}`, {
+        credentials: "include"
+      });
+      if (storeRes.ok) {
+        const data = await storeRes.json();
+        setStore(data.store);
+        setSelectedTheme(data.store?.theme || "modern");
+      }
+
       // Fetch seller analytics
       const statsRes = await fetch(`/api/marketplace/sellers/${user!.id}/analytics`, {
         credentials: "include"
@@ -76,6 +91,56 @@ export default function SellerDashboard() {
     }
   };
 
+  const handleThemeChange = async (themeId: string) => {
+    setSelectedTheme(themeId);
+
+    if (!store?.id) return;
+
+    try {
+      const response = await fetch(`/api/stores/${store.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ theme: themeId })
+      });
+
+      if (response.ok) {
+        alert("Theme updated successfully!");
+      } else {
+        const error = await response.json();
+        alert(`Failed to update theme: ${error.error}`);
+      }
+    } catch (error) {
+      console.error("Theme update error:", error);
+      alert("Failed to update theme");
+    }
+  };
+
+  const handleCustomizationUpdate = async (updates: any) => {
+    if (!store?.id) return;
+
+    try {
+      const response = await fetch(`/api/stores/${store.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(updates)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setStore(data.store);
+        alert("Customization saved successfully!");
+      } else {
+        const error = await response.json();
+        alert(`Failed to save: ${error.error}`);
+      }
+    } catch (error) {
+      console.error("Save error:", error);
+      alert("Failed to save customization");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -95,9 +160,61 @@ export default function SellerDashboard() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Seller Dashboard</h1>
-          <p className="text-gray-600">Manage your products and track your sales</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Store Settings & Dashboard</h1>
+          <p className="text-gray-600">Manage your subscription, customize your store, and track performance</p>
         </div>
+
+        <Tabs defaultValue="customize" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="customize">
+              <Sparkles className="h-4 w-4 mr-2" />
+              Customize
+            </TabsTrigger>
+            <TabsTrigger value="theme">
+              <Palette className="h-4 w-4 mr-2" />
+              Theme
+            </TabsTrigger>
+            <TabsTrigger value="subscription">
+              <Crown className="h-4 w-4 mr-2" />
+              Subscription
+            </TabsTrigger>
+            <TabsTrigger value="analytics">
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Analytics
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Customize Tab - NEW! */}
+          <TabsContent value="customize" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Store Customization</CardTitle>
+                <CardDescription>Make your store unique with custom branding, sections, and layouts</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <StoreCustomization store={store} onUpdate={handleCustomizationUpdate} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Theme Tab */}
+          <TabsContent value="theme" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Store Theme</CardTitle>
+                <CardDescription>Choose a pre-designed theme for your store</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ThemeSelector
+                  selectedTheme={selectedTheme}
+                  onSelectTheme={handleThemeChange}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Subscription Tab */}
+          <TabsContent value="subscription"  className="space-y-6">
 
         {/* Subscription Tier Card */}
         <Card className="mb-8 border-2 border-orange-200 bg-gradient-to-r from-orange-50 to-red-50">
@@ -144,69 +261,6 @@ export default function SellerDashboard() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Products</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.totalProducts || 0}</div>
-              <p className="text-xs text-muted-foreground">
-                {stats?.activeProducts || 0} active
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
-              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.totalSales || 0}</div>
-              <p className="text-xs text-muted-foreground">All time</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Monthly Revenue</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                ${parseFloat(stats?.monthlyRevenue || 0).toFixed(2)}
-              </div>
-              <p className="text-xs text-muted-foreground">This month</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Views</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.totalViews || 0}</div>
-              <p className="text-xs text-muted-foreground">Product views</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-4 mb-8">
-          <Button className="bg-orange-500 hover:bg-orange-600" onClick={() => window.location.href = "/store/products/new"}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Product
-          </Button>
-          <Button variant="outline" onClick={() => window.location.href = "/store/settings"}>
-            <Settings className="h-4 w-4 mr-2" />
-            Store Settings
-          </Button>
-        </div>
 
         {/* Recent Sales */}
         <Card>
@@ -256,6 +310,62 @@ export default function SellerDashboard() {
             )}
           </CardContent>
         </Card>
+          </TabsContent>
+
+          {/* Analytics Tab */}
+          <TabsContent value="analytics" className="space-y-6">
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Products</CardTitle>
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stats?.totalProducts || 0}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {stats?.activeProducts || 0} active
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
+                  <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stats?.totalSales || 0}</div>
+                  <p className="text-xs text-muted-foreground">All time</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Monthly Revenue</CardTitle>
+                  <DollarSign className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    ${parseFloat(stats?.monthlyRevenue || 0).toFixed(2)}
+                  </div>
+                  <p className="text-xs text-muted-foreground">This month</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Views</CardTitle>
+                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stats?.totalViews || 0}</div>
+                  <p className="text-xs text-muted-foreground">Product views</p>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

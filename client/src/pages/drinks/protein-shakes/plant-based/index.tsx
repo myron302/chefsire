@@ -773,32 +773,32 @@ export default function PlantBasedProteinPage() {
             {/* Filters */}
             <div className="flex flex-col md:flex-row gap-4 mb-6">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
                 <Input
                   placeholder="Search plant-based proteins..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 h-12 text-base"
                 />
               </div>
 
-              <div className="flex gap-2">
-                <select className="px-3 py-2 border border-gray-300 rounded-md text-sm" value={selectedProteinType} onChange={(e) => setSelectedProteinType(e.target.value)}>
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+                <select className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap" value={selectedProteinType} onChange={(e) => setSelectedProteinType(e.target.value)}>
                   <option value="">All Protein Types</option>
                   {proteinTypes.map(type => (<option key={type.id} value={type.id}>{type.name}</option>))}
                 </select>
-                <select className="px-3 py-2 border border-gray-300 rounded-md text-sm" value={selectedGoal} onChange={(e) => setSelectedGoal(e.target.value)}>
+                <select className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap" value={selectedGoal} onChange={(e) => setSelectedGoal(e.target.value)}>
                   <option value="">All Goals</option>
                   {fitnessGoals.map(goal => (<option key={goal.id} value={goal.name}>{goal.name}</option>))}
                 </select>
-                <select className="px-3 py-2 border border-gray-300 rounded-md text-sm" value={selectedAllergen} onChange={(e) => setSelectedAllergen(e.target.value)}>
+                <select className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap" value={selectedAllergen} onChange={(e) => setSelectedAllergen(e.target.value)}>
                   <option value="">All Allergen-Free</option>
                   <option value="Dairy">Dairy-Free</option>
                   <option value="Soy">Soy-Free</option>
                   <option value="Gluten">Gluten-Free</option>
                   <option value="Nuts">Nut-Free</option>
                 </select>
-                <select className="px-3 py-2 border border-gray-300 rounded-md text-sm" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
+                <select className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
                   <option value="rating">Sort by Rating</option>
                   <option value="protein">Sort by Protein</option>
                   <option value="price">Sort by Price</option>
@@ -817,7 +817,7 @@ export default function PlantBasedProteinPage() {
                   <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <div className="flex-1">
+                        <div className="md:max-w-3xl md:flex-1">
                           <CardTitle className="text-lg mb-1">{shake.name}</CardTitle>
                           <p className="text-sm text-gray-600 mb-2">{shake.description}</p>
                         </div>

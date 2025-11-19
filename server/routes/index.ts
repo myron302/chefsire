@@ -31,17 +31,35 @@ import storesRouter from "./stores-crud";
 // Square (subscriptions / checkout links)
 import squareRouter from "./stores";
 
+// Auth middleware
+import { requireAuth } from "../middleware/auth";
+
 // ⚡ Phase 1: Daily Addiction Features
 import notificationsRouter from "./notifications";
 import questsRouter from "./quests";
 import suggestionsRouter from "./suggestions";
 import remixesRouter from "./remixes";
+import leaderboardRouter from "./leaderboard";
+import achievementsRouter from "./achievements";
+import streaksRouter from "./streaks";
+
+// 🎉 Phase 2: Social Explosion Features
+import duetsRouter from "./duets";
+import eventsRouter from "./events";
+import cookTogetherRouter from "./cook-together";
+
+// 📊 Phase 3: Power User Features
+import analyticsRouter from "./analytics";
 
 // 💰 Marketplace & Monetization
 import subscriptionsRouter from "./subscriptions";
 import ordersRouter from "./orders";
-import paymentsRouter from "./payments";
-import payoutsRouter from "./payouts";
+// TEMPORARILY COMMENTED OUT - square package not installed
+// import paymentsRouter from "./payments";
+// import payoutsRouter from "./payouts";
+
+// File uploads
+import uploadRouter from "./upload";
 
 const r = Router();
 
@@ -110,12 +128,27 @@ r.use("/notifications", notificationsRouter);
 r.use("/quests", questsRouter);
 r.use("/suggestions", suggestionsRouter);
 r.use("/remixes", remixesRouter);
+r.use("/leaderboard", leaderboardRouter);
+r.use("/achievements", achievementsRouter);
+r.use("/streaks", streaksRouter);
+
+// 🎉 Phase 2: Social Explosion Features
+r.use("/duets", duetsRouter);
+r.use("/events", eventsRouter);
+r.use("/cook-together", cookTogetherRouter);
+
+// 📊 Phase 3: Power User Features
+r.use("/analytics", analyticsRouter);
 
 // 💰 Marketplace & Monetization
 r.use("/subscriptions", subscriptionsRouter);
 r.use("/orders", ordersRouter);
-r.use("/payments", paymentsRouter);
-r.use("/payouts", payoutsRouter);
+// TEMPORARILY COMMENTED OUT - square package not installed
+// r.use("/payments", paymentsRouter);
+// r.use("/payouts", payoutsRouter);
+
+// File uploads
+r.use("/upload", uploadRouter);
 
 // Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {
@@ -147,6 +180,13 @@ if (process.env.NODE_ENV !== "production") {
         "/quests/*",        // ⚡ Phase 1
         "/suggestions/*",   // ⚡ Phase 1
         "/remixes/*",       // ⚡ Phase 1
+        "/leaderboard/*",   // ⚡ Phase 1
+        "/achievements/*",  // ⚡ Phase 1
+        "/streaks/*",       // ⚡ Phase 1
+        "/duets/*",         // 🎉 Phase 2
+        "/events/*",        // 🎉 Phase 2
+        "/cook-together/*", // 🎉 Phase 2
+        "/analytics/*",     // 📊 Phase 3
         "/subscriptions/*", // 💰 Monetization
         "/orders/*",        // 💰 Monetization
         "/payments/*",      // 💰 Square payments

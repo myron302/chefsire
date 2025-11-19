@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useUser } from "@/contexts/UserContext";
+import { ProfileCompletion } from "@/components/ProfileCompletion";
 import {
   Image,
   ChefHat,
@@ -222,7 +223,7 @@ export default function Profile() {
 
   // Store (mock)
   const { data: storeData } = useQuery<{ store: Store | null }>({
-    queryKey: ["/api/stores/by-user", profileUserId],
+    queryKey: ["/api/stores/user", profileUserId],
     queryFn: async () => ({
       store: {
         id: "store-1",
@@ -474,6 +475,13 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {/* Profile Completion Prompt - only show on own profile */}
+      {isOwnProfile && (
+        <div className="mb-6">
+          <ProfileCompletion />
+        </div>
+      )}
 
       {/* Tabs */}
       <Tabs defaultValue="photos" className="w-full">

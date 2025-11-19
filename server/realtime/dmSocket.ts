@@ -1,12 +1,13 @@
 // server/realtime/dmSocket.ts
 import type { Server as HttpServer } from "http";
 import { Server } from "socket.io";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "../db";
 import {
   dmParticipants,
   dmMessages,
 } from "../../shared/schema.dm.ts";
+import { users, notifications } from "../../shared/schema";
 
 function userIdFromSocket(socket: any): string | null {
   return (socket.handshake.auth?.userId ||
@@ -106,6 +107,34 @@ export function attachDmRealtime(httpServer: HttpServer) {
             .update(dmParticipants)
             .set({ lastReadMessageId: msg.id, lastReadAt: new Date() })
             .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
+
+          // Get sender info
+          const [sender] = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, userId))
+            .limit(1);
+
+          // Create notifications for other participants
+          const otherParticipants = await db
+            .select()
+            .from(dmParticipants)
+            .where(and(eq(dmParticipants.threadId, threadId), ne(dmParticipants.userId, userId)));
+
+          for (const participant of otherParticipants) {
+            await db.insert(notifications).values({
+              userId: participant.userId,
+              type: "dm",
+              title: `New message from ${sender?.displayName || sender?.username || "Someone"}`,
+              message: text.substring(0, 100) + (text.length > 100 ? "..." : ""),
+              linkUrl: `/dm/${threadId}`,
+              metadata: {
+                threadId,
+                senderId: userId,
+                messageId: msg.id,
+              },
+            });
+          }
 
           // Broadcast to everyone in the room (including sender for confirm)
           ns.to(threadId).emit("message", { threadId, message: msg });

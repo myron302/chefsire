@@ -9,7 +9,10 @@ type User = {
   avatar?: string | null;
   bio?: string | null;
   // Marketplace/Store fields
-  subscription?: 'free' | 'starter' | 'professional' | 'enterprise' | 'premium_plus';
+  subscriptionTier?: string;
+  nutritionPremium?: boolean;
+  nutritionTrialEndsAt?: string;
+  subscription?: 'free' | 'starter' | 'professional' | 'enterprise' | 'premium_plus' | string;
   trialEndDate?: string;
   productCount?: number;
 };
@@ -106,6 +109,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
         royalTitle: data.user.royalTitle ?? null,
         avatar: data.user.avatar ?? null,
         bio: data.user.bio ?? null,
+        subscriptionTier: data.user.subscriptionTier,
+        nutritionPremium: data.user.nutritionPremium,
+        nutritionTrialEndsAt: data.user.nutritionTrialEndsAt,
         subscription: data.user.subscription || data.user.subscriptionTier || 'free',
         trialEndDate: data.user.trialEndDate || data.user.subscriptionEndsAt,
         productCount: data.user.productCount || 0,
@@ -179,13 +185,31 @@ export function UserProvider({ children }: { children: ReactNode }) {
     persist(null);
   };
 
-  const updateUser = (updates: Partial<User>) => {
+  const updateUser = async (updates: Partial<User>) => {
     setUser((prev) => {
       if (!prev) return prev;
       const merged = { ...prev, ...updates };
       localStorage.setItem("user", JSON.stringify(merged));
       return merged;
     });
+
+    // Persist to server
+    try {
+      if (user?.id) {
+        const response = await fetch(`/api/users/${user.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(updates),
+        });
+
+        if (!response.ok) {
+          console.error("Failed to update user on server:", await response.text());
+        }
+      }
+    } catch (error) {
+      console.error("Error updating user on server:", error);
+    }
   };
 
   return (

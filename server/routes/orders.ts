@@ -2,10 +2,11 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
-import { orders, products, users } from "../../shared/schema";
+import { orders, products, users, stores } from "../../shared/schema";
 import { eq, and, or, desc } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
+import { calculateSellerPayout, DeliveryMethod, ProductCategory } from "../lib/commissions";
 
 const router = Router();
 
@@ -21,6 +22,7 @@ router.post("/checkout", requireAuth, async (req, res) => {
     const schema = z.object({
       productId: z.string(),
       quantity: z.number().min(1).max(100),
+      deliveryMethod: z.enum(["shipped", "pickup", "in_store", "digital"]).default("shipped"),
       shippingAddress: z.object({
         street: z.string(),
         city: z.string(),
@@ -67,31 +69,37 @@ router.post("/checkout", requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: "Local pickup not available for this product" });
     }
 
-    // Get seller's subscription tier
-    const [seller] = await db
+    // Get seller's store to determine subscription tier
+    const [sellerStore] = await db
       .select()
-      .from(users)
-      .where(eq(users.id, product.sellerId))
+      .from(stores)
+      .where(eq(stores.userId, product.sellerId))
       .limit(1);
 
-    if (!seller) {
-      return res.status(404).json({ ok: false, error: "Seller not found" });
-    }
+    const sellerTier = (sellerStore as any)?.subscriptionTier || "free";
 
     // Calculate amounts
     const productPrice = parseFloat(product.price);
-    const shippingCost = body.fulfillmentMethod === "shipping" && product.shippingCost
+    const shippingCost = body.deliveryMethod === "shipped" && product.shippingCost
       ? parseFloat(product.shippingCost)
       : 0;
 
     const subtotal = productPrice * body.quantity;
     const totalAmount = subtotal + shippingCost;
 
-    // Calculate commission based on seller's tier
-    const tierName = (seller as any).subscriptionTier || "free";
-    const commissionRate = SUBSCRIPTION_TIERS[tierName as keyof typeof SUBSCRIPTION_TIERS].commission;
-    const platformFee = (subtotal * commissionRate) / 100;
-    const sellerAmount = subtotal - platformFee;
+    // Get product category for commission calculation
+    const productCategory = (product as any).productCategory || "physical";
+
+    // Calculate commission based on tier, delivery method, and product category
+    const { commission, payout } = calculateSellerPayout(
+      subtotal,
+      sellerTier,
+      body.deliveryMethod as DeliveryMethod,
+      productCategory as ProductCategory
+    );
+
+    const platformFee = commission;
+    const sellerAmount = payout;
 
     // Create order
     const [newOrder] = await db
@@ -104,6 +112,7 @@ router.post("/checkout", requireAuth, async (req, res) => {
         totalAmount: totalAmount.toFixed(2),
         platformFee: platformFee.toFixed(2),
         sellerAmount: sellerAmount.toFixed(2),
+        deliveryMethod: body.deliveryMethod,
         shippingAddress: body.shippingAddress || null,
         fulfillmentMethod: body.fulfillmentMethod,
         status: "pending"
@@ -138,14 +147,17 @@ router.post("/checkout", requireAuth, async (req, res) => {
         product: {
           name: product.name,
           price: product.price,
-          images: product.images
+          images: product.images,
+          productCategory
         },
         breakdown: {
           subtotal: subtotal.toFixed(2),
           shippingCost: shippingCost.toFixed(2),
           totalAmount: totalAmount.toFixed(2),
           platformFee: platformFee.toFixed(2),
-          commissionRate: `${commissionRate}%`,
+          commissionRate: `${((commission / subtotal) * 100).toFixed(1)}%`,
+          deliveryMethod: body.deliveryMethod,
+          sellerTier,
           sellerGets: sellerAmount.toFixed(2)
         }
       }

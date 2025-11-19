@@ -434,10 +434,10 @@ export default function VirginDrinksPage() {
                 
                 <div className="flex items-start gap-4">
                   <Sparkles className="w-16 h-16 text-emerald-600 flex-shrink-0" />
-                  <div className="flex-1">
+                  <div className="md:max-w-3xl md:flex-1">
                     <h2 className="text-3xl font-bold text-gray-900 mb-2">{selectedDrink.name}</h2>
                     <p className="text-gray-700 mb-3">{selectedDrink.description}</p>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                       <Badge className="bg-emerald-600">{selectedDrink.category}</Badge>
                       <Badge variant="outline">{selectedDrink.difficulty}</Badge>
                       {selectedDrink.vegan && (
@@ -532,7 +532,7 @@ export default function VirginDrinksPage() {
 
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-3">Flavor Profile</h3>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                     {selectedDrink.profile.map((flavor, index) => (
                       <Badge key={index} variant="secondary" className="text-sm">
                         {flavor}
@@ -657,62 +657,48 @@ export default function VirginDrinksPage() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold mb-2 text-gray-700">Categories</h3>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant={selectedCategory === null ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSelectedCategory(null)}
-                    className={selectedCategory === null ? "bg-emerald-600" : ""}
-                  >
-                    All
-                  </Button>
-                  {categories.map(category => (
-                    <Button
-                      key={category}
-                      variant={selectedCategory === category ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setSelectedCategory(category)}
-                      className={selectedCategory === category ? "bg-emerald-600" : ""}
-                    >
-                      {category}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold mb-2 text-gray-700">Difficulty</h3>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant={selectedDifficulty === null ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSelectedDifficulty(null)}
-                    className={selectedDifficulty === null ? "bg-emerald-600" : ""}
-                  >
-                    All Levels
-                  </Button>
-                  {difficulties.map(diff => (
-                    <Button
-                      key={diff}
-                      variant={selectedDifficulty === diff ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setSelectedDifficulty(diff)}
-                      className={selectedDifficulty === diff ? "bg-emerald-600" : ""}
-                    >
-                      {diff}
-                    </Button>
-                  ))}
-                </div>
+          {/* Filters and Sort */}
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="md:max-w-3xl md:flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Input
+                  placeholder="Search virgin drinks..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 h-12 text-base"
+                />
               </div>
             </div>
-          </div>
-
-          <div className="mb-4 text-gray-600">
-            Showing {filteredDrinks.length} of {virginDrinks.length} drinks
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+              <select
+                value={selectedCategory || 'all'}
+                onChange={(e) => setSelectedCategory(e.target.value === 'all' ? null : e.target.value)}
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-[240px]"
+              >
+                <option value="all">All Categories</option>
+                {categories.map(category => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
+              <select
+                value={selectedDifficulty || 'all'}
+                onChange={(e) => setSelectedDifficulty(e.target.value === 'all' ? null : e.target.value)}
+                className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-[240px]"
+              >
+                <option value="all">All Levels</option>
+                {difficulties.map(diff => (
+                  <option key={diff} value={diff}>{diff}</option>
+                ))}
+              </select>
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+              >
+                <Target className="w-4 h-4 mr-2" />
+                More Filters
+              </Button>
+            </div>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -795,7 +781,7 @@ export default function VirginDrinksPage() {
                     <span className="text-sm text-gray-500">({drink.reviews.toLocaleString()})</span>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                     {drink.profile.slice(0, 3).map((tag, index) => (
                       <Badge key={index} variant="secondary" className="text-xs">
                         {tag}
@@ -803,7 +789,7 @@ export default function VirginDrinksPage() {
                     ))}
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                     {drink.vegan && (
                       <Badge className="bg-green-100 text-green-700 hover:bg-green-200">
                         <Leaf className="w-3 h-3 mr-1" />
@@ -985,7 +971,7 @@ export default function VirginDrinksPage() {
                   of traditional spirits. Brands like Seedlip, Ritual, and Lyre's offer botanical distillates, 
                   non-alcoholic gin alternatives, and spirit-free versions of whiskey, rum, and tequila.
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
                   <Badge variant="outline" className="text-xs">Seedlip (Botanical)</Badge>
                   <Badge variant="outline" className="text-xs">Ritual Zero Proof</Badge>
                   <Badge variant="outline" className="text-xs">Lyre's Non-Alcoholic</Badge>

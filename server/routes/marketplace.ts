@@ -11,8 +11,18 @@ const r = Router();
  * Marketplace CRUD + search + simple analytics
  */
 
+// Helper function to add deliveryMethods array to product objects
+function addDeliveryMethods(product: any) {
+  const deliveryMethods: string[] = [];
+  if (product.shippingEnabled) deliveryMethods.push('shipped');
+  if (product.localPickupEnabled) deliveryMethods.push('pickup');
+  if (product.inStoreOnly) deliveryMethods.push('in_store');
+  if (product.isDigital) deliveryMethods.push('digital_download');
+  return { ...product, deliveryMethods };
+}
+
 // Create product
-r.post("/marketplace/products", requireAuth, async (req, res) => {
+r.post("/products", requireAuth, async (req, res) => {
   try {
     const sellerId = req.user!.id; // Use authenticated user
 
@@ -25,44 +35,67 @@ r.post("/marketplace/products", requireAuth, async (req, res) => {
     const tierName = (seller as any).subscriptionTier || "free";
     const tierInfo = SUBSCRIPTION_TIERS[tierName as keyof typeof SUBSCRIPTION_TIERS];
 
-    // Check product limit
-    if (tierInfo.limits.maxProducts !== -1) {
-      const existingProducts = await storage.getUserProducts(sellerId, 0, tierInfo.limits.maxProducts + 1);
+    // Check product limit - get existing products for all tiers
+    const existingProducts = tierInfo.limits.maxProducts !== -1
+      ? await storage.getUserProducts(sellerId, 0, tierInfo.limits.maxProducts + 1)
+      : [];
 
-      if (existingProducts.length >= tierInfo.limits.maxProducts) {
-        return res.status(403).json({
-          message: `Product limit reached. ${tierInfo.name} tier allows ${tierInfo.limits.maxProducts} products.`,
-          error: "tier_limit_reached",
-          currentTier: tierName,
-          limit: tierInfo.limits.maxProducts,
-          current: existingProducts.length,
-          upgradeMessage: "Upgrade your subscription to list more products"
-        });
-      }
+    if (tierInfo.limits.maxProducts !== -1 && existingProducts.length >= tierInfo.limits.maxProducts) {
+      return res.status(403).json({
+        message: `Product limit reached. ${tierInfo.name} tier allows ${tierInfo.limits.maxProducts} products.`,
+        error: "tier_limit_reached",
+        currentTier: tierName,
+        limit: tierInfo.limits.maxProducts,
+        current: existingProducts.length,
+        upgradeMessage: "Upgrade your subscription to list more products"
+      });
     }
 
     const schema = z.object({
       name: z.string().min(1),
       description: z.string().optional(),
       price: z.string().regex(/^\d+(\.\d{1,2})?$/),
-      category: z.enum(["spices", "ingredients", "cookware", "cookbooks", "sauces", "other"]),
-      images: z.array(z.string().url()).default([]),
+      category: z.string().default("other"), // Accept any string, default to "other"
+      images: z.array(z.string().url()).max(5).default([]),
       inventory: z.number().min(0).default(0),
-      shippingEnabled: z.boolean().default(true),
-      localPickupEnabled: z.boolean().default(false),
+      shippingEnabled: z.boolean().optional(),
+      localPickupEnabled: z.boolean().optional(),
       pickupLocation: z.string().optional(),
       pickupInstructions: z.string().optional(),
       shippingCost: z.string().optional(),
       isExternal: z.boolean().default(false),
-      externalUrl: z.string().url().optional(),
+      externalUrl: z.string().url().optional().or(z.literal("")),
+      productCategory: z.enum(["physical", "digital", "cookbook", "course", "ingredient", "tool"]).default("physical"),
+      digitalFileUrl: z.string().optional().nullable(),
+      digitalFileName: z.string().optional().nullable(),
+      // Accept delivery methods array from frontend
+      deliveryMethods: z.array(z.string()).optional(),
+      isDigital: z.boolean().optional(),
+      inStoreOnly: z.boolean().optional(),
     });
 
     const body = schema.parse(req.body);
-    const product = await storage.createProduct({ ...body, sellerId } as any);
+
+    // Convert deliveryMethods array to individual boolean fields
+    const deliveryData: any = {};
+    if (body.deliveryMethods && body.deliveryMethods.length > 0) {
+      deliveryData.shippingEnabled = body.deliveryMethods.includes('shipped');
+      deliveryData.localPickupEnabled = body.deliveryMethods.includes('pickup');
+      deliveryData.inStoreOnly = body.deliveryMethods.includes('in_store') &&
+                                  !body.deliveryMethods.includes('shipped') &&
+                                  !body.deliveryMethods.includes('pickup');
+      deliveryData.isDigital = body.deliveryMethods.includes('digital_download');
+    }
+
+    const product = await storage.createProduct({
+      ...body,
+      ...deliveryData,
+      sellerId
+    } as any);
 
     res.status(201).json({
       message: "Product created successfully",
-      product,
+      product: addDeliveryMethods(product),
       tierInfo: {
         name: tierInfo.name,
         productsRemaining: tierInfo.limits.maxProducts === -1 ?
@@ -71,30 +104,31 @@ r.post("/marketplace/products", requireAuth, async (req, res) => {
       }
     });
   } catch (e: any) {
-    if (e?.issues) return res.status(400).json({ message: "Invalid product data", errors: e.issues });
-    console.error("marketplace/create error", e);
-    res.status(500).json({ message: "Failed to create product" });
+    if (e?.issues) return res.status(400).json({ error: "Invalid product data", details: e.issues });
+    console.error("marketplace/create error:", e);
+    console.error("Error details:", e.message, e.stack);
+    res.status(500).json({ error: e.message || "Failed to create product" });
   }
 });
 
 // Read product (with seller)
-r.get("/marketplace/products/:id", async (req, res) => {
+r.get("/products/:id", async (req, res) => {
   try {
     const prod = await storage.getProductWithSeller(req.params.id);
     if (!prod) return res.status(404).json({ message: "Product not found" });
-    res.json(prod);
+    res.json(addDeliveryMethods(prod));
   } catch (error) {
-    console.error("marketplace/get error", e);
+    console.error("marketplace/get error", error);
     res.status(500).json({ message: "Failed to fetch product" });
   }
 });
 
 // Search products
-r.get("/marketplace/products", async (req, res) => {
+r.get("/products", async (req, res) => {
   try {
     const schema = z.object({
       query: z.string().optional(),
-      category: z.enum(["spices", "ingredients", "cookware", "cookbooks", "sauces", "other"]).optional(),
+      category: z.enum(["spices", "ingredients", "cookware", "cookbooks", "sauces", "baked_goods", "prepared_foods", "beverages", "other"]).optional(),
       location: z.string().optional(),
       offset: z.coerce.number().min(0).default(0),
       limit: z.coerce.number().min(1).max(50).default(20),
@@ -109,7 +143,9 @@ r.get("/marketplace/products", async (req, res) => {
       filters.limit
     );
 
-    res.json({ products, total: products.length, filters });
+    // Add deliveryMethods array to each product
+    const productsWithDelivery = products.map(addDeliveryMethods);
+    res.json({ products: productsWithDelivery, total: productsWithDelivery.length, filters });
   } catch (e: any) {
     if (e?.issues) return res.status(400).json({ message: "Invalid search parameters", errors: e.issues });
     console.error("marketplace/search error", e);
@@ -118,59 +154,87 @@ r.get("/marketplace/products", async (req, res) => {
 });
 
 // Seller's products
-r.get("/marketplace/sellers/:sellerId/products", async (req, res) => {
+r.get("/sellers/:sellerId/products", async (req, res) => {
   try {
     const offset = Number(req.query.offset ?? 0);
     const limit = Number(req.query.limit ?? 20);
     const items = await storage.getUserProducts(req.params.sellerId, offset, limit);
-    res.json({ products: items, total: items.length, sellerId: req.params.sellerId });
+    // Add deliveryMethods array to each product
+    const itemsWithDelivery = items.map(addDeliveryMethods);
+    res.json({ products: itemsWithDelivery, total: itemsWithDelivery.length, sellerId: req.params.sellerId });
   } catch (error) {
-    console.error("marketplace/seller products error", e);
+    console.error("marketplace/seller products error", error);
     res.status(500).json({ message: "Failed to fetch seller products" });
   }
 });
 
 // Update product
-r.put("/marketplace/products/:id", requireAuth, async (req, res) => {
+r.put("/products/:id", requireAuth, async (req, res) => {
   try {
     const schema = z.object({
       name: z.string().min(1).optional(),
       description: z.string().optional(),
       price: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
       inventory: z.number().min(0).optional(),
+      category: z.string().optional(),
+      images: z.array(z.string().url()).max(5).optional(),
       shippingEnabled: z.boolean().optional(),
       localPickupEnabled: z.boolean().optional(),
       pickupLocation: z.string().optional(),
       pickupInstructions: z.string().optional(),
       shippingCost: z.string().optional(),
       isActive: z.boolean().optional(),
+      productCategory: z.enum(["physical", "digital", "cookbook", "course", "ingredient", "tool"]).optional(),
+      digitalFileUrl: z.string().optional().nullable(),
+      digitalFileName: z.string().optional().nullable(),
+      deliveryMethods: z.array(z.string()).optional(),
+      isDigital: z.boolean().optional(),
+      inStoreOnly: z.boolean().optional(),
     });
 
-    const updates = schema.parse(req.body);
+    const body = schema.parse(req.body);
+
+    // Convert deliveryMethods array to individual boolean fields
+    const deliveryData: any = {};
+    if (body.deliveryMethods && body.deliveryMethods.length > 0) {
+      deliveryData.shippingEnabled = body.deliveryMethods.includes('shipped');
+      deliveryData.localPickupEnabled = body.deliveryMethods.includes('pickup');
+      deliveryData.inStoreOnly = body.deliveryMethods.includes('in_store') &&
+                                  !body.deliveryMethods.includes('shipped') &&
+                                  !body.deliveryMethods.includes('pickup');
+      deliveryData.isDigital = body.deliveryMethods.includes('digital_download');
+    }
+
+    const updates = {
+      ...body,
+      ...deliveryData
+    };
+
     const product = await storage.updateProduct(req.params.id, updates);
-    if (!product) return res.status(404).json({ message: "Product not found" });
-    res.json({ message: "Product updated", product });
+    if (!product) return res.status(404).json({ error: "Product not found" });
+    res.json({ message: "Product updated", product: addDeliveryMethods(product) });
   } catch (e: any) {
-    if (e?.issues) return res.status(400).json({ message: "Invalid update data", errors: e.issues });
-    console.error("marketplace/update error", e);
-    res.status(500).json({ message: "Failed to update product" });
+    if (e?.issues) return res.status(400).json({ error: "Invalid update data", details: e.issues });
+    console.error("marketplace/update error:", e);
+    console.error("Error details:", e.message, e.stack);
+    res.status(500).json({ error: e.message || "Failed to update product" });
   }
 });
 
 // Deactivate product
-r.delete("/marketplace/products/:id", requireAuth, async (req, res) => {
+r.delete("/products/:id", requireAuth, async (req, res) => {
   try {
     const ok = await storage.deleteProduct(req.params.id);
     if (!ok) return res.status(404).json({ message: "Product not found" });
     res.json({ message: "Product deactivated" });
   } catch (error) {
-    console.error("marketplace/delete error", e);
+    console.error("marketplace/delete error", error);
     res.status(500).json({ message: "Failed to delete product" });
   }
 });
 
 // Storefront by username
-r.get("/marketplace/storefront/:username", async (req, res) => {
+r.get("/storefront/:username", async (req, res) => {
   try {
     const user = await storage.getUserByUsername(req.params.username);
     if (!user) return res.status(404).json({ message: "Storefront not found" });
@@ -188,18 +252,18 @@ r.get("/marketplace/storefront/:username", async (req, res) => {
           isChef: user.isChef,
           followersCount: user.followersCount,
         },
-        products,
+        products: products.map(addDeliveryMethods),
         subscriptionTier: (user as any).subscriptionTier,
       },
     });
   } catch (error) {
-    console.error("marketplace/storefront error", e);
+    console.error("marketplace/storefront error", error);
     res.status(500).json({ message: "Failed to fetch storefront" });
   }
 });
 
 // Categories (simple aggregation)
-r.get("/marketplace/categories", async (_req, res) => {
+r.get("/categories", async (_req, res) => {
   try {
     const all = await storage.searchProducts(undefined, undefined, undefined, 0, 1000);
     const counts = {
@@ -208,17 +272,20 @@ r.get("/marketplace/categories", async (_req, res) => {
       cookware: all.filter((p: any) => p.category === "cookware").length,
       cookbooks: all.filter((p: any) => p.category === "cookbooks").length,
       sauces: all.filter((p: any) => p.category === "sauces").length,
+      baked_goods: all.filter((p: any) => p.category === "baked_goods").length,
+      prepared_foods: all.filter((p: any) => p.category === "prepared_foods").length,
+      beverages: all.filter((p: any) => p.category === "beverages").length,
       other: all.filter((p: any) => p.category === "other").length,
     };
     res.json({ categories: counts, totalProducts: all.length });
   } catch (error) {
-    console.error("marketplace/categories error", e);
+    console.error("marketplace/categories error", error);
     res.status(500).json({ message: "Failed to fetch categories" });
   }
 });
 
 // Simple seller analytics
-r.get("/marketplace/sellers/:sellerId/analytics", async (req, res) => {
+r.get("/sellers/:sellerId/analytics", async (req, res) => {
   try {
     const user = await storage.getUser(req.params.sellerId);
     if (!user) return res.status(404).json({ message: "Seller not found" });
@@ -235,7 +302,7 @@ r.get("/marketplace/sellers/:sellerId/analytics", async (req, res) => {
     };
     res.json(analytics);
   } catch (error) {
-    console.error("marketplace/analytics error", e);
+    console.error("marketplace/analytics error", error);
     res.status(500).json({ message: "Failed to fetch analytics" });
   }
 });

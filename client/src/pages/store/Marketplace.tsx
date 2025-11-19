@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Editor, Frame, Element } from "@craftjs/core";
+import { Editor, Frame, Element, useEditor } from "@craftjs/core";
 import { Search, Filter, ShoppingCart, Star, MapPin, Package, Plus, TrendingUp, Users, DollarSign, Store, Crown, AlertCircle } from "lucide-react";
 import { Button as UIButton } from "@/components/ui/button";
 import { Card as UICard } from "@/components/ui/card";
 import { useUser } from "@/contexts/UserContext";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 
 // Custom store components for the builder
 const Container = ({ children }) => <div className="p-4 border border-gray-200 rounded">{children}</div>;
@@ -34,12 +35,53 @@ const customRenderNode = ({ render }) => (
   </div>
 );
 
+// Inner component to access Editor state
+const SaveButton = ({ onSave, saving }) => {
+  const { query } = useEditor();
+
+  const handleClick = () => {
+    const json = query.serialize();
+    onSave(json);
+  };
+
+  return (
+    <UIButton
+      onClick={handleClick}
+      className="bg-orange-500 text-white hover:bg-orange-600"
+      disabled={saving}
+    >
+      {saving ? "Saving..." : "Save & Publish"}
+    </UIButton>
+  );
+};
+
 const StoreBuilder = ({ onBack, storeId }) => {
-  const [layout, setLayout] = useState(null);
+  const [initialLayout, setInitialLayout] = useState(null);
   const [saving, setSaving] = useState(false);
   const { user } = useUser();
 
-  const handleSave = async () => {
+  // Load existing layout when component mounts
+  useEffect(() => {
+    const loadLayout = async () => {
+      if (!storeId) return;
+      try {
+        const response = await fetch(`/api/stores-crud/${storeId}`, {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.store?.layout) {
+            setInitialLayout(data.store.layout);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading layout:", error);
+      }
+    };
+    loadLayout();
+  }, [storeId]);
+
+  const handleSave = async (editorState) => {
     if (!storeId || !user) {
       alert("Please create a store first");
       return;
@@ -47,9 +89,6 @@ const StoreBuilder = ({ onBack, storeId }) => {
 
     setSaving(true);
     try {
-      // Get the Craft.js state
-      const editorState = layout; // This will be the serialized Craft.js tree
-
       // Save to API
       const response = await fetch(`/api/stores-crud/${storeId}/layout`, {
         method: 'PATCH',
@@ -78,24 +117,18 @@ const StoreBuilder = ({ onBack, storeId }) => {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <button onClick={onBack} className="text-gray-600 hover:text-gray-900 mb-4 flex items-center">
-              ← Back to Dashboard
-            </button>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Store Builder</h1>
-            <p className="text-gray-600">Customize your storefront with drag-and-drop</p>
-          </div>
-          <UIButton
-            onClick={handleSave}
-            className="bg-orange-500 text-white hover:bg-orange-600"
-            disabled={saving}
-          >
-            {saving ? "Saving..." : "Save & Publish"}
-          </UIButton>
-        </div>
-
         <Editor resolver={resolver} onRender={customRenderNode}>
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <button onClick={onBack} className="text-gray-600 hover:text-gray-900 mb-4 flex items-center">
+                ← Back to Dashboard
+              </button>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Store Builder</h1>
+              <p className="text-gray-600">Customize your storefront with drag-and-drop</p>
+            </div>
+            <SaveButton onSave={handleSave} saving={saving} />
+          </div>
+
           <div className="flex gap-4">
             <div className="w-64 bg-white p-4 rounded-lg shadow">
               <h2 className="text-lg font-bold mb-4">Add Elements</h2>
@@ -117,7 +150,7 @@ const StoreBuilder = ({ onBack, storeId }) => {
 
             <div className="flex-1 bg-white p-4 rounded-lg shadow">
               <h2 className="text-lg font-bold mb-4">Your Store Preview</h2>
-              <Frame json={layout}>
+              <Frame json={initialLayout}>
                 <Element is={Container} canvas className="min-h-[500px] border border-dashed border-gray-300">
                   <Text text="Drop elements here to build your store" />
                 </Element>
@@ -167,7 +200,7 @@ const Marketplace = () => {
         const productsWithStores = await Promise.all(
           (data.products || []).map(async (product: any) => {
             try {
-              const storeResponse = await fetch(`/api/stores/by-user/${product.sellerId}`);
+              const storeResponse = await fetch(`/api/stores/user/${product.sellerId}`);
               if (storeResponse.ok) {
                 const storeData = await storeResponse.json();
                 return { ...product, store: storeData.store };
@@ -221,19 +254,19 @@ const Marketplace = () => {
     }
 
     if (!canSell) {
-      // Show upgrade modal or redirect to subscription
-      setView("sell");
+      // Show tier selection modal for upgrade
+      setShowUpgradeModal(true);
       return;
     }
-    
+
     // Check if user already has a store
     try {
-      const response = await fetch(`/api/stores/by-user/${user.id}`);
+      const response = await fetch(`/api/stores/user/${user.id}`);
       if (response.ok) {
         const data = await response.json();
         if (data.store) {
           // User has a store, go to seller dashboard
-          setView("sell");
+          window.location.href = "/store/dashboard";
         } else {
           // User needs to create a store first
           window.location.href = "/store/create";
@@ -256,14 +289,9 @@ const Marketplace = () => {
     }
   };
 
-  // Handle product click - navigate to product page in store
+  // Handle product click - navigate to product page
   const handleProductClick = (product: any) => {
-    if (product.store) {
-      window.location.href = `/store/${product.store.handle}/product/${product.id}`;
-    } else {
-      // Fallback to product details page
-      window.location.href = `/product/${product.id}`;
-    }
+    window.location.href = `/marketplace/product/${product.id}`;
   };
 
   if (view === "sell") return <SellerDashboard onBack={() => setView("browse")} />;
@@ -273,15 +301,15 @@ const Marketplace = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Marketplace</h1>
-              <p className="text-gray-600">Discover unique ingredients and cooking tools from fellow chefs</p>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+            <div className="flex-1">
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Marketplace</h1>
+              <p className="text-gray-600 text-sm md:text-base">Discover unique ingredients and cooking tools from fellow chefs</p>
             </div>
             <div className="flex space-x-3">
               <button
                 onClick={handleStartSelling}
-                className="bg-orange-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors flex items-center"
+                className="bg-orange-500 text-white px-4 md:px-6 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors flex items-center text-sm md:text-base whitespace-nowrap"
               >
                 <Store className="w-4 h-4 mr-2" />
                 Start Selling
@@ -340,7 +368,7 @@ const Marketplace = () => {
           </div>
 
           {/* Search + Filters */}
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
+          <div className="flex flex-col sm:flex-row gap-3 mb-6">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
               <input
@@ -348,34 +376,36 @@ const Marketplace = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search for ingredients, tools, or sellers..."
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm md:text-base"
               />
             </div>
-            <button className="px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center">
+            <button className="w-full sm:w-auto px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center whitespace-nowrap">
               <Filter className="w-4 h-4 mr-2" />
               Filters
             </button>
           </div>
 
           {/* Categories */}
-          <div className="flex space-x-2 overflow-x-auto pb-2">
-            {categoryList.map((category) => (
-              <button
-                key={category.id}
-                onClick={() => setActiveCategory(category.id)}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-full whitespace-nowrap transition-colors ${
-                  activeCategory === category.id ? "bg-orange-500 text-white" : "bg-white text-gray-700 hover:bg-orange-50"
-                }`}
-              >
-                <category.icon className="w-4 h-4" />
-                <span className="text-sm font-medium">{category.name}</span>
-                {category.id !== "all" && categories[category.id] && (
-                  <span className="text-xs bg-black bg-opacity-20 rounded-full px-2 py-0.5">
-                    {categories[category.id]}
-                  </span>
-                )}
-              </button>
-            ))}
+          <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
+            <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide">
+              {categoryList.map((category) => (
+                <button
+                  key={category.id}
+                  onClick={() => setActiveCategory(category.id)}
+                  className={`flex items-center space-x-2 px-3 md:px-4 py-2 rounded-full whitespace-nowrap transition-colors text-sm flex-shrink-0 ${
+                    activeCategory === category.id ? "bg-orange-500 text-white" : "bg-white text-gray-700 hover:bg-orange-50"
+                  }`}
+                >
+                  <category.icon className="w-4 h-4 flex-shrink-0" />
+                  <span className="font-medium">{category.name}</span>
+                  {category.id !== "all" && categories[category.id] && (
+                    <span className="text-xs bg-black bg-opacity-20 rounded-full px-2 py-0.5">
+                      {categories[category.id]}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -501,6 +531,7 @@ const Marketplace = () => {
 
 const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
   const { user, updateUser } = useUser(); // { subscription, productCount, trialEndDate }
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"products" | "orders" | "analytics" | "store-builder" | "subscription" | "store">(
     "products"
   );
@@ -518,7 +549,7 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
 
   const loadUserStore = async () => {
     try {
-      const response = await fetch(`/api/stores/by-user/${user.id}`);
+      const response = await fetch(`/api/stores/user/${user.id}`);
       if (response.ok) {
         const data = await response.json();
         setUserStore(data.store);
@@ -527,6 +558,43 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
       console.error('Failed to load store:', error);
     } finally {
       setStoreLoading(false);
+    }
+  };
+
+  // Simple trial activation without payment
+  const handleStartTrial = async () => {
+    if (!user) {
+      toast({
+        variant: "destructive",
+        description: "Please log in to start your trial",
+      });
+      return;
+    }
+
+    try {
+      // For now, just update the local user context
+      // In production, you'd call a backend endpoint to record the trial
+      const trialEnds = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      updateUser({ subscription: "pro", trialEndDate: trialEnds.toISOString() });
+
+      setShowUpgradeModal(false);
+
+      toast({
+        description: "🎉 30-day store trial activated! Create your store to start selling.",
+      });
+
+      // Redirect to store creation if they don't have a store
+      setTimeout(() => {
+        if (!userStore) {
+          window.location.href = "/store/create";
+        }
+      }, 1500);
+    } catch (error) {
+      console.error('Error starting trial:', error);
+      toast({
+        variant: "destructive",
+        description: "Failed to start trial. Please try again.",
+      });
     }
   };
 
@@ -610,22 +678,175 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
           )}
         </div>
 
-        {/* Upgrade/Trial Modal */}
+        {/* Tier Selection Modal */}
         {showUpgradeModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-lg max-w-md">
-              <div className="flex items-center mb-4">
-                <Crown className="w-8 h-8 text-orange-500 mr-3" />
-                <h3 className="text-xl font-bold">Unlock Your Store</h3>
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <Crown className="w-8 h-8 text-orange-500 mr-3" />
+                    <div>
+                      <h3 className="text-2xl font-bold">Choose Your Store Plan</h3>
+                      <p className="text-gray-600">Start with a 30-day free trial, cancel anytime</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowUpgradeModal(false)} className="text-gray-400 hover:text-gray-600">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-              <p className="mb-4">Start your 30-day free trial to create your store and sell products.</p>
-              <div className="flex gap-4">
-                <button onClick={() => handleUpgrade("pro", true)} className="bg-orange-500 text-white px-4 py-2 rounded">
-                  Start 30-Day Trial
-                </button>
-                <button onClick={() => setShowUpgradeModal(false)} className="border px-4 py-2 rounded">
-                  Later
-                </button>
+
+              <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Starter Tier */}
+                <div className="border rounded-lg p-6 hover:shadow-lg transition-shadow">
+                  <h4 className="text-lg font-bold mb-2">Starter</h4>
+                  <div className="mb-4">
+                    <span className="text-3xl font-bold">$19</span>
+                    <span className="text-gray-600">/month</span>
+                  </div>
+                  <ul className="space-y-2 mb-6 text-sm">
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Up to 50 products</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Custom store URL</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Basic analytics</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Email support</span>
+                    </li>
+                  </ul>
+                  <UIButton onClick={() => {
+                    updateUser({ subscription: "starter", trialEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() });
+                    setShowUpgradeModal(false);
+                    toast({ description: "🎉 30-day Starter trial activated!" });
+                    setTimeout(() => window.location.href = "/store/create", 1500);
+                  }} className="w-full">
+                    Start Free Trial
+                  </UIButton>
+                </div>
+
+                {/* Pro Tier */}
+                <div className="border-2 border-orange-500 rounded-lg p-6 hover:shadow-lg transition-shadow relative">
+                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                    <Badge className="bg-orange-500 text-white">Most Popular</Badge>
+                  </div>
+                  <h4 className="text-lg font-bold mb-2">Professional</h4>
+                  <div className="mb-4">
+                    <span className="text-3xl font-bold">$49</span>
+                    <span className="text-gray-600">/month</span>
+                  </div>
+                  <ul className="space-y-2 mb-6 text-sm">
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Unlimited products</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Custom domain</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Advanced analytics</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Priority support</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Marketing tools</span>
+                    </li>
+                  </ul>
+                  <UIButton onClick={() => {
+                    updateUser({ subscription: "pro", trialEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() });
+                    setShowUpgradeModal(false);
+                    toast({ description: "🎉 30-day Pro trial activated!" });
+                    setTimeout(() => window.location.href = "/store/create", 1500);
+                  }} className="w-full bg-orange-500 hover:bg-orange-600">
+                    Start Free Trial
+                  </UIButton>
+                </div>
+
+                {/* Enterprise Tier */}
+                <div className="border rounded-lg p-6 hover:shadow-lg transition-shadow">
+                  <h4 className="text-lg font-bold mb-2">Enterprise</h4>
+                  <div className="mb-4">
+                    <span className="text-3xl font-bold">$99</span>
+                    <span className="text-gray-600">/month</span>
+                  </div>
+                  <ul className="space-y-2 mb-6 text-sm">
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Everything in Pro</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>White-label branding</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>API access</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Dedicated account manager</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Custom integrations</span>
+                    </li>
+                  </ul>
+                  <UIButton onClick={() => {
+                    updateUser({ subscription: "enterprise", trialEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() });
+                    setShowUpgradeModal(false);
+                    toast({ description: "🎉 30-day Enterprise trial activated!" });
+                    setTimeout(() => window.location.href = "/store/create", 1500);
+                  }} className="w-full">
+                    Start Free Trial
+                  </UIButton>
+                </div>
+              </div>
+
+              <div className="p-6 bg-gray-50 border-t text-center text-sm text-gray-600">
+                All plans include a 30-day free trial • No credit card required • Cancel anytime
               </div>
             </div>
           </div>

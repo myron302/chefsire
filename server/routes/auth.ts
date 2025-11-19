@@ -153,6 +153,8 @@ router.post("/auth/login", async (req, res) => {
         royalTitle: user.royalTitle,
         avatar: user.avatar,
         bio: user.bio,
+        nutritionPremium: user.nutritionPremium,
+        nutritionTrialEndsAt: user.nutritionTrialEndsAt,
       },
     });
   } catch (error) {

@@ -3,7 +3,7 @@ import { Check } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
-interface Theme {
+export interface Theme {
   id: string;
   name: string;
   description: string;
@@ -15,7 +15,7 @@ interface Theme {
   };
 }
 
-const THEMES: Theme[] = [
+export const THEMES: Theme[] = [
   {
     id: 'modern',
     name: 'Modern Minimalist',
