@@ -545,7 +545,8 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
   );
   const [showBuilder, setShowBuilder] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(
-    user.subscription === "free" || (user.trialEndDate && new Date(user.trialEndDate) < new Date())
+    (user?.subscription === "free" || !user?.subscription) ||
+    (user?.trialEndDate && new Date(user.trialEndDate) < new Date())
   );
   const [userStore, setUserStore] = useState<any>(null);
   const [storeLoading, setStoreLoading] = useState(true);
