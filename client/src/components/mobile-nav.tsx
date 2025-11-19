@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Compass, Plus, User, Activity, BookOpen, GlassWater } from "lucide-react";
+import { Compass, Plus, User, Activity, BookOpen, GlassWater, Trophy } from "lucide-react";
 
 interface MobileNavProps {
   onCreatePost?: () => void;
@@ -16,9 +16,9 @@ export default function MobileNav({ onCreatePost }: MobileNavProps) {
 
   const nav: NavLink[] = [
     { name: "Explore", href: "/explore", icon: Compass },
-    { name: "Drinks", href: "/drinks", icon: GlassWater }, // Changed from Recipes
+    { name: "Drinks", href: "/drinks", icon: GlassWater },
     { name: "Create", action: handleCreate, icon: Plus },   // center FAB
-    { name: "Recipes", href: "/recipes", icon: BookOpen }, // Moved to right side
+    { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
     { name: "Profile", href: "/profile", icon: User },
   ];
 
