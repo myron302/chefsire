@@ -198,7 +198,19 @@ router.get("/", requireAuth, async (req, res) => {
       progress: getProgress(achievement, stats),
     }));
 
-    return res.json({ achievements, stats });
+    // Calculate total unlocked and XP earned
+    const totalUnlocked = achievements.filter(a => a.unlocked).length;
+    const totalXpEarned = achievements
+      .filter(a => a.unlocked)
+      .reduce((sum, a) => sum + a.xpReward, 0);
+
+    return res.json({
+      achievements,
+      stats: {
+        totalUnlocked,
+        totalXpEarned,
+      },
+    });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
