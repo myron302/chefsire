@@ -30,18 +30,22 @@ import {
   payouts,
   payoutSchedules,
   clubs,
-  clubMembers,
+  clubMemberships,
   clubPosts,
   challenges,
-  challengeParticipants,
+  challengeProgress,
   badges,
   userBadges,
   dailyQuests,
-  userQuestProgress,
-  competitions,
-  competitionEntries,
+  questProgress,
   recipeRemixes,
-  savedRecipes,
+  notifications,
+  aiSuggestions,
+  familyMembers,
+  allergenProfiles,
+  recipeAllergens,
+  userSubstitutionPreferences,
+  productAllergens,
 } from "../shared/schema.js";
 
 function reqEnv(name: string): string {
@@ -76,14 +80,20 @@ async function seedDatabase() {
     await db.delete(mealPlanEntries);
     await db.delete(mealPlans);
 
+    await db.delete(productAllergens);
+    await db.delete(recipeAllergens);
+    await db.delete(userSubstitutionPreferences);
+    await db.delete(allergenProfiles);
+    await db.delete(familyMembers);
+
     await db.delete(clubPosts);
-    await db.delete(clubMembers);
-    await db.delete(challengeParticipants);
-    await db.delete(competitionEntries);
-    await db.delete(userQuestProgress);
+    await db.delete(clubMemberships);
+    await db.delete(challengeProgress);
+    await db.delete(questProgress);
     await db.delete(userBadges);
     await db.delete(recipeRemixes);
-    await db.delete(savedRecipes);
+    await db.delete(aiSuggestions);
+    await db.delete(notifications);
 
     await db.delete(subscriptionHistory);
     await db.delete(commissions);
@@ -108,7 +118,6 @@ async function seedDatabase() {
     // Delete parent tables that don't reference users
     await db.delete(clubs);
     await db.delete(challenges);
-    await db.delete(competitions);
     await db.delete(dailyQuests);
     await db.delete(badges);
 
