@@ -24,6 +24,24 @@ import {
   drinkLikes,
   drinkSaves,
   userDrinkStats,
+  stores,
+  paymentMethods,
+  commissions,
+  payouts,
+  payoutSchedules,
+  clubs,
+  clubMembers,
+  clubPosts,
+  challenges,
+  challengeParticipants,
+  badges,
+  userBadges,
+  dailyQuests,
+  userQuestProgress,
+  competitions,
+  competitionEntries,
+  recipeRemixes,
+  savedRecipes,
 } from "../shared/schema.js";
 
 function reqEnv(name: string): string {
@@ -43,35 +61,57 @@ async function seedDatabase() {
 
   try {
     console.log("Clearing existing data...");
-    
+
     // DELETE IN CORRECT ORDER: Children first, parents last!
-    // Delete drink-related child tables first
+
+    // Delete most dependent child tables first
     await db.delete(drinkSaves);
     await db.delete(drinkLikes);
     await db.delete(drinkPhotos);
     await db.delete(customDrinks);
     await db.delete(userDrinkStats);
-    
-    // Delete other user-related child tables
+
     await db.delete(nutritionLogs);
     await db.delete(pantryItems);
     await db.delete(mealPlanEntries);
     await db.delete(mealPlans);
+
+    await db.delete(clubPosts);
+    await db.delete(clubMembers);
+    await db.delete(challengeParticipants);
+    await db.delete(competitionEntries);
+    await db.delete(userQuestProgress);
+    await db.delete(userBadges);
+    await db.delete(recipeRemixes);
+    await db.delete(savedRecipes);
+
     await db.delete(subscriptionHistory);
+    await db.delete(commissions);
+    await db.delete(payouts);
+    await db.delete(payoutSchedules);
+    await db.delete(paymentMethods);
     await db.delete(orders);
     await db.delete(cateringInquiries);
     await db.delete(follows);
     await db.delete(comments);
     await db.delete(likes);
-    
-    // Delete posts and related
+
+    // Delete posts and recipes
     await db.delete(recipes);
     await db.delete(stories);
     await db.delete(posts);
-    
-    // Delete products
+
+    // Delete products and stores (products must be deleted before stores)
     await db.delete(products);
-    
+    await db.delete(stores);
+
+    // Delete parent tables that don't reference users
+    await db.delete(clubs);
+    await db.delete(challenges);
+    await db.delete(competitions);
+    await db.delete(dailyQuests);
+    await db.delete(badges);
+
     // Finally delete users (LAST!)
     await db.delete(users);
 
