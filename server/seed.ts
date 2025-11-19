@@ -24,28 +24,6 @@ import {
   drinkLikes,
   drinkSaves,
   userDrinkStats,
-  stores,
-  paymentMethods,
-  commissions,
-  payouts,
-  payoutSchedules,
-  clubs,
-  clubMemberships,
-  clubPosts,
-  challenges,
-  challengeProgress,
-  badges,
-  userBadges,
-  dailyQuests,
-  questProgress,
-  recipeRemixes,
-  notifications,
-  aiSuggestions,
-  familyMembers,
-  allergenProfiles,
-  recipeAllergens,
-  userSubstitutionPreferences,
-  productAllergens,
 } from "../shared/schema.js";
 
 function reqEnv(name: string): string {
@@ -65,62 +43,35 @@ async function seedDatabase() {
 
   try {
     console.log("Clearing existing data...");
-
+    
     // DELETE IN CORRECT ORDER: Children first, parents last!
-
-    // Delete most dependent child tables first
+    // Delete drink-related child tables first
     await db.delete(drinkSaves);
     await db.delete(drinkLikes);
     await db.delete(drinkPhotos);
     await db.delete(customDrinks);
     await db.delete(userDrinkStats);
-
+    
+    // Delete other user-related child tables
     await db.delete(nutritionLogs);
     await db.delete(pantryItems);
     await db.delete(mealPlanEntries);
     await db.delete(mealPlans);
-
-    await db.delete(productAllergens);
-    await db.delete(recipeAllergens);
-    await db.delete(userSubstitutionPreferences);
-    await db.delete(allergenProfiles);
-    await db.delete(familyMembers);
-
-    await db.delete(clubPosts);
-    await db.delete(clubMemberships);
-    await db.delete(challengeProgress);
-    await db.delete(questProgress);
-    await db.delete(userBadges);
-    await db.delete(recipeRemixes);
-    await db.delete(aiSuggestions);
-    await db.delete(notifications);
-
     await db.delete(subscriptionHistory);
-    await db.delete(commissions);
-    await db.delete(payouts);
-    await db.delete(payoutSchedules);
-    await db.delete(paymentMethods);
     await db.delete(orders);
     await db.delete(cateringInquiries);
     await db.delete(follows);
     await db.delete(comments);
     await db.delete(likes);
-
-    // Delete posts and recipes
+    
+    // Delete posts and related
     await db.delete(recipes);
     await db.delete(stories);
     await db.delete(posts);
-
-    // Delete products and stores (products must be deleted before stores)
+    
+    // Delete products
     await db.delete(products);
-    await db.delete(stores);
-
-    // Delete parent tables that don't reference users
-    await db.delete(clubs);
-    await db.delete(challenges);
-    await db.delete(dailyQuests);
-    await db.delete(badges);
-
+    
     // Finally delete users (LAST!)
     await db.delete(users);
 
@@ -291,175 +242,6 @@ async function seedDatabase() {
 
     await db.insert(users).values(sampleUsers);
     console.log("Sample users created");
-
-    console.log("Creating sample marketplace products...");
-    const sampleProducts = [
-      // Chef Alexandra's products (Italian cuisine)
-      {
-        id: "prod-1",
-        sellerId: "user-1",
-        name: "Italian Pasta Making Kit",
-        description: "Complete kit with premium Italian flour, fresh eggs, and my secret pasta recipe",
-        price: "49.99",
-        inventory: 25,
-        category: "kits",
-        imageUrl: "https://images.unsplash.com/photo-1621996346565-e3dbc353d2e5?w=400&h=400&fit=crop&auto=format",
-        productCategory: "physical",
-        deliveryMethods: ["shipped"],
-        isAvailable: true,
-      },
-      {
-        id: "prod-2",
-        sellerId: "user-1",
-        name: "Aged Parmesan Cheese (1lb)",
-        description: "Authentic Parmigiano-Reggiano aged 24 months, imported from Italy",
-        price: "32.50",
-        inventory: 15,
-        category: "ingredients",
-        imageUrl: "https://images.unsplash.com/photo-1486297678162-eb2a19b0a32d?w=400&h=400&fit=crop&auto=format",
-        productCategory: "physical",
-        deliveryMethods: ["shipped"],
-        isAvailable: true,
-      },
-      // Chef Marcus's products (Seafood)
-      {
-        id: "prod-3",
-        sellerId: "user-2",
-        name: "Wild-Caught Salmon Fillet (2lbs)",
-        description: "Fresh Alaskan wild-caught salmon, sustainably sourced",
-        price: "45.00",
-        inventory: 10,
-        category: "seafood",
-        imageUrl: "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=400&h=400&fit=crop&auto=format",
-        productCategory: "physical",
-        deliveryMethods: ["shipped", "local_pickup"],
-        isAvailable: true,
-      },
-      {
-        id: "prod-4",
-        sellerId: "user-2",
-        name: "Seafood Seasoning Blend",
-        description: "My signature seafood seasoning blend with herbs and spices",
-        price: "18.99",
-        inventory: 50,
-        category: "ingredients",
-        imageUrl: "https://images.unsplash.com/photo-1596040033229-a0b76127d2b1?w=400&h=400&fit=crop&auto=format",
-        productCategory: "physical",
-        deliveryMethods: ["shipped"],
-        isAvailable: true,
-      },
-      // Chef Isabella's products (Pastry & Desserts)
-      {
-        id: "prod-5",
-        sellerId: "user-3",
-        name: "Artisan Chocolate Truffles (12pc)",
-        description: "Handcrafted Belgian chocolate truffles with assorted flavors",
-        price: "28.00",
-        inventory: 20,
-        category: "desserts",
-        imageUrl: "https://images.unsplash.com/photo-1548848438-d2a0aa0f7a66?w=400&h=400&fit=crop&auto=format",
-        productCategory: "physical",
-        deliveryMethods: ["shipped", "local_pickup"],
-        isAvailable: true,
-      },
-      {
-        id: "prod-6",
-        sellerId: "user-3",
-        name: "Professional Pastry Tools Set",
-        description: "Complete set of professional-grade pastry tools and piping tips",
-        price: "89.99",
-        inventory: 12,
-        category: "equipment",
-        imageUrl: "https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=400&h=400&fit=crop&auto=format",
-        productCategory: "physical",
-        deliveryMethods: ["shipped"],
-        isAvailable: true,
-      },
-      // Baker Ben's products
-      {
-        id: "prod-7",
-        sellerId: "user-5",
-        name: "Sourdough Starter Kit",
-        description: "Live sourdough starter with feeding instructions and recipe book",
-        price: "24.99",
-        inventory: 30,
-        category: "kits",
-        imageUrl: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&h=400&fit=crop&auto=format",
-        productCategory: "physical",
-        deliveryMethods: ["shipped", "local_pickup"],
-        isAvailable: true,
-      },
-      {
-        id: "prod-8",
-        sellerId: "user-5",
-        name: "Artisan Bread Sampler",
-        description: "Selection of 3 freshly baked artisan breads - sourdough, rye, and multigrain",
-        price: "35.00",
-        inventory: 8,
-        category: "baked_goods",
-        imageUrl: "https://images.unsplash.com/photo-1549931319-a545dcf3bc73?w=400&h=400&fit=crop&auto=format",
-        productCategory: "physical",
-        deliveryMethods: ["local_pickup"],
-        isAvailable: true,
-      },
-      // Veggie Vibes products
-      {
-        id: "prod-9",
-        sellerId: "user-6",
-        name: "Plant-Based Protein Power Bowl Kit",
-        description: "Complete kit with quinoa, chickpeas, tahini sauce, and my special spice blend",
-        price: "38.50",
-        inventory: 15,
-        category: "kits",
-        imageUrl: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&h=400&fit=crop&auto=format",
-        productCategory: "physical",
-        deliveryMethods: ["shipped"],
-        isAvailable: true,
-      },
-      {
-        id: "prod-10",
-        sellerId: "user-6",
-        name: "Organic Superfood Smoothie Mix",
-        description: "Blend of organic superfoods: spirulina, maca, chia, and hemp seeds",
-        price: "42.00",
-        inventory: 25,
-        category: "ingredients",
-        imageUrl: "https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400&h=400&fit=crop&auto=format",
-        productCategory: "physical",
-        deliveryMethods: ["shipped"],
-        isAvailable: true,
-      },
-      // Dessert Queen's products
-      {
-        id: "prod-11",
-        sellerId: "user-7",
-        name: "Gourmet Cupcake Box (6pc)",
-        description: "Assorted gourmet cupcakes with premium frosting and decorations",
-        price: "36.00",
-        inventory: 10,
-        category: "desserts",
-        imageUrl: "https://images.unsplash.com/photo-1587668352745-fca4e8d6673c?w=400&h=400&fit=crop&auto=format",
-        productCategory: "physical",
-        deliveryMethods: ["local_pickup"],
-        isAvailable: true,
-      },
-      {
-        id: "prod-12",
-        sellerId: "user-7",
-        name: "Cake Decorating Masterclass (Online)",
-        description: "2-hour virtual masterclass on advanced cake decorating techniques",
-        price: "79.99",
-        inventory: 100,
-        category: "classes",
-        imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=400&fit=crop&auto=format",
-        productCategory: "digital",
-        deliveryMethods: ["digital"],
-        isAvailable: true,
-      },
-    ];
-
-    await db.insert(products).values(sampleProducts);
-    console.log("Sample marketplace products created");
 
     console.log("Creating sample posts...");
     const samplePosts = [
@@ -708,7 +490,6 @@ async function seedDatabase() {
     console.log("Database seeding completed successfully!");
     console.log("Sample data created:");
     console.log("- 7 chef users");
-    console.log("- 12 marketplace products");
     console.log("- 5 posts (2 with recipes)");
     console.log("- 2 detailed recipes");
     console.log("- 5 active stories");

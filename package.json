@@ -17,7 +17,6 @@
     "db:push": "dotenv -e server/.env -- drizzle-kit push",
     "db:push:accept": "dotenv -e server/.env -- drizzle-kit push --force",
     "db:migrate": "tsx server/scripts/run-migrations.ts",
-    "db:fix:phase2": "tsx server/scripts/fix-phase2-migration.ts",
     "db:apply": "node apply-migration.js",
     "db:stores": "node apply-stores-only.js",
     "db:seed": "tsx server/seed.ts",
