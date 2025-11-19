@@ -243,7 +243,9 @@ const Marketplace = () => {
   };
 
   // Check if user can sell (has subscription or active trial)
-  const canSell = user?.subscription !== "free" || 
+  // Default to 'free' if subscription field is missing (for existing logged-in users)
+  const userSubscription = user?.subscription || user?.subscriptionTier || 'free';
+  const canSell = userSubscription !== "free" ||
     (user?.trialEndDate && new Date(user.trialEndDate) > new Date());
 
   const handleStartSelling = async () => {
