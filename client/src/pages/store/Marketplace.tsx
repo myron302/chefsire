@@ -170,7 +170,9 @@ const Marketplace = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"browse" | "sell">("browse");
-  const { user } = useUser();
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const { user, updateUser } = useUser();
+  const { toast } = useToast();
 
   const categoryList = [
     { id: "all", name: "All Products", icon: Package },
@@ -530,6 +532,180 @@ const Marketplace = () => {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Tier Selection Modal */}
+        {showUpgradeModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <Crown className="w-8 h-8 text-orange-500 mr-3" />
+                    <div>
+                      <h3 className="text-2xl font-bold">Choose Your Store Plan</h3>
+                      <p className="text-gray-600">Start with a 30-day free trial, cancel anytime</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowUpgradeModal(false)} className="text-gray-400 hover:text-gray-600">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Starter Tier */}
+                <div className="border rounded-lg p-6 hover:shadow-lg transition-shadow">
+                  <h4 className="text-lg font-bold mb-2">Starter</h4>
+                  <div className="mb-4">
+                    <span className="text-3xl font-bold">$19</span>
+                    <span className="text-gray-600">/month</span>
+                  </div>
+                  <ul className="space-y-2 mb-6 text-sm">
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Up to 50 products</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Custom store URL</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Basic analytics</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Email support</span>
+                    </li>
+                  </ul>
+                  <UIButton onClick={() => {
+                    updateUser({ subscription: "starter", trialEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() });
+                    setShowUpgradeModal(false);
+                    toast({ description: "🎉 30-day Starter trial activated!" });
+                    setTimeout(() => window.location.href = "/store/create", 1500);
+                  }} className="w-full">
+                    Start Free Trial
+                  </UIButton>
+                </div>
+
+                {/* Pro Tier */}
+                <div className="border-2 border-orange-500 rounded-lg p-6 hover:shadow-lg transition-shadow relative">
+                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                    <Badge className="bg-orange-500 text-white">Most Popular</Badge>
+                  </div>
+                  <h4 className="text-lg font-bold mb-2">Professional</h4>
+                  <div className="mb-4">
+                    <span className="text-3xl font-bold">$49</span>
+                    <span className="text-gray-600">/month</span>
+                  </div>
+                  <ul className="space-y-2 mb-6 text-sm">
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Unlimited products</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Custom domain</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Advanced analytics</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Priority support</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Marketing tools</span>
+                    </li>
+                  </ul>
+                  <UIButton onClick={() => {
+                    updateUser({ subscription: "pro", trialEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() });
+                    setShowUpgradeModal(false);
+                    toast({ description: "🎉 30-day Pro trial activated!" });
+                    setTimeout(() => window.location.href = "/store/create", 1500);
+                  }} className="w-full bg-orange-500 hover:bg-orange-600">
+                    Start Free Trial
+                  </UIButton>
+                </div>
+
+                {/* Enterprise Tier */}
+                <div className="border rounded-lg p-6 hover:shadow-lg transition-shadow">
+                  <h4 className="text-lg font-bold mb-2">Enterprise</h4>
+                  <div className="mb-4">
+                    <span className="text-3xl font-bold">$99</span>
+                    <span className="text-gray-600">/month</span>
+                  </div>
+                  <ul className="space-y-2 mb-6 text-sm">
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Everything in Pro</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>White-label branding</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>API access</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Dedicated account manager</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Custom integrations</span>
+                    </li>
+                  </ul>
+                  <UIButton onClick={() => {
+                    updateUser({ subscription: "enterprise", trialEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() });
+                    setShowUpgradeModal(false);
+                    toast({ description: "🎉 30-day Enterprise trial activated!" });
+                    setTimeout(() => window.location.href = "/store/create", 1500);
+                  }} className="w-full">
+                    Start Free Trial
+                  </UIButton>
+                </div>
+              </div>
+
+              <div className="p-6 bg-gray-50 border-t text-center text-sm text-gray-600">
+                All plans include a 30-day free trial • No credit card required • Cancel anytime
+              </div>
+            </div>
           </div>
         )}
       </div>
