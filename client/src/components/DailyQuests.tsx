@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Trophy, Star, Zap, CheckCircle2, Clock } from "lucide-react";
+import { Trophy, Star, Zap, CheckCircle2, Clock, Sparkles } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -37,6 +37,7 @@ async function fetchJSON<T>(url: string): Promise<T> {
 export default function DailyQuests() {
   const { user, loading } = useUser();
   const queryClient = useQueryClient();
+  const [celebrateQuestId, setCelebrateQuestId] = useState<string | null>(null);
 
   const {
     data: questsResponse,
@@ -118,15 +119,42 @@ export default function DailyQuests() {
   const activeQuests = questsArray.filter((q) => q.status === "active");
   const completedToday = questsArray.filter((q) => q.status === "completed");
 
+  // Trigger celebration animation when a quest is completed
+  useEffect(() => {
+    const justCompleted = questsArray.find(
+      (q) => q.status === "completed" && !celebrateQuestId
+    );
+    if (justCompleted) {
+      setCelebrateQuestId(justCompleted.id);
+      setTimeout(() => setCelebrateQuestId(null), 2000);
+    }
+  }, [questsArray]);
+
   return (
-    <Card className="w-full">
-      <CardHeader>
+    <Card className="w-full relative overflow-hidden">
+      {/* Animated background gradient for all completed */}
+      {completedToday.length === 3 && (
+        <div className="absolute inset-0 bg-gradient-to-br from-yellow-100 via-orange-100 to-red-100 dark:from-yellow-900/20 dark:via-orange-900/20 dark:to-red-900/20 opacity-30 animate-pulse" />
+      )}
+
+      <CardHeader className="relative">
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Trophy className="h-5 w-5 text-yellow-500" />
+            {completedToday.length === 3 ? (
+              <Trophy className="h-5 w-5 text-yellow-500 animate-bounce" />
+            ) : (
+              <Trophy className="h-5 w-5 text-yellow-500" />
+            )}
             Daily Quests
           </div>
-          <Badge variant="secondary" className="text-xs">
+          <Badge
+            variant={completedToday.length === 3 ? "default" : "secondary"}
+            className={`text-xs ${
+              completedToday.length === 3
+                ? "bg-gradient-to-r from-yellow-500 to-orange-500 animate-pulse"
+                : ""
+            }`}
+          >
             {completedToday.length}/3 Complete
           </Badge>
         </CardTitle>
@@ -151,18 +179,22 @@ export default function DailyQuests() {
               return (
                 <div
                   key={questProgress.id}
-                  className={`p-4 rounded-lg border ${
+                  className={`p-4 rounded-lg border transition-all duration-300 ${
                     isCompleted
-                      ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800"
-                      : "bg-card border-border"
+                      ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800 scale-105"
+                      : "bg-card border-border hover:border-orange-300 hover:shadow-md"
+                  } ${
+                    celebrateQuestId === questProgress.id
+                      ? "animate-pulse ring-2 ring-green-500"
+                      : ""
                   }`}
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
                           isCompleted
-                            ? "bg-green-500 text-white"
+                            ? "bg-green-500 text-white animate-bounce"
                             : "bg-muted text-muted-foreground"
                         }`}
                       >
@@ -190,14 +222,28 @@ export default function DailyQuests() {
                   </div>
 
                   <div className="space-y-2">
-                    <Progress value={progressPercent} className="h-2" />
+                    <div className="relative">
+                      <Progress value={progressPercent} className="h-2 transition-all duration-500 ease-out" />
+                      {isCompleted && (
+                        <div className="absolute -top-1 -right-1">
+                          <Sparkles className="h-4 w-4 text-yellow-500 animate-spin" />
+                        </div>
+                      )}
+                    </div>
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">
+                      <span className={`transition-colors ${
+                        isCompleted ? "text-green-600 dark:text-green-400 font-semibold" : "text-muted-foreground"
+                      }`}>
                         {questProgress.currentProgress} / {questProgress.targetProgress}
+                        {isCompleted && " ✓"}
                       </span>
-                      <span className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400 font-medium">
+                      <span className={`flex items-center gap-1 font-medium transition-all ${
+                        isCompleted
+                          ? "text-green-600 dark:text-green-400 scale-110"
+                          : "text-yellow-600 dark:text-yellow-400"
+                      }`}>
                         <Zap className="h-3 w-3" />
-                        +{questProgress.quest.xpReward} XP
+                        {isCompleted ? "Earned" : "+"}{questProgress.quest.xpReward} XP
                       </span>
                     </div>
                   </div>
@@ -208,13 +254,17 @@ export default function DailyQuests() {
         )}
 
         {completedToday.length === 3 && (
-          <div className="text-center p-4 bg-gradient-to-r from-yellow-100 to-orange-100 dark:from-yellow-900/20 dark:to-orange-900/20 rounded-lg">
-            <Trophy className="h-8 w-8 mx-auto mb-2 text-yellow-600" />
-            <p className="text-sm font-semibold text-yellow-900 dark:text-yellow-100">
-              All quests completed!
+          <div className="text-center p-4 bg-gradient-to-r from-yellow-100 via-orange-100 to-red-100 dark:from-yellow-900/20 dark:via-orange-900/20 dark:to-red-900/20 rounded-lg border-2 border-yellow-400 dark:border-yellow-600 shadow-lg animate-pulse">
+            <div className="relative">
+              <Trophy className="h-8 w-8 mx-auto mb-2 text-yellow-600 animate-bounce" />
+              <Sparkles className="h-4 w-4 absolute top-0 left-1/2 -translate-x-6 text-yellow-500 animate-ping" />
+              <Sparkles className="h-4 w-4 absolute top-0 right-1/2 translate-x-6 text-orange-500 animate-ping" />
+            </div>
+            <p className="text-sm font-bold text-yellow-900 dark:text-yellow-100 mb-1">
+              🎉 Perfect Day! All Quests Completed! 🎉
             </p>
             <p className="text-xs text-yellow-700 dark:text-yellow-300">
-              Amazing work! Come back tomorrow for new challenges.
+              Amazing work! You've earned all the XP. Come back tomorrow for new challenges!
             </p>
           </div>
         )}
