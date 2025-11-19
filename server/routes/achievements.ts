@@ -193,7 +193,12 @@ router.get("/", requireAuth, async (req, res) => {
 
     // Check which achievements are unlocked
     const achievements = Object.values(ACHIEVEMENTS).map(achievement => ({
-      ...achievement,
+      id: achievement.id,
+      name: achievement.name,
+      description: achievement.description,
+      icon: achievement.icon,
+      category: achievement.category,
+      xpReward: achievement.xpReward,
       unlocked: achievement.requirement(stats),
       progress: getProgress(achievement, stats),
     }));
