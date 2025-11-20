@@ -45,7 +45,7 @@ export default function DailyQuests() {
     error,
   } = useQuery<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>({
     queryKey: ["/api/quests/daily", user?.id],
-    queryFn: () => fetchJSON<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>(`/api/quests/daily/${user?.id}`),
+    queryFn: () => fetchJSON<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>(`/api/quests/daily`),
     enabled: !loading && !!user?.id, // Only fetch when loading is done AND user exists
     retry: false, // Don't retry on error
     refetchInterval: 30000, // Refetch every 30 seconds to check for updates
