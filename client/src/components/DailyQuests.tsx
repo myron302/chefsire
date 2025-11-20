@@ -179,10 +179,10 @@ export default function DailyQuests() {
               return (
                 <div
                   key={questProgress.id}
-                  className={`p-4 rounded-lg border transition-all duration-300 ${
+                  className={`p-3 rounded-lg border transition-all duration-300 ${
                     isCompleted
-                      ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800 scale-105"
-                      : "bg-card border-border hover:border-orange-300 hover:shadow-md"
+                      ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800"
+                      : "bg-card border-border hover:border-orange-300"
                   } ${
                     celebrateQuestId === questProgress.id
                       ? "animate-pulse ring-2 ring-green-500"
@@ -190,60 +190,49 @@ export default function DailyQuests() {
                   }`}
                 >
                   <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-1">
                       <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
+                        className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 ${
                           isCompleted
-                            ? "bg-green-500 text-white animate-bounce"
+                            ? "bg-green-500 text-white"
                             : "bg-muted text-muted-foreground"
                         }`}
                       >
                         {isCompleted ? (
-                          <CheckCircle2 className="h-4 w-4" />
+                          <CheckCircle2 className="h-3 w-3" />
                         ) : (
-                          getQuestIcon(questProgress.quest.questType)
+                          <div className="scale-75">{getQuestIcon(questProgress.quest.questType)}</div>
                         )}
                       </div>
-                      <div className="flex-1">
-                        <h4 className="text-sm font-medium leading-tight">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-xs font-medium leading-tight truncate">
                           {questProgress.quest.title}
                         </h4>
-                        <p className="text-xs text-muted-foreground">
-                          {questProgress.quest.description}
-                        </p>
                       </div>
                     </div>
                     <Badge
                       variant="outline"
-                      className={getDifficultyColor(questProgress.quest.difficulty)}
+                      className={`text-[10px] px-1.5 py-0 h-4 flex-shrink-0 ml-2 ${getDifficultyColor(questProgress.quest.difficulty)}`}
                     >
-                      {questProgress.quest.difficulty}
+                      +{questProgress.quest.xpReward} XP
                     </Badge>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <div className="relative">
-                      <Progress value={progressPercent} className="h-2 transition-all duration-500 ease-out" />
+                      <Progress value={progressPercent} className="h-1.5 transition-all duration-500 ease-out" />
                       {isCompleted && (
-                        <div className="absolute -top-1 -right-1">
-                          <Sparkles className="h-4 w-4 text-yellow-500 animate-spin" />
+                        <div className="absolute -top-0.5 -right-0.5">
+                          <Sparkles className="h-3 w-3 text-yellow-500 animate-spin" />
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center justify-between text-[10px]">
                       <span className={`transition-colors ${
                         isCompleted ? "text-green-600 dark:text-green-400 font-semibold" : "text-muted-foreground"
                       }`}>
                         {questProgress.currentProgress} / {questProgress.targetProgress}
                         {isCompleted && " ✓"}
-                      </span>
-                      <span className={`flex items-center gap-1 font-medium transition-all ${
-                        isCompleted
-                          ? "text-green-600 dark:text-green-400 scale-110"
-                          : "text-yellow-600 dark:text-yellow-400"
-                      }`}>
-                        <Zap className="h-3 w-3" />
-                        {isCompleted ? "Earned" : "+"}{questProgress.quest.xpReward} XP
                       </span>
                     </div>
                   </div>
