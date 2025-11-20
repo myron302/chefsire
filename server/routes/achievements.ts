@@ -168,14 +168,14 @@ router.get("/", requireAuth, async (req, res) => {
       .limit(1);
 
     // Get quest completion count
-    const [questCount] = await db.execute(sql`
+    const questCountResult = await db.execute(sql`
       SELECT COUNT(*) as count
       FROM quest_progress
       WHERE user_id = ${userId} AND status = 'completed'
     `);
 
     // Get post count
-    const [postCount] = await db.execute(sql`
+    const postCountResult = await db.execute(sql`
       SELECT COUNT(*) as count
       FROM posts
       WHERE user_id = ${userId}
@@ -183,11 +183,11 @@ router.get("/", requireAuth, async (req, res) => {
 
     const stats = {
       totalPoints: userStats?.totalPoints || 0,
-      questsCompleted: Number(questCount.rows[0]?.count || 0),
+      questsCompleted: Number(questCountResult.rows[0]?.count || 0),
       currentStreak: userStats?.currentStreak || 0,
       longestStreak: userStats?.longestStreak || 0,
       totalDrinksMade: userStats?.totalDrinksMade || 0,
-      postsCount: Number(postCount.rows[0]?.count || 0),
+      postsCount: Number(postCountResult.rows[0]?.count || 0),
       followersCount: user?.followersCount || 0,
     };
 
@@ -242,13 +242,13 @@ router.post("/check", requireAuth, async (req, res) => {
       .where(eq(users.id, userId))
       .limit(1);
 
-    const [questCount] = await db.execute(sql`
+    const questCountResult = await db.execute(sql`
       SELECT COUNT(*) as count
       FROM quest_progress
       WHERE user_id = ${userId} AND status = 'completed'
     `);
 
-    const [postCount] = await db.execute(sql`
+    const postCountResult = await db.execute(sql`
       SELECT COUNT(*) as count
       FROM posts
       WHERE user_id = ${userId}
@@ -256,11 +256,11 @@ router.post("/check", requireAuth, async (req, res) => {
 
     const stats = {
       totalPoints: userStats?.totalPoints || 0,
-      questsCompleted: Number(questCount.rows[0]?.count || 0),
+      questsCompleted: Number(questCountResult.rows[0]?.count || 0),
       currentStreak: userStats?.currentStreak || 0,
       longestStreak: userStats?.longestStreak || 0,
       totalDrinksMade: userStats?.totalDrinksMade || 0,
-      postsCount: Number(postCount.rows[0]?.count || 0),
+      postsCount: Number(postCountResult.rows[0]?.count || 0),
       followersCount: user?.followersCount || 0,
     };
 
