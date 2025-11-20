@@ -340,23 +340,24 @@ export default function Feed() {
       </div>
 
       {/* Sidebar */}
-      <aside className="hidden xl:block w-80 bg-card border-l border-border overflow-y-auto max-h-screen">
-        <div className="p-6 space-y-8">
-          {/* Phase 1: Daily Addiction Features */}
-          <section>
-            <ErrorBoundary>
-              <DailyQuests />
-            </ErrorBoundary>
-          </section>
+      <aside className="hidden xl:flex xl:flex-col w-80 bg-card border-l border-border max-h-screen">
+        {/* Sticky Daily Quests at top */}
+        <div className="flex-shrink-0 p-4 border-b border-border bg-card sticky top-0 z-10">
+          <ErrorBoundary>
+            <DailyQuests />
+          </ErrorBoundary>
+        </div>
 
+        {/* Scrollable content below */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <section>
             <ErrorBoundary>
               <AISuggestions />
             </ErrorBoundary>
           </section>
 
-          <section className="mb-8">
-            <h3 className="font-semibold mb-4">Suggested Chefs</h3>
+          <section>
+            <h3 className="font-semibold mb-3 text-sm">Suggested Chefs</h3>
           <div className="space-y-3">
             {displaySuggestedUsers.slice(0, 5).map((user) => (
               <div key={user.id} className="flex items-center justify-between">
@@ -389,8 +390,8 @@ export default function Feed() {
           </div>
         </section>
 
-        <section className="mb-8">
-          <h3 className="font-semibold mb-4">Trending Recipes</h3>
+        <section>
+          <h3 className="font-semibold mb-3 text-sm">Trending Recipes</h3>
           <div className="space-y-4">
             {displayTrendingRecipes.slice(0, 5).map((recipe) => (
               <div
