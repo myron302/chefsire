@@ -146,8 +146,9 @@ import CreateCompetitionPage from "@/pages/competitions/CreateCompetitionPage";
 import CompetitionRoomPage from "@/pages/competitions/CompetitionRoomPage";
 import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage";
 
-// Leaderboards
+// Leaderboards & Achievements
 import LeaderboardPage from "@/pages/leaderboard/LeaderboardPage";
+import AchievementsPage from "@/pages/achievements/AchievementsPage";
 
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
@@ -320,8 +321,9 @@ function AppRouter() {
         <Route path="/competitions/:id" component={CompetitionRoomPage} />
         <Route path="/competitions" component={CompetitionLibraryPage} />
 
-        {/* Leaderboards */}
+        {/* Leaderboards & Achievements */}
         <Route path="/leaderboard" component={LeaderboardPage} />
+        <Route path="/achievements" component={AchievementsPage} />
 
         {/* Recipes */}
         <Route path="/recipes/baby-food/:rest*">

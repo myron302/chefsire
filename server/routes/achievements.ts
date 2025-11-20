@@ -193,12 +193,29 @@ router.get("/", requireAuth, async (req, res) => {
 
     // Check which achievements are unlocked
     const achievements = Object.values(ACHIEVEMENTS).map(achievement => ({
-      ...achievement,
+      id: achievement.id,
+      name: achievement.name,
+      description: achievement.description,
+      icon: achievement.icon,
+      category: achievement.category,
+      xpReward: achievement.xpReward,
       unlocked: achievement.requirement(stats),
       progress: getProgress(achievement, stats),
     }));
 
-    return res.json({ achievements, stats });
+    // Calculate total unlocked and XP earned
+    const totalUnlocked = achievements.filter(a => a.unlocked).length;
+    const totalXpEarned = achievements
+      .filter(a => a.unlocked)
+      .reduce((sum, a) => sum + a.xpReward, 0);
+
+    return res.json({
+      achievements,
+      stats: {
+        totalUnlocked,
+        totalXpEarned,
+      },
+    });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
