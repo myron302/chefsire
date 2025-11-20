@@ -256,16 +256,19 @@ export default function Feed() {
 
   // Trending recipes (sidebar) — falls back to demo if error
   const {
-    data: trendingRecipes,
+    data: trendingRecipesResponse,
     isLoading: recipesLoading,
     error: recipesError,
-  } = useQuery<(Recipe & { post: PostWithUser })[]>({
-    queryKey: ["/api/recipes/trending"],
+  } = useQuery<{ items: (Recipe & { post: PostWithUser })[] }>({
+    queryKey: ["/api/recipes/random"],
     queryFn: () =>
-      fetchJSON<(Recipe & { post: PostWithUser })[]>(
-        "/api/recipes/search?limit=5" // Use search endpoint instead of non-existent trending
+      fetchJSON<{ items: (Recipe & { post: PostWithUser })[] }>(
+        "/api/recipes/random?count=5"
       ),
   });
+
+  // Extract items from response
+  const trendingRecipes = trendingRecipesResponse?.items;
 
   // Use demo data as fallback
   const displayPosts = postsError ? demoPosts : posts ?? demoPosts;
