@@ -561,7 +561,7 @@ const Marketplace = () => {
                 <div className="border rounded-lg p-6 hover:shadow-lg transition-shadow">
                   <h4 className="text-lg font-bold mb-2">Starter</h4>
                   <div className="mb-4">
-                    <span className="text-3xl font-bold">$15</span>
+                    <span className="text-3xl font-bold">$19</span>
                     <span className="text-gray-600">/month</span>
                   </div>
                   <ul className="space-y-2 mb-6 text-sm">
@@ -569,31 +569,25 @@ const Marketplace = () => {
                       <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
-                      <span>Up to 100 products</span>
+                      <span>Up to 50 products</span>
                     </li>
                     <li className="flex items-start">
                       <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
-                      <span>10% commission on shipped sales</span>
-                    </li>
-                    <li className="flex items-start">
-                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                      </svg>
-                      <span className="font-semibold text-green-700">0% on pickup/in-store sales</span>
-                    </li>
-                    <li className="flex items-start">
-                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                      </svg>
-                      <span>Custom store branding</span>
+                      <span>Custom store URL</span>
                     </li>
                     <li className="flex items-start">
                       <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
                       <span>Basic analytics</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Email support</span>
                     </li>
                   </ul>
                   <UIButton onClick={() => {
@@ -613,7 +607,7 @@ const Marketplace = () => {
                   </div>
                   <h4 className="text-lg font-bold mb-2">Professional</h4>
                   <div className="mb-4">
-                    <span className="text-3xl font-bold">$35</span>
+                    <span className="text-3xl font-bold">$49</span>
                     <span className="text-gray-600">/month</span>
                   </div>
                   <ul className="space-y-2 mb-6 text-sm">
@@ -627,13 +621,13 @@ const Marketplace = () => {
                       <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
-                      <span>5% commission on shipped sales</span>
+                      <span>Custom domain</span>
                     </li>
                     <li className="flex items-start">
                       <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
-                      <span className="font-semibold text-green-700">0% on pickup/in-store sales</span>
+                      <span>Advanced analytics</span>
                     </li>
                     <li className="flex items-start">
                       <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -662,7 +656,7 @@ const Marketplace = () => {
                 <div className="border rounded-lg p-6 hover:shadow-lg transition-shadow">
                   <h4 className="text-lg font-bold mb-2">Enterprise</h4>
                   <div className="mb-4">
-                    <span className="text-3xl font-bold">$75</span>
+                    <span className="text-3xl font-bold">$99</span>
                     <span className="text-gray-600">/month</span>
                   </div>
                   <ul className="space-y-2 mb-6 text-sm">
@@ -670,19 +664,19 @@ const Marketplace = () => {
                       <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
-                      <span>Unlimited products</span>
+                      <span>Everything in Pro</span>
                     </li>
                     <li className="flex items-start">
                       <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
-                      <span>2% commission on shipped sales</span>
+                      <span>White-label branding</span>
                     </li>
                     <li className="flex items-start">
                       <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
-                      <span className="font-semibold text-green-700">0% on pickup/in-store sales</span>
+                      <span>API access</span>
                     </li>
                     <li className="flex items-start">
                       <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -873,4 +867,491 @@ const SellerDashboard = ({ onBack }: { onBack: () => void }) => {
           )}
         </div>
 
-        {
+        {/* Tier Selection Modal */}
+        {showUpgradeModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <Crown className="w-8 h-8 text-orange-500 mr-3" />
+                    <div>
+                      <h3 className="text-2xl font-bold">Choose Your Store Plan</h3>
+                      <p className="text-gray-600">Start with a 30-day free trial, cancel anytime</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowUpgradeModal(false)} className="text-gray-400 hover:text-gray-600">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Starter Tier */}
+                <div className="border rounded-lg p-6 hover:shadow-lg transition-shadow">
+                  <h4 className="text-lg font-bold mb-2">Starter</h4>
+                  <div className="mb-4">
+                    <span className="text-3xl font-bold">$19</span>
+                    <span className="text-gray-600">/month</span>
+                  </div>
+                  <ul className="space-y-2 mb-6 text-sm">
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Up to 50 products</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Custom store URL</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Basic analytics</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Email support</span>
+                    </li>
+                  </ul>
+                  <UIButton onClick={() => {
+                    updateUser({ subscription: "starter", trialEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() });
+                    setShowUpgradeModal(false);
+                    toast({ description: "🎉 30-day Starter trial activated!" });
+                    setTimeout(() => window.location.href = "/store/create", 1500);
+                  }} className="w-full">
+                    Start Free Trial
+                  </UIButton>
+                </div>
+
+                {/* Pro Tier */}
+                <div className="border-2 border-orange-500 rounded-lg p-6 hover:shadow-lg transition-shadow relative">
+                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                    <Badge className="bg-orange-500 text-white">Most Popular</Badge>
+                  </div>
+                  <h4 className="text-lg font-bold mb-2">Professional</h4>
+                  <div className="mb-4">
+                    <span className="text-3xl font-bold">$49</span>
+                    <span className="text-gray-600">/month</span>
+                  </div>
+                  <ul className="space-y-2 mb-6 text-sm">
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Unlimited products</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Custom domain</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Advanced analytics</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Priority support</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Marketing tools</span>
+                    </li>
+                  </ul>
+                  <UIButton onClick={() => {
+                    updateUser({ subscription: "pro", trialEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() });
+                    setShowUpgradeModal(false);
+                    toast({ description: "🎉 30-day Pro trial activated!" });
+                    setTimeout(() => window.location.href = "/store/create", 1500);
+                  }} className="w-full bg-orange-500 hover:bg-orange-600">
+                    Start Free Trial
+                  </UIButton>
+                </div>
+
+                {/* Enterprise Tier */}
+                <div className="border rounded-lg p-6 hover:shadow-lg transition-shadow">
+                  <h4 className="text-lg font-bold mb-2">Enterprise</h4>
+                  <div className="mb-4">
+                    <span className="text-3xl font-bold">$99</span>
+                    <span className="text-gray-600">/month</span>
+                  </div>
+                  <ul className="space-y-2 mb-6 text-sm">
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Everything in Pro</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>White-label branding</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>API access</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Dedicated account manager</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Custom integrations</span>
+                    </li>
+                  </ul>
+                  <UIButton onClick={() => {
+                    updateUser({ subscription: "enterprise", trialEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() });
+                    setShowUpgradeModal(false);
+                    toast({ description: "🎉 30-day Enterprise trial activated!" });
+                    setTimeout(() => window.location.href = "/store/create", 1500);
+                  }} className="w-full">
+                    Start Free Trial
+                  </UIButton>
+                </div>
+              </div>
+
+              <div className="p-6 bg-gray-50 border-t text-center text-sm text-gray-600">
+                All plans include a 30-day free trial • No credit card required • Cancel anytime
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <div className="flex items-center">
+              <div className="p-3 bg-orange-100 rounded-lg mr-4">
+                <Package className="w-6 h-6 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Active Products</p>
+                <p className="text-2xl font-bold text-gray-900">12</p>
+                <p className="text-xs text-green-600">+2 this month</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <div className="flex items-center">
+              <div className="p-3 bg-green-100 rounded-lg mr-4">
+                <DollarSign className="w-6 h-6 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Monthly Revenue</p>
+                <p className="text-2xl font-bold text-gray-900">$1,245</p>
+                <p className="text-xs text-green-600">+18% from last month</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <div className="flex items-center">
+              <div className="p-3 bg-blue-100 rounded-lg mr-4">
+                <TrendingUp className="w-6 h-6 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Total Views</p>
+                <p className="text-2xl font-bold text-gray-900">3,241</p>
+                <p className="text-xs text-blue-600">+5% this week</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <div className="flex items-center">
+              <div className="p-3 bg-purple-100 rounded-lg mr-4">
+                <Star className="w-6 h-6 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Avg Rating</p>
+                <p className="text-2xl font-bold text-gray-900">4.9</p>
+                <p className="text-xs text-gray-600">From 23 reviews</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs - Added Store Tab */}
+        <div className="bg-white rounded-lg shadow-sm">
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8 px-6">
+              {[
+                { id: "products", name: "My Products", count: 12 },
+                { id: "orders", name: "Orders", count: 5 },
+                { id: "analytics", name: "Analytics", count: null },
+                { id: "store-builder", name: "Store Builder", count: null },
+                { id: "store", name: "My Store", count: null },
+                { id: "subscription", name: "Subscription", count: null },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === (tab.id as any)
+                      ? "border-orange-500 text-orange-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  }`}
+                >
+                  {tab.name}
+                  {tab.count && (
+                    <span className="ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">{tab.count}</span>
+                  )}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          <div className="p-6">
+            {activeTab === "products" && (
+              <div className="text-center py-12 text-gray-500">
+                <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                <p>Your products will appear here once you start selling</p>
+                {!userStore && (
+                  <button 
+                    onClick={() => window.location.href = '/store/create'}
+                    className="mt-4 bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors"
+                  >
+                    Create Store to Start Selling
+                  </button>
+                )}
+              </div>
+            )}
+
+            {activeTab === "orders" && (
+              <div className="text-center py-12 text-gray-500">
+                <ShoppingCart className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                <p>Orders from customers will appear here</p>
+              </div>
+            )}
+
+            {activeTab === "analytics" && (
+              <div className="text-center py-12 text-gray-500">
+                <TrendingUp className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                <p>Sales analytics and performance metrics will appear here</p>
+              </div>
+            )}
+
+            {activeTab === "store-builder" && (
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-6">Build Your Store</h3>
+                {userStore ? (
+                  <div className="text-center">
+                    <button
+                      onClick={() => setShowBuilder(true)}
+                      className="bg-orange-500 text-white px-6 py-3 rounded-lg font-medium hover:bg-orange-600 transition-colors"
+                    >
+                      Launch Store Builder
+                    </button>
+                    <p className="text-gray-600 mt-4">Customize your storefront layout and design</p>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Store className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                    <p className="text-gray-600 mb-4">Create a store first to use the store builder</p>
+                    <button 
+                      onClick={() => window.location.href = '/store/create'}
+                      className="bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors"
+                    >
+                      Create Store
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* NEW STORE TAB CONTENT */}
+            {activeTab === "store" && (
+              <div>
+                {storeLoading ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-4" />
+                    <p className="text-gray-600">Loading store...</p>
+                  </div>
+                ) : userStore ? (
+                  <div className="space-y-6">
+                    {/* Store Overview Card */}
+                    <div className="bg-white border border-gray-200 rounded-lg p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-xl font-semibold">{userStore.name}</h3>
+                          <p className="text-gray-600">artisana.app/store/{userStore.handle}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              userStore.is_published ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
+                            }`}>
+                              {userStore.is_published ? "Published" : "Draft"}
+                            </span>
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              {userStore.subscription_tier} Tier
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => window.location.href = `/store/${userStore.handle}`}
+                            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                          >
+                            View Store
+                          </button>
+                          <button 
+                            onClick={() => setShowBuilder(true)}
+                            className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                          >
+                            Customize Store
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Actions */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <button 
+                        onClick={() => setActiveTab("products")}
+                        className="bg-white border border-gray-200 rounded-lg p-4 text-left hover:border-orange-300 transition-colors"
+                      >
+                        <Package className="w-8 h-8 text-orange-500 mb-2" />
+                        <h4 className="font-semibold">Manage Products</h4>
+                        <p className="text-sm text-gray-600 mt-1">Add, edit, or remove products</p>
+                      </button>
+                      
+                      <button 
+                        onClick={() => setShowBuilder(true)}
+                        className="bg-white border border-gray-200 rounded-lg p-4 text-left hover:border-orange-300 transition-colors"
+                      >
+                        <Store className="w-8 h-8 text-orange-500 mb-2" />
+                        <h4 className="font-semibold">Customize Design</h4>
+                        <p className="text-sm text-gray-600 mt-1">Change your store's appearance</p>
+                      </button>
+                      
+                      <button 
+                        onClick={() => setActiveTab("analytics")}
+                        className="bg-white border border-gray-200 rounded-lg p-4 text-left hover:border-orange-300 transition-colors"
+                      >
+                        <TrendingUp className="w-8 h-8 text-orange-500 mb-2" />
+                        <h4 className="font-semibold">View Analytics</h4>
+                        <p className="text-sm text-gray-600 mt-1">Track your store performance</p>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Store className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                    <h3 className="text-lg font-semibold mb-2">No store yet</h3>
+                    <p className="text-gray-600 mb-4">Create your storefront to start selling products</p>
+                    <button 
+                      onClick={() => window.location.href = '/store/create'}
+                      className="bg-orange-500 text-white px-6 py-2 rounded-lg font-medium hover:bg-orange-600 transition-colors"
+                    >
+                      Create Your Store
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "subscription" && (
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-6">Seller Subscription</h3>
+                {user.trialEndDate && <p className="mb-4 text-green-600">Trial active - Ends in {trialDaysLeft} days</p>}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="border border-gray-200 rounded-lg p-6">
+                    <h4 className="text-lg font-semibold mb-2">Free</h4>
+                    <p className="text-3xl font-bold mb-4">
+                      $0<span className="text-sm text-gray-600">/month</span>
+                    </p>
+                    <ul className="text-sm text-gray-600 space-y-2 mb-4">
+                      <li>• Up to 5 products</li>
+                      <li>• 10% commission fee</li>
+                      <li>• Basic analytics</li>
+                    </ul>
+                    <button className="w-full bg-gray-500 text-white py-2 rounded-lg">Current Plan</button>
+                  </div>
+
+                  <div className="border-2 border-orange-500 rounded-lg p-6 relative">
+                    <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-orange-500 text-white px-3 py-1 rounded-full text-xs">
+                      Recommended
+                    </div>
+                    <h4 className="text-lg font-semibold mb-2">Professional</h4>
+                    <p className="text-3xl font-bold mb-4">
+                      $35<span className="text-sm text-gray-600">/month</span>
+                    </p>
+                    <ul className="text-sm text-gray-600 space-y-2 mb-4">
+                      <li>• Unlimited products</li>
+                      <li>• Lower fees</li>
+                      <li>• Advanced analytics</li>
+                      <li>• Priority support</li>
+                    </ul>
+                    <button
+                      onClick={() => handleUpgrade("pro", false)}
+                      className="w-full bg-orange-500 text-white py-2 rounded-lg hover:bg-orange-600"
+                    >
+                      Upgrade with Square
+                    </button>
+                    <button
+                      onClick={() => handleUpgrade("pro", true)}
+                      className="w-full mt-2 border border-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-50"
+                    >
+                      Start 30-Day Trial
+                    </button>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-lg p-6">
+                    <h4 className="text-lg font-semibold mb-2">Enterprise</h4>
+                    <p className="text-3xl font-bold mb-4">
+                      $75<span className="text-sm text-gray-600">/month</span>
+                    </p>
+                    <ul className="text-sm text-gray-600 space-y-2 mb-4">
+                      <li>• Everything in Pro</li>
+                      <li>• Lowest fees</li>
+                      <li>• Custom storefront</li>
+                      <li>• Dedicated support</li>
+                    </ul>
+                    <button
+                      onClick={() => handleUpgrade("enterprise", false)}
+                      className="w-full border border-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-50"
+                    >
+                      Contact Sales / Upgrade
+                    </button>
+                    <button
+                      onClick={() => handleUpgrade("enterprise", true)}
+                      className="w-full mt-2 border border-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-50"
+                    >
+                      Start Enterprise Trial
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Marketplace;
