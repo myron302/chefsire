@@ -340,16 +340,15 @@ export default function Feed() {
       </div>
 
       {/* Sidebar */}
-      <aside className="hidden xl:flex xl:flex-col w-80 bg-card border-l border-border max-h-screen">
-        {/* Sticky Daily Quests at top */}
-        <div className="flex-shrink-0 p-4 border-b border-border bg-card sticky top-0 z-10">
-          <ErrorBoundary>
-            <DailyQuests />
-          </ErrorBoundary>
-        </div>
+      <aside className="hidden xl:block w-80 bg-card border-l border-border">
+        <div className="p-4 space-y-4">
+          {/* Phase 1: Daily Addiction Features */}
+          <section>
+            <ErrorBoundary>
+              <DailyQuests />
+            </ErrorBoundary>
+          </section>
 
-        {/* Scrollable content below */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <section>
             <ErrorBoundary>
               <AISuggestions />
