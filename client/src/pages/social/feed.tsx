@@ -250,7 +250,8 @@ export default function Feed() {
     error: usersError,
   } = useQuery<User[]>({
     queryKey: ["/api/users", currentUserId, "suggested"],
-    queryFn: () => fetchJSON<User[]>("/api/users/suggested?limit=5"),
+    queryFn: () => fetchJSON<User[]>(`/api/users/${currentUserId}/suggested?limit=5`),
+    enabled: !!currentUserId, // Only run if currentUserId exists
   });
 
   // Trending recipes (sidebar) — falls back to demo if error
@@ -262,7 +263,7 @@ export default function Feed() {
     queryKey: ["/api/recipes/trending"],
     queryFn: () =>
       fetchJSON<(Recipe & { post: PostWithUser })[]>(
-        "/api/recipes/trending?limit=5"
+        "/api/recipes/search?limit=5" // Use search endpoint instead of non-existent trending
       ),
   });
 
