@@ -4,7 +4,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, Star, Zap, CheckCircle2, Clock, Sparkles } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 type Quest = {
   id: string;
@@ -37,6 +37,7 @@ async function fetchJSON<T>(url: string): Promise<T> {
 export default function DailyQuests() {
   const { user, loading } = useUser();
   const [celebrateQuestId, setCelebrateQuestId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const {
     data: questsResponse,
@@ -52,6 +53,17 @@ export default function DailyQuests() {
     retry: false,
     refetchInterval: 30000,
   });
+
+  // Auto-refresh right after local midnight so new quests appear without a full reload
+  useEffect(() => {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+    const ms = next.getTime() - now.getTime();
+    const t = window.setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quests/daily", user?.id] });
+    }, ms);
+    return () => window.clearTimeout(t);
+  }, [queryClient, user?.id]);
 
   // Normalize/reshape response once per fetch
   const questsArray = useMemo(() => {
@@ -72,12 +84,11 @@ export default function DailyQuests() {
     [questsArray]
   );
 
-  // ✅ FIX: include celebrateQuestId in deps, and only trigger when a *new* completion appears.
+  // Celebration (only when a *new* completion appears)
   const timeoutRef = useRef<number | null>(null);
   const lastFiredIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // find a completed quest that hasn't been celebrated yet
     const newlyCompleted = questsArray.find(
       (q) => q.status === "completed" && q.id !== lastFiredIdRef.current
     );
@@ -85,20 +96,18 @@ export default function DailyQuests() {
     if (newlyCompleted && celebrateQuestId === null) {
       lastFiredIdRef.current = newlyCompleted.id;
       setCelebrateQuestId(newlyCompleted.id);
-      // clear any existing timer first
       if (timeoutRef.current) {
         window.clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
       timeoutRef.current = window.setTimeout(() => {
         setCelebrateQuestId(null);
-        timeoutRef.current && window.clearTimeout(timeoutRef.current);
+        if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }, 2000) as unknown as number;
     }
 
     return () => {
-      // Cleanup on unmount
       if (timeoutRef.current) {
         window.clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
@@ -204,8 +213,7 @@ export default function DailyQuests() {
           <>
             {questsArray.map((questProgress) => {
               const denom = Math.max(questProgress.targetProgress || 0, 0);
-              const rawPct =
-                denom > 0 ? (questProgress.currentProgress / denom) * 100 : 0;
+              const rawPct = denom > 0 ? (questProgress.currentProgress / denom) * 100 : 0;
               const progressPercent = Math.max(0, Math.min(100, rawPct));
               const isCompleted = questProgress.status === "completed";
 
@@ -275,8 +283,7 @@ export default function DailyQuests() {
                             : "text-muted-foreground"
                         }`}
                       >
-                        {questProgress.currentProgress} /{" "}
-                        {questProgress.targetProgress}
+                        {questProgress.currentProgress} / {questProgress.targetProgress}
                         {isCompleted && " ✓"}
                       </span>
                     </div>
