@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, Star, Zap, CheckCircle2, Clock, Sparkles } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 type Quest = {
   id: string;
@@ -36,26 +36,75 @@ async function fetchJSON<T>(url: string): Promise<T> {
 
 export default function DailyQuests() {
   const { user, loading } = useUser();
-  const queryClient = useQueryClient();
   const [celebrateQuestId, setCelebrateQuestId] = useState<string | null>(null);
 
   const {
     data: questsResponse,
     isLoading,
     error,
-  } = useQuery<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>({
+  } = useQuery<{ quests: Array<{ progress: Omit<QuestProgress, "quest">; quest: Quest }> }>({
     queryKey: ["/api/quests/daily", user?.id],
-    queryFn: () => fetchJSON<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>(`/api/quests/daily`),
-    enabled: !loading && !!user?.id, // Only fetch when loading is done AND user exists
-    retry: false, // Don't retry on error
-    refetchInterval: 30000, // Refetch every 30 seconds to check for updates
+    queryFn: () =>
+      fetchJSON<{ quests: Array<{ progress: Omit<QuestProgress, "quest">; quest: Quest }> }>(
+        `/api/quests/daily`
+      ),
+    enabled: !loading && !!user?.id,
+    retry: false,
+    refetchInterval: 30000,
   });
 
-  // Extract and restructure quests array from response
-  const quests = questsResponse?.quests.map(({ progress, quest }) => ({
-    ...progress,
-    quest,
-  }));
+  // Normalize/reshape response once per fetch
+  const questsArray = useMemo(() => {
+    const qs =
+      questsResponse?.quests.map(({ progress, quest }) => ({
+        ...progress,
+        quest,
+      })) ?? [];
+    return Array.isArray(qs) ? qs : [];
+  }, [questsResponse]);
+
+  const activeQuests = useMemo(
+    () => questsArray.filter((q) => q.status === "active"),
+    [questsArray]
+  );
+  const completedToday = useMemo(
+    () => questsArray.filter((q) => q.status === "completed"),
+    [questsArray]
+  );
+
+  // ✅ FIX: include celebrateQuestId in deps, and only trigger when a *new* completion appears.
+  const timeoutRef = useRef<number | null>(null);
+  const lastFiredIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // find a completed quest that hasn't been celebrated yet
+    const newlyCompleted = questsArray.find(
+      (q) => q.status === "completed" && q.id !== lastFiredIdRef.current
+    );
+
+    if (newlyCompleted && celebrateQuestId === null) {
+      lastFiredIdRef.current = newlyCompleted.id;
+      setCelebrateQuestId(newlyCompleted.id);
+      // clear any existing timer first
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      timeoutRef.current = window.setTimeout(() => {
+        setCelebrateQuestId(null);
+        timeoutRef.current && window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }, 2000) as unknown as number;
+    }
+
+    return () => {
+      // Cleanup on unmount
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [questsArray, celebrateQuestId]);
 
   const getDifficultyColor = (difficulty: string) => {
     const colors: Record<string, string> = {
@@ -78,10 +127,8 @@ export default function DailyQuests() {
     return <Icon className="h-4 w-4" />;
   };
 
-  // Don't show while user context is loading
+  // Early returns
   if (loading) return null;
-
-  // Don't show if user is logged out
   if (!user) return null;
 
   if (isLoading) {
@@ -108,31 +155,14 @@ export default function DailyQuests() {
     );
   }
 
-  // Hide component if there's an error (e.g., tables don't exist yet)
   if (error) {
     console.warn("Daily Quests error:", error);
     return null;
   }
 
-  // Ensure quests is always an array
-  const questsArray = Array.isArray(quests) ? quests : [];
-  const activeQuests = questsArray.filter((q) => q.status === "active");
-  const completedToday = questsArray.filter((q) => q.status === "completed");
-
-  // Trigger celebration animation when a quest is completed
-  useEffect(() => {
-    const justCompleted = questsArray.find(
-      (q) => q.status === "completed" && !celebrateQuestId
-    );
-    if (justCompleted) {
-      setCelebrateQuestId(justCompleted.id);
-      setTimeout(() => setCelebrateQuestId(null), 2000);
-    }
-  }, [questsArray]);
-
   return (
     <Card className="w-full relative overflow-hidden">
-      {/* Animated background gradient for all completed */}
+      {/* Animated background when all complete */}
       {completedToday.length === 3 && (
         <div className="absolute inset-0 bg-gradient-to-br from-yellow-100 via-orange-100 to-red-100 dark:from-yellow-900/20 dark:via-orange-900/20 dark:to-red-900/20 opacity-30 animate-pulse" />
       )}
@@ -159,6 +189,7 @@ export default function DailyQuests() {
           </Badge>
         </CardTitle>
       </CardHeader>
+
       <CardContent className="space-y-4">
         {activeQuests.length === 0 && completedToday.length === 0 ? (
           <div className="text-center py-8">
@@ -172,8 +203,10 @@ export default function DailyQuests() {
         ) : (
           <>
             {questsArray.map((questProgress) => {
-              const progressPercent =
-                (questProgress.currentProgress / questProgress.targetProgress) * 100;
+              const denom = Math.max(questProgress.targetProgress || 0, 0);
+              const rawPct =
+                denom > 0 ? (questProgress.currentProgress / denom) * 100 : 0;
+              const progressPercent = Math.max(0, Math.min(100, rawPct));
               const isCompleted = questProgress.status === "completed";
 
               return (
@@ -201,7 +234,9 @@ export default function DailyQuests() {
                         {isCompleted ? (
                           <CheckCircle2 className="h-3 w-3" />
                         ) : (
-                          <div className="scale-75">{getQuestIcon(questProgress.quest.questType)}</div>
+                          <div className="scale-75">
+                            {getQuestIcon(questProgress.quest.questType)}
+                          </div>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -212,7 +247,9 @@ export default function DailyQuests() {
                     </div>
                     <Badge
                       variant="outline"
-                      className={`text-[10px] px-1.5 py-0 h-4 flex-shrink-0 ml-2 ${getDifficultyColor(questProgress.quest.difficulty)}`}
+                      className={`text-[10px] px-1.5 py-0 h-4 flex-shrink-0 ml-2 ${getDifficultyColor(
+                        questProgress.quest.difficulty
+                      )}`}
                     >
                       +{questProgress.quest.xpReward} XP
                     </Badge>
@@ -220,7 +257,10 @@ export default function DailyQuests() {
 
                   <div className="space-y-1.5">
                     <div className="relative">
-                      <Progress value={progressPercent} className="h-1.5 transition-all duration-500 ease-out" />
+                      <Progress
+                        value={progressPercent}
+                        className="h-1.5 transition-all duration-500 ease-out"
+                      />
                       {isCompleted && (
                         <div className="absolute -top-0.5 -right-0.5">
                           <Sparkles className="h-3 w-3 text-yellow-500 animate-spin" />
@@ -228,10 +268,15 @@ export default function DailyQuests() {
                       )}
                     </div>
                     <div className="flex items-center justify-between text-[10px]">
-                      <span className={`transition-colors ${
-                        isCompleted ? "text-green-600 dark:text-green-400 font-semibold" : "text-muted-foreground"
-                      }`}>
-                        {questProgress.currentProgress} / {questProgress.targetProgress}
+                      <span
+                        className={`transition-colors ${
+                          isCompleted
+                            ? "text-green-600 dark:text-green-400 font-semibold"
+                            : "text-muted-foreground"
+                        }`}
+                      >
+                        {questProgress.currentProgress} /{" "}
+                        {questProgress.targetProgress}
                         {isCompleted && " ✓"}
                       </span>
                     </div>
