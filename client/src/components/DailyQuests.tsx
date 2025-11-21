@@ -122,13 +122,14 @@ export default function DailyQuests() {
   // Trigger celebration animation when a quest is completed
   useEffect(() => {
     const justCompleted = questsArray.find(
-      (q) => q.status === "completed" && !celebrateQuestId
+      (q) => q.status === "completed" && q.id !== celebrateQuestId
     );
-    if (justCompleted) {
+    if (justCompleted && !celebrateQuestId) {
       setCelebrateQuestId(justCompleted.id);
-      setTimeout(() => setCelebrateQuestId(null), 2000);
+      const timer = setTimeout(() => setCelebrateQuestId(null), 2000);
+      return () => clearTimeout(timer);
     }
-  }, [questsArray]);
+  }, [questsArray, celebrateQuestId]);
 
   return (
     <Card className="w-full relative overflow-hidden">
@@ -172,8 +173,9 @@ export default function DailyQuests() {
         ) : (
           <>
             {questsArray.map((questProgress) => {
-              const progressPercent =
-                (questProgress.currentProgress / questProgress.targetProgress) * 100;
+              const progressPercent = questProgress.targetProgress > 0
+                ? Math.min(100, Math.max(0, (questProgress.currentProgress / questProgress.targetProgress) * 100))
+                : 0;
               const isCompleted = questProgress.status === "completed";
 
               return (
