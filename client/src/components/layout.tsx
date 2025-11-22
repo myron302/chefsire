@@ -116,7 +116,6 @@ const navSections: NavSection[] = [
       },
     ],
   },
-  // NEW: leaderboard & achievements section
   {
     title: "Progress & Rewards",
     items: [
@@ -220,7 +219,6 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   const handleCreatePost = () => {
-    // align with App route: /create
     setLocation("/create");
   };
 
@@ -443,7 +441,7 @@ export default function Layout({ children }: LayoutProps) {
 
                           <div className="border-t border-border my-2" />
 
-                          {/* Sections from navSections (including new Progress & Rewards) */}
+                          {/* Sections from navSections (includes Progress & Rewards) */}
                           <div className="px-4 space-y-2 text-sm">
                             {navSections.map((section) => (
                               <div key={section.title}>
@@ -555,9 +553,71 @@ export default function Layout({ children }: LayoutProps) {
           <Sidebar />
         </aside>
 
-        {/* Main Content */}
-        <main className="flex-1 bg-muted/20">
-          <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
+        {/* Main Content with profile hero */}
+        <main
+          className={`flex-1 ${
+            user ? "lg:ml-0" : ""
+          } pb-16 lg:pb-0 bg-muted/20`}
+        >
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-4">
+            {user && (
+              <section className="rounded-2xl border border-orange-100 bg-gradient-to-r from-orange-50 via-rose-50 to-red-50 dark:from-orange-900/40 dark:via-rose-900/30 dark:to-red-900/40 px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-10 w-10 border border-white/70 shadow">
+                    {user.avatarUrl ? (
+                      <AvatarImage src={user.avatarUrl} alt={user.username} />
+                    ) : (
+                      <AvatarFallback>
+                        {user.displayName?.[0]?.toUpperCase() ?? "C"}
+                      </AvatarFallback>
+                    )}
+                  </Avatar>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">
+                        {user.displayName || user.username}
+                      </span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/40 text-orange-900 dark:bg-black/30 dark:text-orange-100">
+                        Royal Chef
+                      </span>
+                    </div>
+                    <div className="text-xs text-orange-900/80 dark:text-orange-50/80">
+                      @{user.username} · Your kitchen, your kingdom
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 sm:gap-3 justify-start sm:justify-end">
+                  <Link href="/leaderboard">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="rounded-full border-orange-300 bg-white/70 hover:bg-white"
+                    >
+                      🏆 Leaderboard
+                    </Button>
+                  </Link>
+                  <Link href="/achievements">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="rounded-full border-orange-300 bg-white/70 hover:bg-white"
+                    >
+                      ⭐ Achievements
+                    </Button>
+                  </Link>
+                  <Link href={`/profile/${user.id ?? ""}`}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="rounded-full text-orange-900 dark:text-orange-100 hover:bg-white/40"
+                    >
+                      View profile →
+                    </Button>
+                  </Link>
+                </div>
+              </section>
+            )}
+
             {children}
           </div>
         </main>
