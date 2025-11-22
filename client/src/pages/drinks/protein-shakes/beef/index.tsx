@@ -662,7 +662,7 @@ export default function BeefProteinPage() {
                 key={tab.id}
                 variant="ghost"
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 ${activeTab === tab.id ? "bg-white shadow-sm" : ""}`}
+                className={`flex-1 ${activeTab === tab.id ? 'bg-red-500 shadow-sm !text-white hover:!text-white hover:bg-red-600' : ''}`}
               >
                 <Icon className="h-4 w-4 mr-2" />
                 {tab.label}
