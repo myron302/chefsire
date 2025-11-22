@@ -18,6 +18,27 @@ interface LayoutProps {
   children: ReactNode;
 }
 
+// Top rail quick links
+const secondaryLinks = [
+  { href: "/", label: "Home" },
+  { href: "/bitemap", label: "BiteMap" },
+  { href: "/competitions/library", label: "Competitions" },
+  { href: "/recipes", label: "Recipes" },
+  { href: "/drinks", label: "Drinks" },
+  { href: "/pet-food", label: "Pet Food" },
+  { href: "/catering", label: "Catering" },
+  { href: "/store", label: "Store" },
+];
+
+const trendingSearches = [
+  "High-protein smoothies",
+  "Wedding tasting menus",
+  "Baby-led weaning ideas",
+  "Local taco trucks",
+  "Vegan comfort food",
+  "Pet-friendly treats",
+];
+
 export default function Layout({ children }: LayoutProps) {
   const [pathname, setLocation] = useLocation();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -36,17 +57,10 @@ export default function Layout({ children }: LayoutProps) {
     };
   }, []);
 
-  // Top rail quick links
-  const secondaryLinks = [
-    { href: "/", label: "Home" },
-    { href: "/bitemap", label: "BiteMap" },
-    { href: "/competitions/library", label: "Competitions" },
-    { href: "/recipes", label: "Recipes" },
-    { href: "/drinks", label: "Drinks" },
-    { href: "/pet-food", label: "Pet Food" },
-    { href: "/catering", label: "Catering" },
-    { href: "/store", label: "Store" },
-  ];
+  // Close dropdown on route change
+  useEffect(() => {
+    setIsDropdownOpen(false);
+  }, [pathname]);
 
   const handleCreatePost = () => {
     setLocation("/create");
@@ -58,6 +72,12 @@ export default function Layout({ children }: LayoutProps) {
     setIsDropdownOpen(false);
     if (q) setLocation(`/recipes?q=${encodeURIComponent(q)}`);
     else setLocation("/recipes");
+  };
+
+  const handleTrendingClick = (term: string) => {
+    setSearchText(term);
+    setLocation(`/recipes?q=${encodeURIComponent(term)}`);
+    setIsDropdownOpen(false);
   };
 
   const toggleSubmenu = (key: string, e: React.MouseEvent) => {
@@ -144,26 +164,33 @@ export default function Layout({ children }: LayoutProps) {
                     </Button>
                   </Link>
 
-                  {/* User menu */}
-                  <div
-                    className="relative"
-                    onMouseLeave={() => {
-                      setIsDropdownOpen(false);
-                      setExpandedMenus({});
-                    }}
-                  >
+                  {/* User menu - UPDATED DESIGN */}
+                  <div className="relative">
                     <button
-                      onClick={() => setIsDropdownOpen((v) => !v)}
-                      className="flex items-center space-x-2 hover:bg-muted rounded-full p-1 transition-colors"
+                      onClick={() => setIsDropdownOpen(prev => !prev)}
+                      className="flex items-center gap-2 rounded-full border border-border bg-card px-2 py-1 hover:bg-muted transition"
                       aria-haspopup="menu"
                       aria-expanded={isDropdownOpen}
                       aria-label="User menu"
                     >
-                      <Avatar className="w-8 h-8">
-                        <AvatarImage src={user?.avatar || "https://images.unsplash.com/photo-1566554273541-37a9ca77b91f"} />
-                        <AvatarFallback>{user?.displayName?.[0] || 'U'}</AvatarFallback>
+                      <Avatar className="h-8 w-8 border border-orange-500 shadow-sm">
+                        {user?.avatar ? (
+                          <AvatarImage src={user.avatar} alt={user.username} />
+                        ) : (
+                          <AvatarFallback>
+                            {user?.displayName?.[0]?.toUpperCase() ?? 'U'}
+                          </AvatarFallback>
+                        )}
                       </Avatar>
-                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                      <div className="hidden sm:flex flex-col items-start">
+                        <span className="text-xs font-semibold leading-tight">
+                          {user?.displayName || user?.username}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          View kingdom
+                        </span>
+                      </div>
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
                     </button>
 
                     {isDropdownOpen && (
@@ -175,57 +202,116 @@ export default function Layout({ children }: LayoutProps) {
                             setExpandedMenus({});
                           }}
                         />
-                        <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-20 overflow-hidden max-h-[calc(100vh-5rem)] overflow-y-auto">
-                          {/* Header */}
-                          <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-b px-4 py-3">
-                            <div className="flex items-center space-x-3">
-                              <Avatar className="w-7 h-7">
-                                <AvatarImage src={user?.avatar} />
-                                <AvatarFallback>{user?.displayName?.[0] || 'U'}</AvatarFallback>
+                        <div className="absolute right-0 mt-2 w-[360px] sm:w-[420px] bg-popover border border-border rounded-xl shadow-xl z-20 overflow-hidden max-h-[calc(100vh-5rem)] overflow-y-auto">
+                          {/* Hero Header with Gradient */}
+                          <div className="bg-gradient-to-r from-orange-500 via-red-500 to-rose-500 px-4 py-3 text-white flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-10 w-10 border-2 border-white shadow-md">
+                                {user?.avatar ? (
+                                  <AvatarImage src={user.avatar} alt={user.username} />
+                                ) : (
+                                  <AvatarFallback>
+                                    {user?.displayName?.[0]?.toUpperCase() ?? 'U'}
+                                  </AvatarFallback>
+                                )}
                               </Avatar>
                               <div>
-                                <span className="font-bold text-orange-900 dark:text-orange-100 text-base">
-                                  {user?.displayName || 'User'}
+                                <span className="font-bold text-sm">
+                                  {user?.displayName || user?.username}
                                 </span>
-                                <div className="text-xs text-orange-700 dark:text-orange-300">
+                                <div className="text-xs text-orange-50">
                                   @{user?.username}
+                                </div>
+                                <div className="mt-0.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/10 text-[10px]">
+                                  <span>👑</span>
+                                  <span>Your kitchen, your kingdom</span>
                                 </div>
                               </div>
                             </div>
+                            <Link href={`/profile/${user?.id}`}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-white/70 text-white hover:bg-white/10 text-xs rounded-full"
+                                onClick={() => setIsDropdownOpen(false)}
+                              >
+                                View profile
+                              </Button>
+                            </Link>
                           </div>
 
                           {/* Body */}
                           <div className="py-2">
+                            {/* Quick Navigation Cards */}
+                            <div className="px-4 py-2">
+                              <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
+                                Quick navigation
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <Link
+                                  href="/feed"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                                >
+                                  <span className="text-lg">🏠</span>
+                                  <div>
+                                    <div className="font-semibold">Home Feed</div>
+                                    <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                                      Latest dishes & stories
+                                    </div>
+                                  </div>
+                                </Link>
+                                <Link
+                                  href="/explore"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                                >
+                                  <span className="text-lg">🧭</span>
+                                  <div>
+                                    <div className="font-semibold">Explore</div>
+                                    <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                                      Discover new creators
+                                    </div>
+                                  </div>
+                                </Link>
+                                <Link
+                                  href="/drinks"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                                >
+                                  <span className="text-lg">🥤</span>
+                                  <div>
+                                    <div className="font-semibold">Drinks Hub</div>
+                                    <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                                      Smoothies, shakes & more
+                                    </div>
+                                  </div>
+                                </Link>
+                                <Link
+                                  href="/bitemap"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                                >
+                                  <span className="text-lg">📍</span>
+                                  <div>
+                                    <div className="font-semibold">BiteMap</div>
+                                    <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                                      Local eats & maps
+                                    </div>
+                                  </div>
+                                </Link>
+                              </div>
+                            </div>
+
+                            <div className="border-t border-border my-2" />
+
+                            {/* Main Navigation */}
                             <div className="px-4 py-2">
                               <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
                                 Navigation
                               </div>
 
                               <div className="space-y-1 ml-2">
-                                <Link
-                                  href="/feed"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  🏠 Feed
-                                </Link>
-
-                                <Link
-                                  href="/explore"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  🧭 Explore
-                                </Link>
-
-                                <Link
-                                  href="/bitemap"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  🗺️ BiteMap
-                                </Link>
-
                                 <Link
                                   href="/messages"
                                   onClick={() => setIsDropdownOpen(false)}
@@ -240,24 +326,6 @@ export default function Layout({ children }: LayoutProps) {
                                   className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                                 >
                                   🏛️ Royal Clubs
-                                </Link>
-
-                                {/* NEW: Leaderboard */}
-                                <Link
-                                  href="/leaderboard"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  🏆 Leaderboard
-                                </Link>
-
-                                {/* NEW: Achievements */}
-                                <Link
-                                  href="/achievements"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  ⭐ Achievements
                                 </Link>
 
                                 {/* Competitions */}
@@ -380,7 +448,6 @@ export default function Layout({ children }: LayoutProps) {
                                   </div>
                                   {expandedMenus.drinks && (
                                     <div className="ml-6 space-y-1">
-                                      {/* Smoothies */}
                                       <Link
                                         href="/drinks/smoothies"
                                         onClick={() => setIsDropdownOpen(false)}
@@ -388,8 +455,6 @@ export default function Layout({ children }: LayoutProps) {
                                       >
                                         🍎 Smoothies & Bowls
                                       </Link>
-
-                                      {/* Protein Shakes */}
                                       <Link
                                         href="/drinks/protein-shakes"
                                         onClick={() => setIsDropdownOpen(false)}
@@ -397,8 +462,6 @@ export default function Layout({ children }: LayoutProps) {
                                       >
                                         🧪 Protein Shakes
                                       </Link>
-
-                                      {/* Detoxes */}
                                       <Link
                                         href="/drinks/detoxes"
                                         onClick={() => setIsDropdownOpen(false)}
@@ -406,8 +469,6 @@ export default function Layout({ children }: LayoutProps) {
                                       >
                                         🍃 Detoxes & Cleanses
                                       </Link>
-
-                                      {/* Caffeinated Drinks */}
                                       <Link
                                         href="/drinks/caffeinated"
                                         onClick={() => setIsDropdownOpen(false)}
@@ -415,8 +476,6 @@ export default function Layout({ children }: LayoutProps) {
                                       >
                                         ☕ Caffeinated Drinks
                                       </Link>
-
-                                      {/* Potent Potables */}
                                       <Link
                                         href="/drinks/potent-potables"
                                         onClick={() => setIsDropdownOpen(false)}
@@ -561,31 +620,43 @@ export default function Layout({ children }: LayoutProps) {
                               </div>
                             </div>
 
-                            <div className="border-t my-2" />
+                            <div className="border-t border-border my-2" />
 
-                            {/* Profile / Settings / Sign out */}
-                            <Link
-                              href={`/profile/${user?.id}`}
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
-                            >
-                              <User className="w-5 h-5 mr-3" /> My Profile
-                            </Link>
+                            {/* Trending Searches */}
+                            <div className="px-4 pb-2">
+                              <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">
+                                Trending searches
+                              </div>
+                              <div className="flex flex-wrap gap-1">
+                                {trendingSearches.map((term) => (
+                                  <button
+                                    key={term}
+                                    onClick={() => handleTrendingClick(term)}
+                                    className="px-2 py-1 rounded-full border border-border text-[11px] hover:bg-muted transition"
+                                  >
+                                    {term}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
 
+                          {/* Footer with Settings & Logout */}
+                          <div className="border-t border-border bg-muted/60 px-4 py-2 flex items-center justify-between text-xs">
                             <Link
                               href="/settings"
                               onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                              className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition"
                             >
-                              <Settings className="w-5 h-5 mr-3" /> Settings
+                              <Settings className="h-3.5 w-3.5" />
+                              <span>Settings</span>
                             </Link>
-
                             <button
                               onClick={handleLogout}
-                              className="flex items-center w-full px-4 py-3 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 text-left"
+                              className="inline-flex items-center gap-1 text-destructive hover:underline"
                             >
-                              <LogOut className="w-5 h-5 mr-3" />
-                              Sign Out
+                              <LogOut className="h-3.5 w-3.5" />
+                              <span>Log out</span>
                             </button>
                           </div>
                         </div>
