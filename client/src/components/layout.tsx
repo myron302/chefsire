@@ -220,9 +220,8 @@ export default function Layout({ children }: LayoutProps) {
                             </div>
                             <Link href={`/profile/${user?.id}`}>
                               <Button
-                                variant="outline"
                                 size="sm"
-                                className="border-white/70 text-white hover:bg-white/10 text-xs rounded-full"
+                                className="border-2 border-white bg-transparent text-white hover:bg-white/20 text-xs rounded-full font-semibold shadow-sm px-4"
                                 onClick={() => setIsDropdownOpen(false)}
                               >
                                 View profile
