@@ -22,6 +22,21 @@ router.get("/", async (req, res) => {
   }
 });
 
+// GET /api/quests/all - Get all quests (admin)
+router.get("/all", async (req, res) => {
+  try {
+    // TODO: Add admin role check here
+    const quests = await db
+      .select()
+      .from(dailyQuests)
+      .orderBy(desc(dailyQuests.createdAt));
+
+    return res.json({ quests });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/quests/daily - Get today's quests for user
 router.get("/daily", requireAuth, async (req, res) => {
   try {
@@ -480,6 +495,24 @@ router.post("/seed", async (req, res) => {
       count: inserted.length,
       quests: inserted
     });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/quests/:id - Delete a quest (admin)
+router.delete("/:id", async (req, res) => {
+  try {
+    // TODO: Add admin role check here
+    const { id } = req.params;
+
+    // Delete the quest
+    await db.delete(dailyQuests).where(eq(dailyQuests.id, id));
+
+    // Also delete any associated quest progress
+    await db.delete(questProgress).where(eq(questProgress.questId, id));
+
+    return res.json({ message: "Quest deleted successfully" });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
