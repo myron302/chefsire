@@ -317,6 +317,33 @@ export default function Layout({ children }: LayoutProps) {
                                   🏛️ Royal Clubs
                                 </Link>
 
+                                {/* NEW: Achievements */}
+                                <Link
+                                  href="/achievements"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                                >
+                                  🏅 Achievements
+                                </Link>
+
+                                {/* NEW: Leaderboard */}
+                                <Link
+                                  href="/leaderboard"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                                >
+                                  📊 Leaderboard
+                                </Link>
+
+                                {/* NEW: Admin */}
+                                <Link
+                                  href="/admin"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                                >
+                                  🛠️ Admin Console
+                                </Link>
+
                                 {/* Competitions */}
                                 <div>
                                   <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
