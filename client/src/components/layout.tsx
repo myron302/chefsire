@@ -168,22 +168,17 @@ export default function Layout({ children }: LayoutProps) {
                   <div className="relative">
                     <button
                       onClick={() => setIsDropdownOpen(prev => !prev)}
-                      className="flex items-center gap-2 rounded-full border border-border bg-card px-2 py-1 hover:bg-muted transition"
+                      className="flex items-center gap-2 rounded-full border-2 border-border bg-background px-3 py-1.5 hover:bg-muted transition shadow-sm"
                       aria-haspopup="menu"
                       aria-expanded={isDropdownOpen}
                       aria-label="User menu"
                     >
                       <Avatar className="h-8 w-8 border border-orange-500 shadow-sm">
-                        {user?.avatar ? (
-                          <AvatarImage src={user.avatar} alt={user.username} />
-                        ) : (
-                          <AvatarFallback>
-                            {user?.displayName?.[0]?.toUpperCase() ?? 'U'}
-                          </AvatarFallback>
-                        )}
+                        <AvatarImage src={user?.avatar || "https://images.unsplash.com/photo-1566554273541-37a9ca77b91f"} />
+                        <AvatarFallback>{user?.displayName?.[0] || 'U'}</AvatarFallback>
                       </Avatar>
                       <div className="hidden sm:flex flex-col items-start">
-                        <span className="text-xs font-semibold leading-tight">
+                        <span className="text-xs font-semibold leading-tight text-foreground">
                           {user?.displayName || user?.username}
                         </span>
                         <span className="text-[10px] text-muted-foreground">
@@ -207,13 +202,8 @@ export default function Layout({ children }: LayoutProps) {
                           <div className="bg-gradient-to-r from-orange-500 via-red-500 to-rose-500 px-4 py-3 text-white flex items-center justify-between">
                             <div className="flex items-center gap-3">
                               <Avatar className="h-10 w-10 border-2 border-white shadow-md">
-                                {user?.avatar ? (
-                                  <AvatarImage src={user.avatar} alt={user.username} />
-                                ) : (
-                                  <AvatarFallback>
-                                    {user?.displayName?.[0]?.toUpperCase() ?? 'U'}
-                                  </AvatarFallback>
-                                )}
+                                <AvatarImage src={user?.avatar || "https://images.unsplash.com/photo-1566554273541-37a9ca77b91f"} />
+                                <AvatarFallback>{user?.displayName?.[0] || 'U'}</AvatarFallback>
                               </Avatar>
                               <div>
                                 <span className="font-bold text-sm">
