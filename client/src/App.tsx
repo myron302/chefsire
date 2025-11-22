@@ -62,9 +62,6 @@ import ProductPage from "@/pages/marketplace/ProductPage";
 // Settings page
 import Settings from "@/pages/settings";
 
-// Admin page
-import AdminQuestsPage from "@/pages/admin";
-
 // BiteMap page
 import BiteMapPage from "@/pages/bitemap/index.tsx";
 
@@ -353,9 +350,6 @@ function AppRouter() {
 
         {/* Allergies Routes */}
         <Route path="/allergies" component={AllergiesDashboard} />
-
-        {/* Admin Routes */}
-        <Route path="/admin" component={AdminQuestsPage} />
 
         {/* Clubs Routes */}
         <Route path="/clubs/:id" component={ClubDetailPage} />
