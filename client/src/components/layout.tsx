@@ -1,658 +1,684 @@
-import { useEffect, useState, FormEvent } from "react";
-import type { ReactNode } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useUser } from "@/contexts/UserContext";
+import { useQueryClient } from "@tanstack/react-query";
+import { cn } from "@/lib/utils";
 import {
-  Search, Bell, MessageCircle, User, ChevronDown, ChevronRight,
-  Settings, LogOut, Plus,
+  Search,
+  Bell,
+  MessageCircle,
+  User,
+  ChevronDown,
+  ChevronRight,
+  Settings,
+  LogOut,
+  Plus,
 } from "lucide-react";
-import Sidebar from "@/components/sidebar";
-import MobileNav from "@/components/mobile-nav";
-import NotificationBell from "@/components/NotificationBell";
-import chefLogo from "../asset/logo.jpg";
 
-interface LayoutProps {
-  children: ReactNode;
-}
+type NavItem = {
+  label: string;
+  href: string;
+  icon?: React.ReactNode;
+  badge?: string;
+  external?: boolean;
+};
 
-export default function Layout({ children }: LayoutProps) {
-  const [pathname, setLocation] = useLocation();
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [searchText, setSearchText] = useState("");
-  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
-  const { user, logout } = useUser();
+const navItems: NavItem[] = [
+  { label: "Feed", href: "/feed" },
+  { label: "Explore", href: "/explore" },
+  { label: "Recipes", href: "/recipes" },
+  { label: "Drinks", href: "/drinks" },
+  { label: "Baby Food", href: "/recipes/baby-food" },
+  { label: "Pet Food", href: "/pet-food" },
+  { label: "BiteMap", href: "/bitemap" },
+  { label: "Pantry", href: "/pantry" },
+  { label: "Catering", href: "/catering" },
+  { label: "Wedding Planning", href: "/catering/wedding-planning" },
+  { label: "Store", href: "/marketplace" },
+];
+
+function useClickOutside(handler: () => void) {
+  const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const link = document.createElement("link");
-    link.href =
-      "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&display=swap";
-    link.rel = "stylesheet";
-    document.head.appendChild(link);
-    return () => {
-      document.head.removeChild(link);
-    };
+    function handleClick(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        handler();
+      }
+    }
+
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [handler]);
+
+  return ref;
+}
+
+function useScrollDirection() {
+  const [scrollingUp, setScrollingUp] = useState(true);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    function handleScroll() {
+      const currentScrollY = window.scrollY;
+      if (currentScrollY < lastScrollY.current) {
+        setScrollingUp(true);
+      } else if (currentScrollY > lastScrollY.current + 10) {
+        setScrollingUp(false);
+      }
+      lastScrollY.current = currentScrollY;
+    }
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Top rail quick links
-  const secondaryLinks = [
-    { href: "/", label: "Home" },
-    { href: "/bitemap", label: "BiteMap" },
-    { href: "/competitions/library", label: "Competitions" },
-    { href: "/recipes", label: "Recipes" },
-    { href: "/drinks", label: "Drinks" },
-    { href: "/pet-food", label: "Pet Food" },
-    { href: "/catering", label: "Catering" },
-    { href: "/store", label: "Store" },
-  ];
+  return scrollingUp;
+}
 
-  const handleCreatePost = () => {
-    setLocation("/create");
-  };
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth < 768 : false
+  );
 
-  const onSearchSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    const q = searchText.trim();
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 768);
+    }
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  return isMobile;
+}
+
+function usePersistedLayoutState<T>(key: string, defaultValue: T) {
+  const [state, setState] = useState<T>(() => {
+    if (typeof window === "undefined") return defaultValue;
+    try {
+      const stored = window.localStorage.getItem(key);
+      return stored ? (JSON.parse(stored) as T) : defaultValue;
+    } catch {
+      return defaultValue;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(state));
+    } catch {
+      // ignore
+    }
+  }, [key, state]);
+
+  return [state, setState] as const;
+}
+
+export default function Layout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const { user, loading, logout } = useUser();
+  const queryClient = useQueryClient();
+  const [location, setLocation] = useLocation();
+  const scrollingUp = useScrollDirection();
+  const isMobile = useIsMobile();
+
+  const [isSidebarOpen, setIsSidebarOpen] = usePersistedLayoutState(
+    "chefsire_sidebar_open",
+    true
+  );
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const dropdownRef = useClickOutside(() => setIsDropdownOpen(false));
+  const mobileNavRef = useClickOutside(() => setMobileNavOpen(false));
+
+  // Close menus on route change
+  useEffect(() => {
     setIsDropdownOpen(false);
-    if (q) setLocation(`/recipes?q=${encodeURIComponent(q)}`);
-    else setLocation("/recipes");
-  };
+    setMobileNavOpen(false);
+  }, [location]);
 
-  const toggleSubmenu = (key: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setExpandedMenus(prev => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const handleLogout = () => {
+  function handleLogout() {
     logout();
-    setIsDropdownOpen(false);
-    setLocation('/');
-  };
+    queryClient.clear();
+    setLocation("/login");
+  }
+
+  const showSidebar = !isMobile && isSidebarOpen;
+  const showCompactSidebar = !isMobile && !isSidebarOpen;
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Brand */}
-            <Link href="/" className="flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-full overflow-hidden shadow-lg flex items-center justify-center bg-white">
-                <img
-                  src={chefLogo}
-                  alt="ChefSire Logo"
-                  className="object-cover w-full h-full"
-                />
-              </div>
-              <h1
-                className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent"
-                style={{ fontFamily: "'Playfair Display', serif" }}
-              >
-                ChefSire
-              </h1>
+    <div className="min-h-screen bg-background text-foreground flex">
+      {/* Sidebar */}
+      {!isMobile && (
+        <aside
+          className={cn(
+            "hidden md:flex flex-col border-r bg-card/80 backdrop-blur relative transition-all duration-200",
+            showSidebar ? "w-64" : "w-16"
+          )}
+        >
+          <div className="flex items-center justify-between px-4 py-3 border-b">
+            <button
+              onClick={() => setLocation("/")}
+              className="flex items-center gap-2"
+            >
+              <span className="text-lg font-bold">ChefSire</span>
+            </button>
+            <button
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="p-1 rounded hover:bg-accent"
+              aria-label={showSidebar ? "Collapse sidebar" : "Expand sidebar"}
+            >
+              <ChevronLeftIcon
+                className={cn(
+                  "w-4 h-4 transition-transform",
+                  showSidebar && "rotate-180"
+                )}
+              />
+            </button>
+          </div>
+
+          <nav className="flex-1 overflow-y-auto py-2">
+            <div className="px-2 mb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Main
+            </div>
+            {navItems.map((item) => {
+              const isActive =
+                location === item.href ||
+                (item.href !== "/" && location.startsWith(item.href));
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2 rounded-lg text-sm hover:bg-accent hover:text-accent-foreground transition-colors",
+                    isActive ? "bg-accent text-accent-foreground" : ""
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "truncate",
+                      showSidebar ? "block" : "hidden"
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                  <span
+                    className={cn(
+                      "truncate",
+                      showSidebar ? "hidden" : "block"
+                    )}
+                  >
+                    {item.label.charAt(0)}
+                  </span>
+                  {item.badge && (
+                    <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+
+            {/* Community & Progress */}
+            <div className="mt-4 px-2 mb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Community
+            </div>
+            <Link
+              href="/clubs"
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm hover:bg-accent hover:text-accent-foreground transition-colors",
+                location.startsWith("/clubs")
+                  ? "bg-accent text-accent-foreground"
+                  : ""
+              )}
+            >
+              <span className={showSidebar ? "block" : "hidden"}>
+                🍽️ Clubs
+              </span>
+              <span className={showSidebar ? "hidden" : "block"}>🍽️</span>
+            </Link>
+            <Link
+              href="/competitions"
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm hover:bg-accent hover:text-accent-foreground transition-colors",
+                location.startsWith("/competitions")
+                  ? "bg-accent text-accent-foreground"
+                  : ""
+              )}
+            >
+              <span className={showSidebar ? "block" : "hidden"}>
+                🏆 Competitions
+              </span>
+              <span className={showSidebar ? "hidden" : "block"}>🏆</span>
             </Link>
 
-            {/* Search */}
-            <div className="hidden md:flex flex-1 max-w-lg mx-8">
-              <form className="relative w-full" onSubmit={onSearchSubmit}>
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                <Input
-                  type="text"
-                  placeholder="Search recipes, chefs, or ingredients..."
-                  className="w-full pl-10 bg-muted border-border rounded-full"
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                  aria-label="Search site"
-                />
-              </form>
+            <div className="mt-4 px-2 mb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Progress
+            </div>
+            <Link
+              href="/leaderboard"
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm hover:bg-accent hover:text-accent-foreground transition-colors",
+                location.startsWith("/leaderboard")
+                  ? "bg-accent text-accent-foreground"
+                  : ""
+              )}
+            >
+              <span className={showSidebar ? "block" : "hidden"}>
+                🏅 Leaderboard
+              </span>
+              <span className={showSidebar ? "hidden" : "block"}>🏅</span>
+            </Link>
+            <Link
+              href="/achievements"
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm hover:bg-accent hover:text-accent-foreground transition-colors",
+                location.startsWith("/achievements")
+                  ? "bg-accent text-accent-foreground"
+                  : ""
+              )}
+            >
+              <span className={showSidebar ? "block" : "hidden"}>
+                🎖️ Achievements
+              </span>
+              <span className={showSidebar ? "hidden" : "block"}>🎖️</span>
+            </Link>
+          </nav>
+
+          {/* User mini section in sidebar */}
+          <div className="border-t px-3 py-2 flex items-center gap-2 text-xs">
+            {user ? (
+              <>
+                <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-semibold">
+                  {user.username?.[0]?.toUpperCase() || "C"}
+                </div>
+                <div className={showSidebar ? "flex-1" : "hidden"}>
+                  <div className="font-medium truncate">
+                    {user.displayName || user.username}
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    Log out
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex gap-2">
+                <Link
+                  href="/login"
+                  className="flex-1 text-center text-xs border rounded py-1 hover:bg-accent"
+                >
+                  Log in
+                </Link>
+                <Link
+                  href="/signup"
+                  className="flex-1 text-center text-xs bg-primary text-primary-foreground rounded py-1 hover:bg-primary/90"
+                >
+                  Sign up
+                </Link>
+              </div>
+            )}
+          </div>
+        </aside>
+      )}
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col min-h-screen">
+        {/* Top nav / header */}
+        <header
+          className={cn(
+            "sticky top-0 z-40 border-b bg-background/80 backdrop-blur transition-transform",
+            scrollingUp ? "translate-y-0" : "-translate-y-full"
+          )}
+        >
+          <div className="flex items-center justify-between px-4 py-2">
+            <div className="flex items-center gap-2">
+              {isMobile && (
+                <button
+                  onClick={() => setMobileNavOpen(!mobileNavOpen)}
+                  className="p-2 rounded-lg hover:bg-accent"
+                >
+                  <ChevronRight
+                    className={cn(
+                      "w-5 h-5 transition-transform",
+                      mobileNavOpen && "rotate-90"
+                    )}
+                  />
+                </button>
+              )}
+              <button
+                onClick={() => setLocation("/")}
+                className="flex items-center gap-2"
+              >
+                <span className="text-base md:text-lg font-bold">
+                  ChefSire
+                </span>
+              </button>
             </div>
 
-            {/* Actions */}
-            <div className="flex items-center space-x-4">
-              {user ? (
-                <>
-                  <Link href="/competitions/new">
-                    <Button
-                      size="sm"
-                      className="hidden md:inline-flex bg-gradient-to-r from-fuchsia-600 to-rose-600 hover:from-fuchsia-700 hover:to-rose-700 text-white"
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Create Cookoff
-                    </Button>
-                  </Link>
+            <div className="flex items-center gap-2 md:gap-3">
+              {/* Search / debug placeholder */}
+              <button className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm rounded-full border bg-card hover:bg-accent">
+                <Search className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">
+                  Search recipes, drinks, chefs…
+                </span>
+              </button>
 
-                  {/* TEMPORARILY DISABLED - NotificationBell causing 502 on refresh */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="p-2 hover:bg-muted rounded-full"
-                    aria-label="Notifications"
-                  >
-                    <Bell className="h-5 w-5 text-muted-foreground" />
-                  </Button>
-                  <Link href="/messages">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="p-2 hover:bg-muted rounded-full"
-                      aria-label="Royal Table Talk"
-                    >
-                      <MessageCircle className="h-5 w-5 text-muted-foreground" />
-                    </Button>
-                  </Link>
+              {/* Actions */}
+              <Link
+                href="/create"
+                className="hidden md:inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Post</span>
+              </Link>
 
-                  {/* User menu */}
-                  <div
-                    className="relative"
-                    onMouseLeave={() => {
-                      setIsDropdownOpen(false);
-                      setExpandedMenus({});
-                    }}
-                  >
-                    <button
-                      onClick={() => setIsDropdownOpen((v) => !v)}
-                      className="flex items-center space-x-2 hover:bg-muted rounded-full p-1 transition-colors"
-                      aria-haspopup="menu"
-                      aria-expanded={isDropdownOpen}
-                      aria-label="User menu"
-                    >
-                      <Avatar className="w-8 h-8">
-                        <AvatarImage src={user?.avatar || "https://images.unsplash.com/photo-1566554273541-37a9ca77b91f"} />
-                        <AvatarFallback>{user?.displayName?.[0] || 'U'}</AvatarFallback>
-                      </Avatar>
-                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                    </button>
+              <Link
+                href="/messages"
+                className="p-2 rounded-full hover:bg-accent relative"
+              >
+                <MessageCircle className="w-4 h-4" />
+              </Link>
 
-                    {isDropdownOpen && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-10"
-                          onClick={() => {
-                            setIsDropdownOpen(false);
-                            setExpandedMenus({});
-                          }}
-                        />
-                        <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-20 overflow-hidden max-h-[calc(100vh-5rem)] overflow-y-auto">
-                          {/* Header */}
-                          <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border-b px-4 py-3">
-                            <div className="flex items-center space-x-3">
-                              <Avatar className="w-7 h-7">
-                                <AvatarImage src={user?.avatar} />
-                                <AvatarFallback>{user?.displayName?.[0] || 'U'}</AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <span className="font-bold text-orange-900 dark:text-orange-100 text-base">
-                                  {user?.displayName || 'User'}
-                                </span>
-                                <div className="text-xs text-orange-700 dark:text-orange-300">
-                                  @{user?.username}
-                                </div>
-                              </div>
-                            </div>
+              <button className="p-2 rounded-full hover:bg-accent relative">
+                <Bell className="w-4 h-4" />
+              </button>
+
+              {/* User avatar + dropdown */}
+              <div
+                className="relative"
+                ref={dropdownRef}
+              >
+                <button
+                  onClick={() => setIsDropdownOpen((v) => !v)}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-full hover:bg-accent"
+                >
+                  <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-primary font-semibold">
+                    {user?.username?.[0]?.toUpperCase() || "C"}
+                  </div>
+                  <span className="hidden md:inline text-xs max-w-[120px] truncate">
+                    {user?.displayName || user?.username || "Guest"}
+                  </span>
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+
+                {isDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-72 bg-card border rounded-xl shadow-lg overflow-hidden z-50">
+                    <div className="px-3 py-2 border-b">
+                      {user ? (
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-primary font-semibold">
+                            {user.username?.[0]?.toUpperCase() || "C"}
                           </div>
-
-                          {/* Body */}
-                          <div className="py-2">
-                            <div className="px-4 py-2">
-                              <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
-                                Navigation
-                              </div>
-
-                              <div className="space-y-1 ml-2">
-                                <Link
-                                  href="/feed"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  🏠 Feed
-                                </Link>
-
-                                <Link
-                                  href="/explore"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  🧭 Explore
-                                </Link>
-
-                                <Link
-                                  href="/bitemap"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  🗺️ BiteMap
-                                </Link>
-
-                                <Link
-                                  href="/messages"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  💬 Royal Table Talk
-                                </Link>
-
-                                <Link
-                                  href="/clubs"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  🏛️ Royal Clubs
-                                </Link>
-
-                                {/* Competitions */}
-                                <div>
-                                  <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-                                    <Link
-                                      href="/competitions/library"
-                                      onClick={() => setIsDropdownOpen(false)}
-                                      className="flex items-center flex-1 font-semibold"
-                                    >
-                                      🏆 Competitions
-                                    </Link>
-                                    <button
-                                      onClick={(e) => toggleSubmenu("competitions", e)}
-                                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
-                                    >
-                                      <ChevronRight
-                                        className={`w-3 h-3 transition-transform ${expandedMenus.competitions ? "rotate-90" : ""}`}
-                                      />
-                                    </button>
-                                  </div>
-                                  {expandedMenus.competitions && (
-                                    <div className="ml-6 space-y-1">
-                                      <Link
-                                        href="/competitions/library"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        📚 Cookoff Library
-                                      </Link>
-                                      <Link
-                                        href="/competitions/live"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        🔥 Live Battles
-                                      </Link>
-                                      <Link
-                                        href="/competitions/new"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        ➕ Create Cookoff
-                                      </Link>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Recipes */}
-                                <div>
-                                  <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-                                    <Link
-                                      href="/recipes"
-                                      onClick={() => setIsDropdownOpen(false)}
-                                      className="flex items-center flex-1 font-semibold"
-                                    >
-                                      📖 Recipes
-                                    </Link>
-                                    <button
-                                      onClick={(e) => toggleSubmenu("recipes", e)}
-                                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
-                                    >
-                                      <ChevronRight
-                                        className={`w-3 h-3 transition-transform ${expandedMenus.recipes ? "rotate-90" : ""}`}
-                                      />
-                                    </button>
-                                  </div>
-                                  {expandedMenus.recipes && (
-                                    <div className="ml-6 space-y-1">
-                                      <Link
-                                        href="/recipes"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        📚 Browse Recipes
-                                      </Link>
-                                      <Link
-                                        href="/recipes/baby-food"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        👶 Baby Food
-                                      </Link>
-                                      <Link
-                                        href="/pantry"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        🥘 My Pantry
-                                      </Link>
-                                      <Link
-                                        href="/substitutions"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        🪄 Substitutions
-                                      </Link>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Drinks */}
-                                <div>
-                                  <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-                                    <Link
-                                      href="/drinks"
-                                      onClick={() => setIsDropdownOpen(false)}
-                                      className="flex items-center flex-1 font-semibold"
-                                    >
-                                      🥤 Drinks
-                                    </Link>
-                                    <button
-                                      onClick={(e) => toggleSubmenu("drinks", e)}
-                                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
-                                    >
-                                      <ChevronRight
-                                        className={`w-3 h-3 transition-transform ${expandedMenus.drinks ? "rotate-90" : ""}`}
-                                      />
-                                    </button>
-                                  </div>
-                                  {expandedMenus.drinks && (
-                                    <div className="ml-6 space-y-1">
-                                      {/* Smoothies */}
-                                      <Link
-                                        href="/drinks/smoothies"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
-                                      >
-                                        🍎 Smoothies & Bowls
-                                      </Link>
-
-                                      {/* Protein Shakes */}
-                                      <Link
-                                        href="/drinks/protein-shakes"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
-                                      >
-                                        🧪 Protein Shakes
-                                      </Link>
-
-                                      {/* Detoxes */}
-                                      <Link
-                                        href="/drinks/detoxes"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
-                                      >
-                                        🍃 Detoxes & Cleanses
-                                      </Link>
-
-                                      {/* Caffeinated Drinks */}
-                                      <Link
-                                        href="/drinks/caffeinated"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
-                                      >
-                                        ☕ Caffeinated Drinks
-                                      </Link>
-
-                                      {/* Potent Potables */}
-                                      <Link
-                                        href="/drinks/potent-potables"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
-                                      >
-                                        🍷 Potent Potables{" "}
-                                        <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700">
-                                          21+
-                                        </span>
-                                      </Link>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Pet Food */}
-                                <div>
-                                  <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-                                    <Link
-                                      href="/pet-food"
-                                      onClick={() => setIsDropdownOpen(false)}
-                                      className="flex items-center flex-1 font-semibold"
-                                    >
-                                      🐾 Pet Food
-                                    </Link>
-                                    <button
-                                      onClick={(e) => toggleSubmenu("petfood", e)}
-                                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
-                                    >
-                                      <ChevronRight
-                                        className={`w-3 h-3 transition-transform ${expandedMenus.petfood ? "rotate-90" : ""}`}
-                                      />
-                                    </button>
-                                  </div>
-                                  {expandedMenus.petfood && (
-                                    <div className="ml-6 space-y-1">
-                                      <Link
-                                        href="/pet-food/dogs"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        🐶 Dogs
-                                      </Link>
-                                      <Link
-                                        href="/pet-food/cats"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        🐱 Cats
-                                      </Link>
-                                      <Link
-                                        href="/pet-food/birds"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        🦜 Birds
-                                      </Link>
-                                      <Link
-                                        href="/pet-food/small-pets"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        🐹 Small Pets
-                                      </Link>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Catering */}
-                                <Link
-                                  href="/catering"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  🍽️ Catering
-                                </Link>
-
-                                {/* Wedding Planning */}
-                                <div>
-                                  <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-                                    <Link
-                                      href="/catering/wedding-planning"
-                                      onClick={() => setIsDropdownOpen(false)}
-                                      className="flex items-center flex-1 font-semibold"
-                                    >
-                                      💒 Wedding Planning
-                                    </Link>
-                                    <button
-                                      onClick={(e) => toggleSubmenu("wedding", e)}
-                                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
-                                    >
-                                      <ChevronRight
-                                        className={`w-3 h-3 transition-transform ${expandedMenus.wedding ? "rotate-90" : ""}`}
-                                      />
-                                    </button>
-                                  </div>
-                                  {expandedMenus.wedding && (
-                                    <div className="ml-6 space-y-1">
-                                      <Link
-                                        href="/catering/wedding-planning"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        📋 Planning Hub
-                                      </Link>
-                                      <Link
-                                        href="/catering/wedding-map"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        🗺️ Vendor Map
-                                      </Link>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Marketplace */}
-                                <Link
-                                  href="/marketplace"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  🛒 Marketplace
-                                </Link>
-
-                                {/* Nutrition */}
-                                <Link
-                                  href="/nutrition"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  💪 Nutrition
-                                </Link>
-
-                                {/* Allergies */}
-                                <Link
-                                  href="/allergies"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  ❤️ Allergies
-                                </Link>
-                              </div>
+                          <div className="flex-1">
+                            <div className="text-sm font-semibold truncate">
+                              {user.displayName || user.username}
                             </div>
-
-                            <div className="border-t my-2" />
-
-                            {/* Profile / Settings / Sign out */}
-                            <Link
-                              href={`/profile/${user?.id}`}
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
-                            >
-                              <User className="w-5 h-5 mr-3" /> My Profile
-                            </Link>
-
-                            <Link
-                              href="/settings"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
-                            >
-                              <Settings className="w-5 h-5 mr-3" /> Settings
-                            </Link>
-
-                            <button
-                              onClick={handleLogout}
-                              className="flex items-center w-full px-4 py-3 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 text-left"
-                            >
-                              <LogOut className="w-5 h-5 mr-3" />
-                              Sign Out
-                            </button>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {user.email}
+                            </div>
                           </div>
                         </div>
-                      </>
-                    )}
+                      ) : (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            You&apos;re browsing as a guest.
+                          </span>
+                          <Link
+                            href="/login"
+                            className="text-xs font-medium text-primary hover:underline"
+                          >
+                            Log in
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Quick nav inside dropdown */}
+                    <div className="max-h-[380px] overflow-y-auto">
+                      <div className="px-3 pt-2 pb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Core Navigation
+                      </div>
+                      <div className="px-2 pb-2 grid grid-cols-2 gap-1 text-sm">
+                        <Link
+                          href="/feed"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className={cn(
+                            "px-2 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800",
+                            location.startsWith("/feed") && "bg-gray-100"
+                          )}
+                        >
+                          🏠 Feed
+                        </Link>
+                        <Link
+                          href="/explore"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className={cn(
+                            "px-2 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800",
+                            location.startsWith("/explore") && "bg-gray-100"
+                          )}
+                        >
+                          🔍 Explore
+                        </Link>
+                        <Link
+                          href="/recipes"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className={cn(
+                            "px-2 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800",
+                            location.startsWith("/recipes") && "bg-gray-100"
+                          )}
+                        >
+                          📖 Recipes
+                        </Link>
+                        <Link
+                          href="/drinks"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className={cn(
+                            "px-2 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800",
+                            location.startsWith("/drinks") && "bg-gray-100"
+                          )}
+                        >
+                          🥤 Drinks
+                        </Link>
+                        <Link
+                          href="/bitemap"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className={cn(
+                            "px-2 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800",
+                            location.startsWith("/bitemap") && "bg-gray-100"
+                          )}
+                        >
+                          🗺️ BiteMap
+                        </Link>
+                        <Link
+                          href="/marketplace"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className={cn(
+                            "px-2 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800",
+                            location.startsWith("/marketplace") && "bg-gray-100"
+                          )}
+                        >
+                          🏬 Marketplace
+                        </Link>
+                      </div>
+
+                      <div className="px-3 pt-1 pb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Tools
+                      </div>
+                      <div className="px-2 pb-2 grid grid-cols-2 gap-1 text-sm">
+                        <Link
+                          href="/pantry"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className={cn(
+                            "px-2 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800",
+                            location.startsWith("/pantry") && "bg-gray-100"
+                          )}
+                        >
+                          🍽️ Pantry
+                        </Link>
+                        <Link
+                          href="/allergies"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className={cn(
+                            "px-2 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800",
+                            location.startsWith("/allergies") && "bg-gray-100"
+                          )}
+                        >
+                          ❤️ Allergies
+                        </Link>
+                      </div>
+
+                      {/* Progress & stats (NEW) */}
+                      <div className="px-3 pt-1 pb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Progress
+                      </div>
+                      <div className="px-2 pb-2 flex flex-col gap-1 text-sm">
+                        <Link
+                          href="/leaderboard"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className={cn(
+                            "flex items-center px-2 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800",
+                            location.startsWith("/leaderboard") && "bg-gray-100"
+                          )}
+                        >
+                          🏅 Leaderboard
+                        </Link>
+                        <Link
+                          href="/achievements"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className={cn(
+                            "flex items-center px-2 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800",
+                            location.startsWith("/achievements") &&
+                              "bg-gray-100"
+                          )}
+                        >
+                          🎖️ Achievements
+                        </Link>
+                      </div>
+
+                      <div className="border-t my-2" />
+
+                      {/* Account links */}
+                      <div className="text-sm">
+                        <button
+                          onClick={() => {
+                            setIsDropdownOpen(false);
+                            setLocation("/profile");
+                          }}
+                          className="w-full flex items-center px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        >
+                          <User className="w-4 h-4 mr-2" />
+                          My Profile
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsDropdownOpen(false);
+                            setLocation("/settings");
+                          }}
+                          className="w-full flex items-center px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        >
+                          <Settings className="w-4 h-4 mr-2" />
+                          Settings
+                        </button>
+                        {user && (
+                          <button
+                            onClick={handleLogout}
+                            className="w-full flex items-center px-3 py-2 hover:bg-red-50 dark:hover:bg-red-950 text-red-600 dark:text-red-400"
+                          >
+                            <LogOut className="w-4 h-4 mr-2" />
+                            Sign Out
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </>
-              ) : (
-                /* Show login/signup buttons when not logged in */
-                <div className="flex items-center space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setLocation('/login')}
-                  >
-                    Log In
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-red-600 hover:bg-red-700 text-white"
-                    onClick={() => setLocation('/signup')}
-                  >
-                    Sign Up
-                  </Button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Sub-rail */}
-          <nav className="border-t border-border bg-background">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <ul className="flex flex-nowrap gap-4 overflow-x-auto no-scrollbar py-2 px-1 touch-pan-x">
-                {secondaryLinks.map((item) => {
-                  const active = pathname === item.href;
+          {/* Mobile nav dropdown */}
+          {isMobile && mobileNavOpen && (
+            <div
+              ref={mobileNavRef}
+              className="md:hidden border-t bg-card"
+            >
+              <div className="px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">
+                Navigate
+              </div>
+              <div className="grid grid-cols-2 gap-1 px-2 pb-2 text-sm">
+                {navItems.map((item) => {
+                  const isActive =
+                    location === item.href ||
+                    (item.href !== "/" && location.startsWith(item.href));
                   return (
-                    <li key={item.href} className="flex-none">
-                      <Link
-                        href={item.href}
-                        className={[
-                          "inline-block text-sm font-medium whitespace-nowrap px-2 py-1 rounded transition-colors",
-                          active
-                            ? "text-orange-600 underline decoration-2 underline-offset-4"
-                            : "text-muted-foreground hover:text-orange-600",
-                        ].join(" ")}
-                        aria-current={active ? "page" : undefined}
-                      >
-                        {item.label}
-                      </Link>
-                    </li>
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMobileNavOpen(false)}
+                      className={cn(
+                        "px-2 py-2 rounded hover:bg-accent",
+                        isActive && "bg-accent"
+                      )}
+                    >
+                      {item.label}
+                    </Link>
                   );
                 })}
-              </ul>
+                <Link
+                  href="/leaderboard"
+                  onClick={() => setMobileNavOpen(false)}
+                  className={cn(
+                    "px-2 py-2 rounded hover:bg-accent",
+                    location.startsWith("/leaderboard") && "bg-accent"
+                  )}
+                >
+                  🏅 Leaderboard
+                </Link>
+                <Link
+                  href="/achievements"
+                  onClick={() => setMobileNavOpen(false)}
+                  className={cn(
+                    "px-2 py-2 rounded hover:bg-accent",
+                    location.startsWith("/achievements") && "bg-accent"
+                  )}
+                >
+                  🎖️ Achievements
+                </Link>
+              </div>
             </div>
-          </nav>
-        </div>
-      </header>
+          )}
+        </header>
 
-      {/* Body */}
-      <div className="flex flex-1">
-        {user && <Sidebar onCreatePost={handleCreatePost} />}
-        <main className={`flex-1 ${user ? 'lg:ml-64' : ''} pb-16 lg:pb-0`}>{children}</main>
+        {/* Page content */}
+        <main className="flex-1 px-2 md:px-4 py-3 md:py-4 max-w-6xl mx-auto w-full">
+          {children}
+        </main>
       </div>
-
-      {/* Mobile search */}
-      <div className="md:hidden px-4 py-2 bg-background border-t border-border">
-        <form onSubmit={onSearchSubmit} className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              type="text"
-              placeholder="Search recipes..."
-              className="w-full pl-10 bg-muted border-border rounded-full"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              aria-label="Search site (mobile)"
-            />
-          </div>
-          <Button type="submit" size="sm" className="shrink-0 rounded-full px-3">
-            Go
-          </Button>
-        </form>
-      </div>
-
-      {user && <MobileNav onCreatePost={handleCreatePost} />}
     </div>
+  );
+}
+
+function ChevronLeftIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
   );
 }
