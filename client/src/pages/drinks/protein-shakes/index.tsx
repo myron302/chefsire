@@ -472,19 +472,19 @@ export default function ProteinShakesPage({ params }: Params) {
 
                   <CardContent>
                     <div className="grid grid-cols-3 gap-3 mb-4">
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
                         <div className={`text-lg font-bold ${category.textColor}`}>{category.avgCalories}</div>
-                        <div className="text-xs text-gray-600">Calories</div>
+                        <div className="text-xs text-gray-600 whitespace-nowrap">Calories</div>
                       </div>
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
                         <div className={`text-lg font-bold ${category.textColor}`}>{category.avgTime}</div>
-                        <div className="text-xs text-gray-600">Prep Time</div>
+                        <div className="text-xs text-gray-600 whitespace-nowrap">Prep Time</div>
                       </div>
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
                         <div className={`text-lg font-bold ${category.textColor}`}>
                           <Trophy className="h-5 w-5 mx-auto" />
                         </div>
-                        <div className="text-xs text-gray-600">Top Rated</div>
+                        <div className="text-xs text-gray-600 whitespace-nowrap">Top Rated</div>
                       </div>
                     </div>
 
