@@ -405,15 +405,15 @@ export default function DetoxesHub() {
 
                   <CardContent>
                     <div className="grid grid-cols-3 gap-3 mb-4">
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center w-full`}>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
                         <div className={`text-lg font-bold ${category.textColor} whitespace-nowrap`}>{category.avgCalories}</div>
                         <div className="text-xs text-gray-600 whitespace-nowrap">Calories</div>
                       </div>
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center w-full`}>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
                         <div className={`text-lg font-bold ${category.textColor} whitespace-nowrap`}>{category.duration}</div>
                         <div className="text-xs text-gray-600 whitespace-nowrap">Duration</div>
                       </div>
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center w-full`}>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
                         <div className={`text-lg font-bold ${category.textColor}`}>
                           <Trophy className="h-5 w-5 mx-auto" />
                         </div>
