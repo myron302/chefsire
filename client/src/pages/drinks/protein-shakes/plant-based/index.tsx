@@ -775,7 +775,7 @@ export default function PlantBasedProteinPage() {
                 key={tab.id}
                 variant={activeTab === tab.id ? "default" : "ghost"}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 ${activeTab === tab.id ? 'bg-white shadow-sm' : ''}`}
+                className={`flex-1 ${activeTab === tab.id ? 'bg-white shadow-sm text-gray-900 hover:bg-white hover:text-gray-900' : ''}`}
               >
                 <Icon className="h-4 w-4 mr-2" />
                 {tab.label}
