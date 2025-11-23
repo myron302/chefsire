@@ -250,21 +250,15 @@ export default function Feed() {
     error: usersError,
   } = useQuery<User[]>({
     queryKey: ["/api/users", currentUserId, "suggested"],
-    queryFn: () => fetchJSON<User[]>("/api/users/suggested?limit=5"),
+    queryFn: () => fetchJSON<User[]>(`/api/users/${currentUserId}/suggested?limit=5`),
+    enabled: !!currentUserId, // Only run if currentUserId exists
   });
 
-  // Trending recipes (sidebar) — falls back to demo if error
-  const {
-    data: trendingRecipes,
-    isLoading: recipesLoading,
-    error: recipesError,
-  } = useQuery<(Recipe & { post: PostWithUser })[]>({
-    queryKey: ["/api/recipes/trending"],
-    queryFn: () =>
-      fetchJSON<(Recipe & { post: PostWithUser })[]>(
-        "/api/recipes/trending?limit=5"
-      ),
-  });
+  // Trending recipes (sidebar) — using demo data for now
+  // The /api/recipes endpoints don't include post data needed for display
+  const trendingRecipes = undefined; // Force use of demo data
+  const recipesError = null;
+  const recipesLoading = false;
 
   // Use demo data as fallback
   const displayPosts = postsError ? demoPosts : posts ?? demoPosts;
@@ -340,8 +334,8 @@ export default function Feed() {
       </div>
 
       {/* Sidebar */}
-      <aside className="hidden xl:block w-80 bg-card border-l border-border overflow-y-auto max-h-screen">
-        <div className="p-6 space-y-8">
+      <aside className="hidden xl:block w-80 bg-card border-l border-border">
+        <div className="p-4 space-y-4">
           {/* Phase 1: Daily Addiction Features */}
           <section>
             <ErrorBoundary>
@@ -355,8 +349,8 @@ export default function Feed() {
             </ErrorBoundary>
           </section>
 
-          <section className="mb-8">
-            <h3 className="font-semibold mb-4">Suggested Chefs</h3>
+          <section>
+            <h3 className="font-semibold mb-3 text-sm">Suggested Chefs</h3>
           <div className="space-y-3">
             {displaySuggestedUsers.slice(0, 5).map((user) => (
               <div key={user.id} className="flex items-center justify-between">
@@ -389,8 +383,8 @@ export default function Feed() {
           </div>
         </section>
 
-        <section className="mb-8">
-          <h3 className="font-semibold mb-4">Trending Recipes</h3>
+        <section>
+          <h3 className="font-semibold mb-3 text-sm">Trending Recipes</h3>
           <div className="space-y-4">
             {displayTrendingRecipes.slice(0, 5).map((recipe) => (
               <div

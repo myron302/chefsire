@@ -61,7 +61,7 @@ export default function AISuggestions() {
     error,
   } = useQuery<{ suggestions: AISuggestion[] }>({
     queryKey: ["/api/suggestions/today", user?.id],
-    queryFn: () => fetchJSON<{ suggestions: AISuggestion[] }>(`/api/suggestions/today/${user?.id}`),
+    queryFn: () => fetchJSON<{ suggestions: AISuggestion[] }>(`/api/suggestions/today`),
     enabled: !loading && !!user?.id, // Only fetch when loading is done AND user exists
     retry: false, // Don't retry on error
   });

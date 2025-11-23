@@ -107,8 +107,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
         royalTitle: data.user.royalTitle ?? null,
         avatar: data.user.avatar ?? null,
         bio: data.user.bio ?? null,
+        subscriptionTier: data.user.subscriptionTier || data.user.subscription || 'free',
         nutritionPremium: data.user.nutritionPremium,
         nutritionTrialEndsAt: data.user.nutritionTrialEndsAt,
+        subscription: data.user.subscription || data.user.subscriptionTier || 'free',
+        trialEndDate: data.user.trialEndDate || data.user.subscriptionEndsAt,
       };
 
       persist(cleanUser);

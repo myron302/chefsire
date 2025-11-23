@@ -366,16 +366,13 @@ export default function DetoxesHub() {
                   onMouseEnter={() => setHoveredCard(category.id)}
                   onMouseLeave={() => setHoveredCard(null)}
                 >
-                  <div className={`relative h-48 overflow-hidden bg-gradient-to-br ${category.bgColor === 'bg-orange-50' ? 'from-orange-200 via-orange-300 to-amber-400' : category.bgColor === 'bg-green-50' ? 'from-green-200 via-emerald-300 to-teal-400' : 'from-blue-200 via-cyan-300 to-sky-400'}`}>
-                    {/* Decorative pattern */}
-                    <div className="absolute inset-0 opacity-20" style={{
-                      backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 80%, white 1px, transparent 1px)',
-                      backgroundSize: '50px 50px'
-                    }} />
-                    {/* Large centered icon */}
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <category.icon className="w-24 h-24 text-white opacity-40" />
-                    </div>
+                  <div className={`relative h-48 overflow-hidden ${category.bgColor}`}>
+                    {/* Stock photo background */}
+                    <img
+                      src={category.image}
+                      alt={category.name}
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                     <div className="absolute top-3 left-3 flex gap-2">
                       {category.trending && (
@@ -408,19 +405,19 @@ export default function DetoxesHub() {
 
                   <CardContent>
                     <div className="grid grid-cols-3 gap-3 mb-4">
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
                         <div className={`text-lg font-bold ${category.textColor}`}>{category.avgCalories}</div>
-                        <div className="text-xs text-gray-600">Calories</div>
+                        <div className="text-xs text-gray-600 whitespace-nowrap">Calories</div>
                       </div>
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
                         <div className={`text-lg font-bold ${category.textColor}`}>{category.duration}</div>
-                        <div className="text-xs text-gray-600">Duration</div>
+                        <div className="text-xs text-gray-600 whitespace-nowrap">Duration</div>
                       </div>
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
                         <div className={`text-lg font-bold ${category.textColor}`}>
                           <Trophy className="h-5 w-5 mx-auto" />
                         </div>
-                        <div className="text-xs text-gray-600">Top Rated</div>
+                        <div className="text-xs text-gray-600 whitespace-nowrap">Top Rated</div>
                       </div>
                     </div>
 

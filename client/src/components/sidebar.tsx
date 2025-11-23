@@ -155,6 +155,8 @@ const NAV: NavItem[] = [
   { name: "🛒 Marketplace", href: "/marketplace" },
   { name: "💪 Nutrition", href: "/nutrition", isPremium: true },
   { name: "❤️ Allergies", href: "/allergies" },
+  { name: "🏆 Leaderboard", href: "/leaderboard" },
+  { name: "🎖️ Achievements", href: "/achievements" },
   { name: "👤 Profile", href: "/profile" },
 ];
 
