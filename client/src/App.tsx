@@ -152,9 +152,6 @@ import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage"
 import LeaderboardPage from "@/pages/leaderboard/LeaderboardPage";
 import AchievementsPage from "@/pages/achievements/AchievementsPage";
 
-// 🔧 NEW: Admin quests page
-import QuestsAdminPage from "@/pages/admin/QuestsAdminPage";
-
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
   React.useEffect(() => setLocation(to), [to, setLocation]);
@@ -387,9 +384,6 @@ function AppRouter() {
         {/* Leaderboards & Achievements */}
         <Route path="/leaderboard" component={LeaderboardPage} />
         <Route path="/achievements" component={AchievementsPage} />
-
-        {/* NEW: Admin quests route */}
-        <Route path="/admin/quests" component={QuestsAdminPage} />
 
         {/* Recipes */}
         <Route path="/recipes/baby-food/:rest*">

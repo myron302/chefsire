@@ -9,7 +9,6 @@ import {
   notifications,
 } from "../../shared/schema";
 import { requireAuth } from "../middleware";
-import { requireAdmin } from "../middleware/require-admin";
 import { assignDailyQuestsToUser } from "../services/quests.service";
 
 const router = Router();
@@ -138,90 +137,6 @@ router.post("/:questId/progress", requireAuth, async (req, res) => {
       quest,
       completed: isComplete,
       xpEarned: isComplete ? progress.xpEarned : 0,
-    });
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message });
-  }
-});
-
-// POST /api/quests/create - Admin create quest
-router.post("/create", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const questData = req.body;
-
-    const [quest] = await db
-      .insert(dailyQuests)
-      .values({
-        ...questData,
-        category: questData.category || null,
-        recurringPattern: questData.recurringPattern || null,
-      })
-      .returning();
-
-    return res.json({ quest });
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message });
-  }
-});
-
-// OPTIONAL: Admin update quest (toggle isActive, tweak XP, etc.)
-router.patch("/:id", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const payload = req.body;
-
-    const [updated] = await db
-      .update(dailyQuests)
-      .set({
-        ...(payload.slug !== undefined ? { slug: payload.slug } : {}),
-        ...(payload.title !== undefined ? { title: payload.title } : {}),
-        ...(payload.description !== undefined
-          ? { description: payload.description }
-          : {}),
-        ...(payload.questType !== undefined ? { questType: payload.questType } : {}),
-        ...(payload.category !== undefined ? { category: payload.category || null } : {}),
-        ...(payload.targetValue !== undefined
-          ? { targetValue: payload.targetValue }
-          : {}),
-        ...(payload.xpReward !== undefined ? { xpReward: payload.xpReward } : {}),
-        ...(payload.difficulty !== undefined ? { difficulty: payload.difficulty } : {}),
-        ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
-        ...(payload.recurringPattern !== undefined
-          ? { recurringPattern: payload.recurringPattern || null }
-          : {}),
-      })
-      .where(eq(dailyQuests.id, id))
-      .returning();
-
-    if (!updated) {
-      return res.status(404).json({ error: "Quest not found" });
-    }
-
-    return res.json({ quest: updated });
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message });
-  }
-});
-
-// POST /api/quests/seed - One-time default seeding
-router.post("/seed", requireAuth, requireAdmin, async (_req, res) => {
-  try {
-    const existingQuests = await db.select().from(dailyQuests).limit(1);
-
-    if (existingQuests.length > 0) {
-      return res.json({
-        message: "Daily quests already seeded",
-        count: existingQuests.length,
-      });
-    }
-
-    // Keep your original full questsData array here if you still want this
-    // endpoint available for re-seeding. Since you've already run it and your
-    // DB is populated, this is mostly a safety/backup.
-
-    return res.json({
-      message:
-        "Seed endpoint protected. Quests table is empty but no inline seed array in this build.",
     });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
