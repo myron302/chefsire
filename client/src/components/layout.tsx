@@ -335,15 +335,6 @@ export default function Layout({ children }: LayoutProps) {
                                   📊 Leaderboard
                                 </Link>
 
-                                {/* NEW: Admin */}
-                                <Link
-                                  href="/admin"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  🛠️ Admin Console
-                                </Link>
-
                                 {/* Competitions */}
                                 <div>
                                   <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
