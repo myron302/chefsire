@@ -1,6 +1,6 @@
 // server/routes/reviews.ts
 import { Router, Request, Response } from "express";
-import { db } from "../storage";
+import { storage } from "../storage";
 import {
   recipeReviews,
   recipeReviewPhotos,
@@ -19,7 +19,7 @@ import { requireAuth } from "../middleware/auth";
 const router = Router();
 
 // Multer config for review photos
-const storage = multer.diskStorage({
+const multerStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "uploads/reviews/");
   },
@@ -30,7 +30,7 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({
-  storage,
+  storage: multerStorage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|webp/;
@@ -50,7 +50,7 @@ router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
     const { recipeId } = req.params;
     const userId = (req as any).user?.id;
 
-    const reviews = await db
+    const reviews = await storage
       .select({
         id: recipeReviews.id,
         recipeId: recipeReviews.recipeId,
@@ -82,7 +82,7 @@ router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
     const reviewIds = reviews.map((r) => r.id);
     let photos: any[] = [];
     if (reviewIds.length > 0) {
-      photos = await db
+      photos = await storage
         .select()
         .from(recipeReviewPhotos)
         .where(sql`${recipeReviewPhotos.reviewId} IN ${sql.raw(`(${reviewIds.map(() => '?').join(',')})`, reviewIds)}`);
@@ -119,7 +119,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     }
 
     // Check if user already reviewed this recipe
-    const existingReview = await db
+    const existingReview = await storage
       .select()
       .from(recipeReviews)
       .where(and(eq(recipeReviews.recipeId, recipeId), eq(recipeReviews.userId, userId)))
@@ -137,13 +137,13 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       reviewText: reviewText || null,
     };
 
-    const [review] = await db.insert(recipeReviews).values(newReview).returning();
+    const [review] = await storage.insert(recipeReviews).values(newReview).returning();
 
     // Update recipe average rating and count
     await updateRecipeRating(recipeId);
 
     // Fetch the complete review with user data
-    const [completeReview] = await db
+    const [completeReview] = await storage
       .select({
         id: recipeReviews.id,
         recipeId: recipeReviews.recipeId,
@@ -204,7 +204,7 @@ router.put("/:reviewId", requireAuth, async (req: Request, res: Response) => {
     if (rating !== undefined) updateData.rating = rating;
     if (reviewText !== undefined) updateData.reviewText = reviewText;
 
-    const [updatedReview] = await db
+    const [updatedReview] = await storage
       .update(recipeReviews)
       .set(updateData)
       .where(eq(recipeReviews.id, reviewId))
@@ -246,7 +246,7 @@ router.delete("/:reviewId", requireAuth, async (req: Request, res: Response) => 
     const recipeId = existingReview.recipeId;
 
     // Delete review (cascade will delete photos and helpful votes)
-    await db.delete(recipeReviews).where(eq(recipeReviews.id, reviewId));
+    await storage.delete(recipeReviews).where(eq(recipeReviews.id, reviewId));
 
     // Update recipe average rating
     await updateRecipeRating(recipeId);
@@ -295,7 +295,7 @@ router.post(
         caption: caption || null,
       };
 
-      const [photo] = await db.insert(recipeReviewPhotos).values(photoData).returning();
+      const [photo] = await storage.insert(recipeReviewPhotos).values(photoData).returning();
 
       res.status(201).json(photo);
     } catch (error: any) {
@@ -312,7 +312,7 @@ router.post("/:reviewId/helpful", requireAuth, async (req: Request, res: Respons
     const { reviewId } = req.params;
 
     // Check if already marked as helpful
-    const existing = await db
+    const existing = await storage
       .select()
       .from(reviewHelpful)
       .where(and(eq(reviewHelpful.reviewId, reviewId), eq(reviewHelpful.userId, userId)))
@@ -328,10 +328,10 @@ router.post("/:reviewId/helpful", requireAuth, async (req: Request, res: Respons
       userId,
     };
 
-    await db.insert(reviewHelpful).values(helpfulData);
+    await storage.insert(reviewHelpful).values(helpfulData);
 
     // Increment helpful count
-    await db
+    await storage
       .update(recipeReviews)
       .set({ helpfulCount: sql`${recipeReviews.helpfulCount} + 1` })
       .where(eq(recipeReviews.id, reviewId));
@@ -350,7 +350,7 @@ router.delete("/:reviewId/helpful", requireAuth, async (req: Request, res: Respo
     const { reviewId } = req.params;
 
     // Delete helpful vote
-    const result = await db
+    const result = await storage
       .delete(reviewHelpful)
       .where(and(eq(reviewHelpful.reviewId, reviewId), eq(reviewHelpful.userId, userId)))
       .returning();
@@ -374,7 +374,7 @@ router.delete("/:reviewId/helpful", requireAuth, async (req: Request, res: Respo
 
 // Helper function to update recipe's average rating
 async function updateRecipeRating(recipeId: string) {
-  const stats = await db
+  const stats = await storage
     .select({
       avgRating: sql<number>`AVG(${recipeReviews.rating})::numeric(3,2)`,
       count: sql<number>`COUNT(*)::integer`,
@@ -384,7 +384,7 @@ async function updateRecipeRating(recipeId: string) {
 
   const { avgRating, count } = stats[0];
 
-  await db
+  await storage
     .update(recipes)
     .set({
       averageRating: avgRating || "0",
