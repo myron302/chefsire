@@ -2,6 +2,7 @@ import { Router } from "express";
 
 // Core feature routers
 import recipesRouter from "./recipes";
+import reviewsRouter from "./reviews";
 import bitesRouter from "./bites";
 import usersRouter from "./users";
 import postsRouter from "./posts";
@@ -64,6 +65,9 @@ r.use(authRouter);
 
 // Recipes routes (prefixed)
 r.use("/recipes", recipesRouter);
+
+// Reviews - prefixed
+r.use("/reviews", reviewsRouter);
 
 // Bites (social stories) - prefixed
 r.use("/bites", bitesRouter);

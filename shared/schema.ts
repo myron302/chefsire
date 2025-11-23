@@ -90,6 +90,37 @@ export const recipes = pgTable("recipes", {
   carbs: decimal("carbs", { precision: 5, scale: 2 }),
   fat: decimal("fat", { precision: 5, scale: 2 }),
   fiber: decimal("fiber", { precision: 5, scale: 2 }),
+  averageRating: decimal("average_rating", { precision: 3, scale: 2 }).default("0"),
+  reviewCount: integer("review_count").default(0),
+});
+
+export const recipeReviews = pgTable("recipe_reviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recipeId: varchar("recipe_id").references(() => recipes.id, { onDelete: "cascade" }).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  rating: integer("rating").notNull(), // 1-5 spoons
+  reviewText: text("review_text"),
+  helpfulCount: integer("helpful_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  recipeIdIdx: index("recipe_reviews_recipe_idx").on(table.recipeId),
+  userIdIdx: index("recipe_reviews_user_idx").on(table.userId),
+}));
+
+export const recipeReviewPhotos = pgTable("recipe_review_photos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  reviewId: varchar("review_id").references(() => recipeReviews.id, { onDelete: "cascade" }).notNull(),
+  photoUrl: text("photo_url").notNull(),
+  caption: text("caption"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const reviewHelpful = pgTable("review_helpful", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  reviewId: varchar("review_id").references(() => recipeReviews.id, { onDelete: "cascade" }).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const stories = pgTable("stories", {
@@ -844,6 +875,25 @@ export const insertPostSchema = createInsertSchema(posts).omit({
 
 export const insertRecipeSchema = createInsertSchema(recipes).omit({
   id: true,
+  averageRating: true,
+  reviewCount: true,
+});
+
+export const insertRecipeReviewSchema = createInsertSchema(recipeReviews).omit({
+  id: true,
+  helpfulCount: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertRecipeReviewPhotoSchema = createInsertSchema(recipeReviewPhotos).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertReviewHelpfulSchema = createInsertSchema(reviewHelpful).omit({
+  id: true,
+  createdAt: true,
 });
 
 export const insertStorySchema = createInsertSchema(stories).omit({
@@ -1036,6 +1086,12 @@ export type Post = typeof posts.$inferSelect;
 export type InsertPost = z.infer<typeof insertPostSchema>;
 export type Recipe = typeof recipes.$inferSelect;
 export type InsertRecipe = z.infer<typeof insertRecipeSchema>;
+export type RecipeReview = typeof recipeReviews.$inferSelect;
+export type InsertRecipeReview = z.infer<typeof insertRecipeReviewSchema>;
+export type RecipeReviewPhoto = typeof recipeReviewPhotos.$inferSelect;
+export type InsertRecipeReviewPhoto = z.infer<typeof insertRecipeReviewPhotoSchema>;
+export type ReviewHelpful = typeof reviewHelpful.$inferSelect;
+export type InsertReviewHelpful = z.infer<typeof insertReviewHelpfulSchema>;
 export type Story = typeof stories.$inferSelect;
 export type InsertStory = z.infer<typeof insertStorySchema>;
 export type Like = typeof likes.$inferSelect;
