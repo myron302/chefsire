@@ -976,7 +976,7 @@ export default function CaseinProteinPage() {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
           {[
             { id: "browse", label: "Browse All", icon: Search },
             { id: "protein-types", label: "Protein Types", icon: Moon },
@@ -987,9 +987,9 @@ export default function CaseinProteinPage() {
             return (
               <Button
                 key={tab.id}
-                variant={activeTab === tab.id ? "default" : "ghost"}
+                variant="ghost"
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 ${activeTab === tab.id ? "bg-white shadow-sm text-gray-900 hover:bg-white hover:text-gray-900" : ""}`}
+                className={`flex-1 ${activeTab === tab.id ? 'bg-purple-500 shadow-sm !text-white hover:!text-white hover:bg-purple-600' : ''}`}
               >
                 <Icon className="h-4 w-4 mr-2" />
                 {tab.label}
