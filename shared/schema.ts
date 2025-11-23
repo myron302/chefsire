@@ -123,6 +123,29 @@ export const reviewHelpful = pgTable("review_helpful", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const recipeCollections = pgTable("recipe_collections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  isPublic: boolean("is_public").default(false),
+  recipeCount: integer("recipe_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  userIdIdx: index("recipe_collections_user_idx").on(table.userId),
+}));
+
+export const collectionRecipes = pgTable("collection_recipes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  collectionId: varchar("collection_id").references(() => recipeCollections.id, { onDelete: "cascade" }).notNull(),
+  recipeId: varchar("recipe_id").references(() => recipes.id, { onDelete: "cascade" }).notNull(),
+  addedAt: timestamp("added_at").defaultNow(),
+}, (table) => ({
+  collectionIdIdx: index("collection_recipes_collection_idx").on(table.collectionId),
+  recipeIdIdx: index("collection_recipes_recipe_idx").on(table.recipeId),
+}));
+
 export const stories = pgTable("stories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id).notNull(),
@@ -896,6 +919,18 @@ export const insertReviewHelpfulSchema = createInsertSchema(reviewHelpful).omit(
   createdAt: true,
 });
 
+export const insertRecipeCollectionSchema = createInsertSchema(recipeCollections).omit({
+  id: true,
+  recipeCount: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCollectionRecipeSchema = createInsertSchema(collectionRecipes).omit({
+  id: true,
+  addedAt: true,
+});
+
 export const insertStorySchema = createInsertSchema(stories).omit({
   id: true,
   createdAt: true,
@@ -1092,6 +1127,10 @@ export type RecipeReviewPhoto = typeof recipeReviewPhotos.$inferSelect;
 export type InsertRecipeReviewPhoto = z.infer<typeof insertRecipeReviewPhotoSchema>;
 export type ReviewHelpful = typeof reviewHelpful.$inferSelect;
 export type InsertReviewHelpful = z.infer<typeof insertReviewHelpfulSchema>;
+export type RecipeCollection = typeof recipeCollections.$inferSelect;
+export type InsertRecipeCollection = z.infer<typeof insertRecipeCollectionSchema>;
+export type CollectionRecipe = typeof collectionRecipes.$inferSelect;
+export type InsertCollectionRecipe = z.infer<typeof insertCollectionRecipeSchema>;
 export type Story = typeof stories.$inferSelect;
 export type InsertStory = z.infer<typeof insertStorySchema>;
 export type Like = typeof likes.$inferSelect;

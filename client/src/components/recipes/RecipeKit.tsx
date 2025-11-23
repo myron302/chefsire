@@ -9,6 +9,7 @@ import React, {
 import { Button } from "@/components/ui/button";
 import { Clipboard, Check, X, Share2, RotateCcw } from 'lucide-react';
 import { autoConvert, scaleAmount, toNiceFraction, type UnitSystem } from "@/lib/unitConversions";
+import { AddToCollectionButton } from "@/components/RecipeCollections";
 
 // ---------- Public Types ----------
 export type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -319,6 +320,11 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
               >
                 <X className="h-6 w-6" />
               </button>
+            </div>
+
+            {/* Add to Collection Button */}
+            <div className="mb-4">
+              <AddToCollectionButton recipeId={recipeId} />
             </div>
 
             {/* Nutrition Grid - ALL COLORS NOW USE ACCENT VIA TEMPLATE CLASSES */}
