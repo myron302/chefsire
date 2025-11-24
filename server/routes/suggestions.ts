@@ -8,6 +8,10 @@ import { WeatherService } from "../services/weather.service";
 
 const router = Router();
 
+// Helper to detect missing table errors
+const isMissingTable = (e: any) =>
+  e && (e.code === "42P01" || /relation .* does not exist/i.test(e?.message || ""));
+
 // GET /api/suggestions/today - Get today's AI suggestions
 router.get("/today", requireAuth, async (req, res) => {
   try {
@@ -29,12 +33,24 @@ router.get("/today", requireAuth, async (req, res) => {
 
     // If no suggestions for today, generate some
     if (suggestions.length === 0) {
-      const generated = await generateDailySuggestions(userId);
-      return res.json({ suggestions: generated });
+      try {
+        const generated = await generateDailySuggestions(userId);
+        return res.json({ suggestions: generated });
+      } catch (genError: any) {
+        // If generation fails (e.g., missing related tables), return empty array
+        if (isMissingTable(genError)) {
+          return res.json({ suggestions: [] });
+        }
+        throw genError;
+      }
     }
 
     return res.json({ suggestions });
   } catch (error: any) {
+    if (isMissingTable(error)) {
+      // Table doesn't exist yet - return empty array instead of error
+      return res.json({ suggestions: [] });
+    }
     return res.status(500).json({ error: error.message });
   }
 });
@@ -62,6 +78,9 @@ router.post("/:id/accept", requireAuth, async (req, res) => {
 
     return res.json({ suggestion: updated });
   } catch (error: any) {
+    if (isMissingTable(error)) {
+      return res.status(503).json({ error: "Suggestions feature not initialized yet" });
+    }
     return res.status(500).json({ error: error.message });
   }
 });
@@ -89,6 +108,9 @@ router.post("/:id/dismiss", requireAuth, async (req, res) => {
 
     return res.json({ suggestion: updated });
   } catch (error: any) {
+    if (isMissingTable(error)) {
+      return res.status(503).json({ error: "Suggestions feature not initialized yet" });
+    }
     return res.status(500).json({ error: error.message });
   }
 });
@@ -100,6 +122,9 @@ router.post("/generate", requireAuth, async (req, res) => {
     const suggestions = await generateDailySuggestions(userId);
     return res.json({ suggestions });
   } catch (error: any) {
+    if (isMissingTable(error)) {
+      return res.status(503).json({ error: "Suggestions feature not initialized yet" });
+    }
     return res.status(500).json({ error: error.message });
   }
 });
