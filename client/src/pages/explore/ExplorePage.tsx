@@ -197,7 +197,6 @@ function ExploreTile({ post }: { post: Post }) {
               console.log("Image failed to load:", imageUrl);
               e.currentTarget.style.display = "none";
             }}
-            onLoad={() => console.log("Image loaded:", imageUrl)}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-gray-400">

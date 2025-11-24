@@ -54,7 +54,7 @@ export default function CompetitionRoomPage() {
         setRoomUrl(data.roomUrl);
       }
     } catch (err) {
-      console.log('No existing room found');
+      // No existing room found - this is expected
     }
   };
 
