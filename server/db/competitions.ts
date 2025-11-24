@@ -35,6 +35,7 @@ export const competitions = pgTable(
     endTime: timestamp("end_time"),
     judgingClosesAt: timestamp("judging_closes_at"),
 
+    videoRoomUrl: text("video_room_url"),
     videoRecordingUrl: text("video_recording_url"),
     winnerParticipantId: varchar("winner_participant_id"),
     isOfficial: boolean("is_official").notNull().default(false),

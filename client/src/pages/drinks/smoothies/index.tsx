@@ -443,7 +443,6 @@ export default function SmoothiesPage() {
           timestamp: new Date().toISOString()
         };
 
-        console.log('Photo would be uploaded with data:', photoData);
         addPoints(50);
         incrementDrinksMade();
 
@@ -496,7 +495,6 @@ export default function SmoothiesPage() {
       setShowShare(false);
       if (error.name === 'AbortError') {
         // User cancelled the share - this is normal, don't show error
-        console.log('Share cancelled by user');
       } else {
         alert('Unable to share. Please try copying the URL manually.');
       }
@@ -504,7 +502,6 @@ export default function SmoothiesPage() {
   };
 
   const handleDrinkSelection = (drink) => {
-    console.log('Selected drink from universal search:', drink);
     addToRecentlyViewed(drink);
   };
 
