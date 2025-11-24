@@ -11,6 +11,7 @@ import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { useUser } from "@/contexts/UserContext";
 
 const demoTrendingRecipes = [
   {
@@ -231,7 +232,8 @@ function isValidDate(dateStr: string | undefined | null): boolean {
 }
 
 export default function Feed() {
-  const currentUserId = "user-1";
+  const { user } = useUser();
+  const currentUserId = user?.id;
 
   // Posts feed
   const {
@@ -241,6 +243,7 @@ export default function Feed() {
   } = useQuery<PostWithUser[]>({
     queryKey: ["/api/posts/feed", currentUserId],
     queryFn: () => fetchJSON<PostWithUser[]>(`/api/posts/feed?userId=${currentUserId}`),
+    enabled: !!currentUserId, // Only fetch if user is logged in
   });
 
   // Suggested users (sidebar) — falls back to demo if error
