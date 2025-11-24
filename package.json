@@ -14,7 +14,7 @@
     "check": "tsc",
     "db:ping": "tsx server/scripts/db-ping.ts",
     "db:generate": "dotenv -e server/.env -- drizzle-kit generate",
-    "db:push": "dotenv -e server/.env -- drizzle-kit push",
+    "db:push": "dotenv -e server/.env -- drizzle-kit push --yes",
     "db:push:accept": "dotenv -e server/.env -- drizzle-kit push --force",
     "db:migrate": "tsx server/scripts/run-migrations.ts",
     "db:apply": "node apply-migration.js",
