@@ -3,6 +3,7 @@ import { Router } from "express";
 // Core feature routers
 import recipesRouter from "./recipes";
 import reviewsRouter from "./reviews";
+import collectionsRouter from "./collections";
 import bitesRouter from "./bites";
 import usersRouter from "./users";
 import postsRouter from "./posts";
@@ -71,6 +72,9 @@ r.use("/recipes", recipesRouter);
 
 // Reviews - prefixed
 r.use("/reviews", reviewsRouter);
+
+// Collections - prefixed
+r.use("/collections", collectionsRouter);
 
 // Bites (social stories) - prefixed
 r.use("/bites", bitesRouter);
