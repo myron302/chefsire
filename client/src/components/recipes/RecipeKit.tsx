@@ -8,6 +8,8 @@ import React, {
 } from 'react';
 import { Button } from "@/components/ui/button";
 import { Clipboard, Check, X, Share2, RotateCcw } from 'lucide-react';
+import { autoConvert, scaleAmount, toNiceFraction, type UnitSystem } from "@/lib/unitConversions";
+import { AddToCollectionButton } from "@/components/RecipeCollections";
 
 // ---------- Public Types ----------
 export type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -56,45 +58,25 @@ type RecipeKitProps = {
 };
 
 // ---------- Helpers ----------
-const clamp = (n: number, min = 1, max = 6) => Math.max(min, Math.min(max, n));
+const clamp = (n: number, min = 1, max = 99) => Math.max(min, Math.min(max, n));
 
-const toNiceFraction = (value: number) => {
-  const rounded = Math.round(value * 4) / 4;
-  const whole = Math.trunc(rounded);
-  const frac = Math.round((rounded - whole) * 4);
-  const fracMap: Record<number, string> = { 0: '', 1: '1/4', 2: '1/2', 3: '3/4' };
-  const fracStr = fracMap[frac];
-  if (!whole && fracStr) return fracStr;
-  if (whole && fracStr) return `${whole} ${fracStr}`;
-  return `${whole}`;
-};
+// Use the new comprehensive conversion utility from lib/unitConversions.ts
+const getScaledMeasurements = (list: Measured[], servings: number, targetSystem: UnitSystem = 'imperial') =>
+  list.map((ing) => {
+    const scaledAmount = typeof ing.amount === 'number' ? ing.amount * servings : parseFloat(String(ing.amount)) * servings;
 
-const scaleAmount = (baseAmount: number | string, servings: number) => {
-  const n = typeof baseAmount === 'number' ? baseAmount : parseFloat(String(baseAmount));
-  if (Number.isNaN(n)) return baseAmount;
-  return toNiceFraction(n * servings);
-};
+    // Use auto-conversion for smart unit selection
+    const converted = autoConvert(scaledAmount, ing.unit, targetSystem);
 
-const getScaledMeasurements = (list: Measured[], servings: number) =>
-  list.map((ing) => ({
-    ...ing,
-    amountScaled: scaleAmount(ing.amount, servings),
-    amountScaledNum: typeof ing.amount === 'number' ? (Number(ing.amount) * servings) : undefined,
-  }));
-
-const toMetric = (unit: string, amount: number) => {
-  const mlPerCup = 240, mlPerTbsp = 15, mlPerTsp = 5;
-  const gPerScoop30 = 30;
-  switch (unit) {
-    case 'cup': return { amount: Math.round(amount * mlPerCup), unit: 'ml' };
-    case 'tbsp': return { amount: Math.round(amount * mlPerTbsp), unit: 'ml' };
-    case 'tsp': return { amount: Math.round(amount * mlPerTsp), unit: 'ml' };
-    case 'scoop (30g)': return { amount: Math.round(amount * gPerScoop30), unit: 'g' };
-    case 'scoop (32g)': return { amount: Math.round(amount * 32), unit: 'g' };
-    case 'tbsp (~25g)': return { amount: Math.round(amount * 25), unit: 'g' };
-    default: return { amount, unit };
-  }
-};
+    return {
+      ...ing,
+      amountScaled: typeof converted.amount === 'number' && converted.amount < 10
+        ? scaleAmount(converted.amount, 1)
+        : converted.amount.toFixed(converted.amount >= 100 ? 0 : 1),
+      amountScaledNum: converted.amount,
+      unitConverted: converted.unit,
+    };
+  });
 
 const safeLoadJSON = <T,>(key: string, fallback: T): T => {
   try {
@@ -194,7 +176,7 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
   const bumpServings = (delta: number) => setServings((s) => clamp(s + delta));
   const resetServings = () => setServings(defaultServings || 1);
 
-  const scaled = useMemo(() => getScaledMeasurements(recipeMeasurements, servings), [recipeMeasurements, servings]);
+  const scaled = useMemo(() => getScaledMeasurements(recipeMeasurements, servings, useMetric ? 'metric' : 'imperial'), [recipeMeasurements, servings, useMetric]);
 
   const scaledMacros = useMemo(() => {
     const n = baseNutrition || {};
@@ -212,12 +194,8 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
   const C = useMemo(() => buildAccent(accent), [accent]);
 
   const copyScaledRecipe = async () => {
-    const lines = scaled.map((ing) => {
-      if (useMetric && typeof ing.amountScaledNum === 'number') {
-        const m = toMetric(ing.unit, ing.amountScaledNum);
-        return `- ${m.amount} ${m.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
-      }
-      return `- ${ing.amountScaled} ${ing.unit} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
+    const lines = scaled.map((ing: any) => {
+      return `- ${ing.amountScaled} ${ing.unitConverted} ${ing.item}${ing.note ? ` — ${ing.note}` : ''}`;
     });
     const txt = `${recipeName} (serves ${servings})\n${lines.join('\n')}\n\nNotes: ${notes || '-'}`;
     try {
@@ -229,11 +207,8 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
   };
 
   const doShare = async () => {
-    const preview = scaled.slice(0, 4).map((r) =>
-      `${typeof r.amountScaledNum === 'number' && useMetric
-        ? `${toMetric(r.unit, r.amountScaledNum).amount} ${toMetric(r.unit, r.amountScaledNum).unit}`
-        : `${r.amountScaled} ${r.unit}`
-      } ${r.item}`).join(' · ');
+    const preview = scaled.slice(0, 4).map((r: any) =>
+      `${r.amountScaled} ${r.unitConverted} ${r.item}`).join(' · ');
     const text = shareText || `${recipeName} — serves ${servings}\n${preview}${scaled.length > 4 ? ` …plus ${scaled.length - 4} more` : ''}`;
     const url = typeof window !== 'undefined' ? window.location.href : '';
     const data = { title: recipeName, text, url };
@@ -282,13 +257,10 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
           </div>
 
           <ul className="text-sm leading-6 text-gray-800 space-y-1">
-            {displayIngredients.map((ing, i) => (
+            {displayIngredients.map((ing: any, i) => (
               <li key={i} className="flex gap-2">
                 <span className={`${C.text600} font-medium min-w-[90px]`}>
-                  {typeof ing.amountScaledNum === 'number' && useMetric
-                    ? `${toMetric(ing.unit, ing.amountScaledNum).amount} ${toMetric(ing.unit, ing.amountScaledNum).unit}`
-                    : `${ing.amountScaled} ${ing.unit}`
-                  }
+                  {ing.amountScaled} {ing.unitConverted}
                 </span>
                 <span className="flex-1">
                   {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
@@ -350,6 +322,11 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
               </button>
             </div>
 
+            {/* Add to Collection Button */}
+            <div className="mb-4">
+              <AddToCollectionButton recipeId={recipeId} />
+            </div>
+
             {/* Nutrition Grid - ALL COLORS NOW USE ACCENT VIA TEMPLATE CLASSES */}
             <div className={`grid grid-cols-3 gap-2 p-3 ${C.bg50} rounded-lg mb-4`}>
               <div className="text-center">
@@ -380,15 +357,12 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
             </div>
 
             <ul className="space-y-2 text-base leading-6 text-gray-800 font-sans tracking-normal">
-              {scaled.map((ing, idx) => (
+              {scaled.map((ing: any, idx) => (
                 <li key={idx} className="flex items-start gap-2">
                   <Check className={`h-4 w-4 ${C.check} mt-0.5`} />
                   <span>
                     <span className={`${C.text600} font-semibold`}>
-                      {typeof ing.amountScaledNum === 'number' && useMetric
-                        ? `${toMetric(ing.unit, ing.amountScaledNum).amount} ${toMetric(ing.unit, ing.amountScaledNum).unit}`
-                        : `${ing.amountScaled} ${ing.unit}`
-                      }
+                      {ing.amountScaled} {ing.unitConverted}
                     </span>{" "}
                     {ing.item}{ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
                   </span>

@@ -122,6 +122,7 @@ const demoPosts: PostWithUser[] = [
     imageUrl: "https://images.unsplash.com/photo-1484723091739-30a097e8f929?w=400&h=400&fit=crop&auto=format",
     isRecipe: false,
     likesCount: 42,
+    createdAt: new Date().toISOString(),
     user: {
       id: "user-2",
       displayName: "Alice Chef",
@@ -134,6 +135,7 @@ const demoPosts: PostWithUser[] = [
     imageUrl: "https://images.unsplash.com/photo-1512568400610-3f3f73e78e14?w=400&h=400&fit=crop&auto=format",
     isRecipe: true,
     likesCount: 28,
+    createdAt: new Date().toISOString(),
     user: {
       id: "user-3",
       displayName: "Bob Baker",
@@ -146,6 +148,7 @@ const demoPosts: PostWithUser[] = [
     imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=400&fit=crop&auto=format",
     isRecipe: true,
     likesCount: 156,
+    createdAt: new Date().toISOString(),
     user: {
       id: "user-4",
       displayName: "Carol Cook",
@@ -158,6 +161,7 @@ const demoPosts: PostWithUser[] = [
     imageUrl: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&h=400&fit=crop&auto=format",
     isRecipe: true,
     likesCount: 203,
+    createdAt: new Date().toISOString(),
     user: {
       id: "user-5",
       displayName: "David Pizza",
@@ -170,13 +174,14 @@ const demoPosts: PostWithUser[] = [
     imageUrl: "https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=400&h=400&fit=crop&auto=format",
     isRecipe: true,
     likesCount: 89,
+    createdAt: new Date().toISOString(),
     user: {
       id: "user-6",
       displayName: "Emma Sushi",
       avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&auto=format",
     },
   },
-];
+] as any;
 
 function SimpleRecipeCard({
   post,
