@@ -5,28 +5,77 @@ export default function LiveBattlesPage() {
   const [liveNow, setLiveNow] = useState([]);
   const [startingSoon, setStartingSoon] = useState([]);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Mock live battles
-  const mockLive = [
-    { id: '1', title: 'Midnight Pasta Showdown', theme: '🇮🇹', viewers: 47, timeLeft: 1825, participants: 6, featured: true },
-    { id: '2', title: 'Spicy Taco Battle', theme: '🌮', viewers: 32, timeLeft: 2640, participants: 8, featured: false },
-    { id: '3', title: 'Quick 30-Min Sprint', theme: '⏱️', viewers: 28, timeLeft: 895, participants: 5, featured: false },
-    { id: '4', title: 'Asian Fusion Frenzy', theme: '🥢', viewers: 41, timeLeft: 3120, participants: 7, featured: false }
-  ];
-
-  const mockStarting = [
-    { id: '5', title: 'Dessert Wars', theme: '🍰', participants: 4, startIn: 8 },
-    { id: '6', title: 'Budget Kitchen Heroes', theme: '💰', participants: 6, startIn: 15 }
-  ];
-
+  // Fetch live and upcoming competitions
   useEffect(() => {
-    setLiveNow(mockLive);
-    setStartingSoon(mockStarting);
+    const fetchBattles = async () => {
+      try {
+        // Fetch live competitions
+        const liveResponse = await fetch('/api/competitions/library?status=live', {
+          credentials: 'include',
+        });
+
+        // Fetch upcoming competitions
+        const upcomingResponse = await fetch('/api/competitions/library?status=upcoming', {
+          credentials: 'include',
+        });
+
+        if (liveResponse.ok) {
+          const liveData = await liveResponse.json();
+          const liveItems = (liveData.items || []).map(item => {
+            // Calculate time left
+            const endTime = new Date(item.endTime).getTime();
+            const now = Date.now();
+            const timeLeft = Math.max(0, Math.floor((endTime - now) / 1000));
+
+            return {
+              id: item.id,
+              title: item.title,
+              theme: item.themeName,
+              viewers: Math.floor(Math.random() * 50) + 20, // Mock viewer count for now
+              timeLeft,
+              participants: item.participants || 0,
+              featured: false, // Can be enhanced later
+            };
+          });
+          setLiveNow(liveItems);
+        }
+
+        if (upcomingResponse.ok) {
+          const upcomingData = await upcomingResponse.json();
+          const upcomingItems = (upcomingData.items || []).slice(0, 5).map(item => {
+            // Calculate start time
+            const startTime = new Date(item.startTime).getTime();
+            const now = Date.now();
+            const startIn = Math.max(0, Math.floor((startTime - now) / (1000 * 60))); // minutes
+
+            return {
+              id: item.id,
+              title: item.title,
+              theme: item.themeName,
+              participants: item.participants || 0,
+              startIn,
+            };
+          });
+          setStartingSoon(upcomingItems);
+        }
+      } catch (error) {
+        console.error('Failed to fetch battles:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBattles();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchBattles, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const formatTime = (seconds) => {
