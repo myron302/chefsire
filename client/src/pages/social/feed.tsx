@@ -152,6 +152,30 @@ const demoPosts: PostWithUser[] = [
       avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&auto=format",
     },
   },
+  {
+    id: "demo-post-4",
+    caption: "Homemade pizza from scratch! 🍕",
+    imageUrl: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&h=400&fit=crop&auto=format",
+    isRecipe: true,
+    likesCount: 203,
+    user: {
+      id: "user-5",
+      displayName: "David Pizza",
+      avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&auto=format",
+    },
+  },
+  {
+    id: "demo-post-5",
+    caption: "Fresh sushi rolls 🍣",
+    imageUrl: "https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=400&h=400&fit=crop&auto=format",
+    isRecipe: true,
+    likesCount: 89,
+    user: {
+      id: "user-6",
+      displayName: "Emma Sushi",
+      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&auto=format",
+    },
+  },
 ];
 
 function SimpleRecipeCard({
