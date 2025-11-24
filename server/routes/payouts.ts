@@ -51,10 +51,10 @@ router.post("/process-seller-payout", requireAuth, async (req, res) => {
 
     const { sellerId, orderIds } = schema.parse(req.body);
 
-    // TODO: Add admin check
-    // if (!req.user!.isAdmin) {
-    //   return res.status(403).json({ ok: false, error: "Admin only" });
-    // }
+    // Admin check - only admins can process payouts
+    if (!(req.user as any)?.isAdmin) {
+      return res.status(403).json({ ok: false, error: "Admin only" });
+    }
 
     // Get seller info
     const [seller] = await db

@@ -247,7 +247,6 @@ const dailyChallenge = {
 };
 
 export default function CaffeinatedDrinksPage() {
-  console.log('✅ CAFFEINATED HUB LOADED - Build timestamp:', new Date().toISOString());
   const {
     userProgress,
     addPoints,
@@ -461,7 +460,6 @@ export default function CaffeinatedDrinksPage() {
   };
 
   const handleDrinkSelection = (drink) => {
-    console.log('Selected drink from universal search:', drink);
     addToRecentlyViewed(drink);
   };
 

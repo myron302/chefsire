@@ -27,6 +27,9 @@ import { googleRouter } from "./google";
 // Competitions
 import competitionsRouter from "./competitions";
 
+// Video conferencing
+import videoRouter from "./video";
+
 // Stores (user storefronts)
 import storesRouter from "./stores-crud";
 
@@ -116,6 +119,9 @@ r.use("/google", googleRouter);
 // Competitions
 r.use("/competitions", competitionsRouter);
 
+// Video conferencing
+r.use("/video", videoRouter);
+
 // Stores (public viewer + owner writes)
 r.use("/stores", storesRouter);
 
@@ -164,6 +170,7 @@ if (process.env.NODE_ENV !== "production") {
         "/export/*",
         "/google/*",
         "/competitions/*",
+        "/video/*",
         "/stores/*",
         "/square/*",
         "/notifications/*", // ⚡ Phase 1

@@ -99,7 +99,6 @@ const StoreBuilder = ({ onBack, storeId }) => {
 
       if (response.ok) {
         const data = await response.json();
-        console.log("Store layout saved successfully", data);
         alert("Store layout saved!");
       } else {
         const error = await response.json();
@@ -251,34 +250,27 @@ const Marketplace = () => {
     (user?.trialEndDate && new Date(user.trialEndDate) > new Date());
 
   const handleStartSelling = async () => {
-    console.log('Start Selling clicked!', { user, userSubscription, canSell });
 
     if (!user) {
-      console.log('No user, redirecting to login');
       window.location.href = "/login";
       return;
     }
 
     if (!canSell) {
-      console.log('User cannot sell, showing upgrade modal');
       setShowUpgradeModal(true);
       return;
     }
 
-    console.log('User can sell, checking for existing store');
     // Check if user already has a store
     try {
       const response = await fetch(`/api/stores/user/${user.id}`);
       if (response.ok) {
         const data = await response.json();
-        console.log('Store check result:', data);
         if (data.store) {
           // User has a store, go to seller dashboard
-          console.log('User has store, redirecting to dashboard');
           window.location.href = "/store/dashboard";
         } else {
           // User needs to create a store first
-          console.log('No store found, redirecting to store creation');
           window.location.href = "/store/create";
         }
       }

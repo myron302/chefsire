@@ -272,7 +272,6 @@ export default function ProteinShakesPage({ params }: Params) {
     addPoints(125);
     setConsumedProtein(prev => prev + nutrition.protein);
     
-    console.log(`Built ${shakeData.name}! +125 XP`);
   };
 
   const makeRecipe = (recipe) => {
@@ -300,11 +299,9 @@ export default function ProteinShakesPage({ params }: Params) {
     addPoints(100);
     setConsumedProtein(prev => prev + recipe.protein);
     
-    console.log(`Made ${recipe.name}! +100 XP`);
   };
 
   const handleDrinkSelection = (drink) => {
-    console.log('Selected drink from universal search:', drink);
   };
 
   return (

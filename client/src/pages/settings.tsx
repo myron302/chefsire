@@ -157,19 +157,110 @@ export default function SettingsPage() {
     }
   };
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     if (password.new !== password.confirm) {
-      alert('New passwords do not match');
+      toast({
+        title: "Passwords don't match",
+        description: "New password and confirmation must match",
+        variant: "destructive",
+      });
       return;
     }
-    // TODO: API call to change password
-    console.log('Changing password');
+
+    if (!password.current || !password.new) {
+      toast({
+        title: "Missing fields",
+        description: "Please fill in all password fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          currentPassword: password.current,
+          newPassword: password.new,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast({
+          title: "Password changed",
+          description: "Your password has been updated successfully",
+        });
+        setPassword({ current: '', new: '', confirm: '' });
+      } else {
+        toast({
+          title: "Failed to change password",
+          description: data.error || "An error occurred",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to change password",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDeleteAccount = () => {
-    if (window.confirm('Are you absolutely sure? This action cannot be undone.')) {
-      // TODO: API call to delete account
-      console.log('Deleting account');
+  const handleDeleteAccount = async () => {
+    if (!window.confirm('Are you absolutely sure? This action cannot be undone.')) {
+      return;
+    }
+
+    const password = prompt('Enter your password to confirm deletion:');
+    if (!password) return;
+
+    const confirmText = prompt('Type DELETE to confirm account deletion:');
+    if (confirmText !== 'DELETE') {
+      toast({
+        title: "Deletion cancelled",
+        description: "You must type DELETE to confirm",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('/auth/account', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ password, confirmText }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast({
+          title: "Account deleted",
+          description: "Your account has been permanently deleted",
+        });
+        // Redirect to home after deletion
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 2000);
+      } else {
+        toast({
+          title: "Failed to delete account",
+          description: data.error || "An error occurred",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete account",
+        variant: "destructive",
+      });
     }
   };
 
