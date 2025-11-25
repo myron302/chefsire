@@ -113,7 +113,7 @@ const demoSuggestedUsers = [
   },
 ];
 
-// Demo posts fallback (restored to 5)
+// Demo posts fallback (5)
 const demoPosts: PostWithUser[] = [
   {
     id: "demo-post-1",
@@ -426,7 +426,7 @@ async function fetchJSON<T>(url: string): Promise<T> {
 function isValidDate(dateStr: string | undefined | null): boolean {
   if (!dateStr) return false;
   const date = new Date(dateStr);
-  return !isNaN(date.getTime()) && date.getFullYear() >= 1900 && date.getFullYear() <= 2100;  // Basic range check
+  return !isNaN(date.getTime()) && date.getFullYear() >= 1900 && date.getFullYear() <= 2100;
 }
 
 export default function Feed() {
@@ -440,32 +440,37 @@ export default function Feed() {
   } = useQuery<PostWithUser[]>({
     queryKey: ["/api/posts/feed", currentUserId],
     queryFn: () => fetchJSON<PostWithUser[]>(`/api/posts/feed?userId=${currentUserId}`),
+    retry: false,
+    onError: (e) => {
+      if (process.env.NODE_ENV !== "production") {
+        // eslint-disable-next-line no-console
+        console.warn("[feed] /api/posts/feed error, using demo fallback:", e);
+      }
+    },
   });
 
   // Suggested users (sidebar) — falls back to demo if error
   const {
     data: suggestedUsers,
-    isLoading: usersLoading,
     error: usersError,
   } = useQuery<User[]>({
     queryKey: ["/api/users", currentUserId, "suggested"],
     queryFn: () => fetchJSON<User[]>("/api/users/suggested?limit=5"),
+    retry: false,
   });
 
   // Trending recipes (sidebar) — falls back to demo if error
   const {
     data: trendingRecipes,
-    isLoading: recipesLoading,
     error: recipesError,
   } = useQuery<(Recipe & { post: PostWithUser })[]>({
     queryKey: ["/api/recipes/trending"],
     queryFn: () =>
-      fetchJSON<(Recipe & { post: PostWithUser })[]>(
-        "/api/recipes/trending?limit=5"
-      ),
+      fetchJSON<(Recipe & { post: PostWithUser })[]>("/api/recipes/trending?limit=5"),
+    retry: false,
   });
 
-  // Use demo data as fallback
+  // Use demo data as fallback (silent)
   const displayPosts = postsError ? demoPosts : posts ?? demoPosts;
   const displaySuggestedUsers = usersError ? demoSuggestedUsers : suggestedUsers ?? demoSuggestedUsers;
   const displayTrendingRecipes = recipesError ? demoTrendingRecipes : trendingRecipes ?? demoTrendingRecipes;
@@ -500,23 +505,12 @@ export default function Feed() {
 
         {/* Posts */}
         <div className="space-y-8">
-          {postsError && (
-            <Card>
-              <CardContent className="p-4 text-sm text-destructive">
-                Error loading feed: {postsError.message}. Using demo posts below.
-              </CardContent>
-            </Card>
-          )}
-
+          {/* Removed the visible error banner; we silently fall back */}
           {displayPosts
-            .filter((post) => isValidDate((post as any).createdAt || (post as any).updatedAt))  // Filter invalid dates
+            .filter((post) => isValidDate((post as any).createdAt || (post as any).updatedAt))
             .map((post) =>
               post.isRecipe ? (
-                <SimpleRecipeCard
-                  key={post.id}
-                  post={post}
-                  currentUserId={currentUserId}
-                />
+                <SimpleRecipeCard key={post.id} post={post} currentUserId={currentUserId} />
               ) : (
                 <PostCard key={post.id} post={post} currentUserId={currentUserId} />
               )
@@ -528,11 +522,7 @@ export default function Feed() {
         </div>
 
         <div className="flex justify-center mt-8">
-          <Button
-            variant="outline"
-            className="px-6 py-3"
-            data-testid="button-load-more"
-          >
+          <Button variant="outline" className="px-6 py-3" data-testid="button-load-more">
             Load More Posts
           </Button>
         </div>
@@ -556,76 +546,66 @@ export default function Feed() {
 
           <section className="mb-8">
             <h3 className="font-semibold mb-4">Suggested Chefs</h3>
-          <div className="space-y-3">
-            {displaySuggestedUsers.slice(0, 5).map((user) => (
-              <div key={user.id} className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <Avatar className="w-10 h-10">
-                    <AvatarImage src={user.avatar || ""} alt={user.displayName} />
-                    <AvatarFallback>{user.displayName[0]}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p
-                      className="text-sm font-medium"
-                      data-testid={`text-suggested-chef-${user.id}`}
-                    >
-                      {user.displayName}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {(user as any).specialty || "Expert Chef"}
-                    </p>
+            <div className="space-y-3">
+              {displaySuggestedUsers.slice(0, 5).map((user) => (
+                <div key={user.id} className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <Avatar className="w-10 h-10">
+                      <AvatarImage src={user.avatar || ""} alt={user.displayName} />
+                      <AvatarFallback>{user.displayName[0]}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-sm font-medium" data-testid={`text-suggested-chef-${user.id}`}>
+                        {user.displayName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {(user as any).specialty || "Expert Chef"}
+                      </p>
+                    </div>
                   </div>
+                  <Button
+                    size="sm"
+                    className="bg-primary text-primary-foreground hover:opacity-90"
+                    data-testid={`button-follow-${user.id}`}
+                  >
+                    Follow
+                  </Button>
                 </div>
-                <Button
-                  size="sm"
-                  className="bg-primary text-primary-foreground hover:opacity-90"
-                  data-testid={`button-follow-${user.id}`}
+              ))}
+            </div>
+          </section>
+
+          <section className="mb-8">
+            <h3 className="font-semibold mb-4">Trending Recipes</h3>
+            <div className="space-y-4">
+              {displayTrendingRecipes.slice(0, 5).map((recipe) => (
+                <div
+                  key={recipe.id}
+                  className="flex space-x-3 cursor-pointer hover:bg-muted/50 p-2 rounded-lg transition-colors"
+                  data-testid={`trending-recipe-${recipe.id}`}
                 >
-                  Follow
-                </Button>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="mb-8">
-          <h3 className="font-semibold mb-4">Trending Recipes</h3>
-          <div className="space-y-4">
-            {displayTrendingRecipes.slice(0, 5).map((recipe) => (
-              <div
-                key={recipe.id}
-                className="flex space-x-3 cursor-pointer hover:bg-muted/50 p-2 rounded-lg transition-colors"
-                data-testid={`trending-recipe-${recipe.id}`}
-              >
-                <img
-                  src={recipe.post.imageUrl}
-                  alt={recipe.title}
-                  className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{recipe.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    by {recipe.post.user.displayName}
-                  </p>
-                  <div className="flex items-center space-x-2 mt-1">
-                    <span className="text-xs text-destructive">
-                      ♥ {recipe.post.likesCount}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      • {recipe.cookTime} min
-                    </span>
+                  <img
+                    src={recipe.post.imageUrl}
+                    alt={recipe.title}
+                    className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{recipe.title}</p>
+                    <p className="text-xs text-muted-foreground">by {recipe.post.user.displayName}</p>
+                    <div className="flex items-center space-x-2 mt-1">
+                      <span className="text-xs text-destructive">♥ {recipe.post.likesCount}</span>
+                      <span className="text-xs text-muted-foreground">• {recipe.cookTime} min</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
 
-        <section>
-          <h3 className="font-semibold mb-4">Popular Categories</h3>
-          <div className="flex flex-wrap gap-2">
-            {["Italian", "Healthy", "Desserts", "Quick", "Vegan"].map(
-              (category) => (
+          <section>
+            <h3 className="font-semibold mb-4">Popular Categories</h3>
+            <div className="flex flex-wrap gap-2">
+              {["Italian", "Healthy", "Desserts", "Quick", "Vegan"].map((category) => (
                 <Badge
                   key={category}
                   variant="outline"
@@ -634,10 +614,9 @@ export default function Feed() {
                 >
                   #{category}
                 </Badge>
-              )
-            )}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
         </div>
       </aside>
     </div>
