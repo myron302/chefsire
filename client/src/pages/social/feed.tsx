@@ -11,7 +11,6 @@ import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import { useUser } from "@/contexts/UserContext";
 
 const demoTrendingRecipes = [
   {
@@ -122,11 +121,43 @@ const demoPosts: PostWithUser[] = [
     imageUrl: "https://images.unsplash.com/photo-1484723091739-30a097e8f929?w=400&h=400&fit=crop&auto=format",
     isRecipe: false,
     likesCount: 42,
-    createdAt: new Date().toISOString(),
+    commentsCount: 0,
+    tags: [],
+    userId: "user-2",
+    createdAt: new Date(),
     user: {
       id: "user-2",
+      username: "alice_chef",
+      email: "alice@example.com",
+      password: "",
       displayName: "Alice Chef",
+      firstName: null,
+      lastName: null,
+      royalTitle: null,
+      showFullName: false,
+      bio: null,
       avatar: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&auto=format",
+      specialty: null,
+      isChef: false,
+      followersCount: 0,
+      followingCount: 0,
+      postsCount: 0,
+      cateringEnabled: false,
+      cateringLocation: null,
+      cateringRadius: 25,
+      cateringBio: null,
+      cateringAvailable: true,
+      subscriptionTier: "free",
+      subscriptionStatus: "active",
+      subscriptionEndsAt: null,
+      monthlyRevenue: "0",
+      nutritionPremium: false,
+      nutritionTrialEndsAt: null,
+      dailyCalorieGoal: null,
+      macroGoals: null,
+      dietaryRestrictions: [],
+      emailVerifiedAt: null,
+      createdAt: new Date(),
     },
   },
   {
@@ -135,11 +166,43 @@ const demoPosts: PostWithUser[] = [
     imageUrl: "https://images.unsplash.com/photo-1512568400610-3f3f73e78e14?w=400&h=400&fit=crop&auto=format",
     isRecipe: true,
     likesCount: 28,
-    createdAt: new Date().toISOString(),
+    commentsCount: 0,
+    tags: [],
+    userId: "user-3",
+    createdAt: new Date(),
     user: {
       id: "user-3",
+      username: "bob_baker",
+      email: "bob@example.com",
+      password: "",
       displayName: "Bob Baker",
+      firstName: null,
+      lastName: null,
+      royalTitle: null,
+      showFullName: false,
+      bio: null,
       avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&auto=format",
+      specialty: null,
+      isChef: false,
+      followersCount: 0,
+      followingCount: 0,
+      postsCount: 0,
+      cateringEnabled: false,
+      cateringLocation: null,
+      cateringRadius: 25,
+      cateringBio: null,
+      cateringAvailable: true,
+      subscriptionTier: "free",
+      subscriptionStatus: "active",
+      subscriptionEndsAt: null,
+      monthlyRevenue: "0",
+      nutritionPremium: false,
+      nutritionTrialEndsAt: null,
+      dailyCalorieGoal: null,
+      macroGoals: null,
+      dietaryRestrictions: [],
+      emailVerifiedAt: null,
+      createdAt: new Date(),
     },
   },
   {
@@ -148,14 +211,46 @@ const demoPosts: PostWithUser[] = [
     imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=400&fit=crop&auto=format",
     isRecipe: true,
     likesCount: 156,
-    createdAt: new Date().toISOString(),
+    commentsCount: 0,
+    tags: [],
+    userId: "user-4",
+    createdAt: new Date(),
     user: {
       id: "user-4",
+      username: "carol_cook",
+      email: "carol@example.com",
+      password: "",
       displayName: "Carol Cook",
+      firstName: null,
+      lastName: null,
+      royalTitle: null,
+      showFullName: false,
+      bio: null,
       avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&auto=format",
+      specialty: null,
+      isChef: false,
+      followersCount: 0,
+      followingCount: 0,
+      postsCount: 0,
+      cateringEnabled: false,
+      cateringLocation: null,
+      cateringRadius: 25,
+      cateringBio: null,
+      cateringAvailable: true,
+      subscriptionTier: "free",
+      subscriptionStatus: "active",
+      subscriptionEndsAt: null,
+      monthlyRevenue: "0",
+      nutritionPremium: false,
+      nutritionTrialEndsAt: null,
+      dailyCalorieGoal: null,
+      macroGoals: null,
+      dietaryRestrictions: [],
+      emailVerifiedAt: null,
+      createdAt: new Date(),
     },
   },
-] as any;
+];
 
 function SimpleRecipeCard({
   post,
@@ -235,8 +330,7 @@ function isValidDate(dateStr: string | undefined | null): boolean {
 }
 
 export default function Feed() {
-  const { user } = useUser();
-  const currentUserId = user?.id;
+  const currentUserId = "user-1";
 
   // Posts feed
   const {
@@ -246,7 +340,6 @@ export default function Feed() {
   } = useQuery<PostWithUser[]>({
     queryKey: ["/api/posts/feed", currentUserId],
     queryFn: () => fetchJSON<PostWithUser[]>(`/api/posts/feed?userId=${currentUserId}`),
-    enabled: !!currentUserId, // Only fetch if user is logged in
   });
 
   // Suggested users (sidebar) — falls back to demo if error
@@ -256,15 +349,21 @@ export default function Feed() {
     error: usersError,
   } = useQuery<User[]>({
     queryKey: ["/api/users", currentUserId, "suggested"],
-    queryFn: () => fetchJSON<User[]>(`/api/users/${currentUserId}/suggested?limit=5`),
-    enabled: !!currentUserId, // Only run if currentUserId exists
+    queryFn: () => fetchJSON<User[]>("/api/users/suggested?limit=5"),
   });
 
-  // Trending recipes (sidebar) — using demo data for now
-  // The /api/recipes endpoints don't include post data needed for display
-  const trendingRecipes = undefined; // Force use of demo data
-  const recipesError = null;
-  const recipesLoading = false;
+  // Trending recipes (sidebar) — falls back to demo if error
+  const {
+    data: trendingRecipes,
+    isLoading: recipesLoading,
+    error: recipesError,
+  } = useQuery<(Recipe & { post: PostWithUser })[]>({
+    queryKey: ["/api/recipes/trending"],
+    queryFn: () =>
+      fetchJSON<(Recipe & { post: PostWithUser })[]>(
+        "/api/recipes/trending?limit=5"
+      ),
+  });
 
   // Use demo data as fallback
   const displayPosts = postsError ? demoPosts : posts ?? demoPosts;
@@ -340,8 +439,8 @@ export default function Feed() {
       </div>
 
       {/* Sidebar */}
-      <aside className="hidden xl:block w-80 bg-card border-l border-border">
-        <div className="p-4 space-y-4">
+      <aside className="hidden xl:block w-80 bg-card border-l border-border overflow-y-auto max-h-screen">
+        <div className="p-6 space-y-8">
           {/* Phase 1: Daily Addiction Features */}
           <section>
             <ErrorBoundary>
@@ -355,8 +454,8 @@ export default function Feed() {
             </ErrorBoundary>
           </section>
 
-          <section>
-            <h3 className="font-semibold mb-3 text-sm">Suggested Chefs</h3>
+          <section className="mb-8">
+            <h3 className="font-semibold mb-4">Suggested Chefs</h3>
           <div className="space-y-3">
             {displaySuggestedUsers.slice(0, 5).map((user) => (
               <div key={user.id} className="flex items-center justify-between">
@@ -389,8 +488,8 @@ export default function Feed() {
           </div>
         </section>
 
-        <section>
-          <h3 className="font-semibold mb-3 text-sm">Trending Recipes</h3>
+        <section className="mb-8">
+          <h3 className="font-semibold mb-4">Trending Recipes</h3>
           <div className="space-y-4">
             {displayTrendingRecipes.slice(0, 5).map((recipe) => (
               <div
