@@ -529,7 +529,7 @@ export default function Feed() {
       </div>
 
       {/* Sidebar */}
-      <aside className="hidden xl:block w-80 bg-card border-l border-border overflow-y-auto max-h-screen">
+      <aside className="hidden xl:block w-80 bg-card border-l border-border overflow-y-auto max-h-screen no-scrollbar">
         <div className="p-6 space-y-8">
           {/* Phase 1: Daily Addiction Features */}
           <section>
