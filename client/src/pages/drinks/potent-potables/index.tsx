@@ -354,10 +354,9 @@ export default function PotentPotablesPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {[
                   { icon: Martini, value: '168', label: 'Total Recipes', sublabel: 'Always growing', color: 'text-pink-300' },
-                  { icon: Star, value: '4.8★', label: 'Avg Rating', sublabel: 'Highly rated', color: 'text-yellow-300' },
                   { icon: Trophy, value: userProgress.totalDrinksMade, label: 'Cocktails Made', sublabel: 'Keep mixing!', color: 'text-orange-300' },
                   { icon: Heart, value: favorites.filter(f => f.category === 'potent-potables' || f.category === 'cocktails').length, label: 'Favorites', sublabel: 'Your collection', color: 'text-red-300' }
                 ].map((stat, idx) => (
