@@ -25,6 +25,7 @@ type RecipeItem = {
 
   // meta
   ratingSpoons?: number | null;
+  averageRating?: string | number | null; // From local database recipes
   cookTime?: number | null;
   servings?: number | null;
 
@@ -133,7 +134,7 @@ function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boo
           </div>
           {img && <img src={img} alt={r.title} className="w-full h-64 object-cover rounded-lg mb-4" />}
           <div className="flex items-center gap-4 mb-4">
-            <SpoonRating value={r.ratingSpoons ?? null} />
+            <SpoonRating value={r.averageRating ?? r.ratingSpoons ?? null} />
             {r.cookTime && (
               <span className="inline-flex items-center gap-1 text-sm text-gray-600">
                 <Clock className="w-4 h-4" />
@@ -203,7 +204,7 @@ function RecipeCard({ r, onCardClick }: { r: RecipeItem; onCardClick: (recipe: R
       <CardContent className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
           {TitleEl}
-          <SpoonRating value={r.ratingSpoons ?? null} />
+          <SpoonRating value={r.averageRating ?? r.ratingSpoons ?? null} />
         </div>
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
           {r.cookTime ? (
