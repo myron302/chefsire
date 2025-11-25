@@ -638,7 +638,7 @@ export default function SmoothiesPage() {
             <Apple className="h-6 w-6 text-green-600" />
             Browse Smoothie Types
           </h2>
-          <div className="grid md:grid-cols-4 gap-6">
+          <div className="grid md:grid-cols-3 gap-6">
             {smoothieSubcategories.map((category) => (
               <Link key={category.id} href={category.route}>
                 <Card

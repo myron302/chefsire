@@ -422,7 +422,7 @@ export default function PotentPotablesPage() {
               <GlassWater className="h-6 w-6 text-purple-600" />
               Browse Spirit Categories
             </h2>
-            <div className="grid md:grid-cols-5 gap-6">
+            <div className="grid md:grid-cols-3 gap-6">
               {potentPotablesSubcategories.map((category) => {
                 const Icon = category.icon;
                 return (
