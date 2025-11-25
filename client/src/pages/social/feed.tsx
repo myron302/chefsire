@@ -10,7 +10,7 @@ import { Heart, Clock } from "lucide-react";
 import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
-import ErrorBoundary from "@/components/ErrorBoundary";
+import ErrorBoundary, { SectionErrorBoundary } from "@/components/ErrorBoundary";
 
 const demoTrendingRecipes = [
   {
@@ -118,7 +118,8 @@ const demoPosts: PostWithUser[] = [
   {
     id: "demo-post-1",
     caption: "Just made this amazing pasta! 🍝",
-    imageUrl: "https://images.unsplash.com/photo-1484723091739-30a097e8f929?w=400&h=400&fit=crop&auto=format",
+    imageUrl:
+      "https://images.unsplash.com/photo-1484723091739-30a097e8f929?w=400&h=400&fit=crop&auto=format",
     isRecipe: false,
     likesCount: 42,
     commentsCount: 0,
@@ -136,7 +137,8 @@ const demoPosts: PostWithUser[] = [
       royalTitle: null,
       showFullName: false,
       bio: null,
-      avatar: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&auto=format",
+      avatar:
+        "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&auto=format",
       specialty: null,
       isChef: false,
       followersCount: 0,
@@ -163,7 +165,8 @@ const demoPosts: PostWithUser[] = [
   {
     id: "demo-post-2",
     caption: "Fresh salad for lunch 🌿",
-    imageUrl: "https://images.unsplash.com/photo-1512568400610-3f3f73e78e14?w=400&h=400&fit=crop&auto=format",
+    imageUrl:
+      "https://images.unsplash.com/photo-1512568400610-3f3f73e78e14?w=400&h=400&fit=crop&auto=format",
     isRecipe: true,
     likesCount: 28,
     commentsCount: 0,
@@ -181,7 +184,8 @@ const demoPosts: PostWithUser[] = [
       royalTitle: null,
       showFullName: false,
       bio: null,
-      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&auto=format",
+      avatar:
+        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&auto=format",
       specialty: null,
       isChef: false,
       followersCount: 0,
@@ -208,7 +212,8 @@ const demoPosts: PostWithUser[] = [
   {
     id: "demo-post-3",
     caption: "Baking cookies tonight! 🍪",
-    imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=400&fit=crop&auto=format",
+    imageUrl:
+      "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=400&fit=crop&auto=format",
     isRecipe: true,
     likesCount: 156,
     commentsCount: 0,
@@ -226,7 +231,8 @@ const demoPosts: PostWithUser[] = [
       royalTitle: null,
       showFullName: false,
       bio: null,
-      avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&auto=format",
+      avatar:
+        "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&auto=format",
       specialty: null,
       isChef: false,
       followersCount: 0,
@@ -286,7 +292,9 @@ function SimpleRecipeCard({
             </AvatarFallback>
           </Avatar>
           <div>
-            <p className="font-medium">{post.user?.displayName || "Unknown Chef"}</p>
+            <p className="font-medium">
+              {post.user?.displayName || "Unknown Chef"}
+            </p>
             <p className="text-sm text-gray-500">Recipe</p>
           </div>
         </div>
@@ -325,8 +333,12 @@ async function fetchJSON<T>(url: string): Promise<T> {
 // Helper to validate dates and prevent crashes
 function isValidDate(dateStr: string | undefined | null): boolean {
   if (!dateStr) return false;
-  const date = new Date(dateStr);
-  return !isNaN(date.getTime()) && date.getFullYear() >= 1900 && date.getFullYear() <= 2100;  // Basic range check
+  const date = new Date(dateStr as any);
+  return (
+    !isNaN(date.getTime()) &&
+    date.getFullYear() >= 1900 &&
+    date.getFullYear() <= 2100
+  );
 }
 
 export default function Feed() {
@@ -339,7 +351,8 @@ export default function Feed() {
     error: postsError,
   } = useQuery<PostWithUser[]>({
     queryKey: ["/api/posts/feed", currentUserId],
-    queryFn: () => fetchJSON<PostWithUser[]>(`/api/posts/feed?userId=${currentUserId}`),
+    queryFn: () =>
+      fetchJSON<PostWithUser[]>(`/api/posts/feed?userId=${currentUserId}`),
   });
 
   // Suggested users (sidebar) — falls back to demo if error
@@ -367,8 +380,12 @@ export default function Feed() {
 
   // Use demo data as fallback
   const displayPosts = postsError ? demoPosts : posts ?? demoPosts;
-  const displaySuggestedUsers = usersError ? demoSuggestedUsers : suggestedUsers ?? demoSuggestedUsers;
-  const displayTrendingRecipes = recipesError ? demoTrendingRecipes : trendingRecipes ?? demoTrendingRecipes;
+  const displaySuggestedUsers = usersError
+    ? demoSuggestedUsers
+    : suggestedUsers ?? demoSuggestedUsers;
+  const displayTrendingRecipes = recipesError
+    ? demoTrendingRecipes
+    : trendingRecipes ?? demoTrendingRecipes;
 
   if (postsLoading) {
     return (
@@ -403,13 +420,16 @@ export default function Feed() {
           {postsError && (
             <Card>
               <CardContent className="p-4 text-sm text-destructive">
-                Error loading feed: {postsError.message}. Using demo posts below.
+                Error loading feed: {postsError.message}. Using demo posts
+                below.
               </CardContent>
             </Card>
           )}
 
           {displayPosts
-            .filter((post) => isValidDate((post as any).createdAt || (post as any).updatedAt))  // Filter invalid dates
+            .filter((post) =>
+              isValidDate((post as any).createdAt || (post as any).updatedAt)
+            )
             .map((post) =>
               post.isRecipe ? (
                 <SimpleRecipeCard
@@ -418,12 +438,18 @@ export default function Feed() {
                   currentUserId={currentUserId}
                 />
               ) : (
-                <PostCard key={post.id} post={post} currentUserId={currentUserId} />
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  currentUserId={currentUserId}
+                />
               )
             )}
 
           {displayPosts.length === 0 && !postsLoading && !postsError && (
-            <p className="text-center text-muted-foreground py-8">No posts yet. Start following chefs!</p>
+            <p className="text-center text-muted-foreground py-8">
+              No posts yet. Start following chefs!
+            </p>
           )}
         </div>
 
@@ -438,108 +464,126 @@ export default function Feed() {
         </div>
       </div>
 
-      {/* Sidebar */}
-      <aside className="hidden xl:block w-80 bg-card border-l border-border overflow-y-auto max-h-screen">
-        <div className="p-6 space-y-8">
-          {/* Phase 1: Daily Addiction Features */}
-          <section>
-            <ErrorBoundary>
-              <DailyQuests />
-            </ErrorBoundary>
-          </section>
+      {/* Sidebar (fully isolated so it cannot block the feed) */}
+      <ErrorBoundary
+        fallbackComponent={({ resetError }) => (
+          <aside className="hidden xl:block w-80 bg-card border-l border-border overflow-y-auto max-h-screen">
+            <div className="p-6 space-y-4">
+              <div className="text-sm text-muted-foreground">
+                Sidebar features temporarily unavailable.
+              </div>
+              <Button size="sm" variant="outline" onClick={resetError}>
+                Retry Sidebar
+              </Button>
+            </div>
+          </aside>
+        )}
+      >
+        <aside className="hidden xl:block w-80 bg-card border-l border-border overflow-y-auto max-h-screen">
+          <div className="p-6 space-y-8">
+            {/* Phase 1: Daily Addiction Features */}
+            <section>
+              <SectionErrorBoundary sectionName="Daily Quests">
+                <DailyQuests />
+              </SectionErrorBoundary>
+            </section>
 
-          <section>
-            <ErrorBoundary>
-              <AISuggestions />
-            </ErrorBoundary>
-          </section>
+            <section>
+              <SectionErrorBoundary sectionName="AI Suggestions">
+                <AISuggestions />
+              </SectionErrorBoundary>
+            </section>
 
-          <section className="mb-8">
-            <h3 className="font-semibold mb-4">Suggested Chefs</h3>
-          <div className="space-y-3">
-            {displaySuggestedUsers.slice(0, 5).map((user) => (
-              <div key={user.id} className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <Avatar className="w-10 h-10">
-                    <AvatarImage src={user.avatar || ""} alt={user.displayName} />
-                    <AvatarFallback>{user.displayName[0]}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p
-                      className="text-sm font-medium"
-                      data-testid={`text-suggested-chef-${user.id}`}
+            <section className="mb-8">
+              <h3 className="font-semibold mb-4">Suggested Chefs</h3>
+              <div className="space-y-3">
+                {displaySuggestedUsers.slice(0, 5).map((user) => (
+                  <div key={user.id} className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <Avatar className="w-10 h-10">
+                        <AvatarImage
+                          src={user.avatar || ""}
+                          alt={user.displayName}
+                        />
+                        <AvatarFallback>{user.displayName[0]}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          data-testid={`text-suggested-chef-${user.id}`}
+                        >
+                          {user.displayName}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {(user as any).specialty || "Expert Chef"}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="bg-primary text-primary-foreground hover:opacity-90"
+                      data-testid={`button-follow-${user.id}`}
                     >
-                      {user.displayName}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {(user as any).specialty || "Expert Chef"}
-                    </p>
+                      Follow
+                    </Button>
                   </div>
-                </div>
-                <Button
-                  size="sm"
-                  className="bg-primary text-primary-foreground hover:opacity-90"
-                  data-testid={`button-follow-${user.id}`}
-                >
-                  Follow
-                </Button>
+                ))}
               </div>
-            ))}
-          </div>
-        </section>
+            </section>
 
-        <section className="mb-8">
-          <h3 className="font-semibold mb-4">Trending Recipes</h3>
-          <div className="space-y-4">
-            {displayTrendingRecipes.slice(0, 5).map((recipe) => (
-              <div
-                key={recipe.id}
-                className="flex space-x-3 cursor-pointer hover:bg-muted/50 p-2 rounded-lg transition-colors"
-                data-testid={`trending-recipe-${recipe.id}`}
-              >
-                <img
-                  src={recipe.post.imageUrl}
-                  alt={recipe.title}
-                  className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{recipe.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    by {recipe.post.user.displayName}
-                  </p>
-                  <div className="flex items-center space-x-2 mt-1">
-                    <span className="text-xs text-destructive">
-                      ♥ {recipe.post.likesCount}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      • {recipe.cookTime} min
-                    </span>
+            <section className="mb-8">
+              <h3 className="font-semibold mb-4">Trending Recipes</h3>
+              <div className="space-y-4">
+                {displayTrendingRecipes.slice(0, 5).map((recipe) => (
+                  <div
+                    key={recipe.id}
+                    className="flex space-x-3 cursor-pointer hover:bg-muted/50 p-2 rounded-lg transition-colors"
+                    data-testid={`trending-recipe-${recipe.id}`}
+                  >
+                    <img
+                      src={recipe.post.imageUrl}
+                      alt={recipe.title}
+                      className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{recipe.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        by {recipe.post.user.displayName}
+                      </p>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <span className="text-xs text-destructive">
+                          ♥ {recipe.post.likesCount}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          • {recipe.cookTime} min
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </section>
+            </section>
 
-        <section>
-          <h3 className="font-semibold mb-4">Popular Categories</h3>
-          <div className="flex flex-wrap gap-2">
-            {["Italian", "Healthy", "Desserts", "Quick", "Vegan"].map(
-              (category) => (
-                <Badge
-                  key={category}
-                  variant="outline"
-                  className="cursor-pointer hover:bg-primary/20 transition-colors"
-                  data-testid={`category-${category.toLowerCase()}`}
-                >
-                  #{category}
-                </Badge>
-              )
-            )}
+            <section>
+              <h3 className="font-semibold mb-4">Popular Categories</h3>
+              <div className="flex flex-wrap gap-2">
+                {["Italian", "Healthy", "Desserts", "Quick", "Vegan"].map(
+                  (category) => (
+                    <Badge
+                      key={category}
+                      variant="outline"
+                      className="cursor-pointer hover:bg-primary/20 transition-colors"
+                      data-testid={`category-${category.toLowerCase()}`}
+                    >
+                      #{category}
+                    </Badge>
+                  )
+                )}
+              </div>
+            </section>
           </div>
-        </section>
-        </div>
-      </aside>
+        </aside>
+      </ErrorBoundary>
     </div>
   );
 }
