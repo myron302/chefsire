@@ -32,7 +32,7 @@ function DayCell({ day }: { day: DayActivity | null }) {
   }
 
   const activityLevel = getActivityLevel(day.drinksMade);
-  const dateObj = new Date(day.date);
+  const dateObj = day.date ? new Date(day.date) : new Date();
   const formattedDate = dateObj.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -75,6 +75,7 @@ function generateCalendarWeeks(activity: DayActivity[]): (DayActivity | null)[][
   // Create a map for quick lookup
   const activityMap = new Map<string, DayActivity>();
   activity.forEach((day) => {
+    if (!day.date) return;
     const date = new Date(day.date).toISOString().split("T")[0];
     activityMap.set(date, day);
   });

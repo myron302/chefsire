@@ -30,7 +30,7 @@ export default function LiveBattlesPage() {
           const liveData = await liveResponse.json();
           const liveItems = (liveData.items || []).map(item => {
             // Calculate time left
-            const endTime = new Date(item.endTime).getTime();
+            const endTime = item.endTime ? new Date(item.endTime).getTime() : Date.now();
             const now = Date.now();
             const timeLeft = Math.max(0, Math.floor((endTime - now) / 1000));
 
@@ -51,7 +51,7 @@ export default function LiveBattlesPage() {
           const upcomingData = await upcomingResponse.json();
           const upcomingItems = (upcomingData.items || []).slice(0, 5).map(item => {
             // Calculate start time
-            const startTime = new Date(item.startTime).getTime();
+            const startTime = item.startTime ? new Date(item.startTime).getTime() : Date.now();
             const now = Date.now();
             const startIn = Math.max(0, Math.floor((startTime - now) / (1000 * 60))); // minutes
 
