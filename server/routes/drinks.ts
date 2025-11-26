@@ -84,6 +84,19 @@ r.post("/custom-drinks", authenticateUser, async (req, res) => {
 
     const drink = await storage.createCustomDrink(drinkData);
 
+    // Track quest progress for drink creation
+    const { trackQuestProgress } = await import("../services/quests.service");
+    trackQuestProgress(req.user.id, "create_drink", {
+      category: drink.category,
+      drinkType: drink.drinkType,
+    }).catch(err => console.error("Failed to track quest progress:", err));
+
+    // Trigger achievement check
+    const { checkAndAwardAchievements } = await import("../routes/achievements");
+    checkAndAwardAchievements(req.user.id).catch(err =>
+      console.error("Failed to check achievements:", err)
+    );
+
     // Notify followers about the new custom drink
     const user = await storage.getUser(req.user.id);
     if (user) {
