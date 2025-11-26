@@ -350,4 +350,100 @@ function getProgress(achievement: any, stats: any): number {
   return 0;
 }
 
+/**
+ * Check and award achievements for a user (can be called from anywhere)
+ * Returns list of newly unlocked achievements
+ */
+export async function checkAndAwardAchievements(userId: string) {
+  try {
+    // Get user stats
+    const [userStats] = await db
+      .select()
+      .from(userDrinkStats)
+      .where(eq(userDrinkStats.userId, userId))
+      .limit(1);
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    const questCountResult = await db.execute(sql`
+      SELECT COUNT(*) as count
+      FROM quest_progress
+      WHERE user_id = ${userId} AND status = 'completed'
+    `);
+
+    const postCountResult = await db.execute(sql`
+      SELECT COUNT(*) as count
+      FROM posts
+      WHERE user_id = ${userId}
+    `);
+
+    const stats = {
+      totalPoints: userStats?.totalPoints || 0,
+      questsCompleted: Number(questCountResult.rows[0]?.count || 0),
+      currentStreak: userStats?.currentStreak || 0,
+      longestStreak: userStats?.longestStreak || 0,
+      totalDrinksMade: userStats?.totalDrinksMade || 0,
+      postsCount: Number(postCountResult.rows[0]?.count || 0),
+      followersCount: user?.followersCount || 0,
+    };
+
+    // Check for newly unlocked achievements
+    const newlyUnlocked = [];
+
+    for (const achievement of Object.values(ACHIEVEMENTS)) {
+      if (achievement.requirement(stats)) {
+        // Check if user already has notification for this achievement
+        const existing = await db.execute(sql`
+          SELECT id FROM notifications
+          WHERE user_id = ${userId}
+            AND type = 'achievement'
+            AND metadata->>'achievementId' = ${achievement.id}
+          LIMIT 1
+        `);
+
+        if (existing.rows.length === 0) {
+          // New achievement unlocked!
+          newlyUnlocked.push(achievement);
+
+          // Create notification
+          await db.insert(notifications).values({
+            userId,
+            type: "achievement",
+            title: `Achievement Unlocked: ${achievement.name}! ${achievement.icon}`,
+            message: `${achievement.description} (+${achievement.xpReward} XP)`,
+            linkUrl: "/achievements",
+            metadata: {
+              achievementId: achievement.id,
+              xpReward: achievement.xpReward,
+            },
+            priority: "high",
+          });
+
+          // Award XP
+          if (achievement.xpReward > 0) {
+            await db
+              .update(userDrinkStats)
+              .set({
+                totalPoints: sql`${userDrinkStats.totalPoints} + ${achievement.xpReward}`,
+              })
+              .where(eq(userDrinkStats.userId, userId));
+          }
+        }
+      }
+    }
+
+    return {
+      newlyUnlocked,
+      count: newlyUnlocked.length,
+    };
+  } catch (error: any) {
+    console.error("[Achievements] Error checking achievements:", error);
+    return { newlyUnlocked: [], count: 0, error: true };
+  }
+}
+
 export default router;
