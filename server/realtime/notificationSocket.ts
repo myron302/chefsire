@@ -51,14 +51,12 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
     });
 
     // Mark notification as read
-    socket.on("mark_read", async ({ notificationId }: { notificationId: string }) => {
+    socket.on("mark_read", async ({ notificationId }: { notificationId: string }, callback?: (response: any) => void) => {
       try {
         await db
           .update(notifications)
           .set({ read: true, readAt: new Date() })
           .where(and(eq(notifications.id, notificationId), eq(notifications.userId, userId)));
-
-        socket.emit("marked_read", { notificationId });
 
         // Send updated unread count
         const unreadNotifs = await db
@@ -67,23 +65,36 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
           .where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
 
         socket.emit("unread_count", { count: unreadNotifs.length });
+
+        // Send callback response
+        if (callback) {
+          callback({ ok: true, notificationId });
+        }
       } catch (e: any) {
-        socket.emit("error", { error: e?.message || "Failed to mark as read" });
+        if (callback) {
+          callback({ ok: false, error: e?.message || "Failed to mark as read" });
+        }
       }
     });
 
     // Mark all as read
-    socket.on("mark_all_read", async () => {
+    socket.on("mark_all_read", async (data: any, callback?: (response: any) => void) => {
       try {
         await db
           .update(notifications)
           .set({ read: true, readAt: new Date() })
           .where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
 
-        socket.emit("all_marked_read", {});
         socket.emit("unread_count", { count: 0 });
+
+        // Send callback response
+        if (callback) {
+          callback({ ok: true });
+        }
       } catch (e: any) {
-        socket.emit("error", { error: e?.message || "Failed to mark all as read" });
+        if (callback) {
+          callback({ ok: false, error: e?.message || "Failed to mark all as read" });
+        }
       }
     });
 
@@ -97,7 +108,7 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
           .orderBy(desc(notifications.createdAt))
           .limit(limit);
 
-        socket.emit("recent_notifications", { notifications: recentNotifs });
+        socket.emit("recent_notifications", recentNotifs);
       } catch (e: any) {
         socket.emit("error", { error: e?.message || "Failed to get recent notifications" });
       }
@@ -130,7 +141,7 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
           .returning();
 
         // Send real-time notification
-        ns.to(`user-${userId}`).emit("new_notification", savedNotif);
+        ns.to(`user-${userId}`).emit("notification", savedNotif);
 
         // Update unread count
         const unreadNotifs = await db
@@ -166,7 +177,7 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
             })
             .returning();
 
-          ns.to(`user-${userId}`).emit("new_notification", savedNotif);
+          ns.to(`user-${userId}`).emit("notification", savedNotif);
 
           const unreadNotifs = await db
             .select()
