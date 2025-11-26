@@ -157,7 +157,7 @@ export default function DMThreadPage({ params }: Params) {
                         >
                           <div className="whitespace-pre-wrap break-words leading-relaxed font-medium">{m.body}</div>
                           <div className={`mt-2 text-[10px] text-right font-medium ${mine ? "text-amber-100" : "text-purple-500"}`}>
-                            {new Date(m.createdAt).toLocaleString()}
+                            {m.createdAt ? new Date(m.createdAt).toLocaleString() : "Recently"}
                           </div>
                         </div>
                       </div>

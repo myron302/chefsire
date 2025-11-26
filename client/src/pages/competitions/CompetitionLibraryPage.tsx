@@ -346,7 +346,7 @@ export default function CompetitionsLibraryPage() {
                   <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2 text-gray-700 font-medium">
                       <Calendar className="w-4 h-4" />
-                      {new Date(item.createdAt).toLocaleDateString()}
+                      {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "Recently"}
                     </div>
                     <button 
                       onClick={() => window.location.href = `/competitions/${item.id}`}
