@@ -151,6 +151,9 @@ import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage"
 // Leaderboards & Achievements
 import LeaderboardPage from "@/pages/leaderboard/LeaderboardPage";
 import AchievementsPage from "@/pages/achievements/AchievementsPage";
+import QuestsPage from "@/pages/QuestsPage";
+import RemixesPage from "@/pages/RemixesPage";
+import SuggestionsPage from "@/pages/SuggestionsPage";
 
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
@@ -384,6 +387,9 @@ function AppRouter() {
         {/* Leaderboards & Achievements */}
         <Route path="/leaderboard" component={LeaderboardPage} />
         <Route path="/achievements" component={AchievementsPage} />
+        <Route path="/quests" component={QuestsPage} />
+        <Route path="/remixes" component={RemixesPage} />
+        <Route path="/suggestions" component={SuggestionsPage} />
 
         {/* Recipes */}
         <Route path="/recipes/baby-food/:rest*">
