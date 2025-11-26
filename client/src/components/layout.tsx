@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
+import NotificationBell from "@/components/NotificationBell";
 import chefLogo from "../asset/logo.jpg";
 
 interface LayoutProps {
