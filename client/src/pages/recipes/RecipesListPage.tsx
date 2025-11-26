@@ -171,7 +171,8 @@ function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boo
             </a>
           )}
 
-          {/* Reviews Section */}
+          {/* Reviews Section - TEMPORARILY DISABLED FOR DEBUGGING */}
+          {/*
           <div className="mt-8 border-t pt-6">
             <ErrorBoundary>
               <RecipeReviews
@@ -181,6 +182,7 @@ function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boo
               />
             </ErrorBoundary>
           </div>
+          */}
         </div>
       </div>
     </div>
