@@ -87,7 +87,9 @@ export default function PostCard({ post, currentUserId = "user-1" }: PostCardPro
               {post.user.displayName}
             </h3>
             <p className="text-xs text-muted-foreground" data-testid={`text-timestamp-${post.id}`}>
-              {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
+              {post.createdAt
+                ? formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })
+                : "Recently"}
             </p>
           </div>
         </div>

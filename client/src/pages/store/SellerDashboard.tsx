@@ -289,7 +289,7 @@ export default function SellerDashboard() {
                           {sale.buyer.displayName || sale.buyer.username} • {sale.order.quantity}x
                         </p>
                         <p className="text-xs text-gray-500">
-                          {new Date(sale.order.createdAt).toLocaleDateString()}
+                          {sale.order.createdAt ? new Date(sale.order.createdAt).toLocaleDateString() : "Recently"}
                         </p>
                       </div>
                     </div>
