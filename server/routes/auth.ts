@@ -320,6 +320,52 @@ router.delete("/auth/account", async (req, res) => {
 });
 
 /**
+ * GET /auth/me
+ * Get current user from valid token
+ */
+router.get("/auth/me", async (req, res) => {
+  try {
+    const token = req.cookies?.auth_token || req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    // Verify token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET) as any;
+    } catch (error) {
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+
+    // Get user
+    const user = await storage.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        displayName: user.displayName,
+        royalTitle: user.royalTitle,
+        avatar: user.avatar,
+        bio: user.bio,
+        nutritionPremium: user.nutritionPremium,
+        nutritionTrialEndsAt: user.nutritionTrialEndsAt,
+      },
+    });
+  } catch (error) {
+    console.error("Error getting current user:", error);
+    res.status(500).json({ error: "Failed to get user" });
+  }
+});
+
+/**
  * POST /auth/resend-verification
  */
 router.post("/auth/resend-verification", async (req, res) => {
