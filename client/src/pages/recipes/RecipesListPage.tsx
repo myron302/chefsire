@@ -28,6 +28,7 @@ type RecipeItem = {
   // meta
   ratingSpoons?: number | null;
   averageRating?: string | number | null; // From local database recipes
+  reviewCount?: number | null; // Number of reviews for this recipe
   cookTime?: number | null;
   servings?: number | null;
 
