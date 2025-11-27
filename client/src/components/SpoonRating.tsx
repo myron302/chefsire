@@ -2,8 +2,8 @@
 import React from "react";
 
 interface SpoonRatingProps {
-  /** Rating value from 0-5 (can be number or string from database decimal) */
-  value: number | string | null | undefined;
+  /** Rating value from 0-5 */
+  value: number | null | undefined;
   /** Optional: make it interactive for user input */
   interactive?: boolean;
   /** Optional: callback when user clicks a spoon */
@@ -31,9 +31,7 @@ export function SpoonRating({
   showValue = false,
   className = "",
 }: SpoonRatingProps) {
-  // Parse value to number if it's a string (from database decimal)
-  const numericValue = typeof value === "string" ? parseFloat(value) : value;
-  const rating = Math.max(0, Math.min(5, Math.round(numericValue ?? 0)));
+  const rating = Math.max(0, Math.min(5, Math.round(value ?? 0)));
   const [hoveredRating, setHoveredRating] = React.useState<number | null>(null);
 
   const displayRating = interactive && hoveredRating !== null ? hoveredRating : rating;
@@ -96,7 +94,7 @@ export function SpoonRating({
       </div>
       {showValue && (
         <span className="text-sm text-gray-600 ml-1">
-          ({numericValue !== null && numericValue !== undefined ? Number(numericValue).toFixed(1) : "0.0"})
+          ({value !== null && value !== undefined ? value.toFixed(1) : "0.0"})
         </span>
       )}
     </div>
@@ -117,9 +115,7 @@ export function FancySpoonRating({
   color = "gold",
   className = "",
 }: FancySpoonRatingProps) {
-  // Parse value to number if it's a string (from database decimal)
-  const numericValue = typeof value === "string" ? parseFloat(value) : value;
-  const rating = Math.max(0, Math.min(5, Math.round(numericValue ?? 0)));
+  const rating = Math.max(0, Math.min(5, Math.round(value ?? 0)));
   const [hoveredRating, setHoveredRating] = React.useState<number | null>(null);
 
   const displayRating = interactive && hoveredRating !== null ? hoveredRating : rating;
@@ -170,7 +166,7 @@ export function FancySpoonRating({
       </div>
       {showValue && (
         <span className={`text-sm ${colorMap[color]} font-medium ml-1`}>
-          {numericValue !== null && numericValue !== undefined ? Number(numericValue).toFixed(1) : "0.0"}
+          {value !== null && value !== undefined ? value.toFixed(1) : "0.0"}
         </span>
       )}
     </div>
@@ -178,9 +174,8 @@ export function FancySpoonRating({
 }
 
 // Compact inline display for lists
-export function CompactSpoonRating({ value }: { value: number | string | null | undefined }) {
-  const numericValue = typeof value === "string" ? parseFloat(value) : value;
-  const rating = numericValue !== null && numericValue !== undefined ? Number(numericValue).toFixed(1) : "0.0";
+export function CompactSpoonRating({ value }: { value: number | null | undefined }) {
+  const rating = value !== null && value !== undefined ? value.toFixed(1) : "0.0";
   return (
     <span className="inline-flex items-center gap-1 text-sm">
       <span>🥄</span>
