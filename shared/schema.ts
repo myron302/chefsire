@@ -131,10 +131,17 @@ export const recipeCollections = pgTable("recipe_collections", {
   description: text("description"),
   isPublic: boolean("is_public").default(false),
   recipeCount: integer("recipe_count").default(0),
+  // Seasonal/Featured collection fields
+  isFeatured: boolean("is_featured").default(false),
+  seasonalTag: text("seasonal_tag"), // e.g., "winter", "summer", "holiday", "back-to-school"
+  activeFrom: timestamp("active_from"), // When this collection should start being featured
+  activeTo: timestamp("active_to"), // When this collection should stop being featured
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   userIdIdx: index("recipe_collections_user_idx").on(table.userId),
+  featuredIdx: index("recipe_collections_featured_idx").on(table.isFeatured),
+  seasonalIdx: index("recipe_collections_seasonal_idx").on(table.seasonalTag),
 }));
 
 export const collectionRecipes = pgTable("collection_recipes", {
