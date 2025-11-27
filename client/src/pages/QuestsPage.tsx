@@ -49,18 +49,15 @@ export default function QuestsPage() {
         credentials: "include",
       });
       if (!response.ok) throw new Error("Failed to fetch quests");
-      const result = await response.json();
-      // API returns { quests: [...] }, extract the quests array
-      return result.quests || [];
+      return response.json() as Promise<QuestProgress[]>;
     },
     enabled: !!user,
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
-  const questsArray = Array.isArray(data) ? data : [];
-  const activeQuests = questsArray.filter((q) => q.status === "active");
-  const completedQuests = questsArray.filter((q) => q.status === "completed");
-  const expiredQuests = questsArray.filter((q) => q.status === "expired");
+  const activeQuests = data?.filter((q) => q.status === "active") || [];
+  const completedQuests = data?.filter((q) => q.status === "completed") || [];
+  const expiredQuests = data?.filter((q) => q.status === "expired") || [];
 
   const totalXpToday = completedQuests.reduce((sum, q) => sum + q.xpEarned, 0);
 

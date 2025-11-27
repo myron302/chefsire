@@ -111,57 +111,11 @@ router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
 router.post("/", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const { recipeId, rating, reviewText, recipeData } = req.body;
+    const { recipeId, rating, reviewText } = req.body;
 
     // Validate rating
     if (!rating || rating < 1 || rating > 5) {
       return res.status(400).json({ error: "Rating must be between 1 and 5 spoons" });
-    }
-
-    // If recipeData is provided, ensure the recipe exists in our database
-    // This allows reviewing external API recipes by saving them first
-    if (recipeData) {
-      try {
-        // Check if recipe already exists
-        const existingRecipe = await storage
-          .select()
-          .from(recipes)
-          .where(eq(recipes.id, recipeId))
-          .limit(1);
-
-        // If recipe doesn't exist, create it
-        if (existingRecipe.length === 0) {
-          const newRecipe = {
-            id: recipeId,
-            title: recipeData.title || "Untitled Recipe",
-            imageUrl: recipeData.image || recipeData.imageUrl || recipeData.thumbnail || null,
-            ingredients: Array.isArray(recipeData.ingredients)
-              ? recipeData.ingredients
-              : recipeData.ingredients
-              ? [String(recipeData.ingredients)]
-              : ["No ingredients provided"],
-            instructions: Array.isArray(recipeData.instructions)
-              ? recipeData.instructions
-              : recipeData.instructions
-              ? [String(recipeData.instructions)]
-              : ["No instructions provided"],
-            cookTime: recipeData.cookTime || null,
-            servings: recipeData.servings || null,
-            difficulty: recipeData.difficulty || null,
-            nutrition: recipeData.nutrition || null,
-            calories: recipeData.calories || null,
-            protein: recipeData.protein || null,
-            carbs: recipeData.carbs || null,
-            fat: recipeData.fat || null,
-            fiber: recipeData.fiber || null,
-          };
-
-          await storage.insert(recipes).values(newRecipe);
-        }
-      } catch (error) {
-        console.error("Error ensuring recipe exists:", error);
-        // Continue anyway - the review might still work if recipe exists
-      }
     }
 
     // Check if user already reviewed this recipe

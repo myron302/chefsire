@@ -28,7 +28,6 @@ type RecipeItem = {
   // meta
   ratingSpoons?: number | null;
   averageRating?: string | number | null; // From local database recipes
-  reviewCount?: number | null; // Number of reviews for this recipe
   cookTime?: number | null;
   servings?: number | null;
 
@@ -172,16 +171,18 @@ function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boo
             </a>
           )}
 
-          {/* Reviews Section */}
+          {/* Reviews Section - TEMPORARILY DISABLED FOR DEBUGGING */}
+          {/*
           <div className="mt-8 border-t pt-6">
             <ErrorBoundary>
               <RecipeReviews
                 recipeId={r.id}
                 averageRating={r.averageRating ? Number(r.averageRating) : undefined}
-                reviewCount={r.reviewCount}
+                reviewCount={undefined}
               />
             </ErrorBoundary>
           </div>
+          */}
         </div>
       </div>
     </div>
