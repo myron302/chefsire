@@ -48,6 +48,7 @@ import remixesRouter from "./remixes";
 import leaderboardRouter from "./leaderboard";
 import achievementsRouter from "./achievements";
 import streaksRouter from "./streaks";
+import analyticsRouter from "./analytics";
 
 // 💰 Marketplace & Monetization
 import subscriptionsRouter from "./subscriptions";
@@ -140,6 +141,7 @@ r.use("/remixes", remixesRouter);
 r.use("/leaderboard", leaderboardRouter);
 r.use("/achievements", achievementsRouter);
 r.use("/streaks", streaksRouter);
+r.use("/analytics", analyticsRouter);
 
 // 💰 Marketplace & Monetization
 r.use("/subscriptions", subscriptionsRouter);
@@ -188,6 +190,7 @@ if (process.env.NODE_ENV !== "production") {
         "/leaderboard/*",   // ⚡ Gamification
         "/achievements/*",  // ⚡ Gamification
         "/streaks/*",       // ⚡ Gamification
+        "/analytics/*",     // 📊 Analytics
         "/subscriptions/*", // 💰 Monetization
         "/orders/*",        // 💰 Monetization
         "/payments/*",      // 💰 Square payments
