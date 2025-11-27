@@ -42,75 +42,24 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Validate session on mount by checking with server
+  // Load user from localStorage on mount
   useEffect(() => {
-    const validateSession = async () => {
-      try {
-        // First check if we have a user in localStorage
-        const raw = localStorage.getItem("user");
-        if (!raw) {
-          setLoading(false);
-          return;
+    try {
+      const raw = localStorage.getItem("user");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          if (parsed.id && typeof parsed.id !== "string") parsed.id = String(parsed.id);
+          delete parsed.password;
+          setUser(parsed as User);
         }
-
-        // We have a stored user, validate their token with the server
-        const response = await fetch("/api/auth/me", {
-          credentials: "include",
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.user) {
-            // Token is valid, update user with fresh data from server
-            const cleanUser: User = {
-              id: String(data.user.id),
-              email: data.user.email,
-              username: data.user.username,
-              displayName: data.user.displayName,
-              royalTitle: data.user.royalTitle ?? null,
-              avatar: data.user.avatar ?? null,
-              bio: data.user.bio ?? null,
-              subscriptionTier: data.user.subscriptionTier || data.user.subscription || 'free',
-              nutritionPremium: data.user.nutritionPremium,
-              nutritionTrialEndsAt: data.user.nutritionTrialEndsAt,
-              subscription: data.user.subscription || data.user.subscriptionTier || 'free',
-              trialEndDate: data.user.trialEndDate || data.user.subscriptionEndsAt,
-            };
-            localStorage.setItem("user", JSON.stringify(cleanUser));
-            setUser(cleanUser);
-          } else {
-            // Invalid response, clear session
-            localStorage.removeItem("user");
-            setUser(null);
-          }
-        } else {
-          // Token is invalid or expired, clear local storage
-          console.warn("Session invalid, clearing stored user");
-          localStorage.removeItem("user");
-          setUser(null);
-        }
-      } catch (e) {
-        console.error("Failed to validate session:", e);
-        // On network error, try to use cached user from localStorage
-        try {
-          const raw = localStorage.getItem("user");
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed === "object") {
-              if (parsed.id && typeof parsed.id !== "string") parsed.id = String(parsed.id);
-              delete parsed.password;
-              setUser(parsed as User);
-            }
-          }
-        } catch {
-          localStorage.removeItem("user");
-        }
-      } finally {
-        setLoading(false);
       }
-    };
-
-    validateSession();
+    } catch (e) {
+      console.error("Failed to read saved user:", e);
+      localStorage.removeItem("user");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const persist = (u: User | null) => {
