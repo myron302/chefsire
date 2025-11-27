@@ -7,9 +7,11 @@ export function getDmSocket(userId: string) {
   if (dmSocket) return dmSocket;
   dmSocket = io("/dm", {
     path: "/socket.io",
-    transports: ["websocket", "polling"],
+    transports: ["polling", "websocket"], // Try polling first for Passenger/Plesk compatibility
     withCredentials: true,
     auth: { userId },
+    reconnectionDelayMax: 10000,
+    reconnectionAttempts: 5,
   });
   return dmSocket;
 }
@@ -25,9 +27,11 @@ export function getNotificationSocket(userId: string) {
   if (notificationSocket) return notificationSocket;
   notificationSocket = io("/notifications", {
     path: "/socket.io",
-    transports: ["websocket", "polling"],
+    transports: ["polling", "websocket"], // Try polling first for Passenger/Plesk compatibility
     withCredentials: true,
     auth: { userId },
+    reconnectionDelayMax: 10000,
+    reconnectionAttempts: 5,
   });
   return notificationSocket;
 }
