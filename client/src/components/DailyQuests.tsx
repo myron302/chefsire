@@ -67,11 +67,13 @@ export default function DailyQuests() {
 
   // Normalize/reshape response once per fetch
   const questsArray = useMemo(() => {
-    const qs =
-      questsResponse?.quests.map(({ progress, quest }) => ({
-        ...progress,
-        quest,
-      })) ?? [];
+    if (!questsResponse?.quests || !Array.isArray(questsResponse.quests)) {
+      return [];
+    }
+    const qs = questsResponse.quests.map(({ progress, quest }) => ({
+      ...progress,
+      quest,
+    }));
     return Array.isArray(qs) ? qs : [];
   }, [questsResponse]);
 

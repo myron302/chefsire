@@ -177,7 +177,7 @@ function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boo
               <RecipeReviews
                 recipeId={r.id}
                 averageRating={r.averageRating ? Number(r.averageRating) : undefined}
-                reviewCount={undefined}
+                reviewCount={r.reviewCount}
               />
             </ErrorBoundary>
           </div>

@@ -9,10 +9,67 @@ import {
   type InsertRecipeCollection,
   type InsertCollectionRecipe,
 } from "../../shared/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, gte, lte } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 
 const router = Router();
+
+// Get currently active featured/seasonal collections
+router.get("/featured", async (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+
+    // Get collections that are:
+    // 1. Public and featured
+    // 2. Either have no date range, or are within their active date range
+    const featuredCollections = await storage
+      .select()
+      .from(recipeCollections)
+      .where(
+        and(
+          eq(recipeCollections.isPublic, true),
+          eq(recipeCollections.isFeatured, true),
+          // If activeFrom is set, check that we're past it
+          sql`(${recipeCollections.activeFrom} IS NULL OR ${recipeCollections.activeFrom} <= ${now})`,
+          // If activeTo is set, check that we haven't passed it
+          sql`(${recipeCollections.activeTo} IS NULL OR ${recipeCollections.activeTo} >= ${now})`
+        )
+      )
+      .orderBy(desc(recipeCollections.createdAt));
+
+    res.json(featuredCollections);
+  } catch (error: any) {
+    console.error("Error fetching featured collections:", error);
+    res.status(500).json({ error: "Failed to fetch featured collections" });
+  }
+});
+
+// Get collections by seasonal tag (e.g., "winter", "summer", "holiday")
+router.get("/seasonal/:tag", async (req: Request, res: Response) => {
+  try {
+    const { tag } = req.params;
+    const now = new Date();
+
+    const seasonalCollections = await storage
+      .select()
+      .from(recipeCollections)
+      .where(
+        and(
+          eq(recipeCollections.isPublic, true),
+          eq(recipeCollections.seasonalTag, tag),
+          // Only show collections that are currently active
+          sql`(${recipeCollections.activeFrom} IS NULL OR ${recipeCollections.activeFrom} <= ${now})`,
+          sql`(${recipeCollections.activeTo} IS NULL OR ${recipeCollections.activeTo} >= ${now})`
+        )
+      )
+      .orderBy(desc(recipeCollections.createdAt));
+
+    res.json(seasonalCollections);
+  } catch (error: any) {
+    console.error("Error fetching seasonal collections:", error);
+    res.status(500).json({ error: "Failed to fetch seasonal collections" });
+  }
+});
 
 // Get all collections for a user
 router.get("/user/:userId", async (req: Request, res: Response) => {
@@ -127,7 +184,7 @@ router.put("/:collectionId", requireAuth, async (req: Request, res: Response) =>
   try {
     const userId = (req as any).user.id;
     const { collectionId } = req.params;
-    const { name, description, isPublic } = req.body;
+    const { name, description, isPublic, isFeatured, seasonalTag, activeFrom, activeTo } = req.body;
 
     // Check if collection exists and belongs to user
     const [existing] = await storage
@@ -149,6 +206,10 @@ router.put("/:collectionId", requireAuth, async (req: Request, res: Response) =>
     if (name !== undefined) updateData.name = name.trim();
     if (description !== undefined) updateData.description = description?.trim() || null;
     if (isPublic !== undefined) updateData.isPublic = isPublic;
+    if (isFeatured !== undefined) updateData.isFeatured = isFeatured;
+    if (seasonalTag !== undefined) updateData.seasonalTag = seasonalTag;
+    if (activeFrom !== undefined) updateData.activeFrom = activeFrom ? new Date(activeFrom) : null;
+    if (activeTo !== undefined) updateData.activeTo = activeTo ? new Date(activeTo) : null;
 
     const [updated] = await storage
       .update(recipeCollections)
