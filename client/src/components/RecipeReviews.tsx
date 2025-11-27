@@ -126,6 +126,16 @@ export function RecipeReviews({ recipeId, averageRating, reviewCount, recipeData
         window.location.reload();
       } else {
         const error = await response.json();
+
+        // Handle session expiration
+        if (response.status === 401) {
+          alert("Your session has expired. Please log in again to submit a review.");
+          // Clear local storage and redirect to login
+          localStorage.removeItem("user");
+          window.location.href = "/";
+          return;
+        }
+
         alert(error.error || "Failed to submit review");
       }
     } catch (error) {

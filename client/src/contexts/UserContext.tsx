@@ -91,7 +91,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         }
       } catch (e) {
         console.error("Failed to validate session:", e);
-        // On network error, keep local user but don't fail
+        // On network error, try to use cached user from localStorage
         try {
           const raw = localStorage.getItem("user");
           if (raw) {
