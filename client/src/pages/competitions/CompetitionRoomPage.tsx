@@ -41,7 +41,7 @@ export default function CompetitionRoomPage() {
 
           // Calculate time left if competition is live
           if (data.competition?.status === 'live' && data.competition?.endTime) {
-            const end = new Date(data.competition.endTime).getTime();
+            const end = data.competition.endTime ? new Date(data.competition.endTime).getTime() : Date.now();
             const now = Date.now();
             const remaining = Math.floor((end - now) / 1000);
             setTimeLeft(Math.max(0, remaining));
