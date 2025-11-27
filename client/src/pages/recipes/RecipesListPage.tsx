@@ -171,18 +171,16 @@ function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boo
             </a>
           )}
 
-          {/* Reviews Section - TEMPORARILY DISABLED FOR DEBUGGING */}
-          {/*
+          {/* Reviews Section */}
           <div className="mt-8 border-t pt-6">
             <ErrorBoundary>
               <RecipeReviews
                 recipeId={r.id}
                 averageRating={r.averageRating ? Number(r.averageRating) : undefined}
-                reviewCount={undefined}
+                reviewCount={r.reviewCount}
               />
             </ErrorBoundary>
           </div>
-          */}
         </div>
       </div>
     </div>
