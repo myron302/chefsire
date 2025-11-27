@@ -179,13 +179,6 @@ function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boo
                 recipeId={r.id}
                 averageRating={r.averageRating ? Number(r.averageRating) : undefined}
                 reviewCount={r.reviewCount}
-                recipeData={{
-                  title: r.title,
-                  image: getImage(r) || undefined,
-                  instructions: extractInstructions(r) || undefined,
-                  cookTime: r.cookTime || undefined,
-                  servings: r.servings || undefined,
-                }}
               />
             </ErrorBoundary>
           </div>
