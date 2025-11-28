@@ -13,7 +13,6 @@ import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
 import allergiesRouter from "./allergies";
 import nutritionRouter from "./nutrition";
-import mealPlansRouter from "./meal-plans";
 import dmRouter from "./dm";
 import clubsRouter from "./clubs";
 
@@ -48,7 +47,6 @@ import remixesRouter from "./remixes";
 import leaderboardRouter from "./leaderboard";
 import achievementsRouter from "./achievements";
 import streaksRouter from "./streaks";
-import analyticsRouter from "./analytics";
 
 // 💰 Marketplace & Monetization
 import subscriptionsRouter from "./subscriptions";
@@ -105,9 +103,6 @@ r.use("/allergies", allergiesRouter);
 // Nutrition - prefixed
 r.use("/nutrition", nutritionRouter);
 
-// Meal Plans Marketplace - prefixed
-r.use("/api", mealPlansRouter);
-
 // DM (Direct Messages) - prefixed
 r.use("/dm", dmRouter);
 
@@ -141,7 +136,6 @@ r.use("/remixes", remixesRouter);
 r.use("/leaderboard", leaderboardRouter);
 r.use("/achievements", achievementsRouter);
 r.use("/streaks", streaksRouter);
-r.use("/analytics", analyticsRouter);
 
 // 💰 Marketplace & Monetization
 r.use("/subscriptions", subscriptionsRouter);
@@ -170,10 +164,6 @@ if (process.env.NODE_ENV !== "production") {
         "/drinks/*",
         "/allergies/*",
         "/nutrition/*",
-        "/meal-plans/*",     // Nutrition marketplace
-        "/my-plans/*",       // Creator meal plans
-        "/my-purchases/*",   // Buyer meal plans
-        "/analytics/*",      // Creator analytics
         "/dm/*",
         "/clubs/*",
         "/lookup/*",
@@ -190,7 +180,6 @@ if (process.env.NODE_ENV !== "production") {
         "/leaderboard/*",   // ⚡ Gamification
         "/achievements/*",  // ⚡ Gamification
         "/streaks/*",       // ⚡ Gamification
-        "/analytics/*",     // 📊 Analytics
         "/subscriptions/*", // 💰 Monetization
         "/orders/*",        // 💰 Monetization
         "/payments/*",      // 💰 Square payments

@@ -7,7 +7,6 @@ import {
   competitionParticipants,
   competitionVotes,
 } from "../db/competitions";
-import { notificationService } from "../services/notification.service";
 
 const router = Router();
 
@@ -67,35 +66,6 @@ async function getCompetitionDetail(competitionId: string) {
       return null;
     }
     throw error;
-  }
-}
-
-async function notifyCompetitionParticipants(
-  competitionId: string,
-  notification: {
-    type: string;
-    title: string;
-    message: string;
-    imageUrl?: string;
-    linkUrl?: string;
-    metadata?: Record<string, any>;
-  }
-) {
-  try {
-    const participants = await db
-      .select({ userId: competitionParticipants.userId })
-      .from(competitionParticipants)
-      .where(eq(competitionParticipants.competitionId, competitionId));
-
-    if (participants.length === 0) return;
-
-    const userIds = participants.map(p => p.userId);
-    await notificationService.notifyMultipleUsers(userIds, {
-      ...notification,
-      priority: "high",
-    });
-  } catch (error) {
-    console.error("[Competitions] Failed to notify participants:", error);
   }
 }
 
@@ -202,19 +172,6 @@ router.post("/:id/start", async (req, res, next) => {
       })
       .where(eq(competitions.id, compId));
 
-    // Notify all participants that competition has started
-    notifyCompetitionParticipants(compId, {
-      type: "competition_started",
-      title: "🔥 Competition Started!",
-      message: `${comp.title || "The competition"} is now live! Get cooking!`,
-      linkUrl: `/competitions/${compId}`,
-      metadata: {
-        competitionId: compId,
-        endTime: end.toISOString(),
-        timeLimitMinutes: comp.timeLimitMinutes,
-      },
-    }).catch(err => console.error("Failed to notify participants:", err));
-
     res.json({ ok: true });
   } catch (error) {
     if (isMissingTable(error)) {
@@ -257,18 +214,6 @@ router.post("/:id/end", async (req, res, next) => {
         updatedAt: nowUtc(),
       })
       .where(eq(competitions.id, compId));
-
-    // Notify participants that judging has started
-    notifyCompetitionParticipants(compId, {
-      type: "competition_judging",
-      title: "⚖️ Judging Phase Started!",
-      message: `${comp.title || "The competition"} is now in judging! Vote on your favorite dishes!`,
-      linkUrl: `/competitions/${compId}`,
-      metadata: {
-        competitionId: compId,
-        judgingClosesAt: closeAt.toISOString(),
-      },
-    }).catch(err => console.error("Failed to notify participants:", err));
 
     res.json({ ok: true, judgingClosesAt: closeAt.toISOString() });
   } catch (error) {
@@ -324,20 +269,6 @@ router.post("/:id/submit", async (req, res, next) => {
           updatedAt: nowUtc(),
         },
       });
-
-    // Notify other participants of new submission
-    notifyCompetitionParticipants(compId, {
-      type: "competition_submission",
-      title: "📸 New Submission!",
-      message: `A competitor just submitted "${dishTitle || "their dish"}" to ${comp.title || "the competition"}`,
-      imageUrl: finalDishPhotoUrl || undefined,
-      linkUrl: `/competitions/${compId}`,
-      metadata: {
-        competitionId: compId,
-        submitterId: userId,
-        dishTitle,
-      },
-    }).catch(err => console.error("Failed to notify participants:", err));
 
     res.json({ ok: true });
   } catch (error) {
@@ -476,20 +407,6 @@ router.post("/:id/complete", async (req, res, next) => {
         updatedAt: nowUtc(),
       })
       .where(eq(competitions.id, compId));
-
-    // Notify participants that competition is complete with results
-    notifyCompetitionParticipants(compId, {
-      type: "competition_completed",
-      title: "🏆 Competition Complete!",
-      message: `${comp.title || "The competition"} results are in! ${isOfficial ? "Official" : "Unofficial"} winner announced!`,
-      linkUrl: `/competitions/${compId}`,
-      metadata: {
-        competitionId: compId,
-        winnerParticipantId,
-        isOfficial,
-        totalParticipants: perParticipant.length,
-      },
-    }).catch(err => console.error("Failed to notify participants:", err));
 
     const detail = await getCompetitionDetail(compId);
     res.json({ ok: true, winnerParticipantId, isOfficial, detail });

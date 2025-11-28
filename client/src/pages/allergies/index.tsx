@@ -535,7 +535,7 @@ export default function AllergiesDashboard() {
                                   <Stethoscope className="w-3 h-3" />
                                   <span className="capitalize">Diagnosed by {profile.diagnosedBy}</span>
                                   {profile.diagnosedDate && (
-                                    <span>• {profile.diagnosedDate ? new Date(profile.diagnosedDate).toLocaleDateString() : "Recently"}</span>
+                                    <span>• {new Date(profile.diagnosedDate).toLocaleDateString()}</span>
                                   )}
                                 </div>
                               )}
