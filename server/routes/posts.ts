@@ -3,7 +3,6 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { asyncHandler, ErrorFactory } from "../middleware/error-handler";
 import { validateRequest, CommonSchemas } from "../middleware/validation";
-import { notificationService } from "../services/notification.service";
 
 const r = Router();
 
@@ -80,26 +79,6 @@ r.post("/", async (req, res) => {
     });
     const body = schema.parse(req.body);
     const created = await storage.createPost(body as any);
-
-    // Notify followers about the new post
-    const user = await storage.getUser(body.userId);
-    if (user) {
-      notificationService.notifyFollowersOfActivity(
-        body.userId,
-        "post",
-        {
-          title: `${user.username} shared a new post!`,
-          message: body.caption || "Check out their latest post",
-          imageUrl: body.imageUrl,
-          linkUrl: `/social/posts/${created.id}`,
-          metadata: {
-            postId: created.id,
-            isRecipe: body.isRecipe || false,
-          },
-        }
-      ).catch(err => console.error("Failed to notify followers:", err));
-    }
-
     res.status(201).json(created);
   } catch (err: any) {
     if (err?.issues) return res.status(400).json({ message: "Invalid post data", errors: err.issues });
@@ -141,30 +120,6 @@ r.post("/comments", async (req, res) => {
     });
     const body = schema.parse(req.body);
     const created = await storage.createComment(body as any);
-
-    // Notify post owner about the new comment (if not commenting on own post)
-    const post = await storage.getPost(body.postId);
-    if (post && post.userId !== body.userId) {
-      const commenter = await storage.getUser(body.userId);
-      if (commenter) {
-        notificationService.notifyUser(
-          post.userId,
-          {
-            type: "comment",
-            title: `${commenter.username} commented on your post`,
-            message: body.text.substring(0, 100),
-            imageUrl: commenter.avatar || undefined,
-            linkUrl: `/social/posts/${body.postId}`,
-            metadata: {
-              postId: body.postId,
-              commentId: created.id,
-              commenterId: body.userId,
-            },
-          }
-        ).catch(err => console.error("Failed to notify post owner:", err));
-      }
-    }
-
     res.status(201).json(created);
   } catch (err: any) {
     if (err?.issues) return res.status(400).json({ message: "Invalid comment", errors: err.issues });
@@ -192,29 +147,6 @@ r.post("/likes", async (req, res) => {
     const schema = z.object({ userId: z.string(), postId: z.string() });
     const body = schema.parse(req.body);
     const like = await storage.likePost(body.userId, body.postId);
-
-    // Notify post owner about the like (if not liking own post)
-    const post = await storage.getPost(body.postId);
-    if (post && post.userId !== body.userId) {
-      const liker = await storage.getUser(body.userId);
-      if (liker) {
-        notificationService.notifyUser(
-          post.userId,
-          {
-            type: "like",
-            title: `${liker.username} liked your post`,
-            message: "Check out your post engagement!",
-            imageUrl: liker.avatar || undefined,
-            linkUrl: `/social/posts/${body.postId}`,
-            metadata: {
-              postId: body.postId,
-              likerId: body.userId,
-            },
-          }
-        ).catch(err => console.error("Failed to notify post owner:", err));
-      }
-    }
-
     res.status(201).json(like);
   } catch (err: any) {
     if (err?.issues) return res.status(400).json({ message: "Invalid like data", errors: err.issues });

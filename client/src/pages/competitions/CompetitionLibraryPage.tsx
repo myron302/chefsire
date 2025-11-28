@@ -62,47 +62,21 @@ export default function CompetitionsLibraryPage() {
     }
   }, []);
 
-  // Fetch competitions from API
+  // Mock data for demo
+  const mockItems = [
+    { id: '1', title: 'Midnight Pasta Showdown', themeName: 'Italian Night', status: 'live', isPrivate: false, timeLimitMinutes: 60, createdAt: new Date().toISOString(), participants: 6 },
+    { id: '2', title: 'Taco Fiesta Challenge', themeName: 'Taco Tuesday', status: 'judging', isPrivate: false, timeLimitMinutes: 45, createdAt: new Date().toISOString(), participants: 8 },
+    { id: '3', title: 'Asian Fusion Battle', themeName: 'Asian Fusion', status: 'upcoming', isPrivate: true, timeLimitMinutes: 90, createdAt: new Date().toISOString(), participants: 4 },
+    { id: '4', title: 'Dessert Wars Championship', themeName: 'Desserts & Baking', status: 'completed', isPrivate: false, timeLimitMinutes: 120, createdAt: new Date().toISOString(), participants: 10 },
+    { id: '5', title: 'Budget Kitchen Heroes', themeName: 'Budget ($10)', status: 'live', isPrivate: false, timeLimitMinutes: 30, createdAt: new Date().toISOString(), participants: 5 },
+    { id: '6', title: 'Lightning Round Cook-Off', themeName: 'Quick 30-Min', status: 'upcoming', isPrivate: false, timeLimitMinutes: 30, createdAt: new Date().toISOString(), participants: 7 },
+    { id: '7', title: 'Freestyle Mayhem', themeName: 'Freestyle', status: 'live', isPrivate: false, timeLimitMinutes: 60, createdAt: new Date().toISOString(), participants: 12 },
+    { id: '8', title: 'Spicy Heat Challenge', themeName: 'Spicy Challenge', status: 'upcoming', isPrivate: false, timeLimitMinutes: 45, createdAt: new Date().toISOString(), participants: 9 }
+  ];
+
   useEffect(() => {
-    const fetchCompetitions = async () => {
-      setLoading(true);
-      try {
-        const params = new URLSearchParams();
-        if (q) params.append('q', q);
-        if (theme) params.append('theme', theme);
-        if (status && status !== 'all') params.append('status', status);
-
-        const response = await fetch(`/api/competitions/library?${params.toString()}`, {
-          credentials: 'include',
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setItems(data.items || []);
-
-          // Update stats based on actual data
-          if (data.items) {
-            const statusCounts = data.items.reduce((acc, item) => {
-              acc[item.status] = (acc[item.status] || 0) + 1;
-              return acc;
-            }, {});
-            setStats({
-              total: data.total || data.items.length,
-              live: statusCounts.live || 0,
-              upcoming: statusCounts.upcoming || 0,
-              judging: statusCounts.judging || 0,
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch competitions:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCompetitions();
-  }, [q, theme, status]);
+    setItems(mockItems);
+  }, []);
 
   const getStatusBadge = (s) => {
     const colors = {

@@ -212,6 +212,7 @@ export function CateringMarketplace() {
     return matchesSearch && matchesSpecialty && matchesPriceRange && matchesRadius && chef.cateringAvailable;
   });
 const handleBookingSubmit = (chefId: string) => {
+    console.log('Booking submitted for chef:', chefId, bookingForm);
     alert('Catering request submitted! The chef will contact you soon.');
     
     setBookingForm({

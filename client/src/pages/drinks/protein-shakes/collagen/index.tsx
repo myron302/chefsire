@@ -657,58 +657,45 @@ export default function CollagenProteinPage() {
         </div>
       )}
 
-      {/* UNIFORM HERO SECTION */}
-      <div className="bg-gradient-to-r from-pink-600 via-rose-600 to-fuchsia-600 text-white py-12 px-6 rounded-xl shadow-2xl">
-        <div className="max-w-7xl mx-auto">
-          <Link href="/drinks">
-            <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Drinks Hub
-            </Button>
-          </Link>
-
-          <div className="flex items-center gap-4 mb-6">
-            <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
-              <Sparkles className="h-12 w-12" />
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4">
+              <Link href="/drinks/protein-shakes">
+                <Button variant="ghost" size="sm" className="text-gray-500">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Protein Shakes
+                </Button>
+              </Link>
+              <div className="h-6 w-px bg-gray-300" />
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-6 w-6 text-pink-600" />
+                <h1 className="text-2xl font-bold text-gray-900">Collagen Protein</h1>
+                <Badge className="bg-pink-100 text-pink-800">Beauty</Badge>
+              </div>
             </div>
-            <div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-2">Collagen Protein</h1>
-              <p className="text-xl text-pink-100">Beauty-enhancing protein for skin, hair, and joint health</p>
+            
+            <div className="flex items-center gap-4">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowUniversalSearch(true)}
+              >
+                <Search className="h-4 w-4 mr-2" />
+                Universal Search
+              </Button>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Star className="h-4 w-4 text-yellow-500" />
+                <span>Level {userProgress.level}</span>
+                <div className="w-px h-4 bg-gray-300" />
+                <span>{userProgress.totalPoints} XP</span>
+              </div>
+              <Button size="sm" className="bg-pink-600 hover:bg-pink-700" onClick={handleSharePage}>
+                <Camera className="h-4 w-4 mr-2" />
+                Share Page
+              </Button>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Sparkles className="h-8 w-8 mx-auto mb-2 text-pink-300" />
-                <div className="text-2xl font-bold">6</div>
-                <div className="text-sm text-pink-100">Recipes</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Target className="h-8 w-8 mx-auto mb-2 text-rose-300" />
-                <div className="text-2xl font-bold">20g</div>
-                <div className="text-sm text-pink-100">Avg Protein</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Star className="h-8 w-8 mx-auto mb-2 text-yellow-400" />
-                <div className="text-2xl font-bold">Level {userProgress.level}</div>
-                <div className="text-sm text-pink-100">{userProgress.totalPoints} XP</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Heart className="h-8 w-8 mx-auto mb-2 text-fuchsia-300" />
-                <div className="text-2xl font-bold">{userProgress.totalDrinksMade}</div>
-                <div className="text-sm text-pink-100">Shakes Made</div>
-              </CardContent>
-            </Card>
           </div>
         </div>
       </div>
@@ -822,7 +809,7 @@ export default function CollagenProteinPage() {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
+        <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
             { id: 'collagen-types', label: 'Collagen Types', icon: Sparkles },
@@ -834,9 +821,9 @@ export default function CollagenProteinPage() {
             return (
               <Button
                 key={tab.id}
-                variant="ghost"
+                variant={activeTab === tab.id ? "default" : "ghost"}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 ${activeTab === tab.id ? 'bg-pink-500 shadow-sm !text-white hover:!text-white hover:bg-pink-600' : ''}`}
+                className={`flex-1 ${activeTab === tab.id ? 'bg-white shadow-sm' : ''}`}
               >
                 <Icon className="h-4 w-4 mr-2" />
                 {tab.label}

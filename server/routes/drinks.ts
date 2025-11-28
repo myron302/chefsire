@@ -2,14 +2,13 @@
 import { Router } from "express";
 import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
 import { storage } from "../storage";
-import {
-  insertCustomDrinkSchema,
+import { 
+  insertCustomDrinkSchema, 
   insertDrinkPhotoSchema,
   insertDrinkLikeSchema,
-  insertDrinkSaveSchema
+  insertDrinkSaveSchema 
 } from "@shared/schema";
 import { z } from "zod";
-import { notificationService } from "../services/notification.service";
 
 const r = Router();
 
@@ -81,36 +80,15 @@ r.post("/custom-drinks", authenticateUser, async (req, res) => {
       ...req.body,
       userId: req.user.id,
     });
-
+    
     const drink = await storage.createCustomDrink(drinkData);
-
-    // Notify followers about the new custom drink
-    const user = await storage.getUser(req.user.id);
-    if (user) {
-      notificationService.notifyFollowersOfActivity(
-        req.user.id,
-        "custom_drink",
-        {
-          title: `${user.username} created a new drink!`,
-          message: `${drink.name} - ${drink.description || "Try this delicious drink"}`,
-          imageUrl: drink.imageUrl || undefined,
-          linkUrl: `/drinks/${drink.id}`,
-          metadata: {
-            drinkId: drink.id,
-            category: drink.category,
-            isPublic: drink.isPublic,
-          },
-        }
-      ).catch(err => console.error("Failed to notify followers:", err));
-    }
-
     res.status(201).json({ ok: true, drink });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({
+      return res.status(400).json({ 
         ok: false,
-        error: "Invalid drink data",
-        details: error.errors
+        error: "Invalid drink data", 
+        details: error.errors 
       });
     }
     console.error("Error creating drink:", error);

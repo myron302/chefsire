@@ -33,7 +33,6 @@ export const users = pgTable(
     avatar: text("avatar"),
     specialty: text("specialty"),
     isChef: boolean("is_chef").default(false),
-    isAdmin: boolean("is_admin").default(false),
     followersCount: integer("followers_count").default(0),
     followingCount: integer("following_count").default(0),
     postsCount: integer("posts_count").default(0),
@@ -91,61 +90,7 @@ export const recipes = pgTable("recipes", {
   carbs: decimal("carbs", { precision: 5, scale: 2 }),
   fat: decimal("fat", { precision: 5, scale: 2 }),
   fiber: decimal("fiber", { precision: 5, scale: 2 }),
-  averageRating: decimal("average_rating", { precision: 3, scale: 2 }).default("0"),
-  reviewCount: integer("review_count").default(0),
 });
-
-export const recipeReviews = pgTable("recipe_reviews", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  recipeId: varchar("recipe_id").references(() => recipes.id, { onDelete: "cascade" }).notNull(),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  rating: integer("rating").notNull(), // 1-5 spoons
-  reviewText: text("review_text"),
-  helpfulCount: integer("helpful_count").default(0),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-}, (table) => ({
-  recipeIdIdx: index("recipe_reviews_recipe_idx").on(table.recipeId),
-  userIdIdx: index("recipe_reviews_user_idx").on(table.userId),
-}));
-
-export const recipeReviewPhotos = pgTable("recipe_review_photos", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  reviewId: varchar("review_id").references(() => recipeReviews.id, { onDelete: "cascade" }).notNull(),
-  photoUrl: text("photo_url").notNull(),
-  caption: text("caption"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const reviewHelpful = pgTable("review_helpful", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  reviewId: varchar("review_id").references(() => recipeReviews.id, { onDelete: "cascade" }).notNull(),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const recipeCollections = pgTable("recipe_collections", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
-  name: text("name").notNull(),
-  description: text("description"),
-  isPublic: boolean("is_public").default(false),
-  recipeCount: integer("recipe_count").default(0),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-}, (table) => ({
-  userIdIdx: index("recipe_collections_user_idx").on(table.userId),
-}));
-
-export const collectionRecipes = pgTable("collection_recipes", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  collectionId: varchar("collection_id").references(() => recipeCollections.id, { onDelete: "cascade" }).notNull(),
-  recipeId: varchar("recipe_id").references(() => recipes.id, { onDelete: "cascade" }).notNull(),
-  addedAt: timestamp("added_at").defaultNow(),
-}, (table) => ({
-  collectionIdIdx: index("collection_recipes_collection_idx").on(table.collectionId),
-  recipeIdIdx: index("collection_recipes_recipe_idx").on(table.recipeId),
-}));
 
 export const stories = pgTable("stories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -503,9 +448,11 @@ export const challengeProgress = pgTable(
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     challengeId: varchar("challenge_id").references(() => challenges.id, { onDelete: "cascade" }).notNull(),
     userId: varchar("user_id").references(() => users.id).notNull(),
+    progress: integer("progress").default(0),
     currentProgress: integer("current_progress").default(0),
     currentStreak: integer("current_streak").default(0),
     completedSteps: jsonb("completed_steps").$type<any[]>().default(sql`'[]'::jsonb`),
+    completed: boolean("completed").default(false),
     isCompleted: boolean("is_completed").default(false),
     completedAt: timestamp("completed_at"),
     startedAt: timestamp("started_at").defaultNow(),
@@ -897,37 +844,6 @@ export const insertPostSchema = createInsertSchema(posts).omit({
 
 export const insertRecipeSchema = createInsertSchema(recipes).omit({
   id: true,
-  averageRating: true,
-  reviewCount: true,
-});
-
-export const insertRecipeReviewSchema = createInsertSchema(recipeReviews).omit({
-  id: true,
-  helpfulCount: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const insertRecipeReviewPhotoSchema = createInsertSchema(recipeReviewPhotos).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertReviewHelpfulSchema = createInsertSchema(reviewHelpful).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertRecipeCollectionSchema = createInsertSchema(recipeCollections).omit({
-  id: true,
-  recipeCount: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const insertCollectionRecipeSchema = createInsertSchema(collectionRecipes).omit({
-  id: true,
-  addedAt: true,
 });
 
 export const insertStorySchema = createInsertSchema(stories).omit({
@@ -1120,16 +1036,6 @@ export type Post = typeof posts.$inferSelect;
 export type InsertPost = z.infer<typeof insertPostSchema>;
 export type Recipe = typeof recipes.$inferSelect;
 export type InsertRecipe = z.infer<typeof insertRecipeSchema>;
-export type RecipeReview = typeof recipeReviews.$inferSelect;
-export type InsertRecipeReview = z.infer<typeof insertRecipeReviewSchema>;
-export type RecipeReviewPhoto = typeof recipeReviewPhotos.$inferSelect;
-export type InsertRecipeReviewPhoto = z.infer<typeof insertRecipeReviewPhotoSchema>;
-export type ReviewHelpful = typeof reviewHelpful.$inferSelect;
-export type InsertReviewHelpful = z.infer<typeof insertReviewHelpfulSchema>;
-export type RecipeCollection = typeof recipeCollections.$inferSelect;
-export type InsertRecipeCollection = z.infer<typeof insertRecipeCollectionSchema>;
-export type CollectionRecipe = typeof collectionRecipes.$inferSelect;
-export type InsertCollectionRecipe = z.infer<typeof insertCollectionRecipeSchema>;
 export type Story = typeof stories.$inferSelect;
 export type InsertStory = z.infer<typeof insertStorySchema>;
 export type Like = typeof likes.$inferSelect;
