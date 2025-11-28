@@ -303,9 +303,7 @@ export function RecipeReviews({ recipeId, averageRating, reviewCount }: RecipeRe
                         <div className="flex items-center gap-2 mt-1">
                           <SpoonRating value={review.rating} size="sm" />
                           <span className="text-xs text-gray-500">
-                            {review.createdAt
-                              ? new Date(review.createdAt).toLocaleDateString()
-                              : "Recently"}
+                            {new Date(review.createdAt).toLocaleDateString()}
                           </span>
                         </div>
                       </div>

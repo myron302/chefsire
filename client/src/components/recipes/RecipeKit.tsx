@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Clipboard, Check, X, Share2, RotateCcw } from 'lucide-react';
 import { autoConvert, scaleAmount, toNiceFraction, type UnitSystem } from "@/lib/unitConversions";
 import { AddToCollectionButton } from "@/components/RecipeCollections";
-import ErrorBoundary from "@/components/ErrorBoundary";
 
 // ---------- Public Types ----------
 export type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -325,9 +324,7 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
 
             {/* Add to Collection Button */}
             <div className="mb-4">
-              <ErrorBoundary>
-                <AddToCollectionButton recipeId={recipeId} />
-              </ErrorBoundary>
+              <AddToCollectionButton recipeId={recipeId} />
             </div>
 
             {/* Nutrition Grid - ALL COLORS NOW USE ACCENT VIA TEMPLATE CLASSES */}

@@ -7,8 +7,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Clock, Users, ExternalLink, LayoutGrid, List } from "lucide-react";
 import { SpoonRating } from "@/components/SpoonRating";
-import { RecipeReviews } from "@/components/RecipeReviews";
-import ErrorBoundary from "@/components/ErrorBoundary";
 
 /** Very permissive shape — we'll normalize on the client */
 type RecipeItem = {
@@ -170,17 +168,6 @@ function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boo
               View Original Source <ExternalLink className="w-4 h-4" />
             </a>
           )}
-
-          {/* Reviews Section */}
-          <div className="mt-8 border-t pt-6">
-            <ErrorBoundary>
-              <RecipeReviews
-                recipeId={r.id}
-                averageRating={r.averageRating ? Number(r.averageRating) : undefined}
-                reviewCount={undefined}
-              />
-            </ErrorBoundary>
-          </div>
         </div>
       </div>
     </div>
