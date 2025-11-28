@@ -1,12 +1,11 @@
 // server/services/quests.service.ts
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import { db } from "../db";
 import {
   dailyQuests,
   questProgress,
   notifications,
   users,
-  userDrinkStats,
 } from "../../shared/schema";
 
 /**
@@ -84,100 +83,4 @@ export async function assignDailyQuestsToAllUsers() {
     await assignDailyQuestsToUser(u.id);
   }
   return allUsers.length;
-}
-
-/**
- * Track quest progress for a user action (e.g., creating a drink, posting, etc.)
- * Automatically finds relevant active quests and increments their progress.
- */
-export async function trackQuestProgress(userId: string, actionType: string, metadata?: any) {
-  try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Get user's active quests for today
-    const activeProgress = await db
-      .select({ progress: questProgress, quest: dailyQuests })
-      .from(questProgress)
-      .innerJoin(dailyQuests, eq(questProgress.questId, dailyQuests.id))
-      .where(
-        and(
-          eq(questProgress.userId, userId),
-          gte(questProgress.date, today),
-          eq(questProgress.status, "active")
-        )
-      );
-
-    if (activeProgress.length === 0) return { updated: 0 };
-
-    const completedQuests: string[] = [];
-    let totalXpEarned = 0;
-
-    // Check each quest to see if it matches the action
-    for (const { progress, quest } of activeProgress) {
-      let shouldIncrement = false;
-
-      // Match quest action type with the user's action
-      if (quest.actionType === actionType) {
-        shouldIncrement = true;
-      }
-
-      // Additional filtering based on metadata (e.g., drink category)
-      if (shouldIncrement && quest.category && metadata?.category) {
-        shouldIncrement = quest.category === metadata.category;
-      }
-
-      if (shouldIncrement) {
-        const newProgress = progress.currentProgress + 1;
-        const isComplete = newProgress >= progress.targetProgress;
-
-        await db
-          .update(questProgress)
-          .set({
-            currentProgress: newProgress,
-            status: isComplete ? "completed" : "active",
-            completedAt: isComplete ? new Date() : null,
-          })
-          .where(eq(questProgress.id, progress.id));
-
-        if (isComplete) {
-          completedQuests.push(quest.id);
-          totalXpEarned += progress.xpEarned;
-
-          // Send completion notification
-          await db.insert(notifications).values({
-            userId,
-            type: "quest_completed",
-            title: "Quest Completed! 🎯",
-            message: `You completed "${quest.title}" and earned ${progress.xpEarned} XP!`,
-            linkUrl: "/quests",
-            metadata: {
-              questId: quest.id,
-              xpEarned: progress.xpEarned,
-            },
-          });
-        }
-      }
-    }
-
-    // Award XP for completed quests
-    if (totalXpEarned > 0) {
-      await db
-        .update(userDrinkStats)
-        .set({
-          totalPoints: sql`${userDrinkStats.totalPoints} + ${totalXpEarned}`,
-          updatedAt: new Date(),
-        })
-        .where(eq(userDrinkStats.userId, userId));
-    }
-
-    return {
-      updated: completedQuests.length,
-      completedQuestIds: completedQuests,
-      xpEarned: totalXpEarned,
-    };
-  } catch (error) {
-    console.error("[Quests] Error tracking progress:", error);
-    return { updated: 0, error: true };
-  }
 }
