@@ -1,23 +1,21 @@
 // server/routes/analytics.ts
 import { Router } from "express";
 import { storage } from "../storage";
-import { db } from "../db";
+import { getDb } from "../db";
 import {
   customDrinks,
   drinkLikes,
   recipeLikes,
   recipeReviews,
   follows,
+  competitionParticipants,
+  competitions,
   userDrinkStats,
   questProgress,
   posts,
-  likes,
+  postLikes,
   comments
 } from "../../shared/schema";
-import {
-  competitions,
-  competitionParticipants
-} from "../db/competitions";
 import { eq, count, sql, and, desc } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 
@@ -28,6 +26,8 @@ router.get("/user/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
     const { timeframe = "all" } = req.query; // all, month, week, day
+
+    const db = getDb();
 
     // Calculate date filter based on timeframe
     let dateFilter: Date | null = null;
@@ -166,13 +166,13 @@ router.get("/user/:userId", async (req, res) => {
 
     const [postLikesReceived] = await db
       .select({ count: count() })
-      .from(likes)
-      .innerJoin(posts, eq(likes.postId, posts.id))
+      .from(postLikes)
+      .innerJoin(posts, eq(postLikes.postId, posts.id))
       .where(
         dateFilter
           ? and(
               eq(posts.userId, userId),
-              sql`${likes.createdAt} >= ${dateFilter}`
+              sql`${postLikes.createdAt} >= ${dateFilter}`
             )
           : eq(posts.userId, userId)
       );
@@ -289,6 +289,7 @@ router.get("/user/:userId", async (req, res) => {
 router.get("/user/:userId/leaderboard", async (req, res) => {
   try {
     const { userId } = req.params;
+    const db = getDb();
 
     // Get user's rank by total points
     const allUsers = await db
@@ -321,6 +322,7 @@ router.get("/user/:userId/leaderboard", async (req, res) => {
 router.get("/user/:userId/timeline", async (req, res) => {
   try {
     const { userId } = req.params;
+    const db = getDb();
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
