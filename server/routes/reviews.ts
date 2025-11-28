@@ -185,7 +185,7 @@ router.put("/:reviewId", requireAuth, async (req: Request, res: Response) => {
     }
 
     // Check if review exists and belongs to user
-    const [existingReview] = await db
+    const [existingReview] = await storage
       .select()
       .from(recipeReviews)
       .where(eq(recipeReviews.id, reviewId))
@@ -229,7 +229,7 @@ router.delete("/:reviewId", requireAuth, async (req: Request, res: Response) => 
     const { reviewId } = req.params;
 
     // Check if review exists and belongs to user
-    const [existingReview] = await db
+    const [existingReview] = await storage
       .select()
       .from(recipeReviews)
       .where(eq(recipeReviews.id, reviewId))
@@ -274,7 +274,7 @@ router.post(
       }
 
       // Check if review exists and belongs to user
-      const [existingReview] = await db
+      const [existingReview] = await storage
         .select()
         .from(recipeReviews)
         .where(eq(recipeReviews.id, reviewId))
@@ -360,7 +360,7 @@ router.delete("/:reviewId/helpful", requireAuth, async (req: Request, res: Respo
     }
 
     // Decrement helpful count
-    await db
+    await storage
       .update(recipeReviews)
       .set({ helpfulCount: sql`${recipeReviews.helpfulCount} - 1` })
       .where(eq(recipeReviews.id, reviewId));
