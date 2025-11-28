@@ -101,29 +101,43 @@ router.post("/auth/signup", async (req, res) => {
  */
 router.post("/auth/login", async (req, res) => {
   try {
+    console.log("🔐 Login attempt started");
     const { email, password } = req.body;
 
     if (!email || !password) {
+      console.log("❌ Login failed: Missing email or password");
       return res.status(400).json({ error: "Email and password are required" });
     }
 
+    console.log("🔍 Looking up user:", email);
     const user = await storage.findByEmail(email);
     if (!user) {
+      console.log("❌ Login failed: User not found");
       return res.status(401).json({ error: "Invalid email or password" });
     }
+
+    console.log("✓ User found:", user.id);
 
     // Check if email verified
     if (!user.emailVerifiedAt) {
+      console.log("❌ Login failed: Email not verified");
       return res.status(403).json({ error: "Please verify your email to log in." });
     }
 
+    console.log("✓ Email verified");
+
     // Verify password
+    console.log("🔑 Verifying password...");
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
+      console.log("❌ Login failed: Invalid password");
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
+    console.log("✓ Password valid");
+
     // Create JWT token
+    console.log("🎟️ Creating JWT token...");
     const token = jwt.sign(
       {
         id: user.id,
@@ -134,13 +148,18 @@ router.post("/auth/login", async (req, res) => {
       { expiresIn: "7d" } // Token expires in 7 days
     );
 
+    console.log("✓ JWT token created");
+
     // Set token as HTTP-only cookie
+    console.log("🍪 Setting auth cookie...");
     res.cookie("auth_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
     });
+
+    console.log("✅ Login successful for user:", user.id);
 
     res.json({
       success: true,
@@ -158,7 +177,8 @@ router.post("/auth/login", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error during login:", error);
+    console.error("💥 CRITICAL ERROR during login:", error);
+    console.error("Error stack:", error instanceof Error ? error.stack : "No stack trace");
     res.status(500).json({ error: "Login failed" });
   }
 });
