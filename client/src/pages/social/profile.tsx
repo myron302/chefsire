@@ -930,7 +930,7 @@ export default function Profile() {
                   <div className="flex items-center justify-between">
                     <span>Updated</span>
                     <span className="text-sm text-muted-foreground">
-                      {storeData.store.updatedAt ? new Date(storeData.store.updatedAt).toLocaleDateString() : "Recently"}
+                      {new Date(storeData.store.updatedAt || "").toLocaleDateString()}
                     </span>
                   </div>
                 </CardContent>
