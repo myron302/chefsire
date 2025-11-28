@@ -256,9 +256,7 @@ export default function RemixesPage() {
                       </Badge>
                       <div className="flex items-center gap-1 text-sm text-muted-foreground">
                         <Clock className="h-3 w-3" />
-                        {remix.createdAt
-                          ? formatDistanceToNow(new Date(remix.createdAt), { addSuffix: true })
-                          : "Recently"}
+                        {formatDistanceToNow(new Date(remix.createdAt), { addSuffix: true })}
                       </div>
                     </div>
 
