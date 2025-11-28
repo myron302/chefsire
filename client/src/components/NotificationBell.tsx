@@ -39,81 +39,45 @@ export default function NotificationBell() {
     // Only connect if user context has finished loading AND user exists
     if (loading || !user?.id) return;
 
-    let mounted = true;
-
     try {
       const notifSocket = getNotificationSocket(user.id);
-      if (!mounted) return;
-
       setSocket(notifSocket);
 
       // Listen for new notifications
       notifSocket.on("notification", (notification: Notification) => {
-        if (!mounted) return;
-        try {
-          setNotifications((prev) => [notification, ...prev]);
-          if (!notification.read) {
-            setUnreadCount((prev) => prev + 1);
-          }
-        } catch (err) {
-          console.warn("Error handling notification:", err);
+        setNotifications((prev) => [notification, ...prev]);
+        if (!notification.read) {
+          setUnreadCount((prev) => prev + 1);
         }
       });
 
       // Listen for unread count updates
       notifSocket.on("unread_count", ({ count }: { count: number }) => {
-        if (!mounted) return;
-        try {
-          setUnreadCount(count);
-        } catch (err) {
-          console.warn("Error handling unread count:", err);
-        }
+        setUnreadCount(count);
       });
 
-      // Handle errors gracefully
+      // Handle errors
       notifSocket.on("connect_error", (error: any) => {
         console.warn("Notification socket connection error:", error);
-        // Don't throw, just log - allows the app to continue working
       });
 
-      notifSocket.on("error", (error: any) => {
-        console.warn("Notification socket error:", error);
-        // Don't throw, just log
-      });
-
-      // Request initial data - wrapped in try-catch to prevent crashes
-      try {
-        notifSocket.emit("get_recent", { limit: 20 });
-        notifSocket.emit("get_unread_count");
-      } catch (err) {
-        console.warn("Error requesting initial notification data:", err);
-      }
+      // Request initial data
+      notifSocket.emit("get_recent", { limit: 20 });
+      notifSocket.emit("get_unread_count");
 
       // Handle recent notifications response
       notifSocket.on("recent_notifications", (data: Notification[]) => {
-        if (!mounted) return;
-        try {
-          setNotifications(data);
-        } catch (err) {
-          console.warn("Error handling recent notifications:", err);
-        }
+        setNotifications(data);
       });
 
       return () => {
-        mounted = false;
-        try {
-          notifSocket.off("notification");
-          notifSocket.off("unread_count");
-          notifSocket.off("recent_notifications");
-          notifSocket.off("connect_error");
-          notifSocket.off("error");
-        } catch (err) {
-          console.warn("Error cleaning up notification socket:", err);
-        }
+        notifSocket.off("notification");
+        notifSocket.off("unread_count");
+        notifSocket.off("recent_notifications");
+        notifSocket.off("connect_error");
       };
     } catch (error) {
       console.warn("Failed to initialize notification socket:", error);
-      // Component will render without notifications - graceful degradation
     }
   }, [user?.id, loading]);
 
@@ -121,24 +85,16 @@ export default function NotificationBell() {
     (notificationId: string) => {
       if (!socket) return;
 
-      try {
-        socket.emit("mark_read", { notificationId }, (response: any) => {
-          try {
-            if (response?.ok) {
-              setNotifications((prev) =>
-                prev.map((n) =>
-                  n.id === notificationId ? { ...n, read: true, readAt: new Date().toISOString() } : n
-                )
-              );
-              setUnreadCount((prev) => Math.max(0, prev - 1));
-            }
-          } catch (err) {
-            console.warn("Error updating notification read state:", err);
-          }
-        });
-      } catch (err) {
-        console.warn("Error marking notification as read:", err);
-      }
+      socket.emit("mark_read", { notificationId }, (response: any) => {
+        if (response.ok) {
+          setNotifications((prev) =>
+            prev.map((n) =>
+              n.id === notificationId ? { ...n, read: true, readAt: new Date().toISOString() } : n
+            )
+          );
+          setUnreadCount((prev) => Math.max(0, prev - 1));
+        }
+      });
     },
     [socket]
   );
@@ -146,22 +102,14 @@ export default function NotificationBell() {
   const markAllAsRead = useCallback(() => {
     if (!socket) return;
 
-    try {
-      socket.emit("mark_all_read", {}, (response: any) => {
-        try {
-          if (response?.ok) {
-            setNotifications((prev) =>
-              prev.map((n) => ({ ...n, read: true, readAt: new Date().toISOString() }))
-            );
-            setUnreadCount(0);
-          }
-        } catch (err) {
-          console.warn("Error updating all notifications read state:", err);
-        }
-      });
-    } catch (err) {
-      console.warn("Error marking all notifications as read:", err);
-    }
+    socket.emit("mark_all_read", {}, (response: any) => {
+      if (response.ok) {
+        setNotifications((prev) =>
+          prev.map((n) => ({ ...n, read: true, readAt: new Date().toISOString() }))
+        );
+        setUnreadCount(0);
+      }
+    });
   }, [socket]);
 
   const handleNotificationClick = (notification: Notification) => {
@@ -272,9 +220,7 @@ export default function NotificationBell() {
                       {notification.message}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {notification.createdAt
-                        ? formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })
-                        : "Recently"}
+                      {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
                     </p>
                   </div>
                   {!notification.read && (

@@ -131,7 +131,7 @@ export default function AISuggestions() {
 
   // Hide component if there's an error (e.g., tables don't exist yet)
   if (error) {
-    // Silently hide component when tables don't exist yet
+    console.warn("AI Suggestions error:", error);
     return null;
   }
 

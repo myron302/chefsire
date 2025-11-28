@@ -7,8 +7,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Clock, Users, ExternalLink, LayoutGrid, List } from "lucide-react";
 import { SpoonRating } from "@/components/SpoonRating";
-import { RecipeReviews } from "@/components/RecipeReviews";
-import ErrorBoundary from "@/components/ErrorBoundary";
 
 /** Very permissive shape — we'll normalize on the client */
 type RecipeItem = {
@@ -27,7 +25,6 @@ type RecipeItem = {
 
   // meta
   ratingSpoons?: number | null;
-  averageRating?: string | number | null; // From local database recipes
   cookTime?: number | null;
   servings?: number | null;
 
@@ -136,7 +133,7 @@ function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boo
           </div>
           {img && <img src={img} alt={r.title} className="w-full h-64 object-cover rounded-lg mb-4" />}
           <div className="flex items-center gap-4 mb-4">
-            <SpoonRating value={r.averageRating ?? r.ratingSpoons ?? null} />
+            <SpoonRating value={r.ratingSpoons ?? null} />
             {r.cookTime && (
               <span className="inline-flex items-center gap-1 text-sm text-gray-600">
                 <Clock className="w-4 h-4" />
@@ -170,17 +167,6 @@ function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boo
               View Original Source <ExternalLink className="w-4 h-4" />
             </a>
           )}
-
-          {/* Reviews Section */}
-          <div className="mt-8 border-t pt-6">
-            <ErrorBoundary>
-              <RecipeReviews
-                recipeId={r.id}
-                averageRating={r.averageRating ? Number(r.averageRating) : undefined}
-                reviewCount={undefined}
-              />
-            </ErrorBoundary>
-          </div>
         </div>
       </div>
     </div>
@@ -217,7 +203,7 @@ function RecipeCard({ r, onCardClick }: { r: RecipeItem; onCardClick: (recipe: R
       <CardContent className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
           {TitleEl}
-          <SpoonRating value={r.averageRating ?? r.ratingSpoons ?? null} />
+          <SpoonRating value={r.ratingSpoons ?? null} />
         </div>
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
           {r.cookTime ? (

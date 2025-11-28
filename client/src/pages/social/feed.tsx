@@ -11,6 +11,7 @@ import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { useUser } from "@/contexts/UserContext";
 
 const demoTrendingRecipes = [
   {
@@ -113,244 +114,48 @@ const demoSuggestedUsers = [
   },
 ];
 
-// Demo posts fallback (5)
+// Demo posts fallback (add more as needed)
 const demoPosts: PostWithUser[] = [
   {
     id: "demo-post-1",
-    caption: "Creamy Mushroom Risotto",
-    imageUrl:
-      "https://images.unsplash.com/photo-1476124369491-e7addf5db371?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true,
-    likesCount: 245,
-    commentsCount: 0,
-    tags: [],
-    userId: "chef-1",
-    createdAt: new Date(),
+    caption: "Just made this amazing pasta! 🍝",
+    imageUrl: "https://images.unsplash.com/photo-1484723091739-30a097e8f929?w=400&h=400&fit=crop&auto=format",
+    isRecipe: false,
+    likesCount: 42,
+    createdAt: new Date().toISOString(),
     user: {
-      id: "chef-1",
-      username: "marco.romano",
-      email: "marco@example.com",
-      password: "",
-      displayName: "Marco Romano",
-      firstName: null,
-      lastName: null,
-      royalTitle: null,
-      showFullName: false,
-      bio: null,
-      avatar:
-        "https://images.unsplash.com/photo-1476124369491-e7addf5db371?w=100&h=100&fit=crop&auto=format",
-      specialty: "Italian",
-      isChef: true,
-      followersCount: 0,
-      followingCount: 0,
-      postsCount: 0,
-      cateringEnabled: false,
-      cateringLocation: null,
-      cateringRadius: 25,
-      cateringBio: null,
-      cateringAvailable: true,
-      subscriptionTier: "free",
-      subscriptionStatus: "active",
-      subscriptionEndsAt: null,
-      monthlyRevenue: "0",
-      nutritionPremium: false,
-      nutritionTrialEndsAt: null,
-      dailyCalorieGoal: null,
-      macroGoals: null,
-      dietaryRestrictions: [],
-      emailVerifiedAt: null,
-      createdAt: new Date(),
+      id: "user-2",
+      displayName: "Alice Chef",
+      avatar: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&auto=format",
     },
   },
   {
     id: "demo-post-2",
-    caption: "Classic Fish & Chips",
-    imageUrl:
-      "https://images.unsplash.com/photo-1544982503-9f984c14501a?w=400&h=400&fit=crop&auto=format",
+    caption: "Fresh salad for lunch 🌿",
+    imageUrl: "https://images.unsplash.com/photo-1512568400610-3f3f73e78e14?w=400&h=400&fit=crop&auto=format",
     isRecipe: true,
-    likesCount: 189,
-    commentsCount: 0,
-    tags: [],
-    userId: "chef-2",
-    createdAt: new Date(),
+    likesCount: 28,
+    createdAt: new Date().toISOString(),
     user: {
-      id: "chef-2",
-      username: "emma.w",
-      email: "emma@example.com",
-      password: "",
-      displayName: "Emma Watson",
-      firstName: null,
-      lastName: null,
-      royalTitle: null,
-      showFullName: false,
-      bio: null,
-      avatar:
-        "https://images.unsplash.com/photo-1544982503-9f984c14501a?w=100&h=100&fit=crop&auto=format",
-      specialty: "British",
-      isChef: true,
-      followersCount: 0,
-      followingCount: 0,
-      postsCount: 0,
-      cateringEnabled: false,
-      cateringLocation: null,
-      cateringRadius: 25,
-      cateringBio: null,
-      cateringAvailable: true,
-      subscriptionTier: "free",
-      subscriptionStatus: "active",
-      subscriptionEndsAt: null,
-      monthlyRevenue: "0",
-      nutritionPremium: false,
-      nutritionTrialEndsAt: null,
-      dailyCalorieGoal: null,
-      macroGoals: null,
-      dietaryRestrictions: [],
-      emailVerifiedAt: null,
-      createdAt: new Date(),
+      id: "user-3",
+      displayName: "Bob Baker",
+      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&auto=format",
     },
   },
   {
     id: "demo-post-3",
-    caption: "Spicy Thai Green Curry",
-    imageUrl:
-      "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=400&h=400&fit=crop&auto=format",
+    caption: "Baking cookies tonight! 🍪",
+    imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=400&fit=crop&auto=format",
     isRecipe: true,
-    likesCount: 312,
-    commentsCount: 0,
-    tags: [],
-    userId: "chef-3",
-    createdAt: new Date(),
+    likesCount: 156,
+    createdAt: new Date().toISOString(),
     user: {
-      id: "chef-3",
-      username: "anong",
-      email: "anong@example.com",
-      password: "",
-      displayName: "Anong Siriporn",
-      firstName: null,
-      lastName: null,
-      royalTitle: null,
-      showFullName: false,
-      bio: null,
-      avatar:
-        "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=100&h=100&fit=crop&auto=format",
-      specialty: "Thai",
-      isChef: true,
-      followersCount: 0,
-      followingCount: 0,
-      postsCount: 0,
-      cateringEnabled: false,
-      cateringLocation: null,
-      cateringRadius: 25,
-      cateringBio: null,
-      cateringAvailable: true,
-      subscriptionTier: "free",
-      subscriptionStatus: "active",
-      subscriptionEndsAt: null,
-      monthlyRevenue: "0",
-      nutritionPremium: false,
-      nutritionTrialEndsAt: null,
-      dailyCalorieGoal: null,
-      macroGoals: null,
-      dietaryRestrictions: [],
-      emailVerifiedAt: null,
-      createdAt: new Date(),
+      id: "user-4",
+      displayName: "Carol Cook",
+      avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&auto=format",
     },
   },
-  {
-    id: "demo-post-4",
-    caption: "Chocolate Lava Cake",
-    imageUrl:
-      "https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true,
-    likesCount: 567,
-    commentsCount: 0,
-    tags: [],
-    userId: "chef-4",
-    createdAt: new Date(),
-    user: {
-      id: "chef-4",
-      username: "pierre",
-      email: "pierre@example.com",
-      password: "",
-      displayName: "Pierre Dubois",
-      firstName: null,
-      lastName: null,
-      royalTitle: null,
-      showFullName: false,
-      bio: null,
-      avatar:
-        "https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=100&h=100&fit=crop&auto=format",
-      specialty: "Pastry",
-      isChef: true,
-      followersCount: 0,
-      followingCount: 0,
-      postsCount: 0,
-      cateringEnabled: false,
-      cateringLocation: null,
-      cateringRadius: 25,
-      cateringBio: null,
-      cateringAvailable: true,
-      subscriptionTier: "free",
-      subscriptionStatus: "active",
-      subscriptionEndsAt: null,
-      monthlyRevenue: "0",
-      nutritionPremium: false,
-      nutritionTrialEndsAt: null,
-      dailyCalorieGoal: null,
-      macroGoals: null,
-      dietaryRestrictions: [],
-      emailVerifiedAt: null,
-      createdAt: new Date(),
-    },
-  },
-  {
-    id: "demo-post-5",
-    caption: "Fresh Caesar Salad",
-    imageUrl:
-      "https://images.unsplash.com/photo-1551248429-40975aa4de74?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true,
-    likesCount: 134,
-    commentsCount: 0,
-    tags: [],
-    userId: "chef-5",
-    createdAt: new Date(),
-    user: {
-      id: "chef-5",
-      username: "julia.green",
-      email: "julia@example.com",
-      password: "",
-      displayName: "Julia Green",
-      firstName: null,
-      lastName: null,
-      royalTitle: null,
-      showFullName: false,
-      bio: null,
-      avatar:
-        "https://images.unsplash.com/photo-1551248429-40975aa4de74?w=100&h=100&fit=crop&auto=format",
-      specialty: "Salads",
-      isChef: true,
-      followersCount: 0,
-      followingCount: 0,
-      postsCount: 0,
-      cateringEnabled: false,
-      cateringLocation: null,
-      cateringRadius: 25,
-      cateringBio: null,
-      cateringAvailable: true,
-      subscriptionTier: "free",
-      subscriptionStatus: "active",
-      subscriptionEndsAt: null,
-      monthlyRevenue: "0",
-      nutritionPremium: false,
-      nutritionTrialEndsAt: null,
-      dailyCalorieGoal: null,
-      macroGoals: null,
-      dietaryRestrictions: [],
-      emailVerifiedAt: null,
-      createdAt: new Date(),
-    },
-  },
-];
+] as any;
 
 function SimpleRecipeCard({
   post,
@@ -426,11 +231,12 @@ async function fetchJSON<T>(url: string): Promise<T> {
 function isValidDate(dateStr: string | undefined | null): boolean {
   if (!dateStr) return false;
   const date = new Date(dateStr);
-  return !isNaN(date.getTime()) && date.getFullYear() >= 1900 && date.getFullYear() <= 2100;
+  return !isNaN(date.getTime()) && date.getFullYear() >= 1900 && date.getFullYear() <= 2100;  // Basic range check
 }
 
 export default function Feed() {
-  const currentUserId = "user-1";
+  const { user } = useUser();
+  const currentUserId = user?.id;
 
   // Posts feed
   const {
@@ -440,37 +246,27 @@ export default function Feed() {
   } = useQuery<PostWithUser[]>({
     queryKey: ["/api/posts/feed", currentUserId],
     queryFn: () => fetchJSON<PostWithUser[]>(`/api/posts/feed?userId=${currentUserId}`),
-    retry: false,
-    onError: (e) => {
-      if (process.env.NODE_ENV !== "production") {
-        // eslint-disable-next-line no-console
-        console.warn("[feed] /api/posts/feed error, using demo fallback:", e);
-      }
-    },
+    enabled: !!currentUserId, // Only fetch if user is logged in
   });
 
   // Suggested users (sidebar) — falls back to demo if error
   const {
     data: suggestedUsers,
+    isLoading: usersLoading,
     error: usersError,
   } = useQuery<User[]>({
     queryKey: ["/api/users", currentUserId, "suggested"],
-    queryFn: () => fetchJSON<User[]>("/api/users/suggested?limit=5"),
-    retry: false,
+    queryFn: () => fetchJSON<User[]>(`/api/users/${currentUserId}/suggested?limit=5`),
+    enabled: !!currentUserId, // Only run if currentUserId exists
   });
 
-  // Trending recipes (sidebar) — falls back to demo if error
-  const {
-    data: trendingRecipes,
-    error: recipesError,
-  } = useQuery<(Recipe & { post: PostWithUser })[]>({
-    queryKey: ["/api/recipes/trending"],
-    queryFn: () =>
-      fetchJSON<(Recipe & { post: PostWithUser })[]>("/api/recipes/trending?limit=5"),
-    retry: false,
-  });
+  // Trending recipes (sidebar) — using demo data for now
+  // The /api/recipes endpoints don't include post data needed for display
+  const trendingRecipes = undefined; // Force use of demo data
+  const recipesError = null;
+  const recipesLoading = false;
 
-  // Use demo data as fallback (silent)
+  // Use demo data as fallback
   const displayPosts = postsError ? demoPosts : posts ?? demoPosts;
   const displaySuggestedUsers = usersError ? demoSuggestedUsers : suggestedUsers ?? demoSuggestedUsers;
   const displayTrendingRecipes = recipesError ? demoTrendingRecipes : trendingRecipes ?? demoTrendingRecipes;
@@ -505,12 +301,23 @@ export default function Feed() {
 
         {/* Posts */}
         <div className="space-y-8">
-          {/* Removed the visible error banner; we silently fall back */}
+          {postsError && (
+            <Card>
+              <CardContent className="p-4 text-sm text-destructive">
+                Error loading feed: {postsError.message}. Using demo posts below.
+              </CardContent>
+            </Card>
+          )}
+
           {displayPosts
-            .filter((post) => isValidDate((post as any).createdAt || (post as any).updatedAt))
+            .filter((post) => isValidDate((post as any).createdAt || (post as any).updatedAt))  // Filter invalid dates
             .map((post) =>
               post.isRecipe ? (
-                <SimpleRecipeCard key={post.id} post={post} currentUserId={currentUserId} />
+                <SimpleRecipeCard
+                  key={post.id}
+                  post={post}
+                  currentUserId={currentUserId}
+                />
               ) : (
                 <PostCard key={post.id} post={post} currentUserId={currentUserId} />
               )
@@ -522,15 +329,19 @@ export default function Feed() {
         </div>
 
         <div className="flex justify-center mt-8">
-          <Button variant="outline" className="px-6 py-3" data-testid="button-load-more">
+          <Button
+            variant="outline"
+            className="px-6 py-3"
+            data-testid="button-load-more"
+          >
             Load More Posts
           </Button>
         </div>
       </div>
 
       {/* Sidebar */}
-      <aside className="hidden xl:block w-80 bg-card border-l border-border overflow-y-auto max-h-screen no-scrollbar">
-        <div className="p-6 space-y-8">
+      <aside className="hidden xl:block w-80 bg-card border-l border-border">
+        <div className="p-4 space-y-4">
           {/* Phase 1: Daily Addiction Features */}
           <section>
             <ErrorBoundary>
@@ -544,68 +355,78 @@ export default function Feed() {
             </ErrorBoundary>
           </section>
 
-          <section className="mb-8">
-            <h3 className="font-semibold mb-4">Suggested Chefs</h3>
-            <div className="space-y-3">
-              {displaySuggestedUsers.slice(0, 5).map((user) => (
-                <div key={user.id} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarImage src={user.avatar || ""} alt={user.displayName} />
-                      <AvatarFallback>{user.displayName[0]}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-medium" data-testid={`text-suggested-chef-${user.id}`}>
-                        {user.displayName}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {(user as any).specialty || "Expert Chef"}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    className="bg-primary text-primary-foreground hover:opacity-90"
-                    data-testid={`button-follow-${user.id}`}
-                  >
-                    Follow
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="mb-8">
-            <h3 className="font-semibold mb-4">Trending Recipes</h3>
-            <div className="space-y-4">
-              {displayTrendingRecipes.slice(0, 5).map((recipe) => (
-                <div
-                  key={recipe.id}
-                  className="flex space-x-3 cursor-pointer hover:bg-muted/50 p-2 rounded-lg transition-colors"
-                  data-testid={`trending-recipe-${recipe.id}`}
-                >
-                  <img
-                    src={recipe.post.imageUrl}
-                    alt={recipe.title}
-                    className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                  />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{recipe.title}</p>
-                    <p className="text-xs text-muted-foreground">by {recipe.post.user.displayName}</p>
-                    <div className="flex items-center space-x-2 mt-1">
-                      <span className="text-xs text-destructive">♥ {recipe.post.likesCount}</span>
-                      <span className="text-xs text-muted-foreground">• {recipe.cookTime} min</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
           <section>
-            <h3 className="font-semibold mb-4">Popular Categories</h3>
-            <div className="flex flex-wrap gap-2">
-              {["Italian", "Healthy", "Desserts", "Quick", "Vegan"].map((category) => (
+            <h3 className="font-semibold mb-3 text-sm">Suggested Chefs</h3>
+          <div className="space-y-3">
+            {displaySuggestedUsers.slice(0, 5).map((user) => (
+              <div key={user.id} className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <Avatar className="w-10 h-10">
+                    <AvatarImage src={user.avatar || ""} alt={user.displayName} />
+                    <AvatarFallback>{user.displayName[0]}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p
+                      className="text-sm font-medium"
+                      data-testid={`text-suggested-chef-${user.id}`}
+                    >
+                      {user.displayName}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {(user as any).specialty || "Expert Chef"}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  className="bg-primary text-primary-foreground hover:opacity-90"
+                  data-testid={`button-follow-${user.id}`}
+                >
+                  Follow
+                </Button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h3 className="font-semibold mb-3 text-sm">Trending Recipes</h3>
+          <div className="space-y-4">
+            {displayTrendingRecipes.slice(0, 5).map((recipe) => (
+              <div
+                key={recipe.id}
+                className="flex space-x-3 cursor-pointer hover:bg-muted/50 p-2 rounded-lg transition-colors"
+                data-testid={`trending-recipe-${recipe.id}`}
+              >
+                <img
+                  src={recipe.post.imageUrl}
+                  alt={recipe.title}
+                  className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{recipe.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    by {recipe.post.user.displayName}
+                  </p>
+                  <div className="flex items-center space-x-2 mt-1">
+                    <span className="text-xs text-destructive">
+                      ♥ {recipe.post.likesCount}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      • {recipe.cookTime} min
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h3 className="font-semibold mb-4">Popular Categories</h3>
+          <div className="flex flex-wrap gap-2">
+            {["Italian", "Healthy", "Desserts", "Quick", "Vegan"].map(
+              (category) => (
                 <Badge
                   key={category}
                   variant="outline"
@@ -614,9 +435,10 @@ export default function Feed() {
                 >
                   #{category}
                 </Badge>
-              ))}
-            </div>
-          </section>
+              )
+            )}
+          </div>
+        </section>
         </div>
       </aside>
     </div>
