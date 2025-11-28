@@ -1,7 +1,6 @@
 // server/routes/recipes.ts
 import { Router } from "express";
 import { searchRecipes } from "../services/recipes-service";
-import { modifyRecipeWithAI } from "../services/ai";
 
 const router = Router();
 
@@ -91,51 +90,6 @@ router.get("/random", async (req, res) => {
     res.json({ ok: true, items: out.results, total: out.total, source: out.source });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err?.message || "Random failed" });
-  }
-});
-
-/**
- * POST /api/recipes/modify
- * Use AI to modify a recipe based on dietary preferences
- * Body: {
- *   recipe: { title, ingredients: string[], instructions: string[] },
- *   modificationType: "vegan" | "low-sugar" | "high-protein" | "gluten-free" | "low-carb"
- * }
- */
-router.post("/modify", async (req, res) => {
-  noStore(res);
-  try {
-    const { recipe, modificationType } = req.body;
-
-    if (!recipe || !recipe.title || !recipe.ingredients || !recipe.instructions) {
-      return res.status(400).json({
-        ok: false,
-        error: "Missing recipe data. Required: title, ingredients, instructions"
-      });
-    }
-
-    const validModifications = ["vegan", "low-sugar", "high-protein", "gluten-free", "low-carb"];
-    if (!validModifications.includes(modificationType)) {
-      return res.status(400).json({
-        ok: false,
-        error: `Invalid modification type. Must be one of: ${validModifications.join(", ")}`
-      });
-    }
-
-    const modification = await modifyRecipeWithAI(recipe, modificationType);
-
-    res.json({
-      ok: true,
-      modification,
-      originalRecipe: recipe,
-      modificationType
-    });
-  } catch (err: any) {
-    console.error("Recipe modification error:", err);
-    res.status(500).json({
-      ok: false,
-      error: err?.message || "Recipe modification failed"
-    });
   }
 });
 
