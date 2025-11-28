@@ -303,84 +303,6 @@ export const mealPlanEntries = pgTable("meal_plan_entries", {
   customCalories: integer("custom_calories"),
 });
 
-/* ===== MEAL PLAN MARKETPLACE ===== */
-export const mealPlanBlueprints = pgTable(
-  "meal_plan_blueprints",
-  {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    creatorId: varchar("creator_id").references(() => users.id).notNull(),
-    title: text("title").notNull(),
-    description: text("description"),
-    coverImage: text("cover_image"),
-    price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-    duration: integer("duration").notNull(), // days
-    difficulty: text("difficulty"), // beginner, intermediate, advanced
-    dietType: text("diet_type"), // vegan, keto, paleo, etc.
-    tags: jsonb("tags").$type<string[]>().default(sql`'[]'::jsonb`),
-    targetCalories: integer("target_calories"),
-    macroSplit: jsonb("macro_split").$type<{ protein: number; carbs: number; fat: number }>(),
-    isPublished: boolean("is_published").default(false),
-    salesCount: integer("sales_count").default(0),
-    viewCount: integer("view_count").default(0),
-    averageRating: decimal("average_rating", { precision: 3, scale: 2 }).default("0"),
-    reviewCount: integer("review_count").default(0),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
-  },
-  (table) => ({
-    creatorIdx: index("blueprint_creator_idx").on(table.creatorId),
-    publishedIdx: index("blueprint_published_idx").on(table.isPublished),
-    priceIdx: index("blueprint_price_idx").on(table.price),
-  })
-);
-
-export const blueprintVersions = pgTable("blueprint_versions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  blueprintId: varchar("blueprint_id").references(() => mealPlanBlueprints.id, { onDelete: "cascade" }).notNull(),
-  versionNumber: integer("version_number").notNull(),
-  meals: jsonb("meals").$type<any[]>().notNull(), // Array of meal entries with recipes
-  notes: text("notes"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const mealPlanPurchases = pgTable(
-  "meal_plan_purchases",
-  {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    buyerId: varchar("buyer_id").references(() => users.id).notNull(),
-    blueprintId: varchar("blueprint_id").references(() => mealPlanBlueprints.id).notNull(),
-    versionId: varchar("version_id").references(() => blueprintVersions.id).notNull(),
-    pricePaid: decimal("price_paid", { precision: 10, scale: 2 }).notNull(),
-    purchasedAt: timestamp("purchased_at").defaultNow(),
-  },
-  (table) => ({
-    buyerIdx: index("purchase_buyer_idx").on(table.buyerId),
-    blueprintIdx: index("purchase_blueprint_idx").on(table.blueprintId),
-  })
-);
-
-export const creatorAnalytics = pgTable("creator_analytics", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  creatorId: varchar("creator_id").references(() => users.id).notNull(),
-  blueprintId: varchar("blueprint_id").references(() => mealPlanBlueprints.id, { onDelete: "cascade" }),
-  date: timestamp("date").notNull(),
-  views: integer("views").default(0),
-  sales: integer("sales").default(0),
-  revenue: decimal("revenue", { precision: 10, scale: 2 }).default("0"),
-  refunds: integer("refunds").default(0),
-});
-
-export const mealPlanReviews = pgTable("meal_plan_reviews", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  blueprintId: varchar("blueprint_id").references(() => mealPlanBlueprints.id, { onDelete: "cascade" }).notNull(),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  rating: integer("rating").notNull(), // 1-5
-  reviewText: text("review_text"),
-  helpfulCount: integer("helpful_count").default(0),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
 /* ===== PANTRY ===== */
 export const pantryItems = pgTable(
   "pantry_items",
@@ -1066,37 +988,6 @@ export const insertMealPlanEntrySchema = createInsertSchema(mealPlanEntries).omi
   id: true,
 });
 
-export const insertMealPlanBlueprintSchema = createInsertSchema(mealPlanBlueprints).omit({
-  id: true,
-  salesCount: true,
-  viewCount: true,
-  averageRating: true,
-  reviewCount: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const insertBlueprintVersionSchema = createInsertSchema(blueprintVersions).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertMealPlanPurchaseSchema = createInsertSchema(mealPlanPurchases).omit({
-  id: true,
-  purchasedAt: true,
-});
-
-export const insertCreatorAnalyticsSchema = createInsertSchema(creatorAnalytics).omit({
-  id: true,
-});
-
-export const insertMealPlanReviewSchema = createInsertSchema(mealPlanReviews).omit({
-  id: true,
-  helpfulCount: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
 export const insertPantryItemSchema = createInsertSchema(pantryItems).omit({
   id: true,
   createdAt: true,
@@ -1266,16 +1157,6 @@ export type MealPlan = typeof mealPlans.$inferSelect;
 export type InsertMealPlan = z.infer<typeof insertMealPlanSchema>;
 export type MealPlanEntry = typeof mealPlanEntries.$inferSelect;
 export type InsertMealPlanEntry = z.infer<typeof insertMealPlanEntrySchema>;
-export type MealPlanBlueprint = typeof mealPlanBlueprints.$inferSelect;
-export type InsertMealPlanBlueprint = z.infer<typeof insertMealPlanBlueprintSchema>;
-export type BlueprintVersion = typeof blueprintVersions.$inferSelect;
-export type InsertBlueprintVersion = z.infer<typeof insertBlueprintVersionSchema>;
-export type MealPlanPurchase = typeof mealPlanPurchases.$inferSelect;
-export type InsertMealPlanPurchase = z.infer<typeof insertMealPlanPurchaseSchema>;
-export type CreatorAnalytics = typeof creatorAnalytics.$inferSelect;
-export type InsertCreatorAnalytics = z.infer<typeof insertCreatorAnalyticsSchema>;
-export type MealPlanReview = typeof mealPlanReviews.$inferSelect;
-export type InsertMealPlanReview = z.infer<typeof insertMealPlanReviewSchema>;
 export type PantryItem = typeof pantryItems.$inferSelect;
 export type InsertPantryItem = z.infer<typeof insertPantryItemSchema>;
 export type NutritionLog = typeof nutritionLogs.$inferSelect;
