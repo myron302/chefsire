@@ -112,11 +112,6 @@ router.post("/auth/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // Check if email verified
-    if (!user.emailVerifiedAt) {
-      return res.status(403).json({ error: "Please verify your email to log in." });
-    }
-
     // Verify password
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
