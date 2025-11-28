@@ -329,7 +329,7 @@ export function RecipeCollections({ recipeId, userId }: RecipeCollectionsProps) 
                       <p className="text-sm text-gray-600 mt-1">{collection.description}</p>
                     )}
                     <div className="text-xs text-gray-500 mt-2">
-                      Updated {collection.updatedAt ? new Date(collection.updatedAt).toLocaleDateString() : "Recently"}
+                      Updated {new Date(collection.updatedAt).toLocaleDateString()}
                     </div>
                   </div>
 
