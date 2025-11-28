@@ -51,7 +51,7 @@ const NutritionMealPlanner = () => {
 
       // Check if trial is still valid
       if (hasNutritionAccess && user?.nutritionTrialEndsAt) {
-        const trialEnd = user.nutritionTrialEndsAt ? new Date(user.nutritionTrialEndsAt) : new Date();
+        const trialEnd = new Date(user.nutritionTrialEndsAt);
         const now = new Date();
         if (now > trialEnd) {
           // Trial has expired
