@@ -149,6 +149,14 @@ import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage"
 // Leaderboards
 import LeaderboardPage from "@/pages/leaderboard/LeaderboardPage";
 
+// ⚡ Phase 2: Social Explosion Features
+import CookTogetherPage from "@/pages/social/cook-together";
+import DuetsPage from "@/pages/social/duets";
+import EventsPage from "@/pages/social/events";
+
+// 📊 Phase 3: Power User Features
+import AnalyticsPage from "@/pages/analytics/AnalyticsPage";
+
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
   React.useEffect(() => setLocation(to), [to, setLocation]);
@@ -322,6 +330,14 @@ function AppRouter() {
 
         {/* Leaderboards */}
         <Route path="/leaderboard" component={LeaderboardPage} />
+
+        {/* ⚡ Phase 2: Social Explosion Features */}
+        <Route path="/cook-together" component={CookTogetherPage} />
+        <Route path="/duets" component={DuetsPage} />
+        <Route path="/events" component={EventsPage} />
+
+        {/* 📊 Phase 3: Power User Features */}
+        <Route path="/analytics" component={AnalyticsPage} />
 
         {/* Recipes */}
         <Route path="/recipes/baby-food/:rest*">
