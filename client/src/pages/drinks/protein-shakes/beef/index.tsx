@@ -505,58 +505,41 @@ export default function BeefProteinPage() {
         />
       )}
 
-      {/* UNIFORM HERO SECTION */}
-      <div className="bg-gradient-to-r from-red-600 via-orange-600 to-rose-600 text-white py-12 px-6 rounded-xl shadow-2xl">
-        <div className="max-w-7xl mx-auto">
-          <Link href="/drinks">
-            <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Drinks Hub
-            </Button>
-          </Link>
-
-          <div className="flex items-center gap-4 mb-6">
-            <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
-              <Flame className="h-12 w-12" />
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4">
+              <Link href="/drinks/protein-shakes">
+                <Button variant="ghost" size="sm" className="text-gray-500">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Protein Shakes
+                </Button>
+              </Link>
+              <div className="h-6 w-px bg-gray-300" />
+              <div className="flex items-center gap-2">
+                <Flame className="h-6 w-6 text-red-600" />
+                <h1 className="text-2xl font-bold text-gray-900">Beef Protein</h1>
+                <Badge className="bg-red-100 text-red-800">Natural Creatine</Badge>
+              </div>
             </div>
-            <div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-2">Beef Protein</h1>
-              <p className="text-xl text-red-100">Carnivore-friendly protein with natural creatine for power</p>
+
+            <div className="flex items-center gap-4">
+              <Button variant="outline" size="sm" onClick={() => setShowUniversalSearch(true)}>
+                <Search className="h-4 w-4 mr-2" />
+                Universal Search
+              </Button>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Star className="h-4 w-4 text-yellow-500" />
+                <span>Level {userProgress.level}</span>
+                <div className="w-px h-4 bg-gray-300" />
+                <span>{userProgress.totalPoints} XP</span>
+              </div>
+              <Button size="sm" className="bg-red-500 hover:bg-red-600 text-white" onClick={handleSharePage}>
+                <Camera className="h-4 w-4 mr-2" />
+                Share Page
+              </Button>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Flame className="h-8 w-8 mx-auto mb-2 text-red-300" />
-                <div className="text-2xl font-bold">6</div>
-                <div className="text-sm text-red-100">Recipes</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Dumbbell className="h-8 w-8 mx-auto mb-2 text-orange-300" />
-                <div className="text-2xl font-bold">32g</div>
-                <div className="text-sm text-red-100">Avg Protein</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Star className="h-8 w-8 mx-auto mb-2 text-yellow-400" />
-                <div className="text-2xl font-bold">Level {userProgress.level}</div>
-                <div className="text-sm text-red-100">{userProgress.totalPoints} XP</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Zap className="h-8 w-8 mx-auto mb-2 text-rose-300" />
-                <div className="text-2xl font-bold">{userProgress.totalDrinksMade}</div>
-                <div className="text-sm text-red-100">Shakes Made</div>
-              </CardContent>
-            </Card>
           </div>
         </div>
       </div>
@@ -667,7 +650,7 @@ export default function BeefProteinPage() {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
+        <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
             { id: 'benefits', label: 'Benefits', icon: Shield },
@@ -677,9 +660,9 @@ export default function BeefProteinPage() {
             return (
               <Button
                 key={tab.id}
-                variant="ghost"
+                variant={activeTab === tab.id ? "default" : "ghost"}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 ${activeTab === tab.id ? 'bg-red-500 shadow-sm !text-white hover:!text-white hover:bg-red-600' : ''}`}
+                className={`flex-1 ${activeTab === tab.id ? "bg-white shadow-sm" : ""}`}
               >
                 <Icon className="h-4 w-4 mr-2" />
                 {tab.label}

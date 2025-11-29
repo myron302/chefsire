@@ -468,58 +468,24 @@ export default function WheyProteinShakesPage() {
   if (filteredShakes.length === 0 && activeTab === 'browse') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-        {/* UNIFORM HERO SECTION */}
-        <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white py-12 px-6 rounded-xl shadow-2xl">
-          <div className="max-w-7xl mx-auto">
-            <Link href="/drinks">
-              <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Drinks Hub
-              </Button>
-            </Link>
-
-            <div className="flex items-center gap-4 mb-6">
-              <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
-                <Dumbbell className="h-12 w-12" />
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center gap-4">
+                <Link href="/drinks/protein-shakes">
+                  <Button variant="ghost" size="sm" className="text-gray-500">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Back to Protein Shakes
+                  </Button>
+                </Link>
+                <div className="h-6 w-px bg-gray-300" />
+                <div className="flex items-center gap-2">
+                  <Dumbbell className="h-6 w-6 text-blue-600" />
+                  <h1 className="text-2xl font-bold text-gray-900">Whey Protein Shakes</h1>
+                  <Badge className="bg-blue-100 text-blue-800">Premium</Badge>
+                </div>
               </div>
-              <div>
-                <h1 className="text-4xl md:text-5xl font-bold mb-2">Whey Protein Shakes</h1>
-                <p className="text-xl text-blue-100">Fast-absorbing whey protein for maximum muscle growth</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-                <CardContent className="p-4 text-center">
-                  <Dumbbell className="h-8 w-8 mx-auto mb-2 text-blue-300" />
-                  <div className="text-2xl font-bold">6</div>
-                  <div className="text-sm text-blue-100">Recipes</div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-                <CardContent className="p-4 text-center">
-                  <Target className="h-8 w-8 mx-auto mb-2 text-purple-300" />
-                  <div className="text-2xl font-bold">35g</div>
-                  <div className="text-sm text-blue-100">Avg Protein</div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-                <CardContent className="p-4 text-center">
-                  <Star className="h-8 w-8 mx-auto mb-2 text-yellow-400" />
-                  <div className="text-2xl font-bold">Level {userProgress.level}</div>
-                  <div className="text-sm text-blue-100">{userProgress.totalPoints} XP</div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-                <CardContent className="p-4 text-center">
-                  <Beaker className="h-8 w-8 mx-auto mb-2 text-green-400" />
-                  <div className="text-2xl font-bold">{userProgress.totalDrinksMade}</div>
-                  <div className="text-sm text-blue-100">Shakes Made</div>
-                </CardContent>
-              </Card>
             </div>
           </div>
         </div>
@@ -527,8 +493,8 @@ export default function WheyProteinShakesPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center py-12">
             <p className="text-gray-500 text-lg">No shakes found matching your criteria.</p>
-            <Button
-              variant="outline"
+            <Button 
+              variant="outline" 
               className="mt-4"
               onClick={() => {
                 setSearchQuery('');
@@ -583,58 +549,41 @@ export default function WheyProteinShakesPage() {
         />
       )}
 
-      {/* UNIFORM HERO SECTION */}
-      <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white py-12 px-6 rounded-xl shadow-2xl">
-        <div className="max-w-7xl mx-auto">
-          <Link href="/drinks">
-            <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Drinks Hub
-            </Button>
-          </Link>
-
-          <div className="flex items-center gap-4 mb-6">
-            <div className="p-4 bg-white/20 rounded-2xl backdrop-blur">
-              <Dumbbell className="h-12 w-12" />
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4">
+              <Link href="/drinks/protein-shakes">
+                <Button variant="ghost" size="sm" className="text-gray-500">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Protein Shakes
+                </Button>
+              </Link>
+              <div className="h-6 w-px bg-gray-300" />
+              <div className="flex items-center gap-2">
+                <Dumbbell className="h-6 w-6 text-blue-600" />
+                <h1 className="text-2xl font-bold text-gray-900">Whey Protein Shakes</h1>
+                <Badge className="bg-blue-100 text-blue-800">Premium</Badge>
+              </div>
             </div>
-            <div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-2">Whey Protein Shakes</h1>
-              <p className="text-xl text-blue-100">Fast-absorbing whey protein for maximum muscle growth</p>
+
+            <div className="flex items-center gap-4">
+              <Button variant="outline" size="sm" onClick={() => setShowUniversalSearch(true)}>
+                <Search className="h-4 w-4 mr-2" />
+                Universal Search
+              </Button>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Star className="h-4 w-4 text-yellow-500" />
+                <span>Level {userProgress.level}</span>
+                <div className="w-px h-4 bg-gray-300" />
+                <span>{userProgress.totalPoints} XP</span>
+              </div>
+              <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleSharePage}>
+                <Share2 className="h-4 w-4 mr-2" />
+                Share Page
+              </Button>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Dumbbell className="h-8 w-8 mx-auto mb-2 text-blue-300" />
-                <div className="text-2xl font-bold">6</div>
-                <div className="text-sm text-blue-100">Recipes</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Target className="h-8 w-8 mx-auto mb-2 text-purple-300" />
-                <div className="text-2xl font-bold">35g</div>
-                <div className="text-sm text-blue-100">Avg Protein</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Star className="h-8 w-8 mx-auto mb-2 text-yellow-400" />
-                <div className="text-2xl font-bold">Level {userProgress.level}</div>
-                <div className="text-sm text-blue-100">{userProgress.totalPoints} XP</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
-              <CardContent className="p-4 text-center">
-                <Beaker className="h-8 w-8 mx-auto mb-2 text-green-400" />
-                <div className="text-2xl font-bold">{userProgress.totalDrinksMade}</div>
-                <div className="text-sm text-blue-100">Shakes Made</div>
-              </CardContent>
-            </Card>
           </div>
         </div>
       </div>
@@ -698,7 +647,7 @@ export default function WheyProteinShakesPage() {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
+        <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
             { id: 'types', label: 'Whey Types', icon: Beaker },
@@ -709,9 +658,9 @@ export default function WheyProteinShakesPage() {
             return (
               <Button
                 key={tab.id}
-                variant="ghost"
+                variant={activeTab === tab.id ? "default" : "ghost"}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 ${activeTab === tab.id ? 'bg-blue-500 shadow-sm !text-white hover:!text-white hover:bg-blue-600' : ''}`}
+                className={`flex-1 ${activeTab === tab.id ? 'bg-white shadow-sm' : ''}`}
               >
                 <Icon className="h-4 w-4 mr-2" />
                 {tab.label}

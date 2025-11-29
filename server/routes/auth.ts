@@ -101,29 +101,43 @@ router.post("/auth/signup", async (req, res) => {
  */
 router.post("/auth/login", async (req, res) => {
   try {
+    console.log("🔐 Login attempt started");
     const { email, password } = req.body;
 
     if (!email || !password) {
+      console.log("❌ Login failed: Missing email or password");
       return res.status(400).json({ error: "Email and password are required" });
     }
 
+    console.log("🔍 Looking up user:", email);
     const user = await storage.findByEmail(email);
     if (!user) {
+      console.log("❌ Login failed: User not found");
       return res.status(401).json({ error: "Invalid email or password" });
     }
+
+    console.log("✓ User found:", user.id);
 
     // Check if email verified
     if (!user.emailVerifiedAt) {
+      console.log("❌ Login failed: Email not verified");
       return res.status(403).json({ error: "Please verify your email to log in." });
     }
 
+    console.log("✓ Email verified");
+
     // Verify password
+    console.log("🔑 Verifying password...");
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
+      console.log("❌ Login failed: Invalid password");
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
+    console.log("✓ Password valid");
+
     // Create JWT token
+    console.log("🎟️ Creating JWT token...");
     const token = jwt.sign(
       {
         id: user.id,
@@ -134,13 +148,18 @@ router.post("/auth/login", async (req, res) => {
       { expiresIn: "7d" } // Token expires in 7 days
     );
 
+    console.log("✓ JWT token created");
+
     // Set token as HTTP-only cookie
+    console.log("🍪 Setting auth cookie...");
     res.cookie("auth_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
     });
+
+    console.log("✅ Login successful for user:", user.id);
 
     res.json({
       success: true,
@@ -158,7 +177,8 @@ router.post("/auth/login", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error during login:", error);
+    console.error("💥 CRITICAL ERROR during login:", error);
+    console.error("Error stack:", error instanceof Error ? error.stack : "No stack trace");
     res.status(500).json({ error: "Login failed" });
   }
 });
@@ -204,118 +224,6 @@ router.post("/auth/logout", async (req, res) => {
   } catch (error) {
     console.error("Error during logout:", error);
     res.status(500).json({ error: "Logout failed" });
-  }
-});
-
-/**
- * POST /auth/change-password
- * Change user's password (requires authentication)
- */
-router.post("/auth/change-password", async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    const token = req.cookies?.auth_token || req.headers.authorization?.replace('Bearer ', '');
-
-    if (!token) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({ error: "Current and new password are required" });
-    }
-
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: "New password must be at least 6 characters" });
-    }
-
-    // Verify token
-    let decoded;
-    try {
-      decoded = jwt.verify(token, JWT_SECRET) as any;
-    } catch (error) {
-      return res.status(401).json({ error: "Invalid token" });
-    }
-
-    // Get user
-    const user = await storage.findById(decoded.id);
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    // Verify current password
-    const isValid = await bcrypt.compare(currentPassword, user.password);
-    if (!isValid) {
-      return res.status(401).json({ error: "Current password is incorrect" });
-    }
-
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // Update password
-    await storage.updateUser(user.id, { password: hashedPassword });
-
-    res.json({ success: true, message: "Password changed successfully" });
-  } catch (error) {
-    console.error("Error changing password:", error);
-    res.status(500).json({ error: "Failed to change password" });
-  }
-});
-
-/**
- * DELETE /auth/account
- * Delete user account (requires authentication and password confirmation)
- */
-router.delete("/auth/account", async (req, res) => {
-  try {
-    const { password, confirmText } = req.body;
-    const token = req.cookies?.auth_token || req.headers.authorization?.replace('Bearer ', '');
-
-    if (!token) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-
-    if (!password) {
-      return res.status(400).json({ error: "Password is required to delete account" });
-    }
-
-    if (confirmText !== 'DELETE') {
-      return res.status(400).json({ error: "Please type DELETE to confirm" });
-    }
-
-    // Verify token
-    let decoded;
-    try {
-      decoded = jwt.verify(token, JWT_SECRET) as any;
-    } catch (error) {
-      return res.status(401).json({ error: "Invalid token" });
-    }
-
-    // Get user
-    const user = await storage.findById(decoded.id);
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    // Verify password
-    const isValid = await bcrypt.compare(password, user.password);
-    if (!isValid) {
-      return res.status(401).json({ error: "Incorrect password" });
-    }
-
-    // Delete user account
-    await storage.deleteUser(user.id);
-
-    // Clear auth cookie
-    res.clearCookie("auth_token", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-    });
-
-    res.json({ success: true, message: "Account deleted successfully" });
-  } catch (error) {
-    console.error("Error deleting account:", error);
-    res.status(500).json({ error: "Failed to delete account" });
   }
 });
 

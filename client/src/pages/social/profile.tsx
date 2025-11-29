@@ -8,7 +8,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useUser } from "@/contexts/UserContext";
 import { ProfileCompletion } from "@/components/ProfileCompletion";
-import StreakCalendar from "@/components/StreakCalendar";
 import {
   Image,
   ChefHat,
@@ -481,13 +480,6 @@ export default function Profile() {
       {isOwnProfile && (
         <div className="mb-6">
           <ProfileCompletion />
-        </div>
-      )}
-
-      {/* Streak Calendar - only show on own profile */}
-      {isOwnProfile && drinkStats && (
-        <div className="mb-6">
-          <StreakCalendar userId={displayUser.id} />
         </div>
       )}
 

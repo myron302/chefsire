@@ -8,11 +8,13 @@ type User = {
   royalTitle?: string | null;
   avatar?: string | null;
   bio?: string | null;
+  // Marketplace/Store fields
   subscriptionTier?: string;
   nutritionPremium?: boolean;
   nutritionTrialEndsAt?: string;
-  subscription?: string;
+  subscription?: 'free' | 'starter' | 'professional' | 'enterprise' | 'premium_plus' | string;
   trialEndDate?: string;
+  productCount?: number;
 };
 
 type UserContextType = {
@@ -107,11 +109,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
         royalTitle: data.user.royalTitle ?? null,
         avatar: data.user.avatar ?? null,
         bio: data.user.bio ?? null,
-        subscriptionTier: data.user.subscriptionTier || data.user.subscription || 'free',
+        subscriptionTier: data.user.subscriptionTier,
         nutritionPremium: data.user.nutritionPremium,
         nutritionTrialEndsAt: data.user.nutritionTrialEndsAt,
         subscription: data.user.subscription || data.user.subscriptionTier || 'free',
         trialEndDate: data.user.trialEndDate || data.user.subscriptionEndsAt,
+        productCount: data.user.productCount || 0,
       };
 
       persist(cleanUser);

@@ -272,6 +272,7 @@ export default function ProteinShakesPage({ params }: Params) {
     addPoints(125);
     setConsumedProtein(prev => prev + nutrition.protein);
     
+    console.log(`Built ${shakeData.name}! +125 XP`);
   };
 
   const makeRecipe = (recipe) => {
@@ -299,9 +300,11 @@ export default function ProteinShakesPage({ params }: Params) {
     addPoints(100);
     setConsumedProtein(prev => prev + recipe.protein);
     
+    console.log(`Made ${recipe.name}! +100 XP`);
   };
 
   const handleDrinkSelection = (drink) => {
+    console.log('Selected drink from universal search:', drink);
   };
 
   return (
@@ -469,19 +472,28 @@ export default function ProteinShakesPage({ params }: Params) {
 
                   <CardContent>
                     <div className="grid grid-cols-3 gap-3 mb-4">
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
-                        <div className={`text-lg font-bold ${category.textColor}`}>{category.avgCalories}</div>
-                        <div className="text-xs text-gray-600 whitespace-nowrap">Calories</div>
-                      </div>
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
-                        <div className={`text-lg font-bold ${category.textColor}`}>{category.avgTime}</div>
-                        <div className="text-xs text-gray-600 whitespace-nowrap">Prep Time</div>
-                      </div>
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
-                        <div className={`text-lg font-bold ${category.textColor}`}>
-                          <Trophy className="h-5 w-5 mx-auto" />
+                      <div className="text-center">
+                        <div className="flex items-center justify-center gap-1 mb-1">
+                          <Flame className="h-4 w-4 text-orange-500" />
+                          <span className="text-sm font-bold">{category.avgCalories}</span>
                         </div>
-                        <div className="text-xs text-gray-600 whitespace-nowrap">Top Rated</div>
+                        <div className="text-xs text-gray-500">Calories</div>
+                      </div>
+
+                      <div className="text-center">
+                        <div className="flex items-center justify-center gap-1 mb-1">
+                          <Clock className="h-4 w-4 text-blue-500" />
+                          <span className="text-sm font-bold">{category.avgTime}</span>
+                        </div>
+                        <div className="text-xs text-gray-500">Prep Time</div>
+                      </div>
+
+                      <div className="text-center">
+                        <div className="flex items-center justify-center gap-1 mb-1">
+                          <Trophy className="h-4 w-4 text-yellow-500" />
+                          <span className="text-sm font-bold">4.8</span>
+                        </div>
+                        <div className="text-xs text-gray-500">Rating</div>
                       </div>
                     </div>
 
