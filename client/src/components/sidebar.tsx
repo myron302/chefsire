@@ -155,6 +155,16 @@ const NAV: NavItem[] = [
   { name: "🛒 Marketplace", href: "/marketplace" },
   { name: "💪 Nutrition", href: "/nutrition", isPremium: true },
   { name: "❤️ Allergies", href: "/allergies" },
+
+  // ⚡ Phase 2: Social Explosion Features
+  { name: "👥 Cook Together", href: "/cook-together" },
+  { name: "🎭 Recipe Duets", href: "/duets" },
+  { name: "🎉 Seasonal Events", href: "/events" },
+  { name: "🏆 Leaderboard", href: "/leaderboard" },
+
+  // 📊 Phase 3: Power User Features
+  { name: "📊 Analytics", href: "/analytics" },
+
   { name: "👤 Profile", href: "/profile" },
 ];
 
