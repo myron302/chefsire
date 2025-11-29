@@ -158,8 +158,14 @@ export default function AISuggestions() {
     },
   ] : [];
 
+  // Hide component if there's an error (e.g., tables don't exist yet)
+  if (error) {
+    // Silently hide component when tables don't exist yet
+    return null;
+  }
+
   // Ensure suggestions is always an array
-  const suggestionsArray = Array.isArray(suggestions) ? suggestions : (error ? demoSuggestions : []);
+  const suggestionsArray = Array.isArray(suggestions) ? suggestions : [];
 
   if (suggestionsArray.length === 0) {
     return null; // Don't show if no suggestions
