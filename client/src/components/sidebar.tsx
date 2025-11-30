@@ -156,6 +156,11 @@ const NAV: NavItem[] = [
   { name: "💪 Nutrition", href: "/nutrition", isPremium: true },
   { name: "❤️ Allergies", href: "/allergies" },
 
+  // ⚡ Phase 1: Daily Addiction Features
+  { name: "🎯 My Quests", href: "/quests" },
+  { name: "🔄 Recipe Remixes", href: "/remixes" },
+  { name: "💡 AI Suggestions", href: "/suggestions" },
+
   // ⚡ Phase 2: Social Explosion Features
   { name: "👥 Cook Together", href: "/cook-together" },
   { name: "🎭 Recipe Duets", href: "/duets" },

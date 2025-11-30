@@ -149,6 +149,11 @@ import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage"
 // Leaderboards
 import LeaderboardPage from "@/pages/leaderboard/LeaderboardPage";
 
+// ⚡ Phase 1: Daily Addiction Features
+import QuestsPage from "@/pages/QuestsPage";
+import RemixesPage from "@/pages/RemixesPage";
+import SuggestionsPage from "@/pages/SuggestionsPage";
+
 // ⚡ Phase 2: Social Explosion Features
 import CookTogetherPage from "@/pages/social/cook-together";
 import DuetsPage from "@/pages/social/duets";
@@ -330,6 +335,11 @@ function AppRouter() {
 
         {/* Leaderboards */}
         <Route path="/leaderboard" component={LeaderboardPage} />
+
+        {/* ⚡ Phase 1: Daily Addiction Features */}
+        <Route path="/quests" component={QuestsPage} />
+        <Route path="/remixes" component={RemixesPage} />
+        <Route path="/suggestions" component={SuggestionsPage} />
 
         {/* ⚡ Phase 2: Social Explosion Features */}
         <Route path="/cook-together" component={CookTogetherPage} />
