@@ -68,14 +68,15 @@ export function SpoonRating({
               onMouseEnter={() => handleMouseEnter(spoonIndex)}
               onMouseLeave={handleMouseLeave}
               className={`
-                ${interactive ? "cursor-pointer transition-transform hover:scale-110" : ""}
+                ${interactive ? "cursor-pointer transition-all hover:scale-125" : ""}
                 ${isFilled ? "" : "opacity-30"}
               `}
               style={{
                 display: "inline-block",
                 filter: isFilled
-                  ? "brightness(1.2) contrast(1.1) drop-shadow(0 1px 2px rgba(0,0,0,0.3))"
-                  : "grayscale(100%) brightness(0.8)",
+                  ? "brightness(1.4) contrast(1.2) saturate(1.3) drop-shadow(0 2px 4px rgba(255,215,0,0.4)) drop-shadow(0 0 8px rgba(255,215,0,0.3))"
+                  : "grayscale(100%) brightness(0.6)",
+                textShadow: isFilled ? "0 0 3px rgba(255,215,0,0.5), 0 1px 2px rgba(0,0,0,0.3)" : "none",
               }}
               role={interactive ? "button" : undefined}
               aria-label={interactive ? `Rate ${spoonIndex} spoon${spoonIndex > 1 ? "s" : ""}` : undefined}

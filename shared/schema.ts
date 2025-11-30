@@ -90,6 +90,8 @@ export const recipes = pgTable("recipes", {
   carbs: decimal("carbs", { precision: 5, scale: 2 }),
   fat: decimal("fat", { precision: 5, scale: 2 }),
   fiber: decimal("fiber", { precision: 5, scale: 2 }),
+  averageRating: decimal("average_rating", { precision: 3, scale: 2 }).default("0"),
+  reviewCount: integer("review_count").default(0),
 });
 
 /* ===== RECIPE REVIEWS ===== */
