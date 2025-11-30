@@ -106,7 +106,7 @@ r.use("/allergies", allergiesRouter);
 r.use("/nutrition", nutritionRouter);
 
 // Meal Plans Marketplace - prefixed
-r.use("/api", mealPlansRouter);
+r.use(mealPlansRouter);
 
 // DM (Direct Messages) - prefixed
 r.use("/dm", dmRouter);
