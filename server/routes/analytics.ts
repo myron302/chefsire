@@ -1,19 +1,14 @@
 // server/routes/analytics.ts
 import { Router } from "express";
 import { storage } from "../storage";
-import { getDb } from "../db";
+import { db } from "../db";
 import {
   customDrinks,
   drinkLikes,
-  recipeLikes,
-  recipeReviews,
+  likes,
   follows,
-  competitionParticipants,
-  competitions,
   userDrinkStats,
-  questProgress,
   posts,
-  postLikes,
   comments
 } from "../../shared/schema";
 import { eq, count, sql, and, desc } from "drizzle-orm";
@@ -26,8 +21,6 @@ router.get("/user/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
     const { timeframe = "all" } = req.query; // all, month, week, day
-
-    const db = getDb();
 
     // Calculate date filter based on timeframe
     let dateFilter: Date | null = null;
