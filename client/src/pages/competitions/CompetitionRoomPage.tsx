@@ -15,9 +15,19 @@ export default function CompetitionRoomPage() {
   const [chatMessage, setChatMessage] = useState('');
   const [reactions, setReactions] = useState([]);
   const [confetti, setConfetti] = useState(false);
-  const [competition, setCompetition] = useState(null);
-  const [participants, setParticipants] = useState([]);
-  const [loadingData, setLoadingData] = useState(true);
+
+  const mockParticipants = [
+    { id: 1, name: 'Chef Mario', dish: 'Truffle Risotto', avatar: '👨‍🍳', votes: 12, score: 8.5, placement: 1 },
+    { id: 2, name: 'Julia Masters', dish: 'Beef Wellington', avatar: '👩‍🍳', votes: 10, score: 8.2, placement: 2 },
+    { id: 3, name: 'Gordon Fierce', dish: 'Pan-Seared Scallops', avatar: '🧑‍🍳', votes: 8, score: 7.8, placement: 3 },
+    { id: 4, name: 'Rachel Sweets', dish: 'Chocolate Soufflé', avatar: '👩‍🍳', votes: 7, score: 7.5, placement: 4 }
+  ];
+
+  const mockChat = [
+    { user: 'FoodieKing', msg: 'That plating is incredible! 🔥', time: '2m ago' },
+    { user: 'CulinaryPro', msg: 'The technique on that sear though...', time: '5m ago' },
+    { user: 'ChefWannabe', msg: 'I need that recipe ASAP!', time: '8m ago' }
+  ];
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -25,39 +35,6 @@ export default function CompetitionRoomPage() {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
-
-  // Fetch competition data
-  useEffect(() => {
-    const fetchCompetition = async () => {
-      try {
-        const response = await fetch(`/api/competitions/${id}`, {
-          credentials: 'include',
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setCompetition(data.competition);
-          setParticipants(data.participants || []);
-
-          // Calculate time left if competition is live
-          if (data.competition?.status === 'live' && data.competition?.endTime) {
-            const end = data.competition.endTime ? new Date(data.competition.endTime).getTime() : Date.now();
-            const now = Date.now();
-            const remaining = Math.floor((end - now) / 1000);
-            setTimeLeft(Math.max(0, remaining));
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load competition:', err);
-      } finally {
-        setLoadingData(false);
-      }
-    };
-
-    if (id) {
-      fetchCompetition();
-    }
-  }, [id]);
 
   // Check if video room exists on load
   useEffect(() => {
@@ -77,7 +54,7 @@ export default function CompetitionRoomPage() {
         setRoomUrl(data.roomUrl);
       }
     } catch (err) {
-      // No existing room found - this is expected
+      console.log('No existing room found');
     }
   };
 
@@ -131,17 +108,6 @@ export default function CompetitionRoomPage() {
     setConfetti(true);
     setTimeout(() => setConfetti(false), 3000);
   };
-
-  if (loadingData) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white text-xl">Loading competition...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-200 via-purple-200 to-pink-200 relative overflow-hidden">
@@ -225,7 +191,7 @@ export default function CompetitionRoomPage() {
             </div>
             <div className="px-4 py-2 bg-white/90 backdrop-blur-xl rounded-full text-gray-900 font-semibold border-2 border-gray-300 shadow-md">
               <Users className="inline w-4 h-4 mr-2" />
-              {participants.length} Competing
+              {mockParticipants.length} Competing
             </div>
           </div>
 
@@ -297,7 +263,7 @@ export default function CompetitionRoomPage() {
 
             {/* Participants Grid */}
             <div className="grid sm:grid-cols-2 gap-4">
-              {participants.map((p, i) => (
+              {mockParticipants.map((p, i) => (
                 <div
                   key={p.id}
                   className="relative group cursor-pointer"

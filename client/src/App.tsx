@@ -139,21 +139,28 @@ import SmallPetsPage from "@/pages/pet-food/small-pets";
 
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
-import DebugConsole, {
-  shouldShowDebugConsole,
-} from "@/components/DebugConsole";
+import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole";
 
 // Competitions
 import CreateCompetitionPage from "@/pages/competitions/CreateCompetitionPage";
 import CompetitionRoomPage from "@/pages/competitions/CompetitionRoomPage";
 import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage";
 
-// Leaderboards & Achievements
+// Leaderboards
 import LeaderboardPage from "@/pages/leaderboard/LeaderboardPage";
-import AchievementsPage from "@/pages/achievements/AchievementsPage";
+
+// ⚡ Phase 1: Daily Addiction Features
 import QuestsPage from "@/pages/QuestsPage";
 import RemixesPage from "@/pages/RemixesPage";
 import SuggestionsPage from "@/pages/SuggestionsPage";
+
+// ⚡ Phase 2: Social Explosion Features
+import CookTogetherPage from "@/pages/social/cook-together";
+import DuetsPage from "@/pages/social/duets";
+import EventsPage from "@/pages/social/events";
+
+// 📊 Phase 3: Power User Features
+import AnalyticsPage from "@/pages/analytics/AnalyticsPage";
 
 function Redirect({ to }: { to: string }) {
   const [, setLocation] = useLocation();
@@ -167,10 +174,7 @@ function RecipesSection() {
       <Switch>
         <Route path="/recipes/baby-food/purees" component={BabyFoodPurees} />
         <Route path="/recipes/baby-food/mashed" component={BabyFoodMashed} />
-        <Route
-          path="/recipes/baby-food/finger-foods"
-          component={BabyFoodFingerFoods}
-        />
+        <Route path="/recipes/baby-food/finger-foods" component={BabyFoodFingerFoods} />
         <Route path="/recipes/baby-food/toddler" component={BabyFoodToddler} />
         <Route path="/recipes/baby-food" component={BabyFoodHub} />
         <Route path="/recipes/filters" component={RecipesFiltersPage} />
@@ -187,50 +191,20 @@ function PotentPotablesSection() {
   return (
     <RequireAgeGate>
       <Switch>
-        <Route
-          path="/drinks/potent-potables/cocktails"
-          component={CocktailsPage}
-        />
-        <Route
-          path="/drinks/potent-potables/cognac-brandy"
-          component={CognacBrandyPage}
-        />
-        <Route
-          path="/drinks/potent-potables/martinis"
-          component={MartinisPage}
-        />
+        <Route path="/drinks/potent-potables/cocktails" component={CocktailsPage} />
+        <Route path="/drinks/potent-potables/cognac-brandy" component={CognacBrandyPage} />
+        <Route path="/drinks/potent-potables/martinis" component={MartinisPage} />
         <Route path="/drinks/potent-potables/rum" component={RumPage} />
-        <Route
-          path="/drinks/potent-potables/scotch-irish-whiskey"
-          component={ScotchIrishWhiskeyPage}
-        />
-        <Route
-          path="/drinks/potent-potables/seasonal"
-          component={SeasonalPage}
-        />
-        <Route
-          path="/drinks/potent-potables/tequila-mezcal"
-          component={TequilaMezcalPage}
-        />
-        <Route
-          path="/drinks/potent-potables/daiquiri"
-          component={DaiquiriPage}
-        />
+        <Route path="/drinks/potent-potables/scotch-irish-whiskey" component={ScotchIrishWhiskeyPage} />
+        <Route path="/drinks/potent-potables/seasonal" component={SeasonalPage} />
+        <Route path="/drinks/potent-potables/tequila-mezcal" component={TequilaMezcalPage} />
+        <Route path="/drinks/potent-potables/daiquiri" component={DaiquiriPage} />
         <Route path="/drinks/potent-potables/vodka" component={VodkaPage} />
-        <Route
-          path="/drinks/potent-potables/whiskey-bourbon"
-          component={WhiskeyBourbonPage}
-        />
+        <Route path="/drinks/potent-potables/whiskey-bourbon" component={WhiskeyBourbonPage} />
         <Route path="/drinks/potent-potables/gin" component={GinPage} />
-        <Route
-          path="/drinks/potent-potables/liqueurs"
-          component={LiqueursPage}
-        />
+        <Route path="/drinks/potent-potables/liqueurs" component={LiqueursPage} />
         <Route path="/drinks/potent-potables/spritz" component={SpritzPage} />
-        <Route
-          path="/drinks/potent-potables/hot-drinks"
-          component={HotDrinksPage}
-        />
+        <Route path="/drinks/potent-potables/hot-drinks" component={HotDrinksPage} />
         <Route path="/drinks/potent-potables" component={PotentPotablesHub} />
         <Route>
           <Redirect to="/drinks/potent-potables" />
@@ -244,10 +218,7 @@ function DrinksSection() {
   return (
     <Switch>
       {/* ---------- Smoothies ---------- */}
-      <Route
-        path="/drinks/smoothies/breakfast"
-        component={BreakfastSmoothies}
-      />
+      <Route path="/drinks/smoothies/breakfast" component={BreakfastSmoothies} />
       <Route path="/drinks/smoothies/dessert" component={DessertSmoothies} />
       <Route path="/drinks/smoothies/green" component={GreenSmoothies} />
       <Route path="/drinks/smoothies/protein" component={ProteinSmoothies} />
@@ -258,18 +229,9 @@ function DrinksSection() {
       <Route path="/drinks/smoothies" component={SmoothiesHub} />
 
       {/* ---------- Protein Shakes ---------- */}
-      <Route
-        path="/drinks/protein-shakes/casein"
-        component={CaseinProtein}
-      />
-      <Route
-        path="/drinks/protein-shakes/collagen"
-        component={CollagenProtein}
-      />
-      <Route
-        path="/drinks/protein-shakes/plant-based"
-        component={PlantBasedProtein}
-      />
+      <Route path="/drinks/protein-shakes/casein" component={CaseinProtein} />
+      <Route path="/drinks/protein-shakes/collagen" component={CollagenProtein} />
+      <Route path="/drinks/protein-shakes/plant-based" component={PlantBasedProtein} />
       <Route path="/drinks/protein-shakes/whey" component={WheyProtein} />
       <Route path="/drinks/protein-shakes/egg" component={EggProtein} />
       <Route path="/drinks/protein-shakes/beef" component={BeefProtein} />
@@ -283,17 +245,11 @@ function DrinksSection() {
 
       {/* ---------- Caffeinated Drinks ---------- */}
       <Route path="/drinks/caffeinated/espresso" component={EspressoDrinks} />
-      <Route
-        path="/drinks/caffeinated/cold-brew"
-        component={ColdBrewDrinks}
-      />
+      <Route path="/drinks/caffeinated/cold-brew" component={ColdBrewDrinks} />
       <Route path="/drinks/caffeinated/tea" component={TeaDrinks} />
       <Route path="/drinks/caffeinated/matcha" component={MatchaDrinks} />
       <Route path="/drinks/caffeinated/energy" component={EnergyDrinks} />
-      <Route
-        path="/drinks/caffeinated/specialty"
-        component={SpecialtyCoffee}
-      />
+      <Route path="/drinks/caffeinated/specialty" component={SpecialtyCoffee} />
       <Route path="/drinks/caffeinated/lattes" component={LattesDrinks} />
       <Route path="/drinks/caffeinated/iced" component={IcedCoffeeDrinks} />
       <Route path="/drinks/caffeinated" component={CaffeinatedDrinksHub} />
@@ -338,12 +294,8 @@ function AppRouter() {
 
       <Switch>
         {/* Shortlinks (optional nice-to-have) */}
-        <Route path="/daiquiri">
-          <Redirect to="/drinks/potent-potables/daiquiri" />
-        </Route>
-        <Route path="/daquiri">
-          <Redirect to="/drinks/potent-potables/daiquiri" />
-        </Route>
+        <Route path="/daiquiri"><Redirect to="/drinks/potent-potables/daiquiri" /></Route>
+        <Route path="/daquiri"><Redirect to="/drinks/potent-potables/daiquiri" /></Route>
 
         {/* Legacy redirects: Virgin → Mocktails */}
         <Route path="/drinks/potent-potables/virgin">
@@ -377,19 +329,25 @@ function AppRouter() {
 
         {/* Competitions */}
         <Route path="/competitions/new" component={CreateCompetitionPage} />
-        <Route
-          path="/competitions/library"
-          component={CompetitionLibraryPage}
-        />
+        <Route path="/competitions/library" component={CompetitionLibraryPage} />
         <Route path="/competitions/:id" component={CompetitionRoomPage} />
         <Route path="/competitions" component={CompetitionLibraryPage} />
 
-        {/* Leaderboards & Achievements */}
+        {/* Leaderboards */}
         <Route path="/leaderboard" component={LeaderboardPage} />
-        <Route path="/achievements" component={AchievementsPage} />
+
+        {/* ⚡ Phase 1: Daily Addiction Features */}
         <Route path="/quests" component={QuestsPage} />
         <Route path="/remixes" component={RemixesPage} />
         <Route path="/suggestions" component={SuggestionsPage} />
+
+        {/* ⚡ Phase 2: Social Explosion Features */}
+        <Route path="/cook-together" component={CookTogetherPage} />
+        <Route path="/duets" component={DuetsPage} />
+        <Route path="/events" component={EventsPage} />
+
+        {/* 📊 Phase 3: Power User Features */}
+        <Route path="/analytics" component={AnalyticsPage} />
 
         {/* Recipes */}
         <Route path="/recipes/baby-food/:rest*">
@@ -437,10 +395,7 @@ function AppRouter() {
         <Route path="/store" component={Marketplace} />
 
         <Route path="/catering" component={CateringMarketplace} />
-        <Route
-          path="/catering/wedding-planning"
-          component={WeddingPlanning}
-        />
+        <Route path="/catering/wedding-planning" component={WeddingPlanning} />
         <Route path="/catering/wedding-map" component={WeddingVendorMap} />
         <Route path="/potent-potables">
           <Redirect to="/drinks/potent-potables" />

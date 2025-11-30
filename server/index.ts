@@ -3,7 +3,6 @@ import "dotenv/config";
 import app from "./app";
 import { attachDmRealtime } from "./realtime/dmSocket";
 import { attachNotificationRealtime } from "./realtime/notificationSocket";
-import { notificationService } from "./services/notification.service";
 
 const HAS_PASSENGER_PORT = !!process.env.PORT;
 const PORT = Number(process.env.PORT || 3001);
@@ -32,9 +31,6 @@ const server = app.listen(PORT, HOST, () => {
 // Attach WebSocket handlers
 attachDmRealtime(server);
 const notificationHelper = attachNotificationRealtime(server);
-
-// Initialize notification service with the helper
-notificationService.initialize(notificationHelper);
 
 // Export notification helper for use in other parts of the app
 export { notificationHelper };

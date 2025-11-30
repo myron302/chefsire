@@ -234,9 +234,7 @@ export default function QuestsPage() {
                         +{questProgress.xpEarned} XP
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {questProgress.createdAt
-                          ? formatDistanceToNow(new Date(questProgress.createdAt), { addSuffix: true })
-                          : "Recently"}
+                        {formatDistanceToNow(new Date(questProgress.createdAt), { addSuffix: true })}
                       </div>
                     </div>
                   </div>

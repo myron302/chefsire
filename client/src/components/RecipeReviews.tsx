@@ -63,20 +63,12 @@ export function RecipeReviews({ recipeId, averageRating, reviewCount }: RecipeRe
       const response = await fetch(`/api/reviews/recipe/${recipeId}`, {
         credentials: "include",
       });
-
-      // Check if response is actually JSON before parsing
-      const contentType = response.headers.get("content-type");
-      if (response.ok && contentType && contentType.includes("application/json")) {
+      if (response.ok) {
         const data = await response.json();
         setReviews(data);
-      } else {
-        // API returned non-JSON (HTML error page) or failed - use empty array
-        console.warn("Reviews API returned non-JSON response:", response.status);
-        setReviews([]);
       }
     } catch (error) {
       console.error("Error fetching reviews:", error);
-      setReviews([]); // Fail gracefully with empty reviews
     } finally {
       setLoading(false);
     }
@@ -311,9 +303,7 @@ export function RecipeReviews({ recipeId, averageRating, reviewCount }: RecipeRe
                         <div className="flex items-center gap-2 mt-1">
                           <SpoonRating value={review.rating} size="sm" />
                           <span className="text-xs text-gray-500">
-                            {review.createdAt
-                              ? new Date(review.createdAt).toLocaleDateString()
-                              : "Recently"}
+                            {new Date(review.createdAt).toLocaleDateString()}
                           </span>
                         </div>
                       </div>
