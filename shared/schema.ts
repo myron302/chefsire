@@ -90,6 +90,35 @@ export const recipes = pgTable("recipes", {
   carbs: decimal("carbs", { precision: 5, scale: 2 }),
   fat: decimal("fat", { precision: 5, scale: 2 }),
   fiber: decimal("fiber", { precision: 5, scale: 2 }),
+  averageRating: decimal("average_rating", { precision: 3, scale: 2 }).default("0"),
+  reviewCount: integer("review_count").default(0),
+});
+
+/* ===== RECIPE REVIEWS ===== */
+export const recipeReviews = pgTable("recipe_reviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recipeId: varchar("recipe_id").references(() => recipes.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  rating: integer("rating").notNull(),
+  reviewText: text("review_text"),
+  helpfulCount: integer("helpful_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const recipeReviewPhotos = pgTable("recipe_review_photos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  reviewId: varchar("review_id").references(() => recipeReviews.id).notNull(),
+  photoUrl: text("photo_url").notNull(),
+  caption: text("caption"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const reviewHelpful = pgTable("review_helpful", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  reviewId: varchar("review_id").references(() => recipeReviews.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 /* ===== RECIPE REVIEWS ===== */
