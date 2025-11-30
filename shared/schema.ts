@@ -241,6 +241,66 @@ export const mealPlanEntries = pgTable("meal_plan_entries", {
   customCalories: integer("custom_calories"),
 });
 
+/* ===== MEAL PLAN MARKETPLACE ===== */
+export const mealPlanBlueprints = pgTable("meal_plan_blueprints", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  creatorId: varchar("creator_id").references(() => users.id).notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  duration: integer("duration").notNull().default(7),
+  durationUnit: text("duration_unit").notNull().default("days"),
+  priceInCents: integer("price_in_cents").notNull(),
+  category: text("category").notNull().default("general"),
+  dietaryLabels: text("dietary_labels").array().default(sql`'{}'::text[]`),
+  difficulty: text("difficulty").notNull().default("medium"),
+  servings: integer("servings").notNull().default(4),
+  tags: text("tags").array().default(sql`'{}'::text[]`),
+  status: text("status").notNull().default("draft"),
+  salesCount: integer("sales_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const blueprintVersions = pgTable("blueprint_versions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  blueprintId: varchar("blueprint_id").references(() => mealPlanBlueprints.id).notNull(),
+  version: integer("version").notNull(),
+  mealStructure: text("meal_structure").notNull(),
+  changeLog: text("change_log"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const mealPlanPurchases = pgTable("meal_plan_purchases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  blueprintId: varchar("blueprint_id").references(() => mealPlanBlueprints.id).notNull(),
+  pricePaidCents: integer("price_paid_cents").notNull(),
+  paymentStatus: text("payment_status").notNull().default("completed"),
+  paymentMethod: text("payment_method"),
+  transactionId: text("transaction_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const mealPlanReviews = pgTable("meal_plan_reviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  blueprintId: varchar("blueprint_id").references(() => mealPlanBlueprints.id).notNull(),
+  rating: integer("rating").notNull(),
+  comment: text("comment"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const creatorAnalytics = pgTable("creator_analytics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  creatorId: varchar("creator_id").references(() => users.id).notNull(),
+  date: text("date").notNull(),
+  totalSales: integer("total_sales").notNull().default(0),
+  totalRevenueCents: integer("total_revenue_cents").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 /* ===== PANTRY ===== */
 export const pantryItems = pgTable(
   "pantry_items",
@@ -1056,6 +1116,11 @@ export type MealPlan = typeof mealPlans.$inferSelect;
 export type InsertMealPlan = z.infer<typeof insertMealPlanSchema>;
 export type MealPlanEntry = typeof mealPlanEntries.$inferSelect;
 export type InsertMealPlanEntry = z.infer<typeof insertMealPlanEntrySchema>;
+export type MealPlanBlueprint = typeof mealPlanBlueprints.$inferSelect;
+export type BlueprintVersion = typeof blueprintVersions.$inferSelect;
+export type MealPlanPurchase = typeof mealPlanPurchases.$inferSelect;
+export type MealPlanReview = typeof mealPlanReviews.$inferSelect;
+export type CreatorAnalytics = typeof creatorAnalytics.$inferSelect;
 export type PantryItem = typeof pantryItems.$inferSelect;
 export type InsertPantryItem = z.infer<typeof insertPantryItemSchema>;
 export type NutritionLog = typeof nutritionLogs.$inferSelect;
