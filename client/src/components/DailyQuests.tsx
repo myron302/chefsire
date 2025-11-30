@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Trophy, Star, Zap, CheckCircle2, Clock, Sparkles } from "lucide-react";
+import { Trophy, Star, Zap, CheckCircle2, Clock } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -36,86 +36,25 @@ async function fetchJSON<T>(url: string): Promise<T> {
 
 export default function DailyQuests() {
   const { user, loading } = useUser();
-  const [celebrateQuestId, setCelebrateQuestId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const {
     data: questsResponse,
     isLoading,
     error,
-  } = useQuery<{ quests: Array<{ progress: Omit<QuestProgress, "quest">; quest: Quest }> }>({
+  } = useQuery<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>({
     queryKey: ["/api/quests/daily", user?.id],
-    queryFn: () =>
-      fetchJSON<{ quests: Array<{ progress: Omit<QuestProgress, "quest">; quest: Quest }> }>(
-        `/api/quests/daily`
-      ),
-    enabled: !loading && !!user?.id,
-    retry: false,
-    refetchInterval: 30000,
+    queryFn: () => fetchJSON<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>(`/api/quests/daily/${user?.id}`),
+    enabled: !loading && !!user?.id, // Only fetch when loading is done AND user exists
+    retry: false, // Don't retry on error
+    refetchInterval: 30000, // Refetch every 30 seconds to check for updates
   });
 
-  // Auto-refresh right after local midnight so new quests appear without a full reload
-  useEffect(() => {
-    const now = new Date();
-    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
-    const ms = next.getTime() - now.getTime();
-    const t = window.setTimeout(() => {
-      queryClient.invalidateQueries({ queryKey: ["/api/quests/daily", user?.id] });
-    }, ms);
-    return () => window.clearTimeout(t);
-  }, [queryClient, user?.id]);
-
-  // Normalize/reshape response once per fetch
-  const questsArray = useMemo(() => {
-    if (!questsResponse?.quests || !Array.isArray(questsResponse.quests)) {
-      return [];
-    }
-    const qs = questsResponse.quests.map(({ progress, quest }) => ({
-      ...progress,
-      quest,
-    }));
-    return Array.isArray(qs) ? qs : [];
-  }, [questsResponse]);
-
-  const activeQuests = useMemo(
-    () => questsArray.filter((q) => q.status === "active"),
-    [questsArray]
-  );
-  const completedToday = useMemo(
-    () => questsArray.filter((q) => q.status === "completed"),
-    [questsArray]
-  );
-
-  // Celebration (only when a *new* completion appears)
-  const timeoutRef = useRef<number | null>(null);
-  const lastFiredIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    const newlyCompleted = questsArray.find(
-      (q) => q.status === "completed" && q.id !== lastFiredIdRef.current
-    );
-
-    if (newlyCompleted && celebrateQuestId === null) {
-      lastFiredIdRef.current = newlyCompleted.id;
-      setCelebrateQuestId(newlyCompleted.id);
-      if (timeoutRef.current) {
-        window.clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-      timeoutRef.current = window.setTimeout(() => {
-        setCelebrateQuestId(null);
-        if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }, 2000) as unknown as number;
-    }
-
-    return () => {
-      if (timeoutRef.current) {
-        window.clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-    };
-  }, [questsArray, celebrateQuestId]);
+  // Extract and restructure quests array from response
+  const quests = questsResponse?.quests.map(({ progress, quest }) => ({
+    ...progress,
+    quest,
+  }));
 
   const getDifficultyColor = (difficulty: string) => {
     const colors: Record<string, string> = {
@@ -138,8 +77,10 @@ export default function DailyQuests() {
     return <Icon className="h-4 w-4" />;
   };
 
-  // Early returns
+  // Don't show while user context is loading
   if (loading) return null;
+
+  // Don't show if user is logged out
   if (!user) return null;
 
   if (isLoading) {
@@ -166,41 +107,85 @@ export default function DailyQuests() {
     );
   }
 
-  if (error) {
-    console.warn("Daily Quests error:", error);
-    return null;
-  }
+  // Use demo data if there's an error (e.g., tables don't exist yet)
+  const demoQuests: QuestProgress[] = error ? [
+    {
+      id: "demo-1",
+      questId: "quest-1",
+      userId: user?.id || "demo-user",
+      currentProgress: 0,
+      targetProgress: 3,
+      status: "active",
+      xpEarned: 0,
+      quest: {
+        id: "quest-1",
+        slug: "make-morning-drink",
+        title: "Morning Ritual",
+        description: "Make 3 drinks before noon",
+        questType: "make_drink",
+        targetValue: 3,
+        xpReward: 100,
+        difficulty: "easy",
+      },
+    },
+    {
+      id: "demo-2",
+      questId: "quest-2",
+      userId: user?.id || "demo-user",
+      currentProgress: 1,
+      targetProgress: 5,
+      status: "active",
+      xpEarned: 0,
+      quest: {
+        id: "quest-2",
+        slug: "try-new-recipe",
+        title: "Recipe Explorer",
+        description: "Try 5 new recipes this week",
+        questType: "try_category",
+        targetValue: 5,
+        xpReward: 150,
+        difficulty: "medium",
+      },
+    },
+    {
+      id: "demo-3",
+      questId: "quest-3",
+      userId: user?.id || "demo-user",
+      currentProgress: 2,
+      targetProgress: 2,
+      status: "completed",
+      xpEarned: 50,
+      quest: {
+        id: "quest-3",
+        slug: "social-butterfly",
+        title: "Social Butterfly",
+        description: "Comment on 2 posts from other chefs",
+        questType: "social_action",
+        targetValue: 2,
+        xpReward: 50,
+        difficulty: "easy",
+      },
+    },
+  ] : [];
+
+  // Ensure quests is always an array
+  const questsArray = Array.isArray(quests) ? quests : (error ? demoQuests : []);
+  const activeQuests = questsArray.filter((q) => q.status === "active");
+  const completedToday = questsArray.filter((q) => q.status === "completed");
 
   return (
-    <Card className="w-full relative overflow-hidden">
-      {/* Animated background when all complete */}
-      {completedToday.length === 3 && (
-        <div className="absolute inset-0 bg-gradient-to-br from-yellow-100 via-orange-100 to-red-100 dark:from-yellow-900/20 dark:via-orange-900/20 dark:to-red-900/20 opacity-30 animate-pulse" />
-      )}
-
-      <CardHeader className="relative">
+    <Card className="w-full">
+      <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {completedToday.length === 3 ? (
-              <Trophy className="h-5 w-5 text-yellow-500 animate-bounce" />
-            ) : (
-              <Trophy className="h-5 w-5 text-yellow-500" />
-            )}
+            <Trophy className="h-5 w-5 text-yellow-500" />
             Daily Quests
           </div>
-          <Badge
-            variant={completedToday.length === 3 ? "default" : "secondary"}
-            className={`text-xs ${
-              completedToday.length === 3
-                ? "bg-gradient-to-r from-yellow-500 to-orange-500 animate-pulse"
-                : ""
-            }`}
-          >
+          <Badge variant="secondary" className="text-xs">
             {completedToday.length}/3 Complete
           </Badge>
         </CardTitle>
       </CardHeader>
-
       <CardContent className="space-y-4">
         {activeQuests.length === 0 && completedToday.length === 0 ? (
           <div className="text-center py-8">
@@ -214,79 +199,60 @@ export default function DailyQuests() {
         ) : (
           <>
             {questsArray.map((questProgress) => {
-              const denom = Math.max(questProgress.targetProgress || 0, 0);
-              const rawPct = denom > 0 ? (questProgress.currentProgress / denom) * 100 : 0;
-              const progressPercent = Math.max(0, Math.min(100, rawPct));
+              const progressPercent =
+                (questProgress.currentProgress / questProgress.targetProgress) * 100;
               const isCompleted = questProgress.status === "completed";
 
               return (
                 <div
                   key={questProgress.id}
-                  className={`p-3 rounded-lg border transition-all duration-300 ${
+                  className={`p-4 rounded-lg border ${
                     isCompleted
                       ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800"
-                      : "bg-card border-border hover:border-orange-300"
-                  } ${
-                    celebrateQuestId === questProgress.id
-                      ? "animate-pulse ring-2 ring-green-500"
-                      : ""
+                      : "bg-card border-border"
                   }`}
                 >
                   <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2 flex-1">
+                    <div className="flex items-center gap-2">
                       <div
-                        className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 ${
+                        className={`w-8 h-8 rounded-full flex items-center justify-center ${
                           isCompleted
                             ? "bg-green-500 text-white"
                             : "bg-muted text-muted-foreground"
                         }`}
                       >
                         {isCompleted ? (
-                          <CheckCircle2 className="h-3 w-3" />
+                          <CheckCircle2 className="h-4 w-4" />
                         ) : (
-                          <div className="scale-75">
-                            {getQuestIcon(questProgress.quest.questType)}
-                          </div>
+                          getQuestIcon(questProgress.quest.questType)
                         )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-xs font-medium leading-tight truncate">
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium leading-tight">
                           {questProgress.quest.title}
                         </h4>
+                        <p className="text-xs text-muted-foreground">
+                          {questProgress.quest.description}
+                        </p>
                       </div>
                     </div>
                     <Badge
                       variant="outline"
-                      className={`text-[10px] px-1.5 py-0 h-4 flex-shrink-0 ml-2 ${getDifficultyColor(
-                        questProgress.quest.difficulty
-                      )}`}
+                      className={getDifficultyColor(questProgress.quest.difficulty)}
                     >
-                      +{questProgress.quest.xpReward} XP
+                      {questProgress.quest.difficulty}
                     </Badge>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <div className="relative">
-                      <Progress
-                        value={progressPercent}
-                        className="h-1.5 transition-all duration-500 ease-out"
-                      />
-                      {isCompleted && (
-                        <div className="absolute -top-0.5 -right-0.5">
-                          <Sparkles className="h-3 w-3 text-yellow-500 animate-spin" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between text-[10px]">
-                      <span
-                        className={`transition-colors ${
-                          isCompleted
-                            ? "text-green-600 dark:text-green-400 font-semibold"
-                            : "text-muted-foreground"
-                        }`}
-                      >
+                  <div className="space-y-2">
+                    <Progress value={progressPercent} className="h-2" />
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">
                         {questProgress.currentProgress} / {questProgress.targetProgress}
-                        {isCompleted && " ✓"}
+                      </span>
+                      <span className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400 font-medium">
+                        <Zap className="h-3 w-3" />
+                        +{questProgress.quest.xpReward} XP
                       </span>
                     </div>
                   </div>
@@ -297,17 +263,13 @@ export default function DailyQuests() {
         )}
 
         {completedToday.length === 3 && (
-          <div className="text-center p-4 bg-gradient-to-r from-yellow-100 via-orange-100 to-red-100 dark:from-yellow-900/20 dark:via-orange-900/20 dark:to-red-900/20 rounded-lg border-2 border-yellow-400 dark:border-yellow-600 shadow-lg animate-pulse">
-            <div className="relative">
-              <Trophy className="h-8 w-8 mx-auto mb-2 text-yellow-600 animate-bounce" />
-              <Sparkles className="h-4 w-4 absolute top-0 left-1/2 -translate-x-6 text-yellow-500 animate-ping" />
-              <Sparkles className="h-4 w-4 absolute top-0 right-1/2 translate-x-6 text-orange-500 animate-ping" />
-            </div>
-            <p className="text-sm font-bold text-yellow-900 dark:text-yellow-100 mb-1">
-              🎉 Perfect Day! All Quests Completed! 🎉
+          <div className="text-center p-4 bg-gradient-to-r from-yellow-100 to-orange-100 dark:from-yellow-900/20 dark:to-orange-900/20 rounded-lg">
+            <Trophy className="h-8 w-8 mx-auto mb-2 text-yellow-600" />
+            <p className="text-sm font-semibold text-yellow-900 dark:text-yellow-100">
+              All quests completed!
             </p>
             <p className="text-xs text-yellow-700 dark:text-yellow-300">
-              Amazing work! You've earned all the XP. Come back tomorrow for new challenges!
+              Amazing work! Come back tomorrow for new challenges.
             </p>
           </div>
         )}

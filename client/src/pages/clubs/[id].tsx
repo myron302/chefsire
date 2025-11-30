@@ -332,7 +332,7 @@ export default function ClubDetailPage() {
                         </p>
                       </Link>
                       <p className="text-sm text-slate-500">
-                        {post.createdAt ? new Date(post.createdAt).toLocaleString() : "Recently"}
+                        {new Date(post.createdAt).toLocaleString()}
                       </p>
                     </div>
                   </div>

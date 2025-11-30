@@ -2,8 +2,6 @@ import { Router } from "express";
 
 // Core feature routers
 import recipesRouter from "./recipes";
-import reviewsRouter from "./reviews";
-import collectionsRouter from "./collections";
 import bitesRouter from "./bites";
 import usersRouter from "./users";
 import postsRouter from "./posts";
@@ -28,9 +26,6 @@ import { googleRouter } from "./google";
 // Competitions
 import competitionsRouter from "./competitions";
 
-// Video conferencing
-import videoRouter from "./video";
-
 // Stores (user storefronts)
 import storesRouter from "./stores-crud";
 
@@ -48,13 +43,21 @@ import remixesRouter from "./remixes";
 import leaderboardRouter from "./leaderboard";
 import achievementsRouter from "./achievements";
 import streaksRouter from "./streaks";
+
+// 🎉 Phase 2: Social Explosion Features
+import duetsRouter from "./duets";
+import eventsRouter from "./events";
+import cookTogetherRouter from "./cook-together";
+
+// 📊 Phase 3: Power User Features
 import analyticsRouter from "./analytics";
 
 // 💰 Marketplace & Monetization
 import subscriptionsRouter from "./subscriptions";
 import ordersRouter from "./orders";
-import paymentsRouter from "./payments";
-import payoutsRouter from "./payouts";
+// TEMPORARILY COMMENTED OUT - square package not installed
+// import paymentsRouter from "./payments";
+// import payoutsRouter from "./payouts";
 
 // File uploads
 import uploadRouter from "./upload";
@@ -71,12 +74,6 @@ r.use(authRouter);
 
 // Recipes routes (prefixed)
 r.use("/recipes", recipesRouter);
-
-// Reviews - prefixed
-r.use("/reviews", reviewsRouter);
-
-// Collections - prefixed
-r.use("/collections", collectionsRouter);
 
 // Bites (social stories) - prefixed
 r.use("/bites", bitesRouter);
@@ -124,9 +121,6 @@ r.use("/google", googleRouter);
 // Competitions
 r.use("/competitions", competitionsRouter);
 
-// Video conferencing
-r.use("/video", videoRouter);
-
 // Stores (public viewer + owner writes)
 r.use("/stores", storesRouter);
 
@@ -141,13 +135,21 @@ r.use("/remixes", remixesRouter);
 r.use("/leaderboard", leaderboardRouter);
 r.use("/achievements", achievementsRouter);
 r.use("/streaks", streaksRouter);
+
+// 🎉 Phase 2: Social Explosion Features
+r.use("/duets", duetsRouter);
+r.use("/events", eventsRouter);
+r.use("/cook-together", cookTogetherRouter);
+
+// 📊 Phase 3: Power User Features
 r.use("/analytics", analyticsRouter);
 
 // 💰 Marketplace & Monetization
 r.use("/subscriptions", subscriptionsRouter);
 r.use("/orders", ordersRouter);
-r.use("/payments", paymentsRouter);
-r.use("/payouts", payoutsRouter);
+// TEMPORARILY COMMENTED OUT - square package not installed
+// r.use("/payments", paymentsRouter);
+// r.use("/payouts", payoutsRouter);
 
 // File uploads
 r.use("/upload", uploadRouter);
@@ -170,27 +172,25 @@ if (process.env.NODE_ENV !== "production") {
         "/drinks/*",
         "/allergies/*",
         "/nutrition/*",
-        "/meal-plans/*",     // Nutrition marketplace
-        "/my-plans/*",       // Creator meal plans
-        "/my-purchases/*",   // Buyer meal plans
-        "/analytics/*",      // Creator analytics
         "/dm/*",
         "/clubs/*",
         "/lookup/*",
         "/export/*",
         "/google/*",
         "/competitions/*",
-        "/video/*",
         "/stores/*",
         "/square/*",
         "/notifications/*", // ⚡ Phase 1
         "/quests/*",        // ⚡ Phase 1
         "/suggestions/*",   // ⚡ Phase 1
         "/remixes/*",       // ⚡ Phase 1
-        "/leaderboard/*",   // ⚡ Gamification
-        "/achievements/*",  // ⚡ Gamification
-        "/streaks/*",       // ⚡ Gamification
-        "/analytics/*",     // 📊 Analytics
+        "/leaderboard/*",   // ⚡ Phase 1
+        "/achievements/*",  // ⚡ Phase 1
+        "/streaks/*",       // ⚡ Phase 1
+        "/duets/*",         // 🎉 Phase 2
+        "/events/*",        // 🎉 Phase 2
+        "/cook-together/*", // 🎉 Phase 2
+        "/analytics/*",     // 📊 Phase 3
         "/subscriptions/*", // 💰 Monetization
         "/orders/*",        // 💰 Monetization
         "/payments/*",      // 💰 Square payments

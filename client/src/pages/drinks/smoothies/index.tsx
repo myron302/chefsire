@@ -443,6 +443,7 @@ export default function SmoothiesPage() {
           timestamp: new Date().toISOString()
         };
 
+        console.log('Photo would be uploaded with data:', photoData);
         addPoints(50);
         incrementDrinksMade();
 
@@ -495,6 +496,7 @@ export default function SmoothiesPage() {
       setShowShare(false);
       if (error.name === 'AbortError') {
         // User cancelled the share - this is normal, don't show error
+        console.log('Share cancelled by user');
       } else {
         alert('Unable to share. Please try copying the URL manually.');
       }
@@ -502,6 +504,7 @@ export default function SmoothiesPage() {
   };
 
   const handleDrinkSelection = (drink) => {
+    console.log('Selected drink from universal search:', drink);
     addToRecentlyViewed(drink);
   };
 
@@ -689,19 +692,19 @@ export default function SmoothiesPage() {
 
                   <CardContent>
                     <div className="grid grid-cols-3 gap-3 mb-4">
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
                         <div className={`text-lg font-bold ${category.textColor}`}>{category.avgCalories}</div>
-                        <div className="text-xs text-gray-600 whitespace-nowrap">Calories</div>
+                        <div className="text-xs text-gray-600">Calories</div>
                       </div>
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
                         <div className={`text-lg font-bold ${category.textColor}`}>{category.avgTime}</div>
-                        <div className="text-xs text-gray-600 whitespace-nowrap">Prep Time</div>
+                        <div className="text-xs text-gray-600">Prep Time</div>
                       </div>
-                      <div className={`text-center p-3 rounded-lg ${category.bgColor} aspect-square flex flex-col items-center justify-center`}>
+                      <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
                         <div className={`text-lg font-bold ${category.textColor}`}>
                           <Trophy className="h-5 w-5 mx-auto" />
                         </div>
-                        <div className="text-xs text-gray-600 whitespace-nowrap">Top Rated</div>
+                        <div className="text-xs text-gray-600">Top Rated</div>
                       </div>
                     </div>
 

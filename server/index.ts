@@ -3,7 +3,6 @@ import "dotenv/config";
 import app from "./app";
 import { attachDmRealtime } from "./realtime/dmSocket";
 import { attachNotificationRealtime } from "./realtime/notificationSocket";
-import { notificationService } from "./services/notification.service";
 
 const HAS_PASSENGER_PORT = !!process.env.PORT;
 const PORT = Number(process.env.PORT || 3001);
@@ -18,6 +17,13 @@ console.log(
   }`
 );
 
+// Database connection check
+if (!process.env.DATABASE_URL) {
+  console.error("⚠️  WARNING: DATABASE_URL is not set! Database operations will fail.");
+} else {
+  console.log("✓ DATABASE_URL is configured");
+}
+
 const server = app.listen(PORT, HOST, () => {
   console.log(`[ChefSire] Listening on http://${HOST}:${PORT}`);
 });
@@ -25,9 +31,6 @@ const server = app.listen(PORT, HOST, () => {
 // Attach WebSocket handlers
 attachDmRealtime(server);
 const notificationHelper = attachNotificationRealtime(server);
-
-// Initialize notification service with the helper
-notificationService.initialize(notificationHelper);
 
 // Export notification helper for use in other parts of the app
 export { notificationHelper };

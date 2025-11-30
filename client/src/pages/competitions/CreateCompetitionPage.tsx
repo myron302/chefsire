@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import { ChefHat, Sparkles, Timer, Users, Lock, Globe, Zap, Star, Trophy, Flame, ArrowRight, Wand2 } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { useLocation } from 'wouter';
 
 const THEMES = [
   { id: 'freestyle', name: 'Freestyle', icon: '🎨', blurb: 'Anything goes!', gradient: 'from-purple-500 via-pink-500 to-orange-500', glow: 'purple' },
@@ -46,60 +44,11 @@ export default function CreateCompetitionPage() {
   const [minVoters, setMinVoters] = useState(3);
   const [step, setStep] = useState(1);
   const [hoveredTheme, setHoveredTheme] = useState(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const { toast } = useToast();
-  const [, setLocation] = useLocation();
 
-  const handleCreate = async () => {
-    if (!title || !selectedTheme) {
-      toast({
-        title: "Missing information",
-        description: "Please provide a title and select a theme",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsCreating(true);
-    try {
-      const response = await fetch('/api/competitions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          title,
-          themeName: selectedTheme,
-          timeLimitMinutes: duration,
-          isPrivate,
-          minOfficialVoters: minVoters,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        toast({
-          title: "Competition created!",
-          description: `${title} has been created successfully`,
-        });
-        // Redirect to the competition page
-        setLocation(`/competitions/${data.id}`);
-      } else {
-        toast({
-          title: "Failed to create competition",
-          description: data.error || "An error occurred",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create competition",
-        variant: "destructive",
-      });
-    } finally {
-      setIsCreating(false);
-    }
+  const handleCreate = () => {
+    console.log('Creating competition:', { title, theme: selectedTheme, duration, isPrivate, minVoters });
+    // TODO: Call API to create competition
+    alert('Competition created! (API integration needed)');
   };
 
   const totalSteps = 3;
@@ -475,12 +424,11 @@ export default function CreateCompetitionPage() {
               <button
                 type="button"
                 onClick={handleCreate}
-                disabled={isCreating}
-                className="relative group flex items-center gap-3 px-12 py-6 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-full text-white font-bold text-xl transition-all duration-300 hover:scale-110 shadow-2xl overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                className="relative group flex items-center gap-3 px-12 py-6 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-full text-white font-bold text-xl transition-all duration-300 hover:scale-110 shadow-2xl overflow-hidden"
               >
                 <div className="absolute inset-0 shimmer-effect"></div>
                 <Trophy className="w-7 h-7 relative z-10" />
-                <span className="relative z-10">{isCreating ? 'Creating...' : 'Launch Competition!'}</span>
+                <span className="relative z-10">Launch Competition!</span>
               </button>
             </div>
           </div>

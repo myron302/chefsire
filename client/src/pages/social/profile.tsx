@@ -8,7 +8,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useUser } from "@/contexts/UserContext";
 import { ProfileCompletion } from "@/components/ProfileCompletion";
-import StreakCalendar from "@/components/StreakCalendar";
 import {
   Image,
   ChefHat,
@@ -484,13 +483,6 @@ export default function Profile() {
         </div>
       )}
 
-      {/* Streak Calendar - only show on own profile */}
-      {isOwnProfile && drinkStats && (
-        <div className="mb-6">
-          <StreakCalendar userId={displayUser.id} />
-        </div>
-      )}
-
       {/* Tabs */}
       <Tabs defaultValue="photos" className="w-full">
         <TabsList className="grid w-full grid-cols-4 md:grid-cols-8">
@@ -930,7 +922,7 @@ export default function Profile() {
                   <div className="flex items-center justify-between">
                     <span>Updated</span>
                     <span className="text-sm text-muted-foreground">
-                      {storeData.store.updatedAt ? new Date(storeData.store.updatedAt).toLocaleDateString() : "Recently"}
+                      {new Date(storeData.store.updatedAt || "").toLocaleDateString()}
                     </span>
                   </div>
                 </CardContent>

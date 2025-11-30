@@ -7,7 +7,6 @@ import {
   competitionParticipants,
   competitionVotes,
 } from "../db/competitions";
-import { notificationService } from "../services/notification.service";
 
 const router = Router();
 
@@ -63,39 +62,10 @@ async function getCompetitionDetail(competitionId: string) {
       media: [],
     };
   } catch (error) {
-    if (isMissingTable(error)) {
+    if (isMissingTable(err)) {
       return null;
     }
-    throw error;
-  }
-}
-
-async function notifyCompetitionParticipants(
-  competitionId: string,
-  notification: {
-    type: string;
-    title: string;
-    message: string;
-    imageUrl?: string;
-    linkUrl?: string;
-    metadata?: Record<string, any>;
-  }
-) {
-  try {
-    const participants = await db
-      .select({ userId: competitionParticipants.userId })
-      .from(competitionParticipants)
-      .where(eq(competitionParticipants.competitionId, competitionId));
-
-    if (participants.length === 0) return;
-
-    const userIds = participants.map(p => p.userId);
-    await notificationService.notifyMultipleUsers(userIds, {
-      ...notification,
-      priority: "high",
-    });
-  } catch (error) {
-    console.error("[Competitions] Failed to notify participants:", error);
+    throw err;
   }
 }
 
@@ -144,13 +114,13 @@ router.post("/", async (req, res, next) => {
 
     res.json({ id: created.id });
   } catch (error) {
-    if (isMissingTable(error)) {
+    if (isMissingTable(err)) {
       return res.status(409).json({
         error:
           "Competitions tables are not initialized. Run `npm run db:push` and restart the server.",
       });
     }
-    next(error);
+    next(err);
   }
 });
 
@@ -161,12 +131,12 @@ router.get("/:id", async (req, res, next) => {
     if (!detail) return res.status(404).json({ error: "Not found" });
     res.json(detail);
   } catch (error) {
-    if (isMissingTable(error)) {
+    if (isMissingTable(err)) {
       return res
         .status(404)
         .json({ error: "Not found (tables not initialized yet)" });
     }
-    next(error);
+    next(err);
   }
 });
 
@@ -202,28 +172,15 @@ router.post("/:id/start", async (req, res, next) => {
       })
       .where(eq(competitions.id, compId));
 
-    // Notify all participants that competition has started
-    notifyCompetitionParticipants(compId, {
-      type: "competition_started",
-      title: "🔥 Competition Started!",
-      message: `${comp.title || "The competition"} is now live! Get cooking!`,
-      linkUrl: `/competitions/${compId}`,
-      metadata: {
-        competitionId: compId,
-        endTime: end.toISOString(),
-        timeLimitMinutes: comp.timeLimitMinutes,
-      },
-    }).catch(err => console.error("Failed to notify participants:", err));
-
     res.json({ ok: true });
   } catch (error) {
-    if (isMissingTable(error)) {
+    if (isMissingTable(err)) {
       return res.status(409).json({
         error:
           "Competitions tables are not initialized. Run `npm run db:push`.",
       });
     }
-    next(error);
+    next(err);
   }
 });
 
@@ -258,27 +215,15 @@ router.post("/:id/end", async (req, res, next) => {
       })
       .where(eq(competitions.id, compId));
 
-    // Notify participants that judging has started
-    notifyCompetitionParticipants(compId, {
-      type: "competition_judging",
-      title: "⚖️ Judging Phase Started!",
-      message: `${comp.title || "The competition"} is now in judging! Vote on your favorite dishes!`,
-      linkUrl: `/competitions/${compId}`,
-      metadata: {
-        competitionId: compId,
-        judgingClosesAt: closeAt.toISOString(),
-      },
-    }).catch(err => console.error("Failed to notify participants:", err));
-
     res.json({ ok: true, judgingClosesAt: closeAt.toISOString() });
   } catch (error) {
-    if (isMissingTable(error)) {
+    if (isMissingTable(err)) {
       return res.status(409).json({
         error:
           "Competitions tables are not initialized. Run `npm run db:push`.",
       });
     }
-    next(error);
+    next(err);
   }
 });
 
@@ -325,29 +270,15 @@ router.post("/:id/submit", async (req, res, next) => {
         },
       });
 
-    // Notify other participants of new submission
-    notifyCompetitionParticipants(compId, {
-      type: "competition_submission",
-      title: "📸 New Submission!",
-      message: `A competitor just submitted "${dishTitle || "their dish"}" to ${comp.title || "the competition"}`,
-      imageUrl: finalDishPhotoUrl || undefined,
-      linkUrl: `/competitions/${compId}`,
-      metadata: {
-        competitionId: compId,
-        submitterId: userId,
-        dishTitle,
-      },
-    }).catch(err => console.error("Failed to notify participants:", err));
-
     res.json({ ok: true });
   } catch (error) {
-    if (isMissingTable(error)) {
+    if (isMissingTable(err)) {
       return res.status(409).json({
         error:
           "Competitions tables are not initialized. Run `npm run db:push`.",
       });
     }
-    next(error);
+    next(err);
   }
 });
 
@@ -407,13 +338,13 @@ router.post("/:id/votes", async (req, res, next) => {
 
     res.json({ ok: true });
   } catch (error) {
-    if (isMissingTable(error)) {
+    if (isMissingTable(err)) {
       return res.status(409).json({
         error:
           "Competitions tables are not initialized. Run `npm run db:push`.",
       });
     }
-    next(error);
+    next(err);
   }
 });
 
@@ -477,61 +408,16 @@ router.post("/:id/complete", async (req, res, next) => {
       })
       .where(eq(competitions.id, compId));
 
-    // Notify participants that competition is complete with results
-    notifyCompetitionParticipants(compId, {
-      type: "competition_completed",
-      title: "🏆 Competition Complete!",
-      message: `${comp.title || "The competition"} results are in! ${isOfficial ? "Official" : "Unofficial"} winner announced!`,
-      linkUrl: `/competitions/${compId}`,
-      metadata: {
-        competitionId: compId,
-        winnerParticipantId,
-        isOfficial,
-        totalParticipants: perParticipant.length,
-      },
-    }).catch(err => console.error("Failed to notify participants:", err));
-
     const detail = await getCompetitionDetail(compId);
     res.json({ ok: true, winnerParticipantId, isOfficial, detail });
   } catch (error) {
-    if (isMissingTable(error)) {
+    if (isMissingTable(err)) {
       return res.status(409).json({
         error:
           "Competitions tables are not initialized. Run `npm run db:push`.",
       });
     }
-    next(error);
-  }
-});
-
-// --- get video room URL ---
-router.get("/:id/video-room", async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    const [competition] = await db
-      .select({ videoRoomUrl: competitions.videoRoomUrl })
-      .from(competitions)
-      .where(eq(competitions.id, id))
-      .limit(1);
-
-    if (!competition) {
-      return res.status(404).json({ error: "Competition not found" });
-    }
-
-    if (!competition.videoRoomUrl) {
-      return res.status(404).json({ error: "No video room exists for this competition" });
-    }
-
-    res.json({
-      ok: true,
-      roomUrl: competition.videoRoomUrl
-    });
-  } catch (error) {
-    if (isMissingTable(error)) {
-      return res.status(404).json({ error: "Competitions not initialized" });
-    }
-    next(error);
+    next(err);
   }
 });
 
@@ -575,7 +461,7 @@ router.get("/library", async (req, res, next) => {
 
     res.json({ items, total, limit: lim, offset: off });
   } catch (error) {
-    if (isMissingTable(error)) {
+    if (isMissingTable(err)) {
       return res.json({
         items: [],
         total: 0,
@@ -584,7 +470,7 @@ router.get("/library", async (req, res, next) => {
         note: "competitions tables not initialized yet",
       });
     }
-    next(error);
+    next(err);
   }
 });
 

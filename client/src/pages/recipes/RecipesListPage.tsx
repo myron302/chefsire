@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Clock, Users, ExternalLink, LayoutGrid, List } from "lucide-react";
 import { SpoonRating } from "@/components/SpoonRating";
 import { RecipeReviews } from "@/components/RecipeReviews";
-import ErrorBoundary from "@/components/ErrorBoundary";
 
 /** Very permissive shape — we'll normalize on the client */
 type RecipeItem = {
@@ -28,7 +27,6 @@ type RecipeItem = {
   // meta
   ratingSpoons?: number | null;
   averageRating?: string | number | null; // From local database recipes
-  reviewCount?: number | null; // Number of reviews for this recipe
   cookTime?: number | null;
   servings?: number | null;
 
@@ -51,7 +49,29 @@ type SearchOk = { ok: true; total?: number; source?: string; items: RecipeItem[]
 type SearchErr = { ok: false; error: string };
 type SearchResponse = SearchOk | SearchErr;
 
-// Removed old bland SVG spoon - now using emoji spoons from @/components/SpoonRating
+/** Modern Spoons (0–5) */
+function SpoonIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" {...props}>
+      <path
+        d="M12 2C8.134 2 5 5.134 5 9c0 2.38 1.19 4.49 3 5.74V22h4v-7.26C13.81 13.49 15 11.38 15 9c0-3.866-3.134-7-7-7z"
+        fill="currentColor"
+        fillRule="evenodd"
+      />
+      <ellipse cx="12" cy="9" rx="4" ry="3" fill="currentColor" opacity="0.8" />
+    </svg>
+  );
+}
+function SpoonRating({ value }: { value: number | null | undefined }) {
+  const v = Math.max(0, Math.min(5, Math.round(value ?? 0)));
+  return (
+    <div className="flex items-center gap-1 text-orange-600">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <SpoonIcon key={i} className={i < v ? "w-4 h-4" : "w-4 h-4 opacity-30"} />
+      ))}
+    </div>
+  );
+}
 
 /** Try hard to extract a readable instruction string - FIXED VERSION */
 function extractInstructions(r: RecipeItem): string | null {
@@ -174,20 +194,11 @@ function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boo
 
           {/* Reviews Section */}
           <div className="mt-8 border-t pt-6">
-            <ErrorBoundary>
-              <RecipeReviews
-                recipeId={r.id}
-                averageRating={r.averageRating ? Number(r.averageRating) : undefined}
-                reviewCount={r.reviewCount}
-                recipeData={{
-                  title: r.title,
-                  image: getImage(r) || undefined,
-                  instructions: extractInstructions(r) || undefined,
-                  cookTime: r.cookTime || undefined,
-                  servings: r.servings || undefined,
-                }}
-              />
-            </ErrorBoundary>
+            <RecipeReviews
+              recipeId={r.id}
+              averageRating={r.averageRating ? Number(r.averageRating) : undefined}
+              reviewCount={undefined}
+            />
           </div>
         </div>
       </div>
