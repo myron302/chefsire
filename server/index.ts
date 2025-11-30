@@ -18,6 +18,13 @@ console.log(
   }`
 );
 
+// Database connection check
+if (!process.env.DATABASE_URL) {
+  console.error("⚠️  WARNING: DATABASE_URL is not set! Database operations will fail.");
+} else {
+  console.log("✓ DATABASE_URL is configured");
+}
+
 const server = app.listen(PORT, HOST, () => {
   console.log(`[ChefSire] Listening on http://${HOST}:${PORT}`);
 });
