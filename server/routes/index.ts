@@ -11,6 +11,7 @@ import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
 import allergiesRouter from "./allergies";
 import nutritionRouter from "./nutrition";
+import mealPlansRouter from "./meal-plans";
 import dmRouter from "./dm";
 import clubsRouter from "./clubs";
 
@@ -100,6 +101,9 @@ r.use("/allergies", allergiesRouter);
 
 // Nutrition - prefixed
 r.use("/nutrition", nutritionRouter);
+
+// Meal Plans Marketplace - prefixed
+r.use(mealPlansRouter);
 
 // DM (Direct Messages) - prefixed
 r.use("/dm", dmRouter);

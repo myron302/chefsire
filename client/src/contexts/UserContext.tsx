@@ -44,16 +44,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load any existing session from localStorage
+  // Load user from localStorage on mount
   useEffect(() => {
     try {
       const raw = localStorage.getItem("user");
       if (raw) {
         const parsed = JSON.parse(raw);
-        // Very light cleanup for legacy shapes
         if (parsed && typeof parsed === "object") {
           if (parsed.id && typeof parsed.id !== "string") parsed.id = String(parsed.id);
-          delete parsed.password; // never keep password
+          delete parsed.password;
           setUser(parsed as User);
         }
       }

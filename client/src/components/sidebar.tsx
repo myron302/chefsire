@@ -153,7 +153,18 @@ const NAV: NavItem[] = [
   ]},
 
   { name: "🛒 Marketplace", href: "/marketplace" },
-  { name: "💪 Nutrition", href: "/nutrition", isPremium: true },
+  {
+    name: "💪 Nutrition",
+    href: "/nutrition",
+    isPremium: true,
+    hasSubmenu: true,
+    submenu: [
+      { name: "📊 Meal Planner", href: "/nutrition" },
+      { name: "🛒 Meal Plan Marketplace", href: "/nutrition/marketplace" },
+      { name: "➕ Create Meal Plan", href: "/nutrition/create" },
+      { name: "📈 Creator Analytics", href: "/nutrition/analytics" },
+    ],
+  },
   { name: "❤️ Allergies", href: "/allergies" },
 
   // ⚡ Phase 1: Daily Addiction Features

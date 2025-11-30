@@ -524,13 +524,57 @@ export default function Layout({ children }: LayoutProps) {
                                 </Link>
 
                                 {/* Nutrition */}
-                                <Link
-                                  href="/nutrition"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  💪 Nutrition
-                                </Link>
+                                <div>
+                                  <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                    <Link
+                                      href="/nutrition"
+                                      onClick={() => setIsDropdownOpen(false)}
+                                      className="flex items-center flex-1 font-semibold"
+                                    >
+                                      💪 Nutrition
+                                    </Link>
+                                    <button
+                                      onClick={(e) => toggleSubmenu("nutrition", e)}
+                                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                    >
+                                      <ChevronRight
+                                        className={`w-3 h-3 transition-transform ${expandedMenus.nutrition ? "rotate-90" : ""}`}
+                                      />
+                                    </button>
+                                  </div>
+                                  {expandedMenus.nutrition && (
+                                    <div className="ml-6 space-y-1">
+                                      <Link
+                                        href="/nutrition"
+                                        onClick={() => setIsDropdownOpen(false)}
+                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                      >
+                                        📊 Meal Planner
+                                      </Link>
+                                      <Link
+                                        href="/nutrition/marketplace"
+                                        onClick={() => setIsDropdownOpen(false)}
+                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                      >
+                                        🛒 Meal Plan Marketplace
+                                      </Link>
+                                      <Link
+                                        href="/nutrition/create"
+                                        onClick={() => setIsDropdownOpen(false)}
+                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                      >
+                                        ➕ Create Meal Plan
+                                      </Link>
+                                      <Link
+                                        href="/nutrition/analytics"
+                                        onClick={() => setIsDropdownOpen(false)}
+                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                      >
+                                        📈 Creator Analytics
+                                      </Link>
+                                    </div>
+                                  )}
+                                </div>
 
                                 {/* Allergies */}
                                 <Link
