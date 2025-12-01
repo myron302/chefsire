@@ -157,19 +157,107 @@ export default function SettingsPage() {
     }
   };
 
-  const handleChangePassword = () => {
-    if (password.new !== password.confirm) {
-      alert('New passwords do not match');
+  const handleChangePassword = async () => {
+    // Validation
+    if (!password.current || !password.new || !password.confirm) {
+      toast({
+        title: "Missing fields",
+        description: "Please fill in all password fields",
+        variant: "destructive",
+      });
       return;
     }
-    // TODO: API call to change password
-    console.log('Changing password');
+
+    if (password.new !== password.confirm) {
+      toast({
+        title: "Passwords don't match",
+        description: "New password and confirmation password must match",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (password.new.length < 6) {
+      toast({
+        title: "Password too short",
+        description: "Password must be at least 6 characters long",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          currentPassword: password.current,
+          newPassword: password.new,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to change password');
+      }
+
+      // Clear password fields
+      setPassword({ current: '', new: '', confirm: '' });
+
+      toast({
+        title: "✓ Password changed",
+        description: "Your password has been updated successfully",
+      });
+    } catch (error: any) {
+      console.error('Password change error:', error);
+      toast({
+        title: "Failed to change password",
+        description: error.message || "An error occurred",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDeleteAccount = () => {
-    if (window.confirm('Are you absolutely sure? This action cannot be undone.')) {
-      // TODO: API call to delete account
-      console.log('Deleting account');
+  const handleDeleteAccount = async () => {
+    if (!user?.id) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to delete your account",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/users/${user.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to delete account');
+      }
+
+      toast({
+        title: "✓ Account deleted",
+        description: "Your account has been permanently deleted",
+      });
+
+      // Redirect to home page after a short delay
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 2000);
+    } catch (error: any) {
+      console.error('Account deletion error:', error);
+      toast({
+        title: "Failed to delete account",
+        description: error.message || "An error occurred",
+        variant: "destructive",
+      });
     }
   };
 
