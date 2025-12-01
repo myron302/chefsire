@@ -2,6 +2,11 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import passport from "passport";
+import multer from "multer";
+import path from "path";
+import { randomUUID } from "crypto";
+import fs from "fs";
 import { storage } from "../storage";
 import { AuthService } from "../services/auth.service";
 
@@ -10,6 +15,41 @@ const RAW_SECRET =
 const JWT_SECRET = RAW_SECRET.trim() || "CHEFSIRE_DEV_FALLBACK_SECRET";
 
 const router = Router();
+
+// Configure multer for avatar uploads
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(process.cwd(), 'uploads');
+    try {
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      cb(null, uploadDir);
+    } catch (error) {
+      console.error('[UPLOAD] Failed to create uploads directory:', error);
+      cb(error as Error, uploadDir);
+    }
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = `avatar-${randomUUID()}${path.extname(file.originalname)}`;
+    cb(null, uniqueName);
+  }
+});
+
+const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit for avatars
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed for avatars'));
+    }
+  }
+});
 
 // Map slug values to pretty labels for the space version
 const TITLE_LABELS: Record<string, string> = {
@@ -30,8 +70,10 @@ const TITLE_LABELS: Record<string, string> = {
 /**
  * POST /auth/signup
  */
-router.post("/auth/signup", async (req, res) => {
+router.post("/auth/signup", avatarUpload.single('avatar'), async (req, res) => {
   const { firstName, lastName, username, email, password, selectedTitle } = req.body ?? {};
+  // Avatar file comes from req.file if multer is used, or handle manually from FormData
+  const avatarFile = (req as any).file; // Will be set if multer middleware is used
 
   try {
     if (!email || !password) {
@@ -59,6 +101,9 @@ router.post("/auth/signup", async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Handle avatar URL (if file was uploaded, it will be in /uploads)
+    const avatarUrl = avatarFile ? `/uploads/${avatarFile.filename}` : null;
+
     // Create user
     const newUser = await storage.createUser({
       email: email.toLowerCase().trim(),
@@ -70,6 +115,8 @@ router.post("/auth/signup", async (req, res) => {
       royalTitle: selectedTitle || null,
       showFullName: false,
       emailVerifiedAt: null,
+      avatar: avatarUrl,
+      provider: 'local',
     });
 
     // Create and send verification email
@@ -263,5 +310,57 @@ router.post("/auth/resend-verification", async (req, res) => {
     res.status(500).json({ error: "Failed to resend verification email" });
   }
 });
+
+/**
+ * GET /auth/google
+ * Initiates Google OAuth flow
+ */
+router.get("/auth/google", passport.authenticate("google", {
+  scope: ["profile", "email"],
+}));
+
+/**
+ * GET /auth/google/callback
+ * Google OAuth callback
+ */
+router.get("/auth/google/callback",
+  passport.authenticate("google", { failureRedirect: "/login?error=google-auth-failed", session: false }),
+  async (req, res) => {
+    try {
+      const user = req.user as any;
+
+      if (!user) {
+        return res.redirect("/login?error=no-user");
+      }
+
+      // Create JWT token for the user
+      const token = jwt.sign(
+        {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+        },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
+      // Set token as HTTP-only cookie
+      res.cookie("auth_token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+
+      console.log("✅ Google OAuth login successful for user:", user.id);
+
+      // Redirect to home page
+      res.redirect("/?google-login=success");
+    } catch (error) {
+      console.error("💥 Error in Google OAuth callback:", error);
+      res.redirect("/login?error=oauth-error");
+    }
+  }
+);
 
 export default router;

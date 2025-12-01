@@ -23,7 +23,7 @@ export const users = pgTable(
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     username: text("username").notNull().unique(),
     email: text("email").notNull().unique(),
-    password: text("password").notNull(),
+    password: text("password"),  // Made optional for OAuth users
     displayName: text("display_name").notNull(),
     firstName: text("first_name"),
     lastName: text("last_name"),
@@ -51,7 +51,11 @@ export const users = pgTable(
     macroGoals: jsonb("macro_goals").$type<{ protein: number; carbs: number; fat: number }>(),
     dietaryRestrictions: jsonb("dietary_restrictions").$type<string[]>().default(sql`'[]'::jsonb`),
 
-    // ✅ NEW: will be set upon clicking verification link
+    // OAuth fields
+    googleId: text("google_id"),
+    provider: text("provider"),  // 'local' | 'google' | 'facebook' | etc.
+
+    // ✅ NEW: will be set upon clicking verification link (or instantly for OAuth)
     emailVerifiedAt: timestamp("email_verified_at"),
 
     createdAt: timestamp("created_at").defaultNow(),
@@ -59,6 +63,7 @@ export const users = pgTable(
   (table) => ({
     cateringLocationIdx: index("catering_location_idx").on(table.cateringLocation),
     subscriptionTierIdx: index("subscription_tier_idx").on(table.subscriptionTier),
+    googleIdIdx: index("google_id_idx").on(table.googleId),
   })
 );
 
