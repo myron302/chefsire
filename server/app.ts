@@ -9,7 +9,8 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import routes from "./routes";
-import { setupGoogleOAuth } from "./services/google-oauth.service";
+// TEMPORARILY DISABLED - passport-google-oauth20 package not installed
+// import { setupGoogleOAuth } from "./services/google-oauth.service";
 
 // Define __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -31,7 +32,8 @@ app.use(compression());
 app.use(passport.initialize());
 
 // Setup Google OAuth
-setupGoogleOAuth();
+// TEMPORARILY DISABLED - passport-google-oauth20 package not installed
+// setupGoogleOAuth();
 
 if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));
