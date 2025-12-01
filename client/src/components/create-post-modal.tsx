@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Camera, X } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useUser } from "@/contexts/UserContext";
 
 interface CreatePostModalProps {
   open: boolean;
@@ -22,6 +23,7 @@ interface CreatePostModalProps {
 
 export default function CreatePostModal({ open, onOpenChange }: CreatePostModalProps) {
   const { toast } = useToast();
+  const { user } = useUser();
   const queryClient = useQueryClient();
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
@@ -79,7 +81,15 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    if (!user?.id) {
+      toast({
+        variant: "destructive",
+        description: "You must be logged in to create a post",
+      });
+      return;
+    }
+
     if (!formData.imageUrl) {
       toast({
         variant: "destructive",
@@ -89,7 +99,7 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
     }
 
     const postData = {
-      userId: "user-1", // In a real app, this would come from authentication
+      userId: user.id,
       caption: formData.caption,
       imageUrl: formData.imageUrl,
       tags: formData.tags.split(',').map(tag => tag.trim()).filter(Boolean),
