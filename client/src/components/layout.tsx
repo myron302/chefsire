@@ -589,6 +589,95 @@ export default function Layout({ children }: LayoutProps) {
 
                             <div className="border-t my-2" />
 
+                            {/* ⚡ Phase 1: Daily Addiction Features */}
+                            <div className="px-4 py-2">
+                              <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                                ⚡ Daily Features
+                              </div>
+                              <div className="space-y-1 ml-2">
+                                <Link
+                                  href="/quests"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                >
+                                  🎯 My Quests
+                                </Link>
+                                <Link
+                                  href="/remixes"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                >
+                                  🔄 Recipe Remixes
+                                </Link>
+                                <Link
+                                  href="/suggestions"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                >
+                                  💡 AI Suggestions
+                                </Link>
+                              </div>
+                            </div>
+
+                            <div className="border-t my-2" />
+
+                            {/* ⚡ Phase 2: Social Explosion Features */}
+                            <div className="px-4 py-2">
+                              <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                                ⚡ Social Features
+                              </div>
+                              <div className="space-y-1 ml-2">
+                                <Link
+                                  href="/cook-together"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                >
+                                  👥 Cook Together
+                                </Link>
+                                <Link
+                                  href="/duets"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                >
+                                  🎭 Recipe Duets
+                                </Link>
+                                <Link
+                                  href="/events"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                >
+                                  🎉 Seasonal Events
+                                </Link>
+                                <Link
+                                  href="/leaderboard"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                >
+                                  🏆 Leaderboard
+                                </Link>
+                              </div>
+                            </div>
+
+                            <div className="border-t my-2" />
+
+                            {/* 📊 Phase 3: Power User Features */}
+                            <div className="px-4 py-2">
+                              <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                                📊 Analytics
+                              </div>
+                              <div className="space-y-1 ml-2">
+                                <Link
+                                  href="/analytics"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                >
+                                  📊 Analytics Dashboard
+                                </Link>
+                              </div>
+                            </div>
+
+                            <div className="border-t my-2" />
+
                             {/* Profile / Settings / Sign out */}
                             <Link
                               href={`/profile/${user?.id}`}

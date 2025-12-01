@@ -78,6 +78,10 @@ export default function SignupPage() {
   const [businessName, setBusinessName] = useState('');
   const [businessCategory, setBusinessCategory] = useState('');
 
+  // Profile picture
+  const [profilePicture, setProfilePicture] = useState<File | null>(null);
+  const [profilePicturePreview, setProfilePicturePreview] = useState<string | null>(null);
+
   // Title dropdown
   const [showTitleDropdown, setShowTitleDropdown] = useState(false);
   const [selectedTitle, setSelectedTitle] = useState('');
@@ -189,25 +193,41 @@ export default function SignupPage() {
     return { text: 'Strong', color: 'text-green-500' };
   }, [passwordScore]);
 
+  // Handle profile picture change
+  const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setProfilePicture(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfilePicturePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   // --- API helpers ---
   async function apiSignup() {
-    const payload = {
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      username: slugify(username.trim()),
-      email: email.trim(),
-      password,
-      selectedTitle,              // stored separately on server; not appended to username
-      phone,
-      accountType,
-      businessName: accountType === 'business' ? businessName.trim() : undefined,
-      businessCategory: accountType === 'business' ? businessCategory.trim() : undefined,
-    };
+    const formData = new FormData();
+    formData.append('firstName', firstName.trim());
+    formData.append('lastName', lastName.trim());
+    formData.append('username', slugify(username.trim()));
+    formData.append('email', email.trim());
+    formData.append('password', password);
+    if (selectedTitle) formData.append('selectedTitle', selectedTitle);
+    if (phone) formData.append('phone', phone);
+    formData.append('accountType', accountType);
+    if (accountType === 'business') {
+      formData.append('businessName', businessName.trim());
+      formData.append('businessCategory', businessCategory.trim());
+    }
+    if (profilePicture) {
+      formData.append('avatar', profilePicture);
+    }
 
     const res = await fetch("/api/auth/signup", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: formData, // Send as FormData instead of JSON
     });
 
     // Backend returns JSON with ok/message or error
@@ -421,6 +441,44 @@ export default function SignupPage() {
               </div>
               {errors.title && <p className="mt-2 text-sm text-red-300">{errors.title}</p>}
               <p className="mt-1 text-xs text-yellow-200">Choose a royal title to be displayed alongside your name</p>
+            </div>
+
+            {/* Profile Picture Upload */}
+            <div>
+              <label htmlFor="profilePicture" className="block text-sm font-medium text-yellow-100 mb-2">
+                Profile Picture (Optional)
+              </label>
+              <div className="flex items-center gap-4">
+                {profilePicturePreview && (
+                  <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-yellow-400 shadow-lg">
+                    <img
+                      src={profilePicturePreview}
+                      alt="Profile Preview"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <input
+                    id="profilePicture"
+                    name="profilePicture"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfilePictureChange}
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor="profilePicture"
+                    className="inline-flex items-center px-4 py-3 bg-white/20 border border-yellow-300/50 rounded-2xl text-yellow-100 hover:bg-white/25 transition cursor-pointer"
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    {profilePicture ? 'Change Picture' : 'Choose Picture'}
+                  </label>
+                  <p className="mt-1 text-xs text-yellow-200">Upload a photo to personalize your profile</p>
+                </div>
+              </div>
             </div>
 
             {/* Account Type Selector */}

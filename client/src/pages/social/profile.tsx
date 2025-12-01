@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useUser } from "@/contexts/UserContext";
 import { ProfileCompletion } from "@/components/ProfileCompletion";
+import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
 import {
   Image,
   ChefHat,
@@ -34,6 +35,7 @@ import {
   Video,
   Play,
   MessageCircle,
+  BarChart3,
 } from "lucide-react";
 import type { User, PostWithUser } from "@shared/schema";
 
@@ -485,7 +487,7 @@ export default function Profile() {
 
       {/* Tabs */}
       <Tabs defaultValue="photos" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 md:grid-cols-8">
+        <TabsList className="grid w-full grid-cols-4 md:grid-cols-9">
           <TabsTrigger value="photos" className="flex items-center space-x-2" data-testid="tab-photos">
             <Image className="h-4 w-4" />
             <span className="hidden sm:inline">Photos</span>
@@ -516,6 +518,12 @@ export default function Profile() {
             <Star className="h-4 w-4" />
             <span className="hidden sm:inline">Saved</span>
           </TabsTrigger>
+          {isOwnProfile && (
+            <TabsTrigger value="analytics" className="flex items-center space-x-2" data-testid="tab-analytics">
+              <BarChart3 className="h-4 w-4" />
+              <span className="hidden sm:inline">Analytics</span>
+            </TabsTrigger>
+          )}
           <TabsTrigger value="store" className="flex items-center space-x-2" data-testid="tab-store">
             <StoreIcon className="h-4 w-4" />
             <span className="hidden sm:inline">Store</span>
@@ -871,6 +879,25 @@ export default function Profile() {
                     Open Messages
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* ANALYTICS */}
+        {isOwnProfile && (
+          <TabsContent value="analytics" className="mt-6">
+            <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50/50 to-purple-50/50">
+              <CardHeader className="border-b border-blue-200">
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-blue-600" />
+                  <span className="bg-gradient-to-r from-blue-700 to-purple-700 bg-clip-text text-transparent">
+                    Your Analytics Dashboard
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <AnalyticsDashboard />
               </CardContent>
             </Card>
           </TabsContent>
