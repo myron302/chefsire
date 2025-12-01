@@ -400,4 +400,53 @@ r.get("/:id/nutrition/logs", async (req, res) => {
   }
 });
 
+/* ------------------------------------------------------------------ */
+/* Account deletion                                                    */
+/* ------------------------------------------------------------------ */
+/**
+ * DELETE /users/:id
+ * Delete user account (requires authentication)
+ * GDPR compliance - allows users to delete their own accounts
+ */
+r.delete("/:id", requireAuth, async (req, res) => {
+  try {
+    // Security: users can only delete their own account
+    if (req.user!.id !== req.params.id) {
+      return res.status(403).json({ message: "You can only delete your own account" });
+    }
+
+    const userId = req.params.id;
+
+    // Verify user exists
+    const user = await storage.getUser(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Delete the user (database CASCADE will handle related records)
+    const deleted = await storage.deleteUser(userId);
+
+    if (!deleted) {
+      return res.status(500).json({ message: "Failed to delete account" });
+    }
+
+    // Clear auth cookie
+    res.clearCookie("auth_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    });
+
+    console.log("✅ Account deleted successfully for user:", userId);
+
+    res.json({
+      message: "Account deleted successfully",
+      deleted: true
+    });
+  } catch (error) {
+    console.error("DELETE /users/:id error", error);
+    res.status(500).json({ message: "Failed to delete account" });
+  }
+});
+
 export default r;

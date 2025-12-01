@@ -312,6 +312,68 @@ router.post("/auth/resend-verification", async (req, res) => {
 });
 
 /**
+ * POST /auth/change-password
+ * Change user password (requires authentication)
+ */
+router.post("/auth/change-password", async (req, res) => {
+  try {
+    // Extract token from cookie or authorization header
+    const token = req.cookies?.auth_token || req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
+    const userId = decoded.id;
+
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "Current password and new password are required" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "New password must be at least 6 characters" });
+    }
+
+    // Get user from database
+    const user = await storage.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Check if user has a password (OAuth users might not)
+    if (!user.password) {
+      return res.status(400).json({ error: "Cannot change password for OAuth accounts" });
+    }
+
+    // Verify current password
+    const isValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isValid) {
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password in database
+    await storage.updateUser(userId, { password: hashedPassword });
+
+    console.log("✅ Password changed successfully for user:", userId);
+
+    res.json({ message: "Password changed successfully" });
+  } catch (error) {
+    console.error("Error changing password:", error);
+    if (error instanceof jwt.JsonWebTokenError) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+    res.status(500).json({ error: "Failed to change password" });
+  }
+});
+
+/**
  * GET /auth/google
  * Initiates Google OAuth flow
  */
