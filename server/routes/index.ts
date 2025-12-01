@@ -56,9 +56,8 @@ import analyticsRouter from "./analytics";
 // 💰 Marketplace & Monetization
 import subscriptionsRouter from "./subscriptions";
 import ordersRouter from "./orders";
-// TEMPORARILY COMMENTED OUT - square package not installed
-// import paymentsRouter from "./payments";
-// import payoutsRouter from "./payouts";
+import paymentsRouter from "./payments";
+import payoutsRouter from "./payouts";
 
 // File uploads
 import uploadRouter from "./upload";
@@ -151,9 +150,8 @@ r.use("/analytics", analyticsRouter);
 // 💰 Marketplace & Monetization
 r.use("/subscriptions", subscriptionsRouter);
 r.use("/orders", ordersRouter);
-// TEMPORARILY COMMENTED OUT - square package not installed
-// r.use("/payments", paymentsRouter);
-// r.use("/payouts", payoutsRouter);
+r.use("/payments", paymentsRouter);
+r.use("/payouts", payoutsRouter);
 
 // File uploads
 r.use("/upload", uploadRouter);
