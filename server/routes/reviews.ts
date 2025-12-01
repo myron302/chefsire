@@ -168,7 +168,16 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     res.status(201).json({ ...completeReview, photos: [] });
   } catch (error: any) {
     console.error("Error creating review:", error);
-    res.status(500).json({ error: "Failed to create review" });
+    console.error("Error details:", {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      stack: error.stack?.split('\n').slice(0, 3).join('\n')
+    });
+    res.status(500).json({
+      error: "Failed to create review",
+      details: error.message
+    });
   }
 });
 
