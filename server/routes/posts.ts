@@ -70,6 +70,7 @@ r.get(
 
 r.post("/", async (req, res) => {
   try {
+    console.log("📝 Create post attempt with body:", req.body);
     const schema = z.object({
       userId: z.string(),
       caption: z.string().optional(),
@@ -78,12 +79,21 @@ r.post("/", async (req, res) => {
       isRecipe: z.boolean().optional(),
     });
     const body = schema.parse(req.body);
+    console.log("✅ Validation passed, creating post:", body);
     const created = await storage.createPost(body as any);
+    console.log("✅ Post created successfully:", created.id);
     res.status(201).json(created);
   } catch (err: any) {
+    console.error("❌ Post creation error:", err);
+    console.error("Error details:", {
+      message: err.message,
+      issues: err.issues,
+      code: err.code,
+      detail: err.detail
+    });
     if (err?.issues) return res.status(400).json({ message: "Invalid post data", errors: err.issues });
     console.error("posts/create error", err);
-    res.status(500).json({ message: "Failed to create post" });
+    res.status(500).json({ message: "Failed to create post", error: err.message });
   }
 });
 
