@@ -6,6 +6,7 @@ import { randomBytes } from "crypto";
 import { db } from "../db";
 import { eq } from "drizzle-orm";
 import { users } from "@shared/schema";
+import { logToFile } from "../lib/logger";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
@@ -34,6 +35,7 @@ export function setupGoogleOAuth() {
       },
       async (accessToken, refreshToken, profile, done) => {
         try {
+          logToFile("🔍 OAuth callback started", { profileId: profile.id });
           console.log("🔍 OAuth callback started for profile:", profile.id);
 
           // Extract user info from Google profile
@@ -43,6 +45,7 @@ export function setupGoogleOAuth() {
           const lastName = profile.name?.familyName || "";
           const avatar = profile.photos?.[0]?.value || "";
 
+          logToFile("📧 Email extracted", { email });
           console.log("📧 Email extracted:", email);
 
           if (!email) {
@@ -108,6 +111,15 @@ export function setupGoogleOAuth() {
           console.log("✅ New Google user created:", newUser.id);
           return done(null, newUser);
         } catch (error) {
+          const errorDetails = {
+            type: error?.constructor?.name,
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            fullError: error
+          };
+
+          logToFile("💥 ERROR in Google OAuth callback", errorDetails);
+
           console.error("💥 ERROR in Google OAuth callback:");
           console.error("Error type:", error?.constructor?.name);
           console.error("Error message:", error instanceof Error ? error.message : String(error));
