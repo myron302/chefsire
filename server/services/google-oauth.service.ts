@@ -21,18 +21,24 @@ function generateUsername(email: string): string {
 }
 
 export function setupGoogleOAuth() {
+  console.log("🔧 Setting up Google OAuth...");
+  console.log("📋 GOOGLE_CLIENT_ID:", GOOGLE_CLIENT_ID ? `${GOOGLE_CLIENT_ID.substring(0, 20)}...` : "MISSING");
+  console.log("📋 GOOGLE_CLIENT_SECRET:", GOOGLE_CLIENT_SECRET ? "SET" : "MISSING");
+  console.log("📋 GOOGLE_CALLBACK_URL:", GOOGLE_CALLBACK_URL);
+
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    console.warn("⚠️  Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env");
+    console.error("❌ Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env");
     return false;
   }
 
-  passport.use(
-    new GoogleStrategy(
-      {
-        clientID: GOOGLE_CLIENT_ID,
-        clientSecret: GOOGLE_CLIENT_SECRET,
-        callbackURL: GOOGLE_CALLBACK_URL,
-      },
+  try {
+    passport.use(
+      new GoogleStrategy(
+        {
+          clientID: GOOGLE_CLIENT_ID,
+          clientSecret: GOOGLE_CLIENT_SECRET,
+          callbackURL: GOOGLE_CALLBACK_URL,
+        },
       async (accessToken, refreshToken, profile, done) => {
         try {
           logToFile("🔍 OAuth callback started", { profileId: profile.id });
@@ -138,18 +144,22 @@ export function setupGoogleOAuth() {
     done(null, user.id);
   });
 
-  // Deserialize user from session
-  passport.deserializeUser(async (id: string, done) => {
-    try {
-      const user = await db.query.users.findFirst({
-        where: (users, { eq }) => eq(users.id, id),
-      });
-      done(null, user);
-    } catch (error) {
-      done(error, null);
-    }
-  });
+    // Deserialize user from session
+    passport.deserializeUser(async (id: string, done) => {
+      try {
+        const user = await db.query.users.findFirst({
+          where: (users, { eq }) => eq(users.id, id),
+        });
+        done(null, user);
+      } catch (error) {
+        done(error, null);
+      }
+    });
 
-  console.log("✅ Google OAuth configured");
-  return true;
+    console.log("✅ Google OAuth configured successfully");
+    return true;
+  } catch (error) {
+    console.error("❌ Failed to setup Google OAuth:", error);
+    return false;
+  }
 }
