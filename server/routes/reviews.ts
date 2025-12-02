@@ -340,7 +340,7 @@ router.post("/:reviewId/helpful", requireAuth, async (req: Request, res: Respons
     await db.insert(reviewHelpful).values(helpfulData);
 
     // Increment helpful count
-    await storage
+    await db
       .update(recipeReviews)
       .set({ helpfulCount: sql`${recipeReviews.helpfulCount} + 1` })
       .where(eq(recipeReviews.id, reviewId));
@@ -359,7 +359,7 @@ router.delete("/:reviewId/helpful", requireAuth, async (req: Request, res: Respo
     const { reviewId } = req.params;
 
     // Delete helpful vote
-    const result = await storage
+    const result = await db
       .delete(reviewHelpful)
       .where(and(eq(reviewHelpful.reviewId, reviewId), eq(reviewHelpful.userId, userId)))
       .returning();
@@ -369,7 +369,7 @@ router.delete("/:reviewId/helpful", requireAuth, async (req: Request, res: Respo
     }
 
     // Decrement helpful count
-    await storage
+    await db
       .update(recipeReviews)
       .set({ helpfulCount: sql`${recipeReviews.helpfulCount} - 1` })
       .where(eq(recipeReviews.id, reviewId));
@@ -384,7 +384,7 @@ router.delete("/:reviewId/helpful", requireAuth, async (req: Request, res: Respo
 // Helper function to update recipe's average rating
 async function updateRecipeRating(recipeId: string) {
   try {
-    const stats = await storage
+    const stats = await db
       .select({
         avgRating: sql<number>`AVG(${recipeReviews.rating})::numeric(3,2)`,
         count: sql<number>`COUNT(*)::integer`,
@@ -396,7 +396,7 @@ async function updateRecipeRating(recipeId: string) {
 
     // Try to update, but don't fail if columns don't exist yet
     try {
-      await storage
+      await db
         .update(recipes)
         .set({
           averageRating: avgRating || "0",
