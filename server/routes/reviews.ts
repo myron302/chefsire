@@ -1,6 +1,6 @@
 // server/routes/reviews.ts
 import { Router, Request, Response } from "express";
-import { storage } from "../storage";
+import { db } from "../db";
 import {
   recipeReviews,
   recipeReviewPhotos,
@@ -50,7 +50,7 @@ router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
     const { recipeId } = req.params;
     const userId = (req as any).user?.id;
 
-    const reviews = await storage
+    const reviews = await db
       .select({
         id: recipeReviews.id,
         recipeId: recipeReviews.recipeId,
@@ -82,7 +82,7 @@ router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
     const reviewIds = reviews.map((r) => r.id);
     let photos: any[] = [];
     if (reviewIds.length > 0) {
-      photos = await storage
+      photos = await db
         .select()
         .from(recipeReviewPhotos)
         .where(sql`${recipeReviewPhotos.reviewId} IN ${sql.raw(`(${reviewIds.map(() => '?').join(',')})`, reviewIds)}`);
@@ -119,7 +119,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     }
 
     // Check if user already reviewed this recipe
-    const existingReview = await storage
+    const existingReview = await db
       .select()
       .from(recipeReviews)
       .where(and(eq(recipeReviews.recipeId, recipeId), eq(recipeReviews.userId, userId)))
@@ -137,13 +137,13 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       reviewText: reviewText || null,
     };
 
-    const [review] = await storage.insert(recipeReviews).values(newReview).returning();
+    const [review] = await db.insert(recipeReviews).values(newReview).returning();
 
     // Update recipe average rating and count
     await updateRecipeRating(recipeId);
 
     // Fetch the complete review with user data
-    const [completeReview] = await storage
+    const [completeReview] = await db
       .select({
         id: recipeReviews.id,
         recipeId: recipeReviews.recipeId,
@@ -255,7 +255,7 @@ router.delete("/:reviewId", requireAuth, async (req: Request, res: Response) => 
     const recipeId = existingReview.recipeId;
 
     // Delete review (cascade will delete photos and helpful votes)
-    await storage.delete(recipeReviews).where(eq(recipeReviews.id, reviewId));
+    await db.delete(recipeReviews).where(eq(recipeReviews.id, reviewId));
 
     // Update recipe average rating
     await updateRecipeRating(recipeId);
@@ -304,7 +304,7 @@ router.post(
         caption: caption || null,
       };
 
-      const [photo] = await storage.insert(recipeReviewPhotos).values(photoData).returning();
+      const [photo] = await db.insert(recipeReviewPhotos).values(photoData).returning();
 
       res.status(201).json(photo);
     } catch (error: any) {
@@ -337,7 +337,7 @@ router.post("/:reviewId/helpful", requireAuth, async (req: Request, res: Respons
       userId,
     };
 
-    await storage.insert(reviewHelpful).values(helpfulData);
+    await db.insert(reviewHelpful).values(helpfulData);
 
     // Increment helpful count
     await storage
