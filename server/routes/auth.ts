@@ -374,6 +374,49 @@ router.post("/auth/change-password", async (req, res) => {
 });
 
 /**
+ * GET /auth/me
+ * Get current user from JWT cookie
+ */
+router.get("/auth/me", async (req, res) => {
+  try {
+    const token = req.cookies?.auth_token;
+
+    if (!token) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string; username: string };
+    const user = await storage.getUser(decoded.id);
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        displayName: user.displayName,
+        royalTitle: user.royalTitle,
+        avatar: user.avatar,
+        bio: user.bio,
+        subscriptionTier: user.subscriptionTier,
+        nutritionPremium: user.nutritionPremium,
+        nutritionTrialEndsAt: user.nutritionTrialEndsAt,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching current user:", error);
+    if (error instanceof jwt.JsonWebTokenError) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+    res.status(500).json({ error: "Failed to fetch user" });
+  }
+});
+
+/**
  * GET /auth/google
  * Initiates Google OAuth flow
  */

@@ -44,24 +44,61 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load user from localStorage on mount
+  // Load user from localStorage on mount, or fetch from server if OAuth login
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("user");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === "object") {
-          if (parsed.id && typeof parsed.id !== "string") parsed.id = String(parsed.id);
-          delete parsed.password;
-          setUser(parsed as User);
+    const loadUser = async () => {
+      try {
+        // Check if just logged in with OAuth
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('google-login') === 'success') {
+          // Fetch user from server using JWT cookie
+          const res = await fetch('/api/auth/me', { credentials: 'include' });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.user) {
+              const cleanUser: User = {
+                id: String(data.user.id),
+                email: data.user.email,
+                username: data.user.username,
+                displayName: data.user.displayName,
+                royalTitle: data.user.royalTitle ?? null,
+                avatar: data.user.avatar ?? null,
+                bio: data.user.bio ?? null,
+                subscriptionTier: data.user.subscriptionTier,
+                nutritionPremium: data.user.nutritionPremium,
+                nutritionTrialEndsAt: data.user.nutritionTrialEndsAt,
+                subscription: data.user.subscription || data.user.subscriptionTier || 'free',
+                trialEndDate: data.user.trialEndDate,
+                productCount: data.user.productCount || 0,
+              };
+              localStorage.setItem("user", JSON.stringify(cleanUser));
+              setUser(cleanUser);
+              // Clean up URL
+              window.history.replaceState({}, '', '/');
+              return;
+            }
+          }
         }
+
+        // Fall back to localStorage
+        const raw = localStorage.getItem("user");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") {
+            if (parsed.id && typeof parsed.id !== "string") parsed.id = String(parsed.id);
+            delete parsed.password;
+            setUser(parsed as User);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load user:", e);
+        localStorage.removeItem("user");
+      } finally {
+        setLoading(false);
       }
-    } catch (e) {
-      console.error("Failed to read saved user:", e);
-      localStorage.removeItem("user");
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    loadUser();
   }, []);
 
   const persist = (u: User | null) => {

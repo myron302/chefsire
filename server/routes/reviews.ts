@@ -110,11 +110,14 @@ router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
 // Create a review
 router.post("/", requireAuth, async (req: Request, res: Response) => {
   try {
+    console.log("📝 Create review attempt by user:", (req as any).user?.id);
     const userId = (req as any).user.id;
     const { recipeId, rating, reviewText } = req.body;
+    console.log("📝 Review data:", { userId, recipeId, rating, reviewText });
 
     // Validate rating
     if (!rating || rating < 1 || rating > 5) {
+      console.log("❌ Invalid rating:", rating);
       return res.status(400).json({ error: "Rating must be between 1 and 5 spoons" });
     }
 
@@ -126,6 +129,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       .limit(1);
 
     if (existingReview.length > 0) {
+      console.log("❌ User already reviewed this recipe");
       return res.status(400).json({ error: "You already reviewed this recipe. Use update instead." });
     }
 
@@ -137,6 +141,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       reviewText: reviewText || null,
     };
 
+    console.log("💾 Inserting review:", newReview);
     const [review] = await db.insert(recipeReviews).values(newReview).returning();
 
     // Update recipe average rating and count
