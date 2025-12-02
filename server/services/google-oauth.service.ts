@@ -6,7 +6,8 @@ import { randomBytes } from "crypto";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
-const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || "http://localhost:3000/api/auth/google/callback";
+const APP_URL = process.env.APP_URL || "http://localhost:3000";
+const GOOGLE_CALLBACK_URL = process.env.GOOGLE_REDIRECT_URI || `${APP_URL}/api/auth/google/callback`;
 
 // Generate a random username from email
 function generateUsername(email: string): string {
