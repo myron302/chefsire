@@ -3,6 +3,9 @@ import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { storage } from "../storage";
 import { randomBytes } from "crypto";
+import { db } from "../db";
+import { eq } from "drizzle-orm";
+import { users } from "@shared/schema";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
@@ -43,7 +46,7 @@ export function setupGoogleOAuth() {
           }
 
           // Check if user exists with this Google ID
-          const existingUser = await storage.db.query.users.findFirst({
+          const existingUser = await db.query.users.findFirst({
             where: (users, { eq }) => eq(users.googleId, googleId),
           });
 
@@ -56,15 +59,15 @@ export function setupGoogleOAuth() {
           const emailUser = await storage.findByEmail(email);
           if (emailUser) {
             // Email exists but no Google ID - link accounts
-            const updated = await storage.db
-              .update(storage.schema.users)
+            const updated = await db
+              .update(users)
               .set({
                 googleId,
                 provider: "google",
                 avatar: avatar || emailUser.avatar,
                 emailVerifiedAt: new Date(), // Google emails are pre-verified
               })
-              .where(storage.eq(storage.schema.users.id, emailUser.id))
+              .where(eq(users.id, emailUser.id))
               .returning();
 
             return done(null, updated[0]);
@@ -107,7 +110,7 @@ export function setupGoogleOAuth() {
   // Deserialize user from session
   passport.deserializeUser(async (id: string, done) => {
     try {
-      const user = await storage.db.query.users.findFirst({
+      const user = await db.query.users.findFirst({
         where: (users, { eq }) => eq(users.id, id),
       });
       done(null, user);
