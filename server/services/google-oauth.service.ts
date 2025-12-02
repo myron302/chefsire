@@ -34,6 +34,8 @@ export function setupGoogleOAuth() {
       },
       async (accessToken, refreshToken, profile, done) => {
         try {
+          console.log("🔍 OAuth callback started for profile:", profile.id);
+
           // Extract user info from Google profile
           const email = profile.emails?.[0]?.value;
           const googleId = profile.id;
@@ -41,23 +43,32 @@ export function setupGoogleOAuth() {
           const lastName = profile.name?.familyName || "";
           const avatar = profile.photos?.[0]?.value || "";
 
+          console.log("📧 Email extracted:", email);
+
           if (!email) {
+            console.error("❌ No email in profile");
             return done(new Error("No email found in Google profile"), undefined);
           }
 
+          console.log("🔍 Checking for existing user with Google ID:", googleId);
           // Check if user exists with this Google ID
           const existingUser = await db.query.users.findFirst({
             where: (users, { eq }) => eq(users.googleId, googleId),
           });
 
+          console.log("✅ Existing user query completed:", existingUser ? "found" : "not found");
+
           if (existingUser) {
-            // User exists, log them in
+            console.log("✅ Existing user found, logging in");
             return done(null, existingUser);
           }
 
+          console.log("🔍 Checking for existing email:", email);
           // Check if email is already registered
           const emailUser = await storage.findByEmail(email);
+
           if (emailUser) {
+            console.log("🔗 Email exists, linking Google account");
             // Email exists but no Google ID - link accounts
             const updated = await db
               .update(users)
@@ -70,9 +81,11 @@ export function setupGoogleOAuth() {
               .where(eq(users.id, emailUser.id))
               .returning();
 
+            console.log("✅ Account linked successfully");
             return done(null, updated[0]);
           }
 
+          console.log("🆕 Creating new user");
           // Create new user
           const username = generateUsername(email);
           const displayName = `${firstName} ${lastName}`.trim() || username;
@@ -95,7 +108,13 @@ export function setupGoogleOAuth() {
           console.log("✅ New Google user created:", newUser.id);
           return done(null, newUser);
         } catch (error) {
-          console.error("💥 Error in Google OAuth callback:", error);
+          console.error("💥 ERROR in Google OAuth callback:");
+          console.error("Error type:", error?.constructor?.name);
+          console.error("Error message:", error instanceof Error ? error.message : String(error));
+          console.error("Full error:", error);
+          if (error instanceof Error && error.stack) {
+            console.error("Stack trace:", error.stack);
+          }
           return done(error as Error, undefined);
         }
       }
