@@ -53,7 +53,10 @@ export const users = pgTable(
 
     // OAuth fields
     googleId: text("google_id"),
-    provider: text("provider"),  // 'local' | 'google' | 'facebook' | etc.
+    facebookId: text("facebook_id"),
+    instagramId: text("instagram_id"),
+    tiktokId: text("tiktok_id"),
+    provider: text("provider"),  // 'local' | 'google' | 'facebook' | 'instagram' | 'tiktok'
 
     // ✅ NEW: will be set upon clicking verification link (or instantly for OAuth)
     emailVerifiedAt: timestamp("email_verified_at"),
@@ -64,6 +67,9 @@ export const users = pgTable(
     cateringLocationIdx: index("catering_location_idx").on(table.cateringLocation),
     subscriptionTierIdx: index("subscription_tier_idx").on(table.subscriptionTier),
     googleIdIdx: index("google_id_idx").on(table.googleId),
+    facebookIdIdx: index("facebook_id_idx").on(table.facebookId),
+    instagramIdIdx: index("instagram_id_idx").on(table.instagramId),
+    tiktokIdIdx: index("tiktok_id_idx").on(table.tiktokId),
   })
 );
 
