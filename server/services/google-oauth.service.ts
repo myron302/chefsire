@@ -84,7 +84,8 @@ export function setupGoogleOAuth() {
               .set({
                 googleId,
                 provider: "google",
-                avatar: avatar || emailUser.avatar,
+                // Preserve original avatar if user already has one
+                avatar: emailUser.avatar || avatar,
                 emailVerifiedAt: new Date(), // Google emails are pre-verified
               })
               .where(eq(users.id, emailUser.id))
@@ -138,23 +139,6 @@ export function setupGoogleOAuth() {
       }
     )
   );
-
-  // Serialize user for session
-  passport.serializeUser((user: any, done) => {
-    done(null, user.id);
-  });
-
-    // Deserialize user from session
-    passport.deserializeUser(async (id: string, done) => {
-      try {
-        const user = await db.query.users.findFirst({
-          where: (users, { eq }) => eq(users.id, id),
-        });
-        done(null, user);
-      } catch (error) {
-        done(error, null);
-      }
-    });
 
     console.log("✅ Google OAuth configured successfully");
     return true;

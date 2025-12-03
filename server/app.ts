@@ -5,6 +5,7 @@ import cors from "cors";
 import compression from "compression";
 import morgan from "morgan";
 import passport from "passport";
+import cookieParser from "cookie-parser";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -26,6 +27,7 @@ app.use(cors({
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(compression());
+app.use(cookieParser()); // Parse cookies before Passport
 
 // Initialize Passport
 app.use(passport.initialize());
