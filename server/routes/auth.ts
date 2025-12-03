@@ -468,4 +468,118 @@ router.get("/auth/google/callback",
   }
 );
 
+/**
+ * GET /auth/facebook
+ * Initiates Facebook OAuth flow
+ */
+router.get("/auth/facebook", passport.authenticate("facebook", {
+  scope: ["email", "public_profile"],
+}));
+
+/**
+ * GET /auth/facebook/callback
+ * Facebook OAuth callback
+ */
+router.get("/auth/facebook/callback",
+  passport.authenticate("facebook", { failureRedirect: "/login?error=facebook-auth-failed", session: false }),
+  async (req, res) => {
+    try {
+      const user = req.user as any;
+
+      if (!user) {
+        return res.redirect("/login?error=no-user");
+      }
+
+      // Create JWT token for the user
+      const token = jwt.sign(
+        {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+        },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
+      // Set token as HTTP-only cookie
+      res.cookie("auth_token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+
+      console.log("✅ Facebook OAuth login successful for user:", user.id);
+
+      // Redirect to home page
+      res.redirect("/?facebook-login=success");
+    } catch (error) {
+      console.error("💥 Error in Facebook OAuth callback:", error);
+      res.redirect("/login?error=oauth-error");
+    }
+  }
+);
+
+/**
+ * GET /auth/tiktok
+ * Initiates TikTok OAuth flow
+ */
+router.get("/auth/tiktok", passport.authenticate("tiktok", {
+  scope: ["user.info.basic"],
+}));
+
+/**
+ * GET /auth/tiktok/callback
+ * TikTok OAuth callback
+ */
+router.get("/auth/tiktok/callback",
+  passport.authenticate("tiktok", { failureRedirect: "/login?error=tiktok-auth-failed", session: false }),
+  async (req, res) => {
+    try {
+      const user = req.user as any;
+
+      if (!user) {
+        return res.redirect("/login?error=no-user");
+      }
+
+      // Create JWT token for the user
+      const token = jwt.sign(
+        {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+        },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
+      // Set token as HTTP-only cookie
+      res.cookie("auth_token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+
+      console.log("✅ TikTok OAuth login successful for user:", user.id);
+
+      // Redirect to home page
+      res.redirect("/?tiktok-login=success");
+    } catch (error) {
+      console.error("💥 Error in TikTok OAuth callback:", error);
+      res.redirect("/login?error=oauth-error");
+    }
+  }
+);
+
+/**
+ * GET /auth/instagram
+ * Note: Instagram OAuth is handled through Facebook
+ * Redirect users to use Facebook login for Instagram integration
+ */
+router.get("/auth/instagram", (req, res) => {
+  // Instagram Basic Display API requires Facebook OAuth
+  res.redirect("/auth/facebook");
+});
+
 export default router;

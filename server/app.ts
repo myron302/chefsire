@@ -11,6 +11,8 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import routes from "./routes";
 import { setupGoogleOAuth } from "./services/google-oauth.service";
+import { setupFacebookOAuth } from "./services/facebook-oauth.service";
+import { setupTikTokOAuth } from "./services/tiktok-oauth.service";
 
 // Define __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -32,8 +34,10 @@ app.use(cookieParser()); // Parse cookies before Passport
 // Initialize Passport
 app.use(passport.initialize());
 
-// Setup Google OAuth
+// Setup OAuth providers
 setupGoogleOAuth();
+setupFacebookOAuth();
+setupTikTokOAuth();
 
 if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));
