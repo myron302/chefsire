@@ -418,10 +418,19 @@ router.get("/auth/me", async (req, res) => {
 
 /**
  * GET /auth/google
- * Initiates Google OAuth flow
+ * Initiates Google OAuth flow for LOGIN (silent if already authenticated)
  */
 router.get("/auth/google", passport.authenticate("google", {
   scope: ["profile", "email"],
+}));
+
+/**
+ * GET /auth/google/signup
+ * Initiates Google OAuth flow for SIGNUP (forces account selection)
+ */
+router.get("/auth/google/signup", passport.authenticate("google", {
+  scope: ["profile", "email"],
+  prompt: "select_account" // Forces account selection for signup
 }));
 
 /**
