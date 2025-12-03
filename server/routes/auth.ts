@@ -422,6 +422,7 @@ router.get("/auth/me", async (req, res) => {
  */
 router.get("/auth/google", passport.authenticate("google", {
   scope: ["profile", "email"],
+  prompt: "select_account" // Forces account selection every time
 }));
 
 /**
