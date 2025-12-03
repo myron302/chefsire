@@ -28,7 +28,8 @@ export function setupFacebookOAuth() {
   console.log("📋 FACEBOOK_CALLBACK_URL:", FACEBOOK_CALLBACK_URL);
 
   if (!FACEBOOK_CLIENT_ID || !FACEBOOK_CLIENT_SECRET) {
-    console.error("❌ Facebook OAuth not configured. Set FACEBOOK_CLIENT_ID and FACEBOOK_CLIENT_SECRET in .env");
+    console.warn("⚠️  Facebook OAuth not configured. Set FACEBOOK_CLIENT_ID and FACEBOOK_CLIENT_SECRET in .env");
+    console.warn("⚠️  Facebook login will not be available.");
     return false;
   }
 

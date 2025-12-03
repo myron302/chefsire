@@ -28,7 +28,8 @@ export function setupTikTokOAuth() {
   console.log("📋 TIKTOK_CALLBACK_URL:", TIKTOK_CALLBACK_URL);
 
   if (!TIKTOK_CLIENT_KEY || !TIKTOK_CLIENT_SECRET) {
-    console.error("❌ TikTok OAuth not configured. Set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET in .env");
+    console.warn("⚠️  TikTok OAuth not configured. Set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET in .env");
+    console.warn("⚠️  TikTok login will not be available.");
     return false;
   }
 
