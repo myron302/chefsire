@@ -34,26 +34,6 @@ app.use(cookieParser()); // Parse cookies before Passport
 // Initialize Passport
 app.use(passport.initialize());
 
-// --- Passport Serialization/Deserialization ---
-// Even if not using sessions for OAuth callback, Passport still needs these for setup
-// This tells Passport how to save and retrieve user data
-passport.serializeUser((user: any, done) => {
-  console.log("👤 Serializing user:", user.id);
-  done(null, user.id); // Save only the user ID
-});
-
-passport.deserializeUser(async (id: string, done) => {
-  console.log("🔄 Deserializing user with ID:", id);
-  try {
-    const { storage } = await import("./storage");
-    const user = await storage.findById(id);
-    done(null, user);
-  } catch (err) {
-    console.error("❌ Error deserializing user:", err);
-    done(err, null);
-  }
-});
-
 // Setup OAuth providers
 setupGoogleOAuth();
 setupFacebookOAuth();
