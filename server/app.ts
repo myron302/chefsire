@@ -125,12 +125,14 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message = err instanceof Error ? err.message : "Unknown error";
   const stack = err instanceof Error ? err.stack : undefined;
 
-  if (!isProd) console.error("[ERROR]", err);
+  // ALWAYS log the error
+  console.error("[ERROR]", err);
 
+  // TEMPORARY: Show full error even in production to debug OAuth issue
   res.status(500).json({
     error: "Internal Server Error",
-    message: isProd ? "An unexpected error occurred." : message,
-    ...(isProd ? {} : { stack }),
+    message: message, // Show actual error message
+    stack: stack, // Show stack trace
   });
 });
 
