@@ -11,6 +11,7 @@ import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { useUser } from "@/contexts/UserContext";
 
 const demoTrendingRecipes = [
   {
@@ -430,23 +431,18 @@ function isValidDate(dateStr: string | undefined | null): boolean {
 }
 
 export default function Feed() {
-  const currentUserId = "user-1";
+  const { user } = useUser();
+  const currentUserId = user?.id || "";
 
-  // Posts feed
+  // Posts feed - fetch explore posts (all posts) so user sees their own posts too
   const {
     data: posts,
     isLoading: postsLoading,
     error: postsError,
   } = useQuery<PostWithUser[]>({
-    queryKey: ["/api/posts/feed", currentUserId],
-    queryFn: () => fetchJSON<PostWithUser[]>(`/api/posts/feed?userId=${currentUserId}`),
+    queryKey: ["/api/posts/explore"],
+    queryFn: () => fetchJSON<PostWithUser[]>("/api/posts/explore"),
     retry: false,
-    onError: (e) => {
-      if (process.env.NODE_ENV !== "production") {
-        // eslint-disable-next-line no-console
-        console.warn("[feed] /api/posts/feed error, using demo fallback:", e);
-      }
-    },
   });
 
   // Suggested users (sidebar) — falls back to demo if error
@@ -506,15 +502,13 @@ export default function Feed() {
         {/* Posts */}
         <div className="space-y-8">
           {/* Removed the visible error banner; we silently fall back */}
-          {displayPosts
-            .filter((post) => isValidDate((post as any).createdAt || (post as any).updatedAt))
-            .map((post) =>
-              post.isRecipe ? (
-                <SimpleRecipeCard key={post.id} post={post} currentUserId={currentUserId} />
-              ) : (
-                <PostCard key={post.id} post={post} currentUserId={currentUserId} />
-              )
-            )}
+          {displayPosts.map((post) =>
+            post.isRecipe ? (
+              <SimpleRecipeCard key={post.id} post={post} currentUserId={currentUserId} />
+            ) : (
+              <PostCard key={post.id} post={post} currentUserId={currentUserId} />
+            )
+          )}
 
           {displayPosts.length === 0 && !postsLoading && !postsError && (
             <p className="text-center text-muted-foreground py-8">No posts yet. Start following chefs!</p>
