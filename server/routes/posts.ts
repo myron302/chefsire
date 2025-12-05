@@ -74,7 +74,7 @@ r.post("/", async (req, res) => {
     const schema = z.object({
       userId: z.string(),
       caption: z.string().optional(),
-      imageUrl: z.string().url().optional(),
+      imageUrl: z.string().min(1, "Image URL is required"), // Required, allows data URIs
       tags: z.array(z.string()).optional(),
       isRecipe: z.boolean().optional(),
     });
