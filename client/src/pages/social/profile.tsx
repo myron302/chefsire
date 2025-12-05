@@ -88,37 +88,17 @@ export default function Profile() {
     enabled: !!profileUserId,
   });
 
-  // Mock posts data (unchanged behavior)
+  // Fetch user posts from API
   const { data: posts, isLoading: postsLoading } = useQuery<PostWithUser[]>({
     queryKey: ["/api/posts/user", profileUserId],
     queryFn: async () => {
-      const mockPosts: PostWithUser[] = [
-        {
-          id: "1",
-          userId: profileUserId!,
-          caption: "Delicious homemade pasta!",
-          imageUrl: "https://images.unsplash.com/photo-1551183053-bf91a1d81141",
-          likesCount: 24,
-          commentsCount: 5,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          isRecipe: false,
-          user: user || (currentUser as User),
-        },
-        {
-          id: "2",
-          userId: profileUserId!,
-          caption: "My signature smoothie recipe",
-          imageUrl: "https://images.unsplash.com/photo-1570197788417-0e82375c9371",
-          likesCount: 42,
-          commentsCount: 8,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          isRecipe: true,
-          user: user || (currentUser as User),
-        },
-      ];
-      return mockPosts;
+      const response = await fetch(`/api/posts/user/${profileUserId}`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to fetch posts");
+      }
+      return response.json();
     },
     enabled: !!profileUserId && !!user,
   });
