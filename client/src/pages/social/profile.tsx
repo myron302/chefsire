@@ -88,13 +88,31 @@ export default function Profile() {
     enabled: !!profileUserId,
   });
 
-  // Mock posts data (unchanged behavior)
+  // Fetch user posts from API + show mock data as fallback
   const { data: posts, isLoading: postsLoading } = useQuery<PostWithUser[]>({
     queryKey: ["/api/posts/user", profileUserId],
     queryFn: async () => {
+      // Try to fetch real posts first
+      try {
+        const response = await fetch(`/api/posts/user/${profileUserId}`, {
+          credentials: "include",
+        });
+        if (response.ok) {
+          const realPosts = await response.json();
+
+          // If we have real posts, return them
+          if (realPosts && realPosts.length > 0) {
+            return realPosts;
+          }
+        }
+      } catch (error) {
+        console.log("No real posts yet, showing mock data");
+      }
+
+      // Fallback to mock posts if no real posts exist
       const mockPosts: PostWithUser[] = [
         {
-          id: "1",
+          id: "mock-1",
           userId: profileUserId!,
           caption: "Delicious homemade pasta!",
           imageUrl: "https://images.unsplash.com/photo-1551183053-bf91a1d81141",
@@ -106,7 +124,7 @@ export default function Profile() {
           user: user || (currentUser as User),
         },
         {
-          id: "2",
+          id: "mock-2",
           userId: profileUserId!,
           caption: "My signature smoothie recipe",
           imageUrl: "https://images.unsplash.com/photo-1570197788417-0e82375c9371",
