@@ -291,18 +291,21 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
 
   return (
     <aside className="hidden lg:flex flex-col w-64 h-screen bg-card border-r border-border fixed">
-      <nav className="flex-1 py-6 px-4 space-y-2 overflow-y-auto">
-        {NAV.map((item) => (
-          <Row key={item.name} item={item} depth={0} />
-        ))}
-
+      {/* Create Post button - fixed at top for visibility */}
+      <div className="p-4 border-b border-border">
         <button
           onClick={onCreatePost}
-          className="mt-8 flex items-center py-2 px-2 bg-primary text-white rounded hover:bg-primary/80 font-semibold w-full"
+          className="flex items-center justify-center py-3 px-4 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 font-semibold w-full shadow-lg transition-all"
         >
           <Plus className="w-5 h-5 mr-2" />
           Create Post
         </button>
+      </div>
+
+      <nav className="flex-1 py-4 px-4 space-y-2 overflow-y-auto">
+        {NAV.map((item) => (
+          <Row key={item.name} item={item} depth={0} />
+        ))}
       </nav>
     </aside>
   );
