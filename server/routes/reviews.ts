@@ -199,7 +199,7 @@ router.put("/:reviewId", requireAuth, async (req: Request, res: Response) => {
     }
 
     // Check if review exists and belongs to user
-    const [existingReview] = await storage
+    const [existingReview] = await db
       .select()
       .from(recipeReviews)
       .where(eq(recipeReviews.id, reviewId))
@@ -218,7 +218,7 @@ router.put("/:reviewId", requireAuth, async (req: Request, res: Response) => {
     if (rating !== undefined) updateData.rating = rating;
     if (reviewText !== undefined) updateData.reviewText = reviewText;
 
-    const [updatedReview] = await storage
+    const [updatedReview] = await db
       .update(recipeReviews)
       .set(updateData)
       .where(eq(recipeReviews.id, reviewId))
@@ -243,7 +243,7 @@ router.delete("/:reviewId", requireAuth, async (req: Request, res: Response) => 
     const { reviewId } = req.params;
 
     // Check if review exists and belongs to user
-    const [existingReview] = await storage
+    const [existingReview] = await db
       .select()
       .from(recipeReviews)
       .where(eq(recipeReviews.id, reviewId))
@@ -288,7 +288,7 @@ router.post(
       }
 
       // Check if review exists and belongs to user
-      const [existingReview] = await storage
+      const [existingReview] = await db
         .select()
         .from(recipeReviews)
         .where(eq(recipeReviews.id, reviewId))
@@ -326,7 +326,7 @@ router.post("/:reviewId/helpful", requireAuth, async (req: Request, res: Respons
     const { reviewId } = req.params;
 
     // Check if already marked as helpful
-    const existing = await storage
+    const existing = await db
       .select()
       .from(reviewHelpful)
       .where(and(eq(reviewHelpful.reviewId, reviewId), eq(reviewHelpful.userId, userId)))

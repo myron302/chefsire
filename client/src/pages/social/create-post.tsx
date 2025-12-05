@@ -12,11 +12,13 @@ import { Separator } from "@/components/ui/separator";
 import { Camera, Upload, Plus, Minus, X } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useUser } from "@/contexts/UserContext";
 
 export default function CreatePost() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
+  const { user } = useUser();
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
 
@@ -35,9 +37,12 @@ export default function CreatePost() {
 
   const createPostMutation = useMutation({
     mutationFn: async () => {
+      if (!user?.id) {
+        throw new Error("You must be logged in to create a post");
+      }
       // Create the post
       const postData = {
-        userId: "user-1", // In a real app, this would come from authentication
+        userId: user.id,
         caption: formData.caption,
         imageUrl: formData.imageUrl,
         tags: formData.tags.filter(tag => tag.trim() !== ""),
