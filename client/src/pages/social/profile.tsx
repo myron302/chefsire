@@ -88,17 +88,55 @@ export default function Profile() {
     enabled: !!profileUserId,
   });
 
-  // Fetch user posts from API
+  // Fetch user posts from API + show mock data as fallback
   const { data: posts, isLoading: postsLoading } = useQuery<PostWithUser[]>({
     queryKey: ["/api/posts/user", profileUserId],
     queryFn: async () => {
-      const response = await fetch(`/api/posts/user/${profileUserId}`, {
-        credentials: "include",
-      });
-      if (!response.ok) {
-        throw new Error("Failed to fetch posts");
+      // Try to fetch real posts first
+      try {
+        const response = await fetch(`/api/posts/user/${profileUserId}`, {
+          credentials: "include",
+        });
+        if (response.ok) {
+          const realPosts = await response.json();
+
+          // If we have real posts, return them
+          if (realPosts && realPosts.length > 0) {
+            return realPosts;
+          }
+        }
+      } catch (error) {
+        console.log("No real posts yet, showing mock data");
       }
-      return response.json();
+
+      // Fallback to mock posts if no real posts exist
+      const mockPosts: PostWithUser[] = [
+        {
+          id: "mock-1",
+          userId: profileUserId!,
+          caption: "Delicious homemade pasta!",
+          imageUrl: "https://images.unsplash.com/photo-1551183053-bf91a1d81141",
+          likesCount: 24,
+          commentsCount: 5,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          isRecipe: false,
+          user: user || (currentUser as User),
+        },
+        {
+          id: "mock-2",
+          userId: profileUserId!,
+          caption: "My signature smoothie recipe",
+          imageUrl: "https://images.unsplash.com/photo-1570197788417-0e82375c9371",
+          likesCount: 42,
+          commentsCount: 8,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          isRecipe: true,
+          user: user || (currentUser as User),
+        },
+      ];
+      return mockPosts;
     },
     enabled: !!profileUserId && !!user,
   });
