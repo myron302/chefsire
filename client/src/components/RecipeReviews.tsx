@@ -118,7 +118,21 @@ export function RecipeReviews({ recipeId, averageRating, reviewCount }: RecipeRe
           errorData,
           requestData,
         });
-        alert(`Failed to create review: ${errorData.error || errorData.details || "Unknown error"}\n\nCheck console for details.`);
+
+        // Detailed error message
+        const errorMsg = `Failed to create review:
+
+Error: ${errorData.error || "Unknown"}
+Details: ${errorData.details || "None"}
+Code: ${errorData.code || "N/A"}
+Constraint: ${errorData.constraint || "N/A"}
+
+Recipe ID: ${requestData.recipeId}
+Rating: ${requestData.rating}
+
+Check browser console (F12) for full details.`;
+
+        alert(errorMsg);
       }
     } catch (error) {
       console.error("❌ Error submitting review (network/parse error):", error);
