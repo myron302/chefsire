@@ -306,7 +306,7 @@ const NutritionMealPlanner = () => {
           <FeatureItem icon={<Target />} text="Personalized Nutrition Goals" />
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex flex-col md:flex-row gap-4">
           <Button
             size="lg"
             className="flex-1 bg-white text-orange-600 hover:bg-orange-50 font-semibold text-lg h-14"
@@ -317,7 +317,7 @@ const NutritionMealPlanner = () => {
           <Button
             size="lg"
             variant="outline"
-            className="border-2 border-white bg-white/20 text-white hover:bg-white hover:text-orange-600 font-semibold"
+            className="flex-1 border-2 border-white bg-white/20 text-white hover:bg-white hover:text-orange-600 font-semibold text-lg h-14"
           >
             Learn More
           </Button>
