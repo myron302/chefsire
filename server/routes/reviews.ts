@@ -16,6 +16,7 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import multer from "multer";
 import path from "path";
 import { requireAuth } from "../middleware/auth";
+import { RecipeService } from "../services/recipe.service";
 
 const router = Router();
 
@@ -113,13 +114,28 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
   try {
     console.log("📝 Create review attempt by user:", (req as any).user?.id);
     const userId = (req as any).user.id;
-    const { recipeId, rating, reviewText } = req.body;
+    let { recipeId, rating, reviewText } = req.body;
     console.log("📝 Review data:", { userId, recipeId, rating, reviewText });
 
     // Validate rating
     if (!rating || rating < 1 || rating > 5) {
       console.log("❌ Invalid rating:", rating);
       return res.status(400).json({ error: "Rating must be between 1 and 5 spoons" });
+    }
+
+    // Check if this is an external recipe (starts with "mealdb_", "spoonacular_", etc.)
+    if (recipeId.includes("_")) {
+      console.log("🌐 External recipe detected, checking if we need to save it:", recipeId);
+      const savedRecipe = await RecipeService.findOrCreateExternalRecipe(db, recipeId);
+
+      if (!savedRecipe) {
+        console.log("❌ Failed to save external recipe");
+        return res.status(500).json({ error: "Failed to save recipe from external source" });
+      }
+
+      console.log("✅ Recipe saved/found in database with ID:", savedRecipe.id);
+      // Use the local database ID for the review
+      recipeId = savedRecipe.id;
     }
 
     // Check if user already reviewed this recipe

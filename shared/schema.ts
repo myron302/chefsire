@@ -103,6 +103,11 @@ export const recipes = pgTable("recipes", {
   fiber: decimal("fiber", { precision: 5, scale: 2 }),
   averageRating: decimal("average_rating", { precision: 3, scale: 2 }).default("0"),
   reviewCount: integer("review_count").default(0),
+  externalSource: text("external_source"), // 'mealdb', 'spoonacular', etc.
+  externalId: text("external_id"), // Original ID from external API
+  cuisine: text("cuisine"), // Cuisine type
+  mealType: text("meal_type"), // Meal category
+  sourceUrl: text("source_url"), // Original source URL
 });
 
 /* ===== RECIPE REVIEWS ===== */
