@@ -522,11 +522,12 @@ const NutritionMealPlanner = () => {
                 </CardContent>
               </Card>
 
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="flex items-center gap-2 flex-1">
                   <Button
                     variant={viewMode === 'day' ? 'default' : 'outline'}
                     size="sm"
+                    className="flex-1 md:flex-none"
                     onClick={() => setViewMode('day')}
                   >
                     Day
@@ -534,6 +535,7 @@ const NutritionMealPlanner = () => {
                   <Button
                     variant={viewMode === 'week' ? 'default' : 'outline'}
                     size="sm"
+                    className="flex-1 md:flex-none"
                     onClick={() => setViewMode('week')}
                   >
                     Week
@@ -541,17 +543,18 @@ const NutritionMealPlanner = () => {
                   <Button
                     variant={viewMode === 'month' ? 'default' : 'outline'}
                     size="sm"
+                    className="flex-1 md:flex-none"
                     onClick={() => setViewMode('month')}
                   >
                     Month
                   </Button>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Button variant="outline" size="sm" onClick={saveTemplate}>
+                <div className="flex items-center gap-2 flex-1 md:flex-none">
+                  <Button variant="outline" size="sm" className="flex-1 md:flex-none" onClick={saveTemplate}>
                     <Save className="w-4 h-4 mr-2" />
                     Save Template
                   </Button>
-                  <Button size="sm" onClick={() => handleAddMeal()}>
+                  <Button size="sm" className="flex-1 md:flex-none" onClick={() => handleAddMeal()}>
                     <Plus className="w-4 h-4 mr-2" />
                     Add Meal
                   </Button>
