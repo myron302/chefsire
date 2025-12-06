@@ -143,7 +143,7 @@ export async function searchRecipes(params: SearchParams): Promise<{
 
   // Empty query => serve a fresh random page every request (original behavior)
   if (!params.q || params.q.trim() === "") {
-    // Fetch random meals from TheMealDB (original behavior restored)
+    // Fetch random meals from TheMealDB
     const randomMeals = await getRandomMeals(pageSize + offset);
     const filtered = filterMeals(randomMeals, {
       cuisines: params.cuisines ?? [],
@@ -152,7 +152,49 @@ export async function searchRecipes(params: SearchParams): Promise<{
     });
 
     const page = filtered.slice(offset, offset + pageSize);
-    const results = page.map(mapMealDB);
+    let results = page.map(mapMealDB);
+
+    // On FIRST page only, mix in a few local recipes with images
+    if (offset === 0) {
+      try {
+        const localRecipes = await RecipeService.searchLocalRecipes(db, {
+          cuisines: params.cuisines,
+          diets: params.diets,
+          mealTypes: params.mealTypes,
+          pageSize: 10, // Get up to 10 candidates
+          offset: 0,
+        });
+
+        // Filter: only recipes WITH images
+        const localWithImages = localRecipes.filter(r => r.imageUrl && r.imageUrl.trim());
+
+        if (localWithImages.length > 0) {
+          // Take up to 3 local recipes with images
+          const localResults: RecipeItem[] = localWithImages.slice(0, 3).map((recipe) => ({
+            id: recipe.id,
+            title: recipe.title,
+            image: recipe.imageUrl,
+            imageUrl: recipe.imageUrl,
+            cuisine: recipe.cuisine || null,
+            mealType: recipe.mealType || null,
+            dietTags: recipe.dietTags,
+            instructions: Array.isArray(recipe.instructions) ? recipe.instructions.join("\n") : null,
+            ratingSpoons: recipe.averageRating ? Number(recipe.averageRating) : null,
+            cookTime: recipe.cookTime,
+            servings: recipe.servings,
+            source: SOURCE,
+            averageRating: recipe.averageRating,
+          }));
+
+          // Mix: first 3 local recipes, then enough random to reach pageSize
+          const randomNeeded = pageSize - localResults.length;
+          results = [...localResults, ...results.slice(0, randomNeeded)];
+        }
+      } catch (error) {
+        console.error("Error fetching local recipes for mixing:", error);
+        // Continue with only external recipes
+      }
+    }
 
     // Return total that indicates more recipes available (for infinite scroll)
     return { total: filtered.length + 1000, source: SOURCE, results };
