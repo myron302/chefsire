@@ -143,7 +143,7 @@ export async function searchRecipes(params: SearchParams): Promise<{
 
   // Empty query => serve a fresh random page every request (original behavior)
   if (!params.q || params.q.trim() === "") {
-    // Fetch random meals from TheMealDB (original behavior)
+    // Fetch random meals from TheMealDB (original behavior restored)
     const randomMeals = await getRandomMeals(pageSize + offset);
     const filtered = filterMeals(randomMeals, {
       cuisines: params.cuisines ?? [],
@@ -151,50 +151,11 @@ export async function searchRecipes(params: SearchParams): Promise<{
       mealTypes: params.mealTypes ?? [],
     });
 
-    // For first page only, mix in a few local recipes if available
-    let results = filtered.map(mapMealDB);
-
-    if (offset === 0) {
-      try {
-        const localRecipes = await RecipeService.searchLocalRecipes(db, {
-          cuisines: params.cuisines,
-          diets: params.diets,
-          mealTypes: params.mealTypes,
-          pageSize: 6, // Just a few local recipes to mix in
-          offset: 0,
-        });
-
-        if (localRecipes.length > 0) {
-          const localResults: RecipeItem[] = localRecipes.map((recipe) => ({
-            id: recipe.id,
-            title: recipe.title,
-            image: recipe.imageUrl,
-            imageUrl: recipe.imageUrl,
-            cuisine: recipe.cuisine || null,
-            mealType: recipe.mealType || null,
-            dietTags: recipe.dietTags,
-            instructions: Array.isArray(recipe.instructions) ? recipe.instructions.join("\n") : null,
-            ratingSpoons: recipe.averageRating ? Number(recipe.averageRating) : null,
-            cookTime: recipe.cookTime,
-            servings: recipe.servings,
-            source: SOURCE,
-            averageRating: recipe.averageRating,
-          }));
-
-          // Mix local recipes at the beginning
-          results = [...localResults, ...results].slice(0, pageSize);
-        }
-      } catch (error) {
-        console.error("Error fetching local recipes:", error);
-        // Continue with external recipes only
-      }
-    }
-
-    const page = results.slice(offset, offset + pageSize);
+    const page = filtered.slice(offset, offset + pageSize);
+    const results = page.map(mapMealDB);
 
     // Return total that indicates more recipes available (for infinite scroll)
-    // Use a large number to ensure pagination works
-    return { total: filtered.length + 1000, source: SOURCE, results: page };
+    return { total: filtered.length + 1000, source: SOURCE, results };
   }
 
   // Named search - prioritize local results
