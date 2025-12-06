@@ -1,4 +1,7 @@
 // server/services/recipes-service.ts
+import { RecipeService } from "./recipe.service";
+import { db } from "../db";
+
 type SearchParams = {
   q?: string;
   cuisines?: string[];
@@ -31,6 +34,7 @@ export type RecipeItem = {
   cookTime: number | null;
   servings: number | null;
   source: "mealdb";
+  averageRating?: string | number | null;
 };
 
 const SOURCE: "mealdb" = "mealdb";
@@ -137,16 +141,58 @@ export async function searchRecipes(params: SearchParams): Promise<{
   const pageSize = Math.min(Math.max(params.pageSize ?? 24, 1), 60);
   const offset = Math.max(params.offset ?? 0, 0);
 
+  // First, search local database for saved recipes
+  const localRecipes = await RecipeService.searchLocalRecipes(db, {
+    q: params.q,
+    cuisines: params.cuisines,
+    diets: params.diets,
+    mealTypes: params.mealTypes,
+    pageSize: pageSize * 2, // Get more to account for filtering
+    offset: 0,
+  });
+
+  // Convert local recipes to RecipeItem format
+  const localResults: RecipeItem[] = localRecipes.map((recipe) => ({
+    id: recipe.id,
+    title: recipe.title,
+    image: recipe.imageUrl,
+    imageUrl: recipe.imageUrl,
+    cuisine: recipe.cuisine || null,
+    mealType: recipe.mealType || null,
+    dietTags: recipe.dietTags,
+    instructions: Array.isArray(recipe.instructions) ? recipe.instructions.join("\n") : null,
+    ratingSpoons: recipe.averageRating ? Number(recipe.averageRating) : null,
+    cookTime: recipe.cookTime,
+    servings: recipe.servings,
+    source: SOURCE,
+    averageRating: recipe.averageRating,
+  }));
+
+  console.log(`🔍 Found ${localResults.length} local recipes for query: "${params.q || '(random)'}"`);
+
+  // If we have enough local results, return them
+  if (localResults.length >= pageSize) {
+    const page = localResults.slice(offset, offset + pageSize);
+    return { total: localResults.length, source: SOURCE, results: page };
+  }
+
+  // Not enough local results, supplement with external API
+  const neededExternal = pageSize - localResults.length;
+
   // Empty query => serve a fresh random page every request
   if (!params.q || params.q.trim() === "") {
-    const randomMeals = await getRandomMeals(pageSize + offset);
+    const randomMeals = await getRandomMeals(neededExternal + offset);
     const filtered = filterMeals(randomMeals, {
       cuisines: params.cuisines ?? [],
       diets: params.diets ?? [],
       mealTypes: params.mealTypes ?? [],
     });
-    const page = filtered.slice(offset, offset + pageSize);
-    return { total: filtered.length, source: SOURCE, results: page.map(mapMealDB) };
+    const externalResults = filtered.map(mapMealDB);
+
+    // Merge local and external, deduplicating
+    const merged = deduplicateRecipes([...localResults, ...externalResults]);
+    const page = merged.slice(offset, offset + pageSize);
+    return { total: merged.length, source: SOURCE, results: page };
   }
 
   // Named search (MealDB search-by-name)
@@ -161,9 +207,32 @@ export async function searchRecipes(params: SearchParams): Promise<{
     mealTypes: params.mealTypes ?? [],
   });
 
-  const total = filtered.length;
-  const page = filtered.slice(offset, offset + pageSize);
-  const results = page.map(mapMealDB);
+  const externalResults = filtered.map(mapMealDB);
 
-  return { total, source: SOURCE, results };
+  // Merge local and external, deduplicating
+  const merged = deduplicateRecipes([...localResults, ...externalResults]);
+  const total = merged.length;
+  const page = merged.slice(offset, offset + pageSize);
+
+  return { total, source: SOURCE, results: page };
+}
+
+/**
+ * Deduplicate recipes, preferring local versions over external
+ */
+function deduplicateRecipes(recipes: RecipeItem[]): RecipeItem[] {
+  const seen = new Set<string>();
+  const result: RecipeItem[] = [];
+
+  for (const recipe of recipes) {
+    // Use title as dedup key (normalize for comparison)
+    const key = recipe.title.toLowerCase().trim();
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(recipe);
+    }
+  }
+
+  return result;
 }

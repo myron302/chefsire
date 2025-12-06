@@ -111,6 +111,11 @@ export class RecipeService {
         fat: recipe.fat,
         fiber: recipe.fiber,
         source: "local",
+        imageUrl: recipe.imageUrl,
+        cuisine: recipe.cuisine,
+        mealType: recipe.mealType,
+        averageRating: recipe.averageRating,
+        reviewCount: recipe.reviewCount,
       }));
     } catch (error) {
       console.error("Local recipe search error:", error);
@@ -231,5 +236,139 @@ export class RecipeService {
     });
 
     return missing;
+  }
+
+  /**
+   * Find or create a recipe from external source (TheMealDB)
+   * This allows users to review external recipes by saving them locally
+   */
+  static async findOrCreateExternalRecipe(
+    db: any,
+    externalRecipeId: string
+  ): Promise<Recipe | null> {
+    // Parse external ID (e.g., "mealdb_52772")
+    const parts = externalRecipeId.split("_");
+    if (parts.length !== 2) {
+      console.error("Invalid external recipe ID format:", externalRecipeId);
+      return null;
+    }
+
+    const [source, externalId] = parts;
+
+    // Check if recipe already exists in database
+    const existing = await db
+      .select()
+      .from(recipes)
+      .where(
+        and(
+          eq(recipes.externalSource, source),
+          eq(recipes.externalId, externalId)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      console.log("Recipe already exists in DB:", existing[0].id);
+      return existing[0];
+    }
+
+    // Fetch full recipe details from external source
+    if (source === "mealdb") {
+      return await this.fetchAndSaveMealDBRecipe(db, externalId);
+    }
+
+    console.error("Unsupported external source:", source);
+    return null;
+  }
+
+  /**
+   * Fetch full recipe details from TheMealDB and save to database
+   */
+  private static async fetchAndSaveMealDBRecipe(
+    db: any,
+    mealId: string
+  ): Promise<Recipe | null> {
+    try {
+      console.log("Fetching recipe from MealDB:", mealId);
+      const url = `https://www.themealdb.com/api/json/v1/1/lookup.php?i=${mealId}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        console.error("MealDB API error:", response.status);
+        return null;
+      }
+
+      const data = await response.json();
+      const meal = data.meals?.[0];
+
+      if (!meal) {
+        console.error("Recipe not found in MealDB:", mealId);
+        return null;
+      }
+
+      // Parse ingredients from MealDB format (strIngredient1-20, strMeasure1-20)
+      const ingredients: string[] = [];
+      for (let i = 1; i <= 20; i++) {
+        const ingredient = meal[`strIngredient${i}`];
+        const measure = meal[`strMeasure${i}`];
+
+        if (ingredient && ingredient.trim()) {
+          const measurePart = measure && measure.trim() ? `${measure.trim()} ` : "";
+          ingredients.push(`${measurePart}${ingredient.trim()}`);
+        }
+      }
+
+      // Parse instructions - split by periods or newlines for better formatting
+      let instructionsText = meal.strInstructions || "";
+      const instructionSteps = instructionsText
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
+      // If no newlines, try splitting by numbered steps
+      if (instructionSteps.length <= 1) {
+        const numbered = instructionsText.match(/(?:STEP \d+|^\d+\.?)\s*[^\n]+/gi);
+        if (numbered && numbered.length > 1) {
+          instructionSteps.length = 0;
+          instructionSteps.push(...numbered.map((s) => s.trim()));
+        } else {
+          // Fall back to original text as single step
+          instructionSteps.length = 0;
+          instructionSteps.push(instructionsText.trim());
+        }
+      }
+
+      // Create recipe record
+      const recipeData: InsertRecipe = {
+        title: meal.strMeal,
+        imageUrl: meal.strMealThumb || null,
+        ingredients,
+        instructions: instructionSteps,
+        cuisine: meal.strArea || null,
+        mealType: meal.strCategory || null,
+        externalSource: "mealdb",
+        externalId: mealId,
+        sourceUrl: meal.strSource || `https://www.themealdb.com/meal/${mealId}`,
+        postId: null, // Not linked to a post
+        cookTime: null, // MealDB doesn't provide this
+        servings: null, // MealDB doesn't provide this
+        difficulty: null,
+        nutrition: null,
+        calories: null,
+        protein: null,
+        carbs: null,
+        fat: null,
+        fiber: null,
+      };
+
+      console.log("Saving MealDB recipe to database:", recipeData.title);
+      const savedRecipe = await this.createRecipe(db, recipeData);
+      console.log("Recipe saved with ID:", savedRecipe.id);
+
+      return savedRecipe;
+    } catch (error) {
+      console.error("Error fetching/saving MealDB recipe:", error);
+      return null;
+    }
   }
 }
