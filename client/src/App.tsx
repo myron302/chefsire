@@ -42,6 +42,9 @@ import RecipeMatches from "@/pages/pantry/recipe-matches";
 import HouseholdPantry from "@/pages/pantry/household";
 import AllergiesDashboard from "@/pages/allergies";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
+import MealPlanCreator from "@/pages/nutrition/MealPlanCreator";
+import MealPlanMarketplace from "@/pages/nutrition/MealPlanMarketplace";
+import CreatorAnalytics from "@/pages/nutrition/CreatorAnalytics";
 import ClubsPage from "@/pages/clubs";
 import ClubDetailPage from "@/pages/clubs/[id]";
 import NotFound from "@/pages/not-found";
@@ -400,7 +403,14 @@ function AppRouter() {
         <Route path="/potent-potables">
           <Redirect to="/drinks/potent-potables" />
         </Route>
+
+        {/* Nutrition & Meal Planning Routes */}
+        <Route path="/nutrition/meal-plans/create" component={MealPlanCreator} />
+        <Route path="/nutrition/meal-plans" component={MealPlanCreator} />
+        <Route path="/nutrition/marketplace" component={MealPlanMarketplace} />
+        <Route path="/nutrition/analytics" component={CreatorAnalytics} />
         <Route path="/nutrition" component={NutritionMealPlanner} />
+
         <Route path="/substitutions" component={SubstitutionsPage} />
 
         {/* Drinks branches */}
