@@ -75,23 +75,35 @@ export function RecipeReviews({ recipeId, averageRating, reviewCount }: RecipeRe
   };
 
   const submitReview = async () => {
-    if (!user) return;
+    if (!user) {
+      console.error("❌ No user logged in");
+      alert("You must be logged in to submit a review");
+      return;
+    }
 
     try {
       setSubmitting(true);
+
+      const requestData = {
+        recipeId,
+        rating: newRating,
+        reviewText: newReviewText.trim() || null,
+      };
+
+      console.log("📤 Submitting review:", requestData);
+
       const response = await fetch("/api/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          recipeId,
-          rating: newRating,
-          reviewText: newReviewText.trim() || null,
-        }),
+        body: JSON.stringify(requestData),
       });
+
+      console.log("📥 Response status:", response.status, response.statusText);
 
       if (response.ok) {
         const newReview = await response.json();
+        console.log("✅ Review created successfully:", newReview);
         setReviews([newReview, ...reviews]);
         setNewRating(5);
         setNewReviewText("");
@@ -99,12 +111,22 @@ export function RecipeReviews({ recipeId, averageRating, reviewCount }: RecipeRe
         // Trigger a page refresh or emit event to update recipe rating
         window.location.reload();
       } else {
-        const error = await response.json();
-        alert(error.error || "Failed to submit review");
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        console.error("❌ Review submission failed:", {
+          status: response.status,
+          statusText: response.statusText,
+          errorData,
+          requestData,
+        });
+        alert(`Failed to create review: ${errorData.error || errorData.details || "Unknown error"}\n\nCheck console for details.`);
       }
     } catch (error) {
-      console.error("Error submitting review:", error);
-      alert("Failed to submit review");
+      console.error("❌ Error submitting review (network/parse error):", error);
+      console.error("Full error:", {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      alert(`Failed to submit review: ${error instanceof Error ? error.message : String(error)}\n\nCheck console for details.`);
     } finally {
       setSubmitting(false);
     }

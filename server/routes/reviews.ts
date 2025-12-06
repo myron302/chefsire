@@ -112,10 +112,13 @@ router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
 // Create a review
 router.post("/", requireAuth, async (req: Request, res: Response) => {
   try {
-    console.log("📝 Create review attempt by user:", (req as any).user?.id);
+    console.log("📝 ============ CREATE REVIEW START ============");
+    console.log("📝 User:", (req as any).user?.id);
+    console.log("📝 Request body:", JSON.stringify(req.body, null, 2));
+
     const userId = (req as any).user.id;
     let { recipeId, rating, reviewText } = req.body;
-    console.log("📝 Review data:", { userId, recipeId, rating, reviewText });
+    console.log("📝 Parsed data:", { userId, recipeId, rating, reviewText, recipeIdType: typeof recipeId });
 
     // Validate rating
     if (!rating || rating < 1 || rating > 5) {
@@ -124,21 +127,45 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     }
 
     // Check if this is an external recipe (starts with "mealdb_", "spoonacular_", etc.)
-    if (recipeId.includes("_")) {
-      console.log("🌐 External recipe detected, checking if we need to save it:", recipeId);
-      const savedRecipe = await RecipeService.findOrCreateExternalRecipe(db, recipeId);
+    if (recipeId && recipeId.includes("_")) {
+      console.log("🌐 External recipe detected:", recipeId);
+      console.log("🌐 Calling RecipeService.findOrCreateExternalRecipe...");
 
-      if (!savedRecipe) {
-        console.log("❌ Failed to save external recipe");
-        return res.status(500).json({ error: "Failed to save recipe from external source" });
+      try {
+        const savedRecipe = await RecipeService.findOrCreateExternalRecipe(db, recipeId);
+
+        if (!savedRecipe) {
+          console.log("❌ findOrCreateExternalRecipe returned null");
+          return res.status(500).json({
+            error: "Failed to save recipe from external source",
+            details: "Recipe service returned null"
+          });
+        }
+
+        console.log("✅ Recipe saved/found in database:");
+        console.log("   - ID:", savedRecipe.id);
+        console.log("   - Title:", savedRecipe.title);
+        console.log("   - External Source:", savedRecipe.externalSource);
+        console.log("   - External ID:", savedRecipe.externalId);
+
+        // Use the local database ID for the review
+        recipeId = savedRecipe.id;
+        console.log("✅ Updated recipeId to local DB ID:", recipeId);
+      } catch (saveError: any) {
+        console.error("❌ Error in findOrCreateExternalRecipe:");
+        console.error("   Message:", saveError.message);
+        console.error("   Stack:", saveError.stack);
+        return res.status(500).json({
+          error: "Failed to save recipe from external source",
+          details: saveError.message
+        });
       }
-
-      console.log("✅ Recipe saved/found in database with ID:", savedRecipe.id);
-      // Use the local database ID for the review
-      recipeId = savedRecipe.id;
+    } else {
+      console.log("📍 Using existing recipe ID:", recipeId);
     }
 
     // Check if user already reviewed this recipe
+    console.log("🔍 Checking for existing review...");
     const existingReview = await db
       .select()
       .from(recipeReviews)
@@ -146,9 +173,10 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       .limit(1);
 
     if (existingReview.length > 0) {
-      console.log("❌ User already reviewed this recipe");
+      console.log("❌ User already reviewed this recipe:", existingReview[0].id);
       return res.status(400).json({ error: "You already reviewed this recipe. Use update instead." });
     }
+    console.log("✅ No existing review found");
 
     // Create review
     const newReview: InsertRecipeReview = {
@@ -158,13 +186,17 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       reviewText: reviewText || null,
     };
 
-    console.log("💾 Inserting review:", newReview);
+    console.log("💾 Inserting review into database:", JSON.stringify(newReview, null, 2));
     const [review] = await db.insert(recipeReviews).values(newReview).returning();
+    console.log("✅ Review inserted successfully with ID:", review.id);
 
     // Update recipe average rating and count
+    console.log("📊 Updating recipe rating statistics...");
     await updateRecipeRating(recipeId);
+    console.log("✅ Recipe rating updated");
 
     // Fetch the complete review with user data
+    console.log("📥 Fetching complete review with user data...");
     const [completeReview] = await db
       .select({
         id: recipeReviews.id,
@@ -187,18 +219,29 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       .leftJoin(users, eq(recipeReviews.userId, users.id))
       .where(eq(recipeReviews.id, review.id));
 
+    console.log("✅ Complete review fetched:", completeReview.id);
+    console.log("📝 ============ CREATE REVIEW SUCCESS ============");
     res.status(201).json({ ...completeReview, photos: [] });
   } catch (error: any) {
-    console.error("Error creating review:", error);
-    console.error("Error details:", {
+    console.error("❌ ============ CREATE REVIEW ERROR ============");
+    console.error("❌ Error creating review:", error);
+    console.error("❌ Error details:", {
+      name: error.name,
       message: error.message,
       code: error.code,
       detail: error.detail,
-      stack: error.stack?.split('\n').slice(0, 3).join('\n')
+      constraint: error.constraint,
+      table: error.table,
+      column: error.column,
+      stack: error.stack?.split('\n').slice(0, 5).join('\n')
     });
+    console.error("❌ Full error object:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+
     res.status(500).json({
       error: "Failed to create review",
-      details: error.message
+      details: error.message,
+      code: error.code,
+      constraint: error.constraint
     });
   }
 });
