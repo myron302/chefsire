@@ -891,6 +891,95 @@ router.patch("/family-profiles/:id", requireAuth, async (req: Request, res: Resp
 });
 
 // ============================================================
+// GROCERY LIST SAVINGS REPORT
+// ============================================================
+
+// Get grocery list savings report
+router.get("/grocery-list/savings-report", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { startDate, endDate } = req.query;
+
+    // Get all grocery list items within date range
+    let query = db
+      .select()
+      .from(groceryListItems)
+      .where(eq(groceryListItems.userId, userId));
+
+    if (startDate) {
+      query = query.where(gte(groceryListItems.createdAt, new Date(startDate as string)));
+    }
+    if (endDate) {
+      query = query.where(lte(groceryListItems.createdAt, new Date(endDate as string)));
+    }
+
+    const items = await query;
+
+    // Calculate savings metrics
+    const totalEstimated = items.reduce((sum, item) =>
+      sum + Number(item.estimatedPrice || 0), 0
+    );
+    const totalActual = items.reduce((sum, item) =>
+      sum + Number(item.actualPrice || 0), 0
+    );
+    const totalSaved = totalEstimated - totalActual;
+    const savingsRate = totalEstimated > 0
+      ? ((totalSaved / totalEstimated) * 100).toFixed(1)
+      : "0.0";
+
+    // Calculate pantry item savings (items already owned)
+    const pantryItems = items.filter(item => item.isPantryItem);
+    const pantrySavings = pantryItems.reduce((sum, item) =>
+      sum + Number(item.estimatedPrice || 0), 0
+    );
+
+    // Get most saved categories
+    const categoryStats = items.reduce((acc, item) => {
+      const category = item.category || "Other";
+      if (!acc[category]) {
+        acc[category] = {
+          estimated: 0,
+          actual: 0,
+          saved: 0,
+          count: 0
+        };
+      }
+      acc[category].estimated += Number(item.estimatedPrice || 0);
+      acc[category].actual += Number(item.actualPrice || 0);
+      acc[category].saved += Number(item.estimatedPrice || 0) - Number(item.actualPrice || 0);
+      acc[category].count++;
+      return acc;
+    }, {} as Record<string, { estimated: number; actual: number; saved: number; count: number }>);
+
+    const topSavingCategories = Object.entries(categoryStats)
+      .map(([category, stats]) => ({ category, ...stats }))
+      .sort((a, b) => b.saved - a.saved)
+      .slice(0, 5);
+
+    res.json({
+      summary: {
+        totalEstimated: totalEstimated.toFixed(2),
+        totalActual: totalActual.toFixed(2),
+        totalSaved: totalSaved.toFixed(2),
+        savingsRate: `${savingsRate}%`,
+        itemCount: items.length,
+        purchasedCount: items.filter(i => i.purchased).length,
+      },
+      pantry: {
+        itemCount: pantryItems.length,
+        savings: pantrySavings.toFixed(2),
+      },
+      topSavingCategories,
+      periodStart: startDate || items[0]?.createdAt || new Date(),
+      periodEnd: endDate || new Date(),
+    });
+  } catch (error) {
+    console.error("Error generating savings report:", error);
+    res.status(500).json({ message: "Failed to generate savings report" });
+  }
+});
+
+// ============================================================
 // HELPER FUNCTIONS
 // ============================================================
 

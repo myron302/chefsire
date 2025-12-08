@@ -302,6 +302,7 @@ export const mealPlanBlueprints = pgTable("meal_plan_blueprints", {
   tags: text("tags").array().default(sql`'{}'::text[]`),
   status: text("status").notNull().default("draft"),
   salesCount: integer("sales_count").notNull().default(0),
+  isPremiumContent: boolean("is_premium_content").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

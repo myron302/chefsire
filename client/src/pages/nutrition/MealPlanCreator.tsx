@@ -39,10 +39,27 @@ export default function MealPlanCreator() {
   const [dietType, setDietType] = useState("");
   const [targetCalories, setTargetCalories] = useState("");
   const [meals, setMeals] = useState<any[]>([]);
+  const [isPremiumContent, setIsPremiumContent] = useState(false);
+  const [userHasPremium, setUserHasPremium] = useState(false);
 
   useEffect(() => {
     fetchMyPlans();
+    checkPremiumStatus();
   }, []);
+
+  const checkPremiumStatus = async () => {
+    try {
+      const response = await fetch("/api/user", {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setUserHasPremium(data.nutritionPremium || false);
+      }
+    } catch (error) {
+      console.error("Failed to check premium status:", error);
+    }
+  };
 
   const fetchMyPlans = async () => {
     try {
@@ -74,6 +91,16 @@ export default function MealPlanCreator() {
       return;
     }
 
+    // Check if user is trying to create premium content without access
+    if (isPremiumContent && !userHasPremium) {
+      toast({
+        title: "Premium Feature",
+        description: "You need Nutrition Premium to create premium content",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       const response = await fetch("/api/meal-plans", {
         method: "POST",
@@ -88,6 +115,7 @@ export default function MealPlanCreator() {
           dietType: dietType || null,
           targetCalories: targetCalories ? parseInt(targetCalories) : null,
           meals: meals.length > 0 ? meals : [{ day: 1, mealType: "breakfast", recipeName: "Example meal" }],
+          isPremiumContent,
         }),
       });
 
@@ -257,6 +285,41 @@ export default function MealPlanCreator() {
                   placeholder="Describe your meal plan..."
                   rows={4}
                 />
+              </div>
+              <div className="flex items-center gap-3 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                <input
+                  type="checkbox"
+                  id="isPremiumContent"
+                  checked={isPremiumContent}
+                  onChange={(e) => setIsPremiumContent(e.target.checked)}
+                  disabled={!userHasPremium}
+                  className="w-5 h-5 rounded border-orange-300 cursor-pointer disabled:cursor-not-allowed"
+                />
+                <label htmlFor="isPremiumContent" className="flex items-center gap-2 cursor-pointer">
+                  {isPremiumContent ? (
+                    <Badge variant="default" className="bg-orange-600">
+                      <Crown className="w-3 h-3 mr-1" />
+                      Premium Content
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline">Standard Content</Badge>
+                  )}
+                  <span className="text-sm text-gray-600">
+                    {userHasPremium ? "Mark as premium content" : "Upgrade to create premium content"}
+                  </span>
+                </label>
+                {!userHasPremium && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="ml-auto"
+                    onClick={() => setLocation("/nutrition/meal-planner")}
+                  >
+                    <Crown className="w-4 h-4 mr-1" />
+                    Upgrade
+                  </Button>
+                )}
               </div>
               <div className="flex gap-2">
                 <Button type="submit">Create Plan</Button>

@@ -31,6 +31,7 @@ const NutritionMealPlanner = () => {
   const [showAIRecipeModal, setShowAIRecipeModal] = useState(false);
   const [showPantryModal, setShowPantryModal] = useState(false);
   const [showLoadTemplateModal, setShowLoadTemplateModal] = useState(false);
+  const [savingsReport, setSavingsReport] = useState<any>(null);
 
   const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -41,8 +42,23 @@ const NutritionMealPlanner = () => {
     if (isPremium) {
       fetchDailyNutrition();
       fetchGroceryList();
+      fetchSavingsReport();
     }
   }, [selectedDate, isPremium, user]);
+
+  const fetchSavingsReport = async () => {
+    try {
+      const response = await fetch('/api/meal-planner-advanced/grocery-list/savings-report', {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSavingsReport(data);
+      }
+    } catch (error) {
+      console.error('Error fetching savings report:', error);
+    }
+  };
 
   const fetchUserData = async () => {
     try {
@@ -924,6 +940,60 @@ const NutritionMealPlanner = () => {
                     </div>
                   </CardContent>
                 </Card>
+
+                {savingsReport && (
+                  <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <DollarSign className="w-5 h-5 text-green-600" />
+                        Savings Report
+                      </CardTitle>
+                      <CardDescription>Your grocery budget performance</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-white rounded-lg p-3">
+                          <p className="text-xs text-gray-600 mb-1">Total Saved</p>
+                          <p className="text-2xl font-bold text-green-600">
+                            ${savingsReport.summary.totalSaved}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {savingsReport.summary.savingsRate} savings rate
+                          </p>
+                        </div>
+                        <div className="bg-white rounded-lg p-3">
+                          <p className="text-xs text-gray-600 mb-1">Pantry Savings</p>
+                          <p className="text-2xl font-bold text-emerald-600">
+                            ${savingsReport.pantry.savings}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {savingsReport.pantry.itemCount} items owned
+                          </p>
+                        </div>
+                      </div>
+                      <div className="pt-3 border-t border-green-200">
+                        <p className="text-xs font-medium text-gray-700 mb-2">Top Saving Categories:</p>
+                        <div className="space-y-2">
+                          {savingsReport.topSavingCategories.slice(0, 3).map((category: any, idx: number) => (
+                            <div key={idx} className="flex items-center justify-between text-xs">
+                              <span className="text-gray-600">{category.category}</span>
+                              <span className="font-medium text-green-600">-${category.saved.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 text-center">
+                        <div className="flex items-center justify-center gap-2 mb-1">
+                          <TrendingUp className="w-4 h-4 text-green-600" />
+                          <p className="text-xs font-medium text-gray-700">Smart Shopping</p>
+                        </div>
+                        <p className="text-xs text-gray-600">
+                          You're spending {savingsReport.summary.savingsRate} less than estimated!
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
                 <Card>
                   <CardHeader>
