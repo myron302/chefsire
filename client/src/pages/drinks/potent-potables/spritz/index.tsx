@@ -9,8 +9,7 @@ import {
   Sparkles, Clock, Heart, Target, Wine, Droplets, 
   Search, Share2, ArrowLeft, GlassWater, Flame,
   TrendingUp, Award, Zap, Crown, Apple, Leaf,
-  Clipboard, RotateCcw, Check, Home, Martini, Sun
-, Coffee} from 'lucide-react';
+  Clipboard, RotateCcw, Check, Home, Martini, Sun, Coffee} from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 
