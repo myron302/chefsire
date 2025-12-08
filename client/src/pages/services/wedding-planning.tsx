@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Calendar, MapPin, Users, DollarSign, Clock, Heart,
   ChefHat, Camera, Music, Flower, Sparkles, Star,
@@ -21,6 +21,91 @@ import { Textarea } from '@/components/ui/textarea';
 import { Link } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
 import { useUser } from '@/contexts/UserContext';
+
+// =========================================================
+// STATIC DATA - Moved outside component for performance
+// =========================================================
+
+const VENDORS = [
+  {
+    id: 1,
+    type: 'caterer',
+    name: 'Bella Vista Catering',
+    rating: 4.9,
+    reviews: 127,
+    priceRange: '$$$',
+    image: 'https://images.unsplash.com/photo-1555244162-803834f70033',
+    specialty: 'Farm-to-Table',
+    verified: true,
+    featured: true,
+    sponsored: true,
+    availability: 'Available',
+    minGuests: 50,
+    maxGuests: 500,
+    description: 'Award-winning catering with locally sourced ingredients',
+    amenities: ['Tastings', 'Custom Menus', 'Dietary Options', 'Bar Service'],
+    responseTime: '2 hours',
+    viewsToday: 23
+  },
+  {
+    id: 2,
+    type: 'venue',
+    name: 'The Grand Ballroom',
+    rating: 4.8,
+    reviews: 89,
+    priceRange: '$$$$',
+    image: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3',
+    capacity: '50-300',
+    verified: true,
+    featured: false,
+    availability: 'Limited',
+    description: 'Elegant historic venue with stunning architecture',
+    amenities: ['In-House Catering', 'Parking', 'Bridal Suite', 'Dance Floor'],
+    responseTime: '24 hours'
+  },
+  {
+    id: 3,
+    type: 'photographer',
+    name: 'Moments Photography',
+    rating: 5.0,
+    reviews: 203,
+    priceRange: '$$$',
+    image: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b',
+    style: 'Documentary',
+    verified: true,
+    featured: false,
+    availability: 'Available',
+    description: 'Capturing authentic moments with artistic flair',
+    packages: ['6 hours', '8 hours', 'Full day'],
+    responseTime: '1 hour'
+  },
+  {
+    id: 4,
+    type: 'dj',
+    name: 'Elite Entertainment DJ',
+    rating: 4.7,
+    reviews: 156,
+    priceRange: '$$',
+    image: 'https://images.unsplash.com/photo-1493676304819-0d7a8d026dcf',
+    specialty: 'All Genres',
+    verified: false,
+    featured: false,
+    availability: 'Available',
+    description: 'Professional DJ services with premium sound systems',
+    amenities: ['MC Services', 'Lighting', 'Dance Floor', 'Wireless Mics'],
+    responseTime: '3 hours'
+  }
+];
+
+const VENDOR_CATEGORIES = [
+  { value: 'all', label: 'All', icon: Sparkles },
+  { value: 'caterer', label: 'Catering', icon: ChefHat },
+  { value: 'venue', label: 'Venues', icon: MapPin },
+  { value: 'photographer', label: 'Photo', icon: Camera },
+  { value: 'dj', label: 'DJ & Music', icon: Music },
+  { value: 'florist', label: 'Florist', icon: Flower },
+  { value: 'planner', label: 'Planner', icon: Heart }
+];
 
 export default function WeddingPlanning() {
   const { toast } = useToast();
@@ -69,95 +154,23 @@ export default function WeddingPlanning() {
     { id: 4, date: '2025-04-15', title: 'Send Save the Dates', type: 'task', reminder: false }
   ]);
 
-  const vendors = [
-    {
-      id: 1,
-      type: 'caterer',
-      name: 'Bella Vista Catering',
-      rating: 4.9,
-      reviews: 127,
-      priceRange: '$$$',
-      image: 'https://images.unsplash.com/photo-1555244162-803834f70033',
-      specialty: 'Farm-to-Table',
-      verified: true,
-      featured: true,
-      sponsored: true,
-      availability: 'Available',
-      minGuests: 50,
-      maxGuests: 500,
-      description: 'Award-winning catering with locally sourced ingredients',
-      amenities: ['Tastings', 'Custom Menus', 'Dietary Options', 'Bar Service'],
-      responseTime: '2 hours',
-      viewsToday: 23
-    },
-    {
-      id: 2,
-      type: 'venue',
-      name: 'The Grand Ballroom',
-      rating: 4.8,
-      reviews: 89,
-      priceRange: '$$$$',
-      image: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3',
-      capacity: '50-300',
-      verified: true,
-      featured: false,
-      availability: 'Limited',
-      description: 'Elegant historic venue with stunning architecture',
-      amenities: ['In-House Catering', 'Parking', 'Bridal Suite', 'Dance Floor'],
-      responseTime: '24 hours'
-    },
-    {
-      id: 3,
-      type: 'photographer',
-      name: 'Moments Photography',
-      rating: 5.0,
-      reviews: 203,
-      priceRange: '$$$',
-      image: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b',
-      style: 'Documentary',
-      verified: true,
-      featured: false,
-      availability: 'Available',
-      description: 'Capturing authentic moments with artistic flair',
-      packages: ['6 hours', '8 hours', 'Full day'],
-      responseTime: '1 hour'
-    },
-    {
-      id: 4,
-      type: 'dj',
-      name: 'Elite Entertainment DJ',
-      rating: 4.7,
-      reviews: 156,
-      priceRange: '$$',
-      image: 'https://images.unsplash.com/photo-1493676304819-0d7a8d026dcf',
-      specialty: 'All Genres',
-      verified: false,
-      featured: false,
-      availability: 'Available',
-      description: 'Professional DJ services with premium sound systems',
-      amenities: ['MC Services', 'Lighting', 'Dance Floor', 'Wireless Mics'],
-      responseTime: '3 hours'
-    }
-  ];
-
-  const vendorCategories = [
-    { value: 'all', label: 'All', icon: Sparkles },
-    { value: 'caterer', label: 'Catering', icon: ChefHat },
-    { value: 'venue', label: 'Venues', icon: MapPin },
-    { value: 'photographer', label: 'Photo', icon: Camera },
-    { value: 'dj', label: 'DJ & Music', icon: Music },
-    { value: 'florist', label: 'Florist', icon: Flower },
-    { value: 'planner', label: 'Planner', icon: Heart }
-  ];
-
-  const budgetBreakdown = [
+  // Memoized budget breakdown - only recalculates when budgetRange changes
+  const budgetBreakdown = useMemo(() => [
     { category: 'Catering & Bar', percentage: 40, amount: budgetRange[1] * 0.4, icon: ChefHat },
     { category: 'Venue', percentage: 20, amount: budgetRange[1] * 0.2, icon: MapPin },
     { category: 'Photography', percentage: 12, amount: budgetRange[1] * 0.12, icon: Camera },
     { category: 'Music & Entertainment', percentage: 8, amount: budgetRange[1] * 0.08, icon: Music },
     { category: 'Flowers & Decor', percentage: 10, amount: budgetRange[1] * 0.1, icon: Flower },
     { category: 'Other', percentage: 10, amount: budgetRange[1] * 0.1, icon: Sparkles }
-  ];
+  ], [budgetRange]);
+
+  // Memoized filtered vendors - only recalculates when filter changes
+  const filteredVendors = useMemo(() =>
+    selectedVendorType === 'all'
+      ? VENDORS
+      : VENDORS.filter(v => v.type === selectedVendorType),
+    [selectedVendorType]
+  );
 
   const toggleSaveVendor = (vendorId: number) => {
     setSavedVendors(prev => {
@@ -170,11 +183,6 @@ export default function WeddingPlanning() {
   const requestQuote = (vendorId: number) => {
     setRequestedQuotes(prev => new Set(prev).add(vendorId));
   };
-
-  const filteredVendors =
-    selectedVendorType === 'all'
-      ? vendors
-      : vendors.filter(v => v.type === selectedVendorType);
 
   return (
     <div className="max-w-7xl mx-auto px-3 md:px-4 py-4 md:py-8">
@@ -456,12 +464,12 @@ export default function WeddingPlanning() {
       </div>
 
       <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-6">
-        {vendorCategories.map((category) => {
+        {VENDOR_CATEGORIES.map((category) => {
           const Icon = category.icon;
           const isSelected = selectedVendorType === category.value;
           const count = category.value === 'all'
-            ? vendors.length
-            : vendors.filter(v => v.type === category.value).length;
+            ? VENDORS.length
+            : VENDORS.filter(v => v.type === category.value).length;
           return (
             <Button
               key={category.value}
