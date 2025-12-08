@@ -11,6 +11,16 @@ type SearchParams = {
   offset?: number;
 };
 
+// Fisher-Yates shuffle algorithm for randomizing arrays
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 type MealDBMeal = {
   idMeal: string;
   strMeal: string;
@@ -168,9 +178,13 @@ export async function searchRecipes(params: SearchParams): Promise<{
         // Filter: only recipes WITH images
         const localWithImages = localRecipes.filter(r => r.imageUrl && r.imageUrl.trim());
 
-        if (localWithImages.length > 0) {
-          // Take up to 3 local recipes with images
-          const localResults: RecipeItem[] = localWithImages.slice(0, 3).map((recipe) => ({
+        // Only mix local recipes if we have at least 3 to avoid repetition
+        if (localWithImages.length >= 3) {
+          // Randomize local recipes to avoid repetition
+          const shuffledLocal = shuffleArray(localWithImages);
+
+          // Take up to 3 random local recipes with images
+          const localResults: RecipeItem[] = shuffledLocal.slice(0, 3).map((recipe) => ({
             id: recipe.id,
             title: recipe.title,
             image: recipe.imageUrl,
