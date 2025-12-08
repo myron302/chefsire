@@ -178,7 +178,8 @@ export async function searchRecipes(params: SearchParams): Promise<{
         // Filter: only recipes WITH images
         const localWithImages = localRecipes.filter(r => r.imageUrl && r.imageUrl.trim());
 
-        if (localWithImages.length > 0) {
+        // Only mix local recipes if we have at least 3 to avoid repetition
+        if (localWithImages.length >= 3) {
           // Randomize local recipes to avoid repetition
           const shuffledLocal = shuffleArray(localWithImages);
 
