@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { 
-  Calendar, MapPin, Users, DollarSign, Clock, Heart, 
+import {
+  Calendar, MapPin, Users, DollarSign, Clock, Heart,
   ChefHat, Camera, Music, Flower, Sparkles, Star,
   Filter, Search, ArrowRight, Check, Info, Phone,
   Mail, Instagram, Globe, ChevronDown, TrendingUp,
   Award, Shield, Bookmark, Share2, MessageCircle,
   Gift, Calendar as CalendarIcon, Link2, Plus, X, BellRing,
-  AlertCircle, Zap
+  AlertCircle, Zap, Lock
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,9 +20,18 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Link } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
+import { useUser } from '@/contexts/UserContext';
 
 export default function WeddingPlanning() {
   const { toast } = useToast();
+
+  // Get user context and check subscription status
+  const { user } = useUser();
+  const isPremium = user?.subscription === 'premium';
+
+  // Simulated dynamic savings data (replace with a real API call if needed)
+  const dynamicSavings = 4200;
+
   const [selectedVendorType, setSelectedVendorType] = useState('all');
   const [budgetRange, setBudgetRange] = useState([5000, 50000]);
   const [guestCount, setGuestCount] = useState([100]);
@@ -317,6 +326,73 @@ export default function WeddingPlanning() {
             </CardContent>
           </Card>
         )}
+
+        {/* Premium Budget Tool Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {/* Current Budget Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Your Current Budget</CardTitle>
+              <CardDescription>Target: ${budgetRange[1].toLocaleString()}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <Slider
+                  value={budgetRange}
+                  onValueChange={setBudgetRange}
+                  max={100000}
+                  min={5000}
+                  step={1000}
+                  className="flex-1"
+                />
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>${budgetRange[0].toLocaleString()}</span>
+                  <span>${budgetRange[1].toLocaleString()}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Dynamic Budget Advisor Card */}
+          <Card className={isPremium ? "border-green-500/50" : "border-gray-200"}>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className={isPremium ? "text-green-700" : "text-gray-500"}>
+                {isPremium ? "Dynamic Budget Advisor" : "Budget Optimization (Premium)"}
+              </CardTitle>
+              {isPremium ? (
+                <TrendingUp className="w-6 h-6 text-green-600" />
+              ) : (
+                <Lock className="w-6 h-6 text-gray-400" />
+              )}
+            </CardHeader>
+            <CardContent>
+              {isPremium ? (
+                <div className="space-y-3">
+                  <p className="text-4xl font-bold text-green-600">
+                    <DollarSign className="w-6 h-6 inline mr-1" />
+                    {dynamicSavings.toLocaleString()}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Projected savings by optimizing your venue and catering budget against similar couples in your area.
+                  </p>
+                  <Button size="sm">View Detailed Report</Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-4xl font-bold text-gray-400">Locked</p>
+                  <p className="text-sm text-muted-foreground">
+                    Unlock the Dynamic Budget Advisor to find an average of
+                    <span className="font-bold text-pink-600"> $4,200</span> in hidden savings based on your criteria.
+                  </p>
+                  <Button size="sm" variant="outline" className="bg-pink-100 border-pink-300">
+                    <Heart className="w-4 h-4 mr-2" />
+                    Go Premium
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         <Card className="mb-6">
           <CardContent className="p-4 md:p-6">
