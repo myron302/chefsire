@@ -60,13 +60,13 @@ export const couplePlans = {
     trialDays: 14,
     features: {
       browseVendors: true,
-      saveVendors: 'unlimited',
+      saveVendors: 'unlimited', // UPGRADE: Removes the limit of 10
       messaging: true,
       budgetTools: 'advanced',
       guestList: true,
       registryPage: true,
-      vendorComparison: true,
-      priorityResponses: true
+      aiPlanner: true, // NEW FEATURE: AI-POWERED CHECKLIST
+      prioritySupport: true // NEW FEATURE: Direct access to support
     }
   }
 };
