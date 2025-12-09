@@ -36,7 +36,7 @@ import {
   Play,
   MessageCircle,
   BarChart3,
-  MoreHorizontal, // <--- NEW IMPORT for Post Actions
+  MoreHorizontal,
 } from "lucide-react";
 import type { User, PostWithUser } from "@shared/schema";
 
@@ -371,7 +371,7 @@ export default function Profile() {
             <div className="flex gap-2 mt-4 sm:mt-0">
               {isOwnProfile ? (
                 <>
-                  <Button onClick={() => setLocation("/create-post")} variant="secondary" data-testid="button-create-post">
+                  <Button onClick={() => setLocation("/post/new")} variant="secondary" data-testid="button-create-post">
                     <Plus className="w-4 h-4 mr-2" />
                     Create Post
                   </Button>
@@ -476,7 +476,7 @@ export default function Profile() {
                 <Card 
                   key={post.id} 
                   className="group cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => setLocation(`/post/${post.id}`)} // FIX 1: Navigate to Post Detail
+                  onClick={() => setLocation(`/post/${post.id}`)} // Leads to 404 until /post/:postId route is created
                 >
                   <div className="relative overflow-hidden aspect-square">
                     <img
@@ -485,13 +485,25 @@ export default function Profile() {
                       className="w-full h-full object-cover transition-transform group-hover:scale-105"
                       data-testid={`img-user-photo-${post.id}`}
                     />
-                    {isOwnProfile && ( // FIX 2: Edit/Delete Button
+                    {isOwnProfile && ( 
                       <div 
                         className="absolute top-2 right-2 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-black/70"
                         onClick={(e) => {
                           e.stopPropagation(); // Prevents card navigation/expansion
-                          // This would normally be a DropdownMenu trigger
-                          alert(`Actions for Post ID: ${post.id}\n\n[Edit Post] should link to /edit-post/${post.id}\n[Delete Post] should open a confirmation modal.`);
+                          // FIX: Implement two-action flow to demonstrate Edit/Delete
+                          const action = prompt(`Post Actions for Photo ID: ${post.id}\n\nType '1' for Edit or '2' for Delete:\n1. Edit Post\n2. Delete Post`);
+
+                          if (action === '1') {
+                            setLocation(`/edit-post/${post.id}`);
+                          } else if (action === '2') {
+                            if (window.confirm(`CONFIRM DELETE: Are you sure you want to delete Post ID: ${post.id}?`)) {
+                              console.log(`Simulating API call to delete post: ${post.id}`);
+                              alert(`Post ${post.id} deletion simulated.`);
+                              // Real delete API call and query invalidation would go here
+                            }
+                          } else if (action !== null) {
+                            alert('Invalid or cancelled action.');
+                          }
                         }}
                       >
                         <MoreHorizontal className="w-5 h-5" />
@@ -540,16 +552,28 @@ export default function Profile() {
                 <Card 
                   key={post.id} 
                   className="group cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => setLocation(`/post/${post.id}`)} // FIX 1: Navigate to Post Detail
+                  onClick={() => setLocation(`/post/${post.id}`)} // Leads to 404 until /post/:postId route is created
                 >
                   <div className="relative overflow-hidden aspect-square bg-black">
                     <video src={post.imageUrl} className="w-full h-full object-cover" data-testid={`video-user-bite-${post.id}`} />
-                    {isOwnProfile && ( // FIX 2: Edit/Delete Button
+                    {isOwnProfile && ( 
                       <div 
                         className="absolute top-2 right-2 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-black/70"
                         onClick={(e) => {
                           e.stopPropagation(); // Prevents card navigation/expansion
-                          alert(`Actions for Post ID: ${post.id}\n\n[Edit Post] should link to /edit-post/${post.id}\n[Delete Post] should open a confirmation modal.`);
+                          // FIX: Implement two-action flow to demonstrate Edit/Delete
+                          const action = prompt(`Post Actions for Bite ID: ${post.id}\n\nType '1' for Edit or '2' for Delete:\n1. Edit Post\n2. Delete Post`);
+
+                          if (action === '1') {
+                            setLocation(`/edit-post/${post.id}`);
+                          } else if (action === '2') {
+                            if (window.confirm(`CONFIRM DELETE: Are you sure you want to delete Post ID: ${post.id}?`)) {
+                              console.log(`Simulating API call to delete post: ${post.id}`);
+                              alert(`Post ${post.id} deletion simulated.`);
+                            }
+                          } else if (action !== null) {
+                            alert('Invalid or cancelled action.');
+                          }
                         }}
                       >
                         <MoreHorizontal className="w-5 h-5" />
@@ -606,7 +630,7 @@ export default function Profile() {
                 <Card 
                   key={post.id} 
                   className="hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => setLocation(`/recipe/${post.id}`)} // FIX 1: Navigate to Recipe Detail (using a separate route for recipes)
+                  onClick={() => setLocation(`/recipe/${post.id}`)} // Leads to 404 until /recipe/:postId route is created
                 >
                   <CardContent className="p-4 flex items-start gap-4">
                     <img
@@ -636,14 +660,26 @@ export default function Profile() {
                             4.5
                           </span>
                         </div>
-                        {isOwnProfile && ( // FIX 2: Edit/Delete Button
+                        {isOwnProfile && ( 
                           <Button
                             variant="ghost"
                             size="icon"
                             className="w-6 h-6 p-0 text-muted-foreground hover:bg-gray-100"
                             onClick={(e) => {
                               e.stopPropagation(); // Prevents card navigation/expansion
-                              alert(`Actions for Recipe ID: ${post.id}\n\n[Edit Recipe] should link to /edit-recipe/${post.id}\n[Delete Recipe] should open a confirmation modal.`);
+                              // FIX: Implement two-action flow for recipes
+                              const action = prompt(`Recipe Actions for ID: ${post.id}\n\nType '1' for Edit or '2' for Delete:\n1. Edit Recipe\n2. Delete Recipe`);
+
+                              if (action === '1') {
+                                setLocation(`/edit-recipe/${post.id}`);
+                              } else if (action === '2') {
+                                if (window.confirm(`CONFIRM DELETE: Are you sure you want to delete Recipe ID: ${post.id}?`)) {
+                                  console.log(`Simulating API call to delete recipe: ${post.id}`);
+                                  alert(`Recipe ${post.id} deletion simulated.`);
+                                }
+                              } else if (action !== null) {
+                                alert('Invalid or cancelled action.');
+                              }
                             }}
                           >
                             <MoreHorizontal className="w-4 h-4" />
@@ -738,7 +774,18 @@ export default function Profile() {
                             className="absolute top-2 right-2 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-black/70"
                             onClick={(e) => {
                               e.stopPropagation(); // Prevents card navigation/expansion
-                              alert(`Actions for Drink ID: ${d.id}\n\n[Edit Drink] should link to /edit-drink/${d.id}\n[Delete Drink] should open a confirmation modal.`);
+                              const action = prompt(`Drink Actions for ID: ${d.id}\n\nType '1' for Edit or '2' for Delete:\n1. Edit Drink\n2. Delete Drink`);
+
+                              if (action === '1') {
+                                setLocation(`/edit-drink/${d.id}`);
+                              } else if (action === '2') {
+                                if (window.confirm(`CONFIRM DELETE: Are you sure you want to delete Drink ID: ${d.id}?`)) {
+                                  console.log(`Simulating API call to delete drink: ${d.id}`);
+                                  alert(`Drink ${d.id} deletion simulated.`);
+                                }
+                              } else if (action !== null) {
+                                alert('Invalid or cancelled action.');
+                              }
                             }}
                           >
                             <MoreHorizontal className="w-5 h-5" />
