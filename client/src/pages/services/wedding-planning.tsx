@@ -130,6 +130,9 @@ const VendorCard = memo(
             loading="lazy"
             decoding="async"
             fetchPriority="low"
+            crossOrigin="anonymous"
+            referrerPolicy="no-referrer"
+            style={{ contentVisibility: 'auto' }}
           />
           {vendor.sponsored && (
             <Badge className="absolute top-2 left-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-xs">
@@ -252,6 +255,14 @@ const VendorCard = memo(
         </CardContent>
       </Card>
     );
+  },
+  // Custom comparison to prevent re-renders when unrelated vendors change
+  (prevProps, nextProps) => {
+    return (
+      prevProps.vendor.id === nextProps.vendor.id &&
+      prevProps.isSaved === nextProps.isSaved &&
+      prevProps.isQuoteRequested === nextProps.isQuoteRequested
+    );
   }
 );
 
@@ -322,6 +333,17 @@ export default function WeddingPlanning() {
     }
   ]);
 
+  // Email Invitations State
+  const [guestList, setGuestList] = useState([
+    { id: 1, name: 'John & Mary Smith', email: 'john.smith@email.com', rsvp: 'accepted', plusOne: true },
+    { id: 2, name: 'Sarah Johnson', email: 'sarah.j@email.com', rsvp: 'pending', plusOne: false },
+    { id: 3, name: 'Mike & Lisa Brown', email: 'mike.brown@email.com', rsvp: 'declined', plusOne: true },
+    { id: 4, name: 'Tom Davis', email: 'tom.davis@email.com', rsvp: 'pending', plusOne: false }
+  ]);
+  const [newGuestName, setNewGuestName] = useState('');
+  const [newGuestEmail, setNewGuestEmail] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState('elegant');
+
   // Memoized budget breakdown - only recalculates when budgetRange changes
   const budgetBreakdown = useMemo(
     () => [
@@ -381,6 +403,55 @@ export default function WeddingPlanning() {
   const requestQuote = useCallback((vendorId: number) => {
     setRequestedQuotes((prev) => new Set(prev).add(vendorId));
   }, []);
+
+  // Email Invitation Handlers
+  const addGuest = useCallback(() => {
+    if (newGuestName && newGuestEmail) {
+      setGuestList(prev => [
+        ...prev,
+        {
+          id: Date.now(),
+          name: newGuestName,
+          email: newGuestEmail,
+          rsvp: 'pending',
+          plusOne: false
+        }
+      ]);
+      setNewGuestName('');
+      setNewGuestEmail('');
+      toast({
+        title: "Guest Added",
+        description: `${newGuestName} has been added to your guest list.`,
+      });
+    }
+  }, [newGuestName, newGuestEmail, toast]);
+
+  const removeGuest = useCallback((guestId: number) => {
+    setGuestList(prev => prev.filter(g => g.id !== guestId));
+  }, []);
+
+  const sendInvitations = useCallback(() => {
+    if (!isPremium) {
+      toast({
+        title: "Premium Feature",
+        description: "Email invitations are a Premium feature. Upgrade to send beautiful wedding invitations!",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "Invitations Sent!",
+      description: `${guestList.length} invitations have been sent successfully.`,
+    });
+  }, [isPremium, guestList.length, toast]);
+
+  const rsvpStats = useMemo(() => {
+    const accepted = guestList.filter(g => g.rsvp === 'accepted').length;
+    const declined = guestList.filter(g => g.rsvp === 'declined').length;
+    const pending = guestList.filter(g => g.rsvp === 'pending').length;
+    return { accepted, declined, pending, total: guestList.length };
+  }, [guestList]);
 
   return (
     <div className="max-w-7xl mx-auto px-3 md:px-4 py-4 md:py-8">
@@ -968,6 +1039,164 @@ export default function WeddingPlanning() {
               their wedding date.
             </AlertDescription>
           </Alert>
+        </CardContent>
+      </Card>
+
+      {/* Email Invitations Section - Premium Feature */}
+      <Card className={`mb-8 ${isPremium ? 'border-purple-500/50' : 'border-gray-300'}`}>
+        <CardHeader className="p-4 md:p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Mail className="w-4 h-4 md:w-5 md:h-5" />
+              <CardTitle className="text-base md:text-lg">Email Invitations</CardTitle>
+              {!isPremium && (
+                <Badge className="bg-pink-500 text-white text-xs">Premium</Badge>
+              )}
+            </div>
+            {isPremium && (
+              <Badge className="bg-green-500 text-white text-xs">
+                <Check className="w-3 h-3 mr-1" />
+                Active
+              </Badge>
+            )}
+          </div>
+          <CardDescription className="text-xs md:text-sm">
+            Send beautiful wedding invitations and track RSVPs
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 md:p-6">
+          {/* RSVP Stats */}
+          <div className="grid grid-cols-4 gap-3 md:gap-4 mb-6">
+            <div className="text-center p-3 bg-muted rounded-lg">
+              <p className="text-xl md:text-2xl font-bold">{rsvpStats.total}</p>
+              <p className="text-xs text-muted-foreground">Total Guests</p>
+            </div>
+            <div className="text-center p-3 bg-green-50 dark:bg-green-950 rounded-lg">
+              <p className="text-xl md:text-2xl font-bold text-green-600">{rsvpStats.accepted}</p>
+              <p className="text-xs text-muted-foreground">Accepted</p>
+            </div>
+            <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg">
+              <p className="text-xl md:text-2xl font-bold text-yellow-600">{rsvpStats.pending}</p>
+              <p className="text-xs text-muted-foreground">Pending</p>
+            </div>
+            <div className="text-center p-3 bg-red-50 dark:bg-red-950 rounded-lg">
+              <p className="text-xl md:text-2xl font-bold text-red-600">{rsvpStats.declined}</p>
+              <p className="text-xs text-muted-foreground">Declined</p>
+            </div>
+          </div>
+
+          {/* Template Selection */}
+          <div className="mb-6">
+            <label className="text-sm font-medium mb-2 block">Invitation Template</label>
+            <div className="grid grid-cols-3 gap-3">
+              {['elegant', 'rustic', 'modern'].map((template) => (
+                <button
+                  key={template}
+                  onClick={() => setSelectedTemplate(template)}
+                  className={`p-4 border-2 rounded-lg text-center capitalize transition-all ${
+                    selectedTemplate === template
+                      ? 'border-pink-500 bg-pink-50 dark:bg-pink-950'
+                      : 'border-gray-200 hover:border-gray-300'
+                  } ${!isPremium ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  disabled={!isPremium}
+                >
+                  <Sparkles className="w-6 h-6 mx-auto mb-2" />
+                  <p className="text-sm font-medium">{template}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Add Guest Form */}
+          <div className="mb-6 p-4 bg-muted rounded-lg">
+            <h4 className="font-medium mb-3 text-sm">Add Guest</h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Input
+                placeholder="Guest Name"
+                value={newGuestName}
+                onChange={(e) => setNewGuestName(e.target.value)}
+                className="text-sm"
+              />
+              <Input
+                type="email"
+                placeholder="Email Address"
+                value={newGuestEmail}
+                onChange={(e) => setNewGuestEmail(e.target.value)}
+                className="text-sm"
+              />
+              <Button onClick={addGuest} className="w-full">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Guest
+              </Button>
+            </div>
+          </div>
+
+          {/* Guest List */}
+          <div className="mb-6">
+            <h4 className="font-medium mb-3 text-sm">Guest List ({guestList.length})</h4>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {guestList.map((guest) => (
+                <div
+                  key={guest.id}
+                  className="flex items-center justify-between p-3 bg-muted rounded-lg"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{guest.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{guest.email}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={
+                        guest.rsvp === 'accepted'
+                          ? 'default'
+                          : guest.rsvp === 'declined'
+                          ? 'destructive'
+                          : 'secondary'
+                      }
+                      className="text-xs"
+                    >
+                      {guest.rsvp}
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeGuest(guest.id)}
+                      className="p-1"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Send Invitations Button */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              className="flex-1 bg-gradient-to-r from-pink-600 to-purple-600 text-white"
+              onClick={sendInvitations}
+              disabled={guestList.length === 0}
+            >
+              <Mail className="w-4 h-4 mr-2" />
+              Send Invitations ({guestList.length})
+            </Button>
+            {!isPremium && (
+              <Button variant="outline" className="flex-1 border-pink-300 bg-pink-50">
+                <Heart className="w-4 h-4 mr-2" />
+                Upgrade to Premium
+              </Button>
+            )}
+          </div>
+
+          {!isPremium && (
+            <Alert className="mt-4 border-pink-300 bg-pink-50/50">
+              <Lock className="h-4 w-4 text-pink-600" />
+              <AlertDescription className="text-sm">
+                Upgrade to Premium to send unlimited email invitations with beautiful templates and automatic RSVP tracking.
+              </AlertDescription>
+            </Alert>
+          )}
         </CardContent>
       </Card>
 
