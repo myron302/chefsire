@@ -103,4 +103,43 @@ router.post("/", requireAuth, (req, res) => {
   });
 });
 
+// DELETE /api/upload/:filename - Delete uploaded file
+router.delete("/:filename", requireAuth, async (req, res) => {
+  try {
+    const { filename } = req.params;
+
+    // Security: Validate filename to prevent path traversal
+    if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      return res.status(400).json({ ok: false, error: "Invalid filename" });
+    }
+
+    // Build the file path and ensure it's under uploads directory
+    const uploadsDir = path.join(process.cwd(), 'uploads');
+    const filePath = path.join(uploadsDir, filename);
+
+    // Verify the resolved path is still under uploads directory
+    const resolvedPath = path.resolve(filePath);
+    const resolvedUploadsDir = path.resolve(uploadsDir);
+    
+    if (!resolvedPath.startsWith(resolvedUploadsDir)) {
+      console.error('[UPLOAD DELETE] Path traversal attempt:', filename);
+      return res.status(403).json({ ok: false, error: "Access denied" });
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ ok: false, error: "File not found" });
+    }
+
+    // Delete the file
+    fs.unlinkSync(filePath);
+    console.log('[UPLOAD DELETE] Successfully deleted file:', filename);
+
+    res.json({ ok: true, message: "File deleted successfully" });
+  } catch (error: any) {
+    console.error('[UPLOAD DELETE] Error deleting file:', error);
+    res.status(500).json({ ok: false, error: error.message || "Failed to delete file" });
+  }
+});
+
 export default router;

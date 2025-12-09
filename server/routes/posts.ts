@@ -3,6 +3,9 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { asyncHandler, ErrorFactory } from "../middleware/error-handler";
 import { validateRequest, CommonSchemas } from "../middleware/validation";
+import { requireAuth } from "../middleware";
+import fs from "fs";
+import path from "path";
 
 const r = Router();
 
@@ -97,14 +100,92 @@ r.post("/", async (req, res) => {
   }
 });
 
-r.delete("/:id", async (req, res) => {
+r.delete("/:id", requireAuth, async (req, res) => {
   try {
+    // Verify the authenticated user owns this post
+    const post = await storage.getPost(req.params.id);
+    if (!post) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    // Check ownership
+    if (post.userId !== req.user!.id) {
+      return res.status(403).json({ message: "Forbidden: You don't own this post" });
+    }
+
+    // Delete associated media file if it's a local upload
+    if (post.imageUrl && (post.imageUrl.startsWith('/uploads/') || post.imageUrl.includes('/uploads/'))) {
+      try {
+        // Extract filename from URL
+        const urlParts = post.imageUrl.split('/uploads/');
+        if (urlParts.length > 1) {
+          const filename = urlParts[1].split('?')[0]; // Remove query params if any
+          const uploadsDir = path.join(process.cwd(), 'uploads');
+          const filePath = path.join(uploadsDir, filename);
+          
+          // Verify path is under uploads directory
+          const resolvedPath = path.resolve(filePath);
+          const resolvedUploadsDir = path.resolve(uploadsDir);
+          
+          if (resolvedPath.startsWith(resolvedUploadsDir) && fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log('[POST DELETE] Deleted media file:', filename);
+          }
+        }
+      } catch (fileErr) {
+        // Log but don't fail the post deletion if file deletion fails
+        console.error('[POST DELETE] Error deleting media file:', fileErr);
+      }
+    }
+
+    // Delete the post (this will cascade delete comments and likes via storage layer)
     const ok = await storage.deletePost(req.params.id);
-    if (!ok) return res.status(404).json({ message: "Post not found" });
+    if (!ok) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
     res.json({ message: "Post deleted" });
   } catch (err) {
     console.error("posts/delete error", err);
     res.status(500).json({ message: "Failed to delete post" });
+  }
+});
+
+r.patch("/:id", requireAuth, async (req, res) => {
+  try {
+    // Verify the authenticated user owns this post
+    const post = await storage.getPost(req.params.id);
+    if (!post) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    // Check ownership
+    if (post.userId !== req.user!.id) {
+      return res.status(403).json({ message: "Forbidden: You don't own this post" });
+    }
+
+    // Validate request body
+    const schema = z.object({
+      caption: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      imageUrl: z.string().nullable().optional(),
+    });
+
+    const body = schema.parse(req.body);
+
+    // Update the post
+    const updated = await storage.updatePost(req.params.id, body as any);
+    if (!updated) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    res.json(updated);
+  } catch (err: any) {
+    if (err?.issues) {
+      return res.status(400).json({ message: "Invalid update data", errors: err.issues });
+    }
+    console.error("posts/patch error", err);
+    res.status(500).json({ message: "Failed to update post" });
   }
 });
 
