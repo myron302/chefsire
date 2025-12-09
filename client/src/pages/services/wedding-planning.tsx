@@ -453,6 +453,97 @@ export default function WeddingPlanning() {
     return { accepted, declined, pending, total: guestList.length };
   }, [guestList]);
 
+  // Button Click Handlers
+  const handleStartPlanning = useCallback(() => {
+    toast({
+      title: "Let's Start Planning!",
+      description: "Scroll down to explore vendors, manage your budget, and track your calendar.",
+    });
+    // Scroll to vendors section
+    window.scrollTo({ top: 600, behavior: 'smooth' });
+  }, [toast]);
+
+  const handleViewBudgetReport = useCallback(() => {
+    if (!isPremium) {
+      toast({
+        title: "Premium Feature",
+        description: "Unlock detailed budget reports by upgrading to Premium!",
+        variant: "destructive",
+      });
+      return;
+    }
+    toast({
+      title: "Budget Report",
+      description: "Opening your detailed budget analysis...",
+    });
+  }, [isPremium, toast]);
+
+  const handleGoPremium = useCallback(() => {
+    toast({
+      title: "Upgrade to Premium",
+      description: "Redirecting to subscription page...",
+    });
+    // In production, this would redirect to payment page
+    setTimeout(() => {
+      toast({
+        title: "Coming Soon",
+        description: "Premium subscription checkout will be available soon!",
+      });
+    }, 1000);
+  }, [toast]);
+
+  const handleAddRegistry = useCallback(() => {
+    const newRegistry = {
+      id: Date.now(),
+      name: 'Custom Registry',
+      url: '',
+      icon: '🎁'
+    };
+    setRegistryLinks(prev => [...prev, newRegistry]);
+    toast({
+      title: "Registry Added",
+      description: "Add your registry URL to share with guests.",
+    });
+  }, [toast]);
+
+  const handleShareRegistry = useCallback((platform: string) => {
+    const url = 'chefsire.com/registry/sarah-john-2025';
+
+    if (platform === 'copy') {
+      navigator.clipboard.writeText(`https://${url}`);
+      toast({
+        title: "Link Copied!",
+        description: "Registry link copied to clipboard.",
+      });
+    } else {
+      toast({
+        title: `Share on ${platform}`,
+        description: `Opening ${platform} to share your registry...`,
+      });
+    }
+  }, [toast]);
+
+  const handleAddCalendarEvent = useCallback(() => {
+    toast({
+      title: "Event Added",
+      description: "Your event has been added to the calendar.",
+    });
+  }, [toast]);
+
+  const handleLearnMore = useCallback(() => {
+    toast({
+      title: "Vendor Information",
+      description: "Learn more about joining our wedding marketplace...",
+    });
+  }, [toast]);
+
+  const handleListBusiness = useCallback(() => {
+    toast({
+      title: "List Your Business",
+      description: "Opening vendor registration form...",
+    });
+  }, [toast]);
+
   return (
     <div className="max-w-7xl mx-auto px-3 md:px-4 py-4 md:py-8">
       {showTrialBanner && (
@@ -526,7 +617,10 @@ export default function WeddingPlanning() {
                 <span className="sm:hidden">Map</span>
               </Button>
             </Link>
-            <Button className="bg-gradient-to-r from-pink-600 to-purple-600 text-white w-full sm:w-auto">
+            <Button
+              className="bg-gradient-to-r from-pink-600 to-purple-600 text-white w-full sm:w-auto"
+              onClick={handleStartPlanning}
+            >
               <Heart className="w-4 h-4 mr-2" />
               Start Planning
             </Button>
@@ -675,7 +769,7 @@ export default function WeddingPlanning() {
                     Projected savings by optimizing your venue and catering budget
                     against similar couples in your area.
                   </p>
-                  <Button size="sm">View Detailed Report</Button>
+                  <Button size="sm" onClick={handleViewBudgetReport}>View Detailed Report</Button>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -689,6 +783,7 @@ export default function WeddingPlanning() {
                     size="sm"
                     variant="outline"
                     className="bg-pink-100 border-pink-300"
+                    onClick={handleGoPremium}
                   >
                     <Heart className="w-4 h-4 mr-2" />
                     Go Premium
@@ -893,7 +988,7 @@ export default function WeddingPlanning() {
               </div>
             ))}
 
-            <Button variant="outline" className="w-full text-sm">
+            <Button variant="outline" className="w-full text-sm" onClick={handleAddRegistry}>
               <Plus className="w-4 h-4 mr-2" />
               Add Another Registry
             </Button>
@@ -903,21 +998,21 @@ export default function WeddingPlanning() {
                 Share Your Registries
               </h4>
               <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-                <Button variant="outline" size="sm" className="text-xs">
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry('Facebook')}>
                   <Share2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
                   <span className="hidden sm:inline">Facebook</span>
                   <span className="sm:hidden">FB</span>
                 </Button>
-                <Button variant="outline" size="sm" className="text-xs">
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry('Instagram')}>
                   <Share2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
                   <span className="hidden sm:inline">Instagram</span>
                   <span className="sm:hidden">IG</span>
                 </Button>
-                <Button variant="outline" size="sm" className="text-xs">
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry('Email')}>
                   <Mail className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
                   Email
                 </Button>
-                <Button variant="outline" size="sm" className="text-xs">
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry('copy')}>
                   <Link2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
                   <span className="hidden sm:inline">Copy Link</span>
                   <span className="sm:hidden">Copy</span>
@@ -1024,7 +1119,7 @@ export default function WeddingPlanning() {
                     Set reminder
                   </label>
                 </div>
-                <Button className="w-full text-sm">
+                <Button className="w-full text-sm" onClick={handleAddCalendarEvent}>
                   <Plus className="w-4 h-4 mr-2" />
                   Add to Calendar
                 </Button>
@@ -1182,7 +1277,7 @@ export default function WeddingPlanning() {
               Send Invitations ({guestList.length})
             </Button>
             {!isPremium && (
-              <Button variant="outline" className="flex-1 border-pink-300 bg-pink-50">
+              <Button variant="outline" className="flex-1 border-pink-300 bg-pink-50" onClick={handleGoPremium}>
                 <Heart className="w-4 h-4 mr-2" />
                 Upgrade to Premium
               </Button>
@@ -1210,10 +1305,10 @@ export default function WeddingPlanning() {
             your business.
           </p>
           <div className="flex gap-4 justify-center">
-            <Button size="lg" variant="outline">
+            <Button size="lg" variant="outline" onClick={handleLearnMore}>
               Learn More
             </Button>
-            <Button size="lg" className="bg-gradient-to-r from-pink-600 to-purple-600">
+            <Button size="lg" className="bg-gradient-to-r from-pink-600 to-purple-600" onClick={handleListBusiness}>
               <TrendingUp className="w-4 h-4 mr-2" />
               List Your Business
             </Button>
