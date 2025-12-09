@@ -36,6 +36,7 @@ import {
   Play,
   MessageCircle,
   BarChart3,
+  MoreHorizontal, // <--- NEW IMPORT for Post Actions
 } from "lucide-react";
 import type { User, PostWithUser } from "@shared/schema";
 
@@ -472,7 +473,11 @@ export default function Profile() {
           ) : photoPosts.length > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {photoPosts.map((post) => (
-                <Card key={post.id} className="group cursor-pointer hover:shadow-lg transition-shadow">
+                <Card 
+                  key={post.id} 
+                  className="group cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => setLocation(`/post/${post.id}`)} // FIX 1: Navigate to Post Detail
+                >
                   <div className="relative overflow-hidden aspect-square">
                     <img
                       src={post.imageUrl}
@@ -480,6 +485,18 @@ export default function Profile() {
                       className="w-full h-full object-cover transition-transform group-hover:scale-105"
                       data-testid={`img-user-photo-${post.id}`}
                     />
+                    {isOwnProfile && ( // FIX 2: Edit/Delete Button
+                      <div 
+                        className="absolute top-2 right-2 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-black/70"
+                        onClick={(e) => {
+                          e.stopPropagation(); // Prevents card navigation/expansion
+                          // This would normally be a DropdownMenu trigger
+                          alert(`Actions for Post ID: ${post.id}\n\n[Edit Post] should link to /edit-post/${post.id}\n[Delete Post] should open a confirmation modal.`);
+                        }}
+                      >
+                        <MoreHorizontal className="w-5 h-5" />
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                       <div className="flex items-center space-x-4 text-white">
                         <span className="flex items-center space-x-1">
@@ -520,9 +537,24 @@ export default function Profile() {
           ) : bitePosts.length > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {bitePosts.map((post) => (
-                <Card key={post.id} className="group cursor-pointer hover:shadow-lg transition-shadow">
+                <Card 
+                  key={post.id} 
+                  className="group cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => setLocation(`/post/${post.id}`)} // FIX 1: Navigate to Post Detail
+                >
                   <div className="relative overflow-hidden aspect-square bg-black">
                     <video src={post.imageUrl} className="w-full h-full object-cover" data-testid={`video-user-bite-${post.id}`} />
+                    {isOwnProfile && ( // FIX 2: Edit/Delete Button
+                      <div 
+                        className="absolute top-2 right-2 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-black/70"
+                        onClick={(e) => {
+                          e.stopPropagation(); // Prevents card navigation/expansion
+                          alert(`Actions for Post ID: ${post.id}\n\n[Edit Post] should link to /edit-post/${post.id}\n[Delete Post] should open a confirmation modal.`);
+                        }}
+                      >
+                        <MoreHorizontal className="w-5 h-5" />
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-black/40 group-hover:bg-black/60 transition-colors duration-300 flex items-center justify-center">
                       <Play className="w-12 h-12 text-white opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all" />
                     </div>
@@ -571,17 +603,21 @@ export default function Profile() {
           ) : recipePosts.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {recipePosts.map((post) => (
-                <Card key={post.id} className="hover:shadow-md transition-shadow cursor-pointer">
-                  <CardContent className="p-4 flex items-center gap-4">
+                <Card 
+                  key={post.id} 
+                  className="hover:shadow-md transition-shadow cursor-pointer"
+                  onClick={() => setLocation(`/recipe/${post.id}`)} // FIX 1: Navigate to Recipe Detail (using a separate route for recipes)
+                >
+                  <CardContent className="p-4 flex items-start gap-4">
                     <img
                       src={post.imageUrl}
                       alt={post.caption || "Recipe image"}
-                      className="w-20 h-20 object-cover rounded-md"
+                      className="w-20 h-20 object-cover rounded-md flex-shrink-0"
                     />
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-1">
                         <h4 className="font-semibold line-clamp-1">{post.caption || "Untitled Recipe"}</h4>
-                        <Badge variant="secondary" className="bg-green-100 text-green-700">
+                        <Badge variant="secondary" className="bg-green-100 text-green-700 flex-shrink-0">
                           <ChefHat className="w-3 h-3 mr-1" /> Recipe
                         </Badge>
                       </div>
@@ -589,15 +625,30 @@ export default function Profile() {
                         {/* Placeholder for recipe details or first line of caption */}
                         A quick and easy dish ready in 30 minutes.
                       </p>
-                      <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Heart className="w-3 h-3" />
-                          {post.likesCount}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Star className="w-3 h-3" />
-                          4.5
-                        </span>
+                      <div className="flex items-center justify-between mt-2">
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Heart className="w-3 h-3" />
+                            {post.likesCount}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Star className="w-3 h-3" />
+                            4.5
+                          </span>
+                        </div>
+                        {isOwnProfile && ( // FIX 2: Edit/Delete Button
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="w-6 h-6 p-0 text-muted-foreground hover:bg-gray-100"
+                            onClick={(e) => {
+                              e.stopPropagation(); // Prevents card navigation/expansion
+                              alert(`Actions for Recipe ID: ${post.id}\n\n[Edit Recipe] should link to /edit-recipe/${post.id}\n[Delete Recipe] should open a confirmation modal.`);
+                            }}
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -675,9 +726,24 @@ export default function Profile() {
               {drinksData.drinks.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {drinksData.drinks.map((d: any) => (
-                    <Card key={d.id} className="overflow-hidden">
-                      <div className="aspect-video overflow-hidden">
-                        <img src={d.imageUrl} alt={d.name} className="w-full h-full object-cover" />
+                    <Card 
+                      key={d.id} 
+                      className="overflow-hidden group cursor-pointer hover:shadow-lg transition-shadow"
+                      onClick={() => setLocation(`/drink/${d.id}`)} // Navigate to Drink Detail
+                    >
+                      <div className="aspect-video overflow-hidden relative">
+                        <img src={d.imageUrl} alt={d.name} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                        {isOwnProfile && ( // Edit/Delete Button
+                          <div 
+                            className="absolute top-2 right-2 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-black/70"
+                            onClick={(e) => {
+                              e.stopPropagation(); // Prevents card navigation/expansion
+                              alert(`Actions for Drink ID: ${d.id}\n\n[Edit Drink] should link to /edit-drink/${d.id}\n[Delete Drink] should open a confirmation modal.`);
+                            }}
+                          >
+                            <MoreHorizontal className="w-5 h-5" />
+                          </div>
+                        )}
                       </div>
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between">
