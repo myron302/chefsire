@@ -476,7 +476,8 @@ export default function Profile() {
                 <Card 
                   key={post.id} 
                   className="group cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => setLocation(`/post/${post.id}`)} // Leads to 404 until /post/:postId route is created
+                  // REMOVED/COMMENTED OUT: This line is likely causing a 404 because the Post Detail route is not configured.
+                  // onClick={() => setLocation(`/post/${post.id}`)} 
                 >
                   <div className="relative overflow-hidden aspect-square">
                     <img
@@ -490,19 +491,23 @@ export default function Profile() {
                         className="absolute top-2 right-2 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-black/70"
                         onClick={(e) => {
                           e.stopPropagation(); // Prevents card navigation/expansion
-                          // FIX: Implement two-action flow to demonstrate Edit/Delete
+
+                          // FIX: Use a simple confirm/navigate for Edit/Delete
                           const action = prompt(`Post Actions for Photo ID: ${post.id}\n\nType '1' for Edit or '2' for Delete:\n1. Edit Post\n2. Delete Post`);
 
                           if (action === '1') {
+                            // Directly navigate to the edit page
                             setLocation(`/edit-post/${post.id}`);
                           } else if (action === '2') {
+                            // Use window.confirm for a more standard delete confirmation
                             if (window.confirm(`CONFIRM DELETE: Are you sure you want to delete Post ID: ${post.id}?`)) {
                               console.log(`Simulating API call to delete post: ${post.id}`);
-                              alert(`Post ${post.id} deletion simulated.`);
+                              alert(`Post ${post.id} deletion simulated. (The post is still here because we did not call a real API)`);
                               // Real delete API call and query invalidation would go here
                             }
                           } else if (action !== null) {
-                            alert('Invalid or cancelled action.');
+                            // User clicked Cancel or entered an invalid action
+                            console.log('Action cancelled or invalid.');
                           }
                         }}
                       >
@@ -552,7 +557,8 @@ export default function Profile() {
                 <Card 
                   key={post.id} 
                   className="group cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => setLocation(`/post/${post.id}`)} // Leads to 404 until /post/:postId route is created
+                  // REMOVED/COMMENTED OUT: This line is likely causing a 404 because the Post Detail route is not configured.
+                  // onClick={() => setLocation(`/post/${post.id}`)} 
                 >
                   <div className="relative overflow-hidden aspect-square bg-black">
                     <video src={post.imageUrl} className="w-full h-full object-cover" data-testid={`video-user-bite-${post.id}`} />
@@ -561,18 +567,22 @@ export default function Profile() {
                         className="absolute top-2 right-2 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-black/70"
                         onClick={(e) => {
                           e.stopPropagation(); // Prevents card navigation/expansion
-                          // FIX: Implement two-action flow to demonstrate Edit/Delete
+
+                          // FIX: Use a simple confirm/navigate for Edit/Delete
                           const action = prompt(`Post Actions for Bite ID: ${post.id}\n\nType '1' for Edit or '2' for Delete:\n1. Edit Post\n2. Delete Post`);
 
                           if (action === '1') {
+                            // Directly navigate to the edit page
                             setLocation(`/edit-post/${post.id}`);
                           } else if (action === '2') {
+                            // Use window.confirm for a more standard delete confirmation
                             if (window.confirm(`CONFIRM DELETE: Are you sure you want to delete Post ID: ${post.id}?`)) {
                               console.log(`Simulating API call to delete post: ${post.id}`);
-                              alert(`Post ${post.id} deletion simulated.`);
+                              alert(`Post ${post.id} deletion simulated. (The post is still here because we did not call a real API)`);
                             }
                           } else if (action !== null) {
-                            alert('Invalid or cancelled action.');
+                            // User clicked Cancel or entered an invalid action
+                            console.log('Action cancelled or invalid.');
                           }
                         }}
                       >
