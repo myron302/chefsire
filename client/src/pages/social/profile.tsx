@@ -3,7 +3,7 @@ import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"; // <-- FIX: CardDescription ADDED HERE
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useUser } from "@/contexts/UserContext";
@@ -37,6 +37,7 @@ import {
   MessageCircle,
   BarChart3,
   User,
+  EllipsisVertical, // ADDED: New icon for the options menu
 } from "lucide-react";
 import type { User as UserType, PostWithUser } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
@@ -99,29 +100,29 @@ export default function Profile() {
     },
   });
 
-  // --- HANDLER FOR POST CLICKS (FIXES CLICKING PIC NOT WORKING & DELETE LOGIC) ---
-  const handlePostClick = (post: PostWithUser) => {
-    // Check if it's the user's own post
-    if (isOwnProfile && post.userId === currentUser?.id) {
-      // Use prompt as per existing simple logic, but fix the actions
-      const option = prompt(
-        `Post options for photo ${post.id}:\nType 1 for Edit\nType 2 for Delete`
-      );
+  // ADDED: New function to handle the Edit/Delete prompt for the post owner
+  const handleEditDelete = (post: PostWithUser, e: React.MouseEvent) => {
+    // Stop event propagation to prevent the parent Card's onClick (navigation) from firing
+    e.stopPropagation();
 
-      if (option === '1') {
-        // EDIT: Navigate to the create post page with the post ID for editing
-        setLocation(`/post/edit/${post.id}`);
-      } else if (option === '2') {
-        // DELETE: Confirms and uses the API mutation (FIXES 404 NAVIGATION BUG)
-        if (window.confirm("Are you sure you want to delete this post? This cannot be undone.")) {
-          deletePostMutation.mutate(post.id);
-        }
+    // Use prompt as per the simple logic
+    const option = prompt(
+      `Post options for photo ${post.id}:\nType 1 for Edit\nType 2 for Delete`
+    );
+
+    if (option === '1') {
+      setLocation(`/post/edit/${post.id}`);
+    } else if (option === '2') {
+      if (window.confirm("Are you sure you want to delete this post? This cannot be undone.")) {
+        deletePostMutation.mutate(post.id);
       }
-    } else {
-      // Default action for viewing a post (for non-owners or just to view)
-      // Navigates to a dedicated post view page
-      setLocation(`/post/${post.id}`);
     }
+  };
+
+  // --- HANDLER FOR POST CLICKS (RESTORED TO VIEW POST ONLY) ---
+  const handlePostClick = (post: PostWithUser) => {
+    // Navigates to a dedicated post view page, as originally intended (full screen view).
+    setLocation(`/post/${post.id}`);
   };
   // ----------------------------------------------------------------------------
 
@@ -222,8 +223,6 @@ export default function Profile() {
             calories: 220,
             protein: 25,
             fiber: 2,
-            likesCount: 23,
-            savesCount: 12,
             imageUrl: "https://images.unsplash.com/photo-1592924357228-91a4daadcfea",
           },
         ],
@@ -490,6 +489,18 @@ export default function Profile() {
                   data-testid={`post-card-${post.id}`}
                 >
                   <div className="relative overflow-hidden aspect-square bg-black">
+                    {/* ADDED: Three-dot menu for owner to Edit/Delete */}
+                    {isOwnProfile && post.userId === currentUser?.id && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="absolute top-2 right-2 z-10 bg-black/50 hover:bg-black/70 text-white p-0 h-8 w-8 rounded-full"
+                        onClick={(e) => handleEditDelete(post, e)}
+                        data-testid={`button-post-options-${post.id}`}
+                      >
+                        <EllipsisVertical className="w-5 h-5" />
+                      </Button>
+                    )}
                     <img
                       src={post.imageUrl}
                       alt={post.caption}
@@ -544,6 +555,18 @@ export default function Profile() {
                   data-testid={`bite-card-${post.id}`}
                 >
                   <div className="relative overflow-hidden aspect-square bg-black">
+                    {/* ADDED: Three-dot menu for owner to Edit/Delete */}
+                    {isOwnProfile && post.userId === currentUser?.id && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="absolute top-2 right-2 z-10 bg-black/50 hover:bg-black/70 text-white p-0 h-8 w-8 rounded-full"
+                        onClick={(e) => handleEditDelete(post, e)}
+                        data-testid={`button-bite-options-${post.id}`}
+                      >
+                        <EllipsisVertical className="w-5 h-5" />
+                      </Button>
+                    )}
                     {/* Assuming "imageUrl" for bites is actually a video URL */}
                     <video
                       src={post.imageUrl}
@@ -595,12 +618,24 @@ export default function Profile() {
                   onClick={() => handlePostClick(post)}
                 >
                   <div className="relative aspect-video overflow-hidden">
+                    {/* ADDED: Three-dot menu for owner to Edit/Delete */}
+                    {isOwnProfile && post.userId === currentUser?.id && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="absolute top-2 right-2 z-10 bg-black/50 hover:bg-black/70 text-white p-0 h-8 w-8 rounded-full"
+                        onClick={(e) => handleEditDelete(post, e)}
+                        data-testid={`button-recipe-options-${post.id}`}
+                      >
+                        <EllipsisVertical className="w-5 h-5" />
+                      </Button>
+                    )}
                     <img
                       src={post.imageUrl}
                       alt={post.caption}
                       className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
                     />
-                    <Badge className="absolute top-2 right-2 bg-primary hover:bg-primary/90">
+                    <Badge className="absolute top-2 left-2 bg-primary hover:bg-primary/90">
                       Recipe
                     </Badge>
                   </div>
