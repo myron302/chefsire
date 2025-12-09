@@ -4,16 +4,14 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import type { PostWithUser } from "@shared/schema";
-import {
-  Card,
-  Avatar,
-  AvatarImage,
-  AvatarFallback,
-  Badge,
-  Button,
-} from "@/components/ui"; // adjust imports to match your project structure
 import { MoreHorizontal } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+
+// Import UI primitives from their individual modules (do not import the directory)
+import { Card } from "@/components/ui/card";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 interface PostCardProps {
   post: PostWithUser;
@@ -175,7 +173,6 @@ export default function PostCard({ post }: PostCardProps) {
                   <button
                     className="w-full text-left px-3 py-2 hover:bg-slate-100"
                     onClick={() => {
-                      // Toggle like locally and call like API if desired
                       setIsLiked((s) => !s);
                       setMenuOpen(false);
                     }}
