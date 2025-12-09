@@ -924,7 +924,7 @@ const NutritionMealPlanner = () => {
               <div className="lg:col-span-2">
                 <Card>
                   <CardHeader>
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                       <div>
                         <CardTitle>Shopping List</CardTitle>
                         <CardDescription>Week of Dec 1-7</CardDescription>
