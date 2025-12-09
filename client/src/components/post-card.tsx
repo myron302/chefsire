@@ -39,7 +39,7 @@ export default function PostCard({ post, currentUserId }: PostCardProps) {
   const [isSaved, setIsSaved] = useState(post.isSaved || false);
 
   // Use authenticated user ID from context, fallback to prop
-  const authenticatedUserId = user?.id || currentUserId || "user-1";
+  const authenticatedUserId = user?.id || currentUserId;
   const isOwner = authenticatedUserId === post.userId;
 
   const likeMutation = useMutation({
