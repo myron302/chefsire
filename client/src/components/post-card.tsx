@@ -54,7 +54,7 @@ export default function PostCard({ post }: PostCardProps) {
       return res.json();
     },
     onSuccess: () => {
-      // Invalidate queries for both the general feed and the user's profile posts
+      // IMPORTANT: Invalidate queries for both the general feed and the user's profile posts
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/users", currentUserId, "posts"] });
       toast({ description: "Post updated successfully" });
@@ -64,6 +64,7 @@ export default function PostCard({ post }: PostCardProps) {
       toast({ variant: "destructive", description: "Failed to save edits" });
     },
   });
+
 
   // Delete post mutation (owner-only)
   const deleteMutation = useMutation({
@@ -76,7 +77,7 @@ export default function PostCard({ post }: PostCardProps) {
       return res.json();
     },
     onSuccess: () => {
-      // These invalidation calls are correct for refreshing both feeds
+      // IMPORTANT: These invalidation calls ensure the profile page refreshes
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/users", currentUserId, "posts"] });
       toast({ description: "Post deleted" });
