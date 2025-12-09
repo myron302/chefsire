@@ -3,7 +3,7 @@ import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"; // <-- FIX: CardDescription ADDED HERE
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useUser } from "@/contexts/UserContext";
@@ -36,9 +36,10 @@ import {
   Play,
   MessageCircle,
   BarChart3,
+  User,
 } from "lucide-react";
-import type { User, PostWithUser } from "@shared/schema";
-import { useToast } from "@/hooks/use-toast"; // <-- NEW IMPORT
+import type { User as UserType, PostWithUser } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
 
 /** Store type for the Store tab (client-side shape for UI) */
 type Store = {
@@ -72,8 +73,8 @@ export default function Profile() {
   const { userId } = useParams<{ userId?: string }>();
   const [, setLocation] = useLocation();
   const { user: currentUser } = useUser();
-  const { toast } = useToast(); // <-- NEW: Initialize toast
-  const queryClient = useQueryClient(); // <-- NEW: Initialize queryClient
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const profileUserId = userId || currentUser?.id;
   const isOwnProfile = profileUserId === currentUser?.id;
 
@@ -126,7 +127,7 @@ export default function Profile() {
 
 
   // Fetch user (use currentUser when looking at self)
-  const { data: user, isLoading: userLoading } = useQuery<User>({
+  const { data: user, isLoading: userLoading } = useQuery<UserType>({
     queryKey: ["/api/users", profileUserId],
     queryFn: async () => {
       if (profileUserId === currentUser?.id && currentUser) return currentUser;
@@ -173,7 +174,8 @@ export default function Profile() {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           isRecipe: false,
-          user: user || (currentUser as User),
+          isBite: false,
+          user: user || (currentUser as UserType),
         },
         {
           id: "mock-2",
@@ -185,7 +187,8 @@ export default function Profile() {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           isRecipe: true,
-          user: user || (currentUser as User),
+          isBite: false,
+          user: user || (currentUser as UserType),
         },
       ];
       return mockPosts;
@@ -483,7 +486,7 @@ export default function Profile() {
                 <Card
                   key={post.id}
                   className="group cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => handlePostClick(post)} // <-- FIX 1: ADDED CLICK HANDLER
+                  onClick={() => handlePostClick(post)}
                   data-testid={`post-card-${post.id}`}
                 >
                   <div className="relative overflow-hidden aspect-square bg-black">
@@ -537,7 +540,7 @@ export default function Profile() {
                 <Card
                   key={post.id}
                   className="group cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => handlePostClick(post)} // <-- ADDED CLICK HANDLER
+                  onClick={() => handlePostClick(post)}
                   data-testid={`bite-card-${post.id}`}
                 >
                   <div className="relative overflow-hidden aspect-square bg-black">
@@ -589,7 +592,7 @@ export default function Profile() {
                 <Card
                   key={post.id}
                   className="group cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => handlePostClick(post)} // <-- ADDED CLICK HANDLER
+                  onClick={() => handlePostClick(post)}
                 >
                   <div className="relative aspect-video overflow-hidden">
                     <img
