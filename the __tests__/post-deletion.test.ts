@@ -21,12 +21,13 @@ const createTestApp = () => {
   const app = express();
   app.use(express.json());
   
-  // Mock auth middleware
+  // Mock auth middleware - use verify in production tests
   app.use((req: any, res, next) => {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.slice(7);
       try {
+        // Using decode for simplicity in tests, but verify should be used in production
         const decoded = jwt.decode(token) as any;
         req.user = { id: decoded.id };
       } catch (e) {

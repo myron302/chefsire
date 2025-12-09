@@ -5,9 +5,60 @@ import { asyncHandler, ErrorFactory } from "../middleware/error-handler";
 import { validateRequest, CommonSchemas } from "../middleware/validation";
 import { requireAuth } from "../middleware";
 import path from "path";
-import fs from "fs";
+import fs from "fs/promises";
 
 const r = Router();
+
+/**
+ * Helper function to check if an image URL is a local upload and extract the filename
+ */
+function extractLocalUploadFilename(imageUrl: string, protocol: string, host: string): string | null {
+  const uploadPrefix = `${protocol}://${host}/uploads/`;
+  
+  if (imageUrl.startsWith(uploadPrefix) || imageUrl.includes('/uploads/')) {
+    const filename = imageUrl.split('/uploads/').pop();
+    if (filename && !filename.includes('..') && !filename.includes('/') && !filename.includes('\\')) {
+      return filename;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Helper function to safely delete a media file from uploads directory
+ */
+async function deleteMediaFile(filename: string): Promise<boolean> {
+  try {
+    const uploadDir = path.join(process.cwd(), 'uploads');
+    const filePath = path.join(uploadDir, filename);
+    
+    // Security: Ensure file is within uploads directory
+    const normalizedPath = path.normalize(filePath);
+    if (!normalizedPath.startsWith(uploadDir)) {
+      console.error('[POSTS] Path traversal attempt detected:', filePath);
+      return false;
+    }
+
+    // Check if file exists before attempting to delete
+    try {
+      await fs.access(filePath);
+      await fs.unlink(filePath);
+      console.log('[POSTS] Deleted media file:', filename);
+      return true;
+    } catch (err: any) {
+      if (err.code === 'ENOENT') {
+        console.log('[POSTS] File not found (already deleted):', filename);
+      } else {
+        console.error('[POSTS] Error deleting media file:', err);
+      }
+      return false;
+    }
+  } catch (error) {
+    console.error('[POSTS] Error in deleteMediaFile:', error);
+    return false;
+  }
+}
 
 /**
  * Posts - NOTE: All routes are prefixed with /posts by index.ts
@@ -122,33 +173,12 @@ r.delete("/:id", requireAuth, async (req, res) => {
 
     // Delete associated media file if it's a local upload
     if (post.imageUrl) {
-      try {
-        // Check for forwarded headers (when behind proxy)
-        const protocol = req.get('x-forwarded-proto') || req.protocol;
-        const host = req.get('x-forwarded-host') || req.get('host');
-        const uploadPrefix = `${protocol}://${host}/uploads/`;
-        
-        // Check if the imageUrl is a local upload
-        if (post.imageUrl.startsWith(uploadPrefix) || post.imageUrl.includes('/uploads/')) {
-          const filename = post.imageUrl.split('/uploads/').pop();
-          if (filename) {
-            // Security: Prevent path traversal
-            if (!filename.includes('..') && !filename.includes('/') && !filename.includes('\\')) {
-              const uploadDir = path.join(process.cwd(), 'uploads');
-              const filePath = path.join(uploadDir, filename);
-              
-              // Security: Ensure file is within uploads directory
-              const normalizedPath = path.normalize(filePath);
-              if (normalizedPath.startsWith(uploadDir) && fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-                console.log('[POSTS] Deleted media file:', filename);
-              }
-            }
-          }
-        }
-      } catch (error) {
-        // Log error but continue with post deletion
-        console.error('[POSTS] Error deleting media file:', error);
+      const protocol = req.get('x-forwarded-proto') || req.protocol;
+      const host = req.get('x-forwarded-host') || req.get('host');
+      const filename = extractLocalUploadFilename(post.imageUrl, protocol, host || '');
+      
+      if (filename) {
+        await deleteMediaFile(filename);
       }
     }
 
@@ -197,33 +227,12 @@ r.patch("/:id", requireAuth, async (req, res) => {
 
     // If imageUrl is being cleared (set to null), delete the old media file
     if (updates.imageUrl === null && post.imageUrl) {
-      try {
-        // Check for forwarded headers (when behind proxy)
-        const protocol = req.get('x-forwarded-proto') || req.protocol;
-        const host = req.get('x-forwarded-host') || req.get('host');
-        const uploadPrefix = `${protocol}://${host}/uploads/`;
-        
-        // Check if the imageUrl is a local upload
-        if (post.imageUrl.startsWith(uploadPrefix) || post.imageUrl.includes('/uploads/')) {
-          const filename = post.imageUrl.split('/uploads/').pop();
-          if (filename) {
-            // Security: Prevent path traversal
-            if (!filename.includes('..') && !filename.includes('/') && !filename.includes('\\')) {
-              const uploadDir = path.join(process.cwd(), 'uploads');
-              const filePath = path.join(uploadDir, filename);
-              
-              // Security: Ensure file is within uploads directory
-              const normalizedPath = path.normalize(filePath);
-              if (normalizedPath.startsWith(uploadDir) && fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-                console.log('[POSTS] Deleted old media file:', filename);
-              }
-            }
-          }
-        }
-      } catch (error) {
-        // Log error but continue with update
-        console.error('[POSTS] Error deleting old media file:', error);
+      const protocol = req.get('x-forwarded-proto') || req.protocol;
+      const host = req.get('x-forwarded-host') || req.get('host');
+      const filename = extractLocalUploadFilename(post.imageUrl, protocol, host || '');
+      
+      if (filename) {
+        await deleteMediaFile(filename);
       }
     }
 
