@@ -924,12 +924,12 @@ const NutritionMealPlanner = () => {
               <div className="lg:col-span-2">
                 <Card>
                   <CardHeader>
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                       <div>
                         <CardTitle>Shopping List</CardTitle>
-                        <CardDescription>Week of Dec 1-7</CardDescription>
+                        <CardDescription className="mt-2">Week of Dec 1-7</CardDescription>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button size="sm" onClick={() => setShowAddGroceryModal(true)}>
                           <Plus className="w-4 h-4 mr-2" />
                           Add Item
