@@ -1,77 +1,112 @@
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { 
-  Heart, 
-  MessageCircle, 
-  Share, 
-  Bookmark, 
-  MoreHorizontal,
-  Play
-} from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useUser } from "@/contexts/UserContext";
 import type { PostWithUser } from "@shared/schema";
+import {
+  Card,
+  Avatar,
+  AvatarImage,
+  AvatarFallback,
+  Badge,
+  Button,
+} from "@/components/ui"; // adjust imports to match your project structure
+import { MoreHorizontal } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface PostCardProps {
   post: PostWithUser;
-  currentUserId?: string;
 }
 
-export default function PostCard({ post, currentUserId = "user-1" }: PostCardProps) {
+export default function PostCard({ post }: PostCardProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useUser();
+  const currentUserId = user?.id;
+
   const [isLiked, setIsLiked] = useState(post.isLiked || false);
   const [isSaved, setIsSaved] = useState(post.isSaved || false);
 
-  const likeMutation = useMutation({
-    mutationFn: async () => {
-      if (isLiked) {
-        await apiRequest("DELETE", `/api/likes/${currentUserId}/${post.id}`);
-      } else {
-        await apiRequest("POST", "/api/likes", {
-          userId: currentUserId,
-          postId: post.id,
-        });
+  // Menu state for the More button
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (!menuRef.current) return;
+      if (!menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
       }
+    };
+    if (menuOpen) document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, [menuOpen]);
+
+  // Delete post mutation (owner-only)
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", `/api/posts/${post.id}`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to delete post");
+      }
+      return res.json();
     },
     onSuccess: () => {
-      setIsLiked(!isLiked);
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
-      toast({
-        description: isLiked ? "Post unliked" : "Post liked!",
-      });
+      queryClient.invalidateQueries({ queryKey: ["/api/users", currentUserId, "posts"] });
+      toast({ description: "Post deleted" });
     },
     onError: () => {
-      toast({
-        variant: "destructive",
-        description: "Failed to update like status",
-      });
+      toast({ variant: "destructive", description: "Failed to delete post" });
     },
   });
 
-  const handleLike = () => {
-    likeMutation.mutate();
+  // Remove media only (owner-only)
+  const removeMediaMutation = useMutation({
+    mutationFn: async () => {
+      if (!post.imageUrl) throw new Error("No media to remove");
+      const maybeFilename = post.imageUrl.includes("/uploads/") ? post.imageUrl.split("/uploads/").pop() : null;
+      if (!maybeFilename) throw new Error("Cannot determine filename for media");
+      const delRes = await apiRequest("DELETE", `/api/upload/${maybeFilename}`);
+      if (!delRes.ok) {
+        const err = await delRes.json();
+        throw new Error(err.error || "Failed to delete media file");
+      }
+      const patchRes = await apiRequest("PATCH", `/api/posts/${post.id}`, { imageUrl: null });
+      if (!patchRes.ok) {
+        const err = await patchRes.json();
+        throw new Error(err.message || "Failed to clear post media");
+      }
+      return patchRes.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      toast({ description: "Media removed" });
+    },
+    onError: () => {
+      toast({ variant: "destructive", description: "Failed to remove media" });
+    },
+  });
+
+  const handleDelete = () => {
+    if (!confirm("Delete this post? This action cannot be undone.")) return;
+    deleteMutation.mutate();
   };
 
-  const handleSave = () => {
-    setIsSaved(!isSaved);
-    toast({
-      description: isSaved ? "Post unsaved" : "Post saved!",
-    });
+  const handleRemoveMedia = () => {
+    if (!confirm("Remove media from this post? File will be deleted from server.")) return;
+    removeMediaMutation.mutate();
   };
 
-  const handleShare = () => {
-    toast({
-      description: "Share functionality coming soon!",
-    });
+  const handleMoreClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    console.log("More button clicked for post", post.id);
+    setMenuOpen((s) => !s);
   };
 
-  const isVideo = post.imageUrl.includes("video") || post.imageUrl.includes(".mp4");
+  const isVideo = post.imageUrl?.includes("video") || post.imageUrl?.includes(".mp4");
 
   return (
     <Card className="w-full bg-card border border-border shadow-sm">
@@ -80,7 +115,7 @@ export default function PostCard({ post, currentUserId = "user-1" }: PostCardPro
         <div className="flex items-center space-x-3">
           <Avatar className="w-10 h-10">
             <AvatarImage src={post.user.avatar || ""} alt={post.user.displayName} />
-            <AvatarFallback>{post.user.displayName[0]}</AvatarFallback>
+            <AvatarFallback>{(post.user.displayName || "U")[0]}</AvatarFallback>
           </Avatar>
           <div>
             <h3 className="font-semibold text-sm" data-testid={`text-username-${post.id}`}>
@@ -91,116 +126,125 @@ export default function PostCard({ post, currentUserId = "user-1" }: PostCardPro
             </p>
           </div>
         </div>
-        <div className="flex items-center space-x-2">
-          {post.isRecipe && (
-            <Badge variant="secondary" className="bg-accent text-accent-foreground">
-              Recipe
-            </Badge>
+
+        <div className="relative" ref={menuRef}>
+          <div className="flex items-center space-x-2">
+            {post.isRecipe && (
+              <Badge variant="secondary" className="bg-accent text-accent-foreground">
+                Recipe
+              </Badge>
+            )}
+
+            {/* More button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="p-2 hover:bg-muted rounded-full"
+              onClick={handleMoreClick}
+              data-testid={`button-options-${post.id}`}
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+            >
+              <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+            </Button>
+          </div>
+
+          {/* Dropdown menu */}
+          {menuOpen && (
+            <div
+              role="menu"
+              aria-label="Post options"
+              className="absolute right-0 mt-2 w-44 bg-white border rounded shadow-md z-50"
+              data-testid={`menu-${post.id}`}
+            >
+              <ul className="p-1">
+                <li>
+                  <button
+                    className="w-full text-left px-3 py-2 hover:bg-slate-100"
+                    onClick={() => {
+                      toast({ description: "Share functionality coming soon!" });
+                      setMenuOpen(false);
+                    }}
+                    data-testid={`menu-share-${post.id}`}
+                  >
+                    Share
+                  </button>
+                </li>
+
+                <li>
+                  <button
+                    className="w-full text-left px-3 py-2 hover:bg-slate-100"
+                    onClick={() => {
+                      // Toggle like locally and call like API if desired
+                      setIsLiked((s) => !s);
+                      setMenuOpen(false);
+                    }}
+                    data-testid={`menu-like-${post.id}`}
+                  >
+                    {isLiked ? "Unlike" : "Like"}
+                  </button>
+                </li>
+
+                {currentUserId === post.user?.id && (
+                  <>
+                    <li>
+                      <button
+                        className="w-full text-left px-3 py-2 hover:bg-slate-100 text-red-600"
+                        onClick={() => {
+                          handleRemoveMedia();
+                          setMenuOpen(false);
+                        }}
+                        data-testid={`menu-remove-media-${post.id}`}
+                      >
+                        Remove Media
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        className="w-full text-left px-3 py-2 hover:bg-slate-100 text-red-600"
+                        onClick={() => {
+                          handleDelete();
+                          setMenuOpen(false);
+                        }}
+                        data-testid={`menu-delete-${post.id}`}
+                      >
+                        Delete Post
+                      </button>
+                    </li>
+                  </>
+                )}
+              </ul>
+            </div>
           )}
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="p-2 hover:bg-muted rounded-full"
-            data-testid={`button-options-${post.id}`}
-          >
-            <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-          </Button>
         </div>
       </div>
 
       {/* Post Image/Video */}
       <div className="relative">
-        <img 
-          src={post.imageUrl} 
-          alt="Post content" 
-          className="w-full h-96 object-cover"
-          data-testid={`img-post-${post.id}`}
-        />
-        {isVideo && (
-          <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-            <Button 
-              variant="ghost"
-              className="w-16 h-16 bg-white/90 rounded-full hover:bg-white"
-              data-testid={`button-play-${post.id}`}
-            >
-              <Play className="h-6 w-6 text-gray-800 ml-1" />
-            </Button>
-          </div>
+        {isVideo ? (
+          <video src={post.imageUrl} controls className="w-full h-96 object-cover" />
+        ) : (
+          <img src={post.imageUrl} alt="Post content" className="w-full h-96 object-cover" data-testid={`img-post-${post.id}`} />
         )}
       </div>
 
-      {/* Post Content */}
-      <CardContent className="p-4">
-        {/* Actions */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center space-x-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLike}
-              className={`flex items-center space-x-1 p-0 h-auto ${
-                isLiked ? "text-destructive" : "text-muted-foreground hover:text-destructive"
-              }`}
-              data-testid={`button-like-${post.id}`}
-            >
-              <Heart className={`h-5 w-5 ${isLiked ? "fill-current" : ""}`} />
-              <span className="text-sm font-medium">{post.likesCount}</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="flex items-center space-x-1 text-muted-foreground hover:text-foreground p-0 h-auto"
-              data-testid={`button-comment-${post.id}`}
-            >
-              <MessageCircle className="h-5 w-5" />
-              <span className="text-sm">{post.commentsCount}</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleShare}
-              className="text-muted-foreground hover:text-foreground p-0 h-auto"
-              data-testid={`button-share-${post.id}`}
-            >
-              <Share className="h-5 w-5" />
-            </Button>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleSave}
-            className={`p-0 h-auto ${
-              isSaved ? "text-primary" : "text-muted-foreground hover:text-primary"
-            }`}
-            data-testid={`button-save-${post.id}`}
-          >
-            <Bookmark className={`h-5 w-5 ${isSaved ? "fill-current" : ""}`} />
+      {/* Post body / caption */}
+      <div className="p-4">
+        <p className="text-sm">{post.caption}</p>
+      </div>
+
+      {/* Footer / actions area (optional) */}
+      <div className="p-4 border-t flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <Button variant="ghost" size="sm" onClick={() => setIsLiked((s) => !s)} data-testid={`button-like-${post.id}`}>
+            {isLiked ? "♥" : "♡"} Like
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => toast({ description: "Save coming soon" })} data-testid={`button-save-${post.id}`}>
+            {isSaved ? "Saved" : "Save"}
           </Button>
         </div>
-
-        {/* Caption */}
-        {post.caption && (
-          <div className="space-y-2">
-            <p className="text-sm" data-testid={`text-caption-${post.id}`}>
-              <span className="font-semibold">{post.user.displayName}</span> {post.caption}
-            </p>
-            {post.tags && post.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {post.tags.map((tag, index) => (
-                  <Badge 
-                    key={index} 
-                    variant="outline" 
-                    className="text-xs text-secondary bg-secondary/10 border-secondary/20"
-                    data-testid={`tag-${tag}-${post.id}`}
-                  >
-                    #{tag}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </CardContent>
+        <div className="text-sm text-muted-foreground">{post.likesCount || 0} likes</div>
+      </div>
     </Card>
   );
 }
