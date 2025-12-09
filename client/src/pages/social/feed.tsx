@@ -1,12 +1,13 @@
 // client/src/pages/feed.tsx
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import PostCard from "@/components/post-card";
 import { BitesRow } from "@/components/BitesRow";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Heart, Clock } from "lucide-react";
+import { Heart, Clock, MessageCircle } from "lucide-react";
 import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
@@ -356,13 +357,18 @@ const demoPosts: PostWithUser[] = [
 function SimpleRecipeCard({
   post,
   currentUserId,
+  onCardClick,
 }: {
   post: PostWithUser;
   currentUserId: string;
+  onCardClick?: (post: PostWithUser) => void;
 }) {
   return (
     <Card className="overflow-hidden">
-      <div className="relative">
+      <div
+        className="relative cursor-pointer"
+        onClick={() => onCardClick?.(post)}
+      >
         {post.imageUrl ? (
           <img
             src={post.imageUrl}
@@ -433,6 +439,7 @@ function isValidDate(dateStr: string | undefined | null): boolean {
 export default function Feed() {
   const { user } = useUser();
   const currentUserId = user?.id || "";
+  const [selectedPost, setSelectedPost] = useState<PostWithUser | null>(null);
 
   // Posts feed - fetch explore posts (all posts) so user sees their own posts too
   const {
@@ -504,9 +511,9 @@ export default function Feed() {
           {/* Removed the visible error banner; we silently fall back */}
           {displayPosts.map((post) =>
             post.isRecipe ? (
-              <SimpleRecipeCard key={post.id} post={post} currentUserId={currentUserId} />
+              <SimpleRecipeCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} />
             ) : (
-              <PostCard key={post.id} post={post} currentUserId={currentUserId} />
+              <PostCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} />
             )
           )}
 
@@ -613,6 +620,93 @@ export default function Feed() {
           </section>
         </div>
       </aside>
+
+      {/* Expanded Post Modal */}
+      {selectedPost && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setSelectedPost(null)}
+        >
+          <div
+            className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col md:flex-row h-full max-h-[90vh]">
+              {/* Image Section */}
+              <div className="md:w-2/3 bg-black flex items-center justify-center">
+                <img
+                  src={selectedPost.imageUrl}
+                  alt={selectedPost.caption || "Post"}
+                  className="w-full h-full object-contain"
+                />
+              </div>
+
+              {/* Details Section */}
+              <div className="md:w-1/3 flex flex-col overflow-hidden">
+                {/* Header */}
+                <div className="p-4 border-b flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <Avatar className="w-8 h-8">
+                      <AvatarImage
+                        src={selectedPost.user.avatar || ""}
+                        alt={selectedPost.user.displayName}
+                      />
+                      <AvatarFallback>
+                        {selectedPost.user.displayName[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="font-semibold text-sm">
+                      {selectedPost.user.displayName}
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedPost(null)}
+                  >
+                    ✕
+                  </Button>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-4">
+                  {selectedPost.caption && (
+                    <div className="mb-4">
+                      <p className="text-sm">
+                        <span className="font-semibold">
+                          {selectedPost.user.displayName}
+                        </span>{" "}
+                        {selectedPost.caption}
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedPost.tags && selectedPost.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {selectedPost.tags.map((tag, index) => (
+                        <Badge key={index} variant="outline" className="text-xs">
+                          #{tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex items-center space-x-4 text-sm text-gray-500">
+                    <span className="flex items-center space-x-1">
+                      <Heart className="w-4 h-4" />
+                      <span>{selectedPost.likesCount} likes</span>
+                    </span>
+                    <span className="flex items-center space-x-1">
+                      <MessageCircle className="w-4 h-4" />
+                      <span>{selectedPost.commentsCount} comments</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

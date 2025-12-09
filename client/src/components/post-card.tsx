@@ -20,9 +20,10 @@ import type { PostWithUser } from "@shared/schema";
 interface PostCardProps {
   post: PostWithUser;
   currentUserId?: string;
+  onCardClick?: (post: PostWithUser) => void;
 }
 
-export default function PostCard({ post, currentUserId = "user-1" }: PostCardProps) {
+export default function PostCard({ post, currentUserId = "user-1", onCardClick }: PostCardProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isLiked, setIsLiked] = useState(post.isLiked || false);
@@ -109,16 +110,19 @@ export default function PostCard({ post, currentUserId = "user-1" }: PostCardPro
       </div>
 
       {/* Post Image/Video */}
-      <div className="relative">
-        <img 
-          src={post.imageUrl} 
-          alt="Post content" 
+      <div
+        className="relative cursor-pointer"
+        onClick={() => onCardClick?.(post)}
+      >
+        <img
+          src={post.imageUrl}
+          alt="Post content"
           className="w-full h-96 object-cover"
           data-testid={`img-post-${post.id}`}
         />
         {isVideo && (
           <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-            <Button 
+            <Button
               variant="ghost"
               className="w-16 h-16 bg-white/90 rounded-full hover:bg-white"
               data-testid={`button-play-${post.id}`}

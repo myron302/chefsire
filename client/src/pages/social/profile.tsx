@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { useUser } from "@/contexts/UserContext";
 import { ProfileCompletion } from "@/components/ProfileCompletion";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
+import PostCard from "@/components/post-card";
 import {
   Image,
   ChefHat,
@@ -72,6 +74,7 @@ export default function Profile() {
   const [, setLocation] = useLocation();
   const { user: currentUser } = useUser();
   const profileUserId = userId || currentUser?.id;
+  const [selectedPost, setSelectedPost] = useState<PostWithUser | null>(null);
 
   // Fetch user (use currentUser when looking at self)
   const { data: user, isLoading: userLoading } = useQuery<User>({
@@ -559,7 +562,11 @@ export default function Profile() {
           ) : userPhotos.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {userPhotos.map((post) => (
-                <Card key={post.id} className="group cursor-pointer hover:shadow-lg transition-shadow">
+                <Card
+                  key={post.id}
+                  className="group cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => setSelectedPost(post)}
+                >
                   <div className="relative overflow-hidden aspect-square">
                     <img
                       src={post.imageUrl}
@@ -574,7 +581,7 @@ export default function Profile() {
                           <span>{post.likesCount}</span>
                         </span>
                         <span className="flex items-center space-x-1">
-                          <Users className="h-5 w-5" />
+                          <MessageCircle className="h-5 w-5" />
                           <span>{post.commentsCount}</span>
                         </span>
                       </div>
@@ -605,7 +612,11 @@ export default function Profile() {
           ) : userVideos.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {userVideos.map((post) => (
-                <Card key={post.id} className="group cursor-pointer hover:shadow-lg transition-shadow">
+                <Card
+                  key={post.id}
+                  className="group cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => setSelectedPost(post)}
+                >
                   <div className="relative overflow-hidden aspect-square bg-black">
                     <video
                       src={post.imageUrl}
@@ -622,7 +633,7 @@ export default function Profile() {
                           <span>{post.likesCount}</span>
                         </span>
                         <span className="flex items-center space-x-1">
-                          <Users className="h-4 w-4" />
+                          <MessageCircle className="h-4 w-4" />
                           <span>{post.commentsCount}</span>
                         </span>
                       </div>
@@ -670,28 +681,9 @@ export default function Profile() {
               ))}
             </div>
           ) : userRecipes.length > 0 ? (
-            <div className="space-y-8">
+            <div className="space-y-6">
               {userRecipes.map((post) => (
-                <Card key={post.id} className="overflow-hidden">
-                  <div className="relative">
-                    {post.imageUrl ? (
-                      <img src={post.imageUrl} alt={post.caption || "Recipe"} className="w-full h-64 object-cover" />
-                    ) : (
-                      <div className="w-full h-64 bg-gray-200 flex items-center justify-center">
-                        <Heart className="w-8 h-8 text-gray-400" />
-                      </div>
-                    )}
-                  </div>
-                  <CardContent className="p-6">
-                    <h3 className="text-xl font-semibold mb-2">{post.caption || "Recipe"}</h3>
-                    <div className="flex items-center justify-between text-sm text-gray-500">
-                      <span className="flex items-center space-x-1">
-                        <Heart className="w-4 h-4" />
-                        <span>{post.likesCount} likes</span>
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
+                <PostCard key={post.id} post={post} currentUserId={currentUser?.id} />
               ))}
             </div>
           ) : (
@@ -988,6 +980,101 @@ export default function Profile() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Expanded Post Modal */}
+      {selectedPost && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setSelectedPost(null)}
+        >
+          <div
+            className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col md:flex-row h-full max-h-[90vh]">
+              {/* Image Section */}
+              <div className="md:w-2/3 bg-black flex items-center justify-center">
+                {isVideoUrl(selectedPost.imageUrl) ? (
+                  <video
+                    src={selectedPost.imageUrl}
+                    controls
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <img
+                    src={selectedPost.imageUrl}
+                    alt={selectedPost.caption || "Post"}
+                    className="w-full h-full object-contain"
+                  />
+                )}
+              </div>
+
+              {/* Details Section */}
+              <div className="md:w-1/3 flex flex-col overflow-hidden">
+                {/* Close Button */}
+                <div className="p-4 border-b flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <Avatar className="w-8 h-8">
+                      <AvatarImage
+                        src={selectedPost.user.avatar || ""}
+                        alt={selectedPost.user.displayName}
+                      />
+                      <AvatarFallback>
+                        {selectedPost.user.displayName[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="font-semibold text-sm">
+                      {selectedPost.user.displayName}
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedPost(null)}
+                  >
+                    ✕
+                  </Button>
+                </div>
+
+                {/* Post Content */}
+                <div className="flex-1 overflow-y-auto p-4">
+                  {selectedPost.caption && (
+                    <div className="mb-4">
+                      <p className="text-sm">
+                        <span className="font-semibold">
+                          {selectedPost.user.displayName}
+                        </span>{" "}
+                        {selectedPost.caption}
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedPost.tags && selectedPost.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {selectedPost.tags.map((tag, index) => (
+                        <Badge key={index} variant="outline" className="text-xs">
+                          #{tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex items-center space-x-4 text-sm text-gray-500">
+                    <span className="flex items-center space-x-1">
+                      <Heart className="w-4 h-4" />
+                      <span>{selectedPost.likesCount} likes</span>
+                    </span>
+                    <span className="flex items-center space-x-1">
+                      <MessageCircle className="w-4 h-4" />
+                      <span>{selectedPost.commentsCount} comments</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
