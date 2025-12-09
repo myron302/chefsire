@@ -18,7 +18,8 @@ import {
   Bookmark, 
   MoreHorizontal,
   Play,
-  Trash2
+  Trash2,
+  ImageOff
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
@@ -88,6 +89,38 @@ export default function PostCard({ post, currentUserId }: PostCardProps) {
     },
   });
 
+  const removeMediaMutation = useMutation({
+    mutationFn: async () => {
+      // Extract filename from image URL
+      if (post.imageUrl && (post.imageUrl.startsWith('/uploads/') || post.imageUrl.includes('/uploads/'))) {
+        const urlParts = post.imageUrl.split('/uploads/');
+        if (urlParts.length > 1) {
+          const filename = urlParts[1].split('?')[0];
+          
+          // Delete the file from server
+          await apiRequest("DELETE", `/api/upload/${filename}`);
+        }
+      }
+      
+      // Update post to remove imageUrl
+      await apiRequest("PATCH", `/api/posts/${post.id}`, {
+        imageUrl: null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      toast({
+        description: "Media removed successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        description: error.message || "Failed to remove media",
+      });
+    },
+  });
+
   const handleLike = () => {
     likeMutation.mutate();
   };
@@ -95,6 +128,12 @@ export default function PostCard({ post, currentUserId }: PostCardProps) {
   const handleDelete = () => {
     if (window.confirm("Are you sure you want to delete this post? This action cannot be undone.")) {
       deletePostMutation.mutate();
+    }
+  };
+
+  const handleRemoveMedia = () => {
+    if (window.confirm("Are you sure you want to remove the media from this post? The post will remain but without the image/video.")) {
+      removeMediaMutation.mutate();
     }
   };
 
@@ -159,6 +198,16 @@ export default function PostCard({ post, currentUserId }: PostCardProps) {
                     <Trash2 className="mr-2 h-4 w-4" />
                     Delete Post
                   </DropdownMenuItem>
+                  {post.imageUrl && (post.imageUrl.startsWith('/uploads/') || post.imageUrl.includes('/uploads/')) && (
+                    <DropdownMenuItem 
+                      onClick={handleRemoveMedia}
+                      className="cursor-pointer"
+                      data-testid={`button-remove-media-${post.id}`}
+                    >
+                      <ImageOff className="mr-2 h-4 w-4" />
+                      Remove Media
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                 </>
               )}
