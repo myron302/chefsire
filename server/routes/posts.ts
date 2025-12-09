@@ -3,8 +3,62 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { asyncHandler, ErrorFactory } from "../middleware/error-handler";
 import { validateRequest, CommonSchemas } from "../middleware/validation";
+import { requireAuth } from "../middleware";
+import path from "path";
+import fs from "fs/promises";
 
 const r = Router();
+
+/**
+ * Helper function to check if an image URL is a local upload and extract the filename
+ */
+function extractLocalUploadFilename(imageUrl: string, protocol: string, host: string): string | null {
+  const uploadPrefix = `${protocol}://${host}/uploads/`;
+  
+  if (imageUrl.startsWith(uploadPrefix) || imageUrl.includes('/uploads/')) {
+    const filename = imageUrl.split('/uploads/').pop();
+    if (filename && !filename.includes('..') && !filename.includes('/') && !filename.includes('\\')) {
+      return filename;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Helper function to safely delete a media file from uploads directory
+ */
+async function deleteMediaFile(filename: string): Promise<boolean> {
+  try {
+    const uploadDir = path.join(process.cwd(), 'uploads');
+    const filePath = path.join(uploadDir, filename);
+    
+    // Security: Ensure file is within uploads directory
+    const normalizedPath = path.normalize(filePath);
+    if (!normalizedPath.startsWith(uploadDir)) {
+      console.error('[POSTS] Path traversal attempt detected:', filePath);
+      return false;
+    }
+
+    // Check if file exists before attempting to delete
+    try {
+      await fs.access(filePath);
+      await fs.unlink(filePath);
+      console.log('[POSTS] Deleted media file:', filename);
+      return true;
+    } catch (err: any) {
+      if (err.code === 'ENOENT') {
+        console.log('[POSTS] File not found (already deleted):', filename);
+      } else {
+        console.error('[POSTS] Error deleting media file:', err);
+      }
+      return false;
+    }
+  } catch (error) {
+    console.error('[POSTS] Error in deleteMediaFile:', error);
+    return false;
+  }
+}
 
 /**
  * Posts - NOTE: All routes are prefixed with /posts by index.ts
@@ -97,14 +151,104 @@ r.post("/", async (req, res) => {
   }
 });
 
-r.delete("/:id", async (req, res) => {
+r.delete("/:id", requireAuth, async (req, res) => {
   try {
-    const ok = await storage.deletePost(req.params.id);
-    if (!ok) return res.status(404).json({ message: "Post not found" });
+    const postId = req.params.id;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    // Fetch the post to check ownership and get image URL
+    const post = await storage.getPost(postId);
+    if (!post) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    // Check if the user is the owner of the post
+    if (post.userId !== userId) {
+      return res.status(403).json({ message: "Forbidden: You can only delete your own posts" });
+    }
+
+    // Delete associated media file if it's a local upload
+    if (post.imageUrl) {
+      const protocol = req.get('x-forwarded-proto') || req.protocol;
+      const host = req.get('x-forwarded-host') || req.get('host');
+      const filename = extractLocalUploadFilename(post.imageUrl, protocol, host || '');
+      
+      if (filename) {
+        await deleteMediaFile(filename);
+      }
+    }
+
+    // Delete the post (storage layer handles cascade deletion of comments/likes)
+    const ok = await storage.deletePost(postId);
+    if (!ok) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+    
     res.json({ message: "Post deleted" });
   } catch (err) {
     console.error("posts/delete error", err);
     res.status(500).json({ message: "Failed to delete post" });
+  }
+});
+
+// PATCH /api/posts/:id - Update a post (owner only)
+r.patch("/:id", requireAuth, async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    // Fetch the post to check ownership
+    const post = await storage.getPost(postId);
+    if (!post) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    // Check if the user is the owner of the post
+    if (post.userId !== userId) {
+      return res.status(403).json({ message: "Forbidden: You can only update your own posts" });
+    }
+
+    // Validate the update data
+    const schema = z.object({
+      caption: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      imageUrl: z.string().nullable().optional(),
+    });
+
+    const updates = schema.parse(req.body);
+
+    // If imageUrl is being cleared (set to null), delete the old media file
+    if (updates.imageUrl === null && post.imageUrl) {
+      const protocol = req.get('x-forwarded-proto') || req.protocol;
+      const host = req.get('x-forwarded-host') || req.get('host');
+      const filename = extractLocalUploadFilename(post.imageUrl, protocol, host || '');
+      
+      if (filename) {
+        await deleteMediaFile(filename);
+      }
+    }
+
+    // Update the post
+    const updated = await storage.updatePost(postId, updates as any);
+    if (!updated) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    res.json(updated);
+  } catch (err: any) {
+    if (err?.issues) {
+      return res.status(400).json({ message: "Invalid update data", errors: err.issues });
+    }
+    console.error("posts/update error", err);
+    res.status(500).json({ message: "Failed to update post" });
   }
 });
 

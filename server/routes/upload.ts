@@ -4,6 +4,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middleware";
 import fs from "fs";
+import { promises as fsPromises } from "fs";
 
 const router = Router();
 
@@ -101,6 +102,46 @@ router.post("/", requireAuth, (req, res) => {
       res.status(500).json({ ok: false, error: error.message || "Failed to process upload" });
     }
   });
+});
+
+// DELETE /api/upload/:filename - Delete a file
+router.delete("/:filename", requireAuth, async (req, res) => {
+  try {
+    const { filename } = req.params;
+    
+    // Security: Prevent path traversal attacks
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      console.error('[UPLOAD] Path traversal attempt detected:', filename);
+      return res.status(400).json({ ok: false, error: "Invalid filename" });
+    }
+
+    const uploadDir = path.join(process.cwd(), 'uploads');
+    const filePath = path.join(uploadDir, filename);
+    
+    // Security: Ensure file is within uploads directory
+    const normalizedPath = path.normalize(filePath);
+    if (!normalizedPath.startsWith(uploadDir)) {
+      console.error('[UPLOAD] Path traversal attempt detected:', filePath);
+      return res.status(400).json({ ok: false, error: "Invalid file path" });
+    }
+
+    // Check if file exists and delete it
+    try {
+      await fsPromises.access(filePath);
+      await fsPromises.unlink(filePath);
+      console.log('[UPLOAD] File deleted successfully:', filename);
+      res.json({ ok: true, message: "File deleted successfully" });
+    } catch (err: any) {
+      if (err.code === 'ENOENT') {
+        console.error('[UPLOAD] File not found:', filePath);
+        return res.status(404).json({ ok: false, error: "File not found" });
+      }
+      throw err;
+    }
+  } catch (error: any) {
+    console.error('[UPLOAD] Error deleting file:', error);
+    res.status(500).json({ ok: false, error: error.message || "Failed to delete file" });
+  }
 });
 
 export default router;
