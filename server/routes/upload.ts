@@ -103,4 +103,42 @@ router.post("/", requireAuth, (req, res) => {
   });
 });
 
+// DELETE /api/upload/:filename - Delete a file
+router.delete("/:filename", requireAuth, async (req, res) => {
+  try {
+    const { filename } = req.params;
+    
+    // Security: Prevent path traversal attacks
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      console.error('[UPLOAD] Path traversal attempt detected:', filename);
+      return res.status(400).json({ ok: false, error: "Invalid filename" });
+    }
+
+    const uploadDir = path.join(process.cwd(), 'uploads');
+    const filePath = path.join(uploadDir, filename);
+    
+    // Security: Ensure file is within uploads directory
+    const normalizedPath = path.normalize(filePath);
+    if (!normalizedPath.startsWith(uploadDir)) {
+      console.error('[UPLOAD] Path traversal attempt detected:', filePath);
+      return res.status(400).json({ ok: false, error: "Invalid file path" });
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      console.error('[UPLOAD] File not found:', filePath);
+      return res.status(404).json({ ok: false, error: "File not found" });
+    }
+
+    // Delete the file
+    fs.unlinkSync(filePath);
+    console.log('[UPLOAD] File deleted successfully:', filename);
+    
+    res.json({ ok: true, message: "File deleted successfully" });
+  } catch (error: any) {
+    console.error('[UPLOAD] Error deleting file:', error);
+    res.status(500).json({ ok: false, error: error.message || "Failed to delete file" });
+  }
+});
+
 export default router;

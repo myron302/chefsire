@@ -4,17 +4,25 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { 
   Heart, 
   MessageCircle, 
   Share, 
   Bookmark, 
   MoreHorizontal,
-  Play
+  Play,
+  Trash2
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useUser } from "@/contexts/UserContext";
 import type { PostWithUser } from "@shared/schema";
 
 interface PostCardProps {
@@ -22,19 +30,24 @@ interface PostCardProps {
   currentUserId?: string;
 }
 
-export default function PostCard({ post, currentUserId = "user-1" }: PostCardProps) {
+export default function PostCard({ post, currentUserId }: PostCardProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useUser();
   const [isLiked, setIsLiked] = useState(post.isLiked || false);
   const [isSaved, setIsSaved] = useState(post.isSaved || false);
+
+  // Use authenticated user ID from context, fallback to prop
+  const authenticatedUserId = user?.id || currentUserId || "user-1";
+  const isOwner = authenticatedUserId === post.userId;
 
   const likeMutation = useMutation({
     mutationFn: async () => {
       if (isLiked) {
-        await apiRequest("DELETE", `/api/likes/${currentUserId}/${post.id}`);
+        await apiRequest("DELETE", `/api/likes/${authenticatedUserId}/${post.id}`);
       } else {
         await apiRequest("POST", "/api/likes", {
-          userId: currentUserId,
+          userId: authenticatedUserId,
           postId: post.id,
         });
       }
@@ -54,8 +67,32 @@ export default function PostCard({ post, currentUserId = "user-1" }: PostCardPro
     },
   });
 
+  const deletePostMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/posts/${post.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      toast({
+        description: "Post deleted successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        description: error?.message || "Failed to delete post",
+      });
+    },
+  });
+
   const handleLike = () => {
     likeMutation.mutate();
+  };
+
+  const handleDelete = () => {
+    if (window.confirm("Are you sure you want to delete this post?")) {
+      deletePostMutation.mutate();
+    }
   };
 
   const handleSave = () => {
@@ -97,14 +134,35 @@ export default function PostCard({ post, currentUserId = "user-1" }: PostCardPro
               Recipe
             </Badge>
           )}
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="p-2 hover:bg-muted rounded-full"
-            data-testid={`button-options-${post.id}`}
-          >
-            <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="p-2 hover:bg-muted rounded-full"
+                data-testid={`button-options-${post.id}`}
+              >
+                <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {isOwner && (
+                <DropdownMenuItem 
+                  onClick={handleDelete}
+                  className="text-destructive focus:text-destructive"
+                  data-testid={`button-delete-${post.id}`}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Post
+                </DropdownMenuItem>
+              )}
+              {!isOwner && (
+                <DropdownMenuItem disabled>
+                  No actions available
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
