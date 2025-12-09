@@ -173,7 +173,7 @@ r.patch("/:id", requireAuth, async (req, res) => {
 
     const body = schema.parse(req.body);
 
-    // Update the post
+    // Update the post (body validated by zod to match Post fields)
     const updated = await storage.updatePost(req.params.id, body as any);
     if (!updated) {
       return res.status(404).json({ message: "Post not found" });
