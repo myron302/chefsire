@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { useUser } from "@/contexts/UserContext";
 import { ProfileCompletion } from "@/components/ProfileCompletion";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
+import { PostCard } from "@/components/PostCard"; // <--- NEW IMPORT
 import {
   Image,
   ChefHat,
@@ -557,30 +558,9 @@ export default function Profile() {
               ))}
             </div>
           ) : userPhotos.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-8"> {/* Changed to space-y-8 for PostCard list view */}
               {userPhotos.map((post) => (
-                <Card key={post.id} className="group cursor-pointer hover:shadow-lg transition-shadow">
-                  <div className="relative overflow-hidden aspect-square">
-                    <img
-                      src={post.imageUrl}
-                      alt={post.caption || "Photo"}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      data-testid={`img-user-photo-${post.id}`}
-                    />
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
-                      <div className="flex items-center space-x-4 text-white">
-                        <span className="flex items-center space-x-1">
-                          <Heart className="h-5 w-5" />
-                          <span>{post.likesCount}</span>
-                        </span>
-                        <span className="flex items-center space-x-1">
-                          <Users className="h-5 w-5" />
-                          <span>{post.commentsCount}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
+                <PostCard key={post.id} post={post} /> // <--- REPLACED CUSTOM CARD WITH POSTCARD
               ))}
             </div>
           ) : (
@@ -603,37 +583,9 @@ export default function Profile() {
               ))}
             </div>
           ) : userVideos.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-8"> {/* Changed to space-y-8 for PostCard list view */}
               {userVideos.map((post) => (
-                <Card key={post.id} className="group cursor-pointer hover:shadow-lg transition-shadow">
-                  <div className="relative overflow-hidden aspect-square bg-black">
-                    <video
-                      src={post.imageUrl}
-                      className="w-full h-full object-cover"
-                      data-testid={`video-user-bite-${post.id}`}
-                    />
-                    <div className="absolute inset-0 bg-black/40 group-hover:bg-black/60 transition-colors duration-300 flex items-center justify-center">
-                      <Play className="w-12 h-12 text-white opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all" />
-                    </div>
-                    <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent">
-                      <div className="flex items-center space-x-4 text-white text-sm">
-                        <span className="flex items-center space-x-1">
-                          <Heart className="h-4 w-4" />
-                          <span>{post.likesCount}</span>
-                        </span>
-                        <span className="flex items-center space-x-1">
-                          <Users className="h-4 w-4" />
-                          <span>{post.commentsCount}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  {post.caption && (
-                    <CardContent className="p-3">
-                      <p className="text-sm line-clamp-2">{post.caption}</p>
-                    </CardContent>
-                  )}
-                </Card>
+                <PostCard key={post.id} post={post} /> // <--- REPLACED CUSTOM CARD WITH POSTCARD
               ))}
             </div>
           ) : (
@@ -672,26 +624,7 @@ export default function Profile() {
           ) : userRecipes.length > 0 ? (
             <div className="space-y-8">
               {userRecipes.map((post) => (
-                <Card key={post.id} className="overflow-hidden">
-                  <div className="relative">
-                    {post.imageUrl ? (
-                      <img src={post.imageUrl} alt={post.caption || "Recipe"} className="w-full h-64 object-cover" />
-                    ) : (
-                      <div className="w-full h-64 bg-gray-200 flex items-center justify-center">
-                        <Heart className="w-8 h-8 text-gray-400" />
-                      </div>
-                    )}
-                  </div>
-                  <CardContent className="p-6">
-                    <h3 className="text-xl font-semibold mb-2">{post.caption || "Recipe"}</h3>
-                    <div className="flex items-center justify-between text-sm text-gray-500">
-                      <span className="flex items-center space-x-1">
-                        <Heart className="w-4 h-4" />
-                        <span>{post.likesCount} likes</span>
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
+                <PostCard key={post.id} post={post} /> // <--- REPLACED CUSTOM CARD WITH POSTCARD
               ))}
             </div>
           ) : (
@@ -807,18 +740,22 @@ export default function Profile() {
                     <div>
                       <h3 className="font-semibold">{c.title}</h3>
                       <p className="text-sm text-muted-foreground">{c.themeName}</p>
+                      <div className="flex items-center space-x-2 mt-1 text-xs">
+                        {c.status === "completed" && (
+                          <Badge className="bg-yellow-500 text-yellow-900">
+                            <Award className="w-3 h-3 mr-1" />
+                            {c.placement === 1 ? "1st Place" : c.placement === 2 ? "2nd Place" : c.placement === 3 ? "3rd Place" : `${c.placement}th Place`}
+                          </Badge>
+                        )}
+                        <Badge className={getStatusBadge(c.status)}>
+                          {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
+                        </Badge>
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          <Users className="w-3 h-3" /> {c.participants}
+                        </span>
+                      </div>
                     </div>
-                    <Badge className={getStatusBadge(c.status)}>{c.status}</Badge>
-                  </div>
-                  <div className="mt-3 text-sm text-muted-foreground flex items-center gap-4">
-                    <span className="flex items-center gap-1">
-                      <Users className="w-4 h-4" /> {c.participants}
-                    </span>
-                    {c.placement ? (
-                      <span className="flex items-center gap-1">
-                        <Award className="w-4 h-4" /> #{c.placement}
-                      </span>
-                    ) : null}
+                    <Button variant="outline" size="sm">View</Button>
                   </div>
                 </Card>
               ))}
@@ -826,166 +763,112 @@ export default function Profile() {
           ) : (
             <div className="text-center py-12">
               <Trophy className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-semibold mb-2">No cookoffs yet</h3>
+              <h3 className="text-lg font-semibold mb-2">No cookoff history</h3>
               <p className="text-muted-foreground">
-                {isOwnProfile ? "Join a weekly cooking competition!" : "No cookoffs to show."}
+                {isOwnProfile ? "Time to join a culinary challenge!" : "No competition history to show."}
               </p>
+              <Button className="mt-4" onClick={() => setLocation("/cookoffs")}>
+                <TrendingUp className="w-4 h-4 mr-2" />
+                Find a Cookoff
+              </Button>
             </div>
           )}
         </TabsContent>
 
-        {/* SAVED */}
-        <TabsContent value="saved" className="mt-6">
-          {savedDrinksLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="aspect-square bg-muted rounded-lg animate-pulse" />
-              ))}
-            </div>
-          ) : savedDrinks.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {savedDrinks.map((d: any) => (
-                <Card key={d.id} className="overflow-hidden">
-                  <div className="aspect-square overflow-hidden">
-                    <img src={d.imageUrl} alt={d.name} className="w-full h-full object-cover" />
-                  </div>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold">{d.name}</h3>
-                      <Badge variant="outline">{d.category}</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{d.description}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <Star className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-semibold mb-2">No saved items yet</h3>
-              <p className="text-muted-foreground">
-                {isOwnProfile ? "Save recipes and drinks to find them quickly later." : "No saved items to show."}
-              </p>
-            </div>
-          )}
-        </TabsContent>
-
-        {/* MESSAGES */}
+        {/* MESSAGES (Only for own profile) */}
         {isOwnProfile && (
           <TabsContent value="messages" className="mt-6">
-            <Card className="border-2 border-amber-200 bg-gradient-to-br from-orange-50/50 to-red-50/50">
-              <CardHeader className="border-b border-amber-200">
+            <Card>
+              <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Crown className="w-5 h-5 text-amber-600" />
-                  <span className="bg-gradient-to-r from-orange-700 to-red-700 bg-clip-text text-transparent">
-                    Royal Table Talk
-                  </span>
+                  <MessageCircle className="w-5 h-5" />
+                  Direct Messages
                 </CardTitle>
+                <CardDescription>
+                  View and manage your conversations. Private messages are only visible to you.
+                </CardDescription>
               </CardHeader>
-              <CardContent className="pt-6">
-                <div className="text-center py-8">
-                  <MessageCircle className="w-16 h-16 mx-auto mb-4 text-amber-400" />
-                  <h3 className="text-lg font-semibold mb-2">Your Royal Conversations</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Manage your messages and connect with fellow chefs
+              <CardContent>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Message list component goes here.
                   </p>
-                  <Button
-                    onClick={() => setLocation("/messages")}
-                    className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-semibold shadow-md"
-                  >
-                    <MessageCircle className="h-4 w-4 mr-2" />
-                    Open Messages
-                  </Button>
+                  <Button onClick={() => setLocation("/messages")}>Go to Inbox</Button>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
         )}
 
-        {/* ANALYTICS */}
+        {/* SAVED */}
+        <TabsContent value="saved" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Star className="w-5 h-5 text-yellow-500" />
+                Saved Content
+              </CardTitle>
+              <CardDescription>
+                View posts, recipes, and custom drinks you have saved.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {savedDrinks.length > 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Saved content will be listed here. (e.g., {savedDrinks.length} saved drinks)
+                </p>
+              ) : (
+                <div className="text-center py-6">
+                  <Bookmark className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <p className="text-muted-foreground">Nothing saved yet!</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ANALYTICS (Only for own profile) */}
         {isOwnProfile && (
           <TabsContent value="analytics" className="mt-6">
-            <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50/50 to-purple-50/50">
-              <CardHeader className="border-b border-blue-200">
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-blue-600" />
-                  <span className="bg-gradient-to-r from-blue-700 to-purple-700 bg-clip-text text-transparent">
-                    Your Analytics Dashboard
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-6">
-                <AnalyticsDashboard />
-              </CardContent>
-            </Card>
+            <AnalyticsDashboard />
           </TabsContent>
         )}
 
         {/* STORE */}
         <TabsContent value="store" className="mt-6">
-          {storeData?.store ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="md:col-span-2">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <StoreIcon className="w-5 h-5" />
-                    {storeData.store.name}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-3 mb-2">
-                    <Badge variant="secondary">{storeData.store.published ? "Published" : "Draft"}</Badge>
-                    <Badge variant="outline">Products: {storeProductsCount}</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{storeData.store.bio}</p>
-                  {isOwnProfile && (
-                    <Button
-                      className="mt-4"
-                      onClick={() => (window.location.href = "/vendor/dashboard?tab=store")}
-                    >
-                      Open Store Dashboard
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm text-muted-foreground">At a glance</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span>Handle</span>
-                    <span className="font-mono text-sm">/{storeData.store.handle}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Status</span>
-                    <span className="font-medium">
-                      {storeData.store.published ? "Live" : "Hidden"}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Updated</span>
-                    <span className="text-sm text-muted-foreground">
-                      {new Date(storeData.store.updatedAt || "").toLocaleDateString()}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <StoreIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-semibold mb-2">No store yet</h3>
-              {isOwnProfile ? (
-                <p className="text-muted-foreground">
-                  Create your storefront from the dashboard to start selling.
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <StoreIcon className="w-5 h-5" />
+                {storeData?.store?.name || `${displayUser.displayName || displayUser.username}'s Store`}
+              </CardTitle>
+              <CardDescription>
+                {storeData?.store?.bio || "Your online shop for culinary goods."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-2xl font-bold">{storeProductsCount} Products</span>
+                {isOwnProfile && (
+                  <Button onClick={() => (window.location.href = "/vendor/dashboard?tab=products")}>
+                    <ShoppingBag className="w-4 h-4 mr-2" />
+                    Manage Products
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Products grid component goes here.
                 </p>
-              ) : (
-                <p className="text-muted-foreground">This user doesn't have a public store.</p>
-              )}
-            </div>
-          )}
+                {storeData?.store && (
+                  <Button variant="link" className="p-0" onClick={() => setLocation(`/store/${storeData.store.handle}`)}>
+                    <LinkIcon className="w-4 h-4 mr-2" />
+                    View Public Storefront
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
