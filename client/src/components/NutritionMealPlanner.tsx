@@ -929,7 +929,7 @@ const NutritionMealPlanner = () => {
                         <CardTitle>Shopping List</CardTitle>
                         <CardDescription>Week of Dec 1-7</CardDescription>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button size="sm" onClick={() => setShowAddGroceryModal(true)}>
                           <Plus className="w-4 h-4 mr-2" />
                           Add Item
