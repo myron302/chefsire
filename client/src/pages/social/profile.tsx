@@ -282,6 +282,17 @@ export default function Profile() {
     enabled: !!profileUserId,
   });
 
+  // Helper function to detect video URLs
+  const isVideoUrl = (url: string) => {
+    return url?.includes("video") || url?.includes(".mp4") || url?.includes(".webm") || url?.includes(".mov");
+  };
+
+  // Derive filtered post arrays
+  const allUserPosts = posts || [];
+  const userPhotos = allUserPosts.filter((p) => !isVideoUrl(p.imageUrl));
+  const userVideos = allUserPosts.filter((p) => isVideoUrl(p.imageUrl));
+  const userRecipes = posts?.filter((p) => p.isRecipe) || [];
+
   if (userLoading || !user) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-6 text-center">
