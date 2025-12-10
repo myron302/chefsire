@@ -459,6 +459,28 @@ export default function Profile() {
                   onClick={() => setSelectedPost(post)}
                 >
                   <div className="relative overflow-hidden aspect-square">
+                    {/* Three-dot menu for owner */}
+                    {isOwnProfile && post.userId === currentUser?.id && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 z-10 bg-black/50 hover:bg-black/70 text-white p-0 h-8 w-8 rounded-full"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm("Delete this post? This action cannot be undone.")) {
+                            fetch(`/api/posts/${post.id}`, { method: "DELETE", credentials: "include" })
+                              .then(() => {
+                                queryClient.invalidateQueries({ queryKey: ["/api/posts/user", profileUserId] });
+                                toast({ description: "Post deleted" });
+                              })
+                              .catch(() => toast({ variant: "destructive", description: "Failed to delete post" }));
+                          }
+                        }}
+                        data-testid={`button-post-options-${post.id}`}
+                      >
+                        <EllipsisVertical className="w-5 h-5" />
+                      </Button>
+                    )}
                     <img
                       src={post.imageUrl}
                       alt={post.caption}
@@ -516,6 +538,28 @@ export default function Profile() {
                   onClick={() => setSelectedPost(post)}
                 >
                   <div className="relative overflow-hidden aspect-square bg-black">
+                    {/* Three-dot menu for owner */}
+                    {isOwnProfile && post.userId === currentUser?.id && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 z-10 bg-black/50 hover:bg-black/70 text-white p-0 h-8 w-8 rounded-full"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm("Delete this post? This action cannot be undone.")) {
+                            fetch(`/api/posts/${post.id}`, { method: "DELETE", credentials: "include" })
+                              .then(() => {
+                                queryClient.invalidateQueries({ queryKey: ["/api/posts/user", profileUserId] });
+                                toast({ description: "Post deleted" });
+                              })
+                              .catch(() => toast({ variant: "destructive", description: "Failed to delete post" }));
+                          }
+                        }}
+                        data-testid={`button-bite-options-${post.id}`}
+                      >
+                        <EllipsisVertical className="w-5 h-5" />
+                      </Button>
+                    )}
                     <video
                       src={post.imageUrl}
                       className="w-full h-full object-cover"
