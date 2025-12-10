@@ -534,34 +534,6 @@ export default function Profile() {
                                   className="w-full text-left px-3 py-2 hover:bg-slate-100 text-red-600 text-sm"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    if (window.confirm("Remove media from this post? File will be deleted from server.")) {
-                                      const maybeFilename = post.imageUrl.includes("/uploads/") ? post.imageUrl.split("/uploads/").pop() : null;
-                                      if (maybeFilename) {
-                                        fetch(`/api/upload/${maybeFilename}`, { method: "DELETE", credentials: "include" })
-                                          .then(() => fetch(`/api/posts/${post.id}`, {
-                                            method: "PATCH",
-                                            credentials: "include",
-                                            headers: { "Content-Type": "application/json" },
-                                            body: JSON.stringify({ imageUrl: null })
-                                          }))
-                                          .then(() => {
-                                            queryClient.invalidateQueries({ queryKey: ["/api/posts/user", profileUserId] });
-                                            toast({ description: "Media removed" });
-                                          })
-                                          .catch(() => toast({ variant: "destructive", description: "Failed to remove media" }));
-                                      }
-                                    }
-                                    setOpenMenuId(null);
-                                  }}
-                                >
-                                  Remove Media
-                                </button>
-                              </li>
-                              <li>
-                                <button
-                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-red-600 text-sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
                                     if (window.confirm("Delete this post? This action cannot be undone.")) {
                                       fetch(`/api/posts/${post.id}`, { method: "DELETE", credentials: "include" })
                                         .then(() => {
@@ -690,34 +662,6 @@ export default function Profile() {
                                   }}
                                 >
                                   Edit Post
-                                </button>
-                              </li>
-                              <li>
-                                <button
-                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-red-600 text-sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (window.confirm("Remove media from this post? File will be deleted from server.")) {
-                                      const maybeFilename = post.imageUrl.includes("/uploads/") ? post.imageUrl.split("/uploads/").pop() : null;
-                                      if (maybeFilename) {
-                                        fetch(`/api/upload/${maybeFilename}`, { method: "DELETE", credentials: "include" })
-                                          .then(() => fetch(`/api/posts/${post.id}`, {
-                                            method: "PATCH",
-                                            credentials: "include",
-                                            headers: { "Content-Type": "application/json" },
-                                            body: JSON.stringify({ imageUrl: null })
-                                          }))
-                                          .then(() => {
-                                            queryClient.invalidateQueries({ queryKey: ["/api/posts/user", profileUserId] });
-                                            toast({ description: "Media removed" });
-                                          })
-                                          .catch(() => toast({ variant: "destructive", description: "Failed to remove media" }));
-                                      }
-                                    }
-                                    setOpenMenuId(null);
-                                  }}
-                                >
-                                  Remove Media
                                 </button>
                               </li>
                               <li>
