@@ -32,6 +32,8 @@ const NutritionMealPlanner = () => {
   const [showPantryModal, setShowPantryModal] = useState(false);
   const [showLoadTemplateModal, setShowLoadTemplateModal] = useState(false);
   const [savingsReport, setSavingsReport] = useState<any>(null);
+  const [showAddGroceryModal, setShowAddGroceryModal] = useState(false);
+  const [showScanModal, setShowScanModal] = useState(false);
 
   const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -290,6 +292,61 @@ const NutritionMealPlanner = () => {
 
   const handleLoadTemplate = () => {
     setShowLoadTemplateModal(true);
+  };
+
+  const handleAddGroceryItem = async () => {
+    const itemName = (document.getElementById('groceryItemName') as HTMLInputElement)?.value;
+    const itemAmount = (document.getElementById('groceryItemAmount') as HTMLInputElement)?.value;
+    const itemCategory = (document.getElementById('groceryItemCategory') as HTMLSelectElement)?.value;
+
+    if (!itemName) {
+      toast({
+        variant: "destructive",
+        description: "Please enter an item name",
+      });
+      return;
+    }
+
+    const newItem = {
+      name: itemName,
+      amount: itemAmount || '1',
+      category: itemCategory || 'Other',
+      checked: false,
+      id: Date.now(),
+    };
+
+    setGroceryList((prev: any) => [...prev, newItem]);
+    setShowAddGroceryModal(false);
+
+    toast({
+      description: `✅ ${itemName} added to grocery list!`,
+    });
+  };
+
+  const handleScanBarcode = (file: File) => {
+    // In production, this would call a barcode scanning API
+    // For now, simulate detecting a product
+    const mockProducts = [
+      { name: 'Organic Chicken Breast', amount: '2 lbs', category: 'Protein' },
+      { name: 'Whole Wheat Bread', amount: '1 loaf', category: 'Grains' },
+      { name: 'Greek Yogurt', amount: '32 oz', category: 'Dairy' },
+      { name: 'Fresh Spinach', amount: '1 bag', category: 'Produce' },
+    ];
+
+    const randomProduct = mockProducts[Math.floor(Math.random() * mockProducts.length)];
+
+    const newItem = {
+      ...randomProduct,
+      checked: false,
+      id: Date.now(),
+    };
+
+    setGroceryList((prev: any) => [...prev, newItem]);
+    setShowScanModal(false);
+
+    toast({
+      description: `📷 Scanned: ${randomProduct.name} added to grocery list!`,
+    });
   };
 
   const PremiumUpgrade = () => (
@@ -867,17 +924,25 @@ const NutritionMealPlanner = () => {
               <div className="lg:col-span-2">
                 <Card>
                   <CardHeader>
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                       <div>
                         <CardTitle>Shopping List</CardTitle>
-                        <CardDescription>Week of Dec 1-7</CardDescription>
+                        <CardDescription className="mt-2">Week of Dec 1-7</CardDescription>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" onClick={() => setShowAddGroceryModal(true)}>
+                          <Plus className="w-4 h-4 mr-2" />
+                          Add Item
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setShowScanModal(true)}>
+                          <Camera className="w-4 h-4 mr-2" />
+                          Scan
+                        </Button>
                         <Button variant="outline" size="sm" onClick={optimizeShoppingList}>
                           <Filter className="w-4 h-4 mr-2" />
                           Optimize
                         </Button>
-                        <Button size="sm" onClick={generateGroceryList}>
+                        <Button variant="outline" size="sm" onClick={generateGroceryList}>
                           <Download className="w-4 h-4 mr-2" />
                           Export
                         </Button>
@@ -1421,6 +1486,168 @@ const NutritionMealPlanner = () => {
               <Button variant="outline" className="w-full mt-6" onClick={() => setShowLoadTemplateModal(false)}>
                 Cancel
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Add Grocery Item Modal */}
+        {showAddGroceryModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-md w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <ShoppingCart className="w-6 h-6 text-green-500" />
+                  Add Grocery Item
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowAddGroceryModal(false)}>✕</Button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Item Name *</label>
+                  <input
+                    id="groceryItemName"
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    placeholder="e.g., Chicken Breast"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Amount</label>
+                  <input
+                    id="groceryItemAmount"
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    placeholder="e.g., 2 lbs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Category</label>
+                  <select
+                    id="groceryItemCategory"
+                    className="w-full border rounded px-3 py-2"
+                  >
+                    <option value="Protein">Protein</option>
+                    <option value="Produce">Produce</option>
+                    <option value="Grains">Grains</option>
+                    <option value="Dairy">Dairy</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    className="flex-1"
+                    onClick={handleAddGroceryItem}
+                  >
+                    Add Item
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowAddGroceryModal(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Scan Barcode Modal */}
+        {showScanModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg max-w-md w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <Camera className="w-6 h-6 text-blue-500" />
+                  Scan Product Barcode
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowScanModal(false)}>✕</Button>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-gray-600 text-sm">
+                  Use your camera to scan a product barcode and automatically add it to your grocery list.
+                </p>
+
+                <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg p-8 text-center border-2 border-dashed border-blue-300">
+                  <Camera className="w-16 h-16 mx-auto mb-4 text-blue-500" />
+                  <p className="text-sm text-gray-600 mb-4">Point your camera at a barcode</p>
+
+                  <div className="flex flex-col gap-3">
+                    <Button
+                      className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+                      onClick={() => {
+                        const input = document.getElementById('barcode-scanner-camera');
+                        if (input) input.click();
+                      }}
+                    >
+                      <Camera className="w-4 h-4 mr-2" />
+                      Open Camera
+                    </Button>
+                    <input
+                      id="barcode-scanner-camera"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          handleScanBarcode(file);
+                        }
+                      }}
+                    />
+
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => {
+                        const input = document.getElementById('barcode-scanner-upload');
+                        if (input) input.click();
+                      }}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Upload Photo
+                    </Button>
+                    <input
+                      id="barcode-scanner-upload"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          handleScanBarcode(file);
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-medium text-yellow-800">Demo Mode</p>
+                      <p className="text-xs text-yellow-700 mt-1">
+                        This feature will automatically detect products in production. Currently showing demo items.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setShowScanModal(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
             </div>
           </div>
         )}

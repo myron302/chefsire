@@ -274,9 +274,7 @@ export default function RecipesListPage() {
 
   // ---- API helpers
   async function fetchRandom(count = 24) {
-    const res = await fetch(`/api/recipes/random?count=${count}`, {
-      headers: { "Cache-Control": "no-store" },
-    });
+    const res = await fetch(`/api/recipes/random?count=${count}`);
     const json = (await res.json()) as SearchResponse;
     if (!res.ok || !("ok" in json) || json.ok === false) {
       const msg = (json as any)?.error || (await res.text()) || `Request failed (${res.status})`;
