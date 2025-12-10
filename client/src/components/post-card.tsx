@@ -89,34 +89,6 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
     },
   });
 
-  // Remove media only (owner-only)
-  const removeMediaMutation = useMutation({
-    mutationFn: async () => {
-      if (!post.imageUrl) throw new Error("No media to remove");
-      const maybeFilename = post.imageUrl.includes("/uploads/") ? post.imageUrl.split("/uploads/").pop() : null;
-      if (!maybeFilename) throw new Error("Cannot determine filename for media");
-      const delRes = await apiRequest("DELETE", `/api/upload/${maybeFilename}`);
-      if (!delRes.ok) {
-        const err = await delRes.json();
-        throw new Error(err.error || "Failed to delete media file");
-      }
-      const patchRes = await apiRequest("PATCH", `/api/posts/${post.id}`, { imageUrl: null });
-      if (!patchRes.ok) {
-        const err = await patchRes.json();
-        throw new Error(err.message || "Failed to clear post media");
-      }
-      return patchRes.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/users", effectiveUserId, "posts"] }); // Added for profile refresh
-      toast({ description: "Media removed" });
-    },
-    onError: () => {
-      toast({ variant: "destructive", description: "Failed to remove media" });
-    },
-  });
-
   // NEW HANDLER
   const handleEdit = () => {
     setIsEditing(true);
@@ -125,11 +97,6 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
   const handleDelete = () => {
     if (!confirm("Delete this post? This action cannot be undone.")) return;
     deleteMutation.mutate();
-  };
-
-  const handleRemoveMedia = () => {
-    if (!confirm("Remove media from this post? File will be deleted from server.")) return;
-    removeMediaMutation.mutate();
   };
 
   const handleMoreClick = (e: React.MouseEvent) => {
@@ -229,18 +196,6 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
                         data-testid={`menu-edit-${post.id}`}
                       >
                         Edit Post
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        className="w-full text-left px-3 py-2 hover:bg-slate-100 text-red-600"
-                        onClick={() => {
-                          handleRemoveMedia();
-                          setMenuOpen(false);
-                        }}
-                        data-testid={`menu-remove-media-${post.id}`}
-                      >
-                        Remove Media
                       </button>
                     </li>
                     <li>

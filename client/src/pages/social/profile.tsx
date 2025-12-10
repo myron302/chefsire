@@ -84,6 +84,7 @@ export default function Profile() {
   const isOwnProfile = profileUserId === currentUser?.id;
   const [selectedPost, setSelectedPost] = useState<PostWithUser | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [editingPost, setEditingPost] = useState<PostWithUser | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   // Close menu when clicking outside
@@ -98,6 +99,28 @@ export default function Profile() {
     }
     return () => document.removeEventListener("click", handleClickOutside);
   }, [openMenuId]);
+
+  // Edit post mutation
+  const editPostMutation = useMutation({
+    mutationFn: async ({ postId, caption }: { postId: string; caption: string }) => {
+      const response = await fetch(`/api/posts/${postId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caption }),
+      });
+      if (!response.ok) throw new Error("Failed to update post");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/posts/user", profileUserId] });
+      toast({ description: "Post updated successfully" });
+      setEditingPost(null);
+    },
+    onError: () => {
+      toast({ variant: "destructive", description: "Failed to update post" });
+    },
+  });
 
   // Fetch user (use currentUser when looking at self)
   const { data: user, isLoading: userLoading } = useQuery<UserType>({
@@ -522,7 +545,7 @@ export default function Profile() {
                                   className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setLocation(`/post/edit/${post.id}`);
+                                    setEditingPost(post);
                                     setOpenMenuId(null);
                                   }}
                                 >
@@ -657,7 +680,7 @@ export default function Profile() {
                                   className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setLocation(`/post/edit/${post.id}`);
+                                    setEditingPost(post);
                                     setOpenMenuId(null);
                                   }}
                                 >
@@ -1177,6 +1200,51 @@ export default function Profile() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Edit Post Modal */}
+      {editingPost && (
+        <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
+          <Card className="w-full max-w-lg">
+            <div className="p-6">
+              <h2 className="text-xl font-bold mb-1">Edit Post</h2>
+              <p className="text-sm text-muted-foreground mb-4">Edit your caption and details.</p>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const newCaption = (e.currentTarget.elements.namedItem('caption') as HTMLTextAreaElement).value;
+                  editPostMutation.mutate({ postId: editingPost.id, caption: newCaption });
+                }}
+              >
+                <div className="space-y-4">
+                  <label className="text-sm font-medium">Caption</label>
+                  <textarea
+                    name="caption"
+                    defaultValue={editingPost.caption}
+                    rows={4}
+                    className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-2 pt-6">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setEditingPost(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={editPostMutation.isPending}
+                  >
+                    {editPostMutation.isPending ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </Card>
         </div>
       )}
     </div>
