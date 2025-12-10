@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { useUser } from "@/contexts/UserContext";
 import { ProfileCompletion } from "@/components/ProfileCompletion";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
+import PostCard from "@/components/post-card";
 import {
   Image,
   ChefHat,
@@ -36,6 +38,7 @@ import {
   Play,
   MessageCircle,
   BarChart3,
+  X,
 } from "lucide-react";
 import type { User, PostWithUser } from "@shared/schema";
 
@@ -72,6 +75,7 @@ export default function Profile() {
   const [, setLocation] = useLocation();
   const { user: currentUser } = useUser();
   const profileUserId = userId || currentUser?.id;
+  const [selectedPost, setSelectedPost] = useState<PostWithUser | null>(null);
 
   // Fetch user (use currentUser when looking at self)
   const { data: user, isLoading: userLoading } = useQuery<User>({
@@ -559,7 +563,11 @@ export default function Profile() {
           ) : userPhotos.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {userPhotos.map((post) => (
-                <Card key={post.id} className="group cursor-pointer hover:shadow-lg transition-shadow">
+                <Card
+                  key={post.id}
+                  className="group cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => setSelectedPost(post)}
+                >
                   <div className="relative overflow-hidden aspect-square">
                     <img
                       src={post.imageUrl}
@@ -605,7 +613,11 @@ export default function Profile() {
           ) : userVideos.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {userVideos.map((post) => (
-                <Card key={post.id} className="group cursor-pointer hover:shadow-lg transition-shadow">
+                <Card
+                  key={post.id}
+                  className="group cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => setSelectedPost(post)}
+                >
                   <div className="relative overflow-hidden aspect-square bg-black">
                     <video
                       src={post.imageUrl}
@@ -670,28 +682,9 @@ export default function Profile() {
               ))}
             </div>
           ) : userRecipes.length > 0 ? (
-            <div className="space-y-8">
+            <div className="space-y-6">
               {userRecipes.map((post) => (
-                <Card key={post.id} className="overflow-hidden">
-                  <div className="relative">
-                    {post.imageUrl ? (
-                      <img src={post.imageUrl} alt={post.caption || "Recipe"} className="w-full h-64 object-cover" />
-                    ) : (
-                      <div className="w-full h-64 bg-gray-200 flex items-center justify-center">
-                        <Heart className="w-8 h-8 text-gray-400" />
-                      </div>
-                    )}
-                  </div>
-                  <CardContent className="p-6">
-                    <h3 className="text-xl font-semibold mb-2">{post.caption || "Recipe"}</h3>
-                    <div className="flex items-center justify-between text-sm text-gray-500">
-                      <span className="flex items-center space-x-1">
-                        <Heart className="w-4 h-4" />
-                        <span>{post.likesCount} likes</span>
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
+                <PostCard key={post.id} post={post} currentUserId={currentUser?.id} onCardClick={setSelectedPost} />
               ))}
             </div>
           ) : (
@@ -988,6 +981,105 @@ export default function Profile() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Expandable Post Modal */}
+      {selectedPost && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setSelectedPost(null)}
+        >
+          <div
+            className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col md:flex-row h-full max-h-[90vh]">
+              {/* Image section - 2/3 width */}
+              <div className="md:w-2/3 bg-black flex items-center justify-center relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute top-4 right-4 text-white hover:bg-white/20"
+                  onClick={() => setSelectedPost(null)}
+                >
+                  <X className="h-6 w-6" />
+                </Button>
+                {selectedPost.imageUrl?.includes("video") ||
+                selectedPost.imageUrl?.includes(".mp4") ? (
+                  <video
+                    src={selectedPost.imageUrl}
+                    controls
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <img
+                    src={selectedPost.imageUrl}
+                    alt={selectedPost.caption || "Post"}
+                    className="w-full h-full object-contain"
+                  />
+                )}
+              </div>
+
+              {/* Details section - 1/3 width */}
+              <div className="md:w-1/3 p-6 overflow-y-auto">
+                {/* User info */}
+                <div className="flex items-center space-x-3 mb-4">
+                  <Avatar className="w-10 h-10">
+                    <AvatarImage
+                      src={selectedPost.user.avatar || ""}
+                      alt={selectedPost.user.displayName}
+                    />
+                    <AvatarFallback>
+                      {(selectedPost.user.displayName || "U")[0]}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h3 className="font-semibold text-sm">
+                      {selectedPost.user.displayName}
+                    </h3>
+                    {selectedPost.isRecipe && (
+                      <Badge variant="secondary" className="mt-1">
+                        Recipe
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Caption */}
+                <div className="mb-4">
+                  <p className="text-sm">{selectedPost.caption}</p>
+                </div>
+
+                {/* Tags */}
+                {selectedPost.tags && selectedPost.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-4">
+                    {selectedPost.tags.map((tag, index) => (
+                      <Badge
+                        key={index}
+                        variant="outline"
+                        className="text-xs text-secondary bg-secondary/10 border-secondary/20"
+                      >
+                        #{tag}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                {/* Engagement stats */}
+                <div className="flex items-center space-x-4 text-sm text-muted-foreground border-t pt-4">
+                  <div className="flex items-center space-x-1">
+                    <Heart className="h-4 w-4" />
+                    <span>{selectedPost.likesCount || 0} likes</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <MessageCircle className="h-4 w-4" />
+                    <span>{selectedPost.commentsCount || 0} comments</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

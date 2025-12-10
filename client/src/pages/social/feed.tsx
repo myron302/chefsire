@@ -1,4 +1,5 @@
 // client/src/pages/feed.tsx
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -6,7 +7,7 @@ import PostCard from "@/components/post-card";
 import { BitesRow } from "@/components/BitesRow";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Heart, Clock } from "lucide-react";
+import { Heart, Clock, X, MessageCircle } from "lucide-react";
 import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
@@ -356,13 +357,18 @@ const demoPosts: PostWithUser[] = [
 function SimpleRecipeCard({
   post,
   currentUserId,
+  onCardClick,
 }: {
   post: PostWithUser;
   currentUserId: string;
+  onCardClick?: (post: PostWithUser) => void;
 }) {
   return (
     <Card className="overflow-hidden">
-      <div className="relative">
+      <div
+        className="relative cursor-pointer"
+        onClick={() => onCardClick?.(post)}
+      >
         {post.imageUrl ? (
           <img
             src={post.imageUrl}
@@ -433,6 +439,7 @@ function isValidDate(dateStr: string | undefined | null): boolean {
 export default function Feed() {
   const { user } = useUser();
   const currentUserId = user?.id || "";
+  const [selectedPost, setSelectedPost] = useState<PostWithUser | null>(null);
 
   // Posts feed - fetch explore posts (all posts) so user sees their own posts too
   const {
@@ -504,9 +511,9 @@ export default function Feed() {
           {/* Removed the visible error banner; we silently fall back */}
           {displayPosts.map((post) =>
             post.isRecipe ? (
-              <SimpleRecipeCard key={post.id} post={post} currentUserId={currentUserId} />
+              <SimpleRecipeCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} />
             ) : (
-              <PostCard key={post.id} post={post} currentUserId={currentUserId} />
+              <PostCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} />
             )
           )}
 
@@ -613,6 +620,105 @@ export default function Feed() {
           </section>
         </div>
       </aside>
+
+      {/* Expandable Post Modal */}
+      {selectedPost && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setSelectedPost(null)}
+        >
+          <div
+            className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col md:flex-row h-full max-h-[90vh]">
+              {/* Image section - 2/3 width */}
+              <div className="md:w-2/3 bg-black flex items-center justify-center relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute top-4 right-4 text-white hover:bg-white/20"
+                  onClick={() => setSelectedPost(null)}
+                >
+                  <X className="h-6 w-6" />
+                </Button>
+                {selectedPost.imageUrl?.includes("video") ||
+                selectedPost.imageUrl?.includes(".mp4") ? (
+                  <video
+                    src={selectedPost.imageUrl}
+                    controls
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <img
+                    src={selectedPost.imageUrl}
+                    alt={selectedPost.caption || "Post"}
+                    className="w-full h-full object-contain"
+                  />
+                )}
+              </div>
+
+              {/* Details section - 1/3 width */}
+              <div className="md:w-1/3 p-6 overflow-y-auto">
+                {/* User info */}
+                <div className="flex items-center space-x-3 mb-4">
+                  <Avatar className="w-10 h-10">
+                    <AvatarImage
+                      src={selectedPost.user.avatar || ""}
+                      alt={selectedPost.user.displayName}
+                    />
+                    <AvatarFallback>
+                      {(selectedPost.user.displayName || "U")[0]}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h3 className="font-semibold text-sm">
+                      {selectedPost.user.displayName}
+                    </h3>
+                    {selectedPost.isRecipe && (
+                      <Badge variant="secondary" className="mt-1">
+                        Recipe
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Caption */}
+                <div className="mb-4">
+                  <p className="text-sm">{selectedPost.caption}</p>
+                </div>
+
+                {/* Tags */}
+                {selectedPost.tags && selectedPost.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-4">
+                    {selectedPost.tags.map((tag, index) => (
+                      <Badge
+                        key={index}
+                        variant="outline"
+                        className="text-xs text-secondary bg-secondary/10 border-secondary/20"
+                      >
+                        #{tag}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                {/* Engagement stats */}
+                <div className="flex items-center space-x-4 text-sm text-muted-foreground border-t pt-4">
+                  <div className="flex items-center space-x-1">
+                    <Heart className="h-4 w-4" />
+                    <span>{selectedPost.likesCount || 0} likes</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <MessageCircle className="h-4 w-4" />
+                    <span>{selectedPost.commentsCount || 0} comments</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
