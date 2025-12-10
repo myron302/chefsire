@@ -341,58 +341,6 @@ export default function Layout({ children }: LayoutProps) {
                                   )}
                                 </div>
 
-                                {/* Nutrition & Meal Planning */}
-                                <div>
-                                  <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-                                    <Link
-                                      href="/nutrition"
-                                      onClick={() => setIsDropdownOpen(false)}
-                                      className="flex items-center flex-1 font-semibold"
-                                    >
-                                      🥗 Meal Planner
-                                    </Link>
-                                    <button
-                                      onClick={(e) => toggleSubmenu("nutrition", e)}
-                                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
-                                    >
-                                      <ChevronRight
-                                        className={`w-3 h-3 transition-transform ${expandedMenus.nutrition ? "rotate-90" : ""}`}
-                                      />
-                                    </button>
-                                  </div>
-                                  {expandedMenus.nutrition && (
-                                    <div className="ml-6 space-y-1">
-                                      <Link
-                                        href="/nutrition"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        📊 My Meal Planner
-                                      </Link>
-                                      <Link
-                                        href="/nutrition/marketplace"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        🛒 Meal Plan Marketplace
-                                      </Link>
-                                      <Link
-                                        href="/nutrition/meal-plans"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        👨‍🍳 Create Meal Plans
-                                      </Link>
-                                      <Link
-                                        href="/nutrition/analytics"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        📈 Creator Analytics
-                                      </Link>
-                                    </div>
-                                  )}
-                                </div>
 
                                 {/* Drinks */}
                                 <div>
@@ -520,49 +468,72 @@ export default function Layout({ children }: LayoutProps) {
                                 </div>
 
                                 {/* Catering */}
-                                <Link
-                                  href="/catering"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  🍽️ Catering
-                                </Link>
-
-                                {/* Wedding Planning */}
                                 <div>
                                   <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                                     <Link
-                                      href="/catering/wedding-planning"
+                                      href="/catering"
                                       onClick={() => setIsDropdownOpen(false)}
                                       className="flex items-center flex-1 font-semibold"
                                     >
-                                      💒 Wedding Planning
+                                      🍽️ Catering
                                     </Link>
                                     <button
-                                      onClick={(e) => toggleSubmenu("wedding", e)}
+                                      onClick={(e) => toggleSubmenu("catering", e)}
                                       className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
                                     >
                                       <ChevronRight
-                                        className={`w-3 h-3 transition-transform ${expandedMenus.wedding ? "rotate-90" : ""}`}
+                                        className={`w-3 h-3 transition-transform ${expandedMenus.catering ? "rotate-90" : ""}`}
                                       />
                                     </button>
                                   </div>
-                                  {expandedMenus.wedding && (
+                                  {expandedMenus.catering && (
                                     <div className="ml-6 space-y-1">
                                       <Link
-                                        href="/catering/wedding-planning"
+                                        href="/catering"
                                         onClick={() => setIsDropdownOpen(false)}
                                         className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                       >
-                                        📋 Planning Hub
+                                        👨‍🍳 Browse Caterers
                                       </Link>
-                                      <Link
-                                        href="/catering/wedding-map"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-                                      >
-                                        🗺️ Vendor Map
-                                      </Link>
+
+                                      {/* Wedding Planning (nested under Catering) */}
+                                      <div>
+                                        <div className="flex items-center justify-between px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                          <Link
+                                            href="/catering/wedding-planning"
+                                            onClick={() => setIsDropdownOpen(false)}
+                                            className="flex items-center flex-1 text-sm font-medium"
+                                          >
+                                            💒 Wedding Planning
+                                          </Link>
+                                          <button
+                                            onClick={(e) => toggleSubmenu("wedding", e)}
+                                            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                          >
+                                            <ChevronRight
+                                              className={`w-3 h-3 transition-transform ${expandedMenus.wedding ? "rotate-90" : ""}`}
+                                            />
+                                          </button>
+                                        </div>
+                                        {expandedMenus.wedding && (
+                                          <div className="ml-6 space-y-1">
+                                            <Link
+                                              href="/catering/wedding-planning"
+                                              onClick={() => setIsDropdownOpen(false)}
+                                              className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                                            >
+                                              📋 Planning Hub
+                                            </Link>
+                                            <Link
+                                              href="/catering/wedding-map"
+                                              onClick={() => setIsDropdownOpen(false)}
+                                              className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+                                            >
+                                              🗺️ Vendor Map
+                                            </Link>
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
                                   )}
                                 </div>
