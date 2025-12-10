@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ import {
   User,
   EllipsisVertical,
   X,
+  MoreHorizontal,
 } from "lucide-react";
 import type { User as UserType, PostWithUser } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
@@ -82,6 +83,21 @@ export default function Profile() {
   const profileUserId = userId || currentUser?.id;
   const isOwnProfile = profileUserId === currentUser?.id;
   const [selectedPost, setSelectedPost] = useState<PostWithUser | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+    if (openMenuId) {
+      document.addEventListener("click", handleClickOutside);
+    }
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [openMenuId]);
 
   // Fetch user (use currentUser when looking at self)
   const { data: user, isLoading: userLoading } = useQuery<UserType>({
@@ -461,25 +477,109 @@ export default function Profile() {
                   <div className="relative overflow-hidden aspect-square">
                     {/* Three-dot menu for owner */}
                     {isOwnProfile && post.userId === currentUser?.id && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute top-2 right-2 z-10 bg-black/50 hover:bg-black/70 text-white p-0 h-8 w-8 rounded-full"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (window.confirm("Delete this post? This action cannot be undone.")) {
-                            fetch(`/api/posts/${post.id}`, { method: "DELETE", credentials: "include" })
-                              .then(() => {
-                                queryClient.invalidateQueries({ queryKey: ["/api/posts/user", profileUserId] });
-                                toast({ description: "Post deleted" });
-                              })
-                              .catch(() => toast({ variant: "destructive", description: "Failed to delete post" }));
-                          }
-                        }}
-                        data-testid={`button-post-options-${post.id}`}
-                      >
-                        <EllipsisVertical className="w-5 h-5" />
-                      </Button>
+                      <div className="absolute top-2 right-2 z-10" ref={openMenuId === post.id ? menuRef : null}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="bg-black/50 hover:bg-black/70 text-white p-0 h-8 w-8 rounded-full"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenMenuId(openMenuId === post.id ? null : post.id);
+                          }}
+                          data-testid={`button-post-options-${post.id}`}
+                        >
+                          <MoreHorizontal className="w-5 h-5" />
+                        </Button>
+                        {openMenuId === post.id && (
+                          <div className="absolute right-0 mt-2 w-44 bg-white border rounded shadow-md">
+                            <ul className="p-1">
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toast({ description: "Share functionality coming soon!" });
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Share
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toast({ description: "Like added!" });
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Like
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLocation(`/post/edit/${post.id}`);
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Edit Post
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-red-600 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (window.confirm("Remove media from this post? File will be deleted from server.")) {
+                                      const maybeFilename = post.imageUrl.includes("/uploads/") ? post.imageUrl.split("/uploads/").pop() : null;
+                                      if (maybeFilename) {
+                                        fetch(`/api/upload/${maybeFilename}`, { method: "DELETE", credentials: "include" })
+                                          .then(() => fetch(`/api/posts/${post.id}`, {
+                                            method: "PATCH",
+                                            credentials: "include",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ imageUrl: null })
+                                          }))
+                                          .then(() => {
+                                            queryClient.invalidateQueries({ queryKey: ["/api/posts/user", profileUserId] });
+                                            toast({ description: "Media removed" });
+                                          })
+                                          .catch(() => toast({ variant: "destructive", description: "Failed to remove media" }));
+                                      }
+                                    }
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Remove Media
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-red-600 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (window.confirm("Delete this post? This action cannot be undone.")) {
+                                      fetch(`/api/posts/${post.id}`, { method: "DELETE", credentials: "include" })
+                                        .then(() => {
+                                          queryClient.invalidateQueries({ queryKey: ["/api/posts/user", profileUserId] });
+                                          toast({ description: "Post deleted" });
+                                        })
+                                        .catch(() => toast({ variant: "destructive", description: "Failed to delete post" }));
+                                    }
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Delete Post
+                                </button>
+                              </li>
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     )}
                     <img
                       src={post.imageUrl}
@@ -540,25 +640,109 @@ export default function Profile() {
                   <div className="relative overflow-hidden aspect-square bg-black">
                     {/* Three-dot menu for owner */}
                     {isOwnProfile && post.userId === currentUser?.id && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute top-2 right-2 z-10 bg-black/50 hover:bg-black/70 text-white p-0 h-8 w-8 rounded-full"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (window.confirm("Delete this post? This action cannot be undone.")) {
-                            fetch(`/api/posts/${post.id}`, { method: "DELETE", credentials: "include" })
-                              .then(() => {
-                                queryClient.invalidateQueries({ queryKey: ["/api/posts/user", profileUserId] });
-                                toast({ description: "Post deleted" });
-                              })
-                              .catch(() => toast({ variant: "destructive", description: "Failed to delete post" }));
-                          }
-                        }}
-                        data-testid={`button-bite-options-${post.id}`}
-                      >
-                        <EllipsisVertical className="w-5 h-5" />
-                      </Button>
+                      <div className="absolute top-2 right-2 z-10" ref={openMenuId === post.id ? menuRef : null}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="bg-black/50 hover:bg-black/70 text-white p-0 h-8 w-8 rounded-full"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenMenuId(openMenuId === post.id ? null : post.id);
+                          }}
+                          data-testid={`button-bite-options-${post.id}`}
+                        >
+                          <MoreHorizontal className="w-5 h-5" />
+                        </Button>
+                        {openMenuId === post.id && (
+                          <div className="absolute right-0 mt-2 w-44 bg-white border rounded shadow-md">
+                            <ul className="p-1">
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toast({ description: "Share functionality coming soon!" });
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Share
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toast({ description: "Like added!" });
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Like
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLocation(`/post/edit/${post.id}`);
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Edit Post
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-red-600 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (window.confirm("Remove media from this post? File will be deleted from server.")) {
+                                      const maybeFilename = post.imageUrl.includes("/uploads/") ? post.imageUrl.split("/uploads/").pop() : null;
+                                      if (maybeFilename) {
+                                        fetch(`/api/upload/${maybeFilename}`, { method: "DELETE", credentials: "include" })
+                                          .then(() => fetch(`/api/posts/${post.id}`, {
+                                            method: "PATCH",
+                                            credentials: "include",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ imageUrl: null })
+                                          }))
+                                          .then(() => {
+                                            queryClient.invalidateQueries({ queryKey: ["/api/posts/user", profileUserId] });
+                                            toast({ description: "Media removed" });
+                                          })
+                                          .catch(() => toast({ variant: "destructive", description: "Failed to remove media" }));
+                                      }
+                                    }
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Remove Media
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-red-600 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (window.confirm("Delete this post? This action cannot be undone.")) {
+                                      fetch(`/api/posts/${post.id}`, { method: "DELETE", credentials: "include" })
+                                        .then(() => {
+                                          queryClient.invalidateQueries({ queryKey: ["/api/posts/user", profileUserId] });
+                                          toast({ description: "Post deleted" });
+                                        })
+                                        .catch(() => toast({ variant: "destructive", description: "Failed to delete post" }));
+                                    }
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Delete Post
+                                </button>
+                              </li>
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     )}
                     <video
                       src={post.imageUrl}
