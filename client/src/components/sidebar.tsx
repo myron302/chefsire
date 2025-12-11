@@ -143,14 +143,23 @@ const NAV: NavItem[] = [
     ],
   },
 
-  { name: "🍽️ Catering", href: "/catering", hasSubmenu: true, submenu: [
-    { name: "👨‍🍳 Browse Caterers", href: "/catering" },
-  ]},
-
-  { name: "💒 Wedding Planning", href: "/catering/wedding-planning", hasSubmenu: true, submenu: [
-    { name: "📋 Planning Hub", href: "/catering/wedding-planning" },
-    { name: "🗺️ Vendor Map", href: "/catering/wedding-map" },
-  ]},
+  {
+    name: "🍽️ Catering",
+    href: "/catering",
+    hasSubmenu: true,
+    submenu: [
+      { name: "👨‍🍳 Browse Caterers", href: "/catering" },
+      {
+        name: "💒 Wedding Planning",
+        href: "/catering/wedding-planning",
+        hasSubmenu: true,
+        submenu: [
+          { name: "📋 Planning Hub", href: "/catering/wedding-planning" },
+          { name: "🗺️ Vendor Map", href: "/catering/wedding-map" },
+        ],
+      },
+    ],
+  },
 
   { name: "🛒 Marketplace", href: "/marketplace" },
   {
