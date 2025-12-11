@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { useUser } from "@/contexts/UserContext";
 import { ProfileCompletion } from "@/components/ProfileCompletion";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
+import PostCard from "@/components/post-card";
 import {
   Image,
   ChefHat,
@@ -37,7 +39,9 @@ import {
   MessageCircle,
   BarChart3,
   User,
-  EllipsisVertical, // ADDED: New icon for the options menu
+  EllipsisVertical,
+  X,
+  MoreHorizontal,
 } from "lucide-react";
 import type { User as UserType, PostWithUser } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
@@ -78,54 +82,22 @@ export default function Profile() {
   const queryClient = useQueryClient();
   const profileUserId = userId || currentUser?.id;
   const isOwnProfile = profileUserId === currentUser?.id;
+  const [selectedPost, setSelectedPost] = useState<PostWithUser | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
-  // --- MUTATION FOR POST DELETION (FIXES 404 BUG) ---
-  const deletePostMutation = useMutation({
-    mutationFn: async (postId: string) => {
-      const response = await fetch(`/api/posts/${postId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!response.ok) {
-        throw new Error("Failed to delete post");
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null);
       }
-    },
-    onSuccess: () => {
-      toast({ title: "Post Deleted", description: "Your post has been successfully removed.", variant: "success" });
-      // Refetch posts to update the UI
-      queryClient.invalidateQueries({ queryKey: ["/api/posts/user", profileUserId] });
-    },
-    onError: (error) => {
-      toast({ title: "Deletion Failed", description: (error as Error).message, variant: "destructive" });
-    },
-  });
-
-  // ADDED: New function to handle the Edit/Delete prompt for the post owner
-  const handleEditDelete = (post: PostWithUser, e: React.MouseEvent) => {
-    // Stop event propagation to prevent the parent Card's onClick (navigation) from firing
-    e.stopPropagation();
-
-    // Use prompt as per the simple logic
-    const option = prompt(
-      `Post options for photo ${post.id}:\nType 1 for Edit\nType 2 for Delete`
-    );
-
-    if (option === '1') {
-      setLocation(`/post/edit/${post.id}`);
-    } else if (option === '2') {
-      if (window.confirm("Are you sure you want to delete this post? This cannot be undone.")) {
-        deletePostMutation.mutate(post.id);
-      }
+    };
+    if (openMenuId) {
+      document.addEventListener("click", handleClickOutside);
     }
-  };
-
-  // --- HANDLER FOR POST CLICKS (RESTORED TO VIEW POST ONLY) ---
-  const handlePostClick = (post: PostWithUser) => {
-    // Navigates to a dedicated post view page, as originally intended (full screen view).
-    setLocation(`/post/${post.id}`);
-  };
-  // ----------------------------------------------------------------------------
-
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [openMenuId]);
 
   // Fetch user (use currentUser when looking at self)
   const { data: user, isLoading: userLoading } = useQuery<UserType>({
@@ -326,6 +298,17 @@ export default function Profile() {
     enabled: !!profileUserId,
   });
 
+  // Helper function to detect video URLs
+  const isVideoUrl = (url: string) => {
+    return url?.includes("video") || url?.includes(".mp4") || url?.includes(".webm") || url?.includes(".mov");
+  };
+
+  // Derive filtered post arrays
+  const allUserPosts = posts || [];
+  const userPhotos = allUserPosts.filter((p) => !isVideoUrl(p.imageUrl));
+  const userVideos = allUserPosts.filter((p) => isVideoUrl(p.imageUrl));
+  const userRecipes = posts?.filter((p) => p.isRecipe) || [];
+
   if (userLoading || !user) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-6 text-center">
@@ -478,28 +461,97 @@ export default function Profile() {
         {/* --- PHOTOS TAB --- */}
         <TabsContent value="photos" className="mt-6">
           {postsLoading ? (
-            <div className="text-center py-12">Loading posts...</div>
-          ) : posts && posts.filter(p => !p.isBite).length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
-              {posts.filter(p => !p.isBite).map((post) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="aspect-square bg-muted rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : userPhotos.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {userPhotos.map((post) => (
                 <Card
                   key={post.id}
                   className="group cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => handlePostClick(post)}
-                  data-testid={`post-card-${post.id}`}
+                  onClick={() => setSelectedPost(post)}
                 >
-                  <div className="relative overflow-hidden aspect-square bg-black">
-                    {/* ADDED: Three-dot menu for owner to Edit/Delete */}
+                  <div className="relative overflow-hidden aspect-square">
+                    {/* Three-dot menu for owner */}
                     {isOwnProfile && post.userId === currentUser?.id && (
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="absolute top-2 right-2 z-10 bg-black/50 hover:bg-black/70 text-white p-0 h-8 w-8 rounded-full"
-                        onClick={(e) => handleEditDelete(post, e)}
-                        data-testid={`button-post-options-${post.id}`}
-                      >
-                        <EllipsisVertical className="w-5 h-5" />
-                      </Button>
+                      <div className="absolute top-2 right-2 z-10" ref={openMenuId === post.id ? menuRef : null}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="bg-black/50 hover:bg-black/70 text-white p-0 h-8 w-8 rounded-full"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenMenuId(openMenuId === post.id ? null : post.id);
+                          }}
+                          data-testid={`button-post-options-${post.id}`}
+                        >
+                          <MoreHorizontal className="w-5 h-5" />
+                        </Button>
+                        {openMenuId === post.id && (
+                          <div className="absolute right-0 mt-2 w-44 bg-white border rounded shadow-md">
+                            <ul className="p-1">
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toast({ description: "Share functionality coming soon!" });
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Share
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toast({ description: "Like added!" });
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Like
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLocation(`/post/edit/${post.id}`);
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Edit Post
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-red-600 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (window.confirm("Delete this post? This action cannot be undone.")) {
+                                      fetch(`/api/posts/${post.id}`, { method: "DELETE", credentials: "include" })
+                                        .then(() => {
+                                          queryClient.invalidateQueries({ queryKey: ["/api/posts/user", profileUserId] });
+                                          toast({ description: "Post deleted" });
+                                        })
+                                        .catch(() => toast({ variant: "destructive", description: "Failed to delete post" }));
+                                    }
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Delete Post
+                                </button>
+                              </li>
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     )}
                     <img
                       src={post.imageUrl}
@@ -544,30 +596,98 @@ export default function Profile() {
         {/* --- BITES TAB --- */}
         <TabsContent value="bites" className="mt-6">
           {postsLoading ? (
-            <div className="text-center py-12">Loading bites...</div>
-          ) : posts && posts.filter(p => p.isBite).length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
-              {posts.filter(p => p.isBite).map((post) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="aspect-square bg-muted rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : userVideos.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {userVideos.map((post) => (
                 <Card
                   key={post.id}
                   className="group cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => handlePostClick(post)}
-                  data-testid={`bite-card-${post.id}`}
+                  onClick={() => setSelectedPost(post)}
                 >
                   <div className="relative overflow-hidden aspect-square bg-black">
-                    {/* ADDED: Three-dot menu for owner to Edit/Delete */}
+                    {/* Three-dot menu for owner */}
                     {isOwnProfile && post.userId === currentUser?.id && (
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="absolute top-2 right-2 z-10 bg-black/50 hover:bg-black/70 text-white p-0 h-8 w-8 rounded-full"
-                        onClick={(e) => handleEditDelete(post, e)}
-                        data-testid={`button-bite-options-${post.id}`}
-                      >
-                        <EllipsisVertical className="w-5 h-5" />
-                      </Button>
+                      <div className="absolute top-2 right-2 z-10" ref={openMenuId === post.id ? menuRef : null}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="bg-black/50 hover:bg-black/70 text-white p-0 h-8 w-8 rounded-full"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenMenuId(openMenuId === post.id ? null : post.id);
+                          }}
+                          data-testid={`button-bite-options-${post.id}`}
+                        >
+                          <MoreHorizontal className="w-5 h-5" />
+                        </Button>
+                        {openMenuId === post.id && (
+                          <div className="absolute right-0 mt-2 w-44 bg-white border rounded shadow-md">
+                            <ul className="p-1">
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toast({ description: "Share functionality coming soon!" });
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Share
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toast({ description: "Like added!" });
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Like
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLocation(`/post/edit/${post.id}`);
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Edit Post
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className="w-full text-left px-3 py-2 hover:bg-slate-100 text-red-600 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (window.confirm("Delete this post? This action cannot be undone.")) {
+                                      fetch(`/api/posts/${post.id}`, { method: "DELETE", credentials: "include" })
+                                        .then(() => {
+                                          queryClient.invalidateQueries({ queryKey: ["/api/posts/user", profileUserId] });
+                                          toast({ description: "Post deleted" });
+                                        })
+                                        .catch(() => toast({ variant: "destructive", description: "Failed to delete post" }));
+                                    }
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  Delete Post
+                                </button>
+                              </li>
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     )}
-                    {/* Assuming "imageUrl" for bites is actually a video URL */}
                     <video
                       src={post.imageUrl}
                       className="w-full h-full object-cover"
@@ -608,56 +728,23 @@ export default function Profile() {
         {/* --- RECIPES TAB --- */}
         <TabsContent value="recipes" className="mt-6">
           {postsLoading ? (
-            <div className="text-center py-12">Loading recipes...</div>
-          ) : posts && posts.filter(p => p.isRecipe).length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {posts.filter(p => p.isRecipe).map((post) => (
-                <Card
-                  key={post.id}
-                  className="group cursor-pointer hover:shadow-lg transition-shadow"
-                  onClick={() => handlePostClick(post)}
-                >
-                  <div className="relative aspect-video overflow-hidden">
-                    {/* ADDED: Three-dot menu for owner to Edit/Delete */}
-                    {isOwnProfile && post.userId === currentUser?.id && (
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="absolute top-2 right-2 z-10 bg-black/50 hover:bg-black/70 text-white p-0 h-8 w-8 rounded-full"
-                        onClick={(e) => handleEditDelete(post, e)}
-                        data-testid={`button-recipe-options-${post.id}`}
-                      >
-                        <EllipsisVertical className="w-5 h-5" />
-                      </Button>
-                    )}
-                    <img
-                      src={post.imageUrl}
-                      alt={post.caption}
-                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                    />
-                    <Badge className="absolute top-2 left-2 bg-primary hover:bg-primary/90">
-                      Recipe
-                    </Badge>
-                  </div>
+            <div className="space-y-8">
+              {[...Array(3)].map((_, i) => (
+                <Card key={i} className="animate-pulse">
+                  <div className="w-full h-96 bg-muted" />
                   <CardContent className="p-4">
-                    <h3 className="font-semibold text-lg line-clamp-2">{post.caption}</h3>
-                    <div className="flex items-center space-x-3 text-sm text-muted-foreground mt-2">
-                      <span className="flex items-center space-x-1">
-                        <Heart className="h-4 w-4" />
-                        <span>{post.likesCount}</span>
-                      </span>
-                      <span className="flex items-center space-x-1">
-                        <MessageCircle className="h-4 w-4" />
-                        <span>{post.commentsCount}</span>
-                      </span>
-                      {/* Assuming recipes have a cook time or difficulty */}
-                      <span className="flex items-center space-x-1">
-                        <Flame className="h-4 w-4" />
-                        <span>Easy</span>
-                      </span>
+                    <div className="space-y-2">
+                      <div className="w-3/4 h-6 bg-muted rounded" />
+                      <div className="w-full h-20 bg-muted rounded" />
                     </div>
                   </CardContent>
                 </Card>
+              ))}
+            </div>
+          ) : userRecipes.length > 0 ? (
+            <div className="space-y-6">
+              {userRecipes.map((post) => (
+                <PostCard key={post.id} post={post} currentUserId={currentUser?.id} onCardClick={setSelectedPost} />
               ))}
             </div>
           ) : (
@@ -993,6 +1080,105 @@ export default function Profile() {
           </TabsContent>
         )}
       </Tabs>
+
+      {/* Expandable Post Modal */}
+      {selectedPost && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setSelectedPost(null)}
+        >
+          <div
+            className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col md:flex-row h-full max-h-[90vh]">
+              {/* Image section - 2/3 width */}
+              <div className="md:w-2/3 bg-black flex items-center justify-center relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute top-4 right-4 text-white hover:bg-white/20"
+                  onClick={() => setSelectedPost(null)}
+                >
+                  <X className="h-6 w-6" />
+                </Button>
+                {selectedPost.imageUrl?.includes("video") ||
+                selectedPost.imageUrl?.includes(".mp4") ? (
+                  <video
+                    src={selectedPost.imageUrl}
+                    controls
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <img
+                    src={selectedPost.imageUrl}
+                    alt={selectedPost.caption || "Post"}
+                    className="w-full h-full object-contain"
+                  />
+                )}
+              </div>
+
+              {/* Details section - 1/3 width */}
+              <div className="md:w-1/3 p-6 overflow-y-auto">
+                {/* User info */}
+                <div className="flex items-center space-x-3 mb-4">
+                  <Avatar className="w-10 h-10">
+                    <AvatarImage
+                      src={selectedPost.user.avatar || ""}
+                      alt={selectedPost.user.displayName}
+                    />
+                    <AvatarFallback>
+                      {(selectedPost.user.displayName || "U")[0]}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h3 className="font-semibold text-sm">
+                      {selectedPost.user.displayName}
+                    </h3>
+                    {selectedPost.isRecipe && (
+                      <Badge variant="secondary" className="mt-1">
+                        Recipe
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Caption */}
+                <div className="mb-4">
+                  <p className="text-sm">{selectedPost.caption}</p>
+                </div>
+
+                {/* Tags */}
+                {selectedPost.tags && selectedPost.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-4">
+                    {selectedPost.tags.map((tag, index) => (
+                      <Badge
+                        key={index}
+                        variant="outline"
+                        className="text-xs text-secondary bg-secondary/10 border-secondary/20"
+                      >
+                        #{tag}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                {/* Engagement stats */}
+                <div className="flex items-center space-x-4 text-sm text-muted-foreground border-t pt-4">
+                  <div className="flex items-center space-x-1">
+                    <Heart className="h-4 w-4" />
+                    <span>{selectedPost.likesCount || 0} likes</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <MessageCircle className="h-4 w-4" />
+                    <span>{selectedPost.commentsCount || 0} comments</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
