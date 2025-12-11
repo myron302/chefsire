@@ -926,6 +926,48 @@ export const emailVerificationTokens = pgTable(
   })
 );
 
+// Wedding RSVP Invitations Table
+export const weddingRsvpInvitations = pgTable(
+  "wedding_rsvp_invitations",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+
+    // The user who created the wedding event (couple)
+    userId: varchar("user_id").references(() => users.id).notNull(),
+
+    // Guest information
+    guestName: varchar("guest_name", { length: 255 }).notNull(),
+    guestEmail: varchar("guest_email", { length: 255 }).notNull(),
+
+    // RSVP token (hashed)
+    tokenHash: varchar("token_hash", { length: 64 }).notNull().unique(),
+
+    // RSVP status
+    rsvpStatus: varchar("rsvp_status", { length: 20 }).notNull().default("pending"), // 'pending', 'accepted', 'declined'
+
+    // Plus one allowed
+    plusOne: boolean("plus_one").default(false),
+
+    // Optional: Wedding event details
+    eventDate: timestamp("event_date"),
+    eventLocation: text("event_location"),
+    eventMessage: text("event_message"),
+
+    // Token expiry (30 days by default)
+    expiresAt: timestamp("expires_at").notNull().default(sql`now() + interval '30 days'`),
+
+    // When the guest responded
+    respondedAt: timestamp("responded_at"),
+
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    userIdx: index("wri_user_idx").on(t.userId),
+    tokenIdx: index("wri_token_hash_idx").on(t.tokenHash),
+    emailIdx: index("wri_email_idx").on(t.guestEmail),
+  })
+);
+
 /* =========================================================================
    ===== INSERT SCHEMAS
    ========================================================================= */
@@ -1241,6 +1283,7 @@ export type InsertUserBadge = z.infer<typeof insertUserBadgeSchema>;
 
 /* ===== NEW TYPE ===== */
 export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
+export type WeddingRsvpInvitation = typeof weddingRsvpInvitations.$inferSelect;
 
 /* =========================================================================
    ===== Extended types

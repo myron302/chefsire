@@ -273,7 +273,7 @@ export default function WeddingPlanning() {
 
   // Get user context and check subscription status
   const { user } = useUser();
-  const isPremium = user?.subscription === 'premium';
+  const isPremium = user?.subscriptionTier === 'premium';
 
   // Simulated dynamic savings data (replace with a real API call if needed)
   const dynamicSavings = 4200;
@@ -430,7 +430,7 @@ export default function WeddingPlanning() {
     setGuestList(prev => prev.filter(g => g.id !== guestId));
   }, []);
 
-  const sendInvitations = useCallback(() => {
+  const sendInvitations = useCallback(async () => {
     if (!isPremium) {
       toast({
         title: "Premium Feature",
@@ -440,11 +440,70 @@ export default function WeddingPlanning() {
       return;
     }
 
-    toast({
-      title: "Invitations Sent!",
-      description: `${guestList.length} invitations have been sent successfully.`,
-    });
-  }, [isPremium, guestList.length, toast]);
+    if (guestList.length === 0) {
+      toast({
+        title: "No Guests",
+        description: "Please add guests to your list before sending invitations.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/wedding/send-invitations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          guests: guestList.map(g => ({
+            name: g.name,
+            email: g.email,
+            plusOne: g.plusOne
+          })),
+          eventDetails: {
+            coupleName: user?.displayName ? `${user.displayName}'s Wedding` : 'Our Wedding',
+            eventDate: selectedDate || undefined,
+            message: 'We would be honored to have you celebrate with us!',
+            template: selectedTemplate
+          }
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.ok) {
+        toast({
+          title: "Invitations Sent!",
+          description: `${data.sent} of ${data.total} invitations sent successfully.`,
+        });
+
+        // Refresh the guest list to show updated status
+        const listResponse = await fetch('/api/wedding/guest-list', {
+          credentials: 'include'
+        });
+
+        if (listResponse.ok) {
+          const listData = await listResponse.json();
+          if (listData.ok) {
+            setGuestList(listData.guests);
+          }
+        }
+      } else {
+        toast({
+          title: "Error",
+          description: data.error || "Failed to send invitations",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Failed to send invitations:', error);
+      toast({
+        title: "Error",
+        description: "Failed to send invitations. Please try again.",
+        variant: "destructive",
+      });
+    }
+  }, [isPremium, guestList, selectedDate, selectedTemplate, user, toast]);
 
   const rsvpStats = useMemo(() => {
     const accepted = guestList.filter(g => g.rsvp === 'accepted').length;
