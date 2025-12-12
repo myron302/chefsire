@@ -152,6 +152,7 @@ const NAV: NavItem[] = [
       {
         name: "💒 Wedding Planning",
         href: "/catering/wedding-planning",
+        isPremium: true,
         hasSubmenu: true,
         submenu: [
           { name: "📋 Planning Hub", href: "/catering/wedding-planning" },
