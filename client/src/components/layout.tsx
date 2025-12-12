@@ -625,9 +625,10 @@ export default function Layout({ children }: LayoutProps) {
                                           <Link
                                             href="/catering/wedding-planning"
                                             onClick={() => setIsDropdownOpen(false)}
-                                            className="flex items-center flex-1 text-sm font-medium"
+                                            className="flex items-center flex-1 text-sm font-medium gap-2"
                                           >
-                                            💒 Wedding Planning
+                                            <span>💒 Wedding Planning</span>
+                                            <span className="px-2 py-0.5 bg-yellow-300 text-black text-xs rounded font-semibold">Premium</span>
                                           </Link>
                                           <button
                                             onClick={(e) => toggleSubmenu("wedding", e)}
@@ -811,7 +812,7 @@ export default function Layout({ children }: LayoutProps) {
                             {/* 📊 Phase 3: Power User Features */}
                             <div className="px-4 py-2">
                               <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-                                📊 Analytics
+                                📊 Power User
                               </div>
                               <div className="space-y-1 ml-2">
                                 <Link
@@ -820,6 +821,13 @@ export default function Layout({ children }: LayoutProps) {
                                   className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                 >
                                   📊 Analytics
+                                </Link>
+                                <Link
+                                  href="/profile"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                >
+                                  👤 Profile
                                 </Link>
                               </div>
                             </div>
