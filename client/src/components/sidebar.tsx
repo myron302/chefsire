@@ -152,6 +152,12 @@ const NAV: NavItem[] = [
     ],
   },
 
+  { name: "🛒 Marketplace", href: "/marketplace" },
+  { name: "❤️ Allergies", href: "/allergies" },
+
+  // 💎 Premium Features Section
+  { name: "divider-premium", href: "#", isDivider: true } as any,
+
   {
     name: "💒 Wedding Planning",
     href: "/catering/wedding-planning",
@@ -162,7 +168,6 @@ const NAV: NavItem[] = [
     ],
   },
 
-  { name: "🛒 Marketplace", href: "/marketplace" },
   {
     name: "💪 Nutrition",
     href: "/nutrition",
@@ -174,7 +179,8 @@ const NAV: NavItem[] = [
       { name: "📈 Creator Analytics", href: "/nutrition/analytics" },
     ],
   },
-  { name: "❤️ Allergies", href: "/allergies" },
+
+  { name: "divider-features", href: "#", isDivider: true } as any,
 
   // ⚡ Phase 1: Daily Addiction Features
   { name: "🎯 My Quests", href: "/quests" },
@@ -231,6 +237,20 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
     });
 
   const Row = ({ item, trail = [] as string[], depth = 0 }) => {
+    // Render divider
+    if ("isDivider" in item && item.isDivider) {
+      return (
+        <div className="my-3">
+          <div className="border-t border-border"></div>
+          {item.name === "divider-premium" && (
+            <div className="mt-3 px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              💎 Premium Features
+            </div>
+          )}
+        </div>
+      );
+    }
+
     const currentTrail = [...trail, item.name];
     if ("hasSubmenu" in item && item.hasSubmenu) {
       return (
