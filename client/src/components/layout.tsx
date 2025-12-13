@@ -622,6 +622,34 @@ export default function Layout({ children }: LayoutProps) {
                                   )}
                                 </div>
 
+                                {/* Marketplace */}
+                                <Link
+                                  href="/marketplace"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                                >
+                                  🛒 Marketplace
+                                </Link>
+
+                                {/* Allergies */}
+                                <Link
+                                  href="/allergies"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                                >
+                                  ❤️ Allergies
+                                </Link>
+                              </div>
+                            </div>
+
+                            <div className="border-t my-2" />
+
+                            {/* 💎 Premium Features Section */}
+                            <div className="px-4 py-2">
+                              <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                                💎 Premium Features
+                              </div>
+                              <div className="space-y-1 ml-2">
                                 {/* Wedding Planning */}
                                 <div>
                                   <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
@@ -634,7 +662,7 @@ export default function Layout({ children }: LayoutProps) {
                                     </Link>
                                     <button
                                       onClick={(e) => toggleSubmenu("wedding", e)}
-                                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded flex-shrink-0"
+                                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
                                     >
                                       <ChevronRight
                                         className={`w-3 h-3 transition-transform ${expandedMenus.wedding ? "rotate-90" : ""}`}
@@ -660,15 +688,6 @@ export default function Layout({ children }: LayoutProps) {
                                     </div>
                                   )}
                                 </div>
-
-                                {/* Marketplace */}
-                                <Link
-                                  href="/marketplace"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  🛒 Marketplace
-                                </Link>
 
                                 {/* Nutrition */}
                                 <div>
@@ -722,15 +741,6 @@ export default function Layout({ children }: LayoutProps) {
                                     </div>
                                   )}
                                 </div>
-
-                                {/* Allergies */}
-                                <Link
-                                  href="/allergies"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  ❤️ Allergies
-                                </Link>
                               </div>
                             </div>
 
