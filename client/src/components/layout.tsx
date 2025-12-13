@@ -628,11 +628,9 @@ export default function Layout({ children }: LayoutProps) {
                                     <Link
                                       href="/catering/wedding-planning"
                                       onClick={() => setIsDropdownOpen(false)}
-                                      className="flex items-center font-semibold gap-2"
-                                      style={{ flex: "1 1 auto", minWidth: 0 }}
+                                      className="flex items-center flex-1 font-semibold"
                                     >
-                                      <span className="whitespace-nowrap">💒 Wedding Planning</span>
-                                      <span className="px-1.5 py-0.5 bg-yellow-300 text-black text-[10px] rounded font-semibold whitespace-nowrap flex-shrink-0">Premium</span>
+                                      💒 Wedding Planning
                                     </Link>
                                     <button
                                       onClick={(e) => toggleSubmenu("wedding", e)}
@@ -678,11 +676,9 @@ export default function Layout({ children }: LayoutProps) {
                                     <Link
                                       href="/nutrition"
                                       onClick={() => setIsDropdownOpen(false)}
-                                      className="flex items-center font-semibold gap-2"
-                                      style={{ flex: "1 1 auto", minWidth: 0 }}
+                                      className="flex items-center flex-1 font-semibold"
                                     >
-                                      <span className="whitespace-nowrap">💪 Nutrition</span>
-                                      <span className="px-1.5 py-0.5 bg-yellow-300 text-black text-[10px] rounded font-semibold whitespace-nowrap flex-shrink-0">Premium</span>
+                                      💪 Nutrition
                                     </Link>
                                     <button
                                       onClick={(e) => toggleSubmenu("nutrition", e)}
