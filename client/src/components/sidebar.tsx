@@ -272,7 +272,11 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
             <button
               aria-label={`Toggle ${item.name} submenu`}
               aria-expanded={isOpen(currentTrail)}
-              onClick={() => toggle(currentTrail)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggle(currentTrail);
+              }}
               className={["ml-2 p-1 rounded hover:bg-muted transition-transform", isOpen(currentTrail) ? "rotate-90" : ""].join(" ")}
             >
               <ChevronRight className="w-4 h-4" />
