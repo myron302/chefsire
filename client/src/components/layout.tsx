@@ -242,7 +242,7 @@ export default function Layout({ children }: LayoutProps) {
                                   🏛️ Royal Clubs
                                 </Link>
 
-                                {/* Competitions */}
+                                {/* Cookoff Arena */}
                                 <div>
                                   <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                                     <Link
@@ -250,7 +250,7 @@ export default function Layout({ children }: LayoutProps) {
                                       onClick={() => setIsDropdownOpen(false)}
                                       className="flex items-center flex-1 font-semibold"
                                     >
-                                      🏆 Competitions
+                                      🏆 Cookoff Arena
                                     </Link>
                                     <button
                                       onClick={(e) => toggleSubmenu("competitions", e)}
@@ -268,7 +268,7 @@ export default function Layout({ children }: LayoutProps) {
                                         onClick={() => setIsDropdownOpen(false)}
                                         className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                       >
-                                        📚 Cookoff Library
+                                        📚 Browse All Cookoffs
                                       </Link>
                                       <Link
                                         href="/competitions/live"
@@ -335,7 +335,7 @@ export default function Layout({ children }: LayoutProps) {
                                         onClick={() => setIsDropdownOpen(false)}
                                         className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                       >
-                                        🪄 Substitutions
+                                        🪄 Ingredient Substitutions
                                       </Link>
                                     </div>
                                   )}
@@ -362,53 +362,177 @@ export default function Layout({ children }: LayoutProps) {
                                   </div>
                                   {expandedMenus.drinks && (
                                     <div className="ml-6 space-y-1">
-                                      {/* Smoothies */}
                                       <Link
-                                        href="/drinks/smoothies"
+                                        href="/drinks"
                                         onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
+                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                       >
-                                        🍎 Smoothies & Bowls
+                                        🥤 Drinks Hub
                                       </Link>
+
+                                      {/* Smoothies & Bowls */}
+                                      <div>
+                                        <div className="flex items-center justify-between px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                          <Link
+                                            href="/drinks/smoothies"
+                                            onClick={() => setIsDropdownOpen(false)}
+                                            className="flex items-center flex-1 text-sm font-medium"
+                                          >
+                                            🍎 Smoothies & Bowls
+                                          </Link>
+                                          <button
+                                            onClick={(e) => toggleSubmenu("smoothies", e)}
+                                            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                          >
+                                            <ChevronRight
+                                              className={`w-3 h-3 transition-transform ${expandedMenus.smoothies ? "rotate-90" : ""}`}
+                                            />
+                                          </button>
+                                        </div>
+                                        {expandedMenus.smoothies && (
+                                          <div className="ml-6 space-y-1">
+                                            <Link href="/drinks/smoothies/breakfast" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🍳 Breakfast</Link>
+                                            <Link href="/drinks/smoothies/green" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🥬 Green</Link>
+                                            <Link href="/drinks/smoothies/protein" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">💪 Protein</Link>
+                                            <Link href="/drinks/smoothies/dessert" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🍨 Dessert</Link>
+                                            <Link href="/drinks/smoothies/workout" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🏋️ Workout</Link>
+                                            <Link href="/drinks/smoothies/berry" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🍓 Berry</Link>
+                                            <Link href="/drinks/smoothies/tropical" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🏝️ Tropical</Link>
+                                          </div>
+                                        )}
+                                      </div>
 
                                       {/* Protein Shakes */}
-                                      <Link
-                                        href="/drinks/protein-shakes"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
-                                      >
-                                        🧪 Protein Shakes
-                                      </Link>
+                                      <div>
+                                        <div className="flex items-center justify-between px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                          <Link
+                                            href="/drinks/protein-shakes"
+                                            onClick={() => setIsDropdownOpen(false)}
+                                            className="flex items-center flex-1 text-sm font-medium"
+                                          >
+                                            🧪 Protein Shakes
+                                          </Link>
+                                          <button
+                                            onClick={(e) => toggleSubmenu("protein-shakes", e)}
+                                            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                          >
+                                            <ChevronRight
+                                              className={`w-3 h-3 transition-transform ${expandedMenus["protein-shakes"] ? "rotate-90" : ""}`}
+                                            />
+                                          </button>
+                                        </div>
+                                        {expandedMenus["protein-shakes"] && (
+                                          <div className="ml-6 space-y-1">
+                                            <Link href="/drinks/protein-shakes/whey" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🥛 Whey</Link>
+                                            <Link href="/drinks/protein-shakes/plant-based" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🌱 Plant-Based</Link>
+                                            <Link href="/drinks/protein-shakes/casein" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🧀 Casein</Link>
+                                            <Link href="/drinks/protein-shakes/collagen" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">✨ Collagen</Link>
+                                            <Link href="/drinks/protein-shakes/egg" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🥚 Egg</Link>
+                                            <Link href="/drinks/protein-shakes/beef" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🐄 Beef</Link>
+                                          </div>
+                                        )}
+                                      </div>
 
-                                      {/* Detoxes */}
-                                      <Link
-                                        href="/drinks/detoxes"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
-                                      >
-                                        🍃 Detoxes & Cleanses
-                                      </Link>
+                                      {/* Detoxes & Cleanses */}
+                                      <div>
+                                        <div className="flex items-center justify-between px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                          <Link
+                                            href="/drinks/detoxes"
+                                            onClick={() => setIsDropdownOpen(false)}
+                                            className="flex items-center flex-1 text-sm font-medium"
+                                          >
+                                            🍃 Detoxes & Cleanses
+                                          </Link>
+                                          <button
+                                            onClick={(e) => toggleSubmenu("detoxes", e)}
+                                            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                          >
+                                            <ChevronRight
+                                              className={`w-3 h-3 transition-transform ${expandedMenus.detoxes ? "rotate-90" : ""}`}
+                                            />
+                                          </button>
+                                        </div>
+                                        {expandedMenus.detoxes && (
+                                          <div className="ml-6 space-y-1">
+                                            <Link href="/drinks/detoxes/juice" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🧃 Detox Juices</Link>
+                                            <Link href="/drinks/detoxes/tea" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🍵 Detox Teas</Link>
+                                            <Link href="/drinks/detoxes/water" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">💧 Infused Waters</Link>
+                                          </div>
+                                        )}
+                                      </div>
 
                                       {/* Caffeinated Drinks */}
-                                      <Link
-                                        href="/drinks/caffeinated"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
-                                      >
-                                        ☕ Caffeinated Drinks
-                                      </Link>
+                                      <div>
+                                        <div className="flex items-center justify-between px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                          <Link
+                                            href="/drinks/caffeinated"
+                                            onClick={() => setIsDropdownOpen(false)}
+                                            className="flex items-center flex-1 text-sm font-medium"
+                                          >
+                                            ☕ Caffeinated Drinks
+                                          </Link>
+                                          <button
+                                            onClick={(e) => toggleSubmenu("caffeinated", e)}
+                                            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                          >
+                                            <ChevronRight
+                                              className={`w-3 h-3 transition-transform ${expandedMenus.caffeinated ? "rotate-90" : ""}`}
+                                            />
+                                          </button>
+                                        </div>
+                                        {expandedMenus.caffeinated && (
+                                          <div className="ml-6 space-y-1">
+                                            <Link href="/drinks/caffeinated/espresso" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">☕ Espresso Drinks</Link>
+                                            <Link href="/drinks/caffeinated/cold-brew" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🧊 Cold Brew</Link>
+                                            <Link href="/drinks/caffeinated/tea" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🍵 Tea</Link>
+                                            <Link href="/drinks/caffeinated/matcha" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🍃 Matcha</Link>
+                                            <Link href="/drinks/caffeinated/energy" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">⚡ Energy Drinks</Link>
+                                            <Link href="/drinks/caffeinated/specialty" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">⭐ Specialty Coffee</Link>
+                                            <Link href="/drinks/caffeinated/lattes" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">☕ Lattes & Cappuccinos</Link>
+                                            <Link href="/drinks/caffeinated/iced" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">💧 Iced Coffee</Link>
+                                          </div>
+                                        )}
+                                      </div>
 
                                       {/* Potent Potables */}
-                                      <Link
-                                        href="/drinks/potent-potables"
-                                        onClick={() => setIsDropdownOpen(false)}
-                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm font-medium"
-                                      >
-                                        🍷 Potent Potables{" "}
-                                        <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-700">
-                                          21+
-                                        </span>
-                                      </Link>
+                                      <div>
+                                        <div className="flex items-center justify-between px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                          <Link
+                                            href="/drinks/potent-potables"
+                                            onClick={() => setIsDropdownOpen(false)}
+                                            className="flex items-center flex-1 text-sm font-medium gap-1"
+                                          >
+                                            <span>🍷 Potent Potables (21+)</span>
+                                          </Link>
+                                          <button
+                                            onClick={(e) => toggleSubmenu("potent-potables", e)}
+                                            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                          >
+                                            <ChevronRight
+                                              className={`w-3 h-3 transition-transform ${expandedMenus["potent-potables"] ? "rotate-90" : ""}`}
+                                            />
+                                          </button>
+                                        </div>
+                                        {expandedMenus["potent-potables"] && (
+                                          <div className="ml-6 space-y-1">
+                                            <Link href="/drinks/potent-potables/vodka" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🍸 Vodka</Link>
+                                            <Link href="/drinks/potent-potables/whiskey-bourbon" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🥃 Whiskey & Bourbon</Link>
+                                            <Link href="/drinks/potent-potables/tequila-mezcal" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🌵 Tequila & Mezcal</Link>
+                                            <Link href="/drinks/potent-potables/rum" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🏝️ Rum</Link>
+                                            <Link href="/drinks/potent-potables/daiquiri" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🍓 Daiquiri</Link>
+                                            <Link href="/drinks/potent-potables/martinis" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🍸 Martinis</Link>
+                                            <Link href="/drinks/potent-potables/cocktails" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🍹 Cocktails</Link>
+                                            <Link href="/drinks/potent-potables/gin" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🍸 Gin</Link>
+                                            <Link href="/drinks/potent-potables/hot-drinks" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🔥 Hot Drinks</Link>
+                                            <Link href="/drinks/potent-potables/liqueurs" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🥃 Liqueurs</Link>
+                                            <Link href="/drinks/potent-potables/spritz" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🥂 Spritz</Link>
+                                            <Link href="/drinks/potent-potables/cognac-brandy" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🍾 Cognac & Brandy</Link>
+                                            <Link href="/drinks/potent-potables/scotch-irish-whiskey" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🏴 Scotch & Irish</Link>
+                                            <Link href="/drinks/potent-potables/seasonal" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🗓️ Seasonal</Link>
+                                            <Link href="/drinks/potent-potables/mocktails" onClick={() => setIsDropdownOpen(false)} className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs">🧃 Mocktails (Zero-Proof)</Link>
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
                                   )}
                                 </div>
@@ -467,13 +591,36 @@ export default function Layout({ children }: LayoutProps) {
                                 </div>
 
                                 {/* Catering */}
-                                <Link
-                                  href="/catering"
-                                  onClick={() => setIsDropdownOpen(false)}
-                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                                >
-                                  🍽️ Catering
-                                </Link>
+                                <div>
+                                  <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                    <Link
+                                      href="/catering"
+                                      onClick={() => setIsDropdownOpen(false)}
+                                      className="flex items-center flex-1 font-semibold"
+                                    >
+                                      🍽️ Catering
+                                    </Link>
+                                    <button
+                                      onClick={(e) => toggleSubmenu("catering", e)}
+                                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                    >
+                                      <ChevronRight
+                                        className={`w-3 h-3 transition-transform ${expandedMenus.catering ? "rotate-90" : ""}`}
+                                      />
+                                    </button>
+                                  </div>
+                                  {expandedMenus.catering && (
+                                    <div className="ml-6 space-y-1">
+                                      <Link
+                                        href="/catering"
+                                        onClick={() => setIsDropdownOpen(false)}
+                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                      >
+                                        👨‍🍳 Browse Caterers
+                                      </Link>
+                                    </div>
+                                  )}
+                                </div>
 
                                 {/* Wedding Planning */}
                                 <div>
@@ -487,7 +634,7 @@ export default function Layout({ children }: LayoutProps) {
                                     </Link>
                                     <button
                                       onClick={(e) => toggleSubmenu("wedding", e)}
-                                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded flex-shrink-0"
                                     >
                                       <ChevronRight
                                         className={`w-3 h-3 transition-transform ${expandedMenus.wedding ? "rotate-90" : ""}`}
@@ -664,7 +811,7 @@ export default function Layout({ children }: LayoutProps) {
                             {/* 📊 Phase 3: Power User Features */}
                             <div className="px-4 py-2">
                               <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-                                📊 Analytics
+                                📊 Power User
                               </div>
                               <div className="space-y-1 ml-2">
                                 <Link
@@ -672,7 +819,14 @@ export default function Layout({ children }: LayoutProps) {
                                   onClick={() => setIsDropdownOpen(false)}
                                   className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                 >
-                                  📊 Analytics Dashboard
+                                  📊 Analytics
+                                </Link>
+                                <Link
+                                  href="/profile"
+                                  onClick={() => setIsDropdownOpen(false)}
+                                  className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                >
+                                  👤 Profile
                                 </Link>
                               </div>
                             </div>

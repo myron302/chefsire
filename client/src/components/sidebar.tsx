@@ -143,20 +143,29 @@ const NAV: NavItem[] = [
     ],
   },
 
-  { name: "🍽️ Catering", href: "/catering", hasSubmenu: true, submenu: [
-    { name: "👨‍🍳 Browse Caterers", href: "/catering" },
-  ]},
+  {
+    name: "🍽️ Catering",
+    href: "/catering",
+    hasSubmenu: true,
+    submenu: [
+      { name: "👨‍🍳 Browse Caterers", href: "/catering" },
+    ],
+  },
 
-  { name: "💒 Wedding Planning", href: "/catering/wedding-planning", hasSubmenu: true, submenu: [
-    { name: "📋 Planning Hub", href: "/catering/wedding-planning" },
-    { name: "🗺️ Vendor Map", href: "/catering/wedding-map" },
-  ]},
+  {
+    name: "💒 Wedding Planning",
+    href: "/catering/wedding-planning",
+    hasSubmenu: true,
+    submenu: [
+      { name: "📋 Planning Hub", href: "/catering/wedding-planning" },
+      { name: "🗺️ Vendor Map", href: "/catering/wedding-map" },
+    ],
+  },
 
   { name: "🛒 Marketplace", href: "/marketplace" },
   {
     name: "💪 Nutrition",
     href: "/nutrition",
-    isPremium: true,
     hasSubmenu: true,
     submenu: [
       { name: "📊 Meal Planner", href: "/nutrition" },
@@ -281,9 +290,6 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
           aria-current={isActive(item.href) ? "page" : undefined}
         >
           <span>{item.name}</span>
-          {"isPremium" in item && item.isPremium && (
-            <span className="ml-2 px-2 py-0.5 bg-yellow-300 text-xs rounded">Premium</span>
-          )}
         </div>
       </Link>
     );
