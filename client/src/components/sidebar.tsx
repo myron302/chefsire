@@ -171,6 +171,7 @@ const NAV: NavItem[] = [
   {
     name: "💪 Nutrition",
     href: "/nutrition",
+    isPremium: true,
     hasSubmenu: true,
     submenu: [
       { name: "📊 Meal Planner", href: "/nutrition" },
@@ -267,6 +268,9 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
                 aria-current={isActive(item.href) ? "page" : undefined}
               >
                 <span>{item.name}</span>
+                {"isPremium" in item && item.isPremium && (
+                  <span className="ml-2 px-1.5 py-0.5 bg-yellow-300 text-black text-[10px] rounded font-semibold">Premium</span>
+                )}
               </div>
             </Link>
             <button
