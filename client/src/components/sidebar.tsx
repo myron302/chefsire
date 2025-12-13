@@ -274,12 +274,19 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
               </div>
             </Link>
             <button
+              type="button"
               aria-label={`Toggle ${item.name} submenu`}
               aria-expanded={isOpen(currentTrail)}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                const nav = e.currentTarget.closest('nav');
+                const scrollTop = nav?.scrollTop || 0;
                 toggle(currentTrail);
+                // Restore scroll position after state update
+                requestAnimationFrame(() => {
+                  if (nav) nav.scrollTop = scrollTop;
+                });
               }}
               className={["ml-2 p-1 rounded hover:bg-muted transition-transform", isOpen(currentTrail) ? "rotate-90" : ""].join(" ")}
             >
