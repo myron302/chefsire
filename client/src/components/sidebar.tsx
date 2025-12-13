@@ -149,16 +149,17 @@ const NAV: NavItem[] = [
     hasSubmenu: true,
     submenu: [
       { name: "👨‍🍳 Browse Caterers", href: "/catering" },
-      {
-        name: "💒 Wedding Planning",
-        href: "/catering/wedding-planning",
-        isPremium: true,
-        hasSubmenu: true,
-        submenu: [
-          { name: "📋 Planning Hub", href: "/catering/wedding-planning" },
-          { name: "🗺️ Vendor Map", href: "/catering/wedding-map" },
-        ],
-      },
+    ],
+  },
+
+  {
+    name: "💒 Wedding Planning",
+    href: "/catering/wedding-planning",
+    isPremium: true,
+    hasSubmenu: true,
+    submenu: [
+      { name: "📋 Planning Hub", href: "/catering/wedding-planning" },
+      { name: "🗺️ Vendor Map", href: "/catering/wedding-map" },
     ],
   },
 
@@ -248,6 +249,9 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
                 aria-current={isActive(item.href) ? "page" : undefined}
               >
                 <span>{item.name}</span>
+                {"isPremium" in item && item.isPremium && (
+                  <span className="ml-2 px-2 py-0.5 bg-yellow-300 text-black text-xs rounded font-semibold">Premium</span>
+                )}
               </div>
             </Link>
             <button
@@ -292,7 +296,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
         >
           <span>{item.name}</span>
           {"isPremium" in item && item.isPremium && (
-            <span className="ml-2 px-2 py-0.5 bg-yellow-300 text-xs rounded">Premium</span>
+            <span className="ml-2 px-2 py-0.5 bg-yellow-300 text-black text-xs rounded font-semibold">Premium</span>
           )}
         </div>
       </Link>

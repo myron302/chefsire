@@ -618,46 +618,47 @@ export default function Layout({ children }: LayoutProps) {
                                       >
                                         👨‍🍳 Browse Caterers
                                       </Link>
+                                    </div>
+                                  )}
+                                </div>
 
-                                      {/* Wedding Planning (nested under Catering) */}
-                                      <div>
-                                        <div className="flex items-center justify-between px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-                                          <Link
-                                            href="/catering/wedding-planning"
-                                            onClick={() => setIsDropdownOpen(false)}
-                                            className="flex items-center flex-1 text-sm font-medium gap-2"
-                                          >
-                                            <span>💒 Wedding Planning</span>
-                                            <span className="px-2 py-0.5 bg-yellow-300 text-black text-xs rounded font-semibold">Premium</span>
-                                          </Link>
-                                          <button
-                                            onClick={(e) => toggleSubmenu("wedding", e)}
-                                            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
-                                          >
-                                            <ChevronRight
-                                              className={`w-3 h-3 transition-transform ${expandedMenus.wedding ? "rotate-90" : ""}`}
-                                            />
-                                          </button>
-                                        </div>
-                                        {expandedMenus.wedding && (
-                                          <div className="ml-6 space-y-1">
-                                            <Link
-                                              href="/catering/wedding-planning"
-                                              onClick={() => setIsDropdownOpen(false)}
-                                              className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                                            >
-                                              📋 Planning Hub
-                                            </Link>
-                                            <Link
-                                              href="/catering/wedding-map"
-                                              onClick={() => setIsDropdownOpen(false)}
-                                              className="flex items-center px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
-                                            >
-                                              🗺️ Vendor Map
-                                            </Link>
-                                          </div>
-                                        )}
-                                      </div>
+                                {/* Wedding Planning */}
+                                <div>
+                                  <div className="flex items-center justify-between px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                                    <Link
+                                      href="/catering/wedding-planning"
+                                      onClick={() => setIsDropdownOpen(false)}
+                                      className="flex items-center font-semibold gap-2"
+                                      style={{ flex: "1 1 auto", minWidth: 0 }}
+                                    >
+                                      <span className="whitespace-nowrap">💒 Wedding Planning</span>
+                                      <span className="px-1.5 py-0.5 bg-yellow-300 text-black text-[10px] rounded font-semibold whitespace-nowrap flex-shrink-0">Premium</span>
+                                    </Link>
+                                    <button
+                                      onClick={(e) => toggleSubmenu("wedding", e)}
+                                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded flex-shrink-0"
+                                    >
+                                      <ChevronRight
+                                        className={`w-3 h-3 transition-transform ${expandedMenus.wedding ? "rotate-90" : ""}`}
+                                      />
+                                    </button>
+                                  </div>
+                                  {expandedMenus.wedding && (
+                                    <div className="ml-6 space-y-1">
+                                      <Link
+                                        href="/catering/wedding-planning"
+                                        onClick={() => setIsDropdownOpen(false)}
+                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                      >
+                                        📋 Planning Hub
+                                      </Link>
+                                      <Link
+                                        href="/catering/wedding-map"
+                                        onClick={() => setIsDropdownOpen(false)}
+                                        className="flex items-center px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
+                                      >
+                                        🗺️ Vendor Map
+                                      </Link>
                                     </div>
                                   )}
                                 </div>
@@ -677,10 +678,11 @@ export default function Layout({ children }: LayoutProps) {
                                     <Link
                                       href="/nutrition"
                                       onClick={() => setIsDropdownOpen(false)}
-                                      className="flex items-center flex-1 font-semibold gap-2"
+                                      className="flex items-center font-semibold gap-2"
+                                      style={{ flex: "1 1 auto", minWidth: 0 }}
                                     >
-                                      <span>💪 Nutrition</span>
-                                      <span className="px-2 py-0.5 bg-yellow-300 text-black text-xs rounded font-semibold">Premium</span>
+                                      <span className="whitespace-nowrap">💪 Nutrition</span>
+                                      <span className="px-1.5 py-0.5 bg-yellow-300 text-black text-[10px] rounded font-semibold whitespace-nowrap flex-shrink-0">Premium</span>
                                     </Link>
                                     <button
                                       onClick={(e) => toggleSubmenu("nutrition", e)}
