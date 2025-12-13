@@ -676,9 +676,10 @@ export default function Layout({ children }: LayoutProps) {
                                     <Link
                                       href="/nutrition"
                                       onClick={() => setIsDropdownOpen(false)}
-                                      className="flex items-center flex-1 font-semibold"
+                                      className="flex items-center flex-1 font-semibold gap-2"
                                     >
-                                      💪 Nutrition
+                                      <span>💪 Nutrition</span>
+                                      <span className="px-2 py-0.5 bg-yellow-300 text-black text-xs rounded font-semibold">Premium</span>
                                     </Link>
                                     <button
                                       onClick={(e) => toggleSubmenu("nutrition", e)}
