@@ -63,6 +63,9 @@ import payoutsRouter from "./payouts";
 // File uploads
 import uploadRouter from "./upload";
 
+// Wedding Planning
+import weddingRsvpRouter from "./wedding-rsvp";
+
 const r = Router();
 
 /**
@@ -159,6 +162,9 @@ r.use("/payouts", payoutsRouter);
 
 // File uploads
 r.use("/upload", uploadRouter);
+
+// Wedding Planning
+r.use("/wedding", weddingRsvpRouter);
 
 // Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {
