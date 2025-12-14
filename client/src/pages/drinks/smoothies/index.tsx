@@ -697,7 +697,10 @@ export default function SmoothiesPage() {
                         <div className="text-xs text-gray-600">Calories</div>
                       </div>
                       <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
-                        <div className={`text-lg font-bold ${category.textColor}`}>{category.avgTime}</div>
+                        <div className="flex items-center justify-center gap-1 mb-1">
+                          <Clock className={`h-4 w-4 ${category.textColor}`} />
+                          <span className={`text-lg font-bold ${category.textColor}`}>{category.avgTime}</span>
+                        </div>
                         <div className="text-xs text-gray-600">Prep Time</div>
                       </div>
                       <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
