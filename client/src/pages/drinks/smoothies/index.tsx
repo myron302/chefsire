@@ -605,17 +605,17 @@ export default function SmoothiesPage() {
                   <Link key={hub.id} href={hub.route}>
                     <Button
                       variant="outline"
-                      className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                      className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all overflow-hidden"
                     >
-                      <div className="flex items-center gap-3 w-full">
-                        <div className={`p-2 ${hub.color} rounded-lg`}>
+                      <div className="flex items-center gap-3 w-full min-w-0">
+                        <div className={`p-2 ${hub.color} rounded-lg flex-shrink-0`}>
                           <Icon className="h-5 w-5 text-white" />
                         </div>
-                        <div className="flex-1 text-left">
-                          <div className="font-bold text-base">{hub.name}</div>
-                          <div className="text-xs text-gray-600">{hub.description}</div>
+                        <div className="flex-1 text-left min-w-0">
+                          <div className="font-bold text-base truncate">{hub.name}</div>
+                          <div className="text-xs text-gray-600 line-clamp-2">{hub.description}</div>
                         </div>
-                        <ArrowRight className="h-4 w-4 text-gray-400" />
+                        <ArrowRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
                       </div>
                       <div className="text-xs text-gray-500 ml-11">{hub.count}</div>
                     </Button>
@@ -697,7 +697,7 @@ export default function SmoothiesPage() {
                         <div className="text-xs text-gray-600">Calories</div>
                       </div>
                       <div className={`text-center p-3 rounded-lg ${category.bgColor}`}>
-                        <div className="flex items-center justify-center gap-1 mb-1">
+                        <div className="flex items-center justify-center gap-1">
                           <Clock className={`h-4 w-4 ${category.textColor}`} />
                           <span className={`text-lg font-bold ${category.textColor}`}>{category.avgTime}</span>
                         </div>
