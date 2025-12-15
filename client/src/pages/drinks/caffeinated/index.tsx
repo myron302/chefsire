@@ -520,7 +520,7 @@ export default function CaffeinatedDrinksPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
                 <CardContent className="p-4 text-center">
                   <Coffee className="h-8 w-8 mx-auto mb-2 text-amber-300" />
@@ -570,17 +570,17 @@ export default function CaffeinatedDrinksPage() {
                   <Link key={hub.id} href={hub.route}>
                     <Button
                       variant="outline"
-                      className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                      className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all overflow-hidden"
                     >
-                      <div className="flex items-center gap-3 w-full">
+                      <div className="flex items-center gap-3 w-full min-w-0">
                         <div className={`p-2 ${hub.color} rounded-lg`}>
                           <Icon className="h-5 w-5 text-white" />
                         </div>
-                        <div className="flex-1 text-left">
-                          <div className="font-bold text-base">{hub.name}</div>
-                          <div className="text-xs text-gray-600">{hub.description}</div>
+                        <div className="flex-1 text-left min-w-0">
+                          <div className="font-bold text-base truncate">{hub.name}</div>
+                          <div className="text-xs text-gray-600 line-clamp-2">{hub.description}</div>
                         </div>
-                        <ArrowRight className="h-4 w-4 text-gray-400" />
+                        <ArrowRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
                       </div>
                       <div className="text-xs text-gray-500 ml-11">{hub.count}</div>
                     </Button>
@@ -606,7 +606,7 @@ export default function CaffeinatedDrinksPage() {
             <Coffee className="h-6 w-6 text-amber-600" />
             Browse Caffeinated Drink Types
           </h2>
-          <div className="grid md:grid-cols-4 gap-6">
+          <div className="grid md:grid-cols-3 gap-6">
             {caffeinatedSubcategories.map((category) => {
               const Icon = category.icon;
               return (
