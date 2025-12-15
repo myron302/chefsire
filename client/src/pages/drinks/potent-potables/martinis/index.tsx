@@ -530,7 +530,7 @@ export default function MartinisPage() {
           <Card className="bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200 mb-6">
             <CardContent className="p-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Potent Potables</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                 {sisterPotentPotablesPages.map((page) => {
                   const Icon = page.icon;
                   return (
