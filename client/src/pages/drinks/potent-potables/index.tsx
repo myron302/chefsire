@@ -354,7 +354,7 @@ export default function PotentPotablesPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {[
                   { icon: Martini, value: '168', label: 'Total Recipes', sublabel: 'Always growing', color: 'text-pink-300' },
                   { icon: Trophy, value: userProgress.totalDrinksMade, label: 'Cocktails Made', sublabel: 'Keep mixing!', color: 'text-orange-300' },
@@ -392,17 +392,17 @@ export default function PotentPotablesPage() {
                     <Link key={hub.id} href={hub.route}>
                       <Button
                         variant="outline"
-                        className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all"
+                        className="w-full h-auto p-4 flex flex-col items-start gap-2 hover:bg-white hover:shadow-lg transition-all overflow-hidden"
                       >
-                        <div className="flex items-center gap-3 w-full">
+                        <div className="flex items-center gap-3 w-full min-w-0">
                           <div className={`p-2 ${hub.color} rounded-lg`}>
                             <Icon className="h-5 w-5 text-white" />
                           </div>
-                          <div className="flex-1 text-left">
-                            <div className="font-bold text-base">{hub.name}</div>
-                            <div className="text-xs text-gray-600">{hub.description}</div>
+                          <div className="flex-1 text-left min-w-0">
+                            <div className="font-bold text-base truncate">{hub.name}</div>
+                            <div className="text-xs text-gray-600 line-clamp-2">{hub.description}</div>
                           </div>
-                          <ArrowRight className="h-4 w-4 text-gray-400" />
+                          <ArrowRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
                         </div>
                         <div className="text-xs text-gray-500 ml-11">{hub.count}</div>
                       </Button>
@@ -416,6 +416,45 @@ export default function PotentPotablesPage() {
           <div className="max-w-2xl mx-auto">
             <UniversalSearch onSelectDrink={(drink) => console.log('Selected:', drink)} placeholder="Search all drinks or find cocktail inspiration..." className="w-full" />
           </div>
+
+          {/* Daily Challenge */}
+          <Card className="bg-gradient-to-r from-purple-500 to-pink-600 text-white border-0">
+            <CardContent className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Target className="w-6 h-6" />
+                    <h3 className="text-2xl font-bold">Mixology Challenge Monday</h3>
+                  </div>
+                  <p className="text-purple-100 mb-4">Create a cocktail using at least 3 ingredients from different spirit categories</p>
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="flex items-center gap-1">
+                      <Users className="w-4 h-4" />
+                      4,521 participating
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-4 h-4" />
+                      14h 35m left
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <Badge className="bg-yellow-400 text-yellow-900 mb-2">
+                    <Trophy className="w-3 h-3 mr-1" />
+                    Reward
+                  </Badge>
+                  <div className="text-sm">Master Mixologist Badge + 300 XP</div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span>Progress: 1/3</span>
+                  <span>33%</span>
+                </div>
+                <Progress value={33} className="h-3 bg-purple-300" />
+              </div>
+            </CardContent>
+          </Card>
 
           <div className="mb-8">
             <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">

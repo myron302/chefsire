@@ -563,7 +563,7 @@ export default function SmoothiesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
                 <CardContent className="p-4 text-center">
                   <Apple className="h-8 w-8 mx-auto mb-2 text-pink-300" />

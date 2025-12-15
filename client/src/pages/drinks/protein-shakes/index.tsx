@@ -308,9 +308,10 @@ export default function ProteinShakesPage({ params }: Params) {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-      {/* UNIFORM HERO SECTION */}
-      <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white py-12 px-6 rounded-xl shadow-2xl">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+        {/* UNIFORM HERO SECTION */}
+        <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white py-12 px-6 rounded-xl shadow-2xl">
         <div className="max-w-7xl mx-auto">
           <Link href="/drinks">
             <Button variant="ghost" className="text-white mb-4 hover:bg-white/20">
@@ -329,7 +330,7 @@ export default function ProteinShakesPage({ params }: Params) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
               <CardContent className="p-4 text-center">
                 <FlaskConical className="h-8 w-8 mx-auto mb-2 text-blue-300" />
@@ -385,11 +386,11 @@ export default function ProteinShakesPage({ params }: Params) {
                       <div className={`p-2 ${hub.color} rounded-lg`}>
                         <Icon className="h-5 w-5 text-white" />
                       </div>
-                      <div className="flex-1 text-left">
-                        <div className="font-bold text-base">{hub.name}</div>
-                        <div className="text-xs text-gray-600">{hub.description}</div>
+                      <div className="flex-1 text-left min-w-0">
+                        <div className="font-bold text-base truncate">{hub.name}</div>
+                        <div className="text-xs text-gray-600 line-clamp-2">{hub.description}</div>
                       </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400" />
+                      <ArrowRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
                     </div>
                     <div className="text-xs text-gray-500 ml-11">{hub.count}</div>
                   </Button>
@@ -938,6 +939,7 @@ export default function ProteinShakesPage({ params }: Params) {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
