@@ -676,7 +676,7 @@ export default function DetoxTeasPage() {
                             prepTime: tea.prepTime,
                             rating: tea.rating,
                             bestTime: tea.bestTime
-                          })}
+                          }); }}
                           className="text-gray-400 hover:text-red-500"
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(tea.id) ? 'fill-red-500 text-red-500' : ''}`} />
