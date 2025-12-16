@@ -886,8 +886,7 @@ export default function BerrySmoothiesPage() {
                                     const next = { ...prev };
                                     next[smoothie.id] = smoothie.recipe?.servings || 1;
                                     return next;
-                                  }); }};
-                                }}
+                                  }); }}
                                 title="Reset servings"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
