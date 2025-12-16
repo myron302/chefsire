@@ -808,7 +808,7 @@ export default function SpecialtyPage() {
                             rating: drink.rating,
                             drinkType: drink.drinkType,
                             bestTime: drink.bestTime
-                          })}
+                          }); }}
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(drink.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>
