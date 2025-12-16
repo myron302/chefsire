@@ -916,6 +916,18 @@ export default function MatchaPage() {
                                 </li>
                               );
                             })}
+                            {drink.recipe.measurements.length > 4 && (
+                              <li className="text-xs text-gray-600">
+                                …plus {drink.recipe.measurements.length - 4} more •{" "}
+                                <button
+                                  type="button"
+                                  onClick={() => openRecipeModal(drink)}
+                                  className="underline underline-offset-2"
+                                >
+                                  Show more
+                                </button>
+                              </li>
+                            )}
                           </ul>
 
                           <div className="flex gap-2 mt-3">

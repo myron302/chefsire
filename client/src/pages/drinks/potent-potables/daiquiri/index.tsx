@@ -648,21 +648,21 @@ export default function DaiquiriPage() {
                               <div className="flex items-center gap-2">
                                 <button
                                   className="px-2 py-1 border rounded text-sm"
-                                  onClick={() => setServingsById((p) => ({ ...p, [c.id]: clamp((p[c.id] ?? 1) - 1) }))}
+                                  onClick={(e) => { e.stopPropagation(); setServingsById((p) => ({ ...p, [c.id]: clamp((p[c.id] ?? 1) - 1) }))}
                                 >
                                   −
                                 </button>
                                 <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                                 <button
                                   className="px-2 py-1 border rounded text-sm"
-                                  onClick={() => setServingsById((p) => ({ ...p, [c.id]: clamp((p[c.id] ?? 1) + 1) }))}
+                                  onClick={(e) => { e.stopPropagation(); setServingsById((p) => ({ ...p, [c.id]: clamp((p[c.id] ?? 1) + 1) }))}
                                 >
                                   +
                                 </button>
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => setServingsById((p) => ({ ...p, [c.id]: 1 }))}
+                                  onClick={(e) => { e.stopPropagation(); setServingsById((p) => ({ ...p, [c.id]: 1 }))}
                                   title="Reset servings"
                                 >
                                   <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
@@ -704,7 +704,7 @@ export default function DaiquiriPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={async () => {
+                                onClick={async (e) => { e.stopPropagation();
                                   const lines = c.ingredients.map((ing: string) => `- ${ing}`);
                                   const txt = `${c.name} (serves ${servings})\n${lines.join("\n")}`;
                                   try {
@@ -717,13 +717,13 @@ export default function DaiquiriPage() {
                               >
                                 <Clipboard className="w-4 h-4 mr-1" /> Copy
                               </Button>
-                              <Button variant="outline" size="sm" onClick={() => handleShare(c, servings)}>
+                              <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShare(c, servings)}>
                                 <Share2 className="w-4 h-4 mr-1" /> Share
                               </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setMetricFlags((p) => ({ ...p, [c.id]: !p[c.id] }))}
+                                onClick={(e) => { e.stopPropagation(); setMetricFlags((p) => ({ ...p, [c.id]: !p[c.id] }))}
                               >
                                 {metricFlags[c.id] ? "US" : "Metric"}
                               </Button>
@@ -737,7 +737,7 @@ export default function DaiquiriPage() {
                             <GlassWater className="h-4 w-4 mr-2" />
                             Make Daiquiri
                           </Button>
-                          <Button variant="outline" size="sm" onClick={() => handleShare(c)}>
+                          <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShare(c)}>
                             <Share2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -858,7 +858,7 @@ export default function DaiquiriPage() {
                         <GlassWater className="h-4 w-4 mr-2" />
                         Make Daiquiri
                       </Button>
-                      <Button variant="outline" onClick={() => handleShare(c)}>
+                      <Button variant="outline" onClick={(e) => { e.stopPropagation(); handleShare(c)}>
                         <Share2 className="h-4 w-4" />
                       </Button>
                     </div>

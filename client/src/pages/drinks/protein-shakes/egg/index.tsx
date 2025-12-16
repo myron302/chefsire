@@ -685,7 +685,7 @@ export default function EggProteinPage() {
             const servings = servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
 
             return (
-              <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
+              <Card key={recipe.id} onClick={() => openRecipeModal(recipe)} className="hover:shadow-lg transition-shadow cursor-pointer">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div className="md:max-w-3xl md:flex-1">
@@ -695,7 +695,8 @@ export default function EggProteinPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         const drinkData = {
                           id: recipe.id,
                           name: recipe.name,
@@ -761,9 +762,10 @@ export default function EggProteinPage() {
                         <div className="flex items-center gap-2">
                           <button
                             className="px-2 py-1 border rounded text-sm"
-                            onClick={() =>
-                              setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? (recipe.recipe?.servings || 1)) - 1) }))
-                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? (recipe.recipe?.servings || 1)) - 1) }));
+                            }}
                             aria-label="decrease servings"
                           >
                             −
@@ -771,9 +773,10 @@ export default function EggProteinPage() {
                           <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                           <button
                             className="px-2 py-1 border rounded text-sm"
-                            onClick={() =>
-                              setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? (recipe.recipe?.servings || 1)) + 1) }))
-                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? (recipe.recipe?.servings || 1)) + 1) }));
+                            }}
                             aria-label="increase servings"
                           >
                             +
@@ -781,11 +784,14 @@ export default function EggProteinPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setServingsById(prev => {
-                              const next = { ...prev };
-                              next[recipe.id] = recipe.recipe?.servings || 1;
-                              return next;
-                            })}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setServingsById(prev => {
+                                const next = { ...prev };
+                                next[recipe.id] = recipe.recipe?.servings || 1;
+                                return next;
+                              });
+                            }}
                             title="Reset servings"
                           >
                             <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
@@ -819,7 +825,10 @@ export default function EggProteinPage() {
                             …plus {recipe.recipe.measurements.length - 4} more •{" "}
                             <button
                               type="button"
-                              onClick={() => openRecipeModal(recipe)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openRecipeModal(recipe);
+                              }}
                               className="underline underline-offset-2"
                             >
                               Show more
@@ -832,7 +841,8 @@ export default function EggProteinPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={async () => {
+                          onClick={async (e) => {
+                            e.stopPropagation();
                             const lines = (recipe.recipe?.measurements || []).map((ing: Measured) => {
                               if (useMetric && typeof ing.amount === 'number') {
                                 return `- ${Math.round(Number(ing.amount) * servings)}g ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
@@ -851,15 +861,19 @@ export default function EggProteinPage() {
                         >
                           <Clipboard className="w-4 h-4 mr-1" /> Copy
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleShareShake(recipe, servings)}>
+                        <Button variant="outline" size="sm" onClick={(e) => {
+                          e.stopPropagation();
+                          handleShareShake(recipe, servings);
+                        }}>
                           <Share2 className="w-4 h-4 mr-1" /> Share
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() =>
-                            setMetricFlags((prev) => ({ ...prev, [recipe.id]: !prev[recipe.id] }))
-                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMetricFlags((prev) => ({ ...prev, [recipe.id]: !prev[recipe.id] }));
+                          }}
                         >
                           {useMetric ? 'US' : 'Metric'}
                         </Button>
@@ -898,7 +912,8 @@ export default function EggProteinPage() {
                   <Button
                     className="w-full bg-amber-500 hover:bg-amber-600 text-white"
                     size="sm"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       addToRecentlyViewed({
                         id: recipe.id,
                         name: recipe.name,

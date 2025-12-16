@@ -838,7 +838,7 @@ export default function BreakfastSmoothiesPage() {
                 const servings = servingsById[smoothie.id] ?? (smoothie.recipe?.servings || 1);
 
                 return (
-                  <Card key={smoothie.id} className="hover:shadow-lg transition-shadow">
+                  <Card key={smoothie.id} onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }} className="hover:shadow-lg transition-shadow cursor-pointer">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="md:max-w-3xl md:flex-1">
@@ -848,19 +848,22 @@ export default function BreakfastSmoothiesPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => addToFavorites({
-                            id: smoothie.id,
-                            name: smoothie.name,
-                            category: 'smoothies',
-                            description: smoothie.description,
-                            ingredients: smoothie.ingredients,
-                            nutrition: smoothie.nutrition,
-                            difficulty: smoothie.difficulty,
-                            prepTime: smoothie.prepTime,
-                            rating: smoothie.rating,
-                            smoothieType: smoothie.smoothieType,
-                            bestTime: smoothie.bestTime
-                          })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToFavorites({
+                              id: smoothie.id,
+                              name: smoothie.name,
+                              category: 'smoothies',
+                              description: smoothie.description,
+                              ingredients: smoothie.ingredients,
+                              nutrition: smoothie.nutrition,
+                              difficulty: smoothie.difficulty,
+                              prepTime: smoothie.prepTime,
+                              rating: smoothie.rating,
+                              smoothieType: smoothie.smoothieType,
+                              bestTime: smoothie.bestTime
+                            });
+                          }}
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>
@@ -932,7 +935,7 @@ export default function BreakfastSmoothiesPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setServingsById(prev => {
+                                onClick={(e) => { e.stopPropagation(); setServingsById(prev => {
                                   const next = { ...prev };
                                   next[smoothie.id] = smoothie.recipe?.servings || 1;
                                   return next;
@@ -970,7 +973,7 @@ export default function BreakfastSmoothiesPage() {
                                 …plus {smoothie.recipe.measurements.length - 4} more •{" "}
                                 <button
                                   type="button"
-                                  onClick={() => openRecipeModal(smoothie)}
+                                  onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                                   className="underline underline-offset-2"
                                 >
                                   Show more
@@ -983,7 +986,7 @@ export default function BreakfastSmoothiesPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={async () => {
+                              onClick={async (e) => { e.stopPropagation();
                                 const lines = smoothie.ingredients.map((ing: string) => `- ${ing}`);
                                 const txt = `${smoothie.name} (serves ${servings})\n${lines.join('\n')}`;
                                 try {
@@ -996,7 +999,7 @@ export default function BreakfastSmoothiesPage() {
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => handleShareSmoothie(smoothie, servings)}>
+                            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShareSmoothie(smoothie, servings)}>
                               <Share2 className="w-4 h-4 mr-1" /> Share
                             </Button>
                             {/* Metric Button */}
@@ -1034,7 +1037,7 @@ export default function BreakfastSmoothiesPage() {
                       <div className="mt-3">
                         <Button 
                           className="w-full bg-purple-400 hover:bg-purple-500 text-white"
-                          onClick={() => openRecipeModal(smoothie)}
+                          onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                         >
                           <Apple className="h-4 w-4 mr-2" />
                           Make Smoothie (+25 XP)
@@ -1133,7 +1136,7 @@ export default function BreakfastSmoothiesPage() {
                 <CardContent>
                   <Button 
                     className="w-full bg-purple-400 hover:bg-purple-500 text-white"
-                    onClick={() => openRecipeModal(smoothie)}
+                    onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                   >
                     <Apple className="h-4 w-4 mr-2" />
                     Make This Breakfast Smoothie
@@ -1162,7 +1165,7 @@ export default function BreakfastSmoothiesPage() {
                 <CardContent>
                   <Button 
                     className="w-full bg-purple-400 hover:bg-purple-500 text-white"
-                    onClick={() => openRecipeModal(smoothie)}
+                    onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                   >
                     <Apple className="h-4 w-4 mr-2" />
                     Try This Trend

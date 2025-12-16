@@ -905,7 +905,12 @@ export default function CollagenProteinPage() {
                 const factor = (servings || 1) / (shake.recipe?.servings || 1);
 
                 return (
-                  <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow">
+                  <Card
+                    key={shake.id}
+                    id={`card-${shake.id}`}
+                    className="hover:shadow-lg transition-shadow cursor-pointer"
+                    onClick={() => kitRefs.current[shake.id]?.open?.()}
+                  >
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="md:max-w-3xl md:flex-1">
@@ -915,7 +920,9 @@ export default function CollagenProteinPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => addToFavorites({
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToFavorites({
                             id: shake.id,
                             name: shake.name,
                             category: 'protein-shakes',
@@ -1025,7 +1032,10 @@ export default function CollagenProteinPage() {
                       {/* Full-width CTA — Make Shake */}
                       <Button
                         className="w-full bg-pink-600 hover:bg-pink-700 text-white"
-                        onClick={() => kitRefs.current[shake.id]?.open?.()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          kitRefs.current[shake.id]?.open?.();
+                        }}
                       >
                         <Sparkles className="h-4 w-4 mr-2" />
                         Make Shake (+35 XP)
@@ -1242,7 +1252,11 @@ export default function CollagenProteinPage() {
         {activeTab === 'featured' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {featuredShakes.map(shake => (
-              <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow">
+              <Card
+                key={shake.id}
+                className="overflow-hidden hover:shadow-xl transition-shadow cursor-pointer"
+                onClick={() => kitRefs.current[shake.id]?.open?.()}
+              >
                 <div className="relative">
                   <img 
                     src={shake.image || 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=400&h=300&fit=crop'}
@@ -1355,7 +1369,10 @@ export default function CollagenProteinPage() {
                   {/* Full-width CTA — Make Shake */}
                   <Button
                     className="w-full bg-pink-600 hover:bg-pink-700 text-white"
-                    onClick={() => kitRefs.current[shake.id]?.open?.()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      kitRefs.current[shake.id]?.open?.();
+                    }}
                   >
                     <Sparkles className="h-4 w-4 mr-2" />
                     Make Shake (+35 XP)

@@ -428,7 +428,7 @@ export default function DetoxWatersPage() {
                 const servings = servingsById[water.id] ?? (water.recipe?.servings || 1);
 
                 return (
-                  <Card key={water.id} className="hover:shadow-lg transition-shadow">
+                  <Card key={water.id} onClick={(e) => { e.stopPropagation(); openRecipeModal(water); }} className="hover:shadow-lg transition-shadow cursor-pointer">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="md:max-w-3xl md:flex-1">
@@ -438,7 +438,7 @@ export default function DetoxWatersPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => addToFavorites({
+                          onClick={(e) => { e.stopPropagation(); addToFavorites({
                             id: water.id,
                             name: water.name,
                             category: 'detoxes',
@@ -521,7 +521,7 @@ export default function DetoxWatersPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setServingsById(prev => {
+                                onClick={(e) => { e.stopPropagation(); setServingsById(prev => {
                                   const next = { ...prev };
                                   next[water.id] = water.recipe?.servings || 1;
                                   return next;
@@ -559,7 +559,7 @@ export default function DetoxWatersPage() {
                                 …plus {water.recipe.measurements.length - 4} more •{" "}
                                 <button
                                   type="button"
-                                  onClick={() => openRecipeModal(water)}
+                                  onClick={(e) => { e.stopPropagation(); openRecipeModal(water)}
                                   className="underline underline-offset-2"
                                 >
                                   Show more
@@ -572,7 +572,7 @@ export default function DetoxWatersPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={async () => {
+                              onClick={async (e) => { e.stopPropagation();
                                 const lines = water.ingredients.map((ing: string) => `- ${ing}`);
                                 const txt = `${water.name} (serves ${servings})\n${lines.join('\n')}`;
                                 try {
@@ -585,7 +585,7 @@ export default function DetoxWatersPage() {
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => handleShareWater(water, servings)}>
+                            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShareWater(water, servings)}>
                               <Share2 className="w-4 h-4 mr-1" /> Share
                             </Button>
                             {/* Metric Button */}
@@ -641,7 +641,7 @@ export default function DetoxWatersPage() {
                       <div className="mt-3">
                         <Button 
                           className="w-full bg-cyan-600 hover:bg-cyan-700"
-                          onClick={() => openRecipeModal(water)}
+                          onClick={(e) => { e.stopPropagation(); openRecipeModal(water)}
                         >
                           <Waves className="h-4 w-4 mr-2" />
                           Infuse Water (+15 XP)
@@ -716,7 +716,7 @@ export default function DetoxWatersPage() {
                           </div>
                           <Button 
                             className="w-full bg-cyan-600 hover:bg-cyan-700"
-                            onClick={() => openRecipeModal(water)}
+                            onClick={(e) => { e.stopPropagation(); openRecipeModal(water)}
                           >
                             <Waves className="h-4 w-4 mr-2" />
                             View Recipe

@@ -655,7 +655,7 @@ export default function DetoxTeasPage() {
                 const servings = servingsById[tea.id] ?? (tea.recipe?.servings || 1);
 
                 return (
-                  <Card key={tea.id} className="hover:shadow-lg transition-shadow">
+                  <Card key={tea.id} onClick={(e) => { e.stopPropagation(); openRecipeModal(tea); }} className="hover:shadow-lg transition-shadow cursor-pointer">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="md:max-w-3xl md:flex-1">
@@ -665,7 +665,7 @@ export default function DetoxTeasPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => addToFavorites({
+                          onClick={(e) => { e.stopPropagation(); addToFavorites({
                             id: tea.id,
                             name: tea.name,
                             category: 'detoxes',
@@ -749,7 +749,7 @@ export default function DetoxTeasPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setServingsById(prev => {
+                                onClick={(e) => { e.stopPropagation(); setServingsById(prev => {
                                   const next = { ...prev };
                                   next[tea.id] = tea.recipe?.servings || 1;
                                   return next;
@@ -787,7 +787,7 @@ export default function DetoxTeasPage() {
                                 …plus {tea.recipe.measurements.length - 4} more •{" "}
                                 <button
                                   type="button"
-                                  onClick={() => openRecipeModal(tea)}
+                                  onClick={(e) => { e.stopPropagation(); openRecipeModal(tea)}
                                   className="underline underline-offset-2"
                                 >
                                   Show more
@@ -800,7 +800,7 @@ export default function DetoxTeasPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={async () => {
+                              onClick={async (e) => { e.stopPropagation();
                                 const lines = tea.ingredients.map((ing: string) => `- ${ing}`);
                                 const txt = `${tea.name} (serves ${servings})\n${lines.join('\n')}`;
                                 try {
@@ -813,7 +813,7 @@ export default function DetoxTeasPage() {
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => handleShareTea(tea, servings)}>
+                            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShareTea(tea, servings)}>
                               <Share2 className="w-4 h-4 mr-1" /> Share
                             </Button>
                             {/* Metric Button */}
@@ -869,7 +869,7 @@ export default function DetoxTeasPage() {
                       <div className="mt-3">
                         <Button 
                           className="w-full bg-amber-600 hover:bg-amber-700"
-                          onClick={() => openRecipeModal(tea)}
+                          onClick={(e) => { e.stopPropagation(); openRecipeModal(tea)}
                         >
                           <Coffee className="h-4 w-4 mr-2" />
                           Brew Tea (+20 XP)
@@ -944,7 +944,7 @@ export default function DetoxTeasPage() {
                           </div>
                           <Button 
                             className="w-full bg-amber-600 hover:bg-amber-700"
-                            onClick={() => openRecipeModal(tea)}
+                            onClick={(e) => { e.stopPropagation(); openRecipeModal(tea)}
                           >
                             <Coffee className="h-4 w-4 mr-2" />
                             View Recipe

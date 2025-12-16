@@ -771,7 +771,7 @@ export default function WhiskeyBourbonPage() {
                 <Card 
                   key={cocktail.id} 
                   className="hover:shadow-lg transition-all cursor-pointer bg-white border-amber-100 hover:border-amber-300"
-                  onClick={() => openRecipeModal(cocktail)}
+                  onClick={(e) => { e.stopPropagation(); openRecipeModal(cocktail); }}
                 >
                   <CardHeader>
                     <div className="flex items-start justify-between mb-2">

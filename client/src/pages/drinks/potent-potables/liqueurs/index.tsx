@@ -910,31 +910,130 @@ export default function LiqueursPage() {
                       </Badge>
                     </div>
 
+                    {/* RecipeKit Preview */}
+                    {Array.isArray(cocktail.recipe?.measurements) && cocktail.recipe.measurements.length > 0 && (
+                      <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-sm font-semibold text-gray-900">
+                            Recipe (serves {servings})
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="px-2 py-1 border rounded text-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setServingsById(prev => ({ ...prev, [cocktail.id]: clamp((prev[cocktail.id] ?? 1) - 1) }));
+                              }}
+                            >
+                              −
+                            </button>
+                            <div className="min-w-[2ch] text-center text-sm">{servings}</div>
+                            <button
+                              className="px-2 py-1 border rounded text-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setServingsById(prev => ({ ...prev, [cocktail.id]: clamp((prev[cocktail.id] ?? 1) + 1) }));
+                              }}
+                            >
+                              +
+                            </button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setServingsById(prev => ({ ...prev, [cocktail.id]: 1 }));
+                              }}
+                              title="Reset servings"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
+                            </Button>
+                          </div>
+                        </div>
+
+                        <ul className="text-sm leading-6 text-gray-800 space-y-1">
+                          {cocktail.recipe.measurements.slice(0, 4).map((ing: Measured, i: number) => {
+                            const isNum = typeof ing.amount === 'number';
+                            const scaledDisplay = isNum ? scaleAmount(ing.amount as number, servings) : ing.amount;
+                            const show = useMetric && isNum
+                              ? toMetric(ing.unit, Number(ing.amount) * servings)
+                              : { amount: scaledDisplay, unit: ing.unit };
+
+                            return (
+                              <li key={i} className="flex items-start gap-2">
+                                <Check className="h-4 w-4 text-purple-500 mt-0.5" />
+                                <span>
+                                  <span className="text-purple-600 font-semibold">
+                                    {show.amount} {show.unit}
+                                  </span>{" "}
+                                  {ing.item}
+                                  {ing.note ? <span className="text-gray-600 italic"> — {ing.note}</span> : null}
+                                </span>
+                              </li>
+                            );
+                          })}
+                          {cocktail.recipe.measurements.length > 4 && (
+                            <li className="text-xs text-gray-600">
+                              …plus {cocktail.recipe.measurements.length - 4} more •{" "}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openRecipeModal(cocktail);
+                                }}
+                                className="underline"
+                              >
+                                Show more
+                              </button>
+                            </li>
+                          )}
+                        </ul>
+
+                        <div className="flex gap-2 mt-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const lines = cocktail.ingredients.map((ing: string) => `- ${ing}`);
+                              const txt = `${cocktail.name} (serves ${servings})\n${lines.join('\n')}`;
+                              try {
+                                await navigator.clipboard.writeText(txt);
+                                alert('Recipe copied!');
+                              } catch {
+                                alert('Unable to copy.');
+                              }
+                            }}
+                          >
+                            <Clipboard className="w-4 h-4 mr-1" /> Copy
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={(e) => {
+                            e.stopPropagation();
+                            handleShareCocktail(cocktail, servings);
+                          }}>
+                            <Share2 className="w-4 w-4 mr-1" /> Share
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMetricFlags((prev) => ({ ...prev, [cocktail.id]: !prev[cocktail.id] }));
+                            }}
+                          >
+                            {useMetric ? 'US' : 'Metric'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tags */}
                     <div className="flex flex-wrap gap-1 mb-4">
                       {cocktail.profile?.slice(0, 3).map((tag: string) => (
                         <Badge key={tag} variant="secondary" className="text-xs bg-purple-100 text-purple-700">
                           {tag}
                         </Badge>
                       ))}
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
-                      <Button 
-                        className="flex-1 bg-purple-600 hover:bg-purple-700"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openRecipeModal(cocktail);
-                        }}
-                      >
-                        <Wine className="h-4 w-4 mr-2" />
-                        View Recipe
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={(e) => {
-                        e.stopPropagation();
-                        handleShareCocktail(cocktail);
-                      }}>
-                        <Share2 className="h-4 w-4" />
-                      </Button>
                     </div>
                   </CardContent>
                 </Card>

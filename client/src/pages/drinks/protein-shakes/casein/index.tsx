@@ -1039,7 +1039,7 @@ export default function CaseinProteinPage() {
                 const servings = servingsById[shake.id] ?? (shake.recipe?.servings || 1)
 
                 return (
-                  <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow">
+                  <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => openRecipeModal(shake)}>
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="md:max-w-3xl md:flex-1">
@@ -1049,7 +1049,8 @@ export default function CaseinProteinPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() =>
+                          onClick={(e) => {
+                            e.stopPropagation();
                             addToFavorites({
                               id: shake.id,
                               name: shake.name,
@@ -1062,8 +1063,8 @@ export default function CaseinProteinPage() {
                               rating: shake.rating,
                               fitnessGoal: shake.fitnessGoal,
                               bestTime: shake.bestTime,
-                            })
-                          }
+                            });
+                          }}
                           className="text-gray-400 hover:text-red-500"
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? "fill-red-500 text-red-500" : ""}`} />
@@ -1120,9 +1121,10 @@ export default function CaseinProteinPage() {
                             <div className="flex items-center gap-2">
                               <button
                                 className="px-2 py-1 border rounded text-sm"
-                                onClick={() =>
-                                  setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) - 1) }))
-                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) - 1) }));
+                                }}
                                 aria-label="decrease servings"
                               >
                                 −
@@ -1130,9 +1132,10 @@ export default function CaseinProteinPage() {
                               <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                               <button
                                 className="px-2 py-1 border rounded text-sm"
-                                onClick={() =>
-                                  setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) + 1) }))
-                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) + 1) }));
+                                }}
                                 aria-label="increase servings"
                               >
                                 +
@@ -1140,11 +1143,14 @@ export default function CaseinProteinPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setServingsById(prev => {
-                                  const next = { ...prev }
-                                  next[shake.id] = shake.recipe?.servings || 1
-                                  return next
-                                })}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setServingsById(prev => {
+                                    const next = { ...prev };
+                                    next[shake.id] = shake.recipe?.servings || 1;
+                                    return next;
+                                  });
+                                }}
                                 title="Reset servings"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
@@ -1178,7 +1184,10 @@ export default function CaseinProteinPage() {
                                 …plus {shake.recipe.measurements.length - 4} more •{" "}
                                 <button
                                   type="button"
-                                  onClick={() => openRecipeModal(shake)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openRecipeModal(shake);
+                                  }}
                                   className="underline underline-offset-2"
                                 >
                                   Show more
@@ -1191,34 +1200,36 @@ export default function CaseinProteinPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={async () => {
+                              onClick={async (e) => {
+                                e.stopPropagation();
                                 const lines = (shake.recipe?.measurements || []).map((ing: Measured) => {
                                   if (useMetric && typeof ing.amount === 'number') {
-                                    return `- ${Math.round(Number(ing.amount) * servings)}g ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`
+                                    return `- ${Math.round(Number(ing.amount) * servings)}g ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
                                   }
-                                  const scaled = typeof ing.amount === 'number' ? scaleAmount(ing.amount, servings) : ing.amount
-                                  return `- ${scaled} ${ing.unit} ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`
-                                })
-                                const txt = `${shake.name} (serves ${servings})\n${lines.join('\n')}`
+                                  const scaled = typeof ing.amount === 'number' ? scaleAmount(ing.amount, servings) : ing.amount;
+                                  return `- ${scaled} ${ing.unit} ${ing.item}${(ing.note ? ` — ${ing.note}` : '')}`;
+                                });
+                                const txt = `${shake.name} (serves ${servings})\n${lines.join('\n')}`;
                                 try {
-                                  await navigator.clipboard.writeText(txt)
-                                  alert('Recipe copied!')
+                                  await navigator.clipboard.writeText(txt);
+                                  alert('Recipe copied!');
                                 } catch {
-                                  alert('Unable to copy on this device.')
+                                  alert('Unable to copy on this device.');
                                 }
                               }}
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => handleShareShake(shake, servings)}>
+                            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShareShake(shake, servings); }}>
                               <Share2 className="w-4 h-4 mr-1" /> Share
                             </Button>
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() =>
-                                setMetricFlags((prev) => ({ ...prev, [shake.id]: !prev[shake.id] }))
-                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMetricFlags((prev) => ({ ...prev, [shake.id]: !prev[shake.id] }));
+                              }}
                             >
                               {useMetric ? 'US' : 'Metric'}
                             </Button>
@@ -1258,7 +1269,10 @@ export default function CaseinProteinPage() {
                         <Button
                           className="w-full bg-purple-500 hover:bg-purple-600 text-white"
                           size="sm"
-                          onClick={() => openRecipeModal(shake)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openRecipeModal(shake);
+                          }}
                         >
                           <Moon className="h-4 w-4 mr-1" />
                           Make Shake (+30 XP)
@@ -1405,7 +1419,7 @@ export default function CaseinProteinPage() {
               const servings = servingsById[shake.id] ?? (shake.recipe?.servings || 1)
 
               return (
-                <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow">
+                <Card key={shake.id} className="overflow-hidden hover:shadow-xl transition-shadow cursor-pointer" onClick={() => openRecipeModal(shake)}>
                   <div className="relative">
                     <img
                       src={shake.image || "/placeholder.svg"}
@@ -1615,7 +1629,10 @@ export default function CaseinProteinPage() {
                     <div className="mt-3">
                       <Button
                         className="w-full bg-purple-500 hover:bg-purple-600 text-white"
-                        onClick={() => openRecipeModal(shake)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRecipeModal(shake);
+                        }}
                       >
                         <Moon className="h-4 w-4 mr-2" />
                         Make Shake (+30 XP)

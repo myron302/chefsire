@@ -782,7 +782,7 @@ export default function BerrySmoothiesPage() {
                 const servings = servingsById[smoothie.id] ?? (smoothie.recipe?.servings || 1);
 
                 return (
-                  <Card key={smoothie.id} className="hover:shadow-lg transition-shadow">
+                  <Card key={smoothie.id} onClick={() => openRecipeModal(smoothie)} className="hover:shadow-lg transition-shadow cursor-pointer">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="md:max-w-3xl md:flex-1">
@@ -792,19 +792,22 @@ export default function BerrySmoothiesPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => addToFavorites({
-                            id: smoothie.id,
-                            name: smoothie.name,
-                            category: 'smoothies',
-                            description: smoothie.description,
-                            ingredients: smoothie.ingredients,
-                            nutrition: smoothie.nutrition,
-                            difficulty: smoothie.difficulty,
-                            prepTime: smoothie.prepTime,
-                            rating: smoothie.rating,
-                            fitnessGoal: 'Berry Nutrition',
-                            bestTime: smoothie.bestTime
-                          })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToFavorites({
+                              id: smoothie.id,
+                              name: smoothie.name,
+                              category: 'smoothies',
+                              description: smoothie.description,
+                              ingredients: smoothie.ingredients,
+                              nutrition: smoothie.nutrition,
+                              difficulty: smoothie.difficulty,
+                              prepTime: smoothie.prepTime,
+                              rating: smoothie.rating,
+                              fitnessGoal: 'Berry Nutrition',
+                              bestTime: smoothie.bestTime
+                            });
+                          }}
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>
@@ -855,9 +858,10 @@ export default function BerrySmoothiesPage() {
                             <div className="flex items-center gap-2">
                               <button
                                 className="px-2 py-1 border rounded text-sm"
-                                onClick={() =>
-                                  setServingsById(prev => ({ ...prev, [smoothie.id]: clamp((prev[smoothie.id] ?? (smoothie.recipe?.servings || 1)) - 1) }))
-                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setServingsById(prev => ({ ...prev, [smoothie.id]: clamp((prev[smoothie.id] ?? (smoothie.recipe?.servings || 1)) - 1) }));
+                                }}
                                 aria-label="decrease servings"
                               >
                                 −
@@ -865,9 +869,10 @@ export default function BerrySmoothiesPage() {
                               <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                               <button
                                 className="px-2 py-1 border rounded text-sm"
-                                onClick={() =>
-                                  setServingsById(prev => ({ ...prev, [smoothie.id]: clamp((prev[smoothie.id] ?? (smoothie.recipe?.servings || 1)) + 1) }))
-                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setServingsById(prev => ({ ...prev, [smoothie.id]: clamp((prev[smoothie.id] ?? (smoothie.recipe?.servings || 1)) + 1) }));
+                                }}
                                 aria-label="increase servings"
                               >
                                 +
@@ -875,11 +880,14 @@ export default function BerrySmoothiesPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setServingsById(prev => {
-                                  const next = { ...prev };
-                                  next[smoothie.id] = smoothie.recipe?.servings || 1;
-                                  return next;
-                                })}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setServingsById(prev => {
+                                    const next = { ...prev };
+                                    next[smoothie.id] = smoothie.recipe?.servings || 1;
+                                    return next;
+                                  });
+                                }}
                                 title="Reset servings"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
@@ -913,7 +921,10 @@ export default function BerrySmoothiesPage() {
                                 …plus {smoothie.recipe.measurements.length - 4} more •{" "}
                                 <button
                                   type="button"
-                                  onClick={() => openRecipeModal(smoothie)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openRecipeModal(smoothie);
+                                  }}
                                   className="underline underline-offset-2"
                                 >
                                   Show more
@@ -926,7 +937,8 @@ export default function BerrySmoothiesPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={async () => {
+                              onClick={async (e) => {
+                                e.stopPropagation();
                                 const lines = smoothie.ingredients.map((ing: string) => `- ${ing}`);
                                 const txt = `${smoothie.name} (serves ${servings})\n${lines.join('\n')}`;
                                 try {
@@ -939,16 +951,20 @@ export default function BerrySmoothiesPage() {
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => handleShareSmoothie(smoothie, servings)}>
+                            <Button variant="outline" size="sm" onClick={(e) => {
+                              e.stopPropagation();
+                              handleShareSmoothie(smoothie, servings);
+                            }}>
                               <Share2 className="w-4 h-4 mr-1" /> Share
                             </Button>
                             {/* Metric Button */}
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() =>
-                                setMetricFlags((prev) => ({ ...prev, [smoothie.id]: !prev[smoothie.id] }))
-                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMetricFlags((prev) => ({ ...prev, [smoothie.id]: !prev[smoothie.id] }));
+                              }}
                             >
                               {useMetric ? 'US' : 'Metric'}
                             </Button>
@@ -975,9 +991,12 @@ export default function BerrySmoothiesPage() {
 
                       {/* Make Smoothie Button */}
                       <div className="mt-3">
-                        <Button 
+                        <Button
                           className="w-full bg-red-500 hover:bg-red-600 text-white"
-                          onClick={() => openRecipeModal(smoothie)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openRecipeModal(smoothie);
+                          }}
                         >
                           <Heart className="h-4 w-4 mr-2" />
                           Make Smoothie (+25 XP)

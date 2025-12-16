@@ -767,7 +767,7 @@ export default function DetoxJuicesPage() {
                 const servings = servingsById[juice.id] ?? (juice.recipe?.servings || 1);
 
                 return (
-                  <Card key={juice.id} className="hover:shadow-lg transition-shadow">
+                  <Card key={juice.id} onClick={(e) => { e.stopPropagation(); openRecipeModal(juice); }} className="hover:shadow-lg transition-shadow cursor-pointer">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="md:max-w-3xl md:flex-1">
@@ -777,7 +777,7 @@ export default function DetoxJuicesPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => addToFavorites({
+                          onClick={(e) => { e.stopPropagation(); addToFavorites({
                             id: juice.id,
                             name: juice.name,
                             category: 'detoxes',
@@ -860,7 +860,7 @@ export default function DetoxJuicesPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setServingsById(prev => {
+                                onClick={(e) => { e.stopPropagation(); setServingsById(prev => {
                                   const next = { ...prev };
                                   next[juice.id] = juice.recipe?.servings || 1;
                                   return next;
@@ -898,7 +898,7 @@ export default function DetoxJuicesPage() {
                                 …plus {juice.recipe.measurements.length - 4} more •{" "}
                                 <button
                                   type="button"
-                                  onClick={() => openRecipeModal(juice)}
+                                  onClick={(e) => { e.stopPropagation(); openRecipeModal(juice); }}
                                   className="underline underline-offset-2"
                                 >
                                   Show more
@@ -911,7 +911,7 @@ export default function DetoxJuicesPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={async () => {
+                              onClick={async (e) => { e.stopPropagation();
                                 const lines = juice.ingredients.map((ing: string) => `- ${ing}`);
                                 const txt = `${juice.name} (serves ${servings})\n${lines.join('\n')}`;
                                 try {
@@ -924,7 +924,7 @@ export default function DetoxJuicesPage() {
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => handleShareJuice(juice, servings)}>
+                            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShareJuice(juice, servings)}>
                               <Share2 className="w-4 h-4 mr-1" /> Share
                             </Button>
                             {/* Metric Button */}
@@ -966,7 +966,7 @@ export default function DetoxJuicesPage() {
                       <div className="mt-3">
                         <Button 
                           className="w-full bg-green-600 hover:bg-green-700"
-                          onClick={() => openRecipeModal(juice)}
+                          onClick={(e) => { e.stopPropagation(); openRecipeModal(juice); }}
                         >
                           <Droplets className="h-4 w-4 mr-2" />
                           Make Juice (+25 XP)
@@ -1133,7 +1133,7 @@ export default function DetoxJuicesPage() {
                   <div className="flex gap-3">
                     <Button 
                       className="flex-1 bg-green-600 hover:bg-green-700"
-                      onClick={() => openRecipeModal(juice)}
+                      onClick={(e) => { e.stopPropagation(); openRecipeModal(juice); }}
                     >
                       <Droplets className="h-4 w-4 mr-2" />
                       Start Cleanse

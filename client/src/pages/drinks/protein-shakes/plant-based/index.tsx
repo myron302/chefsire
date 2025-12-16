@@ -814,7 +814,7 @@ export default function PlantBasedProteinPage() {
                 const servings = servingsById[shake.id] ?? (shake.recipe?.servings || 1);
 
                 return (
-                  <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow">
+                  <Card key={shake.id} id={`card-${shake.id}`} className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => openRecipeModal(shake)}>
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="md:max-w-3xl md:flex-1">
@@ -824,19 +824,22 @@ export default function PlantBasedProteinPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => addToFavorites({
-                            id: shake.id,
-                            name: shake.name,
-                            category: 'protein-shakes',
-                            description: shake.description,
-                            ingredients: shake.recipe?.measurements?.map(m => m.item) ?? [],
-                            nutrition: shake.nutrition,
-                            difficulty: shake.difficulty,
-                            prepTime: shake.prepTime,
-                            rating: shake.rating,
-                            fitnessGoal: shake.fitnessGoal,
-                            bestTime: shake.bestTime
-                          })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToFavorites({
+                              id: shake.id,
+                              name: shake.name,
+                              category: 'protein-shakes',
+                              description: shake.description,
+                              ingredients: shake.recipe?.measurements?.map(m => m.item) ?? [],
+                              nutrition: shake.nutrition,
+                              difficulty: shake.difficulty,
+                              prepTime: shake.prepTime,
+                              rating: shake.rating,
+                              fitnessGoal: shake.fitnessGoal,
+                              bestTime: shake.bestTime
+                            });
+                          }}
                           className="text-gray-400 hover:text-red-500"
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
