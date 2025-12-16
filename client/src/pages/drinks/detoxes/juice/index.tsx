@@ -864,7 +864,7 @@ export default function DetoxJuicesPage() {
                                   const next = { ...prev };
                                   next[juice.id] = juice.recipe?.servings || 1;
                                   return next;
-                                })}
+                                }); }}
                                 title="Reset servings"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset

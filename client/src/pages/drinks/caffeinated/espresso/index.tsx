@@ -864,7 +864,7 @@ export default function EspressoDrinksPage() {
                                   const next = { ...prev };
                                   next[drink.id] = drink.recipe?.servings || 1;
                                   return next;
-                                })}
+                                }); }}
                                 title="Reset servings"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset

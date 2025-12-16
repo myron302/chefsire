@@ -886,7 +886,7 @@ export default function BerrySmoothiesPage() {
                                     const next = { ...prev };
                                     next[smoothie.id] = smoothie.recipe?.servings || 1;
                                     return next;
-                                  });
+                                  }); }};
                                 }}
                                 title="Reset servings"
                               >
