@@ -449,7 +449,7 @@ export default function DetoxWatersPage() {
                             prepTime: water.prepTime,
                             rating: water.rating,
                             bestTime: water.bestTime
-                          })}
+                          }); }}
                           className="text-gray-400 hover:text-red-500"
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(water.id) ? 'fill-red-500 text-red-500' : ''}`} />
