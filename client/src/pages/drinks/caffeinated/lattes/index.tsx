@@ -607,7 +607,7 @@ export default function LattesPage() {
         <Card className="bg-gradient-to-r from-stone-50 to-yellow-50 border-stone-200">
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Caffeinated Drinks</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {allCaffeinatedSubcategories.map((subcategory) => {
                 const Icon = subcategory.icon;
                 return (

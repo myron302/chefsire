@@ -808,7 +808,7 @@ export default function RumCocktailsPage() {
           <Card className="bg-gradient-to-r from-orange-50 to-red-50 border-red-300 mb-6">
             <CardContent className="p-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Potent Potables</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {sisterPotentPotablesPages.map((page) => {
                   const Icon = page.icon;
                   return (
