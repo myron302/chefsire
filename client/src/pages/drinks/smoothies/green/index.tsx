@@ -924,7 +924,7 @@ export default function GreenSmoothiesPage() {
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
-                            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShareSmoothie(smoothie, servings)}>
+                            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShareSmoothie(smoothie, servings); }}>
                               <Share2 className="w-4 h-4 mr-1" /> Share
                             </Button>
                             {/* Metric Button */}

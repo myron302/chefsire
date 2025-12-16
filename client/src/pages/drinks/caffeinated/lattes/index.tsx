@@ -945,7 +945,7 @@ export default function LattesPage() {
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
-                            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShareDrink(drink, servings)}>
+                            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShareDrink(drink, servings); }}>
                               <Share2 className="w-4 h-4 mr-1" /> Share
                             </Button>
                             <Button

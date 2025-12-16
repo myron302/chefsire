@@ -648,21 +648,21 @@ export default function DaiquiriPage() {
                               <div className="flex items-center gap-2">
                                 <button
                                   className="px-2 py-1 border rounded text-sm"
-                                  onClick={(e) => { e.stopPropagation(); setServingsById((p) => ({ ...p, [c.id]: clamp((p[c.id] ?? 1) - 1) }))}
+                                  onClick={(e) => { e.stopPropagation(); setServingsById((p) => ({ ...p, [c.id]: clamp((p[c.id] ?? 1) - 1) })); }}
                                 >
                                   −
                                 </button>
                                 <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                                 <button
                                   className="px-2 py-1 border rounded text-sm"
-                                  onClick={(e) => { e.stopPropagation(); setServingsById((p) => ({ ...p, [c.id]: clamp((p[c.id] ?? 1) + 1) }))}
+                                  onClick={(e) => { e.stopPropagation(); setServingsById((p) => ({ ...p, [c.id]: clamp((p[c.id] ?? 1) + 1) })); }}
                                 >
                                   +
                                 </button>
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={(e) => { e.stopPropagation(); setServingsById((p) => ({ ...p, [c.id]: 1 }))}
+                                  onClick={(e) => { e.stopPropagation(); setServingsById((p) => ({ ...p, [c.id]: 1 })); }}
                                   title="Reset servings"
                                 >
                                   <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
@@ -717,13 +717,13 @@ export default function DaiquiriPage() {
                               >
                                 <Clipboard className="w-4 h-4 mr-1" /> Copy
                               </Button>
-                              <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShare(c, servings)}>
+                              <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShare(c, servings); }}>
                                 <Share2 className="w-4 h-4 mr-1" /> Share
                               </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={(e) => { e.stopPropagation(); setMetricFlags((p) => ({ ...p, [c.id]: !p[c.id] }))}
+                                onClick={(e) => { e.stopPropagation(); setMetricFlags((p) => ({ ...p, [c.id]: !p[c.id] })); }}
                               >
                                 {metricFlags[c.id] ? "US" : "Metric"}
                               </Button>
