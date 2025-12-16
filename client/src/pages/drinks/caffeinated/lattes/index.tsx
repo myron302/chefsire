@@ -787,7 +787,7 @@ export default function LattesPage() {
                 const servings = servingsById[drink.id] ?? (drink.recipe?.servings || 1);
 
                 return (
-                  <Card key={drink.id} className="hover:shadow-lg transition-shadow">
+                  <Card key={drink.id} onClick={(e) => { e.stopPropagation(); openRecipeModal(drink); }} className="hover:shadow-lg transition-shadow cursor-pointer">
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="md:max-w-3xl md:flex-1">
@@ -797,7 +797,7 @@ export default function LattesPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => addToFavorites({
+                          onClick={(e) => { e.stopPropagation(); addToFavorites({
                             id: drink.id,
                             name: drink.name,
                             category: 'caffeinated',
@@ -881,7 +881,7 @@ export default function LattesPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setServingsById(prev => {
+                                onClick={(e) => { e.stopPropagation(); setServingsById(prev => {
                                   const next = { ...prev };
                                   next[drink.id] = drink.recipe?.servings || 1;
                                   return next;
@@ -919,7 +919,7 @@ export default function LattesPage() {
                                 …plus {drink.recipe.measurements.length - 4} more •{" "}
                                 <button
                                   type="button"
-                                  onClick={() => openRecipeModal(drink)}
+                                  onClick={(e) => { e.stopPropagation(); openRecipeModal(drink); }}
                                   className="underline underline-offset-2"
                                 >
                                   Show more
@@ -932,7 +932,7 @@ export default function LattesPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={async () => {
+                              onClick={async (e) => { e.stopPropagation();
                                 const lines = drink.ingredients.map((ing: string) => `- ${ing}`);
                                 const txt = `${drink.name} (serves ${servings})\n${lines.join('\n')}`;
                                 try {
@@ -945,7 +945,7 @@ export default function LattesPage() {
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => handleShareDrink(drink, servings)}>
+                            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShareDrink(drink, servings)}>
                               <Share2 className="w-4 h-4 mr-1" /> Share
                             </Button>
                             <Button
@@ -982,7 +982,7 @@ export default function LattesPage() {
                       <div className="mt-3">
                         <Button
                           className="w-full bg-stone-500 hover:bg-stone-500 text-white"
-                          onClick={() => openRecipeModal(drink)}
+                          onClick={(e) => { e.stopPropagation(); openRecipeModal(drink); }}
                         >
                           <Coffee className="h-4 w-4 mr-2" />
                           Make Drink (+20 XP)
@@ -1075,7 +1075,7 @@ export default function LattesPage() {
                 <CardContent>
                   <Button
                     className="w-full bg-stone-500 hover:bg-stone-500 text-white"
-                    onClick={() => openRecipeModal(drink)}
+                    onClick={(e) => { e.stopPropagation(); openRecipeModal(drink); }}
                   >
                     <Coffee className="h-4 w-4 mr-2" />
                     Make This Latte
@@ -1104,7 +1104,7 @@ export default function LattesPage() {
                 <CardContent>
                   <Button
                     className="w-full bg-stone-500 hover:bg-stone-500 text-white"
-                    onClick={() => openRecipeModal(drink)}
+                    onClick={(e) => { e.stopPropagation(); openRecipeModal(drink); }}
                   >
                     <Coffee className="h-4 w-4 mr-2" />
                     Try This Trend

@@ -701,7 +701,7 @@ export default function GinCocktailsPage() {
                 <Card 
                   key={cocktail.id} 
                   className="hover:shadow-lg transition-all cursor-pointer bg-white border-blue-100 hover:border-blue-300"
-                  onClick={() => openRecipeModal(cocktail)}
+                  onClick={(e) => { e.stopPropagation(); openRecipeModal(cocktail); }}
                 >
                   <CardHeader>
                     <div className="flex items-start justify-between mb-2">
