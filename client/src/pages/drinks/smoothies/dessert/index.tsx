@@ -948,7 +948,7 @@ export default function DessertSmoothiesPage() {
                                 }
                                 aria-label="decrease servings"
                               >
-                                −
+                                -
                               </button>
                               <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                               <button

@@ -986,7 +986,7 @@ export default function MocktailsPage() {
                               setServingsById(prev => ({ ...prev, [mocktail.id]: clamp((prev[mocktail.id] ?? 1) - 1) }));
                             }}
                           >
-                            −
+                            -
                           </button>
                           <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                           <button

@@ -524,6 +524,7 @@ export default function BerrySmoothiesPage() {
             measurements: selectedRecipe.recipe?.measurements || [],
             baseNutrition: selectedRecipe.nutrition || {},
             defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+          }}
         />
       )}
 
@@ -741,6 +742,7 @@ export default function BerrySmoothiesPage() {
                       onChange={(e) => {
                         const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
                         setMaxCalories(v);
+                      }}
                     >
                       <option value="all">All Calories</option>
                       <option value={200}>Under 200 cal</option>
@@ -858,9 +860,10 @@ export default function BerrySmoothiesPage() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setServingsById(prev => ({ ...prev, [smoothie.id]: clamp((prev[smoothie.id] ?? (smoothie.recipe?.servings || 1)) - 1) }));
+                                }}
                                 aria-label="decrease servings"
                               >
-                                −
+                                -
                               </button>
                               <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                               <button
@@ -868,6 +871,7 @@ export default function BerrySmoothiesPage() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setServingsById(prev => ({ ...prev, [smoothie.id]: clamp((prev[smoothie.id] ?? (smoothie.recipe?.servings || 1)) + 1) }));
+                                }}
                                 aria-label="increase servings"
                               >
                                 +
@@ -918,6 +922,7 @@ export default function BerrySmoothiesPage() {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     openRecipeModal(smoothie);
+                                  }}
                                   className="underline underline-offset-2"
                                 >
                                   Show more
@@ -940,6 +945,7 @@ export default function BerrySmoothiesPage() {
                                 } catch {
                                   alert('Unable to copy on this device.');
                                 }
+                              }}
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
@@ -956,6 +962,7 @@ export default function BerrySmoothiesPage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setMetricFlags((prev) => ({ ...prev, [smoothie.id]: !prev[smoothie.id] }));
+                              }}
                             >
                               {useMetric ? 'US' : 'Metric'}
                             </Button>
@@ -987,6 +994,7 @@ export default function BerrySmoothiesPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             openRecipeModal(smoothie);
+                          }}
                         >
                           <Heart className="h-4 w-4 mr-2" />
                           Make Smoothie (+25 XP)

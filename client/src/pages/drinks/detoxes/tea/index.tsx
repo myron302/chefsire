@@ -734,7 +734,7 @@ export default function DetoxTeasPage() {
                                 }
                                 aria-label="decrease servings"
                               >
-                                −
+                                -
                               </button>
                               <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                               <button
@@ -787,7 +787,7 @@ export default function DetoxTeasPage() {
                                 …plus {tea.recipe.measurements.length - 4} more •{" "}
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); openRecipeModal(tea)}
+                                  onClick={(e) => { e.stopPropagation(); openRecipeModal(tea); }}
                                   className="underline underline-offset-2"
                                 >
                                   Show more
@@ -867,9 +867,9 @@ export default function DetoxTeasPage() {
 
                       {/* Brew Tea Button */}
                       <div className="mt-3">
-                        <Button 
+                        <Button
                           className="w-full bg-amber-600 hover:bg-amber-700"
-                          onClick={(e) => { e.stopPropagation(); openRecipeModal(tea)}
+                          onClick={(e) => { e.stopPropagation(); openRecipeModal(tea); }}
                         >
                           <Coffee className="h-4 w-4 mr-2" />
                           Brew Tea (+20 XP)
@@ -942,9 +942,9 @@ export default function DetoxTeasPage() {
                             <span>Prep Time:</span>
                             <span className="font-semibold">{tea.prepTime} mins</span>
                           </div>
-                          <Button 
+                          <Button
                             className="w-full bg-amber-600 hover:bg-amber-700"
-                            onClick={(e) => { e.stopPropagation(); openRecipeModal(tea)}
+                            onClick={(e) => { e.stopPropagation(); openRecipeModal(tea); }}
                           >
                             <Coffee className="h-4 w-4 mr-2" />
                             View Recipe

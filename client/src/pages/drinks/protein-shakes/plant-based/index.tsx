@@ -643,6 +643,7 @@ export default function PlantBasedProteinPage() {
             measurements: selectedRecipe.recipe?.measurements || [],
             baseNutrition: selectedRecipe.nutrition || {},
             defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+          }}
         />
       )}
 
@@ -885,7 +886,7 @@ export default function PlantBasedProteinPage() {
                                 }
                                 aria-label="decrease servings"
                               >
-                                −
+                                -
                               </button>
                               <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                               <button
@@ -904,7 +905,7 @@ export default function PlantBasedProteinPage() {
                                   const next = { ...prev };
                                   next[shake.id] = shake.recipe?.servings || 1;
                                   return next;
-                                }); }}}
+                                })}
                                 title="Reset servings"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
@@ -966,7 +967,8 @@ export default function PlantBasedProteinPage() {
                                 } catch {
                                   alert('Unable to copy on this device.');
                                 }
-                            >
+ }}
+ >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
                             <Button variant="outline" size="sm" onClick={() => handleShareShake(shake, servings)}>
@@ -1136,7 +1138,8 @@ export default function PlantBasedProteinPage() {
                       onError={(e) => {
                         (e.currentTarget as HTMLImageElement).src =
                           'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=400&h=300&fit=crop';
-                    />
+ }}
+ />
                     <div className="absolute top-4 left-4">
                       <Badge className="bg-green-500 text-white">Featured Plant Protein</Badge>
                     </div>
@@ -1188,7 +1191,7 @@ export default function PlantBasedProteinPage() {
                               }
                               aria-label="decrease servings"
                             >
-                              −
+                              -
                             </button>
                             <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                             <button
@@ -1207,7 +1210,7 @@ export default function PlantBasedProteinPage() {
                                 const next = { ...prev };
                                 next[shake.id] = shake.recipe?.servings || 1;
                                 return next;
-                              }); }}}
+                              })}
                               title="Reset servings"
                             >
                               <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
@@ -1269,7 +1272,8 @@ export default function PlantBasedProteinPage() {
                               } catch {
                                 alert('Unable to copy on this device.');
                               }
-                          >
+ }}
+ >
                             <Clipboard className="w-4 h-4 mr-1" /> Copy
                           </Button>
                           <Button variant="outline" size="sm" onClick={() => handleShareShake(shake, servings)}>

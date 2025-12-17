@@ -580,6 +580,7 @@ export default function BreakfastSmoothiesPage() {
             measurements: selectedRecipe.recipe?.measurements || [],
             baseNutrition: selectedRecipe.nutrition || {},
             defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+          }}
         />
       )}
 
@@ -791,12 +792,13 @@ export default function BreakfastSmoothiesPage() {
                       ))}
                     </select>
                     
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={maxCalories}
                       onChange={(e) => {
                         const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
                         setMaxCalories(v);
+                      }}
                     >
                       <option value="all">All Calories</option>
                       <option value={250}>Under 250 cal</option>
@@ -917,7 +919,7 @@ export default function BreakfastSmoothiesPage() {
                                 }
                                 aria-label="decrease servings"
                               >
-                                −
+                                -
                               </button>
                               <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                               <button
@@ -992,6 +994,7 @@ export default function BreakfastSmoothiesPage() {
                                 } catch {
                                   alert('Unable to copy on this device.');
                                 }
+                              }}
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>

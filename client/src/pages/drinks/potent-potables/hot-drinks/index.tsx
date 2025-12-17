@@ -753,7 +753,7 @@ export default function HotDrinksPage() {
                                 setServingsById(prev => ({ ...prev, [drink.id]: clamp((prev[drink.id] ?? 1) - 1) }));
                               }}
                             >
-                              −
+                              -
                             </button>
                             <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                             <button

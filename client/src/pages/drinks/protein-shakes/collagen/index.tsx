@@ -934,7 +934,7 @@ export default function CollagenProteinPage() {
                             rating: shake.rating,
                             fitnessGoal: shake.primaryBenefit,
                             bestTime: shake.bestTime
-                          }); }}}
+                          }); }}
                           className="text-gray-400 hover:text-red-500"
                         >
                           <Heart className={`h-5 w-5 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
