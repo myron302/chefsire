@@ -838,7 +838,7 @@ export default function PlantBasedProteinPage() {
                               rating: shake.rating,
                               fitnessGoal: shake.fitnessGoal,
                               bestTime: shake.bestTime
-                            });
+                            }); }};
                           }}
                           className="text-gray-400 hover:text-red-500"
                         >
@@ -906,7 +906,7 @@ export default function PlantBasedProteinPage() {
                                   const next = { ...prev };
                                   next[shake.id] = shake.recipe?.servings || 1;
                                   return next;
-                                })}
+                                }); }}}
                                 title="Reset servings"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
@@ -1211,7 +1211,7 @@ export default function PlantBasedProteinPage() {
                                 const next = { ...prev };
                                 next[shake.id] = shake.recipe?.servings || 1;
                                 return next;
-                              })}
+                              }); }}}
                               title="Reset servings"
                             >
                               <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset

@@ -790,7 +790,7 @@ export default function EggProteinPage() {
                                 const next = { ...prev };
                                 next[recipe.id] = recipe.recipe?.servings || 1;
                                 return next;
-                              });
+                              }); }};
                             }}
                             title="Reset servings"
                           >

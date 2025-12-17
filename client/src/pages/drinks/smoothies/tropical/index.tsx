@@ -779,7 +779,7 @@ export default function TropicalSmoothiesPage() {
                             rating: smoothie.rating,
                             fitnessGoal: 'Tropical Energy',
                             bestTime: smoothie.bestTime
-                          })}
+                          }); }}}
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>

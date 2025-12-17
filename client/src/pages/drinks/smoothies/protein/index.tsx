@@ -790,7 +790,7 @@ export default function ProteinSmoothiesPage() {
                             rating: smoothie.rating,
                             fitnessGoal: 'Muscle Building',
                             bestTime: smoothie.bestTime
-                          })}
+                          }); }}}
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>

@@ -834,7 +834,7 @@ export default function BeefProteinPage() {
                                     const next = { ...prev };
                                     next[shake.id] = shake.recipe?.servings || 1;
                                     return next;
-                                  });
+                                  }); }};
                                 }}
                                 title="Reset servings"
                               >
@@ -1079,7 +1079,7 @@ export default function BeefProteinPage() {
                                   const next = { ...prev };
                                   next[shake.id] = shake.recipe?.servings || 1;
                                   return next;
-                                });
+                                }); }};
                               }}
                               title="Reset servings"
                             >

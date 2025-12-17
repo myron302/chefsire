@@ -1149,7 +1149,7 @@ export default function CaseinProteinPage() {
                                     const next = { ...prev };
                                     next[shake.id] = shake.recipe?.servings || 1;
                                     return next;
-                                  });
+                                  }); }};
                                 }}
                                 title="Reset servings"
                               >
