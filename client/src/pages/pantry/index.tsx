@@ -65,15 +65,25 @@ export default function PantryDashboard() {
 
   // Load pending shopping list items from RecipeKit
   useEffect(() => {
+    console.log('🔍 Pantry: Checking for pending shopping items...');
     try {
-      const pending = JSON.parse(localStorage.getItem('pendingShoppingListItems') || '[]');
+      const pendingRaw = localStorage.getItem('pendingShoppingListItems');
+      console.log('🔍 Pantry: Raw localStorage value:', pendingRaw);
+      const pending = JSON.parse(pendingRaw || '[]');
+      console.log('🔍 Pantry: Parsed pending items:', pending);
       if (pending.length > 0) {
-        setShoppingList(prev => [...prev, ...pending]);
+        setShoppingList(prev => {
+          const updated = [...prev, ...pending];
+          console.log('✅ Pantry: Updated shopping list:', updated);
+          return updated;
+        });
         localStorage.removeItem('pendingShoppingListItems');
         toast({ title: `Added ${pending.length} item${pending.length > 1 ? 's' : ''} to shopping list from recipe!` });
+      } else {
+        console.log('ℹ️ Pantry: No pending items found');
       }
     } catch (err) {
-      console.error('Error loading pending shopping items:', err);
+      console.error('❌ Error loading pending shopping items:', err);
     }
   }, [toast]);
 
@@ -311,7 +321,17 @@ export default function PantryDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="cursor-pointer hover:bg-accent transition-colors border-green-200 bg-green-50">
+          <Card
+            className="cursor-pointer hover:bg-accent transition-colors border-green-200 bg-green-50"
+            onClick={() => {
+              const shoppingSection = document.getElementById('shopping-list-section');
+              if (shoppingSection) {
+                shoppingSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              } else if (shoppingList.length === 0) {
+                toast({ title: 'Shopping list is empty', description: 'Add items from recipes by checking ingredients in the modal.' });
+              }
+            }}
+          >
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <ShoppingCart className="w-10 h-10 text-green-600" />
@@ -501,7 +521,7 @@ export default function PantryDashboard() {
 
       {/* Shopping List Section */}
       {shoppingList.length > 0 && (
-        <Card className="mt-6">
+        <Card className="mt-6" id="shopping-list-section">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ShoppingCart className="w-5 h-5" />

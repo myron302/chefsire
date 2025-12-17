@@ -264,7 +264,11 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
   };
 
   const addSelectedToShoppingList = () => {
+    console.log('🛒 RecipeKit: Adding to shopping list...');
+    console.log('🛒 RecipeKit: Selected ingredient indices:', Array.from(selectedIngredients));
     const selected = scaled.filter((_, idx) => selectedIngredients.has(idx));
+    console.log('🛒 RecipeKit: Selected ingredients:', selected);
+
     if (selected.length === 0) {
       alert('Please select at least one ingredient to add to your shopping list.');
       return;
@@ -287,14 +291,21 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
       };
     });
 
+    console.log('🛒 RecipeKit: Formatted shopping items:', shoppingItems);
+
     // Store in localStorage for the Pantry to pick up
     try {
-      const existing = JSON.parse(localStorage.getItem('pendingShoppingListItems') || '[]');
-      localStorage.setItem('pendingShoppingListItems', JSON.stringify([...existing, ...shoppingItems]));
+      const existingRaw = localStorage.getItem('pendingShoppingListItems');
+      console.log('🛒 RecipeKit: Existing localStorage value:', existingRaw);
+      const existing = JSON.parse(existingRaw || '[]');
+      const combined = [...existing, ...shoppingItems];
+      console.log('🛒 RecipeKit: Combined items to save:', combined);
+      localStorage.setItem('pendingShoppingListItems', JSON.stringify(combined));
+      console.log('✅ RecipeKit: Saved to localStorage');
       alert(`Added ${shoppingItems.length} ingredient${shoppingItems.length > 1 ? 's' : ''} to shopping list! Go to Pantry page → Shopping List tab to view.`);
       setSelectedIngredients(new Set()); // Clear selections
     } catch (err) {
-      console.error('Error adding to shopping list:', err);
+      console.error('❌ RecipeKit: Error adding to shopping list:', err);
       alert('Unable to add to shopping list.');
     }
   };
