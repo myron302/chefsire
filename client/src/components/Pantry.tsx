@@ -309,14 +309,16 @@ export default function Pantry() {
             <p className="text-gray-600">Manage ingredients, scan barcodes, and build a shopping list</p>
           </div>
           <div className="flex gap-2">
-            <button
-              onClick={() => setScannerOpen(true)}
-              className="inline-flex items-center bg-emerald-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-emerald-700 transition-colors"
-              disabled={scanningBusy}
-            >
-              <QrCode className="w-4 h-4 mr-2" />
-              {scanningBusy ? 'Scanning…' : 'Scan Barcode'}
-            </button>
+            {activeTab !== 'pantry' && (
+              <button
+                onClick={() => setScannerOpen(true)}
+                className="inline-flex items-center bg-emerald-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-emerald-700 transition-colors"
+                disabled={scanningBusy}
+              >
+                <QrCode className="w-4 h-4 mr-2" />
+                {scanningBusy ? 'Scanning…' : 'Scan Barcode'}
+              </button>
+            )}
             <button
               onClick={() => setActiveTab('shopping')}
               className="inline-flex items-center bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors"
