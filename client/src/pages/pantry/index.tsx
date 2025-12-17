@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
   Package, Plus, Search, Filter, ScanLine, ChefHat,
   Calendar, AlertCircle, CheckCircle, Clock, Home,
-  Trash2, Edit, MapPin, DollarSign, Users
+  Trash2, Edit, MapPin, DollarSign, Users, ShoppingCart
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,7 @@ export default function PantryDashboard() {
   const [filterLocation, setFilterLocation] = useState("all");
   const [filterExpiry, setFilterExpiry] = useState("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [shoppingList, setShoppingList] = useState<{name: string; quantity: number; unit: string; checked?: boolean}[]>([]);
 
   // Fetch pantry items
   const { data: pantryData, isLoading } = useQuery({
@@ -61,6 +62,20 @@ export default function PantryDashboard() {
 
   const items: PantryItem[] = pantryData?.items || [];
   const expiringItems: PantryItem[] = expiringData?.items || [];
+
+  // Load pending shopping list items from RecipeKit
+  useEffect(() => {
+    try {
+      const pending = JSON.parse(localStorage.getItem('pendingShoppingListItems') || '[]');
+      if (pending.length > 0) {
+        setShoppingList(prev => [...prev, ...pending]);
+        localStorage.removeItem('pendingShoppingListItems');
+        toast({ title: `Added ${pending.length} item${pending.length > 1 ? 's' : ''} to shopping list from recipe!` });
+      }
+    } catch (err) {
+      console.error('Error loading pending shopping items:', err);
+    }
+  }, [toast]);
 
   // Delete mutation
   const deleteMutation = useMutation({
@@ -249,7 +264,7 @@ export default function PantryDashboard() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <Link href="/pantry/recipe-matches">
             <Card className="cursor-pointer hover:bg-accent transition-colors">
               <CardContent className="p-4">
@@ -290,6 +305,20 @@ export default function PantryDashboard() {
                   <h3 className="font-semibold">Expiry Calendar</h3>
                   <p className="text-sm text-muted-foreground">
                     View upcoming expirations
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="cursor-pointer hover:bg-accent transition-colors border-green-200 bg-green-50">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <ShoppingCart className="w-10 h-10 text-green-600" />
+                <div>
+                  <h3 className="font-semibold text-green-800">Shopping List</h3>
+                  <p className="text-sm text-green-700">
+                    {shoppingList.length} items to buy
                   </p>
                 </div>
               </div>
@@ -468,6 +497,75 @@ export default function PantryDashboard() {
             );
           })}
         </div>
+      )}
+
+      {/* Shopping List Section */}
+      {shoppingList.length > 0 && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5" />
+              Shopping List
+            </CardTitle>
+            <CardDescription>
+              Items added from recipes
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {shoppingList.map((item, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={item.checked || false}
+                      onChange={() => {
+                        setShoppingList(prev => prev.map((si, i) =>
+                          i === idx ? { ...si, checked: !si.checked } : si
+                        ));
+                      }}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    <div className={item.checked ? 'line-through text-muted-foreground' : ''}>
+                      <span className="font-medium">{item.name}</span>
+                      <span className="text-sm text-muted-foreground ml-2">
+                        {item.quantity} {item.unit}
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0 text-red-600"
+                    onClick={() => setShoppingList(prev => prev.filter((_, i) => i !== idx))}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShoppingList([])}
+              >
+                Clear All
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const unchecked = shoppingList.filter(i => !i.checked);
+                  setShoppingList(unchecked);
+                  toast({ title: `Removed ${shoppingList.length - unchecked.length} checked items` });
+                }}
+              >
+                Remove Checked
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
