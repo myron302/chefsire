@@ -163,6 +163,7 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
   const [notes, setNotes] = useState<string>('');
   const [useMetric, setUseMetric] = useState<boolean>(false);
   const [showAllIngredients, setShowAllIngredients] = useState<boolean>(false);
+  const [selectedIngredients, setSelectedIngredients] = useState<Set<number>>(new Set());
 
   const [internalOpen, setInternalOpen] = useState<boolean>(false);
   const isControlled = typeof controlledOpen === 'boolean';
@@ -250,6 +251,51 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
       } catch {
         alert('Unable to share on this device.');
       }
+    }
+  };
+
+  const toggleIngredient = (index: number) => {
+    setSelectedIngredients(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
+  const addSelectedToShoppingList = () => {
+    const selected = scaled.filter((_, idx) => selectedIngredients.has(idx));
+    if (selected.length === 0) {
+      alert('Please select at least one ingredient to add to your shopping list.');
+      return;
+    }
+
+    // Format ingredients for shopping list
+    const shoppingItems = selected.map((ing) => {
+      const amount = useMetric && typeof ing.amountScaledNum === 'number'
+        ? toMetric(ing.unit, ing.amountScaledNum).amount
+        : ing.amountScaled;
+      const unit = useMetric && typeof ing.amountScaledNum === 'number'
+        ? toMetric(ing.unit, ing.amountScaledNum).unit
+        : ing.unit;
+
+      return {
+        name: ing.item,
+        quantity: typeof amount === 'number' ? amount : parseFloat(String(amount)) || 1,
+        unit: unit,
+        note: ing.note
+      };
+    });
+
+    // Store in localStorage for the meal planner to pick up
+    try {
+      const existing = JSON.parse(localStorage.getItem('pendingShoppingListItems') || '[]');
+      localStorage.setItem('pendingShoppingListItems', JSON.stringify([...existing, ...shoppingItems]));
+      alert(`Added ${shoppingItems.length} ingredient${shoppingItems.length > 1 ? 's' : ''} to shopping list! Go to Meal Planner → Grocery to view.`);
+      setSelectedIngredients(new Set()); // Clear selections
+    } catch (err) {
+      console.error('Error adding to shopping list:', err);
+      alert('Unable to add to shopping list.');
     }
   };
 
@@ -382,8 +428,13 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
             <ul className="space-y-2 text-base leading-6 text-gray-800 font-sans tracking-normal">
               {scaled.map((ing, idx) => (
                 <li key={idx} className="flex items-start gap-2">
-                  <Check className={`h-4 w-4 ${C.check} mt-0.5`} />
-                  <span>
+                  <input
+                    type="checkbox"
+                    checked={selectedIngredients.has(idx)}
+                    onChange={() => toggleIngredient(idx)}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="flex-1">
                     <span className={`${C.text600} font-semibold`}>
                       {typeof ing.amountScaledNum === 'number' && useMetric
                         ? `${toMetric(ing.unit, ing.amountScaledNum).amount} ${toMetric(ing.unit, ing.amountScaledNum).unit}`
@@ -395,6 +446,19 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
                 </li>
               ))}
             </ul>
+
+            {selectedIngredients.size > 0 && (
+              <div className="mt-3">
+                <Button
+                  variant="outline"
+                  className="w-full bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
+                  onClick={addSelectedToShoppingList}
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  Add {selectedIngredients.size} Selected to Shopping List
+                </Button>
+              </div>
+            )}
 
             {recipeDirections.length > 0 && (
               <div className="mt-4">

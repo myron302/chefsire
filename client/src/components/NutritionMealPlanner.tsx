@@ -50,7 +50,7 @@ const NutritionMealPlanner = () => {
 
   const fetchSavingsReport = async () => {
     try {
-      const response = await fetch('/api/meal-planner-advanced/grocery-list/savings-report', {
+      const response = await fetch('/api/meal-planner/grocery-list/savings-report', {
         credentials: 'include',
       });
       if (response.ok) {
@@ -129,13 +129,36 @@ const NutritionMealPlanner = () => {
 
   const fetchGroceryList = async () => {
     try {
-      setGroceryList([
+      const baseList = [
         { id: 1, item: 'Chicken Breast', amount: '2 lbs', category: 'Protein', checked: false },
         { id: 2, item: 'Quinoa', amount: '1 bag', category: 'Grains', checked: false },
         { id: 3, item: 'Mixed Greens', amount: '2 bags', category: 'Produce', checked: true },
         { id: 4, item: 'Salmon Fillets', amount: '4 pieces', category: 'Protein', checked: false },
         { id: 5, item: 'Greek Yogurt', amount: '32 oz', category: 'Dairy', checked: false },
-      ]);
+      ];
+
+      // Check for pending items from RecipeKit
+      try {
+        const pending = JSON.parse(localStorage.getItem('pendingShoppingListItems') || '[]');
+        if (pending.length > 0) {
+          const newItems = pending.map((item: any, idx: number) => ({
+            id: baseList.length + idx + 1,
+            item: item.name,
+            amount: `${item.quantity} ${item.unit}`,
+            category: 'From Recipe',
+            checked: false,
+            note: item.note
+          }));
+          setGroceryList([...baseList, ...newItems]);
+          // Clear pending items after adding
+          localStorage.removeItem('pendingShoppingListItems');
+        } else {
+          setGroceryList(baseList);
+        }
+      } catch (err) {
+        console.error('Error loading pending items:', err);
+        setGroceryList(baseList);
+      }
     } catch (error) {
       console.error('Error fetching grocery list:', error);
     }
