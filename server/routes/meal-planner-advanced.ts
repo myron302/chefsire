@@ -615,6 +615,33 @@ router.patch("/grocery-list/:id/purchase", requireAuth, async (req: Request, res
   }
 });
 
+// Delete grocery list item
+router.delete("/grocery-list/:id", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { id } = req.params;
+
+    const [deleted] = await db
+      .delete(groceryListItems)
+      .where(
+        and(
+          eq(groceryListItems.id, id),
+          eq(groceryListItems.userId, userId)
+        )
+      )
+      .returning();
+
+    if (!deleted) {
+      return res.status(404).json({ message: "Grocery item not found" });
+    }
+
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error("Error deleting grocery item:", error);
+    res.status(500).json({ message: "Failed to delete grocery item" });
+  }
+});
+
 // ============================================================
 // PROGRESS TRACKING & ACHIEVEMENTS
 // ============================================================

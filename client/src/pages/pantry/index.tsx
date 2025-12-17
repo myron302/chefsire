@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -39,6 +39,14 @@ type PantryItem = {
   } | null;
 };
 
+type ShoppingListItem = {
+  id?: string;
+  name: string;
+  quantity: string | number;
+  unit: string | null;
+  checked?: boolean;
+};
+
 export default function PantryDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -47,7 +55,8 @@ export default function PantryDashboard() {
   const [filterLocation, setFilterLocation] = useState("all");
   const [filterExpiry, setFilterExpiry] = useState("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [shoppingList, setShoppingList] = useState<{name: string; quantity: number; unit: string; checked?: boolean}[]>([]);
+  const [shoppingList, setShoppingList] = useState<ShoppingListItem[]>([]);
+  const pendingShoppingProcessedRef = useRef(false);
 
   // Fetch pantry items
   const { data: pantryData, isLoading } = useQuery({
@@ -60,32 +69,114 @@ export default function PantryDashboard() {
     queryKey: ["/api/pantry/expiring-soon", { days: 7 }],
   });
 
+  // Fetch shopping list (grocery list items)
+  const { data: shoppingData, isLoading: isShoppingLoading } = useQuery({
+    queryKey: ["/api/meal-planner/grocery-list", { purchased: false }],
+    queryFn: async () => {
+      const res = await fetch("/api/meal-planner/grocery-list?purchased=false", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load shopping list");
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    if (shoppingData?.items) {
+      const mapped: ShoppingListItem[] = shoppingData.items.map((item: any) => ({
+        id: item.id,
+        name: item.ingredientName,
+        quantity: item.quantity || 1,
+        unit: item.unit,
+        checked: false,
+      }));
+      setShoppingList(mapped);
+    }
+  }, [shoppingData]);
+
+  const addShoppingItemsMutation = useMutation({
+    mutationFn: async (items: ShoppingListItem[]) => {
+      const results = await Promise.all(items.map(async (item) => {
+        const res = await fetch("/api/meal-planner/grocery-list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            ingredientName: item.name,
+            quantity: item.quantity?.toString() ?? "",
+            unit: item.unit ?? "",
+            isPantryItem: false,
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to add grocery item");
+        return res.json();
+      }));
+      return results;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to save shopping list", variant: "destructive" });
+    },
+  });
+
+  const deleteShoppingItem = async (id: string) => {
+    const res = await fetch(`/api/meal-planner/grocery-list/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error("Failed to delete grocery item");
+  };
+
+  const deleteShoppingItemMutation = useMutation({
+    mutationFn: deleteShoppingItem,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+      toast({ title: "Item removed from shopping list" });
+    },
+    onError: () => {
+      toast({ title: "Failed to remove item", variant: "destructive" });
+    },
+  });
+
   const items: PantryItem[] = pantryData?.items || [];
   const expiringItems: PantryItem[] = expiringData?.items || [];
 
   // Load pending shopping list items from RecipeKit
   useEffect(() => {
+    if (pendingShoppingProcessedRef.current) return;
+
+    pendingShoppingProcessedRef.current = true;
     console.log('🔍 Pantry: Checking for pending shopping items...');
-    try {
-      const pendingRaw = localStorage.getItem('pendingShoppingListItems');
-      console.log('🔍 Pantry: Raw localStorage value:', pendingRaw);
-      const pending = JSON.parse(pendingRaw || '[]');
-      console.log('🔍 Pantry: Parsed pending items:', pending);
-      if (pending.length > 0) {
-        setShoppingList(prev => {
-          const updated = [...prev, ...pending];
-          console.log('✅ Pantry: Updated shopping list:', updated);
-          return updated;
-        });
+
+    (async () => {
+      try {
+        const pendingRaw = localStorage.getItem('pendingShoppingListItems');
+        console.log('🔍 Pantry: Raw localStorage value:', pendingRaw);
+        const pending = JSON.parse(pendingRaw || '[]');
+        console.log('🔍 Pantry: Parsed pending items:', pending);
+
+        if (pending.length === 0) {
+          console.log('ℹ️ Pantry: No pending items found');
+          return;
+        }
+
+        const formatted: ShoppingListItem[] = pending.map((item: any) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit ?? "",
+        }));
+
+        await addShoppingItemsMutation.mutateAsync(formatted);
         localStorage.removeItem('pendingShoppingListItems');
         toast({ title: `Added ${pending.length} item${pending.length > 1 ? 's' : ''} to shopping list from recipe!` });
-      } else {
-        console.log('ℹ️ Pantry: No pending items found');
+      } catch (err) {
+        console.error('❌ Error saving pending shopping items:', err);
+        toast({ title: "Failed to save shopping list items", variant: "destructive" });
       }
-    } catch (err) {
-      console.error('❌ Error loading pending shopping items:', err);
-    }
-  }, [toast]);
+    })();
+  }, [toast, addShoppingItemsMutation]);
 
   // Delete mutation
   const deleteMutation = useMutation({
@@ -338,7 +429,7 @@ export default function PantryDashboard() {
                 <div>
                   <h3 className="font-semibold text-green-800">Shopping List</h3>
                   <p className="text-sm text-green-700">
-                    {shoppingList.length} items to buy
+                    {isShoppingLoading ? "Loading..." : `${shoppingList.length} items to buy`}
                   </p>
                 </div>
               </div>
@@ -557,7 +648,17 @@ export default function PantryDashboard() {
                     size="sm"
                     variant="ghost"
                     className="h-8 w-8 p-0 text-red-600"
-                    onClick={() => setShoppingList(prev => prev.filter((_, i) => i !== idx))}
+                    onClick={async () => {
+                      const target = shoppingList[idx];
+                      setShoppingList(prev => prev.filter((_, i) => i !== idx));
+                      if (target?.id) {
+                        try {
+                          await deleteShoppingItemMutation.mutateAsync(target.id);
+                        } catch {
+                          // Handled in mutation onError
+                        }
+                      }
+                    }}
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
@@ -568,7 +669,19 @@ export default function PantryDashboard() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setShoppingList([])}
+                onClick={async () => {
+                  const ids = shoppingList.map(item => item.id).filter(Boolean) as string[];
+                  setShoppingList([]);
+                  if (ids.length > 0) {
+                    try {
+                      await Promise.all(ids.map(id => deleteShoppingItem(id)));
+                      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+                      toast({ title: "Cleared shopping list" });
+                    } catch {
+                      toast({ title: "Failed to clear shopping list", variant: "destructive" });
+                    }
+                  }
+                }}
               >
                 Clear All
               </Button>
@@ -577,8 +690,19 @@ export default function PantryDashboard() {
                 size="sm"
                 onClick={() => {
                   const unchecked = shoppingList.filter(i => !i.checked);
+                  const removed = shoppingList.filter(i => i.checked);
                   setShoppingList(unchecked);
-                  toast({ title: `Removed ${shoppingList.length - unchecked.length} checked items` });
+                  const ids = removed.map(item => item.id).filter(Boolean) as string[];
+                  if (ids.length > 0) {
+                    Promise.all(ids.map(id => deleteShoppingItem(id)))
+                      .then(() => {
+                        queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+                        toast({ title: `Removed ${ids.length} checked item${ids.length > 1 ? 's' : ''}` });
+                      })
+                      .catch(() => toast({ title: "Failed to remove checked items", variant: "destructive" }));
+                  } else {
+                    toast({ title: `Removed ${shoppingList.length - unchecked.length} checked items` });
+                  }
                 }}
               >
                 Remove Checked
