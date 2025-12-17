@@ -287,11 +287,11 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
       };
     });
 
-    // Store in localStorage for the meal planner to pick up
+    // Store in localStorage for the Pantry to pick up
     try {
       const existing = JSON.parse(localStorage.getItem('pendingShoppingListItems') || '[]');
       localStorage.setItem('pendingShoppingListItems', JSON.stringify([...existing, ...shoppingItems]));
-      alert(`Added ${shoppingItems.length} ingredient${shoppingItems.length > 1 ? 's' : ''} to shopping list! Go to Meal Planner → Grocery to view.`);
+      alert(`Added ${shoppingItems.length} ingredient${shoppingItems.length > 1 ? 's' : ''} to shopping list! Go to Pantry page → Shopping List tab to view.`);
       setSelectedIngredients(new Set()); // Clear selections
     } catch (err) {
       console.error('Error adding to shopping list:', err);
