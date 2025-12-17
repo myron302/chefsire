@@ -501,7 +501,6 @@ export default function BeefProteinPage() {
               iron: selectedRecipe.iron
             },
             defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
-          }}
         />
       )}
 
@@ -750,7 +749,6 @@ export default function BeefProteinPage() {
                               bestTime: shake.bestTime
                             };
                             addToFavorites(drinkData);
-                          }}
                           className="text-gray-400 hover:text-red-500"
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
@@ -809,7 +807,6 @@ export default function BeefProteinPage() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) - 1) }));
-                                }}
                                 aria-label="decrease servings"
                               >
                                 −
@@ -820,7 +817,6 @@ export default function BeefProteinPage() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) + 1) }));
-                                }}
                                 aria-label="increase servings"
                               >
                                 +
@@ -834,8 +830,7 @@ export default function BeefProteinPage() {
                                     const next = { ...prev };
                                     next[shake.id] = shake.recipe?.servings || 1;
                                     return next;
-                                  }); }};
-                                }}
+                                  }); }}
                                 title="Reset servings"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
@@ -872,7 +867,6 @@ export default function BeefProteinPage() {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     openRecipeModal(shake);
-                                  }}
                                   className="underline underline-offset-2"
                                 >
                                   Show more
@@ -901,7 +895,6 @@ export default function BeefProteinPage() {
                                 } catch {
                                   alert('Unable to copy on this device.');
                                 }
-                              }}
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
@@ -914,7 +907,6 @@ export default function BeefProteinPage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setMetricFlags((prev) => ({ ...prev, [shake.id]: !prev[shake.id] }));
-                              }}
                             >
                               {useMetric ? 'US' : 'Metric'}
                             </Button>
@@ -957,7 +949,6 @@ export default function BeefProteinPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             openRecipeModal(shake);
-                          }}
                         >
                           <Flame className="h-4 w-4 mr-1" />
                           Make Shake (+100 XP)
@@ -1054,7 +1045,6 @@ export default function BeefProteinPage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) - 1) }));
-                              }}
                               aria-label="decrease servings"
                             >
                               −
@@ -1065,7 +1055,6 @@ export default function BeefProteinPage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) + 1) }));
-                              }}
                               aria-label="increase servings"
                             >
                               +
@@ -1079,8 +1068,7 @@ export default function BeefProteinPage() {
                                   const next = { ...prev };
                                   next[shake.id] = shake.recipe?.servings || 1;
                                   return next;
-                                }); }};
-                              }}
+                                }); }}
                               title="Reset servings"
                             >
                               <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
@@ -1117,7 +1105,6 @@ export default function BeefProteinPage() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   openRecipeModal(shake);
-                                }}
                                 className="underline underline-offset-2"
                               >
                                 Show more
@@ -1146,7 +1133,6 @@ export default function BeefProteinPage() {
                               } catch {
                                 alert('Unable to copy on this device.');
                               }
-                            }}
                           >
                             <Clipboard className="w-4 h-4 mr-1" /> Copy
                           </Button>
@@ -1159,7 +1145,6 @@ export default function BeefProteinPage() {
                             onClick={(e) => {
                               e.stopPropagation();
                               setMetricFlags((prev) => ({ ...prev, [shake.id]: !prev[shake.id] }));
-                            }}
                           >
                             {useMetric ? 'US' : 'Metric'}
                           </Button>
@@ -1201,7 +1186,6 @@ export default function BeefProteinPage() {
                         onClick={(e) => {
                           e.stopPropagation();
                           openRecipeModal(shake);
-                        }}
                       >
                         <Flame className="h-4 w-4 mr-2" />
                         Make Shake (+100 XP)
