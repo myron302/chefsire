@@ -506,7 +506,7 @@ export default function DetoxWatersPage() {
                                 }
                                 aria-label="decrease servings"
                               >
-                                −
+                                -
                               </button>
                               <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                               <button
@@ -559,7 +559,7 @@ export default function DetoxWatersPage() {
                                 …plus {water.recipe.measurements.length - 4} more •{" "}
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); openRecipeModal(water)}
+                                  onClick={(e) => { e.stopPropagation(); openRecipeModal(water); }}
                                   className="underline underline-offset-2"
                                 >
                                   Show more
@@ -639,9 +639,9 @@ export default function DetoxWatersPage() {
 
                       {/* Make Water Button */}
                       <div className="mt-3">
-                        <Button 
+                        <Button
                           className="w-full bg-cyan-600 hover:bg-cyan-700"
-                          onClick={(e) => { e.stopPropagation(); openRecipeModal(water)}
+                          onClick={(e) => { e.stopPropagation(); openRecipeModal(water); }}
                         >
                           <Waves className="h-4 w-4 mr-2" />
                           Infuse Water (+15 XP)
@@ -714,9 +714,9 @@ export default function DetoxWatersPage() {
                             <span>Prep Time:</span>
                             <span className="font-semibold text-cyan-600">{water.prepTime} mins</span>
                           </div>
-                          <Button 
+                          <Button
                             className="w-full bg-cyan-600 hover:bg-cyan-700"
-                            onClick={(e) => { e.stopPropagation(); openRecipeModal(water)}
+                            onClick={(e) => { e.stopPropagation(); openRecipeModal(water); }}
                           >
                             <Waves className="h-4 w-4 mr-2" />
                             View Recipe

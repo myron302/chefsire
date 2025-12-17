@@ -650,7 +650,7 @@ export default function DaiquiriPage() {
                                   className="px-2 py-1 border rounded text-sm"
                                   onClick={(e) => { e.stopPropagation(); setServingsById((p) => ({ ...p, [c.id]: clamp((p[c.id] ?? 1) - 1) })); }}
                                 >
-                                  −
+                                  -
                                 </button>
                                 <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                                 <button
@@ -737,7 +737,7 @@ export default function DaiquiriPage() {
                             <GlassWater className="h-4 w-4 mr-2" />
                             Make Daiquiri
                           </Button>
-                          <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShare(c)}>
+                          <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShare(c); }}>
                             <Share2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -858,7 +858,7 @@ export default function DaiquiriPage() {
                         <GlassWater className="h-4 w-4 mr-2" />
                         Make Daiquiri
                       </Button>
-                      <Button variant="outline" onClick={(e) => { e.stopPropagation(); handleShare(c)}>
+                      <Button variant="outline" onClick={(e) => { e.stopPropagation(); handleShare(c); }}>
                         <Share2 className="h-4 w-4" />
                       </Button>
                     </div>

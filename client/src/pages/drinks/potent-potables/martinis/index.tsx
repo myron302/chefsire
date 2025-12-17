@@ -793,7 +793,7 @@ export default function MartinisPage() {
                                 setServingsById(prev => ({ ...prev, [martini.id]: clamp((prev[martini.id] ?? 1) - 1) }));
                               }}
                             >
-                              −
+                              -
                             </button>
                             <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                             <button

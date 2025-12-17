@@ -500,6 +500,7 @@ export default function WheyProteinShakesPage() {
                 setSearchQuery('');
                 setSelectedGoal('');
                 setSelectedWheyType('');
+              }}
             >
               Clear Filters
             </Button>
@@ -544,6 +545,7 @@ export default function WheyProteinShakesPage() {
             measurements: selectedRecipe.recipe?.measurements || [],
             baseNutrition: selectedRecipe.nutrition || {},
             defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+          }}
         />
       )}
 
@@ -751,6 +753,7 @@ export default function WheyProteinShakesPage() {
                               tags: shake.tags,
                             };
                             addToFavorites(drinkData);
+                          }}
                           className="text-gray-400 hover:text-red-500"
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
@@ -808,9 +811,10 @@ export default function WheyProteinShakesPage() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) - 1) }));
+                                }}
                                 aria-label="decrease servings"
                               >
-                                −
+                                -
                               </button>
                               <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                               <button
@@ -818,6 +822,7 @@ export default function WheyProteinShakesPage() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) + 1) }));
+                                }}
                                 aria-label="increase servings"
                               >
                                 +
@@ -831,7 +836,8 @@ export default function WheyProteinShakesPage() {
                                     const next = { ...prev };
                                     next[shake.id] = shake.recipe?.servings || 1;
                                     return next;
-                                  }); }}
+                                  });
+                                }}
                                 title="Reset servings"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
@@ -868,6 +874,7 @@ export default function WheyProteinShakesPage() {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     openRecipeModal(shake);
+                                  }}
                                   className="underline underline-offset-2"
                                 >
                                   Show more
@@ -897,6 +904,7 @@ export default function WheyProteinShakesPage() {
                                 } catch {
                                   alert('Unable to copy on this device.');
                                 }
+                              }}
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
@@ -912,6 +920,7 @@ export default function WheyProteinShakesPage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setMetricFlags((prev) => ({ ...prev, [shake.id]: !prev[shake.id] }));
+                              }}
                             >
                               {useMetric ? 'US' : 'Metric'}
                             </Button>
@@ -953,6 +962,7 @@ export default function WheyProteinShakesPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             openRecipeModal(shake);
+                          }}
                         >
                           <Zap className="h-4 w-4 mr-2" />
                           Make Shake (+25 XP)
@@ -1015,6 +1025,7 @@ export default function WheyProteinShakesPage() {
                         onClick={() => {
                           setSelectedWheyType(type.name);
                           setActiveTab('browse');
+                        }}
                       >
                         View {type.name} Recipes
                       </Button>
@@ -1057,6 +1068,7 @@ export default function WheyProteinShakesPage() {
                         onClick={() => {
                           setSelectedGoal(goal.name);
                           setActiveTab('browse');
+                        }}
                       >
                         View {goal.name} Shakes
                       </Button>
@@ -1106,6 +1118,7 @@ export default function WheyProteinShakesPage() {
                             tags: shake.tags,
                           };
                           addToFavorites(drinkData);
+                        }}
                         className="bg-white/80 hover:bg-white text-gray-600 hover:text-red-500"
                       >
                         <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
@@ -1166,7 +1179,7 @@ export default function WheyProteinShakesPage() {
                               }
                               aria-label="decrease servings"
                             >
-                              −
+                              -
                             </button>
                             <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                             <button
@@ -1185,7 +1198,7 @@ export default function WheyProteinShakesPage() {
                                 const next = { ...prev };
                                 next[shake.id] = shake.recipe?.servings || 1;
                                 return next;
-                              }); }}}
+                              })}
                             >
                               <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
                             </Button>
@@ -1247,6 +1260,7 @@ export default function WheyProteinShakesPage() {
                               } catch {
                                 alert('Unable to copy on this device.');
                               }
+                            }}
                           >
                             <Clipboard className="w-4 h-4 mr-1" /> Copy
                           </Button>

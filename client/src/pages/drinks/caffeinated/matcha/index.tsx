@@ -622,7 +622,7 @@ export default function MatchaDrinksPage() {
                                   }));
                                 }}
                               >
-                                −
+                                -
                               </button>
 
                               <div className="min-w-[2ch] text-center text-sm">{servings}</div>

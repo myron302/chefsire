@@ -709,6 +709,7 @@ export default function EggProteinPage() {
                           rating: recipe.rating
                         };
                         addToFavorites(drinkData);
+                      }}
                       className="text-gray-400 hover:text-red-500"
                     >
                       <Heart className={`h-5 w-5 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
@@ -764,9 +765,10 @@ export default function EggProteinPage() {
                             onClick={(e) => {
                               e.stopPropagation();
                               setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? (recipe.recipe?.servings || 1)) - 1) }));
+                            }}
                             aria-label="decrease servings"
                           >
-                            −
+                            -
                           </button>
                           <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                           <button
@@ -774,6 +776,7 @@ export default function EggProteinPage() {
                             onClick={(e) => {
                               e.stopPropagation();
                               setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? (recipe.recipe?.servings || 1)) + 1) }));
+                            }}
                             aria-label="increase servings"
                           >
                             +
@@ -787,7 +790,8 @@ export default function EggProteinPage() {
                                 const next = { ...prev };
                                 next[recipe.id] = recipe.recipe?.servings || 1;
                                 return next;
-                              }); }}
+                              });
+                            }}
                             title="Reset servings"
                           >
                             <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
@@ -824,6 +828,7 @@ export default function EggProteinPage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 openRecipeModal(recipe);
+                              }}
                               className="underline underline-offset-2"
                             >
                               Show more
@@ -852,6 +857,7 @@ export default function EggProteinPage() {
                             } catch {
                               alert('Unable to copy on this device.');
                             }
+                          }}
                         >
                           <Clipboard className="w-4 h-4 mr-1" /> Copy
                         </Button>
@@ -867,6 +873,7 @@ export default function EggProteinPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             setMetricFlags((prev) => ({ ...prev, [recipe.id]: !prev[recipe.id] }));
+                          }}
                         >
                           {useMetric ? 'US' : 'Metric'}
                         </Button>
@@ -923,6 +930,7 @@ export default function EggProteinPage() {
                       incrementDrinksMade();
                       addPoints(100);
                       kitRefs.current[recipe.id]?.open?.();
+                    }}
                   >
                     <Dumbbell className="h-4 w-4 mr-1" />
                     Make Shake (+100 XP)
@@ -976,6 +984,7 @@ export default function EggProteinPage() {
             measurements: selectedRecipe.recipe?.measurements || [],
             baseNutrition: { calories: selectedRecipe.calories, protein: selectedRecipe.protein, carbs: selectedRecipe.carbs, fat: 5 } || {},
             defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
+          }}
         />
       )}
     </div>

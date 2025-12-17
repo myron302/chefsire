@@ -925,7 +925,7 @@ export default function LiqueursPage() {
                                 setServingsById(prev => ({ ...prev, [cocktail.id]: clamp((prev[cocktail.id] ?? 1) - 1) }));
                               }}
                             >
-                              −
+                              -
                             </button>
                             <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                             <button
