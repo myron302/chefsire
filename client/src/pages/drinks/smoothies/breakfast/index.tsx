@@ -580,7 +580,6 @@ export default function BreakfastSmoothiesPage() {
             measurements: selectedRecipe.recipe?.measurements || [],
             baseNutrition: selectedRecipe.nutrition || {},
             defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
-          }}
         />
       )}
 
@@ -798,7 +797,6 @@ export default function BreakfastSmoothiesPage() {
                       onChange={(e) => {
                         const v = e.target.value === 'all' ? 'all' : Number(e.target.value);
                         setMaxCalories(v);
-                      }}
                     >
                       <option value="all">All Calories</option>
                       <option value={250}>Under 250 cal</option>
@@ -862,8 +860,7 @@ export default function BreakfastSmoothiesPage() {
                               rating: smoothie.rating,
                               smoothieType: smoothie.smoothieType,
                               bestTime: smoothie.bestTime
-                            }); }};
-                          }}
+                            }); }}
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>
@@ -995,7 +992,6 @@ export default function BreakfastSmoothiesPage() {
                                 } catch {
                                   alert('Unable to copy on this device.');
                                 }
-                              }}
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>

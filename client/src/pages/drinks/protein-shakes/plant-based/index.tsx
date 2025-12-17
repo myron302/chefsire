@@ -643,7 +643,6 @@ export default function PlantBasedProteinPage() {
             measurements: selectedRecipe.recipe?.measurements || [],
             baseNutrition: selectedRecipe.nutrition || {},
             defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
-          }}
         />
       )}
 
@@ -838,8 +837,7 @@ export default function PlantBasedProteinPage() {
                               rating: shake.rating,
                               fitnessGoal: shake.fitnessGoal,
                               bestTime: shake.bestTime
-                            }); }};
-                          }}
+                            }); }}
                           className="text-gray-400 hover:text-red-500"
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? 'fill-red-500 text-red-500' : ''}`} />
@@ -968,7 +966,6 @@ export default function PlantBasedProteinPage() {
                                 } catch {
                                   alert('Unable to copy on this device.');
                                 }
-                              }}
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
@@ -1139,7 +1136,6 @@ export default function PlantBasedProteinPage() {
                       onError={(e) => {
                         (e.currentTarget as HTMLImageElement).src =
                           'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=400&h=300&fit=crop';
-                      }}
                     />
                     <div className="absolute top-4 left-4">
                       <Badge className="bg-green-500 text-white">Featured Plant Protein</Badge>
@@ -1273,7 +1269,6 @@ export default function PlantBasedProteinPage() {
                               } catch {
                                 alert('Unable to copy on this device.');
                               }
-                            }}
                           >
                             <Clipboard className="w-4 h-4 mr-1" /> Copy
                           </Button>

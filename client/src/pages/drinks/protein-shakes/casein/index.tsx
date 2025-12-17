@@ -832,7 +832,6 @@ export default function CaseinProteinPage() {
             measurements: selectedRecipe.recipe?.measurements || [],
             baseNutrition: selectedRecipe.nutrition || {},
             defaultServings: servingsById[selectedRecipe.id] ?? selectedRecipe.recipe?.servings ?? 1
-          }}
         />
       )}
 
@@ -1064,7 +1063,6 @@ export default function CaseinProteinPage() {
                               fitnessGoal: shake.fitnessGoal,
                               bestTime: shake.bestTime,
                             });
-                          }}
                           className="text-gray-400 hover:text-red-500"
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(shake.id) ? "fill-red-500 text-red-500" : ""}`} />
@@ -1124,7 +1122,6 @@ export default function CaseinProteinPage() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) - 1) }));
-                                }}
                                 aria-label="decrease servings"
                               >
                                 −
@@ -1135,7 +1132,6 @@ export default function CaseinProteinPage() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setServingsById(prev => ({ ...prev, [shake.id]: clamp((prev[shake.id] ?? (shake.recipe?.servings || 1)) + 1) }));
-                                }}
                                 aria-label="increase servings"
                               >
                                 +
@@ -1149,8 +1145,7 @@ export default function CaseinProteinPage() {
                                     const next = { ...prev };
                                     next[shake.id] = shake.recipe?.servings || 1;
                                     return next;
-                                  }); }};
-                                }}
+                                  }); }}
                                 title="Reset servings"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
@@ -1187,7 +1182,6 @@ export default function CaseinProteinPage() {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     openRecipeModal(shake);
-                                  }}
                                   className="underline underline-offset-2"
                                 >
                                   Show more
@@ -1216,7 +1210,6 @@ export default function CaseinProteinPage() {
                                 } catch {
                                   alert('Unable to copy on this device.');
                                 }
-                              }}
                             >
                               <Clipboard className="w-4 h-4 mr-1" /> Copy
                             </Button>
@@ -1229,7 +1222,6 @@ export default function CaseinProteinPage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setMetricFlags((prev) => ({ ...prev, [shake.id]: !prev[shake.id] }));
-                              }}
                             >
                               {useMetric ? 'US' : 'Metric'}
                             </Button>
@@ -1272,7 +1264,6 @@ export default function CaseinProteinPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             openRecipeModal(shake);
-                          }}
                         >
                           <Moon className="h-4 w-4 mr-1" />
                           Make Shake (+30 XP)
@@ -1335,7 +1326,6 @@ export default function CaseinProteinPage() {
                         onClick={() => {
                           setSelectedProteinType(type.id)
                           setActiveTab("browse")
-                        }}
                       >
                         Explore {type.name}
                       </Button>
@@ -1399,7 +1389,6 @@ export default function CaseinProteinPage() {
                         onClick={() => {
                           setSelectedGoal(goal.name.split(" ")[0])
                           setActiveTab("browse")
-                        }}
                       >
                         View {goal.name} Options
                       </Button>
@@ -1428,7 +1417,6 @@ export default function CaseinProteinPage() {
                       onError={(e) => {
                         e.currentTarget.src =
                           "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=300&fit=crop"
-                      }}
                     />
                     <div className="absolute top-4 left-4">
                       <Badge className="bg-purple-500 text-white">Featured Casein</Badge>
@@ -1578,7 +1566,6 @@ export default function CaseinProteinPage() {
                               } catch {
                                 alert('Unable to copy on this device.')
                               }
-                            }}
                           >
                             <Clipboard className="w-4 h-4 mr-1" /> Copy
                           </Button>
@@ -1632,7 +1619,6 @@ export default function CaseinProteinPage() {
                         onClick={(e) => {
                           e.stopPropagation();
                           openRecipeModal(shake);
-                        }}
                       >
                         <Moon className="h-4 w-4 mr-2" />
                         Make Shake (+30 XP)
