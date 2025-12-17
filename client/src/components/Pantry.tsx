@@ -94,6 +94,19 @@ export default function Pantry() {
   useEffect(() => {
     void fetchPantryItems();
     void fetchRecipeSuggestions();
+
+    // Load pending shopping list items from RecipeKit
+    try {
+      const pending = JSON.parse(localStorage.getItem('pendingShoppingListItems') || '[]');
+      if (pending.length > 0) {
+        setShoppingList(prev => [...prev, ...pending]);
+        localStorage.removeItem('pendingShoppingListItems');
+        // Switch to shopping tab if items were added
+        setActiveTab('shopping');
+      }
+    } catch (err) {
+      console.error('Error loading pending shopping items:', err);
+    }
   }, []);
 
   const fetchPantryItems = async () => {
