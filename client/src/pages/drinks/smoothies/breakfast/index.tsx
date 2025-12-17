@@ -862,7 +862,7 @@ export default function BreakfastSmoothiesPage() {
                               rating: smoothie.rating,
                               smoothieType: smoothie.smoothieType,
                               bestTime: smoothie.bestTime
-                            });
+                            }); }};
                           }}
                         >
                           <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />

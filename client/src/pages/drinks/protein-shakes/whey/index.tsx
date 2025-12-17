@@ -836,7 +836,7 @@ export default function WheyProteinShakesPage() {
                                     const next = { ...prev };
                                     next[shake.id] = shake.recipe?.servings || 1;
                                     return next;
-                                  });
+                                  }); }};
                                 }}
                                 title="Reset servings"
                               >
@@ -1198,7 +1198,7 @@ export default function WheyProteinShakesPage() {
                                 const next = { ...prev };
                                 next[shake.id] = shake.recipe?.servings || 1;
                                 return next;
-                              })}
+                              }); }}}
                             >
                               <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset
                             </Button>
