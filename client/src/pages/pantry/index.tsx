@@ -47,7 +47,17 @@ export default function PantryDashboard() {
   const [filterLocation, setFilterLocation] = useState("all");
   const [filterExpiry, setFilterExpiry] = useState("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [shoppingList, setShoppingList] = useState<{name: string; quantity: number; unit: string; checked?: boolean}[]>([]);
+  const [shoppingList, setShoppingList] = useState<{name: string; quantity: number; unit: string; checked?: boolean}[]>(() => {
+    // Initialize from localStorage on mount
+    try {
+      const saved = localStorage.getItem('shoppingList');
+      console.log('🔍 Pantry: Loading saved shopping list from localStorage:', saved);
+      return saved ? JSON.parse(saved) : [];
+    } catch (err) {
+      console.error('❌ Error loading shopping list from localStorage:', err);
+      return [];
+    }
+  });
 
   // Fetch pantry items
   const { data: pantryData, isLoading } = useQuery({
@@ -63,18 +73,24 @@ export default function PantryDashboard() {
   const items: PantryItem[] = pantryData?.items || [];
   const expiringItems: PantryItem[] = expiringData?.items || [];
 
-  // Load pending shopping list items from RecipeKit
+  // Persist shopping list to localStorage whenever it changes
   useEffect(() => {
-    console.log('🔍 Pantry: Checking for pending shopping items...');
+    console.log('💾 Pantry: Saving shopping list to localStorage:', shoppingList);
+    localStorage.setItem('shoppingList', JSON.stringify(shoppingList));
+  }, [shoppingList]);
+
+  // Load pending shopping list items from RecipeKit (new items from recipes)
+  useEffect(() => {
+    console.log('🔍 Pantry: Checking for pending shopping items from recipes...');
     try {
       const pendingRaw = localStorage.getItem('pendingShoppingListItems');
-      console.log('🔍 Pantry: Raw localStorage value:', pendingRaw);
+      console.log('🔍 Pantry: Raw pendingShoppingListItems value:', pendingRaw);
       const pending = JSON.parse(pendingRaw || '[]');
       console.log('🔍 Pantry: Parsed pending items:', pending);
       if (pending.length > 0) {
         setShoppingList(prev => {
           const updated = [...prev, ...pending];
-          console.log('✅ Pantry: Updated shopping list:', updated);
+          console.log('✅ Pantry: Updated shopping list with new items:', updated);
           return updated;
         });
         localStorage.removeItem('pendingShoppingListItems');
