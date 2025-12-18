@@ -639,40 +639,63 @@ export default function PantryDashboard() {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={shoppingList.length > 0 && shoppingList.every(i => i.checked)}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setShoppingList(prev => prev.map(item => ({ ...item, checked })));
-                    }}
-                    className="h-4 w-4 rounded border-gray-300"
-                  />
-                  <span className="text-sm font-medium">Select All</span>
-                </label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const allChecked = shoppingList.every(i => i.checked);
+                    setShoppingList(prev => prev.map(item => ({ ...item, checked: !allChecked })));
+                  }}
+                >
+                  {shoppingList.every(i => i.checked) ? "Deselect All" : "Select All"}
+                </Button>
                 <Button
                   variant="destructive"
                   size="sm"
+                  disabled={deleteShoppingItemMutation.isPending}
                   onClick={async () => {
                     if (!confirm(`Are you sure you want to delete ALL ${shoppingList.length} items? This cannot be undone.`)) {
                       return;
                     }
+
                     const ids = shoppingList.map(item => item.id).filter(Boolean) as string[];
+                    const totalItems = ids.length;
+
+                    // Clear UI immediately
                     setShoppingList([]);
+
                     if (ids.length > 0) {
                       try {
-                        await Promise.all(ids.map(id => deleteShoppingItem(id)));
+                        // Batch delete in chunks of 50 to avoid overwhelming the API
+                        const batchSize = 50;
+                        let deletedCount = 0;
+
+                        toast({ title: `Deleting ${totalItems} items...` });
+
+                        for (let i = 0; i < ids.length; i += batchSize) {
+                          const batch = ids.slice(i, i + batchSize);
+                          await Promise.all(batch.map(id => deleteShoppingItem(id)));
+                          deletedCount += batch.length;
+
+                          // Show progress for large lists
+                          if (totalItems > 100) {
+                            toast({ title: `Deleted ${deletedCount}/${totalItems} items...` });
+                          }
+                        }
+
                         queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
-                        toast({ title: `Deleted all ${ids.length} items from shopping list` });
-                      } catch {
-                        toast({ title: "Failed to delete all items", variant: "destructive" });
+                        toast({ title: `Successfully deleted all ${totalItems} items!` });
+                      } catch (error) {
+                        console.error("Error deleting items:", error);
+                        toast({ title: "Failed to delete all items. Some may remain.", variant: "destructive" });
+                        // Refresh the list to show what's left
+                        queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
                       }
                     }
                   }}
                 >
                   <Trash2 className="w-4 h-4 mr-2" />
-                  Delete All
+                  {deleteShoppingItemMutation.isPending ? "Deleting..." : "Delete All"}
                 </Button>
               </div>
             </div>
@@ -720,37 +743,42 @@ export default function PantryDashboard() {
                 </div>
               ))}
             </div>
-            <div className="mt-4 flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const checkedCount = shoppingList.filter(i => i.checked).length;
-                  if (checkedCount === 0) {
-                    toast({ title: "No items selected" });
-                    return;
-                  }
-                  if (!confirm(`Delete ${checkedCount} selected item${checkedCount > 1 ? 's' : ''}?`)) {
-                    return;
-                  }
-                  const unchecked = shoppingList.filter(i => !i.checked);
-                  const removed = shoppingList.filter(i => i.checked);
-                  setShoppingList(unchecked);
-                  const ids = removed.map(item => item.id).filter(Boolean) as string[];
-                  if (ids.length > 0) {
-                    Promise.all(ids.map(id => deleteShoppingItem(id)))
-                      .then(() => {
+            {shoppingList.filter(i => i.checked).length > 0 && (
+              <div className="mt-4 flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    const checkedCount = shoppingList.filter(i => i.checked).length;
+                    if (!confirm(`Delete ${checkedCount} selected item${checkedCount > 1 ? 's' : ''}?`)) {
+                      return;
+                    }
+                    const unchecked = shoppingList.filter(i => !i.checked);
+                    const removed = shoppingList.filter(i => i.checked);
+                    setShoppingList(unchecked);
+                    const ids = removed.map(item => item.id).filter(Boolean) as string[];
+                    if (ids.length > 0) {
+                      try {
+                        // Batch delete in chunks of 50
+                        const batchSize = 50;
+                        for (let i = 0; i < ids.length; i += batchSize) {
+                          const batch = ids.slice(i, i + batchSize);
+                          await Promise.all(batch.map(id => deleteShoppingItem(id)));
+                        }
                         queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
                         toast({ title: `Deleted ${ids.length} item${ids.length > 1 ? 's' : ''}` });
-                      })
-                      .catch(() => toast({ title: "Failed to delete items", variant: "destructive" }));
-                  }
-                }}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete Selected ({shoppingList.filter(i => i.checked).length})
-              </Button>
-            </div>
+                      } catch (error) {
+                        console.error("Error deleting items:", error);
+                        toast({ title: "Failed to delete items", variant: "destructive" });
+                      }
+                    }
+                  }}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Selected ({shoppingList.filter(i => i.checked).length})
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
