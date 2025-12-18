@@ -628,16 +628,57 @@ export default function PantryDashboard() {
       {shoppingList.length > 0 && (
         <Card className="mt-6" id="shopping-list-section">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5" />
-              Shopping List
-            </CardTitle>
-            <CardDescription>
-              Items added from recipes
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <ShoppingCart className="w-5 h-5" />
+                  Shopping List ({shoppingList.length} items)
+                </CardTitle>
+                <CardDescription>
+                  Items added from recipes • {shoppingList.filter(i => i.checked).length} selected
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={shoppingList.length > 0 && shoppingList.every(i => i.checked)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setShoppingList(prev => prev.map(item => ({ ...item, checked })));
+                    }}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                  <span className="text-sm font-medium">Select All</span>
+                </label>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={async () => {
+                    if (!confirm(`Are you sure you want to delete ALL ${shoppingList.length} items? This cannot be undone.`)) {
+                      return;
+                    }
+                    const ids = shoppingList.map(item => item.id).filter(Boolean) as string[];
+                    setShoppingList([]);
+                    if (ids.length > 0) {
+                      try {
+                        await Promise.all(ids.map(id => deleteShoppingItem(id)));
+                        queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+                        toast({ title: `Deleted all ${ids.length} items from shopping list` });
+                      } catch {
+                        toast({ title: "Failed to delete all items", variant: "destructive" });
+                      }
+                    }
+                  }}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete All
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[500px] overflow-y-auto">
               {shoppingList.map((item, idx) => (
                 <div key={idx} className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent">
                   <div className="flex items-center gap-3">
@@ -683,26 +724,15 @@ export default function PantryDashboard() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={async () => {
-                  const ids = shoppingList.map(item => item.id).filter(Boolean) as string[];
-                  setShoppingList([]);
-                  if (ids.length > 0) {
-                    try {
-                      await Promise.all(ids.map(id => deleteShoppingItem(id)));
-                      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
-                      toast({ title: "Cleared shopping list" });
-                    } catch {
-                      toast({ title: "Failed to clear shopping list", variant: "destructive" });
-                    }
-                  }
-                }}
-              >
-                Clear All
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
                 onClick={() => {
+                  const checkedCount = shoppingList.filter(i => i.checked).length;
+                  if (checkedCount === 0) {
+                    toast({ title: "No items selected" });
+                    return;
+                  }
+                  if (!confirm(`Delete ${checkedCount} selected item${checkedCount > 1 ? 's' : ''}?`)) {
+                    return;
+                  }
                   const unchecked = shoppingList.filter(i => !i.checked);
                   const removed = shoppingList.filter(i => i.checked);
                   setShoppingList(unchecked);
@@ -711,15 +741,14 @@ export default function PantryDashboard() {
                     Promise.all(ids.map(id => deleteShoppingItem(id)))
                       .then(() => {
                         queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
-                        toast({ title: `Removed ${ids.length} checked item${ids.length > 1 ? 's' : ''}` });
+                        toast({ title: `Deleted ${ids.length} item${ids.length > 1 ? 's' : ''}` });
                       })
-                      .catch(() => toast({ title: "Failed to remove checked items", variant: "destructive" }));
-                  } else {
-                    toast({ title: `Removed ${shoppingList.length - unchecked.length} checked items` });
+                      .catch(() => toast({ title: "Failed to delete items", variant: "destructive" }));
                   }
                 }}
               >
-                Remove Checked
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Selected ({shoppingList.filter(i => i.checked).length})
               </Button>
             </div>
           </CardContent>
