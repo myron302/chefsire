@@ -657,70 +657,67 @@ export default function PantryDashboard() {
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {shoppingList.length > 0 && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const allChecked = shoppingList.every(i => i.checked);
-                      setShoppingList(prev => prev.map(item => ({ ...item, checked: !allChecked })));
-                    }}
-                    className="flex-shrink-0"
-                  >
-                    {shoppingList.every(i => i.checked) ? "Deselect All" : "Select All"}
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    disabled={deleteShoppingItemMutation.isPending}
-                    onClick={async () => {
-                      if (!confirm(`Are you sure you want to delete ALL ${shoppingList.length} items? This cannot be undone.`)) {
-                        return;
-                      }
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={shoppingList.length === 0}
+                onClick={() => {
+                  const allChecked = shoppingList.every(i => i.checked);
+                  setShoppingList(prev => prev.map(item => ({ ...item, checked: !allChecked })));
+                }}
+                className="flex-shrink-0"
+              >
+                {shoppingList.every(i => i.checked) ? "Deselect All" : "Select All"}
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={deleteShoppingItemMutation.isPending || shoppingList.length === 0}
+                onClick={async () => {
+                  if (!confirm(`Are you sure you want to delete ALL ${shoppingList.length} items? This cannot be undone.`)) {
+                    return;
+                  }
 
-                      const ids = shoppingList.map(item => item.id).filter(Boolean) as string[];
-                      const totalItems = ids.length;
+                  const ids = shoppingList.map(item => item.id).filter(Boolean) as string[];
+                  const totalItems = ids.length;
 
-                      // Clear UI immediately
-                      setShoppingList([]);
+                  // Clear UI immediately
+                  setShoppingList([]);
 
-                      if (ids.length > 0) {
-                        try {
-                          // Batch delete in chunks of 50 to avoid overwhelming the API
-                          const batchSize = 50;
-                          let deletedCount = 0;
+                  if (ids.length > 0) {
+                    try {
+                      // Batch delete in chunks of 50 to avoid overwhelming the API
+                      const batchSize = 50;
+                      let deletedCount = 0;
 
-                          toast({ title: `Deleting ${totalItems} items...` });
+                      toast({ title: `Deleting ${totalItems} items...` });
 
-                          for (let i = 0; i < ids.length; i += batchSize) {
-                            const batch = ids.slice(i, i + batchSize);
-                            await Promise.all(batch.map(id => deleteShoppingItem(id)));
-                            deletedCount += batch.length;
+                      for (let i = 0; i < ids.length; i += batchSize) {
+                        const batch = ids.slice(i, i + batchSize);
+                        await Promise.all(batch.map(id => deleteShoppingItem(id)));
+                        deletedCount += batch.length;
 
-                            // Show progress for large lists
-                            if (totalItems > 100) {
-                              toast({ title: `Deleted ${deletedCount}/${totalItems} items...` });
-                            }
-                          }
-
-                          queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
-                          toast({ title: `Successfully deleted all ${totalItems} items!` });
-                        } catch (error) {
-                          console.error("Error deleting items:", error);
-                          toast({ title: "Failed to delete all items. Some may remain.", variant: "destructive" });
-                          // Refresh the list to show what's left
-                          queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+                        // Show progress for large lists
+                        if (totalItems > 100) {
+                          toast({ title: `Deleted ${deletedCount}/${totalItems} items...` });
                         }
                       }
-                    }}
-                    className="flex-shrink-0"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    {deleteShoppingItemMutation.isPending ? "Deleting..." : "Delete All"}
-                  </Button>
-                </>
-              )}
+
+                      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+                      toast({ title: `Successfully deleted all ${totalItems} items!` });
+                    } catch (error) {
+                      console.error("Error deleting items:", error);
+                      toast({ title: "Failed to delete all items. Some may remain.", variant: "destructive" });
+                      // Refresh the list to show what's left
+                      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+                    }
+                  }
+                }}
+                className="flex-shrink-0"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                {deleteShoppingItemMutation.isPending ? "Deleting..." : "Delete All"}
+              </Button>
             </div>
           </div>
         </CardHeader>
