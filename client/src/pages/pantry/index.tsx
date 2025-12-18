@@ -151,14 +151,35 @@ export default function PantryDashboard() {
       const pending = JSON.parse(pendingRaw || '[]');
       console.log('🔍 Pantry: Parsed pending items:', pending);
       if (pending.length > 0) {
-        const formatted: ShoppingListItem[] = pending.map((item: any) => ({
-          name: item.name,
-          quantity: item.quantity,
+        // Filter out invalid items (items without names)
+        const validItems = pending.filter((item: any) => {
+          const hasName = item.name && typeof item.name === 'string' && item.name.trim().length > 0;
+          if (!hasName) {
+            console.warn('⚠️ Pantry: Skipping invalid item (empty name):', item);
+          }
+          return hasName;
+        });
+
+        if (validItems.length === 0) {
+          console.log('ℹ️ Pantry: No valid items to add after filtering');
+          localStorage.removeItem('pendingShoppingListItems');
+          return;
+        }
+
+        const formatted: ShoppingListItem[] = validItems.map((item: any) => ({
+          name: item.name.trim(),
+          quantity: item.quantity || 1,
           unit: item.unit ?? "",
         }));
+
+        console.log('🔍 Pantry: Formatted valid items:', formatted);
         addShoppingItemsMutation.mutateAsync(formatted).then(() => {
           localStorage.removeItem('pendingShoppingListItems');
-          toast({ title: `Added ${pending.length} item${pending.length > 1 ? 's' : ''} to shopping list from recipe!` });
+          const skippedCount = pending.length - validItems.length;
+          const message = skippedCount > 0
+            ? `Added ${validItems.length} item${validItems.length > 1 ? 's' : ''} to shopping list (${skippedCount} invalid item${skippedCount > 1 ? 's' : ''} skipped)`
+            : `Added ${validItems.length} item${validItems.length > 1 ? 's' : ''} to shopping list from recipe!`;
+          toast({ title: message });
         }).catch((err) => {
           console.error('❌ Error saving pending shopping items:', err);
           toast({ title: "Failed to save shopping list items", variant: "destructive" });
