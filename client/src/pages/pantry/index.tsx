@@ -644,85 +644,90 @@ export default function PantryDashboard() {
       )}
 
       {/* Shopping List Section */}
-      {shoppingList.length > 0 && (
-        <Card className="mt-6" id="shopping-list-section">
-          <CardHeader>
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <ShoppingCart className="w-5 h-5" />
-                  Shopping List ({shoppingList.length} items)
-                </CardTitle>
-                <CardDescription>
-                  Items added from recipes • {shoppingList.filter(i => i.checked).length} selected
-                </CardDescription>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const allChecked = shoppingList.every(i => i.checked);
-                    setShoppingList(prev => prev.map(item => ({ ...item, checked: !allChecked })));
-                  }}
-                  className="flex-shrink-0"
-                >
-                  {shoppingList.every(i => i.checked) ? "Deselect All" : "Select All"}
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  disabled={deleteShoppingItemMutation.isPending}
-                  onClick={async () => {
-                    if (!confirm(`Are you sure you want to delete ALL ${shoppingList.length} items? This cannot be undone.`)) {
-                      return;
-                    }
-
-                    const ids = shoppingList.map(item => item.id).filter(Boolean) as string[];
-                    const totalItems = ids.length;
-
-                    // Clear UI immediately
-                    setShoppingList([]);
-
-                    if (ids.length > 0) {
-                      try {
-                        // Batch delete in chunks of 50 to avoid overwhelming the API
-                        const batchSize = 50;
-                        let deletedCount = 0;
-
-                        toast({ title: `Deleting ${totalItems} items...` });
-
-                        for (let i = 0; i < ids.length; i += batchSize) {
-                          const batch = ids.slice(i, i + batchSize);
-                          await Promise.all(batch.map(id => deleteShoppingItem(id)));
-                          deletedCount += batch.length;
-
-                          // Show progress for large lists
-                          if (totalItems > 100) {
-                            toast({ title: `Deleted ${deletedCount}/${totalItems} items...` });
-                          }
-                        }
-
-                        queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
-                        toast({ title: `Successfully deleted all ${totalItems} items!` });
-                      } catch (error) {
-                        console.error("Error deleting items:", error);
-                        toast({ title: "Failed to delete all items. Some may remain.", variant: "destructive" });
-                        // Refresh the list to show what's left
-                        queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
-                      }
-                    }
-                  }}
-                  className="flex-shrink-0"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  {deleteShoppingItemMutation.isPending ? "Deleting..." : "Delete All"}
-                </Button>
-              </div>
+      <Card className="mt-6" id="shopping-list-section">
+        <CardHeader>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5" />
+                Shopping List ({shoppingList.length} items)
+              </CardTitle>
+              <CardDescription>
+                Items added from recipes • {shoppingList.filter(i => i.checked).length} selected
+              </CardDescription>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 max-h-[500px] overflow-y-auto">
+            <div className="flex flex-wrap items-center gap-2">
+              {shoppingList.length > 0 && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const allChecked = shoppingList.every(i => i.checked);
+                      setShoppingList(prev => prev.map(item => ({ ...item, checked: !allChecked })));
+                    }}
+                    className="flex-shrink-0"
+                  >
+                    {shoppingList.every(i => i.checked) ? "Deselect All" : "Select All"}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={deleteShoppingItemMutation.isPending}
+                    onClick={async () => {
+                      if (!confirm(`Are you sure you want to delete ALL ${shoppingList.length} items? This cannot be undone.`)) {
+                        return;
+                      }
+
+                      const ids = shoppingList.map(item => item.id).filter(Boolean) as string[];
+                      const totalItems = ids.length;
+
+                      // Clear UI immediately
+                      setShoppingList([]);
+
+                      if (ids.length > 0) {
+                        try {
+                          // Batch delete in chunks of 50 to avoid overwhelming the API
+                          const batchSize = 50;
+                          let deletedCount = 0;
+
+                          toast({ title: `Deleting ${totalItems} items...` });
+
+                          for (let i = 0; i < ids.length; i += batchSize) {
+                            const batch = ids.slice(i, i + batchSize);
+                            await Promise.all(batch.map(id => deleteShoppingItem(id)));
+                            deletedCount += batch.length;
+
+                            // Show progress for large lists
+                            if (totalItems > 100) {
+                              toast({ title: `Deleted ${deletedCount}/${totalItems} items...` });
+                            }
+                          }
+
+                          queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+                          toast({ title: `Successfully deleted all ${totalItems} items!` });
+                        } catch (error) {
+                          console.error("Error deleting items:", error);
+                          toast({ title: "Failed to delete all items. Some may remain.", variant: "destructive" });
+                          // Refresh the list to show what's left
+                          queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+                        }
+                      }
+                    }}
+                    className="flex-shrink-0"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    {deleteShoppingItemMutation.isPending ? "Deleting..." : "Delete All"}
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {shoppingList.length > 0 ? (
+            <>
+              <div className="space-y-2 max-h-[500px] overflow-y-auto">
               {shoppingList.map((item, idx) => (
                 <div key={idx} className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent">
                   <div className="flex items-center gap-3">
@@ -800,9 +805,14 @@ export default function PantryDashboard() {
                 </Button>
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
+            </>
+          ) : (
+            <p className="text-center text-muted-foreground py-8">
+              No items in shopping list. Add items from recipes or create a manual entry feature.
+            </p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
