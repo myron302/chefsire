@@ -142,15 +142,33 @@ export default function PantryDashboard() {
   const items: PantryItem[] = pantryData?.items || [];
   const expiringItems: PantryItem[] = expiringData?.items || [];
 
-  // Load pending shopping list items from RecipeKit
+  // Load pending shopping list items from RecipeKit - ONLY ONCE
   useEffect(() => {
     console.log('🔍 Pantry: Checking for pending shopping items...');
-    try {
-      const pendingRaw = localStorage.getItem('pendingShoppingListItems');
-      console.log('🔍 Pantry: Raw localStorage value:', pendingRaw);
-      const pending = JSON.parse(pendingRaw || '[]');
-      console.log('🔍 Pantry: Parsed pending items:', pending);
-      if (pending.length > 0) {
+
+    const processPendingItems = async () => {
+      try {
+        const pendingRaw = localStorage.getItem('pendingShoppingListItems');
+        console.log('🔍 Pantry: Raw localStorage value:', pendingRaw);
+
+        if (!pendingRaw || pendingRaw === '[]') {
+          console.log('ℹ️ Pantry: No pending items found');
+          return;
+        }
+
+        const pending = JSON.parse(pendingRaw);
+        console.log('🔍 Pantry: Parsed pending items:', pending);
+
+        if (!Array.isArray(pending) || pending.length === 0) {
+          console.log('ℹ️ Pantry: No pending items to process');
+          localStorage.removeItem('pendingShoppingListItems');
+          return;
+        }
+
+        // IMMEDIATELY CLEAR to prevent re-processing
+        localStorage.removeItem('pendingShoppingListItems');
+        console.log('✅ Cleared localStorage to prevent duplicates');
+
         // Filter out invalid items (items without names)
         const validItems = pending.filter((item: any) => {
           const hasName = item.name && typeof item.name === 'string' && item.name.trim().length > 0;
@@ -162,7 +180,6 @@ export default function PantryDashboard() {
 
         if (validItems.length === 0) {
           console.log('ℹ️ Pantry: No valid items to add after filtering');
-          localStorage.removeItem('pendingShoppingListItems');
           return;
         }
 
@@ -173,24 +190,26 @@ export default function PantryDashboard() {
         }));
 
         console.log('🔍 Pantry: Formatted valid items:', formatted);
-        addShoppingItemsMutation.mutateAsync(formatted).then(() => {
-          localStorage.removeItem('pendingShoppingListItems');
+
+        try {
+          await addShoppingItemsMutation.mutateAsync(formatted);
           const skippedCount = pending.length - validItems.length;
           const message = skippedCount > 0
             ? `Added ${validItems.length} item${validItems.length > 1 ? 's' : ''} to shopping list (${skippedCount} invalid item${skippedCount > 1 ? 's' : ''} skipped)`
             : `Added ${validItems.length} item${validItems.length > 1 ? 's' : ''} to shopping list from recipe!`;
           toast({ title: message });
-        }).catch((err) => {
+        } catch (err) {
           console.error('❌ Error saving pending shopping items:', err);
           toast({ title: "Failed to save shopping list items", variant: "destructive" });
-        });
-      } else {
-        console.log('ℹ️ Pantry: No pending items found');
+        }
+      } catch (err) {
+        console.error('❌ Error loading pending shopping items:', err);
+        localStorage.removeItem('pendingShoppingListItems'); // Clear on error too
       }
-    } catch (err) {
-      console.error('❌ Error loading pending shopping items:', err);
-    }
-  }, [toast, addShoppingItemsMutation]);
+    };
+
+    processPendingItems();
+  }, []); // Empty deps - run ONCE on mount
 
   // Delete mutation
   const deleteMutation = useMutation({
