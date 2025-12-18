@@ -275,23 +275,37 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
     }
 
     // Format ingredients for shopping list
-    const shoppingItems = selected.map((ing) => {
-      const amount = useMetric && typeof ing.amountScaledNum === 'number'
-        ? toMetric(ing.unit, ing.amountScaledNum).amount
-        : ing.amountScaled;
-      const unit = useMetric && typeof ing.amountScaledNum === 'number'
-        ? toMetric(ing.unit, ing.amountScaledNum).unit
-        : ing.unit;
+    const shoppingItems = selected
+      .filter((ing) => {
+        // Filter out ingredients without valid names
+        const hasValidName = ing.item && typeof ing.item === 'string' && ing.item.trim().length > 0;
+        if (!hasValidName) {
+          console.warn('⚠️ RecipeKit: Skipping ingredient with empty name:', ing);
+        }
+        return hasValidName;
+      })
+      .map((ing) => {
+        const amount = useMetric && typeof ing.amountScaledNum === 'number'
+          ? toMetric(ing.unit, ing.amountScaledNum).amount
+          : ing.amountScaled;
+        const unit = useMetric && typeof ing.amountScaledNum === 'number'
+          ? toMetric(ing.unit, ing.amountScaledNum).unit
+          : ing.unit;
 
-      return {
-        name: ing.item,
-        quantity: typeof amount === 'number' ? amount : parseFloat(String(amount)) || 1,
-        unit: unit,
-        note: ing.note
-      };
-    });
+        return {
+          name: ing.item.trim(),
+          quantity: typeof amount === 'number' ? amount : parseFloat(String(amount)) || 1,
+          unit: unit,
+          note: ing.note
+        };
+      });
 
     console.log('🛒 RecipeKit: Formatted shopping items:', shoppingItems);
+
+    if (shoppingItems.length === 0) {
+      alert('No valid ingredients to add to shopping list.');
+      return;
+    }
 
     // Store in localStorage for the Pantry to pick up
     try {
