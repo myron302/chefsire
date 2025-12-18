@@ -628,7 +628,7 @@ export default function PantryDashboard() {
       {shoppingList.length > 0 && (
         <Card className="mt-6" id="shopping-list-section">
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <ShoppingCart className="w-5 h-5" />
@@ -638,7 +638,7 @@ export default function PantryDashboard() {
                   Items added from recipes • {shoppingList.filter(i => i.checked).length} selected
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -646,6 +646,7 @@ export default function PantryDashboard() {
                     const allChecked = shoppingList.every(i => i.checked);
                     setShoppingList(prev => prev.map(item => ({ ...item, checked: !allChecked })));
                   }}
+                  className="flex-shrink-0"
                 >
                   {shoppingList.every(i => i.checked) ? "Deselect All" : "Select All"}
                 </Button>
@@ -693,6 +694,7 @@ export default function PantryDashboard() {
                       }
                     }
                   }}
+                  className="flex-shrink-0"
                 >
                   <Trash2 className="w-4 h-4 mr-2" />
                   {deleteShoppingItemMutation.isPending ? "Deleting..." : "Delete All"}
