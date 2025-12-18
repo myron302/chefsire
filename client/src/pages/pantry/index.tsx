@@ -829,22 +829,40 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
         credentials: "include",
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error("Failed to add item");
+      if (!res.ok) {
+        const error = await res.text();
+        throw new Error(error || "Failed to add item");
+      }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pantry/items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pantry/expiring-soon"] });
       toast({ title: "Item added successfully!" });
+      // Reset form
+      setFormData({
+        name: "",
+        category: "",
+        quantity: "",
+        unit: "",
+        location: "",
+        expirationDate: "",
+        notes: "",
+      });
       onSuccess();
     },
-    onError: () => {
-      toast({ title: "Failed to add item", variant: "destructive" });
+    onError: (error: Error) => {
+      console.error("Error adding pantry item:", error);
+      toast({ title: error.message || "Failed to add item", variant: "destructive" });
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.name.trim()) {
+      toast({ title: "Item name is required", variant: "destructive" });
+      return;
+    }
     addMutation.mutate(formData);
   };
 
