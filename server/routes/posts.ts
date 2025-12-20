@@ -30,7 +30,7 @@ r.get(
     };
 
     if (!userId) {
-      const posts = await storage.getExplorePosts(offset, limit);
+      const posts = await storage.getExplorePosts(offset, limit, undefined);
       return res.json(posts);
     }
 
@@ -41,20 +41,42 @@ r.get(
 
 r.get(
   "/explore",
-  validateRequest(CommonSchemas.pagination, "query"),
+  validateRequest(
+    z.object({
+      userId: z.string().optional(),
+      offset: z.coerce.number().int().min(0).default(0),
+      limit: z.coerce.number().int().min(1).max(100).default(10),
+    }),
+    "query"
+  ),
   asyncHandler(async (req, res) => {
-    const { offset, limit } = req.query as { offset: number; limit: number };
-    const posts = await storage.getExplorePosts(offset, limit);
+    const { userId, offset, limit } = req.query as {
+      userId?: string;
+      offset: number;
+      limit: number;
+    };
+    const posts = await storage.getExplorePosts(offset, limit, userId);
     res.json(posts);
   })
 );
 
 r.get(
   "/user/:userId",
-  validateRequest(CommonSchemas.pagination, "query"),
+  validateRequest(
+    z.object({
+      currentUserId: z.string().optional(),
+      offset: z.coerce.number().int().min(0).default(0),
+      limit: z.coerce.number().int().min(1).max(100).default(10),
+    }),
+    "query"
+  ),
   asyncHandler(async (req, res) => {
-    const { offset, limit } = req.query as { offset: number; limit: number };
-    const posts = await storage.getUserPosts(req.params.userId, offset, limit);
+    const { currentUserId, offset, limit } = req.query as {
+      currentUserId?: string;
+      offset: number;
+      limit: number;
+    };
+    const posts = await storage.getUserPosts(req.params.userId, offset, limit, currentUserId);
     res.json(posts);
   })
 );
@@ -94,6 +116,22 @@ r.post("/", async (req, res) => {
     if (err?.issues) return res.status(400).json({ message: "Invalid post data", errors: err.issues });
     console.error("posts/create error", err);
     res.status(500).json({ message: "Failed to create post", error: err.message });
+  }
+});
+
+r.patch("/:id", async (req, res) => {
+  try {
+    const schema = z.object({
+      caption: z.string().optional(),
+    });
+    const body = schema.parse(req.body);
+    const updated = await storage.updatePost(req.params.id, body);
+    if (!updated) return res.status(404).json({ message: "Post not found" });
+    res.json(updated);
+  } catch (err: any) {
+    if (err?.issues) return res.status(400).json({ message: "Invalid post data", errors: err.issues });
+    console.error("posts/update error", err);
+    res.status(500).json({ message: "Failed to update post" });
   }
 });
 

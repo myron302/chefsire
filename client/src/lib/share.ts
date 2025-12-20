@@ -8,12 +8,17 @@ export interface ShareData {
   url: string;
 }
 
+export interface ShareResult {
+  success: boolean;
+  method: 'share' | 'clipboard' | 'cancelled' | 'failed';
+}
+
 /**
  * Share content using Web Share API if available, otherwise copy to clipboard
  * @param data - Data to share (title, text, url)
- * @returns Promise that resolves to true if shared/copied successfully
+ * @returns Promise that resolves to result object with success status and method used
  */
-export async function shareContent(data: ShareData): Promise<boolean> {
+export async function shareContent(data: ShareData): Promise<ShareResult> {
   // Check if Web Share API is available
   if (navigator.share) {
     try {
@@ -22,19 +27,25 @@ export async function shareContent(data: ShareData): Promise<boolean> {
         text: data.text,
         url: data.url,
       });
-      return true;
+      return { success: true, method: 'share' };
     } catch (error) {
       // User cancelled or share failed
       if ((error as Error).name === "AbortError") {
-        return false;
+        return { success: false, method: 'cancelled' };
       }
       // Fall back to clipboard
-      return copyToClipboard(data.url);
+      const copied = await copyToClipboard(data.url);
+      return copied
+        ? { success: true, method: 'clipboard' }
+        : { success: false, method: 'failed' };
     }
   }
 
   // Fallback: Copy URL to clipboard
-  return copyToClipboard(data.url);
+  const copied = await copyToClipboard(data.url);
+  return copied
+    ? { success: true, method: 'clipboard' }
+    : { success: false, method: 'failed' };
 }
 
 /**
