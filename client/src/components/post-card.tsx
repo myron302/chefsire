@@ -6,6 +6,7 @@ import { useUser } from "@/contexts/UserContext";
 import type { PostWithUser } from "@shared/schema";
 import { MoreHorizontal } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { shareContent, getPostShareUrl } from "@/lib/share";
 
 // Import UI primitives from their individual modules (do not import the directory)
 import { Card } from "@/components/ui/card";
@@ -89,6 +90,65 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
     },
   });
 
+  // Save/unsave recipe mutation
+  const saveRecipeMutation = useMutation({
+    mutationFn: async (shouldSave: boolean) => {
+      if (!post.recipe?.id || !effectiveUserId) {
+        throw new Error("Recipe ID or User ID missing");
+      }
+      
+      if (shouldSave) {
+        const res = await apiRequest("POST", `/api/recipes/${post.recipe.id}/save`, { userId: effectiveUserId });
+        if (!res.ok) throw new Error("Failed to save recipe");
+        return res.json();
+      } else {
+        const res = await apiRequest("DELETE", `/api/recipes/${post.recipe.id}/save?userId=${effectiveUserId}`);
+        if (!res.ok) throw new Error("Failed to unsave recipe");
+        return res.json();
+      }
+    },
+    onMutate: async (shouldSave: boolean) => {
+      // Optimistically update UI
+      setIsSaved(shouldSave);
+    },
+    onSuccess: (data, shouldSave) => {
+      toast({ description: shouldSave ? "Recipe saved!" : "Recipe unsaved" });
+    },
+    onError: (error, shouldSave) => {
+      // Revert on error
+      setIsSaved(!shouldSave);
+      toast({ variant: "destructive", description: "Failed to update save status" });
+    },
+  });
+
+  const handleSaveClick = () => {
+    if (!post.recipe?.id) {
+      toast({ description: "This post doesn't have a recipe to save" });
+      return;
+    }
+    if (!effectiveUserId) {
+      toast({ description: "Please log in to save recipes" });
+      return;
+    }
+    saveRecipeMutation.mutate(!isSaved);
+  };
+
+  const handleShare = async () => {
+    const shareUrl = getPostShareUrl(post.id);
+    const success = await shareContent({
+      title: post.caption || "Check out this post!",
+      text: `${post.user.displayName} shared: ${post.caption || ""}`,
+      url: shareUrl,
+    });
+    
+    if (success) {
+      toast({ description: "Link copied to clipboard!" });
+    } else {
+      toast({ variant: "destructive", description: "Failed to share" });
+    }
+    setMenuOpen(false);
+  };
+
   // NEW HANDLER
   const handleEdit = () => {
     setIsEditing(true);
@@ -160,10 +220,7 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
                 <li>
                   <button
                     className="w-full text-left px-3 py-2 hover:bg-slate-100"
-                    onClick={() => {
-                      toast({ description: "Share functionality coming soon!" });
-                      setMenuOpen(false);
-                    }}
+                    onClick={handleShare}
                     data-testid={`menu-share-${post.id}`}
                   >
                     Share
@@ -241,7 +298,7 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
           <Button variant="ghost" size="sm" onClick={() => setIsLiked((s) => !s)} data-testid={`button-like-${post.id}`}>
             {isLiked ? "♥" : "♡"} Like
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => toast({ description: "Save coming soon" })} data-testid={`button-save-${post.id}`}>
+          <Button variant="ghost" size="sm" onClick={handleSaveClick} data-testid={`button-save-${post.id}`}>
             {isSaved ? "Saved" : "Save"}
           </Button>
         </div>

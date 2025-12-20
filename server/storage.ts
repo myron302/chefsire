@@ -22,6 +22,7 @@ import {
   drinkPhotos,
   drinkLikes,
   drinkSaves,
+  recipeSaves,
   userDrinkStats,
   emailVerificationTokens,
   type User,
@@ -55,6 +56,8 @@ import {
   type InsertDrinkLike,
   type DrinkSave,
   type InsertDrinkSave,
+  type RecipeSave,
+  type InsertRecipeSave,
   type UserDrinkStats,
   type InsertUserDrinkStats,
   type CustomDrinkWithUser,
@@ -267,6 +270,12 @@ export interface IStorage {
   isDrinkSaved(userId: string, drinkId: string): Promise<boolean>;
   getUserSavedDrinks(userId: string, category?: string): Promise<CustomDrinkWithUser[]>;
   
+  // Recipe Saves
+  saveRecipe(userId: string, recipeId: string): Promise<RecipeSave>;
+  unsaveRecipe(userId: string, recipeId: string): Promise<boolean>;
+  isRecipeSaved(userId: string, recipeId: string): Promise<boolean>;
+  getUserSavedRecipes(userId: string): Promise<Recipe[]>;
+  
   // User Drink Stats
   getUserDrinkStats(userId: string): Promise<UserDrinkStats | undefined>;
   createUserDrinkStats(userId: string): Promise<UserDrinkStats>;
@@ -469,14 +478,24 @@ export class DrizzleStorage implements IStorage {
     return result[0];
   }
 
-  async getTrendingRecipes(limit = 5): Promise<(Recipe & { post: PostWithUser })[]> {
+  async getTrendingRecipes(limit = 10): Promise<(Recipe & { post: PostWithUser })[]> {
     const db = getDb();
+    
+    // Get recipes from posts in the last 7 days
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
     const result = await db
       .select({ recipe: recipes, post: posts, user: users })
       .from(recipes)
       .innerJoin(posts, eq(recipes.postId, posts.id))
       .innerJoin(users, eq(posts.userId, users.id))
-      .orderBy(desc(posts.likesCount))
+      .where(
+        sql`${posts.createdAt} >= ${sevenDaysAgo.toISOString()}`
+      )
+      .orderBy(
+        desc(sql`(${posts.likesCount} * 2 + ${posts.commentsCount})`)
+      )
       .limit(limit);
 
     return result.map((row) => ({
@@ -1450,6 +1469,44 @@ export class DrizzleStorage implements IStorage {
       user: row.user,
       isSaved: true 
     }));
+  }
+
+  // ---------- Recipe Saves ----------
+  async saveRecipe(userId: string, recipeId: string): Promise<RecipeSave> {
+    const db = getDb();
+    const result = await db.insert(recipeSaves).values({ userId, recipeId }).returning();
+    return result[0];
+  }
+
+  async unsaveRecipe(userId: string, recipeId: string): Promise<boolean> {
+    const db = getDb();
+    const result = await db
+      .delete(recipeSaves)
+      .where(and(eq(recipeSaves.userId, userId), eq(recipeSaves.recipeId, recipeId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  async isRecipeSaved(userId: string, recipeId: string): Promise<boolean> {
+    const db = getDb();
+    const result = await db
+      .select()
+      .from(recipeSaves)
+      .where(and(eq(recipeSaves.userId, userId), eq(recipeSaves.recipeId, recipeId)))
+      .limit(1);
+    return result.length > 0;
+  }
+
+  async getUserSavedRecipes(userId: string): Promise<Recipe[]> {
+    const db = getDb();
+    const result = await db
+      .select({ recipe: recipes })
+      .from(recipeSaves)
+      .innerJoin(recipes, eq(recipeSaves.recipeId, recipes.id))
+      .where(eq(recipeSaves.userId, userId))
+      .orderBy(desc(recipeSaves.createdAt));
+    
+    return result.map(row => row.recipe);
   }
 
   // ---------- User Drink Stats ----------

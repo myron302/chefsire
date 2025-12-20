@@ -468,8 +468,10 @@ export default function Feed() {
     error: recipesError,
   } = useQuery<(Recipe & { post: PostWithUser })[]>({
     queryKey: ["/api/recipes/trending"],
-    queryFn: () =>
-      fetchJSON<(Recipe & { post: PostWithUser })[]>("/api/recipes/trending?limit=5"),
+    queryFn: async () => {
+      const response = await fetchJSON<{ ok: boolean; recipes: (Recipe & { post: PostWithUser })[] }>("/api/recipes/trending?limit=5");
+      return response.recipes;
+    },
     retry: false,
   });
 
