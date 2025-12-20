@@ -81,15 +81,6 @@ r.get(
   })
 );
 
-r.get(
-  "/:id",
-  asyncHandler(async (req, res) => {
-    const post = await storage.getPostWithUser(req.params.id);
-    if (!post) throw ErrorFactory.notFound("Post not found");
-    res.json(post);
-  })
-);
-
 r.post("/", async (req, res) => {
   try {
     console.log("📝 Create post attempt with body:", req.body);
@@ -145,6 +136,15 @@ r.delete("/:id", async (req, res) => {
     res.status(500).json({ message: "Failed to delete post" });
   }
 });
+
+r.get(
+  "/:id",
+  asyncHandler(async (req, res) => {
+    const post = await storage.getPostWithUser(req.params.id);
+    if (!post) throw ErrorFactory.notFound("Post not found");
+    res.json(post);
+  })
+);
 
 /**
  * Comments
