@@ -9,7 +9,7 @@ r.post("/", async (req, res, next) => {
   try {
     const like = await storage.likePost(req.body.userId, req.body.postId);
     res.status(201).json(like);
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 // DELETE /api/likes/:userId/:postId
@@ -18,7 +18,7 @@ r.delete("/:userId/:postId", async (req, res, next) => {
     const ok = await storage.unlikePost(req.params.userId, req.params.postId);
     if (!ok) return res.status(404).json({ message: "Like not found" });
     res.json({ message: "Post unliked successfully" });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 // GET /api/likes/:userId/:postId
@@ -26,7 +26,7 @@ r.get("/:userId/:postId", async (req, res, next) => {
   try {
     const isLiked = await storage.isPostLiked(req.params.userId, req.params.postId);
     res.json({ isLiked });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 export default r;
