@@ -89,6 +89,49 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
     },
   });
 
+  // Save/unsave recipe mutation
+  const saveRecipeMutation = useMutation({
+    mutationFn: async (shouldSave: boolean) => {
+      if (!post.recipe?.id || !effectiveUserId) {
+        throw new Error("Recipe ID or User ID missing");
+      }
+      
+      if (shouldSave) {
+        const res = await apiRequest("POST", `/api/recipes/${post.recipe.id}/save`, { userId: effectiveUserId });
+        if (!res.ok) throw new Error("Failed to save recipe");
+        return res.json();
+      } else {
+        const res = await apiRequest("DELETE", `/api/recipes/${post.recipe.id}/save?userId=${effectiveUserId}`);
+        if (!res.ok) throw new Error("Failed to unsave recipe");
+        return res.json();
+      }
+    },
+    onMutate: async (shouldSave: boolean) => {
+      // Optimistically update UI
+      setIsSaved(shouldSave);
+    },
+    onSuccess: (data, shouldSave) => {
+      toast({ description: shouldSave ? "Recipe saved!" : "Recipe unsaved" });
+    },
+    onError: (error, shouldSave) => {
+      // Revert on error
+      setIsSaved(!shouldSave);
+      toast({ variant: "destructive", description: "Failed to update save status" });
+    },
+  });
+
+  const handleSaveClick = () => {
+    if (!post.recipe?.id) {
+      toast({ description: "This post doesn't have a recipe to save" });
+      return;
+    }
+    if (!effectiveUserId) {
+      toast({ description: "Please log in to save recipes" });
+      return;
+    }
+    saveRecipeMutation.mutate(!isSaved);
+  };
+
   // NEW HANDLER
   const handleEdit = () => {
     setIsEditing(true);
@@ -241,7 +284,7 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
           <Button variant="ghost" size="sm" onClick={() => setIsLiked((s) => !s)} data-testid={`button-like-${post.id}`}>
             {isLiked ? "♥" : "♡"} Like
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => toast({ description: "Save coming soon" })} data-testid={`button-save-${post.id}`}>
+          <Button variant="ghost" size="sm" onClick={handleSaveClick} data-testid={`button-save-${post.id}`}>
             {isSaved ? "Saved" : "Save"}
           </Button>
         </div>

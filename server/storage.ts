@@ -270,6 +270,12 @@ export interface IStorage {
   isDrinkSaved(userId: string, drinkId: string): Promise<boolean>;
   getUserSavedDrinks(userId: string, category?: string): Promise<CustomDrinkWithUser[]>;
   
+  // Recipe Saves
+  saveRecipe(userId: string, recipeId: string): Promise<RecipeSave>;
+  unsaveRecipe(userId: string, recipeId: string): Promise<boolean>;
+  isRecipeSaved(userId: string, recipeId: string): Promise<boolean>;
+  getUserSavedRecipes(userId: string): Promise<Recipe[]>;
+  
   // User Drink Stats
   getUserDrinkStats(userId: string): Promise<UserDrinkStats | undefined>;
   createUserDrinkStats(userId: string): Promise<UserDrinkStats>;
@@ -1453,6 +1459,44 @@ export class DrizzleStorage implements IStorage {
       user: row.user,
       isSaved: true 
     }));
+  }
+
+  // ---------- Recipe Saves ----------
+  async saveRecipe(userId: string, recipeId: string): Promise<RecipeSave> {
+    const db = getDb();
+    const result = await db.insert(recipeSaves).values({ userId, recipeId }).returning();
+    return result[0];
+  }
+
+  async unsaveRecipe(userId: string, recipeId: string): Promise<boolean> {
+    const db = getDb();
+    const result = await db
+      .delete(recipeSaves)
+      .where(and(eq(recipeSaves.userId, userId), eq(recipeSaves.recipeId, recipeId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  async isRecipeSaved(userId: string, recipeId: string): Promise<boolean> {
+    const db = getDb();
+    const result = await db
+      .select()
+      .from(recipeSaves)
+      .where(and(eq(recipeSaves.userId, userId), eq(recipeSaves.recipeId, recipeId)))
+      .limit(1);
+    return result.length > 0;
+  }
+
+  async getUserSavedRecipes(userId: string): Promise<Recipe[]> {
+    const db = getDb();
+    const result = await db
+      .select({ recipe: recipes })
+      .from(recipeSaves)
+      .innerJoin(recipes, eq(recipeSaves.recipeId, recipes.id))
+      .where(eq(recipeSaves.userId, userId))
+      .orderBy(desc(recipeSaves.createdAt));
+    
+    return result.map(row => row.recipe);
   }
 
   // ---------- User Drink Stats ----------

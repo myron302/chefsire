@@ -1,6 +1,7 @@
 // server/routes/recipes.ts
 import { Router } from "express";
 import { searchRecipes } from "../services/recipes-service";
+import { storage } from "../storage";
 
 const router = Router();
 
@@ -90,6 +91,88 @@ router.get("/random", async (req, res) => {
     res.json({ ok: true, items: out.results, total: out.total, source: out.source });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err?.message || "Random failed" });
+  }
+});
+
+/**
+ * POST /api/recipes/:id/save
+ * Save a recipe for the authenticated user
+ */
+router.post("/:id/save", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const recipeId = req.params.id;
+    
+    if (!userId) {
+      return res.status(400).json({ ok: false, error: "userId is required" });
+    }
+    
+    const save = await storage.saveRecipe(userId, recipeId);
+    res.status(201).json({ ok: true, save });
+  } catch (err: any) {
+    console.error("recipe save error:", err);
+    res.status(500).json({ ok: false, error: err?.message || "Save failed" });
+  }
+});
+
+/**
+ * DELETE /api/recipes/:id/save
+ * Unsave a recipe for the authenticated user
+ */
+router.delete("/:id/save", async (req, res) => {
+  try {
+    const userId = req.query.userId as string;
+    const recipeId = req.params.id;
+    
+    if (!userId) {
+      return res.status(400).json({ ok: false, error: "userId is required" });
+    }
+    
+    const success = await storage.unsaveRecipe(userId, recipeId);
+    if (!success) {
+      return res.status(404).json({ ok: false, error: "Save not found" });
+    }
+    
+    res.json({ ok: true, message: "Recipe unsaved successfully" });
+  } catch (err: any) {
+    console.error("recipe unsave error:", err);
+    res.status(500).json({ ok: false, error: err?.message || "Unsave failed" });
+  }
+});
+
+/**
+ * GET /api/recipes/:id/save-status
+ * Check if a recipe is saved by the user
+ */
+router.get("/:id/save-status", async (req, res) => {
+  try {
+    const userId = req.query.userId as string;
+    const recipeId = req.params.id;
+    
+    if (!userId) {
+      return res.status(400).json({ ok: false, error: "userId is required" });
+    }
+    
+    const isSaved = await storage.isRecipeSaved(userId, recipeId);
+    res.json({ ok: true, isSaved });
+  } catch (err: any) {
+    console.error("recipe save status error:", err);
+    res.status(500).json({ ok: false, error: err?.message || "Check failed" });
+  }
+});
+
+/**
+ * GET /api/users/:id/saved-recipes
+ * Get all saved recipes for a user
+ */
+router.get("/users/:id/saved-recipes", async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const recipes = await storage.getUserSavedRecipes(userId);
+    res.json({ ok: true, recipes });
+  } catch (err: any) {
+    console.error("get saved recipes error:", err);
+    res.status(500).json({ ok: false, error: err?.message || "Fetch failed" });
   }
 });
 
