@@ -60,27 +60,34 @@ export default function StoreDashboard() {
         const storeData = await storeRes.json();
         setStore(storeData.store);
 
-        // Load actual product stats
-        const productsRes = await fetch(`/api/marketplace/sellers/${user.id}/products`);
-        if (productsRes.ok) {
-          const productsData = await productsRes.json();
-          const products = productsData.products || [];
+        if (storeData.store) {
+          // Load actual product stats
+          const productsRes = await fetch(`/api/marketplace/sellers/${user.id}/products`);
+          let productStats = { totalProducts: 0, publishedProducts: 0 };
+          
+          if (productsRes.ok) {
+            const productsData = await productsRes.json();
+            const products = productsData.products || [];
+            productStats = {
+              totalProducts: products.length,
+              publishedProducts: products.filter((p: any) => p.isActive).length,
+            };
+          }
+
+          // Load store stats (views, sales, revenue)
+          const statsRes = await fetch(`/api/stores/${storeData.store.id}/stats`);
+          let storeStats = { totalViews: 0, totalSales: 0, totalRevenue: 0 };
+          
+          if (statsRes.ok) {
+            const statsData = await statsRes.json();
+            storeStats = statsData.stats || storeStats;
+          }
 
           setStats({
-            totalProducts: products.length,
-            publishedProducts: products.filter((p: any) => p.isActive).length,
-            totalViews: 0, // TODO: Implement view tracking
-            totalSales: 0, // TODO: Implement sales tracking
-            revenue: 0, // TODO: Implement revenue tracking
-          });
-        } else {
-          // If products endpoint fails, set zeros
-          setStats({
-            totalProducts: 0,
-            publishedProducts: 0,
-            totalViews: 0,
-            totalSales: 0,
-            revenue: 0,
+            ...productStats,
+            totalViews: storeStats.totalViews,
+            totalSales: storeStats.totalSales,
+            revenue: storeStats.totalRevenue,
           });
         }
       }

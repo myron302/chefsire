@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../db";
-import { stores, users } from "../../shared/schema.js";
-import { eq } from "drizzle-orm";
+import { stores, users, orders } from "../../shared/schema.js";
+import { eq, count, sum, sql } from "drizzle-orm";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
 import { requireAuth, optionalAuth } from "../middleware/auth";
 
@@ -219,6 +219,65 @@ router.patch("/:id/publish", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Error publishing store:", error);
     res.status(500).json({ ok: false, error: "Failed to update publish status" });
+  }
+});
+
+// GET /api/stores/:id/stats - Get store statistics (views, sales, revenue)
+router.get("/:id/stats", requireAuth, async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ ok: false, error: "Not authenticated" });
+    }
+
+    const { id } = req.params;
+
+    // Verify ownership
+    const store = await db.query.stores.findFirst({
+      where: eq(stores.id, id),
+    });
+
+    if (!store || store.userId !== req.user.id) {
+      return res.status(403).json({ ok: false, error: "Not authorized" });
+    }
+
+    // Get sales count and revenue from orders
+    const salesData = await db
+      .select({
+        totalSales: count(orders.id),
+        totalRevenue: sum(orders.sellerAmount),
+      })
+      .from(orders)
+      .where(eq(orders.sellerId, store.userId));
+
+    const stats = {
+      totalViews: store.viewCount || 0,
+      totalSales: salesData[0]?.totalSales || 0,
+      totalRevenue: parseFloat(salesData[0]?.totalRevenue || "0"),
+    };
+
+    res.json({ ok: true, stats });
+  } catch (error) {
+    console.error("Error fetching store stats:", error);
+    res.status(500).json({ ok: false, error: "Failed to fetch stats" });
+  }
+});
+
+// PATCH /api/stores/:id/increment-view - Increment view count
+router.patch("/:id/increment-view", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await db
+      .update(stores)
+      .set({
+        viewCount: sql`${stores.viewCount} + 1`,
+      })
+      .where(eq(stores.id, id));
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Error incrementing view count:", error);
+    res.status(500).json({ ok: false, error: "Failed to increment view count" });
   }
 });
 
