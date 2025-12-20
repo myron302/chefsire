@@ -478,14 +478,24 @@ export class DrizzleStorage implements IStorage {
     return result[0];
   }
 
-  async getTrendingRecipes(limit = 5): Promise<(Recipe & { post: PostWithUser })[]> {
+  async getTrendingRecipes(limit = 10): Promise<(Recipe & { post: PostWithUser })[]> {
     const db = getDb();
+    
+    // Get recipes from posts in the last 7 days
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
     const result = await db
       .select({ recipe: recipes, post: posts, user: users })
       .from(recipes)
       .innerJoin(posts, eq(recipes.postId, posts.id))
       .innerJoin(users, eq(posts.userId, users.id))
-      .orderBy(desc(posts.likesCount))
+      .where(
+        sql`${posts.createdAt} >= ${sevenDaysAgo.toISOString()}`
+      )
+      .orderBy(
+        desc(sql`(${posts.likesCount} * 2 + ${posts.commentsCount})`)
+      )
       .limit(limit);
 
     return result.map((row) => ({

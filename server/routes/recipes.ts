@@ -95,6 +95,29 @@ router.get("/random", async (req, res) => {
 });
 
 /**
+ * GET /api/recipes/trending
+ * Get trending recipes from the last 7 days
+ * Sorted by (likesCount * 2 + commentsCount)
+ */
+router.get("/trending", async (req, res) => {
+  noStore(res);
+  try {
+    const limit =
+      typeof req.query.limit === "string"
+        ? Number(req.query.limit)
+        : typeof req.query.limit === "number"
+        ? req.query.limit
+        : 10;
+
+    const trending = await storage.getTrendingRecipes(limit);
+    res.json({ ok: true, recipes: trending });
+  } catch (err: any) {
+    console.error("trending recipes error:", err);
+    res.status(500).json({ ok: false, error: err?.message || "Trending failed" });
+  }
+});
+
+/**
  * POST /api/recipes/:id/save
  * Save a recipe for the authenticated user
  */
