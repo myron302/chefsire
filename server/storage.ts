@@ -423,34 +423,90 @@ export class DrizzleStorage implements IStorage {
   async getFeedPosts(_userId: string, offset = 0, limit = 10): Promise<PostWithUser[]> {
     const db = getDb();
     const result = await db
-      .select({ post: posts, user: users, recipe: recipes })
+      .select({
+        post: posts,
+        user: users,
+        recipe: recipes,
+        isLiked: sql<boolean>`CASE WHEN ${likes.userId} IS NOT NULL THEN true ELSE false END`.as('isLiked')
+      })
       .from(posts)
       .innerJoin(users, eq(posts.userId, users.id))
       .leftJoin(recipes, eq(recipes.postId, posts.id))
+      .leftJoin(likes, and(
+        eq(likes.postId, posts.id),
+        eq(likes.userId, _userId)
+      ))
       .orderBy(desc(posts.createdAt))
       .offset(offset)
       .limit(limit);
 
-    return result.map((row) => ({ ...row.post, user: row.user, recipe: row.recipe || undefined }));
+    return result.map((row) => ({
+      ...row.post,
+      user: row.user,
+      recipe: row.recipe || undefined,
+      isLiked: row.isLiked
+    }));
   }
 
-  async getUserPosts(userId: string, offset = 0, limit = 10): Promise<PostWithUser[]> {
+  async getUserPosts(userId: string, offset = 0, limit = 10, currentUserId?: string): Promise<PostWithUser[]> {
     const db = getDb();
     const result = await db
-      .select({ post: posts, user: users, recipe: recipes })
+      .select({
+        post: posts,
+        user: users,
+        recipe: recipes,
+        isLiked: currentUserId
+          ? sql<boolean>`CASE WHEN ${likes.userId} IS NOT NULL THEN true ELSE false END`.as('isLiked')
+          : sql<boolean>`false`.as('isLiked')
+      })
       .from(posts)
       .innerJoin(users, eq(posts.userId, users.id))
       .leftJoin(recipes, eq(recipes.postId, posts.id))
+      .leftJoin(likes, currentUserId ? and(
+        eq(likes.postId, posts.id),
+        eq(likes.userId, currentUserId)
+      ) : undefined)
       .where(eq(posts.userId, userId))
       .orderBy(desc(posts.createdAt))
       .offset(offset)
       .limit(limit);
 
-    return result.map((row) => ({ ...row.post, user: row.user, recipe: row.recipe || undefined }));
+    return result.map((row) => ({
+      ...row.post,
+      user: row.user,
+      recipe: row.recipe || undefined,
+      isLiked: row.isLiked
+    }));
   }
 
-  async getExplorePosts(offset = 0, limit = 10): Promise<PostWithUser[]> {
-    return this.getFeedPosts("", offset, limit);
+  async getExplorePosts(offset = 0, limit = 10, currentUserId?: string): Promise<PostWithUser[]> {
+    const db = getDb();
+    const result = await db
+      .select({
+        post: posts,
+        user: users,
+        recipe: recipes,
+        isLiked: currentUserId
+          ? sql<boolean>`CASE WHEN ${likes.userId} IS NOT NULL THEN true ELSE false END`.as('isLiked')
+          : sql<boolean>`false`.as('isLiked')
+      })
+      .from(posts)
+      .innerJoin(users, eq(posts.userId, users.id))
+      .leftJoin(recipes, eq(recipes.postId, posts.id))
+      .leftJoin(likes, currentUserId ? and(
+        eq(likes.postId, posts.id),
+        eq(likes.userId, currentUserId)
+      ) : undefined)
+      .orderBy(desc(posts.createdAt))
+      .offset(offset)
+      .limit(limit);
+
+    return result.map((row) => ({
+      ...row.post,
+      user: row.user,
+      recipe: row.recipe || undefined,
+      isLiked: row.isLiked
+    }));
   }
 
   // ---------- Recipes ----------

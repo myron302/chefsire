@@ -90,13 +90,46 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
     },
   });
 
+  // Like/unlike post mutation
+  const likeMutation = useMutation({
+    mutationFn: async (shouldLike: boolean) => {
+      if (!effectiveUserId) {
+        throw new Error("User ID missing");
+      }
+
+      if (shouldLike) {
+        const res = await apiRequest("POST", `/api/posts/likes`, { userId: effectiveUserId, postId: post.id });
+        if (!res.ok) throw new Error("Failed to like post");
+        return res.json();
+      } else {
+        const res = await apiRequest("DELETE", `/api/posts/likes/${effectiveUserId}/${post.id}`);
+        if (!res.ok) throw new Error("Failed to unlike post");
+        return res.json();
+      }
+    },
+    onMutate: async (shouldLike: boolean) => {
+      // Optimistically update UI
+      setIsLiked(shouldLike);
+    },
+    onSuccess: (data, shouldLike) => {
+      // Invalidate queries to refresh like counts
+      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users", effectiveUserId, "posts"] });
+    },
+    onError: (error, shouldLike) => {
+      // Revert on error
+      setIsLiked(!shouldLike);
+      toast({ variant: "destructive", description: "Failed to update like status" });
+    },
+  });
+
   // Save/unsave recipe mutation
   const saveRecipeMutation = useMutation({
     mutationFn: async (shouldSave: boolean) => {
       if (!post.recipe?.id || !effectiveUserId) {
         throw new Error("Recipe ID or User ID missing");
       }
-      
+
       if (shouldSave) {
         const res = await apiRequest("POST", `/api/recipes/${post.recipe.id}/save`, { userId: effectiveUserId });
         if (!res.ok) throw new Error("Failed to save recipe");
@@ -121,6 +154,14 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
     },
   });
 
+  const handleLikeClick = () => {
+    if (!effectiveUserId) {
+      toast({ description: "Please log in to like posts" });
+      return;
+    }
+    likeMutation.mutate(!isLiked);
+  };
+
   const handleSaveClick = () => {
     if (!post.recipe?.id) {
       toast({ description: "This post doesn't have a recipe to save" });
@@ -135,15 +176,20 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
 
   const handleShare = async () => {
     const shareUrl = getPostShareUrl(post.id);
-    const success = await shareContent({
+    const result = await shareContent({
       title: post.caption || "Check out this post!",
       text: `${post.user.displayName} shared: ${post.caption || ""}`,
       url: shareUrl,
     });
-    
-    if (success) {
-      toast({ description: "Link copied to clipboard!" });
-    } else {
+
+    if (result.success) {
+      if (result.method === 'share') {
+        toast({ description: "Post shared successfully!" });
+      } else if (result.method === 'clipboard') {
+        toast({ description: "Link copied to clipboard!" });
+      }
+    } else if (result.method !== 'cancelled') {
+      // Only show error if user didn't cancel
       toast({ variant: "destructive", description: "Failed to share" });
     }
     setMenuOpen(false);
@@ -231,7 +277,7 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
                   <button
                     className="w-full text-left px-3 py-2 hover:bg-slate-100"
                     onClick={() => {
-                      setIsLiked((s) => !s);
+                      handleLikeClick();
                       setMenuOpen(false);
                     }}
                     data-testid={`menu-like-${post.id}`}
@@ -295,7 +341,7 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
       {/* Footer / actions area (optional) */}
       <div className="p-4 border-t flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <Button variant="ghost" size="sm" onClick={() => setIsLiked((s) => !s)} data-testid={`button-like-${post.id}`}>
+          <Button variant="ghost" size="sm" onClick={handleLikeClick} data-testid={`button-like-${post.id}`}>
             {isLiked ? "♥" : "♡"} Like
           </Button>
           <Button variant="ghost" size="sm" onClick={handleSaveClick} data-testid={`button-save-${post.id}`}>

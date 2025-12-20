@@ -523,14 +523,18 @@ export default function Profile() {
                                   onClick={async (e) => {
                                     e.stopPropagation();
                                     const shareUrl = getPostShareUrl(post.id);
-                                    const success = await shareContent({
+                                    const result = await shareContent({
                                       title: post.caption || "Check out this post!",
                                       text: `${post.user.displayName} shared: ${post.caption || ""}`,
                                       url: shareUrl,
                                     });
-                                    if (success) {
-                                      toast({ description: "Link copied to clipboard!" });
-                                    } else {
+                                    if (result.success) {
+                                      if (result.method === 'share') {
+                                        toast({ description: "Post shared successfully!" });
+                                      } else if (result.method === 'clipboard') {
+                                        toast({ description: "Link copied to clipboard!" });
+                                      }
+                                    } else if (result.method !== 'cancelled') {
                                       toast({ variant: "destructive", description: "Failed to share" });
                                     }
                                     setOpenMenuId(null);
@@ -668,14 +672,18 @@ export default function Profile() {
                                   onClick={async (e) => {
                                     e.stopPropagation();
                                     const shareUrl = getPostShareUrl(post.id);
-                                    const success = await shareContent({
+                                    const result = await shareContent({
                                       title: post.caption || "Check out this post!",
                                       text: `${post.user.displayName} shared: ${post.caption || ""}`,
                                       url: shareUrl,
                                     });
-                                    if (success) {
-                                      toast({ description: "Link copied to clipboard!" });
-                                    } else {
+                                    if (result.success) {
+                                      if (result.method === 'share') {
+                                        toast({ description: "Post shared successfully!" });
+                                      } else if (result.method === 'clipboard') {
+                                        toast({ description: "Link copied to clipboard!" });
+                                      }
+                                    } else if (result.method !== 'cancelled') {
                                       toast({ variant: "destructive", description: "Failed to share" });
                                     }
                                     setOpenMenuId(null);
