@@ -737,6 +737,19 @@ export const drinkSaves = pgTable(
   })
 );
 
+export const recipeSaves = pgTable(
+  "recipe_saves",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    recipeId: varchar("recipe_id").references(() => recipes.id, { onDelete: "cascade" }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userRecipeIdx: uniqueIndex("recipe_saves_user_recipe_idx").on(table.userId, table.recipeId),
+  })
+);
+
 export const userDrinkStats = pgTable("user_drink_stats", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id).notNull().unique(),
@@ -776,6 +789,7 @@ export const stores = pgTable(
     theme: jsonb("theme").$type<Record<string, any>>().default(sql`'{}'::jsonb`),
     layout: jsonb("layout").$type<Record<string, any>>(),
     published: boolean("published").default(false),
+    viewCount: integer("view_count").default(0),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -1097,6 +1111,11 @@ export const insertDrinkSaveSchema = createInsertSchema(drinkSaves).omit({
   createdAt: true,
 });
 
+export const insertRecipeSaveSchema = createInsertSchema(recipeSaves).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertUserDrinkStatsSchema = createInsertSchema(userDrinkStats).omit({
   id: true,
   updatedAt: true,
@@ -1244,6 +1263,8 @@ export type DrinkLike = typeof drinkLikes.$inferSelect;
 export type InsertDrinkLike = z.infer<typeof insertDrinkLikeSchema>;
 export type DrinkSave = typeof drinkSaves.$inferSelect;
 export type InsertDrinkSave = z.infer<typeof insertDrinkSaveSchema>;
+export type RecipeSave = typeof recipeSaves.$inferSelect;
+export type InsertRecipeSave = z.infer<typeof insertRecipeSaveSchema>;
 export type UserDrinkStats = typeof userDrinkStats.$inferSelect;
 export type InsertUserDrinkStats = z.infer<typeof insertUserDrinkStatsSchema>;
 export type Store = typeof stores.$inferSelect;
