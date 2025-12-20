@@ -6,6 +6,7 @@ import { useUser } from "@/contexts/UserContext";
 import type { PostWithUser } from "@shared/schema";
 import { MoreHorizontal } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { shareContent, getPostShareUrl } from "@/lib/share";
 
 // Import UI primitives from their individual modules (do not import the directory)
 import { Card } from "@/components/ui/card";
@@ -132,6 +133,22 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
     saveRecipeMutation.mutate(!isSaved);
   };
 
+  const handleShare = async () => {
+    const shareUrl = getPostShareUrl(post.id);
+    const success = await shareContent({
+      title: post.caption || "Check out this post!",
+      text: `${post.user.displayName} shared: ${post.caption || ""}`,
+      url: shareUrl,
+    });
+    
+    if (success) {
+      toast({ description: "Link copied to clipboard!" });
+    } else {
+      toast({ variant: "destructive", description: "Failed to share" });
+    }
+    setMenuOpen(false);
+  };
+
   // NEW HANDLER
   const handleEdit = () => {
     setIsEditing(true);
@@ -203,10 +220,7 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
                 <li>
                   <button
                     className="w-full text-left px-3 py-2 hover:bg-slate-100"
-                    onClick={() => {
-                      toast({ description: "Share functionality coming soon!" });
-                      setMenuOpen(false);
-                    }}
+                    onClick={handleShare}
                     data-testid={`menu-share-${post.id}`}
                   >
                     Share

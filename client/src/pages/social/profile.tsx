@@ -11,6 +11,7 @@ import { useUser } from "@/contexts/UserContext";
 import { ProfileCompletion } from "@/components/ProfileCompletion";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
 import PostCard from "@/components/post-card";
+import { shareContent, getPostShareUrl } from "@/lib/share";
 import {
   Image,
   ChefHat,
@@ -519,9 +520,19 @@ export default function Profile() {
                               <li>
                                 <button
                                   className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
-                                  onClick={(e) => {
+                                  onClick={async (e) => {
                                     e.stopPropagation();
-                                    toast({ description: "Share functionality coming soon!" });
+                                    const shareUrl = getPostShareUrl(post.id);
+                                    const success = await shareContent({
+                                      title: post.caption || "Check out this post!",
+                                      text: `${post.user.displayName} shared: ${post.caption || ""}`,
+                                      url: shareUrl,
+                                    });
+                                    if (success) {
+                                      toast({ description: "Link copied to clipboard!" });
+                                    } else {
+                                      toast({ variant: "destructive", description: "Failed to share" });
+                                    }
                                     setOpenMenuId(null);
                                   }}
                                 >
@@ -654,9 +665,19 @@ export default function Profile() {
                               <li>
                                 <button
                                   className="w-full text-left px-3 py-2 hover:bg-slate-100 text-sm"
-                                  onClick={(e) => {
+                                  onClick={async (e) => {
                                     e.stopPropagation();
-                                    toast({ description: "Share functionality coming soon!" });
+                                    const shareUrl = getPostShareUrl(post.id);
+                                    const success = await shareContent({
+                                      title: post.caption || "Check out this post!",
+                                      text: `${post.user.displayName} shared: ${post.caption || ""}`,
+                                      url: shareUrl,
+                                    });
+                                    if (success) {
+                                      toast({ description: "Link copied to clipboard!" });
+                                    } else {
+                                      toast({ variant: "destructive", description: "Failed to share" });
+                                    }
                                     setOpenMenuId(null);
                                   }}
                                 >
