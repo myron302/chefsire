@@ -475,10 +475,10 @@ export default function Feed() {
     retry: false,
   });
 
-  // Use demo data as fallback (silent)
-  const displayPosts = postsError ? demoPosts : posts ?? demoPosts;
-  const displaySuggestedUsers = usersError ? demoSuggestedUsers : suggestedUsers ?? demoSuggestedUsers;
-  const displayTrendingRecipes = recipesError ? demoTrendingRecipes : trendingRecipes ?? demoTrendingRecipes;
+  // Use real data only, no demo fallback
+  const displayPosts = posts ?? [];
+  const displaySuggestedUsers = suggestedUsers ?? [];
+  const displayTrendingRecipes = trendingRecipes ?? [];
 
   if (postsLoading) {
     return (
