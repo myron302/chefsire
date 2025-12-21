@@ -76,10 +76,10 @@ export default function CreatePost() {
       });
       setLocation("/feed");
     },
-    onError: () => {
+    onError: (error: Error) => {
       toast({
         variant: "destructive",
-        description: "Failed to create post",
+        description: `Failed to create post: ${error.message}`,
       });
     },
   });

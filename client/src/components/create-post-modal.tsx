@@ -54,10 +54,10 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
       onOpenChange(false);
       resetForm();
     },
-    onError: () => {
+    onError: (error: Error) => {
       toast({
         variant: "destructive",
-        description: "Failed to create post",
+        description: `Failed to create post: ${error.message}`,
       });
     },
   });
