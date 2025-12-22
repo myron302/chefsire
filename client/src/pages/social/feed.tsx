@@ -447,8 +447,8 @@ export default function Feed() {
     isLoading: postsLoading,
     error: postsError,
   } = useQuery<PostWithUser[]>({
-    queryKey: ["/api/posts/explore"],
-    queryFn: () => fetchJSON<PostWithUser[]>("/api/posts/explore"),
+    queryKey: ["/api/posts/explore", currentUserId],
+    queryFn: () => fetchJSON<PostWithUser[]>(`/api/posts/explore${currentUserId ? `?userId=${currentUserId}` : ''}`),
     retry: false,
   });
 
