@@ -344,9 +344,14 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
           <Button variant="ghost" size="sm" onClick={handleLikeClick} data-testid={`button-like-${post.id}`}>
             {isLiked ? "♥" : "♡"} Like
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleSaveClick} data-testid={`button-save-${post.id}`}>
-            {isSaved ? "Saved" : "Save"}
+          <Button variant="ghost" size="sm" onClick={() => onCardClick?.(post)} data-testid={`button-comment-${post.id}`}>
+            💬 Comment
           </Button>
+          {post.recipe?.id && (
+            <Button variant="ghost" size="sm" onClick={handleSaveClick} data-testid={`button-save-${post.id}`}>
+              {isSaved ? "Saved" : "Save"}
+            </Button>
+          )}
         </div>
         <div className="text-sm text-muted-foreground">{post.likesCount || 0} likes</div>
       </div>
