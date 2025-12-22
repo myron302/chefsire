@@ -720,6 +720,37 @@ export default function Feed() {
 
                 {/* Comments Section */}
                 <CommentsSection postId={selectedPost.id} currentUserId={currentUserId} />
+
+                {/* Delete button for post owner */}
+                {currentUserId === selectedPost.user?.id && (
+                  <div className="mt-6 pt-4 border-t">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="w-full"
+                      onClick={async () => {
+                        if (!confirm("Delete this post? This action cannot be undone.")) return;
+                        try {
+                          const res = await fetch(`/api/posts/${selectedPost.id}`, {
+                            method: "DELETE",
+                            credentials: "include",
+                          });
+                          if (!res.ok) {
+                            const err = await res.json();
+                            alert(`Failed to delete: ${err.message || "Unknown error"}`);
+                            return;
+                          }
+                          setSelectedPost(null);
+                          window.location.reload(); // Refresh to show updated posts
+                        } catch (error) {
+                          alert(`Failed to delete post: ${error instanceof Error ? error.message : "Unknown error"}`);
+                        }
+                      }}
+                    >
+                      Delete Post
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </div>

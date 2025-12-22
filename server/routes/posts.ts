@@ -168,7 +168,12 @@ r.post("/comments", async (req, res) => {
     });
     const body = schema.parse(req.body);
     console.log("Creating comment:", body);
-    const created = await storage.createComment(body as any);
+    // Map 'text' to 'content' for database
+    const created = await storage.createComment({
+      userId: body.userId,
+      postId: body.postId,
+      content: body.text,
+    });
     res.status(201).json(created);
   } catch (err: any) {
     if (err?.issues) return res.status(400).json({ message: "Invalid comment", errors: err.issues });
