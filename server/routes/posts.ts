@@ -167,12 +167,14 @@ r.post("/comments", async (req, res) => {
       text: z.string().min(1),
     });
     const body = schema.parse(req.body);
+    console.log("Creating comment:", body);
     const created = await storage.createComment(body as any);
     res.status(201).json(created);
   } catch (err: any) {
     if (err?.issues) return res.status(400).json({ message: "Invalid comment", errors: err.issues });
-    console.error("comments/create error", err);
-    res.status(500).json({ message: "Failed to create comment" });
+    console.error("comments/create error:", err);
+    console.error("Error stack:", err.stack);
+    res.status(500).json({ message: "Failed to create comment", error: err.message });
   }
 });
 
