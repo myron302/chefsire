@@ -12,6 +12,7 @@ import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import CommentsSection from "@/components/CommentsSection";
 import { useUser } from "@/contexts/UserContext";
 
 const demoTrendingRecipes = [
@@ -706,7 +707,7 @@ export default function Feed() {
                 )}
 
                 {/* Engagement stats */}
-                <div className="flex items-center space-x-4 text-sm text-muted-foreground border-t pt-4">
+                <div className="flex items-center space-x-4 text-sm text-muted-foreground border-t pt-4 mb-4">
                   <div className="flex items-center space-x-1">
                     <Heart className="h-4 w-4" />
                     <span>{selectedPost.likesCount || 0} likes</span>
@@ -716,6 +717,9 @@ export default function Feed() {
                     <span>{selectedPost.commentsCount || 0} comments</span>
                   </div>
                 </div>
+
+                {/* Comments Section */}
+                <CommentsSection postId={selectedPost.id} currentUserId={currentUserId} />
               </div>
             </div>
           </div>
