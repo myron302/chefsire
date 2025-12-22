@@ -138,59 +138,20 @@ export default function Profile() {
     enabled: !!profileUserId,
   });
 
-  // Fetch user posts from API + show mock data as fallback
+  // Fetch user posts from API
   const { data: posts, isLoading: postsLoading } = useQuery<PostWithUser[]>({
     queryKey: ["/api/posts/user", profileUserId],
     queryFn: async () => {
-      // Try to fetch real posts first
-      try {
-        const response = await fetch(`/api/posts/user/${profileUserId}`, {
-          credentials: "include",
-        });
-        if (response.ok) {
-          const realPosts = await response.json();
-
-          // If we have real posts, return them
-          if (realPosts && realPosts.length > 0) {
-            return realPosts;
-          }
-        }
-      } catch (error) {
-        console.log("No real posts yet, showing mock data");
+      const response = await fetch(`/api/posts/user/${profileUserId}?currentUserId=${currentUser?.id || ''}`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch posts');
       }
-
-      // Fallback to mock posts if no real posts exist
-      const mockPosts: PostWithUser[] = [
-        {
-          id: "mock-1",
-          userId: profileUserId!,
-          caption: "Delicious homemade pasta!",
-          imageUrl: "https://images.unsplash.com/photo-1551183053-bf91a1d81141",
-          likesCount: 24,
-          commentsCount: 5,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          isRecipe: false,
-          isBite: false,
-          user: user || (currentUser as UserType),
-        },
-        {
-          id: "mock-2",
-          userId: profileUserId!,
-          caption: "My signature smoothie recipe",
-          imageUrl: "https://images.unsplash.com/photo-1570197788417-0e82375c9371",
-          likesCount: 42,
-          commentsCount: 8,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          isRecipe: true,
-          isBite: false,
-          user: user || (currentUser as UserType),
-        },
-      ];
-      return mockPosts;
+      return response.json();
     },
-    enabled: !!profileUserId && !!user,
+    retry: false,
+    enabled: !!profileUserId,
   });
 
   // Custom drinks (mock)
