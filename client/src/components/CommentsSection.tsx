@@ -50,7 +50,6 @@ export default function CommentsSection({ postId, currentUserId }: CommentsSecti
         postId,
         text,
       });
-      if (!res.ok) throw new Error("Failed to add comment");
       return res.json();
     },
     onSuccess: () => {
@@ -59,8 +58,8 @@ export default function CommentsSection({ postId, currentUserId }: CommentsSecti
       setCommentText("");
       toast({ description: "Comment added!" });
     },
-    onError: () => {
-      toast({ variant: "destructive", description: "Failed to add comment" });
+    onError: (error: Error) => {
+      toast({ variant: "destructive", description: `Failed to add comment: ${error.message}` });
     },
   });
 

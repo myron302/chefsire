@@ -18,9 +18,10 @@ interface PostCardProps {
   post: PostWithUser;
   currentUserId?: string;
   onCardClick?: (post: PostWithUser) => void;
+  onDelete?: () => void;
 }
 
-export default function PostCard({ post, currentUserId, onCardClick }: PostCardProps) {
+export default function PostCard({ post, currentUserId, onCardClick, onDelete }: PostCardProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useUser();
@@ -84,6 +85,8 @@ export default function PostCard({ post, currentUserId, onCardClick }: PostCardP
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/users", effectiveUserId, "posts"] });
       toast({ description: "Post deleted" });
+      // Close modal if open
+      onDelete?.();
     },
     onError: () => {
       toast({ variant: "destructive", description: "Failed to delete post" });

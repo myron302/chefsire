@@ -516,7 +516,7 @@ export default function Feed() {
             post.isRecipe ? (
               <SimpleRecipeCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} />
             ) : (
-              <PostCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} />
+              <PostCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} onDelete={() => setSelectedPost(null)} />
             )
           )}
 
