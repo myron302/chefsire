@@ -11,7 +11,7 @@ interface Comment {
   id: string;
   userId: string;
   postId: string;
-  text: string;
+  content: string;
   createdAt: string;
   user: {
     id: string;
@@ -93,7 +93,7 @@ export default function CommentsSection({ postId, currentUserId }: CommentsSecti
               <div className="flex-1 min-w-0">
                 <div className="bg-muted rounded-lg p-2">
                   <p className="font-semibold text-xs">{comment.user.displayName}</p>
-                  <p className="text-sm">{comment.text}</p>
+                  <p className="text-sm">{comment.content}</p>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
