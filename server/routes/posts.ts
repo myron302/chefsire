@@ -3,6 +3,7 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { asyncHandler, ErrorFactory } from "../middleware/error-handler";
 import { validateRequest, CommonSchemas } from "../middleware/validation";
+import { requireAuth } from "../middleware/auth";
 
 const r = Router();
 
@@ -126,14 +127,13 @@ r.patch("/:id", async (req, res) => {
   }
 });
 
-r.delete("/:id", async (req, res) => {
+r.delete("/:id", requireAuth, async (req, res) => {
   try {
     console.log("DELETE /api/posts/:id - Request params:", req.params);
-    console.log("DELETE /api/posts/:id - Request body:", req.body);
-    console.log("DELETE /api/posts/:id - Session:", req.session);
-    console.log("DELETE /api/posts/:id - User:", req.session?.user);
+    console.log("DELETE /api/posts/:id - User:", req.user);
 
     const postId = req.params.id;
+    const userId = req.user!.id; // requireAuth ensures user exists
 
     // Get the post first to check ownership
     const post = await storage.getPost(postId);
@@ -144,17 +144,11 @@ r.delete("/:id", async (req, res) => {
       return res.status(404).json({ message: "Post not found" });
     }
 
-    // Check if user is authenticated
-    if (!req.session?.user?.id) {
-      console.log("DELETE /api/posts/:id - User not authenticated");
-      return res.status(401).json({ message: "Not authenticated" });
-    }
-
     // Check if user owns the post
-    if (post.userId !== req.session.user.id) {
+    if (post.userId !== userId) {
       console.log("DELETE /api/posts/:id - User does not own post", {
         postUserId: post.userId,
-        sessionUserId: req.session.user.id
+        requestUserId: userId
       });
       return res.status(403).json({ message: "You can only delete your own posts" });
     }
