@@ -731,37 +731,44 @@ export default function Feed() {
                       onClick={async () => {
                         if (!confirm("Delete this post? This action cannot be undone.")) return;
                         try {
-                          console.log("Deleting post:", selectedPost.id);
+                          console.log("=== DELETE POST DEBUG ===");
+                          console.log("Post ID:", selectedPost.id);
+                          console.log("Current User ID:", currentUserId);
+                          console.log("Post Owner ID:", selectedPost.user?.id);
+                          console.log("Auth token cookie:", document.cookie);
+
                           const res = await fetch(`/api/posts/${selectedPost.id}`, {
                             method: "DELETE",
                             credentials: "include",
                           });
-                          console.log("Delete response status:", res.status);
-                          console.log("Delete response headers:", Object.fromEntries(res.headers.entries()));
+
+                          console.log("Response status:", res.status);
+                          console.log("Response headers:", Object.fromEntries(res.headers.entries()));
 
                           const responseText = await res.text();
-                          console.log("Delete response body:", responseText);
+                          console.log("Response body:", responseText);
 
                           if (!res.ok) {
-                            let errorMsg = `Status: ${res.status}\nResponse: ${responseText}`;
+                            let errorMsg = `HTTP Status: ${res.status}\n\nResponse Body:\n${responseText}\n\nCookies:\n${document.cookie}`;
                             try {
                               const err = JSON.parse(responseText);
-                              errorMsg = `Status: ${res.status}\nMessage: ${err.message || 'Unknown error'}\nFull error: ${JSON.stringify(err, null, 2)}`;
+                              errorMsg = `HTTP Status: ${res.status}\n\nError Message: ${err.message || err.error || 'Unknown'}\n\nFull Response:\n${JSON.stringify(err, null, 2)}\n\nAuth Cookie:\n${document.cookie}`;
                             } catch (e) {
-                              // Response wasn't JSON
+                              // Response wasn't JSON, use text
                             }
-                            console.error("Delete failed:", errorMsg);
-                            alert(`Failed to delete post:\n\n${errorMsg}`);
+                            console.error("DELETE FAILED:", errorMsg);
+                            alert(`❌ DELETE FAILED\n\n${errorMsg}`);
                             return;
                           }
 
-                          console.log("Delete successful");
+                          console.log("✅ Delete successful");
                           setSelectedPost(null);
                           window.location.reload();
                         } catch (error) {
                           const errorMsg = error instanceof Error ? error.message : String(error);
-                          console.error("Delete error:", error);
-                          alert(`Failed to delete post:\n\nError: ${errorMsg}\n\nStack: ${error instanceof Error ? error.stack : 'N/A'}`);
+                          const stack = error instanceof Error ? error.stack : 'N/A';
+                          console.error("DELETE EXCEPTION:", error);
+                          alert(`❌ DELETE EXCEPTION\n\nError: ${errorMsg}\n\nStack:\n${stack}\n\nCookies:\n${document.cookie}`);
                         }
                       }}
                     >
