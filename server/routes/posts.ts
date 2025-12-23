@@ -128,12 +128,56 @@ r.patch("/:id", async (req, res) => {
 
 r.delete("/:id", async (req, res) => {
   try {
-    const ok = await storage.deletePost(req.params.id);
-    if (!ok) return res.status(404).json({ message: "Post not found" });
-    res.json({ message: "Post deleted" });
-  } catch (err) {
-    console.error("posts/delete error", err);
-    res.status(500).json({ message: "Failed to delete post" });
+    console.log("DELETE /api/posts/:id - Request params:", req.params);
+    console.log("DELETE /api/posts/:id - Request body:", req.body);
+    console.log("DELETE /api/posts/:id - Session:", req.session);
+    console.log("DELETE /api/posts/:id - User:", req.session?.user);
+
+    const postId = req.params.id;
+
+    // Get the post first to check ownership
+    const post = await storage.getPost(postId);
+    console.log("DELETE /api/posts/:id - Found post:", post);
+
+    if (!post) {
+      console.log("DELETE /api/posts/:id - Post not found");
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    // Check if user is authenticated
+    if (!req.session?.user?.id) {
+      console.log("DELETE /api/posts/:id - User not authenticated");
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    // Check if user owns the post
+    if (post.userId !== req.session.user.id) {
+      console.log("DELETE /api/posts/:id - User does not own post", {
+        postUserId: post.userId,
+        sessionUserId: req.session.user.id
+      });
+      return res.status(403).json({ message: "You can only delete your own posts" });
+    }
+
+    console.log("DELETE /api/posts/:id - Attempting to delete post");
+    const ok = await storage.deletePost(postId);
+
+    if (!ok) {
+      console.log("DELETE /api/posts/:id - Delete failed (storage returned false)");
+      return res.status(500).json({ message: "Failed to delete post" });
+    }
+
+    console.log("DELETE /api/posts/:id - Post deleted successfully");
+    res.json({ message: "Post deleted", postId });
+  } catch (err: any) {
+    console.error("DELETE /api/posts/:id - Error:", err);
+    console.error("DELETE /api/posts/:id - Error message:", err.message);
+    console.error("DELETE /api/posts/:id - Error stack:", err.stack);
+    res.status(500).json({
+      message: "Failed to delete post",
+      error: err.message,
+      details: err.toString()
+    });
   }
 });
 
