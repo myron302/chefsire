@@ -778,15 +778,14 @@ export class DrizzleStorage implements IStorage {
       .values({ userId, commentId })
       .onConflictDoNothing()
       .returning();
-    // Only increment the likes count if a new like was inserted
+    // If a new like was inserted, return it.  If the like already existed the
+    // database will not insert a duplicate, and we simply return the existing
+    // record.  We do not maintain a separate likes count on the comments table
+    // because the underlying schema does not include such a column.
     if (like) {
-      await db
-        .update(comments)
-        .set({ likesCount: sql`${comments.likesCount} + 1` })
-        .where(eq(comments.id, commentId));
       return like;
     }
-    // If the like already existed, return a synthetic row to indicate nothing changed
+    // Return a synthetic result when the like already exists
     return { id: '', userId, commentId, createdAt: new Date().toISOString() } as any;
   }
 
@@ -802,10 +801,6 @@ export class DrizzleStorage implements IStorage {
       .where(and(eq(commentLikes.userId, userId), eq(commentLikes.commentId, commentId)))
       .returning();
     if (like) {
-      await db
-        .update(comments)
-        .set({ likesCount: sql`${comments.likesCount} - 1` })
-        .where(eq(comments.id, commentId));
       return true;
     }
     return false;
