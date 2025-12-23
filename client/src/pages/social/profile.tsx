@@ -11,10 +11,7 @@ import { useUser } from "@/contexts/UserContext";
 import { ProfileCompletion } from "@/components/ProfileCompletion";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
 import PostCard from "@/components/post-card";
-// Import CommentsSection from the local file.  The original alias
-// '@/components/CommentsSection' may not resolve here, so we import
-// from the local CommentsSection component in the same directory.
-import CommentsSection from "./CommentsSection";
+import CommentsSection from "@/components/CommentsSection";
 import { shareContent, getPostShareUrl } from "@/lib/share";
 import {
   Image,
