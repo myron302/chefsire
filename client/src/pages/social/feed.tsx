@@ -491,10 +491,10 @@ export default function Feed() {
     retry: false,
   });
 
-  // Use real data only, no demo fallback
-  const displayPosts = posts ?? [];
-  const displaySuggestedUsers = suggestedUsers ?? [];
-  const displayTrendingRecipes = trendingRecipes ?? [];
+  // Use demo data as fallback when no real data available
+  const displayPosts = posts && posts.length > 0 ? posts : (postsError ? demoPosts : posts ?? demoPosts);
+  const displaySuggestedUsers = suggestedUsers && suggestedUsers.length > 0 ? suggestedUsers : (usersError ? demoSuggestedUsers : suggestedUsers ?? demoSuggestedUsers);
+  const displayTrendingRecipes = trendingRecipes && trendingRecipes.length > 0 ? trendingRecipes : (recipesError ? demoTrendingRecipes : trendingRecipes ?? demoTrendingRecipes);
 
   if (postsLoading) {
     return (
