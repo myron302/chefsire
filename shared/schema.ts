@@ -177,13 +177,6 @@ export const comments = pgTable("comments", {
   postId: varchar("post_id").references(() => posts.id).notNull(),
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-  /**
-   * Track how many likes a comment has received.  This makes it trivial to
-   * display like counts for each comment without performing a costly JOIN at
-   * runtime.  The corresponding commentLikes table will keep a record of
-   * which user liked which comment.
-   */
-  likesCount: integer("likes_count").default(0),
 });
 
 export const follows = pgTable("follows", {
