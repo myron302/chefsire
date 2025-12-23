@@ -34,21 +34,27 @@ declare global {
         nutritionPremium?: boolean;
         nutritionTrialEndsAt?: Date | string;
       };
+      cookies?: {
+        auth_token?: string;
+        [key: string]: any;
+      };
     }
   }
 }
 
-/** Try header first, then cookie `auth_token` */
+/** Try cookie first (via cookie-parser), then Authorization header */
 function extractToken(req: Request): string | null {
+  // First try parsed cookie from cookie-parser middleware
+  if (req.cookies?.auth_token) {
+    return req.cookies.auth_token;
+  }
+
+  // Then try Authorization header
   const h = req.headers["authorization"];
   if (h && typeof h === "string" && h.startsWith("Bearer ")) {
     return h.slice(7);
   }
-  const cookie = req.headers["cookie"];
-  if (cookie) {
-    const m = cookie.match(/(?:^|;\s*)auth_token=([^;]+)/);
-    if (m) return decodeURIComponent(m[1]);
-  }
+
   return null;
 }
 
