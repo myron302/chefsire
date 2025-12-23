@@ -731,19 +731,25 @@ export default function Feed() {
                       onClick={async () => {
                         if (!confirm("Delete this post? This action cannot be undone.")) return;
                         try {
+                          console.log("Deleting post:", selectedPost.id);
                           const res = await fetch(`/api/posts/${selectedPost.id}`, {
                             method: "DELETE",
                             credentials: "include",
                           });
+                          console.log("Delete response status:", res.status);
                           if (!res.ok) {
                             const err = await res.json();
-                            alert(`Failed to delete: ${err.message || "Unknown error"}`);
+                            console.error("Delete failed:", err);
+                            alert(`Failed to delete: ${JSON.stringify(err)}`);
                             return;
                           }
+                          const data = await res.json();
+                          console.log("Delete successful:", data);
                           setSelectedPost(null);
                           window.location.reload(); // Refresh to show updated posts
                         } catch (error) {
-                          alert(`Failed to delete post: ${error instanceof Error ? error.message : "Unknown error"}`);
+                          console.error("Delete error:", error);
+                          alert(`Failed to delete post: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
                         }
                       }}
                     >

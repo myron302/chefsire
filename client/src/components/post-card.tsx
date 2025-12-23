@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import type { PostWithUser } from "@shared/schema";
 import { MoreHorizontal } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { shareContent, getPostShareUrl } from "@/lib/share";
 
 // Import UI primitives from their individual modules (do not import the directory)
@@ -359,6 +359,9 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
         <div className="text-sm text-muted-foreground">{post.likesCount || 0} likes</div>
       </div>
 
+      {/* Comment Preview Section */}
+      <CommentPreview postId={post.id} totalComments={post.commentsCount || 0} onViewAll={() => onCardClick?.(post)} />
+
       {/* NEW: MODAL FOR EDITING POST */}
       {isEditing && (
         <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
@@ -405,5 +408,63 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
         </div>
       )}
     </Card>
+  );
+}
+
+// Comment Preview Component
+interface CommentPreviewProps {
+  postId: string;
+  totalComments: number;
+  onViewAll?: () => void;
+}
+
+interface Comment {
+  id: string;
+  userId: string;
+  postId: string;
+  content: string;
+  createdAt: string;
+  user: {
+    id: string;
+    displayName: string;
+    avatar?: string;
+  };
+}
+
+function CommentPreview({ postId, totalComments, onViewAll }: CommentPreviewProps) {
+  // Fetch first 2 comments for this post
+  const { data: comments = [] } = useQuery<Comment[]>({
+    queryKey: ["/api/posts", postId, "comments", "preview"],
+    queryFn: async () => {
+      const response = await fetch(`/api/posts/${postId}/comments`, {
+        credentials: "include",
+      });
+      if (!response.ok) return [];
+      const allComments = await response.json();
+      // Return only first 2 comments
+      return allComments.slice(0, 2);
+    },
+    enabled: totalComments > 0,
+  });
+
+  if (totalComments === 0) return null;
+
+  return (
+    <div className="px-4 pb-4 space-y-2">
+      {comments.map((comment) => (
+        <div key={comment.id} className="text-sm">
+          <span className="font-semibold">{comment.user.displayName}</span>{" "}
+          <span className="text-muted-foreground line-clamp-2">{comment.content}</span>
+        </div>
+      ))}
+      {totalComments > 2 && (
+        <button
+          onClick={onViewAll}
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          View all {totalComments} comments
+        </button>
+      )}
+    </div>
   );
 }
