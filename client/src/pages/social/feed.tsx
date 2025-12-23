@@ -737,19 +737,31 @@ export default function Feed() {
                             credentials: "include",
                           });
                           console.log("Delete response status:", res.status);
+                          console.log("Delete response headers:", Object.fromEntries(res.headers.entries()));
+
+                          const responseText = await res.text();
+                          console.log("Delete response body:", responseText);
+
                           if (!res.ok) {
-                            const err = await res.json();
-                            console.error("Delete failed:", err);
-                            alert(`Failed to delete: ${JSON.stringify(err)}`);
+                            let errorMsg = `Status: ${res.status}\nResponse: ${responseText}`;
+                            try {
+                              const err = JSON.parse(responseText);
+                              errorMsg = `Status: ${res.status}\nMessage: ${err.message || 'Unknown error'}\nFull error: ${JSON.stringify(err, null, 2)}`;
+                            } catch (e) {
+                              // Response wasn't JSON
+                            }
+                            console.error("Delete failed:", errorMsg);
+                            alert(`Failed to delete post:\n\n${errorMsg}`);
                             return;
                           }
-                          const data = await res.json();
-                          console.log("Delete successful:", data);
+
+                          console.log("Delete successful");
                           setSelectedPost(null);
-                          window.location.reload(); // Refresh to show updated posts
+                          window.location.reload();
                         } catch (error) {
+                          const errorMsg = error instanceof Error ? error.message : String(error);
                           console.error("Delete error:", error);
-                          alert(`Failed to delete post: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
+                          alert(`Failed to delete post:\n\nError: ${errorMsg}\n\nStack: ${error instanceof Error ? error.stack : 'N/A'}`);
                         }
                       }}
                     >
