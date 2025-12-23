@@ -8,14 +8,12 @@ import { BitesRow } from "@/components/BitesRow";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Heart, Clock, X, MessageCircle } from "lucide-react";
+import CommentsSection from "@/components/CommentsSection";
+import { useQuery as useQueryClientLikes } from "@tanstack/react-query";
 import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
 import ErrorBoundary from "@/components/ErrorBoundary";
-// Import CommentsSection from the local file.  The original alias
-// '@/components/CommentsSection' may not resolve in this environment, so
-// we import the component from the adjacent file we added.
-import CommentsSection from "./CommentsSection";
 import { useUser } from "@/contexts/UserContext";
 
 const demoTrendingRecipes = [
@@ -445,14 +443,28 @@ export default function Feed() {
   const currentUserId = user?.id || "";
   const [selectedPost, setSelectedPost] = useState<PostWithUser | null>(null);
 
+  // Fetch list of users who liked the currently selected post (for modal)
+  const { data: selectedPostLikes = [] } = useQueryClientLikes<{ id: string; displayName: string; avatar?: string }[]>({
+    queryKey: ["/api/posts", selectedPost?.id, "likes"],
+    queryFn: async () => {
+      if (!selectedPost?.id) return [];
+      const response = await fetch(`/api/posts/${selectedPost.id}/likes`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to fetch post likes");
+      return response.json();
+    },
+    enabled: !!selectedPost?.id,
+  });
+
   // Posts feed - fetch explore posts (all posts) so user sees their own posts too
   const {
     data: posts,
     isLoading: postsLoading,
     error: postsError,
   } = useQuery<PostWithUser[]>({
-    queryKey: ["/api/posts/explore", currentUserId],
-    queryFn: () => fetchJSON<PostWithUser[]>(`/api/posts/explore${currentUserId ? `?userId=${currentUserId}` : ''}`),
+    queryKey: ["/api/posts/explore"],
+    queryFn: () => fetchJSON<PostWithUser[]>("/api/posts/explore"),
     retry: false,
   });
 
@@ -519,7 +531,7 @@ export default function Feed() {
             post.isRecipe ? (
               <SimpleRecipeCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} />
             ) : (
-              <PostCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} onDelete={() => setSelectedPost(null)} />
+              <PostCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} />
             )
           )}
 
@@ -710,75 +722,25 @@ export default function Feed() {
                 )}
 
                 {/* Engagement stats */}
-                <div className="flex items-center space-x-4 text-sm text-muted-foreground border-t pt-4 mb-4">
+                <div className="flex flex-col space-y-2 text-sm text-muted-foreground border-t pt-4">
                   <div className="flex items-center space-x-1">
                     <Heart className="h-4 w-4" />
                     <span>{selectedPost.likesCount || 0} likes</span>
                   </div>
+                  {selectedPostLikes.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      Liked by {selectedPostLikes.slice(0, 2).map((u) => u.displayName).join(", ")}
+                      {selectedPostLikes.length > 2 && ` and ${selectedPostLikes.length - 2} others`}
+                    </span>
+                  )}
                   <div className="flex items-center space-x-1">
                     <MessageCircle className="h-4 w-4" />
                     <span>{selectedPost.commentsCount || 0} comments</span>
                   </div>
                 </div>
 
-                {/* Comments Section */}
+                {/* Comments section */}
                 <CommentsSection postId={selectedPost.id} currentUserId={currentUserId} />
-
-                {/* Delete button for post owner */}
-                {currentUserId === selectedPost.user?.id && (
-                  <div className="mt-6 pt-4 border-t">
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="w-full"
-                      onClick={async () => {
-                        if (!confirm("Delete this post? This action cannot be undone.")) return;
-                        try {
-                          console.log("=== DELETE POST DEBUG ===");
-                          console.log("Post ID:", selectedPost.id);
-                          console.log("Current User ID:", currentUserId);
-                          console.log("Post Owner ID:", selectedPost.user?.id);
-                          console.log("Auth token cookie:", document.cookie);
-
-                          const res = await fetch(`/api/posts/${selectedPost.id}`, {
-                            method: "DELETE",
-                            credentials: "include",
-                          });
-
-                          console.log("Response status:", res.status);
-                          console.log("Response headers:", Object.fromEntries(res.headers.entries()));
-
-                          const responseText = await res.text();
-                          console.log("Response body:", responseText);
-
-                          if (!res.ok) {
-                            let errorMsg = `HTTP Status: ${res.status}\n\nResponse Body:\n${responseText}\n\nCookies:\n${document.cookie}`;
-                            try {
-                              const err = JSON.parse(responseText);
-                              errorMsg = `HTTP Status: ${res.status}\n\nError Message: ${err.message || err.error || 'Unknown'}\n\nFull Response:\n${JSON.stringify(err, null, 2)}\n\nAuth Cookie:\n${document.cookie}`;
-                            } catch (e) {
-                              // Response wasn't JSON, use text
-                            }
-                            console.error("DELETE FAILED:", errorMsg);
-                            alert(`❌ DELETE FAILED\n\n${errorMsg}`);
-                            return;
-                          }
-
-                          console.log("✅ Delete successful");
-                          setSelectedPost(null);
-                          window.location.reload();
-                        } catch (error) {
-                          const errorMsg = error instanceof Error ? error.message : String(error);
-                          const stack = error instanceof Error ? error.stack : 'N/A';
-                          console.error("DELETE EXCEPTION:", error);
-                          alert(`❌ DELETE EXCEPTION\n\nError: ${errorMsg}\n\nStack:\n${stack}\n\nCookies:\n${document.cookie}`);
-                        }
-                      }}
-                    >
-                      Delete Post
-                    </Button>
-                  </div>
-                )}
               </div>
             </div>
           </div>
