@@ -12,7 +12,10 @@ import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import CommentsSection from "@/components/CommentsSection";
+// Import CommentsSection from the local file.  The original alias
+// '@/components/CommentsSection' may not resolve in this environment, so
+// we import the component from the adjacent file we added.
+import CommentsSection from "./CommentsSection";
 import { useUser } from "@/contexts/UserContext";
 
 const demoTrendingRecipes = [
