@@ -84,6 +84,10 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
       // IMPORTANT: These invalidation calls ensure the profile page refreshes
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/users", effectiveUserId, "posts"] });
+      // Also refresh explore and user-specific lists used in feed/profile
+      queryClient.invalidateQueries({ queryKey: ["/api/posts/explore"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/posts/explore", effectiveUserId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/posts/user", effectiveUserId] });
       toast({ description: "Post deleted" });
       // Close modal if open
       onDelete?.();
@@ -118,6 +122,12 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
       // Invalidate queries to refresh like counts
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/users", effectiveUserId, "posts"] });
+      // Also invalidate the explore and user-specific posts so other views update
+      queryClient.invalidateQueries({ queryKey: ["/api/posts/explore"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/posts/explore", effectiveUserId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/posts/user", effectiveUserId] });
+      // Refresh the list of users who liked this post
+      queryClient.invalidateQueries({ queryKey: ["/api/posts", post.id, "likes"] });
     },
     onError: (error, shouldLike) => {
       // Revert on error
@@ -154,6 +164,18 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
       // Revert on error
       setIsSaved(!shouldSave);
       toast({ variant: "destructive", description: "Failed to update save status" });
+    },
+  });
+
+  // Fetch the list of users who liked this post.  This is used to display
+  // friendly names alongside the like count.  The query key includes the post
+  // id so the list is cached per-post.
+  const { data: likeUsers = [] } = useQuery<{ id: string; displayName: string; avatar?: string }[]>({
+    queryKey: ["/api/posts", post.id, "likes"],
+    queryFn: async () => {
+      const response = await fetch(`/api/posts/${post.id}/likes`);
+      if (!response.ok) return [];
+      return response.json();
     },
   });
 
@@ -356,7 +378,16 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
             </Button>
           )}
         </div>
-        <div className="text-sm text-muted-foreground">{post.likesCount || 0} likes</div>
+        <div className="text-sm text-muted-foreground">
+          {post.likesCount || 0} likes
+          {/* Show a preview of who liked this post */}
+          {likeUsers.length > 0 && (
+            <span className="ml-2">
+              Liked by {likeUsers.slice(0, 2).map((u) => u.displayName).join(", ")}
+              {likeUsers.length > 2 && ` and ${likeUsers.length - 2} others`}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Comment Preview Section */}
