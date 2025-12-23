@@ -409,15 +409,60 @@ export class DrizzleStorage implements IStorage {
 
   async deletePost(id: string): Promise<boolean> {
     const db = getDb();
-    const result = await db.delete(posts).where(eq(posts.id, id)).returning();
-    if (result[0]) {
-      await db
-        .update(users)
-        .set({ postsCount: sql`${users.postsCount} - 1` })
-        .where(eq(users.id, result[0].userId));
-      return true;
+
+    try {
+      console.log("deletePost: Starting delete for post ID:", id);
+
+      // First, get the post to know the userId
+      const [post] = await db.select().from(posts).where(eq(posts.id, id)).limit(1);
+      if (!post) {
+        console.log("deletePost: Post not found");
+        return false;
+      }
+
+      console.log("deletePost: Found post, deleting related records...");
+
+      // Delete all related records first (to avoid foreign key constraint violations)
+      // Delete comments
+      const deletedComments = await db.delete(comments).where(eq(comments.postId, id));
+      console.log("deletePost: Deleted comments");
+
+      // Delete likes
+      const deletedLikes = await db.delete(likes).where(eq(likes.postId, id));
+      console.log("deletePost: Deleted likes");
+
+      // Delete saves
+      const deletedSaves = await db.delete(saves).where(eq(saves.postId, id));
+      console.log("deletePost: Deleted saves");
+
+      // Delete recipe if this is a recipe post
+      const deletedRecipes = await db.delete(recipes).where(eq(recipes.postId, id));
+      console.log("deletePost: Deleted recipe (if any)");
+
+      // Now delete the post itself
+      console.log("deletePost: Deleting post...");
+      const result = await db.delete(posts).where(eq(posts.id, id)).returning();
+
+      if (result[0]) {
+        console.log("deletePost: Post deleted, updating user post count...");
+        // Decrement user's post count
+        await db
+          .update(users)
+          .set({ postsCount: sql`${users.postsCount} - 1` })
+          .where(eq(users.id, result[0].userId));
+
+        console.log("deletePost: ✅ Delete successful");
+        return true;
+      }
+
+      console.log("deletePost: ❌ Delete failed - no result");
+      return false;
+    } catch (err: any) {
+      console.error("deletePost: ❌ Error:", err);
+      console.error("deletePost: Error message:", err.message);
+      console.error("deletePost: Error stack:", err.stack);
+      throw err; // Re-throw so the API can return proper error
     }
-    return false;
   }
 
   async getFeedPosts(_userId: string, offset = 0, limit = 10): Promise<PostWithUser[]> {
