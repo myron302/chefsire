@@ -11,6 +11,7 @@ import { useUser } from "@/contexts/UserContext";
 import { ProfileCompletion } from "@/components/ProfileCompletion";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
 import PostCard from "@/components/post-card";
+import CommentsSection from "@/components/CommentsSection";
 import { shareContent, getPostShareUrl } from "@/lib/share";
 import {
   Image,
@@ -28,6 +29,8 @@ import {
   Apple,
   Crown,
   Target,
+  MessageCircle,
+  X,
   Zap,
   Plus,
   Store as StoreIcon,
@@ -1177,7 +1180,7 @@ export default function Profile() {
                 )}
 
                 {/* Engagement stats */}
-                <div className="flex items-center space-x-4 text-sm text-muted-foreground border-t pt-4">
+                <div className="flex items-center space-x-4 text-sm text-muted-foreground border-t pt-4 mb-4">
                   <div className="flex items-center space-x-1">
                     <Heart className="h-4 w-4" />
                     <span>{selectedPost.likesCount || 0} likes</span>
@@ -1187,6 +1190,58 @@ export default function Profile() {
                     <span>{selectedPost.commentsCount || 0} comments</span>
                   </div>
                 </div>
+
+                {/* Comments Section */}
+                <CommentsSection postId={selectedPost.id} currentUserId={currentUser?.id || ''} />
+
+                {/* Delete button for post owner */}
+                {currentUser?.id === selectedPost.user?.id && (
+                  <div className="mt-6 pt-4 border-t">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="w-full"
+                      onClick={async () => {
+                        if (!confirm("Delete this post? This action cannot be undone.")) return;
+                        try {
+                          console.log("Deleting post:", selectedPost.id);
+                          const res = await fetch(`/api/posts/${selectedPost.id}`, {
+                            method: "DELETE",
+                            credentials: "include",
+                          });
+                          console.log("Delete response status:", res.status);
+                          console.log("Delete response headers:", Object.fromEntries(res.headers.entries()));
+
+                          const responseText = await res.text();
+                          console.log("Delete response body:", responseText);
+
+                          if (!res.ok) {
+                            let errorMsg = `Status: ${res.status}\nResponse: ${responseText}`;
+                            try {
+                              const err = JSON.parse(responseText);
+                              errorMsg = `Status: ${res.status}\nMessage: ${err.message || 'Unknown error'}\nFull error: ${JSON.stringify(err, null, 2)}`;
+                            } catch (e) {
+                              // Response wasn't JSON
+                            }
+                            console.error("Delete failed:", errorMsg);
+                            alert(`Failed to delete post:\n\n${errorMsg}`);
+                            return;
+                          }
+
+                          console.log("Delete successful");
+                          setSelectedPost(null);
+                          window.location.reload();
+                        } catch (error) {
+                          const errorMsg = error instanceof Error ? error.message : String(error);
+                          console.error("Delete error:", error);
+                          alert(`Failed to delete post:\n\nError: ${errorMsg}\n\nStack: ${error instanceof Error ? error.stack : 'N/A'}`);
+                        }
+                      }}
+                    >
+                      Delete Post
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
