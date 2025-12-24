@@ -1,4 +1,4 @@
-// client/src/pages/feed.tsx
+// client/src/pages/social/feed.tsx
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -457,14 +457,19 @@ export default function Feed() {
     enabled: !!selectedPost?.id,
   });
 
-  // Posts feed - fetch explore posts (all posts) so user sees their own posts too
+  // Posts feed
+  // - If logged in: /api/posts/feed?userId=... returns your posts + followed users
+  // - If logged out: /api/posts/feed falls back to explore
   const {
     data: posts,
     isLoading: postsLoading,
     error: postsError,
   } = useQuery<PostWithUser[]>({
-    queryKey: ["/api/posts/explore"],
-    queryFn: () => fetchJSON<PostWithUser[]>("/api/posts/explore"),
+    queryKey: ["/api/posts/feed", currentUserId],
+    queryFn: () =>
+      fetchJSON<PostWithUser[]>(
+        `/api/posts/feed?offset=0&limit=25${currentUserId ? `&userId=${encodeURIComponent(currentUserId)}` : ""}`
+      ),
     retry: false,
   });
 
@@ -491,8 +496,9 @@ export default function Feed() {
     retry: false,
   });
 
-  // Use real data only, no demo fallback
-  const displayPosts = posts ?? [];
+  // Prefer real posts; fall back to demo posts if the API returns nothing or errors
+  const realPosts = posts ?? [];
+  const displayPosts = postsError || realPosts.length === 0 ? demoPosts : realPosts;
   const displaySuggestedUsers = suggestedUsers ?? [];
   const displayTrendingRecipes = trendingRecipes ?? [];
 
