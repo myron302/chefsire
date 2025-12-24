@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -7,52 +7,46 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 
-/**
- * A single comment record returned from the API.  Each comment includes
- * the author details for display purposes.
- */
+interface CommentUser {
+  id: string;
+  displayName: string;
+  avatar?: string;
+}
+
 interface Comment {
   id: string;
   userId: string;
   postId: string;
   content: string;
   createdAt: string;
-  user: {
-    id: string;
-    displayName: string;
-    avatar?: string;
-  };
+  user: CommentUser;
 }
 
-/**
- * Props for the CommentsSection component.  A postId is required to fetch
- * comments for a particular post.  currentUserId should be passed if the
- * viewer is authenticated; it is used to determine like status and author
- * attribution when creating new comments.
- */
 interface CommentsSectionProps {
   postId: string;
   currentUserId: string;
 }
 
-/**
- * The CommentsSection component lists all comments on a post and allows
- * authenticated users to add new comments and like or unlike existing
- * comments.  Each comment displays its author, timestamp, content, and
- * like information (including a preview of which users have liked it).
- */
 export default function CommentsSection({ postId, currentUserId }: CommentsSectionProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [commentText, setCommentText] = useState("");
 
-  // Fetch comments for the given post.  The query key includes the postId
-  // so that comments are cached per-post.  We include credentials on the
-  // request so that the API can determine the current user, if needed.
-  const {
-    data: comments = [],
-    isLoading,
-  } = useQuery<Comment[]>({
+  // Reply UX (Instagram-like)
+  const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // CSS to hide scrollbar (Instagram-style)
+  // Safe to inline here; no global CSS edits required.
+  const ScrollbarStyle = () => (
+    <style>{`
+      .cs-no-scrollbar::-webkit-scrollbar { display: none; }
+      .cs-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    `}</style>
+  );
+
+  // Fetch comments
+  const { data: comments = [], isLoading } = useQuery<Comment[]>({
     queryKey: ["/api/posts", postId, "comments"],
     queryFn: async () => {
       const response = await fetch(`/api/posts/${postId}/comments`, {
@@ -63,22 +57,25 @@ export default function CommentsSection({ postId, currentUserId }: CommentsSecti
     },
   });
 
-  // Mutation for adding a new comment.  On success it invalidates the
-  // comments query for this post to refresh the list and resets the text
-  // box.  On failure it displays an error toast.
+  // Add comment
   const addCommentMutation = useMutation({
     mutationFn: async (text: string) => {
-      const res = await apiRequest("POST", "/api/posts/comments", {
+      const payload = {
         userId: currentUserId,
         postId,
-        text,
-      });
-      return res.json();
+        // If replying, we prefix with @name (simple IG-like behavior without threading)
+        text: replyTo ? `@${replyTo.name} ${text}` : text,
+      };
+      const res = await apiRequest("POST", "/api/posts/comments", payload);
+      const body = await res.text();
+      if (!res.ok) throw new Error(body || "Failed to add comment");
+      return body ? JSON.parse(body) : null;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/posts", postId, "comments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
       setCommentText("");
+      setReplyTo(null);
       toast({ description: "Comment added!" });
     },
     onError: (error: Error) => {
@@ -96,131 +93,127 @@ export default function CommentsSection({ postId, currentUserId }: CommentsSecti
     addCommentMutation.mutate(commentText.trim());
   };
 
-  /**
-   * A nested component for displaying and interacting with a single comment.
-   * It fetches the like status for the current user and the list of users
-   * who have liked the comment.  Users can toggle their like by clicking
-   * the heart button.  Queries are invalidated appropriately to refresh
-   * state after a mutation.
-   */
+  function focusInput() {
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
   function CommentItem({ comment }: { comment: Comment }) {
-    // Determine if the current user has liked this comment
+    // Like status (current user)
     const { data: likeStatus } = useQuery<{ isLiked: boolean }>({
       queryKey: ["/api/posts", "comments", "likes", currentUserId, comment.id],
       queryFn: async () => {
         if (!currentUserId) return { isLiked: false };
-        try {
-          const res = await fetch(`/api/posts/comments/likes/${currentUserId}/${comment.id}`);
-          if (!res.ok) return { isLiked: false };
-          return res.json();
-        } catch {
-          return { isLiked: false };
-        }
+        const res = await fetch(`/api/posts/comments/likes/${currentUserId}/${comment.id}`, {
+          credentials: "include",
+        });
+        if (!res.ok) return { isLiked: false };
+        return res.json();
       },
       enabled: !!currentUserId,
     });
 
-    // Retrieve list of users who have liked this comment
-    const { data: likeUsers = [] } = useQuery<{
-      id: string;
-      displayName: string;
-      avatar?: string;
-    }[]>({
+    // Who liked this comment (for preview text)
+    const { data: likeUsers = [] } = useQuery<CommentUser[]>({
       queryKey: ["/api/posts", "comments", comment.id, "likes"],
       queryFn: async () => {
-        try {
-          const res = await fetch(`/api/posts/comments/${comment.id}/likes`);
-          if (!res.ok) return [];
-          return res.json();
-        } catch {
-          return [];
-        }
+        const res = await fetch(`/api/posts/comments/${comment.id}/likes`, {
+          credentials: "include",
+        });
+        if (!res.ok) return [];
+        return res.json();
       },
     });
 
-    // Mutation to toggle like/unlike on a comment
-    const likeCommentMutation = useMutation({
+    const likeMutation = useMutation({
       mutationFn: async (shouldLike: boolean) => {
-        if (!currentUserId) throw new Error("Missing user");
+        if (!currentUserId) throw new Error("Please log in to like comments");
         if (shouldLike) {
           const res = await apiRequest("POST", "/api/posts/comments/likes", {
             userId: currentUserId,
             commentId: comment.id,
           });
-          if (!res.ok) throw new Error("Failed to like comment");
-          return res.json();
+          const body = await res.text();
+          if (!res.ok) throw new Error(body || "Failed to like comment");
+          return body ? JSON.parse(body) : null;
         } else {
-          const res = await apiRequest(
-            "DELETE",
-            `/api/posts/comments/likes/${currentUserId}/${comment.id}`
-          );
-          if (!res.ok) throw new Error("Failed to unlike comment");
-          return res.json();
+          const res = await apiRequest("DELETE", `/api/posts/comments/likes/${currentUserId}/${comment.id}`);
+          const body = await res.text();
+          if (!res.ok) throw new Error(body || "Failed to unlike comment");
+          return body ? JSON.parse(body) : null;
         }
       },
-      onMutate: async (shouldLike: boolean) => {
-        // Optimistically update local like status
+      onMutate: async (shouldLike) => {
         queryClient.setQueryData(
           ["/api/posts", "comments", "likes", currentUserId, comment.id],
           { isLiked: shouldLike }
         );
       },
       onSuccess: () => {
-        // Invalidate queries to update counts and lists
         queryClient.invalidateQueries({ queryKey: ["/api/posts", postId, "comments"] });
         queryClient.invalidateQueries({ queryKey: ["/api/posts", "comments", comment.id, "likes"] });
         queryClient.invalidateQueries({
           queryKey: ["/api/posts", "comments", "likes", currentUserId, comment.id],
         });
       },
-      onError: (err: Error, shouldLike: boolean) => {
-        // Revert optimistic update on failure
+      onError: (err: Error, shouldLike) => {
+        // revert optimistic
         queryClient.setQueryData(
           ["/api/posts", "comments", "likes", currentUserId, comment.id],
           { isLiked: !shouldLike }
         );
-        toast({ variant: "destructive", description: "Failed to update comment like status" });
+        toast({
+          variant: "destructive",
+          description: `Failed to update comment like status: ${err.message}`,
+        });
       },
     });
 
-    const handleLike = () => {
-      if (!currentUserId) {
-        toast({ description: "Please log in to like comments" });
-        return;
-      }
-      likeCommentMutation.mutate(!(likeStatus?.isLiked));
-    };
-
     const isLiked = likeStatus?.isLiked ?? false;
+
+    const likedPreview =
+      likeUsers.length === 0
+        ? ""
+        : `Liked by ${likeUsers.slice(0, 2).map((u) => u.displayName).join(", ")}${
+            likeUsers.length > 2 ? ` and ${likeUsers.length - 2} others` : ""
+          }`;
 
     return (
       <div className="flex space-x-2">
         <Avatar className="w-8 h-8 flex-shrink-0">
-          <AvatarImage
-            src={comment.user.avatar || ""}
-            alt={comment.user.displayName}
-          />
+          <AvatarImage src={comment.user.avatar || ""} alt={comment.user.displayName} />
           <AvatarFallback>{(comment.user.displayName || "U")[0]}</AvatarFallback>
         </Avatar>
+
         <div className="flex-1 min-w-0">
-          <div className="bg-muted rounded-lg p-2">
-            <p className="font-semibold text-xs">{comment.user.displayName}</p>
-            <p className="text-sm">{comment.content}</p>
+          {/* Username + comment on same line (Instagram-style) */}
+          <div className="bg-muted rounded-lg px-3 py-2">
+            <span className="font-semibold text-xs mr-2">{comment.user.displayName}</span>
+            <span className="text-sm break-words">{comment.content}</span>
           </div>
-          <div className="flex items-center space-x-2 mt-1 text-xs text-muted-foreground">
+
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
             <span>{formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}</span>
+
             <button
-              onClick={handleLike}
+              type="button"
+              onClick={() => likeMutation.mutate(!isLiked)}
               className="focus:outline-none text-primary hover:underline"
             >
               {isLiked ? "♥" : "♡"} Like
             </button>
-            {likeUsers.length > 0 && (
-              <span className="text-muted-foreground">
-                Liked by {likeUsers.slice(0, 2).map((u) => u.displayName).join(", ")}
-                {likeUsers.length > 2 && ` and ${likeUsers.length - 2} others`}
-              </span>
-            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setReplyTo({ id: comment.id, name: comment.user.displayName });
+                focusInput();
+              }}
+              className="focus:outline-none hover:underline"
+            >
+              Reply
+            </button>
+
+            {likedPreview && <span className="text-muted-foreground">{likedPreview}</span>}
           </div>
         </div>
       </div>
@@ -229,9 +222,12 @@ export default function CommentsSection({ postId, currentUserId }: CommentsSecti
 
   return (
     <div className="border-t pt-4">
+      <ScrollbarStyle />
+
       <h3 className="font-semibold text-sm mb-3">Comments</h3>
-      {/* Comments list */}
-      <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
+
+      {/* Comments list (scroll + hidden scrollbar) */}
+      <div className="cs-no-scrollbar space-y-3 mb-4 max-h-60 overflow-y-auto pr-1">
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading comments...</p>
         ) : comments.length === 0 ? (
@@ -240,12 +236,30 @@ export default function CommentsSection({ postId, currentUserId }: CommentsSecti
           comments.map((comment) => <CommentItem key={comment.id} comment={comment} />)
         )}
       </div>
+
+      {/* Reply indicator */}
+      {replyTo && (
+        <div className="flex items-center justify-between mb-2 text-xs text-muted-foreground">
+          <span>
+            Replying to <span className="font-semibold">{replyTo.name}</span>
+          </span>
+          <button
+            type="button"
+            className="hover:underline"
+            onClick={() => setReplyTo(null)}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* Add comment form */}
       <form onSubmit={handleSubmit} className="space-y-2">
         <Textarea
+          ref={inputRef}
           value={commentText}
           onChange={(e) => setCommentText(e.target.value)}
-          placeholder="Write a comment..."
+          placeholder={replyTo ? `Reply to ${replyTo.name}...` : "Write a comment..."}
           className="resize-none text-sm"
           rows={2}
         />
