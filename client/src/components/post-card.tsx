@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import CommentsSection from "@/components/CommentsSection";
 
 interface PostCardProps {
   post: PostWithUser;
@@ -390,8 +391,15 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
         </div>
       </div>
 
-      {/* Comment Preview Section */}
-      <CommentPreview postId={post.id} totalComments={post.commentsCount || 0} onViewAll={() => onCardClick?.(post)} />
+      {/* Comments (inline like Instagram; scrolls with hidden scrollbar) */}
+      <div className="px-4 pb-4">
+        <CommentsSection
+          postId={post.id}
+          currentUserId={effectiveUserId || ""}
+          variant="inline"
+          onViewAll={() => onCardClick?.(post)}
+        />
+      </div>
 
       {/* NEW: MODAL FOR EDITING POST */}
       {isEditing && (
