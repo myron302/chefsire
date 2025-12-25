@@ -131,35 +131,50 @@ const NutritionMealPlanner = () => {
 
   const fetchGroceryList = async () => {
     try {
-      const baseList = [
-        { id: 1, item: 'Chicken Breast', amount: '2 lbs', category: 'Protein', checked: false },
-        { id: 2, item: 'Quinoa', amount: '1 bag', category: 'Grains', checked: false },
-        { id: 3, item: 'Mixed Greens', amount: '2 bags', category: 'Produce', checked: true },
-        { id: 4, item: 'Salmon Fillets', amount: '4 pieces', category: 'Protein', checked: false },
-        { id: 5, item: 'Greek Yogurt', amount: '32 oz', category: 'Dairy', checked: false },
-      ];
+      const response = await fetch('/api/meal-planner/grocery-list?purchased=false', {
+        credentials: 'include',
+      });
 
-      // Check for pending items from RecipeKit
-      try {
-        const pending = JSON.parse(localStorage.getItem('pendingShoppingListItems') || '[]');
-        if (pending.length > 0) {
-          const newItems = pending.map((item: any, idx: number) => ({
-            id: baseList.length + idx + 1,
-            item: item.name,
-            amount: `${item.quantity} ${item.unit}`,
-            category: 'From Recipe',
-            checked: false,
-            note: item.note
-          }));
-          setGroceryList([...baseList, ...newItems]);
-          // Clear pending items after adding
-          localStorage.removeItem('pendingShoppingListItems');
-        } else {
-          setGroceryList(baseList);
+      if (response.ok) {
+        const data = await response.json();
+        // Map API response to component state format
+        const mappedItems = data.items.map((item: any) => ({
+          id: item.id,
+          item: item.ingredientName,
+          name: item.ingredientName,
+          amount: item.quantity && item.unit ? `${item.quantity} ${item.unit}` : item.quantity || '',
+          category: item.category || 'Other',
+          checked: item.purchased || false,
+          notes: item.notes,
+        }));
+        setGroceryList(mappedItems);
+
+        // Check for pending items from RecipeKit
+        try {
+          const pending = JSON.parse(localStorage.getItem('pendingShoppingListItems') || '[]');
+          if (pending.length > 0) {
+            // Add pending items to the database
+            for (const item of pending) {
+              await fetch('/api/meal-planner/grocery-list', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                  ingredientName: item.name,
+                  quantity: item.quantity,
+                  unit: item.unit,
+                  category: 'From Recipe',
+                  notes: item.note,
+                }),
+              });
+            }
+            // Clear pending items and refetch
+            localStorage.removeItem('pendingShoppingListItems');
+            fetchGroceryList(); // Refetch to get the new items
+          }
+        } catch (err) {
+          console.error('Error loading pending items:', err);
         }
-      } catch (err) {
-        console.error('Error loading pending items:', err);
-        setGroceryList(baseList);
       }
     } catch (error) {
       console.error('Error fetching grocery list:', error);
@@ -290,10 +305,34 @@ const NutritionMealPlanner = () => {
     }
   };
 
-  const toggleGroceryItem = (index: number) => {
-    setGroceryList((prev: any) => prev.map((item: any, i: number) =>
-      i === index ? { ...item, checked: !item.checked } : item
-    ));
+  const toggleGroceryItem = async (index: number) => {
+    const item = groceryList[index];
+    if (!item) return;
+
+    try {
+      // Toggle the purchased status via API
+      const response = await fetch(`/api/meal-planner/grocery-list/${item.id}/purchase`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({}),
+      });
+
+      if (response.ok) {
+        // Update local state immediately for responsiveness
+        setGroceryList((prev: any) => prev.map((item: any, i: number) =>
+          i === index ? { ...item, checked: !item.checked } : item
+        ));
+      } else {
+        throw new Error('Failed to toggle item');
+      }
+    } catch (error) {
+      console.error('Error toggling grocery item:', error);
+      toast({
+        variant: "destructive",
+        description: "Failed to update item status",
+      });
+    }
   };
 
   const loadTemplate = (templateName: string) => {
@@ -332,48 +371,105 @@ const NutritionMealPlanner = () => {
       return;
     }
 
-    const newItem = {
-      name: itemName,
-      amount: itemAmount || '1',
-      category: itemCategory || 'Other',
-      checked: false,
-      id: Date.now(),
-    };
+    try {
+      // Parse quantity and unit from amount (e.g., "2 lbs" -> quantity: 2, unit: "lbs")
+      let quantity = itemAmount || '1';
+      let unit = '';
+      const match = itemAmount?.match(/^(\d+(?:\.\d+)?)\s*(.*)$/);
+      if (match) {
+        quantity = match[1];
+        unit = match[2];
+      }
 
-    setGroceryList((prev: any) => [...prev, newItem]);
-    setShowAddGroceryModal(false);
+      const response = await fetch('/api/meal-planner/grocery-list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          ingredientName: itemName,
+          quantity,
+          unit,
+          category: itemCategory || 'Other',
+        }),
+      });
 
-    toast({
-      description: `✅ ${itemName} added to grocery list!`,
-    });
+      if (response.ok) {
+        toast({
+          description: `✅ ${itemName} added to grocery list!`,
+        });
+        setShowAddGroceryModal(false);
+        // Refetch the list to get the new item
+        fetchGroceryList();
+      } else {
+        throw new Error('Failed to add item');
+      }
+    } catch (error) {
+      console.error('Error adding grocery item:', error);
+      toast({
+        variant: "destructive",
+        description: "Failed to add item to grocery list",
+      });
+    }
   };
 
-  const handleScanBarcode = (barcode: string) => {
-    // In production, this would call a barcode scanning API with the barcode
-    // For now, simulate detecting a product
+  const handleScanBarcode = async (barcode: string) => {
     console.log('Barcode scanned:', barcode);
 
-    const mockProducts = [
-      { name: 'Organic Chicken Breast', amount: '2 lbs', category: 'Protein' },
-      { name: 'Whole Wheat Bread', amount: '1 loaf', category: 'Grains' },
-      { name: 'Greek Yogurt', amount: '32 oz', category: 'Dairy' },
-      { name: 'Fresh Spinach', amount: '1 bag', category: 'Produce' },
-    ];
-
-    const randomProduct = mockProducts[Math.floor(Math.random() * mockProducts.length)];
-
-    const newItem = {
-      ...randomProduct,
-      checked: false,
-      id: Date.now(),
-    };
-
-    setGroceryList((prev: any) => [...prev, newItem]);
-    setShowScanModal(false);
-
     toast({
-      description: `📷 Scanned: ${randomProduct.name} added to grocery list!`,
+      title: 'Barcode scanned',
+      description: 'Looking up product...',
     });
+
+    try {
+      // Look up product from barcode
+      const res = await fetch(`/api/lookup/${barcode}`);
+
+      let productData = null;
+      if (res.ok) {
+        productData = await res.json();
+      }
+
+      if (productData && productData.name) {
+        // Add to grocery list via API
+        const response = await fetch('/api/meal-planner/grocery-list', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            ingredientName: productData.name,
+            quantity: productData.quantity || '1',
+            unit: productData.unit || '',
+            category: productData.category || 'Other',
+            notes: productData.brand ? `Brand: ${productData.brand}` : undefined,
+          }),
+        });
+
+        if (response.ok) {
+          setShowScanModal(false);
+          toast({
+            description: `📷 Scanned: ${productData.name} added to grocery list!`,
+          });
+          // Refetch the list to get the new item
+          fetchGroceryList();
+        } else {
+          throw new Error('Failed to add item');
+        }
+      } else {
+        setShowScanModal(false);
+        toast({
+          variant: "destructive",
+          title: "Product not found",
+          description: `Barcode ${barcode} not found in database`,
+        });
+      }
+    } catch (error) {
+      console.error('Error scanning barcode:', error);
+      setShowScanModal(false);
+      toast({
+        variant: "destructive",
+        description: "Failed to add scanned item to grocery list",
+      });
+    }
   };
 
   const PremiumUpgrade = () => (
