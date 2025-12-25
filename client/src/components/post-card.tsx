@@ -401,20 +401,19 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
             </Button>
           </div>
 
-          {/* Right side: Save/Bookmark icon */}
-          {post.recipe?.id && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleSaveClick}
-              data-testid={`button-save-${post.id}`}
-              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity"
-            >
-              <span className="text-2xl">
-                {isSaved ? "🔖" : "📑"}
-              </span>
-            </Button>
-          )}
+          {/* Right side: Save/Bookmark icon - always visible */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleSaveClick}
+            data-testid={`button-save-${post.id}`}
+            className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity"
+            disabled={!post.recipe?.id}
+          >
+            <span className="text-2xl">
+              {isSaved ? "🔖" : "📑"}
+            </span>
+          </Button>
         </div>
 
         {/* Like count */}
