@@ -171,13 +171,26 @@ export const likes = pgTable("likes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const comments = pgTable("comments", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  postId: varchar("post_id").references(() => posts.id).notNull(),
-  content: text("content").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const comments = pgTable(
+  "comments",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    postId: varchar("post_id").references(() => posts.id).notNull(),
+
+    // Threading: null = top-level comment; otherwise points to parent comment id
+    parentId: varchar("parent_id").references(() => comments.id, { onDelete: "cascade" }),
+
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    postIdIdx: index("comments_post_id_idx").on(t.postId),
+    userIdIdx: index("comments_user_id_idx").on(t.userId),
+    parentIdIdx: index("comments_parent_id_idx").on(t.parentId),
+  })
+);
+
 
 export const follows = pgTable("follows", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
