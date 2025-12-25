@@ -408,7 +408,6 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
             onClick={handleSaveClick}
             data-testid={`button-save-${post.id}`}
             className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity"
-            disabled={!post.recipe?.id}
           >
             <span className="text-2xl">
               {isSaved ? "🔖" : "📑"}
@@ -530,7 +529,7 @@ function CommentPreview({ postId, totalComments, onViewAll }: CommentPreviewProp
 
       {/* Show first comment preview on single line */}
       {comments.length > 0 && comments[0] && (
-        <div className="text-sm">
+        <div className="text-sm truncate">
           <span className="font-semibold">{comments[0].user.displayName}</span>{" "}
           <span className="text-muted-foreground">{comments[0].content}</span>
         </div>
