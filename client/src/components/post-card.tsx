@@ -13,7 +13,7 @@ import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import CommentsSection from "@/components/CommentsSection";
+import CommentsSection from "@/pages/social/CommentsSection";
 
 interface PostCardProps {
   post: PostWithUser;
