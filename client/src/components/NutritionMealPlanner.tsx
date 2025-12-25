@@ -137,6 +137,7 @@ const NutritionMealPlanner = () => {
 
       if (response.ok) {
         const data = await response.json();
+        console.log('Grocery list API response:', data);
         // Map API response to component state format
         const mappedItems = data.items.map((item: any) => ({
           id: item.id,
@@ -147,6 +148,7 @@ const NutritionMealPlanner = () => {
           checked: item.purchased || false,
           notes: item.notes,
         }));
+        console.log('Mapped grocery items:', mappedItems);
         setGroceryList(mappedItems);
 
         // Check for pending items from RecipeKit
@@ -175,9 +177,21 @@ const NutritionMealPlanner = () => {
         } catch (err) {
           console.error('Error loading pending items:', err);
         }
+      } else {
+        const errorText = await response.text();
+        console.error('Failed to fetch grocery list:', response.status, errorText);
+        toast({
+          variant: "destructive",
+          title: "Failed to load grocery list",
+          description: `Server error: ${response.status}`,
+        });
       }
     } catch (error) {
       console.error('Error fetching grocery list:', error);
+      toast({
+        variant: "destructive",
+        description: "Failed to load grocery list",
+      });
     }
   };
 
@@ -381,26 +395,33 @@ const NutritionMealPlanner = () => {
         unit = match[2];
       }
 
+      const payload = {
+        ingredientName: itemName,
+        quantity,
+        unit,
+        category: itemCategory || 'Other',
+      };
+      console.log('Adding grocery item:', payload);
+
       const response = await fetch('/api/meal-planner/grocery-list', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          ingredientName: itemName,
-          quantity,
-          unit,
-          category: itemCategory || 'Other',
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
+        const result = await response.json();
+        console.log('Item added successfully:', result);
         toast({
           description: `✅ ${itemName} added to grocery list!`,
         });
         setShowAddGroceryModal(false);
         // Refetch the list to get the new item
-        fetchGroceryList();
+        await fetchGroceryList();
       } else {
+        const errorText = await response.text();
+        console.error('Failed to add item:', response.status, errorText);
         throw new Error('Failed to add item');
       }
     } catch (error) {
@@ -431,27 +452,34 @@ const NutritionMealPlanner = () => {
 
       if (productData && productData.name) {
         // Add to grocery list via API
+        const payload = {
+          ingredientName: productData.name,
+          quantity: productData.quantity || '1',
+          unit: productData.unit || '',
+          category: productData.category || 'Other',
+          notes: productData.brand ? `Brand: ${productData.brand}` : undefined,
+        };
+        console.log('Adding scanned product to grocery list:', payload);
+
         const response = await fetch('/api/meal-planner/grocery-list', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({
-            ingredientName: productData.name,
-            quantity: productData.quantity || '1',
-            unit: productData.unit || '',
-            category: productData.category || 'Other',
-            notes: productData.brand ? `Brand: ${productData.brand}` : undefined,
-          }),
+          body: JSON.stringify(payload),
         });
 
         if (response.ok) {
+          const result = await response.json();
+          console.log('Scanned item added successfully:', result);
           setShowScanModal(false);
           toast({
             description: `📷 Scanned: ${productData.name} added to grocery list!`,
           });
           // Refetch the list to get the new item
-          fetchGroceryList();
+          await fetchGroceryList();
         } else {
+          const errorText = await response.text();
+          console.error('Failed to add scanned item:', response.status, errorText);
           throw new Error('Failed to add item');
         }
       } else {
@@ -1074,34 +1102,59 @@ const NutritionMealPlanner = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {['Protein', 'Produce', 'Grains', 'Dairy'].map((category) => (
-                        <div key={category}>
-                          <h3 className="font-medium text-sm text-gray-700 mb-2">{category}</h3>
-                          <div className="space-y-2">
-                            {groceryList
-                              .filter((item: any) => item.category === category)
-                              .map((item: any, catIndex: number) => {
-                                const globalIndex = groceryList.findIndex((i: any) => i === item);
-                                return (
-                                  <div key={globalIndex} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                    <input
-                                      type="checkbox"
-                                      checked={item.checked}
-                                      className="w-5 h-5 rounded border-gray-300 cursor-pointer"
-                                      onChange={() => toggleGroceryItem(globalIndex)}
-                                    />
-                                    <div className="flex-1">
-                                      <span className={`text-sm ${item.checked ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                                        {item.name || item.item}
-                                      </span>
-                                    </div>
-                                    <span className="text-sm text-gray-500">{item.amount}</span>
-                                  </div>
-                                );
-                              })}
-                          </div>
+                      {groceryList.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                          <ShoppingCart className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                          <p>No items in your grocery list</p>
+                          <p className="text-sm mt-1">Add items or scan barcodes to get started</p>
                         </div>
-                      ))}
+                      ) : (
+                        (() => {
+                          // Get all unique categories from the list
+                          const categories = Array.from(new Set(groceryList.map((item: any) => item.category || 'Other')));
+                          const categoryOrder = ['Protein', 'Produce', 'Grains', 'Dairy', 'From Recipe', 'Other'];
+                          const sortedCategories = categories.sort((a, b) => {
+                            const aIndex = categoryOrder.indexOf(a);
+                            const bIndex = categoryOrder.indexOf(b);
+                            if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
+                            if (aIndex === -1) return 1;
+                            if (bIndex === -1) return -1;
+                            return aIndex - bIndex;
+                          });
+
+                          return sortedCategories.map((category) => (
+                            <div key={category}>
+                              <h3 className="font-medium text-sm text-gray-700 mb-2">{category}</h3>
+                              <div className="space-y-2">
+                                {groceryList
+                                  .filter((item: any) => (item.category || 'Other') === category)
+                                  .map((item: any, catIndex: number) => {
+                                    const globalIndex = groceryList.findIndex((i: any) => i === item);
+                                    return (
+                                      <div key={globalIndex} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                        <input
+                                          type="checkbox"
+                                          checked={item.checked}
+                                          className="w-5 h-5 rounded border-gray-300 cursor-pointer"
+                                          onChange={() => toggleGroceryItem(globalIndex)}
+                                        />
+                                        <div className="flex-1">
+                                          <span className={`text-sm ${item.checked ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                                            {item.name || item.item}
+                                          </span>
+                                          {item.notes && (
+                                            <p className="text-xs text-gray-500 mt-1">{item.notes}</p>
+                                          )}
+                                        </div>
+                                        <span className="text-sm text-gray-500">{item.amount}</span>
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+                            </div>
+                          ));
+                        })()
+                      )}
                     </div>
                   </CardContent>
                 </Card>
