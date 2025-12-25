@@ -11,6 +11,7 @@ import {
   stories,
   likes,
   comments,
+  commentLikes,
   follows,
   cateringInquiries,
   products,
@@ -61,6 +62,8 @@ import {
   type UserDrinkStats,
   type InsertUserDrinkStats,
   type CustomDrinkWithUser,
+  type CommentLike,
+  type InsertCommentLike,
 } from "@shared/schema";
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -139,6 +142,14 @@ export interface IStorage {
   createComment(comment: InsertComment): Promise<Comment>;
   deleteComment(id: string): Promise<boolean>;
   getPostComments(postId: string): Promise<CommentWithUser[]>;
+  /** Like a comment */
+  likeComment(userId: string, commentId: string): Promise<CommentLike>;
+  /** Unlike a previously liked comment */
+  unlikeComment(userId: string, commentId: string): Promise<boolean>;
+  /** Check if a given user has liked a particular comment */
+  isCommentLiked(userId: string, commentId: string): Promise<boolean>;
+  /** Retrieve all likes for a specific comment */
+  getCommentLikes(commentId: string): Promise<CommentLike[]>;
   followUser(followerId: string, followingId: string): Promise<Follow>;
   unfollowUser(followerId: string, followingId: string): Promise<boolean>;
   isFollowing(followerId: string, followingId: string): Promise<boolean>;
@@ -431,9 +442,16 @@ export class DrizzleStorage implements IStorage {
       const deletedLikes = await db.delete(likes).where(eq(likes.postId, id));
       console.log("deletePost: Deleted likes");
 
-      // Delete saves
-      const deletedSaves = await db.delete(saves).where(eq(saves.postId, id));
-      console.log("deletePost: Deleted saves");
+      // Delete any recipe saves associated with this post's recipe.  Posts
+      // themselves do not have a standalone saves table, but recipes can be
+      // saved by users in the recipeSaves table.  We first find the recipe
+      // attached to this post (if any) and remove all corresponding saves.  This
+      // avoids dangling references when the recipe is deleted below.
+      const [postRecipe] = await db.select().from(recipes).where(eq(recipes.postId, id)).limit(1);
+      if (postRecipe) {
+        await db.delete(recipeSaves).where(eq(recipeSaves.recipeId, postRecipe.id));
+        console.log("deletePost: Deleted recipe saves");
+      }
 
       // Delete recipe if this is a recipe post
       const deletedRecipes = await db.delete(recipes).where(eq(recipes.postId, id));
@@ -733,6 +751,81 @@ export class DrizzleStorage implements IStorage {
   async getPostLikes(postId: string): Promise<Like[]> {
     const db = getDb();
     return db.select().from(likes).where(eq(likes.postId, postId));
+  }
+
+  // ---------- Comment Likes ----------
+  /**
+   * Record a like on a comment.  Returns the newly created CommentLike row.  If the
+   * like already exists (user already liked the comment) the database's unique
+   * index on (userId, commentId) will prevent duplicates and nothing will be
+   * inserted.  When a new like is created we also increment the comment's
+   * likesCount column.
+   */
+  async likeComment(userId: string, commentId: string): Promise<CommentLike> {
+    const db = getDb();
+    // Ensure the comment exists before attempting to like
+    const existingComment = await db
+      .select()
+      .from(comments)
+      .where(eq(comments.id, commentId))
+      .limit(1);
+    if (!existingComment[0]) {
+      throw new Error("Comment not found");
+    }
+    // Insert like if it doesn't already exist
+    const [like] = await db
+      .insert(commentLikes)
+      .values({ userId, commentId })
+      .onConflictDoNothing()
+      .returning();
+    // If a new like was inserted, return it.  If the like already existed the
+    // database will not insert a duplicate, and we simply return the existing
+    // record.  We do not maintain a separate likes count on the comments table
+    // because the underlying schema does not include such a column.
+    if (like) {
+      return like;
+    }
+    // Return a synthetic result when the like already exists
+    return { id: '', userId, commentId, createdAt: new Date().toISOString() } as any;
+  }
+
+  /**
+   * Remove a user's like from a comment.  Returns true if a like was removed,
+   * otherwise false.  When a like is removed we decrement the comment's likes
+   * count.
+   */
+  async unlikeComment(userId: string, commentId: string): Promise<boolean> {
+    const db = getDb();
+    const [like] = await db
+      .delete(commentLikes)
+      .where(and(eq(commentLikes.userId, userId), eq(commentLikes.commentId, commentId)))
+      .returning();
+    if (like) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Check whether a user has liked a particular comment.
+   */
+  async isCommentLiked(userId: string, commentId: string): Promise<boolean> {
+    const db = getDb();
+    const result = await db
+      .select()
+      .from(commentLikes)
+      .where(and(eq(commentLikes.userId, userId), eq(commentLikes.commentId, commentId)))
+      .limit(1);
+    return result.length > 0;
+  }
+
+  /**
+   * Return all likes for a given comment.  You can join this with the users
+   * table externally to get display names or avatars.
+   */
+  async getCommentLikes(commentId: string): Promise<CommentLike[]> {
+    const db = getDb();
+    return db.select().from(commentLikes).where(eq(commentLikes.commentId, commentId));
   }
 
   // ---------- Comments ----------

@@ -175,6 +175,26 @@ r.delete("/:id", requireAuth, async (req, res) => {
   }
 });
 
+// Get all likes for a specific post.  This route must come before the generic
+// "/:id" handler otherwise Express will treat "likes" as the id and never
+// reach this handler.
+r.get("/:postId/likes", async (req, res) => {
+  try {
+    const postId = req.params.postId;
+    const likesList = await storage.getPostLikes(postId);
+    const userPromises = likesList.map((like) => storage.getUser(like.userId));
+    const usersList = await Promise.all(userPromises);
+    const result = usersList
+      .filter((u): u is Exclude<typeof u, undefined> => !!u)
+      .map((u) => ({ id: u.id, displayName: u.displayName, avatar: u.avatar }));
+    res.json(result);
+  } catch (err) {
+    console.error("post likes/list error", err);
+    res.status(500).json({ message: "Failed to fetch post likes" });
+  }
+});
+
+// Get details for a single post
 r.get(
   "/:id",
   asyncHandler(async (req, res) => {
@@ -202,6 +222,8 @@ r.post("/comments", async (req, res) => {
     const schema = z.object({
       userId: z.string(),
       postId: z.string(),
+      // If provided, this comment becomes a reply to parentId (supports unlimited nesting)
+      parentId: z.string().min(1).nullable().optional(),
       text: z.string().min(1),
     });
     const body = schema.parse(req.body);
@@ -210,6 +232,7 @@ r.post("/comments", async (req, res) => {
     const created = await storage.createComment({
       userId: body.userId,
       postId: body.postId,
+      parentId: body.parentId ?? null,
       content: body.text,
     });
     res.status(201).json(created);
@@ -266,6 +289,65 @@ r.get("/likes/:userId/:postId", async (req, res) => {
   } catch (err) {
     console.error("likes/check error", err);
     res.status(500).json({ message: "Failed to check like status" });
+  }
+});
+
+// Get all likes for a post.  Returns an array of users (id and displayName) who have liked this post.
+
+/**
+ * Comment Likes endpoints
+ */
+// Like a comment
+r.post("/comments/likes", async (req, res) => {
+  try {
+    const schema = z.object({ userId: z.string(), commentId: z.string() });
+    const body = schema.parse(req.body);
+    const like = await storage.likeComment(body.userId, body.commentId);
+    res.status(201).json(like);
+  } catch (err: any) {
+    if (err?.issues) return res.status(400).json({ message: "Invalid like data", errors: err.issues });
+    console.error("comments/likes/create error", err);
+    res.status(500).json({ message: "Failed to like comment" });
+  }
+});
+
+// Unlike a comment
+r.delete("/comments/likes/:userId/:commentId", async (req, res) => {
+  try {
+    const ok = await storage.unlikeComment(req.params.userId, req.params.commentId);
+    if (!ok) return res.status(404).json({ message: "Like not found" });
+    res.json({ message: "Comment unliked" });
+  } catch (err) {
+    console.error("comments/likes/delete error", err);
+    res.status(500).json({ message: "Failed to unlike comment" });
+  }
+});
+
+// Check if a comment is liked by a user
+r.get("/comments/likes/:userId/:commentId", async (req, res) => {
+  try {
+    const isLiked = await storage.isCommentLiked(req.params.userId, req.params.commentId);
+    res.json({ isLiked });
+  } catch (err) {
+    console.error("comments/likes/check error", err);
+    res.status(500).json({ message: "Failed to check comment like status" });
+  }
+});
+
+// List all likes on a comment
+r.get("/comments/:commentId/likes", async (req, res) => {
+  try {
+    const commentId = req.params.commentId;
+    const likesList = await storage.getCommentLikes(commentId);
+    const userPromises = likesList.map((like) => storage.getUser(like.userId));
+    const usersList = await Promise.all(userPromises);
+    const result = usersList
+      .filter((u): u is Exclude<typeof u, undefined> => !!u)
+      .map((u) => ({ id: u.id, displayName: u.displayName, avatar: u.avatar }));
+    res.json(result);
+  } catch (err) {
+    console.error("comments/likes/list error", err);
+    res.status(500).json({ message: "Failed to fetch comment likes" });
   }
 });
 

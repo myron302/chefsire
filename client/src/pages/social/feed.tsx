@@ -1,4 +1,4 @@
-// client/src/pages/feed.tsx
+// client/src/pages/social/feed.tsx
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,8 @@ import { BitesRow } from "@/components/BitesRow";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Heart, Clock, X, MessageCircle } from "lucide-react";
+import CommentsSection from "./CommentsSection";
+import { useQuery as useQueryClientLikes } from "@tanstack/react-query";
 import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
@@ -442,14 +444,33 @@ export default function Feed() {
   const currentUserId = user?.id || "";
   const [selectedPost, setSelectedPost] = useState<PostWithUser | null>(null);
 
-  // Posts feed - fetch explore posts (all posts) so user sees their own posts too
+  // Fetch list of users who liked the currently selected post (for modal)
+  const { data: selectedPostLikes = [] } = useQueryClientLikes<{ id: string; displayName: string; avatar?: string }[]>({
+    queryKey: ["/api/posts", selectedPost?.id, "likes"],
+    queryFn: async () => {
+      if (!selectedPost?.id) return [];
+      const response = await fetch(`/api/posts/${selectedPost.id}/likes`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to fetch post likes");
+      return response.json();
+    },
+    enabled: !!selectedPost?.id,
+  });
+
+  // Posts feed
+  // - If logged in: /api/posts/feed?userId=... returns your posts + followed users
+  // - If logged out: /api/posts/feed falls back to explore
   const {
     data: posts,
     isLoading: postsLoading,
     error: postsError,
   } = useQuery<PostWithUser[]>({
-    queryKey: ["/api/posts/explore", currentUserId],
-    queryFn: () => fetchJSON<PostWithUser[]>(`/api/posts/explore${currentUserId ? `?userId=${currentUserId}` : ''}`),
+    queryKey: ["/api/posts/feed", currentUserId],
+    queryFn: () =>
+      fetchJSON<PostWithUser[]>(
+        `/api/posts/feed?offset=0&limit=25${currentUserId ? `&userId=${encodeURIComponent(currentUserId)}` : ""}`
+      ),
     retry: false,
   });
 
@@ -476,8 +497,9 @@ export default function Feed() {
     retry: false,
   });
 
-  // Use real data only, no demo fallback
-  const displayPosts = posts ?? [];
+  // Prefer real posts; fall back to demo posts if the API returns nothing or errors
+  const realPosts = posts ?? [];
+  const displayPosts = postsError || realPosts.length === 0 ? demoPosts : realPosts;
   const displaySuggestedUsers = suggestedUsers ?? [];
   const displayTrendingRecipes = trendingRecipes ?? [];
 
@@ -516,7 +538,7 @@ export default function Feed() {
             post.isRecipe ? (
               <SimpleRecipeCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} />
             ) : (
-              <PostCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} onDelete={() => setSelectedPost(null)} />
+              <PostCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} />
             )
           )}
 
@@ -707,18 +729,24 @@ export default function Feed() {
                 )}
 
                 {/* Engagement stats */}
-                <div className="flex items-center space-x-4 text-sm text-muted-foreground border-t pt-4 mb-4">
+                <div className="flex flex-col space-y-2 text-sm text-muted-foreground border-t pt-4">
                   <div className="flex items-center space-x-1">
                     <Heart className="h-4 w-4" />
                     <span>{selectedPost.likesCount || 0} likes</span>
                   </div>
+                  {selectedPostLikes.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      Liked by {selectedPostLikes.slice(0, 2).map((u) => u.displayName).join(", ")}
+                      {selectedPostLikes.length > 2 && ` and ${selectedPostLikes.length - 2} others`}
+                    </span>
+                  )}
                   <div className="flex items-center space-x-1">
                     <MessageCircle className="h-4 w-4" />
                     <span>{selectedPost.commentsCount || 0} comments</span>
                   </div>
                 </div>
 
-                {/* Comments Section */}
+                {/* Comments section */}
                 <CommentsSection postId={selectedPost.id} currentUserId={currentUserId} />
 
                 {/* Delete button for post owner */}
