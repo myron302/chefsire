@@ -12,7 +12,7 @@ import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import CommentsSection from "@/components/CommentsSection";
+import CommentsSection from "./CommentsSection";
 import { useUser } from "@/contexts/UserContext";
 
 const demoTrendingRecipes = [

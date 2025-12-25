@@ -11,7 +11,7 @@ import { useUser } from "@/contexts/UserContext";
 import { ProfileCompletion } from "@/components/ProfileCompletion";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
 import PostCard from "@/components/post-card";
-import CommentsSection from "@/components/CommentsSection";
+import CommentsSection from "./CommentsSection";
 import { shareContent, getPostShareUrl } from "@/lib/share";
 import {
   Image,
