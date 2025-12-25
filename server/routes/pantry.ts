@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
+import { requireAuth } from "../middleware/auth";
 
 const r = Router();
 
@@ -9,7 +10,92 @@ const r = Router();
  * Pantry endpoints (user-id based; no session dependency).
  */
 
-// Get a user’s pantry
+// Session-based endpoints (get user ID from session)
+// Get current user's pantry
+r.get("/items", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const items = await storage.getPantryItems(userId);
+    res.json(items);
+  } catch (error) {
+    console.error("pantry/items/list error", error);
+    res.status(500).json({ message: "Failed to fetch pantry items" });
+  }
+});
+
+// Add item to current user's pantry
+r.post("/items", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const schema = z.object({
+      name: z.string().min(1),
+      category: z.string().optional(),
+      quantity: z.union([z.string(), z.number()]).optional(),
+      unit: z.string().optional(),
+      expirationDate: z.string().datetime().optional(),
+      notes: z.string().optional(),
+      imageUrl: z.string().optional(),
+    });
+
+    const body = schema.parse(req.body);
+
+    // Convert quantity to number if it's a string
+    let quantityNum: number | undefined;
+    if (body.quantity !== undefined) {
+      quantityNum = typeof body.quantity === 'string' ? parseFloat(body.quantity) : body.quantity;
+      if (isNaN(quantityNum)) quantityNum = undefined;
+    }
+
+    const created = await storage.addPantryItem(userId, {
+      name: body.name,
+      category: body.category,
+      quantity: quantityNum,
+      unit: body.unit,
+      expirationDate: body.expirationDate ? new Date(body.expirationDate) : undefined,
+      notes: body.notes,
+    });
+
+    res.status(201).json(created);
+  } catch (error: any) {
+    if (error?.issues) return res.status(400).json({ message: "Invalid item", errors: error.issues });
+    console.error("pantry/items/add error", error);
+    res.status(500).json({ message: "Failed to add pantry item" });
+  }
+});
+
+// Get expiring items for current user
+r.get("/expiring-soon", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const days = Number(req.query.days ?? 7);
+    const items = await storage.getExpiringItems(userId, isNaN(days) ? 7 : days);
+    res.json(items);
+  } catch (error) {
+    console.error("pantry/expiring-soon error", error);
+    res.status(500).json({ message: "Failed to fetch expiring items" });
+  }
+});
+
+// Delete pantry item by ID
+r.delete("/items/:itemId", requireAuth, async (req, res) => {
+  try {
+    const ok = await storage.deletePantryItem(req.params.itemId);
+    if (!ok) return res.status(404).json({ message: "Pantry item not found" });
+    res.json({ message: "Pantry item deleted" });
+  } catch (error) {
+    console.error("pantry/items/delete error", error);
+    res.status(500).json({ message: "Failed to delete pantry item" });
+  }
+});
+
+// User-ID based endpoints (for backwards compatibility)
+// Get a user's pantry
 r.get("/users/:id/pantry", async (req, res) => {
   try {
     const items = await storage.getPantryItems(req.params.id);
