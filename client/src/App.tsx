@@ -40,6 +40,7 @@ import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
 import Pantry from "@/pages/pantry";
 import RecipeMatches from "@/pages/pantry/recipe-matches";
 import HouseholdPantry from "@/pages/pantry/household";
+import PantryScanner from "@/pages/pantry/scanner";
 import AllergiesDashboard from "@/pages/allergies";
 import NutritionMealPlanner from "@/components/NutritionMealPlanner";
 import MealPlanCreator from "@/pages/nutrition/MealPlanCreator";
@@ -375,6 +376,7 @@ function AppRouter() {
         {/* Pantry Routes */}
         <Route path="/pantry/recipe-matches" component={RecipeMatches} />
         <Route path="/pantry/household" component={HouseholdPantry} />
+        <Route path="/pantry/scanner" component={PantryScanner} />
         <Route path="/pantry">
           <ErrorBoundary>
             <Pantry />

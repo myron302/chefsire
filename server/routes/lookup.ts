@@ -8,6 +8,13 @@ type PantryCandidate = {
   unit: string;
   brand?: string;
   upc?: string;
+  /**
+   * URL of the product image returned by OpenFoodFacts.  Not all
+   * products include an image; if unavailable this field will be
+   * undefined.  Consumers can use this to display a thumbnail or icon
+   * alongside scanned items.
+   */
+  imageUrl?: string;
 };
 
 const router = Router();
@@ -48,7 +55,10 @@ router.get("/:barcode", async (req, res) => {
   if (hit && hit.expiry > now) return res.json(hit.data);
 
   try {
-    const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json`;
+    // Request only the fields we need from OpenFoodFacts.  Using the
+    // `fields` query parameter reduces response size and makes parsing
+    // explicit.  See https://world.openfoodfacts.org/data for details.
+    const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=product_name,brands,image_url,quantity,categories_tags`;
     const r = await fetch(url);
     if (!r.ok) throw new Error("lookup failed");
     const data = await r.json();
@@ -57,16 +67,35 @@ router.get("/:barcode", async (req, res) => {
 
     if (data?.status === 1 && data?.product) {
       const p = data.product;
-      const name = p.product_name || p.brands || "Unknown product";
-      const category = offTagsToCategory(p.categories_tags);
+      // Prefer product_name, fallback to brand name or generic placeholder
+      const name: string = p.product_name || p.brands || "Unknown product";
+      const category: string = offTagsToCategory(p.categories_tags);
+      // Parse the quantity string returned by OFF (e.g. "500 g" or "1 kg").
+      // If no quantity is provided, default to 1 piece.  OFF's quantity
+      // field may include decimals, commas or units; this parser extracts
+      // the numeric part and unit.
+      let quantityNum = 1;
+      let unit = "piece";
+      if (typeof p.quantity === "string" && p.quantity.trim() !== "") {
+        // Replace commas with dots for decimal parsing and split into parts
+        const qty = p.quantity.replace(/,/g, ".").trim();
+        const match = qty.match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?/);
+        if (match) {
+          quantityNum = parseFloat(match[1]);
+          if (!isNaN(quantityNum) && match[2]) {
+            unit = match[2].toLowerCase();
+          }
+        }
+      }
 
       candidate = {
         name,
         category,
-        quantity: 1,
-        unit: "piece",
-        brand: p.brands,
+        quantity: quantityNum,
+        unit,
+        brand: p.brands || undefined,
         upc: barcode,
+        imageUrl: p.image_url || undefined,
       };
     }
 
