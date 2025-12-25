@@ -222,6 +222,8 @@ r.post("/comments", async (req, res) => {
     const schema = z.object({
       userId: z.string(),
       postId: z.string(),
+      // If provided, this comment becomes a reply to parentId (supports unlimited nesting)
+      parentId: z.string().min(1).nullable().optional(),
       text: z.string().min(1),
     });
     const body = schema.parse(req.body);
@@ -230,6 +232,7 @@ r.post("/comments", async (req, res) => {
     const created = await storage.createComment({
       userId: body.userId,
       postId: body.postId,
+      parentId: body.parentId ?? null,
       content: body.text,
     });
     res.status(201).json(created);
