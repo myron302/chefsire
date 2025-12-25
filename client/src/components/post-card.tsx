@@ -359,13 +359,16 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
       </div>
 
       {/* Post body / caption */}
-      <div className="p-4">
-        <p className="text-sm">{post.caption}</p>
+      <div className="px-4 pt-3 pb-2">
+        <div className="text-sm">
+          <span className="font-semibold">{post.user.displayName}</span>{" "}
+          <span>{post.caption}</span>
+        </div>
       </div>
 
       {/* Action buttons - Instagram-inspired layout */}
-      <div className="px-4 pt-3 pb-2">
-        <div className="flex items-center justify-between mb-2">
+      <div className="px-4 pb-2">
+        <div className="flex items-center justify-between mb-3">
           {/* Left side: Like, Comment, Share icons */}
           <div className="flex items-center space-x-4">
             <Button
@@ -398,36 +401,25 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
             </Button>
           </div>
 
-          {/* Right side: Save/Bookmark icon */}
-          {post.recipe?.id && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleSaveClick}
-              data-testid={`button-save-${post.id}`}
-              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity"
-            >
-              <span className="text-2xl">
-                {isSaved ? "🔖" : "📑"}
-              </span>
-            </Button>
-          )}
+          {/* Right side: Save/Bookmark icon - always visible */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleSaveClick}
+            data-testid={`button-save-${post.id}`}
+            className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity"
+            disabled={!post.recipe?.id}
+          >
+            <span className="text-2xl">
+              {isSaved ? "🔖" : "📑"}
+            </span>
+          </Button>
         </div>
 
         {/* Like count */}
-        <div className="text-sm font-semibold mb-1">
+        <div className="text-sm font-semibold mb-2">
           {post.likesCount || 0} {(post.likesCount || 0) === 1 ? 'like' : 'likes'}
         </div>
-
-        {/* Liked by preview */}
-        {likeUsers.length > 0 && (
-          <div className="text-xs text-muted-foreground mb-2">
-            Liked by <span className="font-semibold">{likeUsers[0].displayName}</span>
-            {likeUsers.length > 1 && (
-              <> and <span className="font-semibold">{likeUsers.length - 1} {likeUsers.length === 2 ? 'other' : 'others'}</span></>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Comment preview - single line */}
@@ -525,22 +517,23 @@ function CommentPreview({ postId, totalComments, onViewAll }: CommentPreviewProp
   if (totalComments === 0) return null;
 
   return (
-    <div className="px-4 pb-4">
-      {/* Show first comment with single line truncation */}
-      {comments.map((comment) => (
-        <div key={comment.id} className="text-sm mb-1">
-          <span className="font-semibold">{comment.user.displayName}</span>{" "}
-          <span className="text-muted-foreground line-clamp-1">{comment.content}</span>
-        </div>
-      ))}
-      {/* Show "View all" link if there are more than 1 comment */}
+    <div className="px-4 pb-4 space-y-1">
+      {/* Show "View all" link first if there are multiple comments */}
       {totalComments > 1 && (
         <button
           onClick={onViewAll}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors font-medium"
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors block"
         >
           View all {totalComments} comments
         </button>
+      )}
+
+      {/* Show first comment preview on single line */}
+      {comments.length > 0 && comments[0] && (
+        <div className="text-sm">
+          <span className="font-semibold">{comments[0].user.displayName}</span>{" "}
+          <span className="text-muted-foreground">{comments[0].content}</span>
+        </div>
       )}
     </div>
   );
