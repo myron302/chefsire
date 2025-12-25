@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Package, Plus, Search, Filter, ScanLine, ChefHat,
   Calendar, AlertCircle, CheckCircle, Clock, Home,
@@ -50,12 +50,69 @@ type ShoppingListItem = {
 export default function PantryDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [location, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
   const [filterLocation, setFilterLocation] = useState("all");
   const [filterExpiry, setFilterExpiry] = useState("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [shoppingList, setShoppingList] = useState<ShoppingListItem[]>([]);
+
+  // Handle scanned barcode from URL parameters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const barcode = params.get('barcode');
+    const name = params.get('name');
+
+    if (barcode && name) {
+      const category = params.get('category') || '';
+      const quantity = params.get('quantity') || '1';
+      const unit = params.get('unit') || 'piece';
+      const brand = params.get('brand') || '';
+      const imageUrl = params.get('imageUrl') || '';
+
+      // Show toast that item was scanned
+      toast({
+        title: "Product Scanned!",
+        description: `Adding ${name} to your pantry...`,
+      });
+
+      // Add item to pantry
+      fetch("/api/pantry/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name,
+          category: category || null,
+          quantity,
+          unit,
+          notes: brand ? `Brand: ${brand}` : null,
+          imageUrl: imageUrl || null,
+        }),
+      })
+        .then((res) => {
+          if (res.ok) {
+            toast({
+              title: "Success!",
+              description: `${name} has been added to your pantry`,
+            });
+            queryClient.invalidateQueries({ queryKey: ["/api/pantry/items"] });
+            // Clear URL parameters
+            setLocation('/pantry');
+          } else {
+            throw new Error("Failed to add item");
+          }
+        })
+        .catch((err) => {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to add item to pantry",
+          });
+        });
+    }
+  }, [location, toast, queryClient, setLocation]);
 
   // Fetch pantry items
   const { data: pantryData, isLoading } = useQuery({
