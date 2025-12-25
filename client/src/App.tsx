@@ -373,7 +373,8 @@ function AppRouter() {
         {/* Misc */}
         <Route path="/create" component={CreatePost} />
 
-        {/* Pantry Routes */}
+        {/* Pantry Routes */}
+        <Route path="/pantry/scanner" component={PantryScanner} />
         <Route path="/pantry/recipe-matches" component={RecipeMatches} />
         <Route path="/pantry/household" component={HouseholdPantry} />
         <Route path="/pantry/scanner" component={PantryScanner} />
