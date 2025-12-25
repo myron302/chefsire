@@ -368,36 +368,39 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
 
       {/* Action buttons - Instagram-inspired layout */}
       <div className="px-4 pb-2">
-        <div className="flex items-center justify-between mb-3">
-          {/* Left side: Like, Comment, Share icons */}
+        <div className="flex items-center justify-between">
+          {/* Left side: Like, Comment, Share icons with counts */}
           <div className="flex items-center space-x-4">
             <Button
               variant="ghost"
               size="sm"
               onClick={handleLikeClick}
               data-testid={`button-like-${post.id}`}
-              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity"
+              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity flex items-center gap-1"
             >
               <span className="text-2xl">
                 {isLiked ? "❤️" : "🤍"}
               </span>
+              <span className="text-sm font-semibold">{post.likesCount || 0}</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => onCardClick?.(post)}
               data-testid={`button-comment-${post.id}`}
-              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity"
+              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity flex items-center gap-1"
             >
               <span className="text-2xl">💬</span>
+              <span className="text-sm font-semibold">{post.commentsCount || 0}</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={handleShare}
-              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity"
+              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity flex items-center gap-1"
             >
               <span className="text-2xl">📤</span>
+              <span className="text-sm font-semibold">0</span>
             </Button>
           </div>
 
@@ -413,11 +416,6 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
               {isSaved ? "🔖" : "📑"}
             </span>
           </Button>
-        </div>
-
-        {/* Like count */}
-        <div className="text-sm font-semibold mb-2">
-          {post.likesCount || 0} {(post.likesCount || 0) === 1 ? 'like' : 'likes'}
         </div>
       </div>
 
