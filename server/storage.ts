@@ -306,7 +306,23 @@ export class DrizzleStorage implements IStorage {
 
   async getUserByUsername(username: string): Promise<User | undefined> {
     const db = getDb();
-    const result = await db.select().from(users).where(eq(users.username, username)).limit(1);
+    /*
+     * Use a case‑insensitive match for usernames.
+     *
+     * Previously this function used the `eq` operator, which performs a
+     * case‑sensitive equality check. This caused direct message user lookups
+     * to fail when the entered username differed in case from the stored
+     * value (e.g. "Chefsire" vs "chefsire"). Switching to `ilike`
+     * performs a PostgreSQL `ILIKE` comparison, ensuring usernames are
+     * matched regardless of case. The pattern passed to `ilike` is the
+     * exact username, so this still requires an exact match but without
+     * case sensitivity.
+     */
+    const result = await db
+      .select()
+      .from(users)
+      .where(ilike(users.username, username))
+      .limit(1);
     return result[0];
   }
 

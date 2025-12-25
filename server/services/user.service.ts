@@ -1,5 +1,5 @@
 // server/services/user.service.ts
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc, ilike } from "drizzle-orm";
 import { users, emailVerificationTokens, type User, type InsertUser } from "@shared/schema";
 
 /**
@@ -18,7 +18,21 @@ export class UserService {
    * Get user by username
    */
   static async getUserByUsername(db: any, username: string): Promise<User | undefined> {
-    const result = await db.select().from(users).where(eq(users.username, username)).limit(1);
+    /*
+     * Use a case‑insensitive match for usernames.
+     *
+     * Previously this method used the `eq` operator, which performs a
+     * case‑sensitive equality check. This meant that a lookup for
+     * "Chefsire" would fail even if a user existed with username
+     * "chefsire". Switching to `ilike` ensures that the username is
+     * compared case‑insensitively. We do not include wildcard characters
+     * here so that only exact matches (ignoring case) are returned.
+     */
+    const result = await db
+      .select()
+      .from(users)
+      .where(ilike(users.username, username))
+      .limit(1);
     return result[0];
   }
 
