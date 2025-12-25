@@ -14,6 +14,7 @@ import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import CommentsSection from "./CommentsSection";
 import { useUser } from "@/contexts/UserContext";
 
 const demoTrendingRecipes = [
@@ -747,6 +748,62 @@ export default function Feed() {
 
                 {/* Comments section */}
                 <CommentsSection postId={selectedPost.id} currentUserId={currentUserId} />
+
+                {/* Delete button for post owner */}
+                {currentUserId === selectedPost.user?.id && (
+                  <div className="mt-6 pt-4 border-t">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="w-full"
+                      onClick={async () => {
+                        if (!confirm("Delete this post? This action cannot be undone.")) return;
+                        try {
+                          console.log("=== DELETE POST DEBUG ===");
+                          console.log("Post ID:", selectedPost.id);
+                          console.log("Current User ID:", currentUserId);
+                          console.log("Post Owner ID:", selectedPost.user?.id);
+                          console.log("Auth token cookie:", document.cookie);
+
+                          const res = await fetch(`/api/posts/${selectedPost.id}`, {
+                            method: "DELETE",
+                            credentials: "include",
+                          });
+
+                          console.log("Response status:", res.status);
+                          console.log("Response headers:", Object.fromEntries(res.headers.entries()));
+
+                          const responseText = await res.text();
+                          console.log("Response body:", responseText);
+
+                          if (!res.ok) {
+                            let errorMsg = `HTTP Status: ${res.status}\n\nResponse Body:\n${responseText}\n\nCookies:\n${document.cookie}`;
+                            try {
+                              const err = JSON.parse(responseText);
+                              errorMsg = `HTTP Status: ${res.status}\n\nError Message: ${err.message || err.error || 'Unknown'}\n\nFull Response:\n${JSON.stringify(err, null, 2)}\n\nAuth Cookie:\n${document.cookie}`;
+                            } catch (e) {
+                              // Response wasn't JSON, use text
+                            }
+                            console.error("DELETE FAILED:", errorMsg);
+                            alert(`❌ DELETE FAILED\n\n${errorMsg}`);
+                            return;
+                          }
+
+                          console.log("✅ Delete successful");
+                          setSelectedPost(null);
+                          window.location.reload();
+                        } catch (error) {
+                          const errorMsg = error instanceof Error ? error.message : String(error);
+                          const stack = error instanceof Error ? error.stack : 'N/A';
+                          console.error("DELETE EXCEPTION:", error);
+                          alert(`❌ DELETE EXCEPTION\n\nError: ${errorMsg}\n\nStack:\n${stack}\n\nCookies:\n${document.cookie}`);
+                        }
+                      }}
+                    >
+                      Delete Post
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
