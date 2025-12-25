@@ -8,7 +8,7 @@ import { BitesRow } from "@/components/BitesRow";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Heart, Clock, X, MessageCircle } from "lucide-react";
-import CommentsSection from "@/components/CommentsSection";
+import CommentsSection from "./CommentsSection";
 import { useQuery as useQueryClientLikes } from "@tanstack/react-query";
 import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
