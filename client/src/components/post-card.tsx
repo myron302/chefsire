@@ -13,7 +13,6 @@ import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import CommentsSection from "@/pages/social/CommentsSection";
 
 interface PostCardProps {
   post: PostWithUser;
@@ -364,42 +363,79 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
         <p className="text-sm">{post.caption}</p>
       </div>
 
-      {/* Footer / actions area (optional) */}
-      <div className="p-4 border-t flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <Button variant="ghost" size="sm" onClick={handleLikeClick} data-testid={`button-like-${post.id}`}>
-            {isLiked ? "♥" : "♡"} Like
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => onCardClick?.(post)} data-testid={`button-comment-${post.id}`}>
-            💬 Comment
-          </Button>
+      {/* Action buttons - Instagram-inspired layout */}
+      <div className="px-4 pt-3 pb-2">
+        <div className="flex items-center justify-between mb-2">
+          {/* Left side: Like, Comment, Share icons */}
+          <div className="flex items-center space-x-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLikeClick}
+              data-testid={`button-like-${post.id}`}
+              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity"
+            >
+              <span className="text-2xl">
+                {isLiked ? "❤️" : "🤍"}
+              </span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onCardClick?.(post)}
+              data-testid={`button-comment-${post.id}`}
+              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity"
+            >
+              <span className="text-2xl">💬</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleShare}
+              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity"
+            >
+              <span className="text-2xl">📤</span>
+            </Button>
+          </div>
+
+          {/* Right side: Save/Bookmark icon */}
           {post.recipe?.id && (
-            <Button variant="ghost" size="sm" onClick={handleSaveClick} data-testid={`button-save-${post.id}`}>
-              {isSaved ? "Saved" : "Save"}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSaveClick}
+              data-testid={`button-save-${post.id}`}
+              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity"
+            >
+              <span className="text-2xl">
+                {isSaved ? "🔖" : "📑"}
+              </span>
             </Button>
           )}
         </div>
-        <div className="text-sm text-muted-foreground">
-          {post.likesCount || 0} likes
-          {/* Show a preview of who liked this post */}
-          {likeUsers.length > 0 && (
-            <span className="ml-2">
-              Liked by {likeUsers.slice(0, 2).map((u) => u.displayName).join(", ")}
-              {likeUsers.length > 2 && ` and ${likeUsers.length - 2} others`}
-            </span>
-          )}
+
+        {/* Like count */}
+        <div className="text-sm font-semibold mb-1">
+          {post.likesCount || 0} {(post.likesCount || 0) === 1 ? 'like' : 'likes'}
         </div>
+
+        {/* Liked by preview */}
+        {likeUsers.length > 0 && (
+          <div className="text-xs text-muted-foreground mb-2">
+            Liked by <span className="font-semibold">{likeUsers[0].displayName}</span>
+            {likeUsers.length > 1 && (
+              <> and <span className="font-semibold">{likeUsers.length - 1} {likeUsers.length === 2 ? 'other' : 'others'}</span></>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Comments (inline like Instagram; scrolls with hidden scrollbar) */}
-      <div className="px-4 pb-4">
-        <CommentsSection
-          postId={post.id}
-          currentUserId={effectiveUserId || ""}
-          variant="inline"
-          onViewAll={() => onCardClick?.(post)}
-        />
-      </div>
+      {/* Comment preview - single line */}
+      <CommentPreview
+        postId={post.id}
+        totalComments={post.commentsCount || 0}
+        onViewAll={() => onCardClick?.(post)}
+      />
 
       {/* NEW: MODAL FOR EDITING POST */}
       {isEditing && (
@@ -471,7 +507,7 @@ interface Comment {
 }
 
 function CommentPreview({ postId, totalComments, onViewAll }: CommentPreviewProps) {
-  // Fetch first 2 comments for this post
+  // Fetch first comment for preview
   const { data: comments = [] } = useQuery<Comment[]>({
     queryKey: ["/api/posts", postId, "comments", "preview"],
     queryFn: async () => {
@@ -480,8 +516,8 @@ function CommentPreview({ postId, totalComments, onViewAll }: CommentPreviewProp
       });
       if (!response.ok) return [];
       const allComments = await response.json();
-      // Return only first 2 comments
-      return allComments.slice(0, 2);
+      // Return only first comment for Instagram-style preview
+      return allComments.slice(0, 1);
     },
     enabled: totalComments > 0,
   });
@@ -489,17 +525,19 @@ function CommentPreview({ postId, totalComments, onViewAll }: CommentPreviewProp
   if (totalComments === 0) return null;
 
   return (
-    <div className="px-4 pb-4 space-y-2">
+    <div className="px-4 pb-4">
+      {/* Show first comment with single line truncation */}
       {comments.map((comment) => (
-        <div key={comment.id} className="text-sm">
+        <div key={comment.id} className="text-sm mb-1">
           <span className="font-semibold">{comment.user.displayName}</span>{" "}
-          <span className="text-muted-foreground line-clamp-2">{comment.content}</span>
+          <span className="text-muted-foreground line-clamp-1">{comment.content}</span>
         </div>
       ))}
-      {totalComments > 2 && (
+      {/* Show "View all" link if there are more than 1 comment */}
+      {totalComments > 1 && (
         <button
           onClick={onViewAll}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors font-medium"
         >
           View all {totalComments} comments
         </button>
