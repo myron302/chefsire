@@ -6,6 +6,7 @@ import {
   Calendar, AlertCircle, CheckCircle, Clock, Home,
   Trash2, Edit, MapPin, DollarSign, Users, ShoppingCart
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,7 @@ export default function PantryDashboard() {
   const [filterLocation, setFilterLocation] = useState("all");
   const [filterExpiry, setFilterExpiry] = useState("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
 
   // Handle scanned barcode from URL parameters
   useEffect(() => {
@@ -138,6 +140,77 @@ export default function PantryDashboard() {
       toast({ title: "Failed to delete item", variant: "destructive" });
     },
   });
+
+  // Add to shopping list mutation
+  const addToShoppingListMutation = useMutation({
+    mutationFn: async (items: PantryItem[]) => {
+      const promises = items.map(item =>
+        fetch("/api/meal-planner/grocery-list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            ingredientName: item.name,
+            quantity: item.quantity || "1",
+            unit: item.unit || "",
+            category: item.category || "Other",
+            notes: item.notes,
+          }),
+        })
+      );
+
+      const results = await Promise.all(promises);
+      const failedResults = results.filter(r => !r.ok);
+
+      if (failedResults.length > 0) {
+        throw new Error(`Failed to add ${failedResults.length} item(s) to shopping list`);
+      }
+
+      return results;
+    },
+    onSuccess: (_, items) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+      toast({
+        title: "Added to shopping list!",
+        description: `${items.length} item(s) added to your shopping list`
+      });
+      setSelectedItems(new Set()); // Clear selections
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    },
+  });
+
+  // Toggle item selection
+  const toggleItemSelection = (itemId: string) => {
+    setSelectedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId);
+      } else {
+        newSet.add(itemId);
+      }
+      return newSet;
+    });
+  };
+
+  // Add selected items to shopping list
+  const addSelectedToShoppingList = () => {
+    const itemsToAdd = filteredItems.filter(item => selectedItems.has(item.id));
+    if (itemsToAdd.length === 0) {
+      toast({
+        title: "No items selected",
+        description: "Please select items to add to shopping list",
+        variant: "destructive"
+      });
+      return;
+    }
+    addToShoppingListMutation.mutate(itemsToAdd);
+  };
 
   // Get expiry status
   const getExpiryStatus = (expirationDate: string | null) => {
@@ -237,6 +310,19 @@ export default function PantryDashboard() {
                 <span className="whitespace-nowrap">Scan Barcode</span>
               </Button>
             </Link>
+            <Button
+              variant="outline"
+              className="flex-1 sm:flex-none w-full sm:w-auto"
+              onClick={addSelectedToShoppingList}
+              disabled={selectedItems.size === 0 || addToShoppingListMutation.isPending}
+            >
+              <ShoppingCart className="w-4 h-4 mr-2" />
+              <span className="whitespace-nowrap">
+                {selectedItems.size > 0
+                  ? `Add ${selectedItems.size} to List`
+                  : "Add to List"}
+              </span>
+            </Button>
             <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
               <DialogTrigger asChild>
                 <Button className="flex-1 sm:flex-none w-full sm:w-auto">
@@ -438,7 +524,12 @@ export default function PantryDashboard() {
             return (
               <Card key={item.id} className="overflow-hidden">
                 <CardContent className="p-4">
-                  <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-start gap-3 mb-3">
+                    <Checkbox
+                      checked={selectedItems.has(item.id)}
+                      onCheckedChange={() => toggleItemSelection(item.id)}
+                      className="mt-1"
+                    />
                     <div className="flex-1">
                       <h3 className="font-semibold text-lg mb-1">{item.name}</h3>
                       {item.category && (
@@ -470,7 +561,7 @@ export default function PantryDashboard() {
                     </div>
                   </div>
 
-                  <div className="grid gap-2 text-sm">
+                  <div className="grid gap-2 text-sm ml-9">
                     {item.quantity && item.unit && (
                       <div className="flex items-center gap-3">
                         <Package className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
@@ -517,7 +608,7 @@ export default function PantryDashboard() {
                   </div>
 
                   {item.notes && (
-                    <p className="mt-3 text-sm text-muted-foreground border-t pt-2">
+                    <p className="mt-3 text-sm text-muted-foreground border-t pt-2 ml-9">
                       {item.notes}
                     </p>
                   )}
