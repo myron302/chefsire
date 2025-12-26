@@ -545,9 +545,17 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
     expirationDate: "",
     notes: "",
   });
+  const [alsoAddToShoppingList, setAlsoAddToShoppingList] = useState(false);
+
+  // Check if user is premium
+  const { data: userData } = useQuery({
+    queryKey: ["/api/user"],
+  });
+  const isPremium = userData?.nutritionPremium || false;
 
   const addMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
+      // Add to pantry
       const res = await fetch("/api/pantry/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -558,12 +566,34 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
         const error = await res.text();
         throw new Error(error || "Failed to add item");
       }
+
+      // Also add to shopping list if checkbox is checked and user is premium
+      if (alsoAddToShoppingList && isPremium) {
+        await fetch("/api/meal-planner/grocery-list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            ingredientName: data.name,
+            quantity: data.quantity || "1",
+            unit: data.unit || "",
+            category: data.category || "Other",
+            notes: data.notes,
+          }),
+        });
+      }
+
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pantry/items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pantry/expiring-soon"] });
-      toast({ title: "Item added successfully!" });
+      if (alsoAddToShoppingList && isPremium) {
+        queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+        toast({ title: "Item added to pantry and shopping list!" });
+      } else {
+        toast({ title: "Item added to pantry!" });
+      }
       // Reset form
       setFormData({
         name: "",
@@ -574,6 +604,7 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
         expirationDate: "",
         notes: "",
       });
+      setAlsoAddToShoppingList(false);
       onSuccess();
     },
     onError: (error: Error) => {
@@ -666,6 +697,22 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
           placeholder="Optional notes..."
         />
       </div>
+
+      {/* Shopping List Option (Premium Only) */}
+      {isPremium && (
+        <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+          <input
+            type="checkbox"
+            id="alsoAddToShoppingList"
+            checked={alsoAddToShoppingList}
+            onChange={(e) => setAlsoAddToShoppingList(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300"
+          />
+          <label htmlFor="alsoAddToShoppingList" className="text-sm font-medium cursor-pointer">
+            ✨ Also add to shopping list (for future purchases)
+          </label>
+        </div>
+      )}
 
       <Button type="submit" className="w-full" disabled={addMutation.isPending}>
         {addMutation.isPending ? "Adding..." : "Add Item"}
