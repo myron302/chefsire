@@ -586,18 +586,36 @@ router.post("/grocery-list/check-pantry", requireAuth, async (req: Request, res:
   }
 });
 
-// Mark item as purchased
+// Mark item as purchased (or toggle)
 router.patch("/grocery-list/:id/purchase", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const { id } = req.params;
-    const { actualPrice } = req.body;
+    const { actualPrice, toggle } = req.body;
+
+    // If toggle is true, first fetch the current state
+    let purchased = true;
+    if (toggle) {
+      const [currentItem] = await db
+        .select()
+        .from(groceryListItems)
+        .where(
+          and(
+            eq(groceryListItems.id, id),
+            eq(groceryListItems.userId, userId)
+          )
+        );
+
+      if (currentItem) {
+        purchased = !currentItem.purchased;
+      }
+    }
 
     const [updated] = await db
       .update(groceryListItems)
       .set({
-        purchased: true,
-        purchasedAt: new Date(),
+        purchased,
+        purchasedAt: purchased ? new Date() : null,
         actualPrice: actualPrice || null,
       })
       .where(
