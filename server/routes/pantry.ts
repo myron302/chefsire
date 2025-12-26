@@ -18,7 +18,7 @@ r.get("/items", requireAuth, async (req, res) => {
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
     const items = await storage.getPantryItems(userId);
-    res.json(items);
+    res.json({ items }); // Wrap in object to match frontend expectations
   } catch (error) {
     console.error("pantry/items/list error", error);
     res.status(500).json({ message: "Failed to fetch pantry items" });
@@ -75,7 +75,7 @@ r.get("/expiring-soon", requireAuth, async (req, res) => {
 
     const days = Number(req.query.days ?? 7);
     const items = await storage.getExpiringItems(userId, isNaN(days) ? 7 : days);
-    res.json(items);
+    res.json({ items }); // Wrap in object to match frontend expectations
   } catch (error) {
     console.error("pantry/expiring-soon error", error);
     res.status(500).json({ message: "Failed to fetch expiring items" });
