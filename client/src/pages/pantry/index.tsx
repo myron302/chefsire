@@ -39,14 +39,6 @@ type PantryItem = {
   } | null;
 };
 
-type ShoppingListItem = {
-  id?: string;
-  name: string;
-  quantity: string | number;
-  unit: string | null;
-  checked?: boolean;
-};
-
 export default function PantryDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -56,7 +48,6 @@ export default function PantryDashboard() {
   const [filterLocation, setFilterLocation] = useState("all");
   const [filterExpiry, setFilterExpiry] = useState("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [shoppingList, setShoppingList] = useState<ShoppingListItem[]>([]);
 
   // Handle scanned barcode from URL parameters
   useEffect(() => {
@@ -125,148 +116,8 @@ export default function PantryDashboard() {
     queryKey: ["/api/pantry/expiring-soon", { days: 7 }],
   });
 
-  // Fetch shopping list (grocery list items)
-  const { data: shoppingData, isLoading: isShoppingLoading } = useQuery({
-    queryKey: ["/api/meal-planner/grocery-list", { purchased: false }],
-    queryFn: async () => {
-      const res = await fetch("/api/meal-planner/grocery-list?purchased=false", {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to load shopping list");
-      return res.json();
-    },
-  });
-
-  useEffect(() => {
-    if (shoppingData?.items) {
-      const mapped: ShoppingListItem[] = shoppingData.items.map((item: any) => ({
-        id: item.id,
-        name: item.ingredientName,
-        quantity: item.quantity || 1,
-        unit: item.unit,
-        checked: false,
-      }));
-      setShoppingList(mapped);
-    }
-  }, [shoppingData]);
-
-  const addShoppingItemsMutation = useMutation({
-    mutationFn: async (items: ShoppingListItem[]) => {
-      const results = await Promise.all(items.map(async (item) => {
-        const res = await fetch("/api/meal-planner/grocery-list", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            ingredientName: item.name,
-            quantity: item.quantity?.toString() ?? "",
-            unit: item.unit ?? "",
-            isPantryItem: false,
-          }),
-        });
-        if (!res.ok) throw new Error("Failed to add grocery item");
-        return res.json();
-      }));
-      return results;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
-    },
-    onError: () => {
-      toast({ title: "Failed to save shopping list", variant: "destructive" });
-    },
-  });
-
-  const deleteShoppingItem = async (id: string) => {
-    const res = await fetch(`/api/meal-planner/grocery-list/${id}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
-    if (!res.ok) throw new Error("Failed to delete grocery item");
-  };
-
-  const deleteShoppingItemMutation = useMutation({
-    mutationFn: deleteShoppingItem,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
-      toast({ title: "Item removed from shopping list" });
-    },
-    onError: () => {
-      toast({ title: "Failed to remove item", variant: "destructive" });
-    },
-  });
-
   const items: PantryItem[] = pantryData?.items || [];
   const expiringItems: PantryItem[] = expiringData?.items || [];
-
-  // Load pending shopping list items from RecipeKit - ONLY ONCE
-  useEffect(() => {
-    console.log('🔍 Pantry: Checking for pending shopping items...');
-
-    const processPendingItems = async () => {
-      try {
-        const pendingRaw = localStorage.getItem('pendingShoppingListItems');
-        console.log('🔍 Pantry: Raw localStorage value:', pendingRaw);
-
-        if (!pendingRaw || pendingRaw === '[]') {
-          console.log('ℹ️ Pantry: No pending items found');
-          return;
-        }
-
-        const pending = JSON.parse(pendingRaw);
-        console.log('🔍 Pantry: Parsed pending items:', pending);
-
-        if (!Array.isArray(pending) || pending.length === 0) {
-          console.log('ℹ️ Pantry: No pending items to process');
-          localStorage.removeItem('pendingShoppingListItems');
-          return;
-        }
-
-        // IMMEDIATELY CLEAR to prevent re-processing
-        localStorage.removeItem('pendingShoppingListItems');
-        console.log('✅ Cleared localStorage to prevent duplicates');
-
-        // Filter out invalid items (items without names)
-        const validItems = pending.filter((item: any) => {
-          const hasName = item.name && typeof item.name === 'string' && item.name.trim().length > 0;
-          if (!hasName) {
-            console.warn('⚠️ Pantry: Skipping invalid item (empty name):', item);
-          }
-          return hasName;
-        });
-
-        if (validItems.length === 0) {
-          console.log('ℹ️ Pantry: No valid items to add after filtering');
-          return;
-        }
-
-        const formatted: ShoppingListItem[] = validItems.map((item: any) => ({
-          name: item.name.trim(),
-          quantity: item.quantity || 1,
-          unit: item.unit ?? "",
-        }));
-
-        console.log('🔍 Pantry: Formatted valid items:', formatted);
-
-        try {
-          await addShoppingItemsMutation.mutateAsync(formatted);
-          const skippedCount = pending.length - validItems.length;
-          const message = skippedCount > 0
-            ? `Added ${validItems.length} item${validItems.length > 1 ? 's' : ''} to shopping list (${skippedCount} invalid item${skippedCount > 1 ? 's' : ''} skipped)`
-            : `Added ${validItems.length} item${validItems.length > 1 ? 's' : ''} to shopping list from recipe!`;
-          toast({ title: message });
-        } catch (err) {
-          console.error('❌ Error saving pending shopping items:', err);
-          toast({ title: "Failed to save shopping list items", variant: "destructive" });
-        }
-      } catch (err) {
-        console.error('❌ Error loading pending shopping items:', err);
-        localStorage.removeItem('pendingShoppingListItems'); // Clear on error too
-      }
-    };
-
-    processPendingItems();
-  }, []); // Empty deps - run ONCE on mount
 
   // Delete mutation
   const deleteMutation = useMutation({
@@ -502,29 +353,6 @@ export default function PantryDashboard() {
             </CardContent>
           </Card>
 
-          <Card
-            className="cursor-pointer hover:bg-accent transition-colors border-green-200 bg-green-50"
-            onClick={() => {
-              const shoppingSection = document.getElementById('shopping-list-section');
-              if (shoppingSection) {
-                shoppingSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              } else if (shoppingList.length === 0) {
-                toast({ title: 'Shopping list is empty', description: 'Add items from recipes by checking ingredients in the modal.' });
-              }
-            }}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <ShoppingCart className="w-10 h-10 text-green-600" />
-                <div>
-                  <h3 className="font-semibold text-green-800">Shopping List</h3>
-                  <p className="text-sm text-green-700">
-                    {isShoppingLoading ? "Loading..." : `${shoppingList.length} items to buy`}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Filters */}
@@ -700,173 +528,6 @@ export default function PantryDashboard() {
         </div>
       )}
 
-      {/* Shopping List Section */}
-      <Card className="mt-6" id="shopping-list-section">
-        <CardHeader>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <ShoppingCart className="w-5 h-5" />
-                Shopping List ({shoppingList.length} items)
-              </CardTitle>
-              <CardDescription>
-                Items added from recipes • {shoppingList.filter(i => i.checked).length} selected
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={shoppingList.length === 0}
-                onClick={() => {
-                  const allChecked = shoppingList.every(i => i.checked);
-                  setShoppingList(prev => prev.map(item => ({ ...item, checked: !allChecked })));
-                }}
-                className="flex-shrink-0"
-              >
-                {shoppingList.every(i => i.checked) ? "Deselect All" : "Select All"}
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                disabled={deleteShoppingItemMutation.isPending || shoppingList.length === 0}
-                onClick={async () => {
-                  if (!confirm(`Are you sure you want to delete ALL ${shoppingList.length} items? This cannot be undone.`)) {
-                    return;
-                  }
-
-                  const ids = shoppingList.map(item => item.id).filter(Boolean) as string[];
-                  const totalItems = ids.length;
-
-                  // Clear UI immediately
-                  setShoppingList([]);
-
-                  if (ids.length > 0) {
-                    try {
-                      // Batch delete in chunks of 50 to avoid overwhelming the API
-                      const batchSize = 50;
-                      let deletedCount = 0;
-
-                      toast({ title: `Deleting ${totalItems} items...` });
-
-                      for (let i = 0; i < ids.length; i += batchSize) {
-                        const batch = ids.slice(i, i + batchSize);
-                        await Promise.all(batch.map(id => deleteShoppingItem(id)));
-                        deletedCount += batch.length;
-
-                        // Show progress for large lists
-                        if (totalItems > 100) {
-                          toast({ title: `Deleted ${deletedCount}/${totalItems} items...` });
-                        }
-                      }
-
-                      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
-                      toast({ title: `Successfully deleted all ${totalItems} items!` });
-                    } catch (error) {
-                      console.error("Error deleting items:", error);
-                      toast({ title: "Failed to delete all items. Some may remain.", variant: "destructive" });
-                      // Refresh the list to show what's left
-                      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
-                    }
-                  }
-                }}
-                className="flex-shrink-0"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                {deleteShoppingItemMutation.isPending ? "Deleting..." : "Delete All"}
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {shoppingList.length > 0 ? (
-            <>
-              <div className="space-y-2 max-h-[500px] overflow-y-auto">
-              {shoppingList.map((item, idx) => (
-                <div key={idx} className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={item.checked || false}
-                      onChange={() => {
-                        setShoppingList(prev => prev.map((si, i) =>
-                          i === idx ? { ...si, checked: !si.checked } : si
-                        ));
-                      }}
-                      className="h-4 w-4 rounded border-gray-300"
-                    />
-                    <div className={item.checked ? 'line-through text-muted-foreground' : ''}>
-                      <span className="font-medium">{item.name}</span>
-                      <span className="text-sm text-muted-foreground ml-2">
-                        {item.quantity} {item.unit}
-                      </span>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 w-8 p-0 text-red-600"
-                    onClick={async () => {
-                      const target = shoppingList[idx];
-                      setShoppingList(prev => prev.filter((_, i) => i !== idx));
-                      if (target?.id) {
-                        try {
-                          await deleteShoppingItemMutation.mutateAsync(target.id);
-                        } catch {
-                          // Handled in mutation onError
-                        }
-                      }
-                    }}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-            {shoppingList.filter(i => i.checked).length > 0 && (
-              <div className="mt-4 flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    const checkedCount = shoppingList.filter(i => i.checked).length;
-                    if (!confirm(`Delete ${checkedCount} selected item${checkedCount > 1 ? 's' : ''}?`)) {
-                      return;
-                    }
-                    const unchecked = shoppingList.filter(i => !i.checked);
-                    const removed = shoppingList.filter(i => i.checked);
-                    setShoppingList(unchecked);
-                    const ids = removed.map(item => item.id).filter(Boolean) as string[];
-                    if (ids.length > 0) {
-                      try {
-                        // Batch delete in chunks of 50
-                        const batchSize = 50;
-                        for (let i = 0; i < ids.length; i += batchSize) {
-                          const batch = ids.slice(i, i + batchSize);
-                          await Promise.all(batch.map(id => deleteShoppingItem(id)));
-                        }
-                        queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
-                        toast({ title: `Deleted ${ids.length} item${ids.length > 1 ? 's' : ''}` });
-                      } catch (error) {
-                        console.error("Error deleting items:", error);
-                        toast({ title: "Failed to delete items", variant: "destructive" });
-                      }
-                    }
-                  }}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete Selected ({shoppingList.filter(i => i.checked).length})
-                </Button>
-              </div>
-            )}
-            </>
-          ) : (
-            <p className="text-center text-muted-foreground py-8">
-              No items in shopping list. Add items from recipes or create a manual entry feature.
-            </p>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -884,9 +545,17 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
     expirationDate: "",
     notes: "",
   });
+  const [alsoAddToShoppingList, setAlsoAddToShoppingList] = useState(false);
+
+  // Check if user is premium
+  const { data: userData } = useQuery({
+    queryKey: ["/api/user"],
+  });
+  const isPremium = userData?.nutritionPremium || false;
 
   const addMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
+      // Add to pantry
       const res = await fetch("/api/pantry/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -897,12 +566,34 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
         const error = await res.text();
         throw new Error(error || "Failed to add item");
       }
+
+      // Also add to shopping list if checkbox is checked and user is premium
+      if (alsoAddToShoppingList && isPremium) {
+        await fetch("/api/meal-planner/grocery-list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            ingredientName: data.name,
+            quantity: data.quantity || "1",
+            unit: data.unit || "",
+            category: data.category || "Other",
+            notes: data.notes,
+          }),
+        });
+      }
+
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pantry/items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pantry/expiring-soon"] });
-      toast({ title: "Item added successfully!" });
+      if (alsoAddToShoppingList && isPremium) {
+        queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+        toast({ title: "Item added to pantry and shopping list!" });
+      } else {
+        toast({ title: "Item added to pantry!" });
+      }
       // Reset form
       setFormData({
         name: "",
@@ -913,6 +604,7 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
         expirationDate: "",
         notes: "",
       });
+      setAlsoAddToShoppingList(false);
       onSuccess();
     },
     onError: (error: Error) => {
@@ -1005,6 +697,22 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
           placeholder="Optional notes..."
         />
       </div>
+
+      {/* Shopping List Option (Premium Only) */}
+      {isPremium && (
+        <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+          <input
+            type="checkbox"
+            id="alsoAddToShoppingList"
+            checked={alsoAddToShoppingList}
+            onChange={(e) => setAlsoAddToShoppingList(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300"
+          />
+          <label htmlFor="alsoAddToShoppingList" className="text-sm font-medium cursor-pointer">
+            ✨ Also add to shopping list (for future purchases)
+          </label>
+        </div>
+      )}
 
       <Button type="submit" className="w-full" disabled={addMutation.isPending}>
         {addMutation.isPending ? "Adding..." : "Add Item"}
