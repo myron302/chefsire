@@ -329,13 +329,14 @@ const NutritionMealPlanner = () => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({}),
+        body: JSON.stringify({ toggle: true }),
       });
 
       if (response.ok) {
-        // Update local state immediately for responsiveness
+        const result = await response.json();
+        // Update local state with the actual server response
         setGroceryList((prev: any) => prev.map((item: any, i: number) =>
-          i === index ? { ...item, checked: !item.checked } : item
+          i === index ? { ...item, checked: result.item.purchased } : item
         ));
       } else {
         throw new Error('Failed to toggle item');

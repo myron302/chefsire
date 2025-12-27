@@ -425,6 +425,26 @@ export default function PantryDashboard() {
             </Card>
           </Link>
 
+          <Card
+            className="cursor-pointer hover:bg-accent transition-colors"
+            onClick={() => {
+              const shoppingSection = document.getElementById('shopping-list-section');
+              shoppingSection?.scrollIntoView({ behavior: 'smooth' });
+            }}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <ShoppingCart className="w-10 h-10 text-primary" />
+                <div>
+                  <h3 className="font-semibold">Shopping List</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Manage your grocery list
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="cursor-pointer hover:bg-accent transition-colors">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
@@ -494,6 +514,9 @@ export default function PantryDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Shopping List Section */}
+      <ShoppingListSection />
 
       {/* Items Grid */}
       {filteredItems.length === 0 ? (
@@ -619,6 +642,256 @@ export default function PantryDashboard() {
         </div>
       )}
 
+    </div>
+  );
+}
+
+// Shopping List Section Component
+function ShoppingListSection() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [showAddItemDialog, setShowAddItemDialog] = useState(false);
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemAmount, setNewItemAmount] = useState("");
+  const [newItemCategory, setNewItemCategory] = useState("Other");
+
+  // Fetch grocery list
+  const { data: groceryData, isLoading } = useQuery({
+    queryKey: ["/api/meal-planner/grocery-list", { purchased: false }],
+    queryFn: async () => {
+      const res = await fetch("/api/meal-planner/grocery-list?purchased=false", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch grocery list");
+      return res.json();
+    },
+  });
+
+  const groceryItems = groceryData?.items || [];
+
+  // Toggle purchase mutation
+  const toggleMutation = useMutation({
+    mutationFn: async (itemId: string) => {
+      const res = await fetch(`/api/meal-planner/grocery-list/${itemId}/purchase`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ toggle: true }),
+      });
+      if (!res.ok) throw new Error("Failed to toggle item");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to update item", variant: "destructive" });
+    },
+  });
+
+  // Add item mutation
+  const addMutation = useMutation({
+    mutationFn: async (data: { ingredientName: string; quantity: string; unit: string; category: string }) => {
+      const res = await fetch("/api/meal-planner/grocery-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to add item");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+      toast({ title: "Item added to shopping list!" });
+      setNewItemName("");
+      setNewItemAmount("");
+      setNewItemCategory("Other");
+      setShowAddItemDialog(false);
+    },
+    onError: () => {
+      toast({ title: "Failed to add item", variant: "destructive" });
+    },
+  });
+
+  // Delete item mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (itemId: string) => {
+      const res = await fetch(`/api/meal-planner/grocery-list/${itemId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete item");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+      toast({ title: "Item removed from shopping list" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete item", variant: "destructive" });
+    },
+  });
+
+  const handleAddItem = () => {
+    if (!newItemName.trim()) {
+      toast({ title: "Please enter an item name", variant: "destructive" });
+      return;
+    }
+
+    // Parse quantity and unit from amount
+    let quantity = "1";
+    let unit = "";
+    const match = newItemAmount?.match(/^(\d+(?:\.\d+)?)\s*(.*)$/);
+    if (match) {
+      quantity = match[1];
+      unit = match[2];
+    } else if (newItemAmount) {
+      unit = newItemAmount;
+    }
+
+    addMutation.mutate({
+      ingredientName: newItemName,
+      quantity,
+      unit,
+      category: newItemCategory,
+    });
+  };
+
+  const categories = Array.from(new Set(groceryItems.map((i: any) => i.category || "Other")));
+  const sortedCategories = categories.sort();
+
+  return (
+    <div id="shopping-list-section" className="mb-8">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5" />
+                Shopping List
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Items to buy on your next grocery trip
+              </CardDescription>
+            </div>
+            <Dialog open={showAddItemDialog} onOpenChange={setShowAddItemDialog}>
+              <DialogTrigger asChild>
+                <Button size="sm">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Item
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add to Shopping List</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium">Item Name *</label>
+                    <Input
+                      value={newItemName}
+                      onChange={(e) => setNewItemName(e.target.value)}
+                      placeholder="e.g., Milk, Eggs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Amount</label>
+                    <Input
+                      value={newItemAmount}
+                      onChange={(e) => setNewItemAmount(e.target.value)}
+                      placeholder="e.g., 2 lbs, 1 gallon"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Category</label>
+                    <Select value={newItemCategory} onValueChange={setNewItemCategory}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Protein">Protein</SelectItem>
+                        <SelectItem value="Produce">Produce</SelectItem>
+                        <SelectItem value="Dairy">Dairy</SelectItem>
+                        <SelectItem value="Grains">Grains</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={handleAddItem}
+                    className="w-full"
+                    disabled={addMutation.isPending}
+                  >
+                    {addMutation.isPending ? "Adding..." : "Add to List"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <ShoppingCart className="w-12 h-12 mx-auto mb-2 opacity-50 animate-pulse" />
+              <p>Loading shopping list...</p>
+            </div>
+          ) : groceryItems.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <ShoppingCart className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p>Your shopping list is empty</p>
+              <p className="text-sm mt-1">Add items or select pantry items above to add to your list</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {sortedCategories.map((category) => {
+                const categoryItems = groceryItems.filter((item: any) => (item.category || "Other") === category);
+                if (categoryItems.length === 0) return null;
+
+                return (
+                  <div key={category}>
+                    <h3 className="font-medium text-sm text-muted-foreground mb-2">{category}</h3>
+                    <div className="space-y-2">
+                      {categoryItems.map((item: any) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg"
+                        >
+                          <Checkbox
+                            checked={item.purchased}
+                            onCheckedChange={() => toggleMutation.mutate(item.id)}
+                          />
+                          <div className="flex-1">
+                            <span className={`text-sm ${item.purchased ? "line-through text-muted-foreground" : ""}`}>
+                              {item.ingredientName}
+                            </span>
+                            {item.notes && (
+                              <p className="text-xs text-muted-foreground mt-0.5">{item.notes}</p>
+                            )}
+                          </div>
+                          {(item.quantity || item.unit) && (
+                            <span className="text-sm text-muted-foreground">
+                              {item.quantity} {item.unit}
+                            </span>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0"
+                            onClick={() => deleteMutation.mutate(item.id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
