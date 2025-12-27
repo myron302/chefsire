@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
 import BarcodeScanner from '@/components/BarcodeScanner';
+import { exportCSV, exportText } from "@/lib/shoppingExport";
 
 const NutritionMealPlanner = () => {
   const { user, updateUser } = useUser();
@@ -245,43 +246,77 @@ const NutritionMealPlanner = () => {
     }
   };
 
-  const generateGroceryList = async () => {
-    // Generate grocery list from weekly meals
-    const items = [];
-    Object.values(weeklyMeals).forEach((dayMeals: any) => {
-      Object.values(dayMeals).forEach((meal: any) => {
-        if (meal.ingredients) {
-          meal.ingredients.forEach((ingredient: string) => {
-            items.push({ name: ingredient, checked: false, category: 'Other' });
-          });
-        }
+  const exportGroceryList = async () => {
+    if (groceryList.length === 0) {
+      toast({
+        variant: "destructive",
+        description: "No items to export",
       });
-    });
+      return;
+    }
 
-    setGroceryList(items.length > 0 ? items : [
-      { name: 'Chicken breast (2 lbs)', checked: false, category: 'Protein' },
-      { name: 'Brown rice (1 bag)', checked: false, category: 'Grains' },
-      { name: 'Broccoli (2 heads)', checked: false, category: 'Vegetables' },
-      { name: 'Sweet potatoes (5)', checked: false, category: 'Vegetables' },
-      { name: 'Greek yogurt (32oz)', checked: false, category: 'Dairy' },
-      { name: 'Eggs (dozen)', checked: false, category: 'Protein' },
-    ]);
+    try {
+      // Convert grocery list to export format
+      const itemsToExport = groceryList.map((item: any) => ({
+        name: item.name || item.item,
+        quantity: parseFloat(item.amount?.split(' ')[0]) || 1,
+        unit: item.amount?.split(' ').slice(1).join(' ') || '',
+        category: item.category || 'Other',
+        checked: item.checked || false,
+      }));
 
-    toast({
-      description: "✅ Grocery list generated from your meal plan!",
-    });
+      // Export as CSV
+      await exportCSV(itemsToExport, `shopping-list-${new Date().toISOString().split('T')[0]}.csv`);
+
+      toast({
+        description: "✅ Shopping list exported successfully!",
+      });
+    } catch (error) {
+      console.error('Error exporting list:', error);
+      toast({
+        variant: "destructive",
+        description: "Failed to export shopping list",
+      });
+    }
   };
 
   const optimizeShoppingList = async () => {
-    // Sort grocery list by category
-    const sortedList = [...groceryList].sort((a: any, b: any) =>
-      a.category.localeCompare(b.category)
-    );
-    setGroceryList(sortedList);
+    try {
+      const response = await fetch('/api/meal-planner/grocery-list/optimized', {
+        credentials: 'include',
+      });
 
-    toast({
-      description: "🛒 Shopping list optimized by category!",
-    });
+      if (!response.ok) {
+        throw new Error('Failed to optimize list');
+      }
+
+      const data = await response.json();
+
+      // Reorganize the grocery list based on optimized store layout
+      const optimizedItems = data.optimized.flatMap((group: any) =>
+        group.items.map((item: any) => ({
+          id: item.id,
+          item: item.ingredientName,
+          name: item.ingredientName,
+          amount: item.quantity && item.unit ? `${item.quantity} ${item.unit}` : item.quantity || '',
+          category: item.category || 'Other',
+          checked: item.purchased || false,
+          notes: item.notes,
+        }))
+      );
+
+      setGroceryList(optimizedItems);
+
+      toast({
+        description: "🛒 Shopping list optimized by store layout!",
+      });
+    } catch (error) {
+      console.error('Error optimizing list:', error);
+      toast({
+        variant: "destructive",
+        description: "Failed to optimize shopping list",
+      });
+    }
   };
 
   const handleAddMeal = (day?: string, type?: string) => {
@@ -367,6 +402,34 @@ const NutritionMealPlanner = () => {
 
   const handleUsePantry = () => {
     setShowPantryModal(true);
+  };
+
+  const checkPantryFirst = async () => {
+    try {
+      const response = await fetch('/api/meal-planner/grocery-list/check-pantry', {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to check pantry');
+      }
+
+      const data = await response.json();
+
+      toast({
+        description: `✅ Checked pantry! Found ${data.matched} items you already have.`,
+      });
+
+      // Refresh the grocery list to show updated items
+      await fetchGroceryList();
+    } catch (error) {
+      console.error('Error checking pantry:', error);
+      toast({
+        variant: "destructive",
+        description: "Failed to check pantry",
+      });
+    }
   };
 
   const handleLoadTemplate = () => {
@@ -1094,7 +1157,7 @@ const NutritionMealPlanner = () => {
                           <Filter className="w-4 h-4 mr-2" />
                           Optimize
                         </Button>
-                        <Button variant="outline" size="sm" onClick={generateGroceryList}>
+                        <Button variant="outline" size="sm" onClick={exportGroceryList}>
                           <Download className="w-4 h-4 mr-2" />
                           Export
                         </Button>
@@ -1242,7 +1305,12 @@ const NutritionMealPlanner = () => {
                     <CardTitle className="text-lg">Smart Features</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <Button variant="outline" className="w-full justify-start" size="sm">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start"
+                      size="sm"
+                      onClick={checkPantryFirst}
+                    >
                       <Package className="w-4 h-4 mr-2" />
                       Check Pantry First
                     </Button>
