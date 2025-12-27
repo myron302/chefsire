@@ -459,27 +459,35 @@ const NutritionMealPlanner = () => {
   };
 
   const shareWithFamily = async () => {
-    if (groceryList.length === 0) {
+    try {
+      if (groceryList.length === 0) {
+        toast({
+          variant: "destructive",
+          description: "No items in grocery list to share",
+        });
+        return;
+      }
+
+      // Fetch family members
+      const members = await fetchFamilyMembers();
+
+      if (members.length === 0) {
+        toast({
+          title: "No family members found",
+          description: "Add family members in the Allergies section first to share your grocery list.",
+        });
+        return;
+      }
+
+      // Show the share dialog
+      setShowShareFamilyModal(true);
+    } catch (error) {
+      console.error('Error in shareWithFamily:', error);
       toast({
         variant: "destructive",
-        description: "No items in grocery list to share",
+        description: "Failed to open share dialog",
       });
-      return;
     }
-
-    // Fetch family members
-    const members = await fetchFamilyMembers();
-
-    if (members.length === 0) {
-      toast({
-        title: "No family members found",
-        description: "Add family members in the Allergies section first to share your grocery list.",
-      });
-      return;
-    }
-
-    // Show the share dialog
-    setShowShareFamilyModal(true);
   };
 
   const copyGroceryListToClipboard = async () => {
