@@ -6,9 +6,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function ShoppingListPage() {
   const { toast } = useToast();
@@ -17,6 +27,7 @@ export default function ShoppingListPage() {
   const [newItemName, setNewItemName] = useState("");
   const [newItemAmount, setNewItemAmount] = useState("");
   const [newItemCategory, setNewItemCategory] = useState("Other");
+  const [itemToToggle, setItemToToggle] = useState<{ id: string; name: string; purchased: boolean } | null>(null);
 
   // Fetch grocery list
   const { data: groceryData, isLoading } = useQuery({
@@ -266,7 +277,14 @@ export default function ShoppingListPage() {
                         >
                           <Checkbox
                             checked={item.purchased}
-                            onCheckedChange={() => toggleMutation.mutate(item.id)}
+                            onCheckedChange={() => {
+                              // Show confirmation dialog before toggling
+                              setItemToToggle({
+                                id: item.id,
+                                name: item.ingredientName,
+                                purchased: item.purchased,
+                              });
+                            }}
                           />
                           <div className="flex-1 min-w-0">
                             <span className={`text-sm ${item.purchased ? "line-through text-muted-foreground" : "font-medium"}`}>
@@ -299,6 +317,35 @@ export default function ShoppingListPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={!!itemToToggle} onOpenChange={() => setItemToToggle(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {itemToToggle?.purchased ? "Unmark as Purchased?" : "Mark as Purchased?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {itemToToggle?.purchased
+                ? `Do you want to unmark "${itemToToggle?.name}" as purchased? This will remove it from your pantry.`
+                : `Did you purchase "${itemToToggle?.name}"? This will mark it as purchased and add it to your pantry.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (itemToToggle) {
+                  toggleMutation.mutate(itemToToggle.id);
+                  setItemToToggle(null);
+                }
+              }}
+            >
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
