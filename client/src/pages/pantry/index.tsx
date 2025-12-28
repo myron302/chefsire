@@ -118,6 +118,13 @@ export default function PantryDashboard() {
   // Fetch expiring items
   const { data: expiringData } = useQuery({
     queryKey: ["/api/pantry/expiring-soon", { days: 7 }],
+    queryFn: async () => {
+      const res = await fetch("/api/pantry/expiring-soon?days=7", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch expiring items");
+      return res.json();
+    },
   });
 
   const items: PantryItem[] = pantryData?.items || [];
@@ -475,7 +482,15 @@ export default function PantryDashboard() {
             </Card>
           </Link>
 
-          <Card className="cursor-pointer hover:bg-accent transition-colors">
+          <Card
+            className="cursor-pointer hover:bg-accent transition-colors"
+            onClick={() => {
+              setFilterExpiry("expiring");
+              // Scroll to items section
+              const itemsSection = document.querySelector('[data-items-section]');
+              itemsSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+          >
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <Calendar className="w-10 h-10 text-primary" />
@@ -546,6 +561,7 @@ export default function PantryDashboard() {
       </div>
 
       {/* Items Grid */}
+      <div data-items-section>
       {filteredItems.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">
@@ -666,12 +682,31 @@ export default function PantryDashboard() {
                       {item.notes}
                     </p>
                   )}
+
+                  {/* Running Low Button */}
+                  <div className="mt-3 border-t pt-3 ml-9">
+                    <Button
+                      size="sm"
+                      variant={item.isRunningLow ? "default" : "outline"}
+                      className="w-full"
+                      onClick={() => {
+                        updateMutation.mutate({
+                          id: item.id,
+                          isRunningLow: !item.isRunningLow,
+                        });
+                      }}
+                    >
+                      <AlertCircle className="w-4 h-4 mr-2" />
+                      {item.isRunningLow ? "Running Low ✓" : "Mark as Running Low"}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             );
           })}
         </div>
       )}
+      </div>
 
       {/* Edit Item Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
