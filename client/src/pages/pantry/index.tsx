@@ -693,6 +693,13 @@ export default function PantryDashboard() {
                       onClick={() => {
                         updateMutation.mutate({
                           id: item.id,
+                          name: item.name,
+                          category: item.category,
+                          quantity: item.quantity,
+                          unit: item.unit,
+                          location: item.location,
+                          expirationDate: item.expirationDate,
+                          notes: item.notes,
                           isRunningLow: !item.isRunningLow,
                         });
                       }}
