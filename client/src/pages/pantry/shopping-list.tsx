@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ShoppingCart, Plus, Trash2, ArrowLeft } from "lucide-react";
+import { ShoppingCart, Plus, Trash2, ArrowLeft, Camera, Edit } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,15 +19,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import BarcodeScanner from "@/components/BarcodeScanner";
 
 export default function ShoppingListPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showAddItemDialog, setShowAddItemDialog] = useState(false);
+  const [showScanModal, setShowScanModal] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [newItemAmount, setNewItemAmount] = useState("");
   const [newItemCategory, setNewItemCategory] = useState("Other");
   const [itemToToggle, setItemToToggle] = useState<{ id: string; name: string; purchased: boolean } | null>(null);
+  const [itemToEdit, setItemToEdit] = useState<any>(null);
 
   // Fetch grocery list
   const { data: groceryData, isLoading } = useQuery({
@@ -88,6 +92,35 @@ export default function ShoppingListPage() {
     },
   });
 
+  // Update item mutation
+  const updateMutation = useMutation({
+    mutationFn: async (data: { id: string; ingredientName: string; quantity: string; unit: string; category: string; notes?: string }) => {
+      const res = await fetch(`/api/meal-planner/grocery-list/${data.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          ingredientName: data.ingredientName,
+          quantity: data.quantity,
+          unit: data.unit,
+          category: data.category,
+          notes: data.notes,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to update item");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
+      toast({ title: "Item updated successfully!" });
+      setShowEditDialog(false);
+      setItemToEdit(null);
+    },
+    onError: () => {
+      toast({ title: "Failed to update item", variant: "destructive" });
+    },
+  });
+
   // Delete item mutation
   const deleteMutation = useMutation({
     mutationFn: async (itemId: string) => {
@@ -130,6 +163,82 @@ export default function ShoppingListPage() {
       unit,
       category: newItemCategory,
     });
+  };
+
+  const handleEditItem = () => {
+    if (!itemToEdit || !itemToEdit.ingredientName.trim()) {
+      toast({ title: "Please enter an item name", variant: "destructive" });
+      return;
+    }
+
+    // Parse quantity and unit from amount
+    let quantity = "1";
+    let unit = "";
+    const amount = `${itemToEdit.quantity || ""} ${itemToEdit.unit || ""}`.trim();
+    const match = amount.match(/^(\d+(?:\.\d+)?)\s*(.*)$/);
+    if (match) {
+      quantity = match[1];
+      unit = match[2];
+    } else if (amount) {
+      unit = amount;
+    }
+
+    updateMutation.mutate({
+      id: itemToEdit.id,
+      ingredientName: itemToEdit.ingredientName,
+      quantity,
+      unit,
+      category: itemToEdit.category || "Other",
+      notes: itemToEdit.notes,
+    });
+  };
+
+  const handleScanBarcode = async (barcode: string) => {
+    try {
+      // Fetch product info from barcode
+      const response = await fetch(`/api/products/barcode/${barcode}`, {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const productData = await response.json();
+
+        // Add scanned product to shopping list
+        await addMutation.mutateAsync({
+          ingredientName: productData.name || barcode,
+          quantity: "1",
+          unit: "",
+          category: "Other",
+        });
+
+        setShowScanModal(false);
+        toast({
+          title: "Item added!",
+          description: `${productData.name || barcode} added to shopping list`,
+        });
+      } else {
+        // Product not found, still add barcode
+        await addMutation.mutateAsync({
+          ingredientName: `Product ${barcode}`,
+          quantity: "1",
+          unit: "",
+          category: "Other",
+        });
+
+        setShowScanModal(false);
+        toast({
+          title: "Item added",
+          description: "Barcode added to shopping list",
+        });
+      }
+    } catch (error) {
+      console.error("Error scanning barcode:", error);
+      toast({
+        title: "Scan failed",
+        description: "Failed to add item from barcode",
+        variant: "destructive",
+      });
+    }
   };
 
   const categories = Array.from(new Set(groceryItems.map((i: any) => i.category || "Other")));
@@ -193,13 +302,18 @@ export default function ShoppingListPage() {
                 {totalItems === 0 ? "No items yet" : `${totalItems} item${totalItems === 1 ? '' : 's'}`}
               </CardDescription>
             </div>
-            <Dialog open={showAddItemDialog} onOpenChange={setShowAddItemDialog}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Item
-                </Button>
-              </DialogTrigger>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowScanModal(true)}>
+                <Camera className="w-4 h-4 mr-2" />
+                Scan
+              </Button>
+              <Dialog open={showAddItemDialog} onOpenChange={setShowAddItemDialog}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Item
+                  </Button>
+                </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Add to Shopping List</DialogTitle>
@@ -246,6 +360,7 @@ export default function ShoppingListPage() {
                 </div>
               </DialogContent>
             </Dialog>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -299,14 +414,27 @@ export default function ShoppingListPage() {
                               {item.quantity} {item.unit}
                             </span>
                           )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0 flex-shrink-0"
-                            onClick={() => deleteMutation.mutate(item.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <div className="flex gap-1 flex-shrink-0">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0"
+                              onClick={() => {
+                                setItemToEdit(item);
+                                setShowEditDialog(true);
+                              }}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0"
+                              onClick={() => deleteMutation.mutate(item.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -317,6 +445,84 @@ export default function ShoppingListPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Item Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Item</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Item Name *</label>
+              <Input
+                value={itemToEdit?.ingredientName || ""}
+                onChange={(e) => setItemToEdit({ ...itemToEdit, ingredientName: e.target.value })}
+                placeholder="e.g., Milk, Eggs"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Quantity</label>
+              <Input
+                value={itemToEdit?.quantity || ""}
+                onChange={(e) => setItemToEdit({ ...itemToEdit, quantity: e.target.value })}
+                placeholder="e.g., 2"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Unit</label>
+              <Input
+                value={itemToEdit?.unit || ""}
+                onChange={(e) => setItemToEdit({ ...itemToEdit, unit: e.target.value })}
+                placeholder="e.g., lbs, gallons"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Category</label>
+              <Select
+                value={itemToEdit?.category || "Other"}
+                onValueChange={(value) => setItemToEdit({ ...itemToEdit, category: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Protein">Protein</SelectItem>
+                  <SelectItem value="Produce">Produce</SelectItem>
+                  <SelectItem value="Dairy">Dairy</SelectItem>
+                  <SelectItem value="Grains">Grains</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Notes</label>
+              <Input
+                value={itemToEdit?.notes || ""}
+                onChange={(e) => setItemToEdit({ ...itemToEdit, notes: e.target.value })}
+                placeholder="Optional notes"
+              />
+            </div>
+            <Button
+              onClick={handleEditItem}
+              className="w-full"
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending ? "Updating..." : "Update Item"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Barcode Scanner Modal */}
+      {showScanModal && (
+        <BarcodeScanner
+          onDetected={(barcode) => {
+            handleScanBarcode(barcode);
+          }}
+          onClose={() => setShowScanModal(false)}
+        />
+      )}
 
       {/* Confirmation Dialog */}
       <AlertDialog open={!!itemToToggle} onOpenChange={() => setItemToToggle(null)}>

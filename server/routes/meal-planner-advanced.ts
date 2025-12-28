@@ -586,6 +586,41 @@ router.post("/grocery-list/check-pantry", requireAuth, async (req: Request, res:
   }
 });
 
+// Update grocery list item
+router.patch("/grocery-list/:id", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    const { ingredientName, quantity, unit, category, notes } = req.body;
+
+    const [updated] = await db
+      .update(groceryListItems)
+      .set({
+        ingredientName: ingredientName,
+        quantity: quantity,
+        unit: unit,
+        category: category,
+        notes: notes,
+      })
+      .where(
+        and(
+          eq(groceryListItems.id, id),
+          eq(groceryListItems.userId, userId)
+        )
+      )
+      .returning();
+
+    if (!updated) {
+      return res.status(404).json({ message: "Grocery item not found" });
+    }
+
+    res.json({ item: updated });
+  } catch (error) {
+    console.error("Error updating grocery item:", error);
+    res.status(500).json({ message: "Failed to update grocery item" });
+  }
+});
+
 // Mark item as purchased (or toggle)
 router.patch("/grocery-list/:id/purchase", requireAuth, async (req: Request, res: Response) => {
   try {
