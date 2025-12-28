@@ -147,6 +147,7 @@ r.put("/pantry/:itemId", async (req, res) => {
       location: z.string().optional(),
       expirationDate: z.string().datetime().optional(),
       notes: z.string().optional(),
+      isRunningLow: z.boolean().optional(),
     });
     const body = schema.parse(req.body);
 
@@ -165,6 +166,7 @@ r.put("/pantry/:itemId", async (req, res) => {
       location: body.location,
       expirationDate: body.expirationDate ? new Date(body.expirationDate) : undefined,
       notes: body.notes,
+      isRunningLow: body.isRunningLow,
     });
 
     if (!updated) return res.status(404).json({ message: "Pantry item not found" });

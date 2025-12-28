@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
+import { useUser } from "@/contexts/UserContext";
 
 type RecipeMatch = {
   id: string;
@@ -22,14 +23,24 @@ type RecipeMatch = {
 };
 
 export default function RecipeMatches() {
+  const { user } = useUser();
   const [minMatchScore, setMinMatchScore] = useState("0.5");
 
   // Fetch recipe matches
   const { data: matchData, isLoading, error } = useQuery({
     queryKey: ["/api/pantry/recipe-matches", { minScore: minMatchScore }],
+    queryFn: async () => {
+      if (!user?.id) throw new Error("User not authenticated");
+      const res = await fetch(`/api/users/${user.id}/pantry/recipe-suggestions?maxMissingIngredients=3&limit=20`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch recipe suggestions");
+      return res.json();
+    },
+    enabled: !!user?.id,
   });
 
-  const matches: RecipeMatch[] = matchData?.matches || [];
+  const matches: RecipeMatch[] = matchData?.suggestions || [];
 
   // Get match color based on score
   const getMatchColor = (score: number) => {
