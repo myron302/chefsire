@@ -140,14 +140,29 @@ r.post("/users/:id/pantry", async (req, res) => {
 r.put("/pantry/:itemId", async (req, res) => {
   try {
     const schema = z.object({
-      quantity: z.number().min(0).optional(),
+      name: z.string().min(1).optional(),
+      category: z.string().optional(),
+      quantity: z.union([z.number(), z.string()]).optional(),
+      unit: z.string().optional(),
+      location: z.string().optional(),
       expirationDate: z.string().datetime().optional(),
       notes: z.string().optional(),
     });
     const body = schema.parse(req.body);
 
+    // Convert quantity to number if it's a string
+    let quantityNum: number | undefined;
+    if (body.quantity !== undefined) {
+      quantityNum = typeof body.quantity === 'string' ? parseFloat(body.quantity) : body.quantity;
+      if (isNaN(quantityNum)) quantityNum = undefined;
+    }
+
     const updated = await storage.updatePantryItem(req.params.itemId, {
-      quantity: body.quantity,
+      name: body.name,
+      category: body.category,
+      quantity: quantityNum,
+      unit: body.unit,
+      location: body.location,
       expirationDate: body.expirationDate ? new Date(body.expirationDate) : undefined,
       notes: body.notes,
     });
