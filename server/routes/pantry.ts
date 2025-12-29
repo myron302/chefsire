@@ -19,7 +19,6 @@ r.get("/items", async (req, res) => {
       const users = await storage.getAllUsers();
       userId = users[0]?.id;
     }
-    if (!userId) return res.status(401).json({ message: "No users found" });
 
     const items = await storage.getPantryItems(userId);
     res.json({ items }); // Wrap in object to match frontend expectations
@@ -37,7 +36,6 @@ r.post("/items", async (req, res) => {
       const users = await storage.getAllUsers();
       userId = users[0]?.id;
     }
-    if (!userId) return res.status(401).json({ message: "No users found" });
 
     const schema = z.object({
       name: z.string().min(1),
@@ -83,7 +81,6 @@ r.get("/expiring-soon", async (req, res) => {
       const users = await storage.getAllUsers();
       userId = users[0]?.id;
     }
-    if (!userId) return res.status(401).json({ message: "No users found" });
 
     const days = Number(req.query.days ?? 7);
     const items = await storage.getExpiringItems(userId, isNaN(days) ? 7 : days);
