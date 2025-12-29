@@ -137,11 +137,8 @@ r.post("/users/:id/pantry", async (req, res) => {
 });
 
 // Update pantry item
-r.put("/items/:itemId", requireAuth, async (req, res) => {
+r.put("/items/:itemId", async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
-
     const schema = z.object({
       name: z.string().min(1).optional(),
       category: z.string().optional(),
