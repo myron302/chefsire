@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
-import { requireAuth, optionalAuth } from "../middleware/auth";
+import { requireAuth } from "../middleware/auth";
 
 const r = Router();
 
@@ -12,16 +12,9 @@ const r = Router();
 
 // Session-based endpoints (get user ID from session)
 // Get current user's pantry
-r.get("/items", optionalAuth, async (req, res) => {
+r.get("/items", requireAuth, async (req, res) => {
   try {
-    // If no user from auth, try to get first user in system as fallback
-    let userId = req.user?.id;
-    if (!userId) {
-      const allUsers = await storage.getAllUsers();
-      if (allUsers && allUsers.length > 0) {
-        userId = allUsers[0].id;
-      }
-    }
+    const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
     const items = await storage.getPantryItems(userId);
@@ -33,16 +26,9 @@ r.get("/items", optionalAuth, async (req, res) => {
 });
 
 // Add item to current user's pantry
-r.post("/items", optionalAuth, async (req, res) => {
+r.post("/items", requireAuth, async (req, res) => {
   try {
-    // If no user from auth, try to get first user in system as fallback
-    let userId = req.user?.id;
-    if (!userId) {
-      const allUsers = await storage.getAllUsers();
-      if (allUsers && allUsers.length > 0) {
-        userId = allUsers[0].id;
-      }
-    }
+    const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
     const schema = z.object({
@@ -82,16 +68,9 @@ r.post("/items", optionalAuth, async (req, res) => {
 });
 
 // Get expiring items for current user
-r.get("/expiring-soon", optionalAuth, async (req, res) => {
+r.get("/expiring-soon", requireAuth, async (req, res) => {
   try {
-    // If no user from auth, try to get first user in system as fallback
-    let userId = req.user?.id;
-    if (!userId) {
-      const allUsers = await storage.getAllUsers();
-      if (allUsers && allUsers.length > 0) {
-        userId = allUsers[0].id;
-      }
-    }
+    const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
     const days = Number(req.query.days ?? 7);
@@ -104,7 +83,7 @@ r.get("/expiring-soon", optionalAuth, async (req, res) => {
 });
 
 // Delete pantry item by ID
-r.delete("/items/:itemId", optionalAuth, async (req, res) => {
+r.delete("/items/:itemId", requireAuth, async (req, res) => {
   try {
     const ok = await storage.deletePantryItem(req.params.itemId);
     if (!ok) return res.status(404).json({ message: "Pantry item not found" });
@@ -158,18 +137,8 @@ r.post("/users/:id/pantry", async (req, res) => {
 });
 
 // Update pantry item
-r.put("/items/:itemId", optionalAuth, async (req, res) => {
+r.put("/items/:itemId", async (req, res) => {
   try {
-    // If no user from auth, try to get first user in system as fallback
-    let userId = req.user?.id;
-    if (!userId) {
-      const allUsers = await storage.getAllUsers();
-      if (allUsers && allUsers.length > 0) {
-        userId = allUsers[0].id;
-      }
-    }
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
-
     const schema = z.object({
       name: z.string().min(1).optional(),
       category: z.string().optional(),
