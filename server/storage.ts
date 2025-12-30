@@ -236,14 +236,9 @@ export interface IStorage {
   }): Promise<any>;
   getPantryItems(userId: string): Promise<any[]>;
   updatePantryItem(itemId: string, updates: {
-    name?: string;
-    category?: string;
     quantity?: number;
-    unit?: string;
-    location?: string;
     expirationDate?: Date;
     notes?: string;
-    isRunningLow?: boolean;
   }): Promise<any>;
   deletePantryItem(itemId: string): Promise<boolean>;
   getExpiringItems(userId: string, daysAhead: number): Promise<any[]>;
@@ -1338,16 +1333,7 @@ export class DrizzleStorage implements IStorage {
 
   async updatePantryItem(
     itemId: string,
-    updates: {
-      name?: string;
-      category?: string;
-      quantity?: number;
-      unit?: string;
-      location?: string;
-      expirationDate?: Date;
-      notes?: string;
-      isRunningLow?: boolean;
-    }
+    updates: { quantity?: number; expirationDate?: Date; notes?: string }
   ): Promise<any> {
     const db = getDb();
     const result = await db.update(pantryItems).set(updates).where(eq(pantryItems.id, itemId)).returning();
