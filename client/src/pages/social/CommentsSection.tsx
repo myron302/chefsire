@@ -199,10 +199,14 @@ export default function CommentsSection({ postId, currentUserId }: CommentsSecti
           marginLeft: depth * 16,
         }}
       >
-        <Avatar className="w-8 h-8 flex-shrink-0">
-          <AvatarImage src={comment.user.avatar || ""} alt={comment.user.displayName} />
-          <AvatarFallback>{(comment.user.displayName || "U")[0]}</AvatarFallback>
-        </Avatar>
+        <Link href={`/profile/${comment.user.id}`}>
+          <a className="flex-shrink-0">
+            <Avatar className="w-8 h-8 cursor-pointer hover:opacity-80 transition-opacity">
+              <AvatarImage src={comment.user.avatar || ""} alt={comment.user.displayName} />
+              <AvatarFallback>{(comment.user.displayName || "U")[0]}</AvatarFallback>
+            </Avatar>
+          </a>
+        </Link>
 
         <div className="flex-1 min-w-0">
           <div className="bg-muted rounded-lg px-3 py-2">
