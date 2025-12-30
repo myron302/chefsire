@@ -6,7 +6,7 @@ import { storage } from "../storage";
 
 /**
  * NOTE:
- * - This file exposes a PATCH endpoint for partial updates (e.g., toggling isRunningLow)
+ * - Adds a PATCH /api/pantry/items/:id for partial updates (e.g., isRunningLow)
  * - Expiring-soon route uses a stable URL including the days parameter so React Query keys match
  */
 
