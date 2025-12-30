@@ -137,7 +137,7 @@ r.post("/users/:id/pantry", async (req, res) => {
 });
 
 // Update pantry item
-r.put("/pantry/:itemId", async (req, res) => {
+r.put("/items/:itemId", async (req, res) => {
   try {
     const schema = z.object({
       name: z.string().min(1).optional(),

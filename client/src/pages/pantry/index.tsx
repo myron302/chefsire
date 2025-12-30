@@ -153,7 +153,7 @@ export default function PantryDashboard() {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: async (data: Partial<PantryItem> & { id: string }) => {
-      const res = await fetch(`/api/pantry/pantry/${data.id}`, {
+      const res = await fetch(`/api/pantry/items/${data.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
