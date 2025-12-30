@@ -8,6 +8,29 @@ const r = Router();
 r.post("/", async (req, res, next) => {
   try {
     const like = await storage.likePost(req.body.userId, req.body.postId);
+
+    // Send notification to post author
+    try {
+      const post = await storage.getPost(req.body.postId);
+      const liker = await storage.getUser(req.body.userId);
+
+      // Don't notify if user likes their own post
+      if (post && liker && post.userId !== req.body.userId) {
+        const { notificationHelper } = await import("../index");
+        await notificationHelper.notifyUser(post.userId, {
+          type: "like",
+          title: "New Like",
+          message: `${liker.displayName || liker.username} liked your post`,
+          imageUrl: liker.avatar,
+          linkUrl: `/post/${post.id}`,
+          priority: "normal",
+        });
+      }
+    } catch (notifError) {
+      console.error("Failed to send like notification:", notifError);
+      // Don't fail the like operation if notification fails
+    }
+
     res.status(201).json(like);
   } catch (error) { next(error); }
 });
