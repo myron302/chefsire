@@ -17,7 +17,6 @@ import {
   AlertCircle,
   CalendarDays,
   Clock,
-  XCircle,
   Check,
 } from "lucide-react";
 
@@ -86,10 +85,10 @@ export default function PantryPage() {
   const patchRunningLow = useMutation({
     mutationFn: async ({ id, next }: { id: string; next: boolean }) => {
       const res = await fetch(`/api/pantry/items/${id}`, {
-        method: "PATCH",
+        method: "PATCH", // If your server doesn't support PATCH, switch this to "PUT"
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ isRunningLow: next }),
+        body: JSON.stringify({ isRunningLow: next }), // minimal body only
       });
       if (!res.ok) throw new Error("Failed to update");
       return res.json();
