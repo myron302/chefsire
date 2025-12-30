@@ -51,6 +51,7 @@ export default function PantryDashboard() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showExpiryDialog, setShowExpiryDialog] = useState(false);
+  const [showStatsDialog, setShowStatsDialog] = useState<'total' | 'expiring' | 'expired' | 'runningLow' | null>(null);
   const [itemToEdit, setItemToEdit] = useState<PantryItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
 
@@ -384,7 +385,7 @@ export default function PantryDashboard() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <Card>
+          <Card className="cursor-pointer hover:bg-accent transition-colors" onClick={() => setShowStatsDialog('total')}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -396,7 +397,7 @@ export default function PantryDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-yellow-200 bg-yellow-50">
+          <Card className="border-yellow-200 bg-yellow-50 cursor-pointer hover:bg-yellow-100 transition-colors" onClick={() => setShowStatsDialog('expiring')}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -408,7 +409,7 @@ export default function PantryDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-red-200 bg-red-50">
+          <Card className="border-red-200 bg-red-50 cursor-pointer hover:bg-red-100 transition-colors" onClick={() => setShowStatsDialog('expired')}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -420,7 +421,7 @@ export default function PantryDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-blue-200 bg-blue-50">
+          <Card className="border-blue-200 bg-blue-50 cursor-pointer hover:bg-blue-100 transition-colors" onClick={() => setShowStatsDialog('runningLow')}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -703,6 +704,75 @@ export default function PantryDashboard() {
         </div>
       )}
       </div>
+
+      {/* Stats Dialog */}
+      <Dialog open={showStatsDialog !== null} onOpenChange={() => setShowStatsDialog(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {showStatsDialog === 'total' && 'All Pantry Items'}
+              {showStatsDialog === 'expiring' && 'Expiring Soon'}
+              {showStatsDialog === 'expired' && 'Expired Items'}
+              {showStatsDialog === 'runningLow' && 'Running Low Items'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+            {(() => {
+              let dialogItems: PantryItem[] = [];
+
+              if (showStatsDialog === 'total') {
+                dialogItems = items;
+              } else if (showStatsDialog === 'expiring') {
+                dialogItems = expiringItems;
+              } else if (showStatsDialog === 'expired') {
+                dialogItems = items.filter(i => getExpiryStatus(i.expirationDate).status === "expired");
+              } else if (showStatsDialog === 'runningLow') {
+                dialogItems = items.filter(i => i.isRunningLow);
+              }
+
+              if (dialogItems.length === 0) {
+                return <p className="text-muted-foreground">No items in this category.</p>;
+              }
+
+              return dialogItems.map((item) => (
+                <div key={item.id} className="border rounded-lg p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-lg">{item.name}</h3>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {item.category && (
+                          <Badge variant="outline">{item.category}</Badge>
+                        )}
+                        {item.quantity && item.unit && (
+                          <Badge variant="secondary">{item.quantity} {item.unit}</Badge>
+                        )}
+                        {item.location && (
+                          <Badge variant="outline">
+                            <MapPin className="w-3 h-3 mr-1" />
+                            {item.location}
+                          </Badge>
+                        )}
+                        {item.expirationDate && (
+                          <Badge className={getExpiryStatus(item.expirationDate).color}>
+                            {getExpiryStatus(item.expirationDate).label}
+                          </Badge>
+                        )}
+                        {item.isRunningLow && (
+                          <Badge className="bg-blue-100 text-blue-800">Running Low</Badge>
+                        )}
+                      </div>
+                      {item.notes && (
+                        <p className="text-sm text-muted-foreground mt-2">{item.notes}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Expiry Calendar Dialog */}
       <Dialog open={showExpiryDialog} onOpenChange={setShowExpiryDialog}>
