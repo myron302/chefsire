@@ -157,7 +157,16 @@ export default function PantryDashboard() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          name: data.name,
+          category: data.category,
+          quantity: data.quantity,
+          unit: data.unit,
+          location: data.location,
+          expirationDate: data.expirationDate ? new Date(data.expirationDate).toISOString() : null,
+          notes: data.notes,
+          isRunningLow: data.isRunningLow,
+        }),
       });
       if (!res.ok) throw new Error("Failed to update item");
       return res.json();
