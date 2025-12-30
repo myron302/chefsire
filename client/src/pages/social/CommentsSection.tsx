@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -205,7 +206,9 @@ export default function CommentsSection({ postId, currentUserId }: CommentsSecti
 
         <div className="flex-1 min-w-0">
           <div className="bg-muted rounded-lg px-3 py-2">
-            <span className="font-semibold text-xs mr-2">{comment.user.displayName}</span>
+            <Link href={`/profile/${comment.user.id}`}>
+              <a className="font-semibold text-xs mr-2 hover:underline cursor-pointer">{comment.user.displayName}</a>
+            </Link>
             <span className="text-sm break-words">{comment.content}</span>
           </div>
 
