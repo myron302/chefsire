@@ -155,6 +155,13 @@ export default function DMThreadPage({ params }: Params) {
                               : "bg-gradient-to-br from-purple-50 via-fuchsia-50 to-pink-50 text-gray-800 rounded-bl-sm border-2 border-purple-300"
                           }`}
                         >
+                          {!mine && m.sender && (
+                            <Link href={`/profile/${m.senderId}`}>
+                              <a className="text-xs font-bold text-purple-700 hover:underline block mb-1">
+                                {m.sender.displayName || m.sender.username}
+                              </a>
+                            </Link>
+                          )}
                           <div className="whitespace-pre-wrap break-words leading-relaxed font-medium">{m.body}</div>
                           <div className={`mt-2 text-[10px] text-right font-medium ${mine ? "text-amber-100" : "text-purple-500"}`}>
                             {new Date(m.createdAt).toLocaleString()}
