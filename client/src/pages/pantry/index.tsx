@@ -737,7 +737,7 @@ export default function PantryDashboard() {
 
               return dialogItems.map((item) => (
                 <div key={item.id} className="border rounded-lg p-4">
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <h3 className="font-semibold text-lg">{item.name}</h3>
                       <div className="flex flex-wrap gap-2 mt-2">
@@ -766,6 +766,19 @@ export default function PantryDashboard() {
                         <p className="text-sm text-muted-foreground mt-2">{item.notes}</p>
                       )}
                     </div>
+                    {showStatsDialog === 'expired' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          addToShoppingListMutation.mutate([item]);
+                        }}
+                        disabled={addToShoppingListMutation.isPending}
+                      >
+                        <ShoppingCart className="w-4 h-4 mr-2" />
+                        Add to List
+                      </Button>
+                    )}
                   </div>
                 </div>
               ));
