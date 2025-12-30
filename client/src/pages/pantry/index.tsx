@@ -165,6 +165,7 @@ export default function PantryDashboard() {
           location: data.location,
           expirationDate: data.expirationDate,
           notes: data.notes,
+          isRunningLow: data.isRunningLow,
         }),
       });
       if (!res.ok) throw new Error("Failed to update item");
