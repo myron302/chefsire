@@ -1,226 +1,139 @@
 // server/routes/pantry.ts
 import { Router } from "express";
 import { z } from "zod";
-import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
-
-const r = Router();
+import { storage } from "../storage";
 
 /**
- * Pantry endpoints (user-id based; no session dependency).
+ * NOTE:
+ * - This file exposes a PATCH endpoint for partial updates (e.g., toggling isRunningLow)
+ * - Expiring-soon route uses a stable URL including the days parameter so React Query keys match
  */
 
-// Session-based endpoints (get user ID from session)
-// Get current user's pantry
+export const r = Router();
+
+// ---------- Schemas ----------
+const CreateItemSchema = z.object({
+  name: z.string().min(1),
+  category: z.string().optional(),
+  quantity: z.number().optional(),
+  unit: z.string().optional(),
+  location: z.string().optional(),
+  expirationDate: z.string().nullable().optional(),
+  notes: z.string().optional(),
+  isRunningLow: z.boolean().optional(),
+});
+
+const UpdateItemSchema = CreateItemSchema.partial().extend({
+  id: z.string().min(1),
+});
+
+const PatchItemSchema = z.object({
+  isRunningLow: z.boolean().optional(),
+  name: z.string().optional(),
+  category: z.string().optional(),
+  quantity: z.number().optional(),
+  unit: z.string().optional(),
+  location: z.string().optional(),
+  expirationDate: z.string().nullable().optional(),
+  notes: z.string().optional(),
+});
+
+// ---------- Helpers ----------
+function assertUser(req: any) {
+  const userId = req.user?.id as string | undefined;
+  if (!userId) throw new Error("NOT_AUTHENTICATED");
+  return userId;
+}
+
+// ---------- Routes ----------
+
+// Get all pantry items for current user
 r.get("/items", requireAuth, async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
-
-    const items = await storage.getPantryItems(userId);
-    res.json({ items }); // Wrap in object to match frontend expectations
-  } catch (error) {
-    console.error("pantry/items/list error", error);
-    res.status(500).json({ message: "Failed to fetch pantry items" });
+    const userId = assertUser(req);
+    const items = await storage.pantry.listItems(userId);
+    res.json(items);
+  } catch (e: any) {
+    if (e?.message === "NOT_AUTHENTICATED") return res.status(401).json({ message: "Not authenticated" });
+    res.status(500).json({ message: "Failed to fetch items" });
   }
 });
 
-// Add item to current user's pantry
+// Create item
 r.post("/items", requireAuth, async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
-
-    const schema = z.object({
-      name: z.string().min(1),
-      category: z.string().optional(),
-      quantity: z.union([z.string(), z.number()]).optional(),
-      unit: z.string().optional(),
-      expirationDate: z.string().datetime().optional(),
-      notes: z.string().optional(),
-      imageUrl: z.string().optional(),
-    });
-
-    const body = schema.parse(req.body);
-
-    // Convert quantity to number if it's a string
-    let quantityNum: number | undefined;
-    if (body.quantity !== undefined) {
-      quantityNum = typeof body.quantity === 'string' ? parseFloat(body.quantity) : body.quantity;
-      if (isNaN(quantityNum)) quantityNum = undefined;
-    }
-
-    const created = await storage.addPantryItem(userId, {
-      name: body.name,
-      category: body.category,
-      quantity: quantityNum,
-      unit: body.unit,
-      expirationDate: body.expirationDate ? new Date(body.expirationDate) : undefined,
-      notes: body.notes,
-    });
-
+    const userId = assertUser(req);
+    const body = CreateItemSchema.parse(req.body);
+    const created = await storage.pantry.createItem(userId, body);
     res.status(201).json(created);
-  } catch (error: any) {
-    if (error?.issues) return res.status(400).json({ message: "Invalid item", errors: error.issues });
-    console.error("pantry/items/add error", error);
-    res.status(500).json({ message: "Failed to add pantry item" });
+  } catch (e: any) {
+    const status = e?.name === "ZodError" ? 400 : 500;
+    res.status(status).json({ message: "Failed to create item", details: e?.issues || e?.message });
   }
 });
 
-// Get expiring items for current user
+// Full update (PUT) - expects a safe subset from client; server will ignore unknowns
+r.put("/items/:id", requireAuth, async (req, res) => {
+  try {
+    const userId = assertUser(req);
+    const id = z.string().min(1).parse(req.params.id);
+    const data = UpdateItemSchema.parse({ ...req.body, id });
+    const updated = await storage.pantry.updateItem(userId, id, data);
+    res.json(updated);
+  } catch (e: any) {
+    const status = e?.name === "ZodError" ? 400 : 500;
+    res.status(status).json({ message: "Failed to update item", details: e?.issues || e?.message });
+  }
+});
+
+// Partial update (PATCH) - lightweight toggles (e.g., isRunningLow)
+r.patch("/items/:id", requireAuth, async (req, res) => {
+  try {
+    const userId = assertUser(req);
+    const id = z.string().min(1).parse(req.params.id);
+    const patch = PatchItemSchema.parse(req.body);
+    const updated = await storage.pantry.patchItem(userId, id, patch);
+    res.json(updated);
+  } catch (e: any) {
+    const status = e?.name === "ZodError" ? 400 : 500;
+    res.status(status).json({ message: "Failed to patch item", details: e?.issues || e?.message });
+  }
+});
+
+// Delete
+r.delete("/items/:id", requireAuth, async (req, res) => {
+  try {
+    const userId = assertUser(req);
+    const id = z.string().min(1).parse(req.params.id);
+    await storage.pantry.deleteItem(userId, id);
+    res.status(204).end();
+  } catch (e: any) {
+    const status = e?.name === "ZodError" ? 400 : 500;
+    res.status(status).json({ message: "Failed to delete item" });
+  }
+});
+
+// Expiring soon - stable query string so the client queryKey matches invalidations
 r.get("/expiring-soon", requireAuth, async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
-
-    const days = Number(req.query.days ?? 7);
-    const items = await storage.getExpiringItems(userId, isNaN(days) ? 7 : days);
-    res.json({ items }); // Wrap in object to match frontend expectations
-  } catch (error) {
-    console.error("pantry/expiring-soon error", error);
-    res.status(500).json({ message: "Failed to fetch expiring items" });
+    const userId = assertUser(req);
+    const days = z.coerce.number().int().min(1).max(60).default(7).parse(req.query.days);
+    const items = await storage.pantry.getExpiringSoon(userId, days);
+    res.json(items);
+  } catch (e) {
+    res.status(500).json({ message: "Failed to load expiring items" });
   }
 });
 
-// Delete pantry item by ID
-r.delete("/items/:itemId", requireAuth, async (req, res) => {
+// Items marked running low
+r.get("/running-low", requireAuth, async (req, res) => {
   try {
-    const ok = await storage.deletePantryItem(req.params.itemId);
-    if (!ok) return res.status(404).json({ message: "Pantry item not found" });
-    res.json({ message: "Pantry item deleted" });
-  } catch (error) {
-    console.error("pantry/items/delete error", error);
-    res.status(500).json({ message: "Failed to delete pantry item" });
-  }
-});
-
-// User-ID based endpoints (for backwards compatibility)
-// Get a user's pantry
-r.get("/users/:id/pantry", async (req, res) => {
-  try {
-    const items = await storage.getPantryItems(req.params.id);
-    res.json({ pantryItems: items, total: items.length });
-  } catch (error) {
-    console.error("pantry/list error", error);
-    res.status(500).json({ message: "Failed to fetch pantry items" });
-  }
-});
-
-// Add pantry item
-r.post("/users/:id/pantry", async (req, res) => {
-  try {
-    const schema = z.object({
-      name: z.string().min(1),
-      category: z.string().optional(),
-      quantity: z.number().min(0).optional(),
-      unit: z.string().optional(),
-      expirationDate: z.string().datetime().optional(),
-      notes: z.string().optional(),
-    });
-
-    const body = schema.parse(req.body);
-    const created = await storage.addPantryItem(req.params.id, {
-      name: body.name,
-      category: body.category,
-      quantity: body.quantity,
-      unit: body.unit,
-      expirationDate: body.expirationDate ? new Date(body.expirationDate) : undefined,
-      notes: body.notes,
-    });
-
-    res.status(201).json({ message: "Pantry item added", item: created });
-  } catch (error: any) {
-    if (error?.issues) return res.status(400).json({ message: "Invalid item", errors: error.issues });
-    console.error("pantry/add error", error);
-    res.status(500).json({ message: "Failed to add pantry item" });
-  }
-});
-
-// Update pantry item
-r.put("/items/:itemId", async (req, res) => { // FIXED: Changed path from /pantry/:itemId to /items/:itemId
-  try {
-    let userId = req.user?.id;
-    if (!userId) {
-      const users = await storage.getAllUsers();
-      userId = users[0]?.id;
-    }
-
-    const schema = z.object({
-      name: z.string().min(1).optional(),
-      category: z.string().optional(),
-      quantity: z.union([z.number(), z.string()]).optional(),
-      unit: z.string().optional(),
-      location: z.string().optional(),
-      expirationDate: z.string().datetime().optional().nullable(),
-      notes: z.string().optional().nullable(),
-      isRunningLow: z.boolean().optional(),
-    });
-    const body = schema.parse(req.body);
-
-    // Convert quantity to number if it's a string
-    let quantityNum: number | undefined;
-    if (body.quantity !== undefined && body.quantity !== null) {
-      quantityNum = typeof body.quantity === 'string' ? parseFloat(body.quantity) : body.quantity;
-      if (isNaN(quantityNum)) quantityNum = undefined;
-    }
-
-    const updated = await storage.updatePantryItem(req.params.itemId, {
-      name: body.name,
-      category: body.category,
-      quantity: quantityNum,
-      unit: body.unit,
-      location: body.location,
-      expirationDate: body.expirationDate ? new Date(body.expirationDate) : undefined,
-      notes: body.notes,
-      isRunningLow: body.isRunningLow,
-    });
-
-    if (!updated) return res.status(404).json({ message: "Pantry item not found" });
-    res.json({ message: "Pantry item updated", item: updated });
-  } catch (error: any) {
-    if (error?.issues) return res.status(400).json({ message: "Invalid update", errors: error.issues });
-    console.error("pantry/update error", error);
-    res.status(500).json({ message: "Failed to update pantry item" });
-  }
-});
-
-// Expiring soon
-r.get("/users/:id/pantry/expiring", async (req, res) => {
-  try {
-    const days = Number(req.query.days ?? 7);
-    const items = await storage.getExpiringItems(req.params.id, isNaN(days) ? 7 : days);
-    res.json({ expiringItems: items, daysAhead: days, total: items.length });
-  } catch (error) {
-    console.error("pantry/expiring error", error);
-    res.status(500).json({ message: "Failed to fetch expiring items" });
-  }
-});
-
-// Pantry-based recipe suggestions
-r.get("/users/:id/pantry/recipe-suggestions", async (req, res) => {
-  try {
-    const schema = z.object({
-      requireAllIngredients: z.coerce.boolean().default(false),
-      maxMissingIngredients: z.coerce.number().min(0).max(10).default(3),
-      includeExpiringSoon: z.coerce.boolean().default(true),
-      limit: z.coerce.number().min(1).max(50).default(20),
-    });
-    const opts = schema.parse(req.query);
-
-    const suggestions = await storage.getRecipesFromPantryItems(req.params.id, opts);
-    res.json({
-      suggestions,
-      options: opts,
-      total: suggestions.length,
-      message:
-        suggestions.length === 0
-          ? "No matches yet. Try adding more items to your pantry."
-          : undefined,
-    });
-  } catch (e: any) {
-    if (e?.issues) return res.status(400).json({ message: "Invalid parameters", errors: e.issues });
-    console.error("pantry/suggestions error", e);
-    res.status(500).json({ message: "Failed to get suggestions" });
+    const userId = assertUser(req);
+    const items = await storage.pantry.getRunningLow(userId);
+    res.json(items);
+  } catch (e) {
+    res.status(500).json({ message: "Failed to load low items" });
   }
 });
 
