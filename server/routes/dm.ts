@@ -112,6 +112,61 @@ r.get("/threads", requireAuth, async (req, res) => {
 });
 
 /**
+ * GET /api/dm/threads/:id
+ * Get a single thread with participant details
+ */
+r.get("/threads/:id", requireAuth, async (req, res) => {
+  const userId = req.user!.id;
+  const { id } = req.params;
+
+  // Membership check
+  const member = await db
+    .select()
+    .from(dmParticipants)
+    .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)))
+    .limit(1);
+  if (member.length === 0) return res.status(403).json({ ok: false, error: "forbidden" });
+
+  // Get thread
+  const [thread] = await db
+    .select()
+    .from(dmThreads)
+    .where(eq(dmThreads.id, id))
+    .limit(1);
+  if (!thread) return res.status(404).json({ ok: false, error: "not found" });
+
+  // Get all participants for this thread
+  const participants = await db
+    .select()
+    .from(dmParticipants)
+    .where(eq(dmParticipants.threadId, id));
+
+  const participantUserIds = participants.map(p => p.userId);
+
+  // Import users table to get user details
+  const { users } = await import("../../shared/schema");
+
+  // Load user details for all participants
+  const participantUsers = participantUserIds.length > 0
+    ? await db
+        .select({
+          id: users.id,
+          username: users.username,
+          displayName: users.displayName,
+          avatar: users.avatar,
+        })
+        .from(users)
+        .where(inArray(users.id, participantUserIds))
+    : [];
+
+  res.json({
+    ok: true,
+    ...thread,
+    participants: participantUsers,
+  });
+});
+
+/**
  * GET /api/dm/threads/:id/messages?take=30&before=ISO_DATE
  * Paged messages (newest→oldest on wire; we reverse for display).
  */
@@ -141,7 +196,35 @@ r.get("/threads/:id/messages", requireAuth, async (req, res) => {
     .orderBy(desc(dmMessages.createdAt))
     .limit(take);
 
-  res.json({ ok: true, messages: rows.reverse() });
+  // Get unique sender IDs from messages
+  const senderIds = Array.from(new Set(rows.map(m => m.senderId)));
+
+  // Import users table to get sender details
+  const { users } = await import("../../shared/schema");
+
+  // Load user details for all senders
+  const senders = senderIds.length > 0
+    ? await db
+        .select({
+          id: users.id,
+          username: users.username,
+          displayName: users.displayName,
+          avatar: users.avatar,
+        })
+        .from(users)
+        .where(inArray(users.id, senderIds))
+    : [];
+
+  // Create a map of sender ID to sender details
+  const senderMap = new Map(senders.map(s => [s.id, s]));
+
+  // Add sender details to each message
+  const messagesWithSenders = rows.map(m => ({
+    ...m,
+    sender: senderMap.get(m.senderId) || null,
+  }));
+
+  res.json({ ok: true, messages: messagesWithSenders.reverse() });
 });
 
 /**
