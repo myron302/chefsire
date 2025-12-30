@@ -812,7 +812,6 @@ const toggleRunningLowMutation = useMutation({
         </DialogContent>
       </Dialog>
 
-      {
 
     </div>
   );
@@ -1051,4 +1050,3 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
     </div>
   </DialogContent>
 </Dialog>
-
