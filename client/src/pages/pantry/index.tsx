@@ -52,7 +52,6 @@ export default function PantryDashboard() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<PantryItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  const [showExpiryDialog, setShowExpiryDialog] = useState(false);
 
   // Handle scanned barcode from URL parameters
   useEffect(() => {
@@ -117,7 +116,8 @@ export default function PantryDashboard() {
   });
 
   // Fetch expiring items
-  const { data: expiringData } = useQuery({ queryKey: ["/api/pantry/expiring-soon?days=7"],
+  const { data: expiringData } = useQuery({
+    queryKey: ["/api/pantry/expiring-soon", { days: 7 }],
     queryFn: async () => {
       const res = await fetch("/api/pantry/expiring-soon?days=7", {
         credentials: "include",
@@ -142,7 +142,7 @@ export default function PantryDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pantry/items"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pantry/expiring-soon?days=7"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pantry/expiring-soon"] });
       toast({ title: "Item deleted" });
     },
     onError: () => {
@@ -153,18 +153,26 @@ export default function PantryDashboard() {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: async (data: Partial<PantryItem> & { id: string }) => {
-      const res = await fetch(`/api/pantry/items/${data.id}`, {
+      const res = await fetch(`/api/pantry/pantry/${data.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          name: data.name,
+          category: data.category,
+          quantity: data.quantity,
+          unit: data.unit,
+          location: data.location,
+          expirationDate: data.expirationDate,
+          notes: data.notes,
+        }),
       });
       if (!res.ok) throw new Error("Failed to update item");
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pantry/items"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pantry/expiring-soon?days=7"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pantry/expiring-soon"] });
       toast({ title: "Item updated successfully!" });
       setShowEditDialog(false);
       setItemToEdit(null);
@@ -218,26 +226,7 @@ export default function PantryDashboard() {
     },
   });
 
-  
-// Toggle Running Low mutation (minimal body to avoid server errors)
-const toggleRunningLowMutation = useMutation({
-  mutationFn: async ({ id, next }: { id: string; next: boolean }) => {
-    const res = await fetch(`/api/pantry/items/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ id, isRunningLow: next }),
-    });
-    if (!res.ok) throw new Error("Failed to update running-low state");
-    return res.json();
-  },
-  onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: ["/api/pantry/items"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/pantry/running-low"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/pantry/expiring-soon?days=7"] });
-  },
-});
-// Toggle item selection
+  // Toggle item selection
   const toggleItemSelection = (itemId: string) => {
     setSelectedItems(prev => {
       const newSet = new Set(prev);
@@ -497,7 +486,7 @@ const toggleRunningLowMutation = useMutation({
             className="cursor-pointer hover:bg-accent transition-colors"
             onClick={() => {
               setFilterExpiry("expiring");
-              setShowExpiryDialog(true);
+              // Scroll to items section
               const itemsSection = document.querySelector('[data-items-section]');
               itemsSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}
@@ -701,7 +690,10 @@ const toggleRunningLowMutation = useMutation({
                       variant={item.isRunningLow ? "default" : "outline"}
                       className="w-full"
                       onClick={() => {
-                        toggleRunningLowMutation.mutate({ id: item.id, next: !item.isRunningLow });
+                        updateMutation.mutate({
+                          id: item.id,
+                          isRunningLow: !item.isRunningLow,
+                        });
                       }}
                     >
                       <AlertCircle className="w-4 h-4 mr-2" />
@@ -812,53 +804,103 @@ const toggleRunningLowMutation = useMutation({
         </DialogContent>
       </Dialog>
 
-
-    {/* Expiry Calendar Dialog */}
-<Dialog open={showExpiryDialog} onOpenChange={setShowExpiryDialog}>
-  <DialogContent className="max-w-2xl">
-    <DialogHeader>
-      <DialogTitle>Expiry Calendar (Next 7 Days)</DialogTitle>
-    </DialogHeader>
-    <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-      {(expiringItems ?? []).length === 0 ? (
-        <p className="text-muted-foreground">Nothing expiring in the next week.</p>
-      ) : (
-        Object.entries(
-          (expiringItems ?? []).reduce<Record<string, PantryItem[]>>((acc, item) => {
-            const key = item.expirationDate
-              ? new Date(item.expirationDate).toISOString().split("T")[0]
-              : "No date";
-            (acc[key] ||= []).push(item as PantryItem);
-            return acc;
-          }, {})
-        )
-          .sort(([a],[b]) => a.localeCompare(b))
-          .map(([day, items]) => (
-            <div key={day} className="border rounded-lg">
-              <div className="px-4 py-2 font-semibold bg-muted/50">
-                {day === "No date"
-                  ? "No expiration date"
-                  : format(new Date(day), "EEEE, MMM d, yyyy")}
+      {/* Edit Item Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Pantry Item</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+            <div>
+              <label className="text-sm font-medium">Item Name *</label>
+              <Input
+                value={itemToEdit?.name || ""}
+                onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, name: e.target.value } : null)}
+                placeholder="e.g., Milk, Eggs"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Category</label>
+              <Select
+                value={itemToEdit?.category || ""}
+                onValueChange={(value) => setItemToEdit(itemToEdit ? { ...itemToEdit, category: value } : null)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Produce">Produce</SelectItem>
+                  <SelectItem value="Dairy">Dairy</SelectItem>
+                  <SelectItem value="Meat">Meat</SelectItem>
+                  <SelectItem value="Bakery">Bakery</SelectItem>
+                  <SelectItem value="Pantry">Pantry</SelectItem>
+                  <SelectItem value="Frozen">Frozen</SelectItem>
+                  <SelectItem value="Beverages">Beverages</SelectItem>
+                  <SelectItem value="Snacks">Snacks</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Quantity</label>
+                <Input
+                  value={itemToEdit?.quantity || ""}
+                  onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, quantity: e.target.value } : null)}
+                  placeholder="e.g., 2"
+                />
               </div>
-              <div className="p-4 space-y-2">
-                {items.map((i) => (
-                  <div key={i.id} className="flex items-center justify-between">
-                    <span>{i.name}</span>
-                    <Badge variant="secondary">
-                      {i.quantity && i.unit ? `${i.quantity} ${i.unit}` : "—"}
-                    </Badge>
-                  </div>
-                ))}
+              <div>
+                <label className="text-sm font-medium">Unit</label>
+                <Input
+                  value={itemToEdit?.unit || ""}
+                  onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, unit: e.target.value } : null)}
+                  placeholder="e.g., lbs, pieces"
+                />
               </div>
             </div>
-          ))
-      )}
+            <div>
+              <label className="text-sm font-medium">Location</label>
+              <Input
+                value={itemToEdit?.location || ""}
+                onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, location: e.target.value } : null)}
+                placeholder="e.g., Fridge, Pantry"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Expiration Date</label>
+              <Input
+                type="date"
+                value={itemToEdit?.expirationDate ? new Date(itemToEdit.expirationDate).toISOString().split('T')[0] : ""}
+                onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, expirationDate: e.target.value ? new Date(e.target.value).toISOString() : null } : null)}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Notes</label>
+              <Input
+                value={itemToEdit?.notes || ""}
+                onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, notes: e.target.value } : null)}
+                placeholder="Optional notes"
+              />
+            </div>
+            <Button
+              onClick={() => {
+                if (!itemToEdit?.name?.trim()) {
+                  toast({ title: "Please enter an item name", variant: "destructive" });
+                  return;
+                }
+                updateMutation.mutate(itemToEdit);
+              }}
+              className="w-full"
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending ? "Updating..." : "Update Item"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
-  </DialogContent>
-</Dialog>
-</div>
-
-
   );
 }
 
@@ -917,7 +959,7 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pantry/items"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pantry/expiring-soon?days=7"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pantry/expiring-soon"] });
       if (alsoAddToShoppingList && isPremium) {
         queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
         toast({ title: "Item added to pantry and shopping list!" });
@@ -1050,6 +1092,3 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
     </form>
   );
 }
-
-
-
