@@ -1348,13 +1348,20 @@ export class DrizzleStorage implements IStorage {
 
   async getExpiringItems(userId: string, daysAhead: number): Promise<any[]> {
     const db = getDb();
+    const now = new Date();
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + daysAhead);
 
     return db
       .select()
       .from(pantryItems)
-      .where(and(eq(pantryItems.userId, userId), sql`${pantryItems.expirationDate} <= ${futureDate}`))
+      .where(
+        and(
+          eq(pantryItems.userId, userId),
+          sql`${pantryItems.expirationDate} > ${now}`,
+          sql`${pantryItems.expirationDate} <= ${futureDate}`
+        )
+      )
       .orderBy(asc(pantryItems.expirationDate));
   }
 
