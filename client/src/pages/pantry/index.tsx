@@ -813,8 +813,7 @@ const toggleRunningLowMutation = useMutation({
       </Dialog>
 
 
-    </div>
-{/* Expiry Calendar Dialog */}
+    {/* Expiry Calendar Dialog */}
 <Dialog open={showExpiryDialog} onOpenChange={setShowExpiryDialog}>
   <DialogContent className="max-w-2xl">
     <DialogHeader>
@@ -857,6 +856,8 @@ const toggleRunningLowMutation = useMutation({
     </div>
   </DialogContent>
 </Dialog>
+</div>
+
 
   );
 }
