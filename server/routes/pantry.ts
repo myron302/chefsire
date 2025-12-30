@@ -139,6 +139,13 @@ r.post("/users/:id/pantry", async (req, res) => {
 // Update pantry item
 r.put("/pantry/:itemId", async (req, res) => {
   try {
+    // Get user ID from session or use first user as fallback
+    let userId = req.user?.id;
+    if (!userId) {
+      const users = await storage.getAllUsers();
+      userId = users[0]?.id;
+    }
+
     const schema = z.object({
       name: z.string().min(1).optional(),
       category: z.string().optional(),
