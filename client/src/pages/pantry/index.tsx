@@ -692,7 +692,7 @@ export default function PantryDashboard() {
                       className="w-full"
                       onClick={() => {
                         updateMutation.mutate({
-                          id: item.id,
+                          ...item,
                           isRunningLow: !item.isRunningLow,
                         });
                       }}
