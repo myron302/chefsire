@@ -1,7 +1,6 @@
 // server/routes/comments.ts
 import { Router } from "express";
 import { storage } from "../storage";
-import { sendNotification } from "../services/notifications";
 
 const r = Router();
 
@@ -17,44 +16,6 @@ r.get("/post/:postId", async (req, res, next) => {
 r.post("/", async (req, res, next) => {
   try {
     const created = await storage.createComment(req.body);
-
-    // Send notification to post author (non-blocking)
-    setImmediate(async () => {
-      try {
-        const post = await storage.getPost(req.body.postId);
-        const commenter = await storage.getUser(req.body.userId);
-
-        // Don't notify if user comments on their own post
-        if (post && commenter && post.userId !== req.body.userId) {
-          await sendNotification(post.userId, {
-            type: "comment",
-            title: "New Comment",
-            message: `${commenter.displayName || commenter.username} commented: "${created.text.substring(0, 50)}${created.text.length > 50 ? '...' : ''}"`,
-            imageUrl: commenter.avatar,
-            linkUrl: `/post/${post.id}`,
-            priority: "normal",
-          });
-        }
-
-        // If this is a reply to another comment, notify the parent comment author
-        if (req.body.parentId) {
-          const parentComment = await storage.getComment(req.body.parentId);
-          if (parentComment && parentComment.userId !== req.body.userId && post) {
-            await sendNotification(parentComment.userId, {
-              type: "comment",
-              title: "New Reply",
-              message: `${commenter.displayName || commenter.username} replied: "${created.text.substring(0, 50)}${created.text.length > 50 ? '...' : ''}"`,
-              imageUrl: commenter.avatar,
-              linkUrl: `/post/${post.id}`,
-              priority: "normal",
-            });
-          }
-        }
-      } catch (notifError) {
-        console.error("Failed to send comment notification:", notifError);
-      }
-    });
-
     res.status(201).json(created);
   } catch (error) { next(error); }
 });
