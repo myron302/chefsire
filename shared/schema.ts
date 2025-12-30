@@ -391,6 +391,7 @@ export const pantryItems = pgTable(
     expirationDate: timestamp("expiration_date"),
     purchaseDate: timestamp("purchase_date"),
     notes: text("notes"),
+    isRunningLow: boolean("is_running_low").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
