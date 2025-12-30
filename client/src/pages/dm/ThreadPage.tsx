@@ -4,7 +4,8 @@ import { Link } from "wouter";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Send, Crown } from "lucide-react";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { ArrowLeft, Send, Crown, User } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
 
 type Params = { params?: Record<string, string> };
@@ -16,6 +17,12 @@ type DMUser = {
   avatar?: string | null;
 };
 
+type DMThread = {
+  id: string;
+  isGroup?: boolean;
+  participants?: DMUser[];
+};
+
 type DMMessage = {
   id: string;
   threadId: string;
@@ -24,6 +31,14 @@ type DMMessage = {
   createdAt: string;
   sender?: DMUser;
 };
+
+async function fetchThread(threadId: string): Promise<DMThread> {
+  const r = await fetch(`/api/dm/threads/${threadId}`, {
+    credentials: "include",
+  });
+  if (!r.ok) throw new Error(`Failed to load thread (${r.status})`);
+  return r.json();
+}
 
 async function fetchMessages(threadId: string): Promise<{ messages: DMMessage[] }> {
   const r = await fetch(`/api/dm/threads/${threadId}/messages`, {
@@ -58,6 +73,13 @@ export default function DMThreadPage({ params }: Params) {
   const meId = user?.id;
   const qc = useQueryClient();
 
+  // Fetch thread info to get participants
+  const { data: threadData } = useQuery({
+    queryKey: ["dm", "thread", threadId],
+    queryFn: () => fetchThread(threadId),
+    enabled: !!threadId,
+  });
+
   const {
     data: messagesData,
     isLoading: loadingMessages,
@@ -71,6 +93,13 @@ export default function DMThreadPage({ params }: Params) {
   });
 
   const messages = messagesData?.messages ?? [];
+
+  // Get the other participant
+  const otherParticipant = React.useMemo(() => {
+    if (!threadData?.participants) return null;
+    const others = threadData.participants.filter((p) => p.id !== meId);
+    return others[0] ?? null;
+  }, [threadData?.participants, meId]);
 
   const [text, setText] = React.useState("");
   const sendMutation = useMutation({
@@ -107,14 +136,38 @@ export default function DMThreadPage({ params }: Params) {
           <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 via-amber-500 to-red-600 rounded-lg blur-md opacity-40 group-hover:opacity-60 transition duration-300"></div>
           <Card className="relative border-2 border-amber-300 shadow-2xl bg-white">
             <CardHeader className="border-b-2 border-amber-200 bg-gradient-to-r from-orange-50 to-red-50">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <div className="relative">
-                  <Crown className="h-6 w-6 text-amber-600" />
-                  <div className="absolute inset-0 bg-amber-400 blur-sm opacity-30"></div>
-                </div>
-                <span className="bg-gradient-to-r from-orange-700 to-red-700 bg-clip-text text-transparent font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
-                  Royal Conversation
-                </span>
+              <CardTitle className="text-lg flex items-center gap-3">
+                {otherParticipant ? (
+                  <>
+                    <Link href={`/profile/${otherParticipant.id}`}>
+                      <a className="flex-shrink-0">
+                        <Avatar className="w-10 h-10 cursor-pointer hover:opacity-80 transition-opacity border-2 border-amber-400">
+                          <AvatarImage src={otherParticipant.avatar || ""} alt={otherParticipant.displayName || otherParticipant.username} />
+                          <AvatarFallback className="bg-gradient-to-br from-purple-400 to-fuchsia-400 text-white">
+                            {(otherParticipant.displayName || otherParticipant.username || "U")[0].toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      </a>
+                    </Link>
+                    <Link href={`/profile/${otherParticipant.id}`}>
+                      <a className="hover:underline">
+                        <span className="bg-gradient-to-r from-orange-700 to-red-700 bg-clip-text text-transparent font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
+                          {otherParticipant.displayName || otherParticipant.username}
+                        </span>
+                      </a>
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <Crown className="h-6 w-6 text-amber-600" />
+                      <div className="absolute inset-0 bg-amber-400 blur-sm opacity-30"></div>
+                    </div>
+                    <span className="bg-gradient-to-r from-orange-700 to-red-700 bg-clip-text text-transparent font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
+                      Royal Conversation
+                    </span>
+                  </>
+                )}
               </CardTitle>
             </CardHeader>
 
