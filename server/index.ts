@@ -3,7 +3,6 @@ import "dotenv/config";
 import app from "./app";
 import { attachDmRealtime } from "./realtime/dmSocket";
 import { attachNotificationRealtime } from "./realtime/notificationSocket";
-import { setNotificationHelper } from "./services/notifications";
 
 const HAS_PASSENGER_PORT = !!process.env.PORT;
 const PORT = Number(process.env.PORT || 3001);
@@ -31,10 +30,7 @@ const server = app.listen(PORT, HOST, () => {
 
 // Attach WebSocket handlers
 attachDmRealtime(server);
-const notificationHelper = attachNotificationRealtime(server);
-
-// Set the notification helper in the singleton service
-setNotificationHelper(notificationHelper);
+attachNotificationRealtime(server);
 
 // Robust error handling—exit so Passenger restarts us and shows the real log line
 server.on("error", (err: any) => {
