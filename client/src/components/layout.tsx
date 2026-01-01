@@ -124,15 +124,14 @@ export default function Layout({ children }: LayoutProps) {
                     </Button>
                   </Link>
 
-                  {/* Disabled - WebSocket not supported on Plesk/Passenger */}
+                  {/* TEMPORARILY DISABLED - NotificationBell causing 502 on refresh */}
                   <Button
                     variant="ghost"
                     size="sm"
                     className="p-2 hover:bg-muted rounded-full"
                     aria-label="Notifications"
-                    disabled
                   >
-                    <Bell className="h-5 w-5 text-muted-foreground opacity-50" />
+                    <Bell className="h-5 w-5 text-muted-foreground" />
                   </Button>
                   <Link href="/messages">
                     <Button
