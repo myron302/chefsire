@@ -1,20 +1,26 @@
 // server/routes/dm.ts
 import { Router } from "express";
 import { z } from "zod";
-import { and, desc, eq, inArray, lt, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
-import { dmThreads, dmParticipants, dmMessages } from "../../shared/schema.dm.ts";
-import { users, notifications } from "../../shared/schema";
+import {
+  dmThreads,
+  dmParticipants,
+  dmMessages,
+} from "../../shared/schema.dm.ts";
+import { sendDmNotification } from "../services/notification-service";
 
 const r = Router();
 
 /**
  * GET /api/dm/threads
+ * List the current user's DM threads with lastMessage + unread count.
  */
 r.get("/threads", requireAuth, async (req, res) => {
   const userId = req.user!.id;
 
+  // All participant rows for this user
   const parts = await db
     .select()
     .from(dmParticipants)
@@ -23,41 +29,49 @@ r.get("/threads", requireAuth, async (req, res) => {
   const threadIds = parts.map((p) => p.threadId);
   if (threadIds.length === 0) return res.json({ ok: true, threads: [] });
 
-  const threads = await db.select().from(dmThreads).where(inArray(dmThreads.id, threadIds));
+  const threads = await db
+    .select()
+    .from(dmThreads)
+    .where(inArray(dmThreads.id, threadIds));
 
+  // Load all participants for these threads
   const allParticipants = await db
     .select()
     .from(dmParticipants)
     .where(inArray(dmParticipants.threadId, threadIds));
 
-  const participantUserIds = Array.from(new Set(allParticipants.map((p) => p.userId)));
+  // Get unique user IDs from participants
+  const participantUserIds = Array.from(new Set(allParticipants.map(p => p.userId)));
 
+  // Import users table to get user details
   const { users } = await import("../../shared/schema");
 
-  const participantUsers =
-    participantUserIds.length > 0
-      ? await db
-          .select({
-            id: users.id,
-            username: users.username,
-            displayName: users.displayName,
-            avatar: users.avatar,
-          })
-          .from(users)
-          .where(inArray(users.id, participantUserIds))
-      : [];
+  // Load user details for all participants (only if we have any)
+  const participantUsers = participantUserIds.length > 0
+    ? await db
+        .select({
+          id: users.id,
+          username: users.username,
+          displayName: users.displayName,
+          avatar: users.avatar,
+        })
+        .from(users)
+        .where(inArray(users.id, participantUserIds))
+    : [];
 
+  // Create a map of thread ID to participants with user details
   const participantsByThread = new Map<string, typeof participantUsers>();
   for (const thread of threads) {
     const threadParticipantIds = allParticipants
-      .filter((p) => p.threadId === thread.id)
-      .map((p) => p.userId);
+      .filter(p => p.threadId === thread.id)
+      .map(p => p.userId);
     participantsByThread.set(
       thread.id,
-      participantUsers.filter((u) => threadParticipantIds.includes(u.id))
+      participantUsers.filter(u => threadParticipantIds.includes(u.id))
     );
   }
 
+  // Pull recent messages across all my threads once (avoid N+1)
   const recentMessages = await db
     .select()
     .from(dmMessages)
@@ -70,15 +84,20 @@ r.get("/threads", requireAuth, async (req, res) => {
     if (!lastByThread.has(m.threadId)) lastByThread.set(m.threadId, m);
   }
 
+  // Compute an approximate unread count by comparing to lastReadAt
   const unreadByThread: Record<string, number> = {};
   for (const th of threads) {
     const me = parts.find((p) => p.threadId === th.id);
-    const base = recentMessages.filter((m) => m.threadId === th.id && m.senderId !== userId);
+    const base = recentMessages.filter(
+      (m) => m.threadId === th.id && m.senderId !== userId
+    );
     if (!me?.lastReadAt) {
       unreadByThread[th.id] = base.length;
     } else {
       const t0 = new Date(me.lastReadAt).getTime();
-      unreadByThread[th.id] = base.filter((m) => new Date(m.createdAt).getTime() > t0).length;
+      unreadByThread[th.id] = base.filter(
+        (m) => new Date(m.createdAt).getTime() > t0
+      ).length;
     }
   }
 
@@ -95,39 +114,51 @@ r.get("/threads", requireAuth, async (req, res) => {
 
 /**
  * GET /api/dm/threads/:id
+ * Get a single thread with participant details
  */
 r.get("/threads/:id", requireAuth, async (req, res) => {
   const userId = req.user!.id;
   const { id } = req.params;
 
+  // Membership check
   const member = await db
     .select()
     .from(dmParticipants)
     .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)))
     .limit(1);
-
   if (member.length === 0) return res.status(403).json({ ok: false, error: "forbidden" });
 
-  const [thread] = await db.select().from(dmThreads).where(eq(dmThreads.id, id)).limit(1);
+  // Get thread
+  const [thread] = await db
+    .select()
+    .from(dmThreads)
+    .where(eq(dmThreads.id, id))
+    .limit(1);
   if (!thread) return res.status(404).json({ ok: false, error: "not found" });
 
-  const participants = await db.select().from(dmParticipants).where(eq(dmParticipants.threadId, id));
-  const participantUserIds = participants.map((p) => p.userId);
+  // Get all participants for this thread
+  const participants = await db
+    .select()
+    .from(dmParticipants)
+    .where(eq(dmParticipants.threadId, id));
 
+  const participantUserIds = participants.map(p => p.userId);
+
+  // Import users table to get user details
   const { users } = await import("../../shared/schema");
 
-  const participantUsers =
-    participantUserIds.length > 0
-      ? await db
-          .select({
-            id: users.id,
-            username: users.username,
-            displayName: users.displayName,
-            avatar: users.avatar,
-          })
-          .from(users)
-          .where(inArray(users.id, participantUserIds))
-      : [];
+  // Load user details for all participants
+  const participantUsers = participantUserIds.length > 0
+    ? await db
+        .select({
+          id: users.id,
+          username: users.username,
+          displayName: users.displayName,
+          avatar: users.avatar,
+        })
+        .from(users)
+        .where(inArray(users.id, participantUserIds))
+    : [];
 
   res.json({
     ok: true,
@@ -137,7 +168,8 @@ r.get("/threads/:id", requireAuth, async (req, res) => {
 });
 
 /**
- * GET /api/dm/threads/:id/messages
+ * GET /api/dm/threads/:id/messages?take=30&before=ISO_DATE
+ * Paged messages (newest→oldest on wire; we reverse for display).
  */
 r.get("/threads/:id/messages", requireAuth, async (req, res) => {
   const userId = req.user!.id;
@@ -146,40 +178,49 @@ r.get("/threads/:id/messages", requireAuth, async (req, res) => {
   const take = Math.min(Number(req.query.take) || 30, 100);
   const before = req.query.before ? new Date(String(req.query.before)) : undefined;
 
+  // Membership check
   const member = await db
     .select()
     .from(dmParticipants)
     .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)))
     .limit(1);
-
   if (member.length === 0) return res.status(403).json({ ok: false, error: "forbidden" });
 
   const whereExpr = before
     ? and(eq(dmMessages.threadId, id), lt(dmMessages.createdAt, before))
     : eq(dmMessages.threadId, id);
 
-  const rows = await db.select().from(dmMessages).where(whereExpr).orderBy(desc(dmMessages.createdAt)).limit(take);
+  const rows = await db
+    .select()
+    .from(dmMessages)
+    .where(whereExpr)
+    .orderBy(desc(dmMessages.createdAt))
+    .limit(take);
 
-  const senderIds = Array.from(new Set(rows.map((m) => m.senderId)));
+  // Get unique sender IDs from messages
+  const senderIds = Array.from(new Set(rows.map(m => m.senderId)));
 
+  // Import users table to get sender details
   const { users } = await import("../../shared/schema");
 
-  const senders =
-    senderIds.length > 0
-      ? await db
-          .select({
-            id: users.id,
-            username: users.username,
-            displayName: users.displayName,
-            avatar: users.avatar,
-          })
-          .from(users)
-          .where(inArray(users.id, senderIds))
-      : [];
+  // Load user details for all senders
+  const senders = senderIds.length > 0
+    ? await db
+        .select({
+          id: users.id,
+          username: users.username,
+          displayName: users.displayName,
+          avatar: users.avatar,
+        })
+        .from(users)
+        .where(inArray(users.id, senderIds))
+    : [];
 
-  const senderMap = new Map(senders.map((s) => [s.id, s]));
+  // Create a map of sender ID to sender details
+  const senderMap = new Map(senders.map(s => [s.id, s]));
 
-  const messagesWithSenders = rows.map((m) => ({
+  // Add sender details to each message
+  const messagesWithSenders = rows.map(m => ({
     ...m,
     sender: senderMap.get(m.senderId) || null,
   }));
@@ -189,6 +230,8 @@ r.get("/threads/:id/messages", requireAuth, async (req, res) => {
 
 /**
  * POST /api/dm/threads
+ * Create a thread (reuses 1:1 when possible).
+ * body: { participantIds: string[], title?: string, isGroup?: boolean }
  */
 r.post("/threads", requireAuth, async (req, res) => {
   const userId = req.user!.id;
@@ -201,17 +244,25 @@ r.post("/threads", requireAuth, async (req, res) => {
     })
     .parse(req.body);
 
+  // Reuse 1:1 threads
   if (!body.isGroup && body.participantIds.length === 1) {
     const other = body.participantIds[0];
 
-    const mine = await db.select().from(dmParticipants).where(eq(dmParticipants.userId, userId));
-    const theirs = await db.select().from(dmParticipants).where(eq(dmParticipants.userId, other));
+    const mine = await db
+      .select()
+      .from(dmParticipants)
+      .where(eq(dmParticipants.userId, userId));
+    const theirs = await db
+      .select()
+      .from(dmParticipants)
+      .where(eq(dmParticipants.userId, other));
 
     const mySet = new Set(mine.map((p) => p.threadId));
     const shared = theirs.map((p) => p.threadId).find((id) => mySet.has(id));
     if (shared) return res.json({ ok: true, threadId: shared, reused: true });
   }
 
+  // Create new thread + participants
   const [thread] = await db
     .insert(dmThreads)
     .values({ isGroup: body.isGroup, title: body.title })
@@ -231,6 +282,8 @@ r.post("/threads", requireAuth, async (req, res) => {
 
 /**
  * POST /api/dm/threads/:id/messages
+ * Send a message in a thread (must be a member).
+ * body: { text: string, attachments?: {name,url,type?}[] }
  */
 r.post("/threads/:id/messages", requireAuth, async (req, res) => {
   const userId = req.user!.id;
@@ -250,7 +303,6 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
     .from(dmParticipants)
     .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)))
     .limit(1);
-
   if (member.length === 0) return res.status(403).json({ ok: false, error: "forbidden" });
 
   const [msg] = await db
@@ -263,40 +315,59 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
     })
     .returning();
 
+  // Mark my read
   await db
     .update(dmParticipants)
     .set({ lastReadMessageId: msg.id, lastReadAt: new Date() })
     .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)));
 
-  // ✅ Create notifications for other participants
-  try {
-    const [sender] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  // ✅ Notify other participants in this thread (non-blocking)
+  setImmediate(async () => {
+    try {
+      const { users } = await import("../../shared/schema");
 
-    const otherParticipants = await db
-      .select()
-      .from(dmParticipants)
-      .where(and(eq(dmParticipants.threadId, id), ne(dmParticipants.userId, userId)));
+      const [sender] = await db
+        .select({
+          id: users.id,
+          username: users.username,
+          displayName: users.displayName,
+          avatar: users.avatar,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
 
-    for (const participant of otherParticipants) {
-      await db.insert(notifications).values({
-        userId: participant.userId,
-        type: "dm",
-        title: `New message from ${sender?.displayName || sender?.username || "Someone"}`,
-        message: body.text.substring(0, 100) + (body.text.length > 100 ? "..." : ""),
-        linkUrl: `/messages/${id}`,
-        metadata: { threadId: id, senderId: userId },
-        priority: "normal",
-      });
+      const participants = await db
+        .select()
+        .from(dmParticipants)
+        .where(eq(dmParticipants.threadId, id));
+
+      const senderName =
+        sender?.displayName || sender?.username || "Someone";
+      const senderAvatar = (sender?.avatar ?? null) as string | null;
+
+      for (const p of participants) {
+        if (p.userId === userId) continue;
+        await sendDmNotification(
+          p.userId,
+          userId,
+          senderName,
+          senderAvatar,
+          id,
+          body.text
+        );
+      }
+    } catch (err) {
+      console.error("DM notification error:", err);
     }
-  } catch (e) {
-    console.error("DM notification error:", e);
-  }
+  });
 
   res.json({ ok: true, message: msg });
 });
 
 /**
  * POST /api/dm/threads/:id/read
+ * body: { lastReadMessageId?: string }
  */
 r.post("/threads/:id/read", requireAuth, async (req, res) => {
   const userId = req.user!.id;
@@ -309,7 +380,6 @@ r.post("/threads/:id/read", requireAuth, async (req, res) => {
     .from(dmParticipants)
     .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)))
     .limit(1);
-
   if (member.length === 0) return res.status(403).json({ ok: false, error: "forbidden" });
 
   await db
