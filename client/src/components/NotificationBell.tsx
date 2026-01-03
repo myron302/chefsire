@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { Bell, Check, X } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { Bell, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -9,9 +9,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { useUser } from "@/contexts/UserContext";
-import { getNotificationSocket } from "@/lib/socket";
 import { formatDistanceToNow } from "date-fns";
-import type { Socket } from "socket.io-client";
 
 type Notification = {
   id: string;
@@ -23,14 +21,26 @@ type Notification = {
   linkUrl?: string | null;
   read: boolean;
   readAt?: string | null;
-  priority: string;
+  priority?: string;
   createdAt: string;
 };
 
-function normalizeNotifications(data: any): Notification[] {
-  if (Array.isArray(data)) return data as Notification[];
-  if (Array.isArray(data?.notifications)) return data.notifications as Notification[];
-  return [];
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    credentials: "include",
+    ...(init || {}),
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+    },
+  });
+
+  if (!res.ok) {
+    // Don’t crash UI; just throw for caller to ignore
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `Request failed: ${res.status}`);
+  }
+  return (await res.json()) as T;
 }
 
 export default function NotificationBell() {
@@ -38,109 +48,127 @@ export default function NotificationBell() {
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
-  // Always render from a safe array
-  const list = useMemo(
-    () => (Array.isArray(notifications) ? notifications : []),
-    [notifications]
-  );
+  const loadUnreadCount = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const data = await fetchJson<{ count: number }>("/api/notifications/unread-count");
+      setUnreadCount(typeof data?.count === "number" ? data.count : 0);
+    } catch {
+      // ignore
+    }
+  }, [user?.id]);
+
+  const loadRecent = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const data = await fetchJson<{
+        notifications: Notification[];
+        count: number;
+        limit: number;
+        offset: number;
+      }>("/api/notifications?limit=20&offset=0");
+
+      setNotifications(Array.isArray(data?.notifications) ? data.notifications : []);
+    } catch {
+      // ignore
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     if (loading || !user?.id) return;
 
-    let notifSocket: Socket | null = null;
+    // Initial load
+    loadUnreadCount();
+    loadRecent();
 
-    try {
-      notifSocket = getNotificationSocket(user.id);
-      setSocket(notifSocket);
+    // Poll so the badge updates without websockets
+    const badgeTimer = window.setInterval(loadUnreadCount, 15000); // 15s
+    const listTimer = window.setInterval(loadRecent, 30000); // 30s
 
-      notifSocket.on("notification", (notification: Notification) => {
-        setNotifications((prev) => [notification, ...(Array.isArray(prev) ? prev : [])]);
-        if (!notification?.read) setUnreadCount((prev) => prev + 1);
-      });
+    return () => {
+      window.clearInterval(badgeTimer);
+      window.clearInterval(listTimer);
+    };
+  }, [loading, user?.id, loadUnreadCount, loadRecent]);
 
-      notifSocket.on("unread_count", (payload: any) => {
-        const count = typeof payload?.count === "number" ? payload.count : 0;
-        setUnreadCount(count);
-      });
-
-      // IMPORTANT: don't trust the payload shape
-      notifSocket.on("recent_notifications", (data: any) => {
-        setNotifications(normalizeNotifications(data));
-      });
-
-      notifSocket.on("connect_error", (error: any) => {
-        console.warn("Notification socket connection error:", error);
-        // Do NOT throw — keep UI alive
-      });
-
-      notifSocket.on("error", (err: any) => {
-        console.warn("Notification socket server error:", err);
-      });
-
-      // Request initial data
-      notifSocket.emit("get_recent", { limit: 20 });
-      notifSocket.emit("get_unread_count");
-
-      return () => {
-        try {
-          notifSocket?.off("notification");
-          notifSocket?.off("unread_count");
-          notifSocket?.off("recent_notifications");
-          notifSocket?.off("connect_error");
-          notifSocket?.off("error");
-          notifSocket?.disconnect();
-        } catch {
-          // ignore cleanup errors
-        }
-      };
-    } catch (error) {
-      console.warn("Failed to initialize notification socket:", error);
+  // When opening the dropdown, refresh immediately
+  useEffect(() => {
+    if (!user?.id) return;
+    if (isOpen) {
+      loadUnreadCount();
+      loadRecent();
     }
-  }, [user?.id, loading]);
+  }, [isOpen, user?.id, loadUnreadCount, loadRecent]);
 
   const markAsRead = useCallback(
-    (notificationId: string) => {
-      if (!socket) return;
+    async (notificationId: string) => {
+      if (!user?.id) return;
 
-      socket.emit("mark_read", { notificationId }, (response: any) => {
-        if (response?.ok) {
-          setNotifications((prev) =>
-            (Array.isArray(prev) ? prev : []).map((n) =>
-              n.id === notificationId
-                ? { ...n, read: true, readAt: new Date().toISOString() }
-                : n
-            )
-          );
-          setUnreadCount((prev) => Math.max(0, prev - 1));
-        }
-      });
+      try {
+        await fetchJson(`/api/notifications/${notificationId}/read`, { method: "PUT" });
+
+        setNotifications((prev) =>
+          prev.map((n) =>
+            n.id === notificationId
+              ? { ...n, read: true, readAt: new Date().toISOString() }
+              : n
+          )
+        );
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+      } catch {
+        // ignore
+      }
     },
-    [socket]
+    [user?.id]
   );
 
-  const markAllAsRead = useCallback(() => {
-    if (!socket) return;
+  const markAllAsRead = useCallback(async () => {
+    if (!user?.id) return;
 
-    socket.emit("mark_all_read", {}, (response: any) => {
-      if (response?.ok) {
-        setNotifications((prev) =>
-          (Array.isArray(prev) ? prev : []).map((n) => ({
-            ...n,
-            read: true,
-            readAt: new Date().toISOString(),
-          }))
-        );
-        setUnreadCount(0);
+    try {
+      await fetchJson("/api/notifications/mark-all-read", { method: "PUT" });
+      setNotifications((prev) =>
+        prev.map((n) => ({
+          ...n,
+          read: true,
+          readAt: n.readAt ?? new Date().toISOString(),
+        }))
+      );
+      setUnreadCount(0);
+    } catch {
+      // ignore
+    }
+  }, [user?.id]);
+
+  const deleteOne = useCallback(
+    async (notificationId: string) => {
+      if (!user?.id) return;
+
+      try {
+        await fetchJson(`/api/notifications/${notificationId}`, { method: "DELETE" });
+        setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+        // Recompute unread count safely
+        setUnreadCount((prev) => {
+          const removed = notifications.find((n) => n.id === notificationId);
+          if (removed && !removed.read) return Math.max(0, prev - 1);
+          return prev;
+        });
+      } catch {
+        // ignore
       }
-    });
-  }, [socket]);
+    },
+    [user?.id, notifications]
+  );
 
   const handleNotificationClick = (notification: Notification) => {
-    if (!notification?.read) markAsRead(notification.id);
-    if (notification?.linkUrl) window.location.href = notification.linkUrl;
+    if (!notification.read) {
+      markAsRead(notification.id);
+    }
+    if (notification.linkUrl) {
+      window.location.href = notification.linkUrl;
+    }
   };
 
   const getNotificationIcon = (type: string) => {
@@ -156,7 +184,6 @@ export default function NotificationBell() {
     return icons[type] || "🔔";
   };
 
-  // Show loading state while user context is loading
   if (loading) {
     return (
       <Button
@@ -171,7 +198,6 @@ export default function NotificationBell() {
     );
   }
 
-  // Don't show if user is logged out
   if (!user) return null;
 
   return (
@@ -207,58 +233,67 @@ export default function NotificationBell() {
           )}
         </div>
 
-        {list.length === 0 ? (
+        {notifications.length === 0 ? (
           <div className="px-4 py-8 text-center text-muted-foreground">
             <Bell className="h-12 w-12 mx-auto mb-2 opacity-20" />
             <p>No notifications yet</p>
           </div>
         ) : (
           <div className="py-2">
-            {list.map((notification) => (
+            {notifications.map((n) => (
               <DropdownMenuItem
-                key={notification.id}
+                key={n.id}
                 className={`px-4 py-3 cursor-pointer ${
-                  !notification.read ? "bg-blue-50 dark:bg-blue-950" : ""
+                  !n.read ? "bg-blue-50 dark:bg-blue-950" : ""
                 }`}
-                onClick={() => handleNotificationClick(notification)}
+                onClick={() => handleNotificationClick(n)}
               >
                 <div className="flex items-start gap-3 w-full">
                   <div className="flex-shrink-0 text-2xl">
-                    {notification.imageUrl ? (
+                    {n.imageUrl ? (
                       <img
-                        src={notification.imageUrl}
+                        src={n.imageUrl}
                         alt=""
                         className="w-10 h-10 rounded-full object-cover"
                       />
                     ) : (
                       <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                        {getNotificationIcon(notification.type)}
+                        {getNotificationIcon(n.type)}
                       </div>
                     )}
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{notification.title}</p>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {notification.message}
-                    </p>
+                    <p className="font-medium text-sm">{n.title}</p>
+                    <p className="text-sm text-muted-foreground line-clamp-2">{n.message}</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+                      {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                     </p>
                   </div>
 
-                  {!notification.read && (
-                    <div className="flex-shrink-0">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        deleteOne(n.id);
+                      }}
+                      aria-label="Delete notification"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+
+                    {!n.read && <div className="w-2 h-2 bg-blue-500 rounded-full" />}
+                  </div>
                 </div>
               </DropdownMenuItem>
             ))}
           </div>
         )}
 
-        {list.length > 0 && (
+        {notifications.length > 0 && (
           <>
             <DropdownMenuSeparator />
             <div className="px-4 py-2 text-center">
