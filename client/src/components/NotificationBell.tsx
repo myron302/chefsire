@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Bell, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,54 +27,74 @@ type Notification = {
   createdAt: string;
 };
 
+function normalizeNotifications(data: any): Notification[] {
+  if (Array.isArray(data)) return data as Notification[];
+  if (Array.isArray(data?.notifications)) return data.notifications as Notification[];
+  return [];
+}
+
 export default function NotificationBell() {
   const { user, loading } = useUser();
+
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
-  // Connect to notification socket when user is available
+  // Always render from a safe array
+  const list = useMemo(
+    () => (Array.isArray(notifications) ? notifications : []),
+    [notifications]
+  );
+
   useEffect(() => {
-    // Only connect if user context has finished loading AND user exists
     if (loading || !user?.id) return;
 
+    let notifSocket: Socket | null = null;
+
     try {
-      const notifSocket = getNotificationSocket(user.id);
+      notifSocket = getNotificationSocket(user.id);
       setSocket(notifSocket);
 
-      // Listen for new notifications
       notifSocket.on("notification", (notification: Notification) => {
-        setNotifications((prev) => [notification, ...prev]);
-        if (!notification.read) {
-          setUnreadCount((prev) => prev + 1);
-        }
+        setNotifications((prev) => [notification, ...(Array.isArray(prev) ? prev : [])]);
+        if (!notification?.read) setUnreadCount((prev) => prev + 1);
       });
 
-      // Listen for unread count updates
-      notifSocket.on("unread_count", ({ count }: { count: number }) => {
+      notifSocket.on("unread_count", (payload: any) => {
+        const count = typeof payload?.count === "number" ? payload.count : 0;
         setUnreadCount(count);
       });
 
-      // Handle errors
+      // IMPORTANT: don't trust the payload shape
+      notifSocket.on("recent_notifications", (data: any) => {
+        setNotifications(normalizeNotifications(data));
+      });
+
       notifSocket.on("connect_error", (error: any) => {
         console.warn("Notification socket connection error:", error);
+        // Do NOT throw — keep UI alive
+      });
+
+      notifSocket.on("error", (err: any) => {
+        console.warn("Notification socket server error:", err);
       });
 
       // Request initial data
       notifSocket.emit("get_recent", { limit: 20 });
       notifSocket.emit("get_unread_count");
 
-      // Handle recent notifications response
-      notifSocket.on("recent_notifications", (data: Notification[]) => {
-        setNotifications(data);
-      });
-
       return () => {
-        notifSocket.off("notification");
-        notifSocket.off("unread_count");
-        notifSocket.off("recent_notifications");
-        notifSocket.off("connect_error");
+        try {
+          notifSocket?.off("notification");
+          notifSocket?.off("unread_count");
+          notifSocket?.off("recent_notifications");
+          notifSocket?.off("connect_error");
+          notifSocket?.off("error");
+          notifSocket?.disconnect();
+        } catch {
+          // ignore cleanup errors
+        }
       };
     } catch (error) {
       console.warn("Failed to initialize notification socket:", error);
@@ -86,10 +106,12 @@ export default function NotificationBell() {
       if (!socket) return;
 
       socket.emit("mark_read", { notificationId }, (response: any) => {
-        if (response.ok) {
+        if (response?.ok) {
           setNotifications((prev) =>
-            prev.map((n) =>
-              n.id === notificationId ? { ...n, read: true, readAt: new Date().toISOString() } : n
+            (Array.isArray(prev) ? prev : []).map((n) =>
+              n.id === notificationId
+                ? { ...n, read: true, readAt: new Date().toISOString() }
+                : n
             )
           );
           setUnreadCount((prev) => Math.max(0, prev - 1));
@@ -103,9 +125,13 @@ export default function NotificationBell() {
     if (!socket) return;
 
     socket.emit("mark_all_read", {}, (response: any) => {
-      if (response.ok) {
+      if (response?.ok) {
         setNotifications((prev) =>
-          prev.map((n) => ({ ...n, read: true, readAt: new Date().toISOString() }))
+          (Array.isArray(prev) ? prev : []).map((n) => ({
+            ...n,
+            read: true,
+            readAt: new Date().toISOString(),
+          }))
         );
         setUnreadCount(0);
       }
@@ -113,16 +139,11 @@ export default function NotificationBell() {
   }, [socket]);
 
   const handleNotificationClick = (notification: Notification) => {
-    if (!notification.read) {
-      markAsRead(notification.id);
-    }
-    if (notification.linkUrl) {
-      window.location.href = notification.linkUrl;
-    }
+    if (!notification?.read) markAsRead(notification.id);
+    if (notification?.linkUrl) window.location.href = notification.linkUrl;
   };
 
   const getNotificationIcon = (type: string) => {
-    // Return appropriate emoji based on notification type
     const icons: Record<string, string> = {
       follow: "👥",
       like: "❤️",
@@ -170,6 +191,7 @@ export default function NotificationBell() {
           )}
         </Button>
       </DropdownMenuTrigger>
+
       <DropdownMenuContent align="end" className="w-96 max-h-[500px] overflow-y-auto">
         <div className="flex items-center justify-between px-4 py-2 border-b">
           <h3 className="font-semibold text-lg">Notifications</h3>
@@ -185,14 +207,14 @@ export default function NotificationBell() {
           )}
         </div>
 
-        {notifications.length === 0 ? (
+        {list.length === 0 ? (
           <div className="px-4 py-8 text-center text-muted-foreground">
             <Bell className="h-12 w-12 mx-auto mb-2 opacity-20" />
             <p>No notifications yet</p>
           </div>
         ) : (
           <div className="py-2">
-            {notifications.map((notification) => (
+            {list.map((notification) => (
               <DropdownMenuItem
                 key={notification.id}
                 className={`px-4 py-3 cursor-pointer ${
@@ -214,6 +236,7 @@ export default function NotificationBell() {
                       </div>
                     )}
                   </div>
+
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm">{notification.title}</p>
                     <p className="text-sm text-muted-foreground line-clamp-2">
@@ -223,6 +246,7 @@ export default function NotificationBell() {
                       {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
                     </p>
                   </div>
+
                   {!notification.read && (
                     <div className="flex-shrink-0">
                       <div className="w-2 h-2 bg-blue-500 rounded-full" />
@@ -234,7 +258,7 @@ export default function NotificationBell() {
           </div>
         )}
 
-        {notifications.length > 0 && (
+        {list.length > 0 && (
           <>
             <DropdownMenuSeparator />
             <div className="px-4 py-2 text-center">
