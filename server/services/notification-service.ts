@@ -80,3 +80,35 @@ export async function sendReplyNotification(
     console.error("Failed to send reply notification:", error);
   }
 }
+
+
+export async function sendDmNotification(
+  recipientUserId: string,
+  senderId: string,
+  senderName: string,
+  senderAvatar: string | null,
+  threadId: string,
+  messageText: string
+) {
+  try {
+    // Don't notify yourself
+    if (recipientUserId === senderId) return;
+
+    const snippet =
+      messageText.length > 120 ? messageText.substring(0, 120) + "..." : messageText;
+
+    await db.insert(notifications).values({
+      userId: recipientUserId,
+      type: "dm",
+      title: `New message from ${senderName}`,
+      message: snippet,
+      imageUrl: senderAvatar,
+      linkUrl: `/messages/${threadId}`,
+      metadata: { threadId, senderId },
+      priority: "normal",
+    });
+  } catch (error) {
+    console.error("Failed to send DM notification:", error);
+  }
+}
+
