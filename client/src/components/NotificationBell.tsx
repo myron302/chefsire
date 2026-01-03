@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { Bell, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -26,42 +26,34 @@ type Notification = {
 };
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    credentials: "include",
-    ...(init || {}),
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
-  });
-
+  const res = await fetch(url, { credentials: "include", ...(init || {}) });
   if (!res.ok) {
-    // Don’t crash UI; just throw for caller to ignore
     const text = await res.text().catch(() => "");
     throw new Error(text || `Request failed: ${res.status}`);
   }
-  return (await res.json()) as T;
+  return res.json() as Promise<T>;
 }
 
 export default function NotificationBell() {
   const { user, loading } = useUser();
-
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
 
+  const canUse = useMemo(() => !loading && !!user?.id, [loading, user?.id]);
+
   const loadUnreadCount = useCallback(async () => {
-    if (!user?.id) return;
+    if (!canUse) return;
     try {
       const data = await fetchJson<{ count: number }>("/api/notifications/unread-count");
       setUnreadCount(typeof data?.count === "number" ? data.count : 0);
     } catch {
       // ignore
     }
-  }, [user?.id]);
+  }, [canUse]);
 
   const loadRecent = useCallback(async () => {
-    if (!user?.id) return;
+    if (!canUse) return;
     try {
       const data = await fetchJson<{
         notifications: Notification[];
@@ -74,46 +66,40 @@ export default function NotificationBell() {
     } catch {
       // ignore
     }
-  }, [user?.id]);
+  }, [canUse]);
 
   useEffect(() => {
-    if (loading || !user?.id) return;
+    if (!canUse) return;
 
-    // Initial load
     loadUnreadCount();
     loadRecent();
 
-    // Poll so the badge updates without websockets
-    const badgeTimer = window.setInterval(loadUnreadCount, 15000); // 15s
-    const listTimer = window.setInterval(loadRecent, 30000); // 30s
+    const badgeTimer = window.setInterval(loadUnreadCount, 15000);
+    const listTimer = window.setInterval(loadRecent, 30000);
 
     return () => {
       window.clearInterval(badgeTimer);
       window.clearInterval(listTimer);
     };
-  }, [loading, user?.id, loadUnreadCount, loadRecent]);
+  }, [canUse, loadUnreadCount, loadRecent]);
 
-  // When opening the dropdown, refresh immediately
   useEffect(() => {
-    if (!user?.id) return;
+    if (!canUse) return;
     if (isOpen) {
       loadUnreadCount();
       loadRecent();
     }
-  }, [isOpen, user?.id, loadUnreadCount, loadRecent]);
+  }, [isOpen, canUse, loadUnreadCount, loadRecent]);
 
   const markAsRead = useCallback(
     async (notificationId: string) => {
-      if (!user?.id) return;
-
+      if (!canUse) return;
       try {
         await fetchJson(`/api/notifications/${notificationId}/read`, { method: "PUT" });
 
         setNotifications((prev) =>
           prev.map((n) =>
-            n.id === notificationId
-              ? { ...n, read: true, readAt: new Date().toISOString() }
-              : n
+            n.id === notificationId ? { ...n, read: true, readAt: new Date().toISOString() } : n
           )
         );
         setUnreadCount((prev) => Math.max(0, prev - 1));
@@ -121,54 +107,26 @@ export default function NotificationBell() {
         // ignore
       }
     },
-    [user?.id]
+    [canUse]
   );
 
   const markAllAsRead = useCallback(async () => {
-    if (!user?.id) return;
-
+    if (!canUse) return;
     try {
       await fetchJson("/api/notifications/mark-all-read", { method: "PUT" });
+
       setNotifications((prev) =>
-        prev.map((n) => ({
-          ...n,
-          read: true,
-          readAt: n.readAt ?? new Date().toISOString(),
-        }))
+        prev.map((n) => ({ ...n, read: true, readAt: n.readAt ?? new Date().toISOString() }))
       );
       setUnreadCount(0);
     } catch {
       // ignore
     }
-  }, [user?.id]);
-
-  const deleteOne = useCallback(
-    async (notificationId: string) => {
-      if (!user?.id) return;
-
-      try {
-        await fetchJson(`/api/notifications/${notificationId}`, { method: "DELETE" });
-        setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
-        // Recompute unread count safely
-        setUnreadCount((prev) => {
-          const removed = notifications.find((n) => n.id === notificationId);
-          if (removed && !removed.read) return Math.max(0, prev - 1);
-          return prev;
-        });
-      } catch {
-        // ignore
-      }
-    },
-    [user?.id, notifications]
-  );
+  }, [canUse]);
 
   const handleNotificationClick = (notification: Notification) => {
-    if (!notification.read) {
-      markAsRead(notification.id);
-    }
-    if (notification.linkUrl) {
-      window.location.href = notification.linkUrl;
-    }
+    if (!notification.read) markAsRead(notification.id);
+    if (notification.linkUrl) window.location.href = notification.linkUrl;
   };
 
   const getNotificationIcon = (type: string) => {
@@ -180,19 +138,14 @@ export default function NotificationBell() {
       quest_completed: "⭐",
       friend_activity: "🎉",
       suggestion: "💡",
+      dm: "✉️",
     };
     return icons[type] || "🔔";
   };
 
   if (loading) {
     return (
-      <Button
-        variant="ghost"
-        size="sm"
-        className="p-2 hover:bg-muted rounded-full"
-        aria-label="Notifications"
-        disabled
-      >
+      <Button variant="ghost" size="sm" className="p-2 rounded-full" disabled>
         <Bell className="h-5 w-5 text-muted-foreground opacity-50" />
       </Button>
     );
@@ -203,12 +156,7 @@ export default function NotificationBell() {
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="relative p-2 hover:bg-muted rounded-full"
-          aria-label="Notifications"
-        >
+        <Button variant="ghost" size="sm" className="relative p-2 rounded-full" aria-label="Notifications">
           <Bell className="h-5 w-5 text-muted-foreground" />
           {unreadCount > 0 && (
             <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
@@ -222,12 +170,7 @@ export default function NotificationBell() {
         <div className="flex items-center justify-between px-4 py-2 border-b">
           <h3 className="font-semibold text-lg">Notifications</h3>
           {unreadCount > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={markAllAsRead}
-              className="text-xs text-muted-foreground hover:text-foreground"
-            >
+            <Button variant="ghost" size="sm" onClick={markAllAsRead} className="text-xs text-muted-foreground hover:text-foreground">
               Mark all read
             </Button>
           )}
@@ -243,19 +186,13 @@ export default function NotificationBell() {
             {notifications.map((n) => (
               <DropdownMenuItem
                 key={n.id}
-                className={`px-4 py-3 cursor-pointer ${
-                  !n.read ? "bg-blue-50 dark:bg-blue-950" : ""
-                }`}
+                className={`px-4 py-3 cursor-pointer ${!n.read ? "bg-blue-50 dark:bg-blue-950" : ""}`}
                 onClick={() => handleNotificationClick(n)}
               >
                 <div className="flex items-start gap-3 w-full">
                   <div className="flex-shrink-0 text-2xl">
                     {n.imageUrl ? (
-                      <img
-                        src={n.imageUrl}
-                        alt=""
-                        className="w-10 h-10 rounded-full object-cover"
-                      />
+                      <img src={n.imageUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
                     ) : (
                       <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
                         {getNotificationIcon(n.type)}
@@ -271,22 +208,7 @@ export default function NotificationBell() {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        deleteOne(n.id);
-                      }}
-                      aria-label="Delete notification"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-
-                    {!n.read && <div className="w-2 h-2 bg-blue-500 rounded-full" />}
-                  </div>
+                  {!n.read && <div className="w-2 h-2 bg-blue-500 rounded-full" />}
                 </div>
               </DropdownMenuItem>
             ))}
