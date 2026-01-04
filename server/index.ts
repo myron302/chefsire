@@ -30,7 +30,10 @@ const server = app.listen(PORT, HOST, () => {
 
 // Attach WebSocket handlers
 attachDmRealtime(server);
-attachNotificationRealtime(server);
+const notificationHelper = attachNotificationRealtime(server);
+
+// Export notification helper for use in other parts of the app
+export { notificationHelper };
 
 // Robust error handling—exit so Passenger restarts us and shows the real log line
 server.on("error", (err: any) => {

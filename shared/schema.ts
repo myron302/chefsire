@@ -36,7 +36,6 @@ export const users = pgTable(
     followersCount: integer("followers_count").default(0),
     followingCount: integer("following_count").default(0),
     postsCount: integer("posts_count").default(0),
-    isPrivate: boolean("is_private").default(false),
     cateringEnabled: boolean("catering_enabled").default(false),
     cateringLocation: text("catering_location"),
     cateringRadius: integer("catering_radius").default(25),
@@ -197,14 +196,6 @@ export const follows = pgTable("follows", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   followerId: varchar("follower_id").references(() => users.id).notNull(),
   followingId: varchar("following_id").references(() => users.id).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const followRequests = pgTable("follow_requests", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  requesterId: varchar("requester_id").references(() => users.id).notNull(),
-  requestedId: varchar("requested_id").references(() => users.id).notNull(),
-  status: text("status").default("pending"), // pending, accepted, rejected
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1093,12 +1084,6 @@ export const insertFollowSchema = createInsertSchema(follows).omit({
   createdAt: true,
 });
 
-export const insertFollowRequestSchema = createInsertSchema(followRequests).omit({
-  id: true,
-  createdAt: true,
-  status: true,
-});
-
 export const insertCateringInquirySchema = createInsertSchema(cateringInquiries).omit({
   id: true,
   createdAt: true,
@@ -1288,8 +1273,6 @@ export type Comment = typeof comments.$inferSelect;
 export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Follow = typeof follows.$inferSelect;
 export type InsertFollow = z.infer<typeof insertFollowSchema>;
-export type FollowRequest = typeof followRequests.$inferSelect;
-export type InsertFollowRequest = z.infer<typeof insertFollowRequestSchema>;
 export type CateringInquiry = typeof cateringInquiries.$inferSelect;
 export type InsertCateringInquiry = z.infer<typeof insertCateringInquirySchema>;
 export type Product = typeof products.$inferSelect;

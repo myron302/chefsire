@@ -1,43 +1,52 @@
-// client/src/lib/socket.ts
-import { io, type Socket } from "socket.io-client";
+import { io, Socket } from "socket.io-client";
 
-let notifSocket: Socket | null = null;
-let currentUserId: string | null = null;
+let dmSocket: Socket | null = null;
+let notificationSocket: Socket | null = null;
 
-export function getNotificationSocket(userId: string): Socket {
-  // Reuse if already connected for this user
-  if (notifSocket && currentUserId === userId) return notifSocket;
-
-  // Cleanup old socket if user changed
-  if (notifSocket) {
-    try {
-      notifSocket.disconnect();
-    } catch {}
-    notifSocket = null;
-  }
-
-  currentUserId = userId;
-
-  const baseUrl =
-    (import.meta as any).env?.VITE_SOCKET_URL ||
-    (typeof window !== "undefined" ? window.location.origin : "");
-
-  // IMPORTANT: Your server uses namespace "/notifications"
-  notifSocket = io(`${baseUrl}/notifications`, {
+export function getDmSocket(userId: string) {
+  if (dmSocket) return dmSocket;
+  dmSocket = io("/dm", {
     path: "/socket.io",
-
-    // IMPORTANT: start with polling so it works even if WebSocket upgrade is blocked
-    transports: ["polling", "websocket"],
-
+    transports: ["websocket", "polling"],
     withCredentials: true,
     auth: { userId },
-
-    reconnection: true,
-    reconnectionAttempts: 10,
-    reconnectionDelay: 500,
-    reconnectionDelayMax: 5000,
-    timeout: 20000,
   });
+  return dmSocket;
+}
 
-  return notifSocket;
+export function closeDmSocket() {
+  if (dmSocket) {
+    dmSocket.close();
+    dmSocket = null;
+  }
+}
+
+export function getNotificationSocket(userId: string) {
+  if (notificationSocket) return notificationSocket;
+  notificationSocket = io("/notifications", {
+    path: "/socket.io",
+    transports: ["websocket", "polling"],
+    withCredentials: true,
+    auth: { userId },
+  });
+  return notificationSocket;
+}
+
+export function closeNotificationSocket() {
+  if (notificationSocket) {
+    notificationSocket.close();
+    notificationSocket = null;
+  }
+}
+
+// Helper to connect all sockets for a user
+export function connectAllSockets(userId: string) {
+  getDmSocket(userId);
+  getNotificationSocket(userId);
+}
+
+// Helper to close all sockets
+export function closeAllSockets() {
+  closeDmSocket();
+  closeNotificationSocket();
 }
