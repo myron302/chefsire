@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
+import { sendLikeNotification, sendCommentNotification, sendReplyNotification } from "../services/notification-service";
 import { asyncHandler, ErrorFactory } from "../middleware/error-handler";
 import { validateRequest, CommonSchemas } from "../middleware/validation";
 import { requireAuth } from "../middleware/auth";
@@ -235,6 +236,44 @@ r.post("/comments", async (req, res) => {
       parentId: body.parentId ?? null,
       content: body.text,
     });
+
+    // Fire-and-forget notifications (do not block the response)
+    void (async () => {
+      try {
+        const post = await storage.getPost(body.postId);
+        const commenter = await storage.getUser(body.userId);
+        if (!post || !commenter) return;
+
+        const commenterName = commenter.displayName || commenter.username || "Someone";
+        const commenterAvatar = commenter.avatar ?? null;
+
+        if (body.parentId) {
+          const parent = await storage.getComment(body.parentId);
+          if (parent) {
+            await sendReplyNotification(
+              parent.userId,
+              commenter.id,
+              commenterName,
+              commenterAvatar,
+              post.id,
+              body.text
+            );
+          }
+        } else {
+          await sendCommentNotification(
+            post.userId,
+            commenter.id,
+            commenterName,
+            commenterAvatar,
+            post.id,
+            body.text
+          );
+        }
+      } catch (e) {
+        console.error("Comment notification error:", e);
+      }
+    })();
+
     res.status(201).json(created);
   } catch (err: any) {
     if (err?.issues) return res.status(400).json({ message: "Invalid comment", errors: err.issues });
@@ -263,6 +302,26 @@ r.post("/likes", async (req, res) => {
     const schema = z.object({ userId: z.string(), postId: z.string() });
     const body = schema.parse(req.body);
     const like = await storage.likePost(body.userId, body.postId);
+
+    // Fire-and-forget notification (do not block the response)
+    void (async () => {
+      try {
+        const post = await storage.getPost(body.postId);
+        const liker = await storage.getUser(body.userId);
+        if (!post || !liker) return;
+
+        await sendLikeNotification(
+          post.userId,
+          liker.id,
+          liker.displayName || liker.username || "Someone",
+          liker.avatar ?? null,
+          post.id
+        );
+      } catch (e) {
+        console.error("Like notification error:", e);
+      }
+    })();
+
     res.status(201).json(like);
   } catch (err: any) {
     if (err?.issues) return res.status(400).json({ message: "Invalid like data", errors: err.issues });
