@@ -1,7 +1,6 @@
 // server/routes/likes.ts
 import { Router } from "express";
 import { storage } from "../storage";
-import { sendLikeNotification } from "../services/notification-service";
 
 const r = Router();
 
@@ -9,26 +8,6 @@ const r = Router();
 r.post("/", async (req, res, next) => {
   try {
     const like = await storage.likePost(req.body.userId, req.body.postId);
-
-    // Send notification (non-blocking)
-    setImmediate(async () => {
-      try {
-        const post = await storage.getPost(req.body.postId);
-        const liker = await storage.getUser(req.body.userId);
-        if (post && liker) {
-          await sendLikeNotification(
-            post.userId,
-            liker.id,
-            liker.displayName || liker.username,
-            liker.avatar,
-            post.id
-          );
-        }
-      } catch (err) {
-        console.error("Notification error:", err);
-      }
-    });
-
     res.status(201).json(like);
   } catch (error) { next(error); }
 });

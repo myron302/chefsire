@@ -9,7 +9,6 @@ import {
   dmParticipants,
   dmMessages,
 } from "../../shared/schema.dm.ts";
-import { sendDmNotification } from "../services/notification-service";
 
 const r = Router();
 
@@ -320,47 +319,6 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
     .update(dmParticipants)
     .set({ lastReadMessageId: msg.id, lastReadAt: new Date() })
     .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)));
-
-  // ✅ Notify other participants in this thread (non-blocking)
-  setImmediate(async () => {
-    try {
-      const { users } = await import("../../shared/schema");
-
-      const [sender] = await db
-        .select({
-          id: users.id,
-          username: users.username,
-          displayName: users.displayName,
-          avatar: users.avatar,
-        })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-
-      const participants = await db
-        .select()
-        .from(dmParticipants)
-        .where(eq(dmParticipants.threadId, id));
-
-      const senderName =
-        sender?.displayName || sender?.username || "Someone";
-      const senderAvatar = (sender?.avatar ?? null) as string | null;
-
-      for (const p of participants) {
-        if (p.userId === userId) continue;
-        await sendDmNotification(
-          p.userId,
-          userId,
-          senderName,
-          senderAvatar,
-          id,
-          body.text
-        );
-      }
-    } catch (err) {
-      console.error("DM notification error:", err);
-    }
-  });
 
   res.json({ ok: true, message: msg });
 });
