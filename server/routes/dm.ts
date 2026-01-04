@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "../db";
+import { sendDmNotification } from "../services/notification-service";
 import { requireAuth } from "../middleware";
 import {
   dmThreads,
@@ -319,6 +320,48 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
     .update(dmParticipants)
     .set({ lastReadMessageId: msg.id, lastReadAt: new Date() })
     .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)));
+
+
+  // Fire-and-forget notifications for other participants
+  void (async () => {
+    try {
+      const { users } = await import("../../shared/schema");
+
+      const [sender] = await db
+        .select({
+          id: users.id,
+          username: users.username,
+          displayName: users.displayName,
+          avatar: users.avatar,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      const senderName = sender?.displayName || sender?.username || "Someone";
+      const senderAvatar = sender?.avatar ?? null;
+
+      const parts = await db
+        .select({ userId: dmParticipants.userId })
+        .from(dmParticipants)
+        .where(eq(dmParticipants.threadId, id));
+
+      const recipients = parts.map((p) => p.userId).filter((uid) => uid !== userId);
+
+      for (const recipientUserId of recipients) {
+        await sendDmNotification(
+          recipientUserId,
+          userId,
+          senderName,
+          senderAvatar,
+          id,
+          body.text
+        );
+      }
+    } catch (e) {
+      console.error("DM notification error:", e);
+    }
+  })();
 
   res.json({ ok: true, message: msg });
 });
