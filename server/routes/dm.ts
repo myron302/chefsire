@@ -3,13 +3,13 @@ import { Router } from "express";
 import { z } from "zod";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "../db";
-import { sendDmNotification } from "../services/notification-service";
 import { requireAuth } from "../middleware";
 import {
   dmThreads,
   dmParticipants,
   dmMessages,
 } from "../../shared/schema.dm.ts";
+import { sendDmNotification } from "../services/notification-service";
 
 const r = Router();
 
@@ -321,9 +321,8 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
     .set({ lastReadMessageId: msg.id, lastReadAt: new Date() })
     .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)));
 
-
-  // Fire-and-forget notifications for other participants
-  void (async () => {
+  // ✅ Notify other participants in this thread (non-blocking)
+  setImmediate(async () => {
     try {
       const { users } = await import("../../shared/schema");
 
@@ -338,19 +337,19 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
         .where(eq(users.id, userId))
         .limit(1);
 
-      const senderName = sender?.displayName || sender?.username || "Someone";
-      const senderAvatar = sender?.avatar ?? null;
-
-      const parts = await db
-        .select({ userId: dmParticipants.userId })
+      const participants = await db
+        .select()
         .from(dmParticipants)
         .where(eq(dmParticipants.threadId, id));
 
-      const recipients = parts.map((p) => p.userId).filter((uid) => uid !== userId);
+      const senderName =
+        sender?.displayName || sender?.username || "Someone";
+      const senderAvatar = (sender?.avatar ?? null) as string | null;
 
-      for (const recipientUserId of recipients) {
+      for (const p of participants) {
+        if (p.userId === userId) continue;
         await sendDmNotification(
-          recipientUserId,
+          p.userId,
           userId,
           senderName,
           senderAvatar,
@@ -358,10 +357,10 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
           body.text
         );
       }
-    } catch (e) {
-      console.error("DM notification error:", e);
+    } catch (err) {
+      console.error("DM notification error:", err);
     }
-  })();
+  });
 
   res.json({ ok: true, message: msg });
 });
