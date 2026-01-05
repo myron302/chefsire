@@ -252,7 +252,7 @@ async function ensureHouseholdSchema() {
     // Create tables if they don't exist yet.
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS pantry_households (
-        id varchar PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        id varchar PRIMARY KEY,
         name text NOT NULL,
         owner_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         invite_code text NOT NULL UNIQUE,
@@ -262,7 +262,7 @@ async function ensureHouseholdSchema() {
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS pantry_household_members (
-        id varchar PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        id varchar PRIMARY KEY,
         household_id varchar NOT NULL REFERENCES pantry_households(id) ON DELETE CASCADE,
         user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         role text NOT NULL DEFAULT 'member',
@@ -390,14 +390,12 @@ r.post("/household", requireAuth, async (req, res) => {
       inviteCode = makeInviteCode(8);
     }
 
-    const created = await db.execute(sql`
-      INSERT INTO pantry_households (name, owner_user_id, invite_code)
-      VALUES (${body.name}, ${userId}, ${inviteCode})
-      RETURNING id;
-    `);
+        const hid = randomUUID();
 
-    const hid = String((created as any)?.rows?.[0]?.id);
-    if (!hid) return res.status(500).json({ message: "Failed to create household" });
+    await db.execute(sql`
+      INSERT INTO pantry_households (id, name, owner_user_id, invite_code)
+      VALUES (${hid}, ${body.name}, ${userId}, ${inviteCode});
+    `);
 
     await db.execute(sql`
       INSERT INTO pantry_household_members (household_id, user_id, role)
