@@ -16,7 +16,7 @@ r.post("/", async (req, res, next) => {
     }
     const follow = await storage.followUser(followerId, followingId);
     res.status(201).json(follow);
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -27,7 +27,7 @@ r.delete("/:followerId/:followingId", async (req, res, next) => {
     const ok = await storage.unfollowUser(req.params.followerId, req.params.followingId);
     if (!ok) return res.status(404).json({ message: "Follow relationship not found" });
     res.json({ message: "User unfollowed successfully" });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -38,7 +38,7 @@ r.get("/:followerId/:followingId", async (req, res, next) => {
   try {
     const isFollowing = await storage.isFollowing(req.params.followerId, req.params.followingId);
     res.json({ isFollowing });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -59,7 +59,7 @@ r.get("/user/:userId/followers", async (req, res, next) => {
       offset,
       limit,
     });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -80,7 +80,7 @@ r.get("/user/:userId/following", async (req, res, next) => {
       offset,
       limit,
     });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 /**
@@ -106,7 +106,7 @@ r.get("/user/:userId/stats", async (req, res, next) => {
     }
 
     res.json({ followersCount, followingCount });
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 export default r;
