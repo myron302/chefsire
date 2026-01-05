@@ -102,8 +102,9 @@ CREATE INDEX IF NOT EXISTS grocery_list_items_purchased_idx ON grocery_list_item
 -- ========================================
 -- GRANT PERMISSIONS
 -- ========================================
--- Grant permissions to the application user (adjust username as needed)
-GRANT SELECT, INSERT, UPDATE, DELETE ON meal_recommendations TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON meal_prep_schedules TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON leftovers TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON grocery_list_items TO authenticated;
+-- Note: Neon doesn't use the 'authenticated' role (that's Supabase-specific)
+-- Permissions are handled at the connection level in Neon
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON meal_recommendations TO authenticated;
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON meal_prep_schedules TO authenticated;
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON leftovers TO authenticated;
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON grocery_list_items TO authenticated;
