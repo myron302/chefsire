@@ -1076,6 +1076,7 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
             unit: data.unit || "",
             category: data.category || "Other",
             notes: data.notes,
+          isRunningLow: data.isRunningLow,
           }),
         });
       }
