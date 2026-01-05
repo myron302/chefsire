@@ -51,6 +51,7 @@ import streaksRouter from "./streaks";
 import duetsRouter from "./duets";
 import eventsRouter from "./events";
 import cookTogetherRouter from "./cook-together";
+import followsRouter from "./follows";
 
 // 📊 Phase 3: Power User Features
 import analyticsRouter from "./analytics";
@@ -152,6 +153,7 @@ r.use("/streaks", streaksRouter);
 r.use("/duets", duetsRouter);
 r.use("/events", eventsRouter);
 r.use("/cook-together", cookTogetherRouter);
+r.use("/follows", followsRouter);
 
 // 📊 Phase 3: Power User Features
 r.use("/analytics", analyticsRouter);

@@ -286,6 +286,58 @@ export default function Profile() {
     enabled: !!profileUserId,
   });
 
+  // Check if current user is following this profile
+  const { data: followData } = useQuery({
+    queryKey: ["/api/follows/status", profileUserId],
+    queryFn: async () => {
+      const response = await fetch(`/api/follows/status/${profileUserId}`, {
+        credentials: "include",
+      });
+      if (!response.ok) return { isFollowing: false, isRequested: false, isPrivate: false };
+      return response.json();
+    },
+    enabled: !!currentUser?.id && !!profileUserId && !isOwnProfile,
+  });
+
+  // Follow/Unfollow mutation
+  const followMutation = useMutation({
+    mutationFn: async ({ isFollowing }: { isFollowing: boolean }) => {
+      if (isFollowing) {
+        // Unfollow or cancel request
+        const response = await fetch(`/api/follows/${profileUserId}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (!response.ok) throw new Error("Failed to unfollow");
+        return response.json();
+      } else {
+        // Follow or request to follow
+        const response = await fetch(`/api/follows/${profileUserId}`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!response.ok) throw new Error("Failed to follow");
+        return response.json();
+      }
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/follows/status", profileUserId] });
+      const message =
+        data.status === "following" ? "Following!" :
+        data.status === "requested" ? "Follow request sent" :
+        data.status === "unfollowed" ? "Unfollowed" :
+        data.status === "canceled" ? "Request canceled" :
+        "Success";
+      toast({ description: message });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        description: "Failed to update follow status",
+      });
+    },
+  });
+
   // Helper function to detect video URLs
   const isVideoUrl = (url: string) => {
     return url?.includes("video") || url?.includes(".mp4") || url?.includes(".webm") || url?.includes(".mov");
@@ -366,9 +418,19 @@ export default function Profile() {
               </div>
             ) : (
               <div className="flex gap-2 mt-3 sm:mt-0">
-                <Button variant="outline">
+                <Button
+                  variant={followData?.isFollowing || followData?.isRequested ? "outline" : "default"}
+                  onClick={() => followMutation.mutate({ isFollowing: followData?.isFollowing || followData?.isRequested || false })}
+                  disabled={followMutation.isPending}
+                >
                   <User className="w-4 h-4 mr-2" />
-                  Follow
+                  {followMutation.isPending
+                    ? "Loading..."
+                    : followData?.isFollowing
+                    ? "Unfollow"
+                    : followData?.isRequested
+                    ? "Requested"
+                    : "Follow"}
                 </Button>
                 <Button>
                   <MessageCircle className="w-4 h-4 mr-2" />
