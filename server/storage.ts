@@ -18,6 +18,8 @@ import {
   mealPlans,
   mealPlanEntries,
   pantryItems,
+  pantryHouseholds,
+  pantryHouseholdMembers,
   nutritionLogs,
   customDrinks,
   drinkPhotos,
@@ -233,8 +235,6 @@ export interface IStorage {
     unit?: string;
     expirationDate?: Date;
     notes?: string;
-    location?: string;
-    isRunningLow?: boolean;
   }): Promise<any>;
   getPantryItems(userId: string): Promise<any[]>;
   updatePantryItem(itemId: string, updates: {
@@ -244,6 +244,12 @@ export interface IStorage {
   }): Promise<any>;
   deletePantryItem(itemId: string): Promise<boolean>;
   getExpiringItems(userId: string, daysAhead: number): Promise<any[]>;
+
+  // Pantry households
+  getPantryHousehold(userId: string): Promise<{ household: any | null }>;
+  createPantryHousehold(userId: string, name: string): Promise<any>;
+  joinPantryHousehold(userId: string, inviteCode: string): Promise<any>;
+  leavePantryHousehold(userId: string): Promise<{ ok: true }>;
 
   // Pantry-based suggestions
   getRecipesFromPantryItems(userId: string, options: {
@@ -1319,6 +1325,7 @@ export class DrizzleStorage implements IStorage {
       notes?: string;
       location?: string;
       isRunningLow?: boolean;
+      householdId?: string | null;
     }
   ): Promise<any> {
     const db = getDb();
@@ -1337,7 +1344,7 @@ export class DrizzleStorage implements IStorage {
 
   async updatePantryItem(
     itemId: string,
-    updates: { quantity?: number; expirationDate?: Date; notes?: string; location?: string; isRunningLow?: boolean }
+    updates: { name?: string; category?: string; quantity?: number; unit?: string; location?: string; expirationDate?: Date; notes?: string; isRunningLow?: boolean; householdId?: string | null }
   ): Promise<any> {
     const db = getDb();
     const result = await db.update(pantryItems).set(updates).where(eq(pantryItems.id, itemId)).returning();
@@ -1370,6 +1377,177 @@ export class DrizzleStorage implements IStorage {
   }
 
   // ---------- Pantry-based recipe suggestions ----------
+
+  // ---------- Pantry households ----------
+  private _makeInviteCode(len = 8): string {
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let out = "";
+    for (let i = 0; i < len; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+    return out;
+  }
+
+  async getPantryHousehold(userId: string): Promise<{ household: any | null }> {
+    const db = getDb();
+
+    const membership = await db
+      .select()
+      .from(pantryHouseholdMembers)
+      .where(eq(pantryHouseholdMembers.userId, userId))
+      .limit(1);
+
+    if (!membership[0]) return { household: null };
+
+    const householdId = membership[0].householdId;
+
+    const hh = await db
+      .select()
+      .from(pantryHouseholds)
+      .where(eq(pantryHouseholds.id, householdId))
+      .limit(1);
+
+    if (!hh[0]) return { household: null };
+
+    const members = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        displayName: users.displayName,
+        role: pantryHouseholdMembers.role,
+        joinedAt: pantryHouseholdMembers.joinedAt,
+      })
+      .from(pantryHouseholdMembers)
+      .leftJoin(users, eq(pantryHouseholdMembers.userId, users.id))
+      .where(eq(pantryHouseholdMembers.householdId, householdId))
+      .orderBy(asc(pantryHouseholdMembers.joinedAt));
+
+    const cnt = await db
+      .select({ c: sql<number>`count(*)` })
+      .from(pantryItems)
+      .where(eq(pantryItems.householdId, householdId));
+
+    return {
+      household: {
+        id: hh[0].id,
+        name: hh[0].name,
+        inviteCode: hh[0].inviteCode,
+        ownerId: hh[0].ownerId,
+        userRole: membership[0].role,
+        members: members.map((m) => ({
+          id: m.id!,
+          username: m.username!,
+          displayName: m.displayName ?? null,
+          role: (m.role as any) ?? "member",
+          joinedAt: (m.joinedAt ? new Date(m.joinedAt).toISOString() : new Date().toISOString()),
+        })),
+        itemCount: Number((cnt[0]?.c ?? 0) as any),
+      },
+    };
+  }
+
+  async createPantryHousehold(userId: string, name: string): Promise<any> {
+    const db = getDb();
+
+    // If already in a household, return it
+    const existing = await this.getPantryHousehold(userId);
+    if (existing.household) return existing;
+
+    // Generate unique invite code (retry on conflict)
+    let inviteCode = this._makeInviteCode();
+    for (let i = 0; i < 5; i++) {
+      try {
+        const created = await db
+          .insert(pantryHouseholds)
+          .values({ name, ownerId: userId, inviteCode })
+          .returning();
+
+        const householdId = created[0].id;
+
+        await db.insert(pantryHouseholdMembers).values({
+          householdId,
+          userId,
+          role: "owner",
+        });
+
+        return await this.getPantryHousehold(userId);
+      } catch (e: any) {
+        inviteCode = this._makeInviteCode();
+        if (i === 4) throw e;
+      }
+    }
+    return await this.getPantryHousehold(userId);
+  }
+
+  async joinPantryHousehold(userId: string, inviteCode: string): Promise<any> {
+    const db = getDb();
+
+    // Already in a household?
+    const existing = await this.getPantryHousehold(userId);
+    if (existing.household) return existing;
+
+    const hh = await db
+      .select()
+      .from(pantryHouseholds)
+      .where(eq(pantryHouseholds.inviteCode, inviteCode))
+      .limit(1);
+
+    if (!hh[0]) {
+      throw new Error("Invalid invite code");
+    }
+
+    await db.insert(pantryHouseholdMembers).values({
+      householdId: hh[0].id,
+      userId,
+      role: "member",
+    });
+
+    return await this.getPantryHousehold(userId);
+  }
+
+  async leavePantryHousehold(userId: string): Promise<{ ok: true }> {
+    const db = getDb();
+
+    const membership = await db
+      .select()
+      .from(pantryHouseholdMembers)
+      .where(eq(pantryHouseholdMembers.userId, userId))
+      .limit(1);
+
+    if (!membership[0]) return { ok: true };
+
+    const householdId = membership[0].householdId;
+    const wasOwner = membership[0].role === "owner";
+
+    await db.delete(pantryHouseholdMembers).where(eq(pantryHouseholdMembers.id, membership[0].id));
+
+    // Check remaining members
+    const remaining = await db
+      .select()
+      .from(pantryHouseholdMembers)
+      .where(eq(pantryHouseholdMembers.householdId, householdId))
+      .orderBy(asc(pantryHouseholdMembers.joinedAt));
+
+    if (remaining.length === 0) {
+      // Delete household if empty
+      await db.delete(pantryHouseholds).where(eq(pantryHouseholds.id, householdId));
+      return { ok: true };
+    }
+
+    if (wasOwner) {
+      // Promote oldest member to owner
+      const newOwner = remaining[0];
+      await db
+        .update(pantryHouseholds)
+        .set({ ownerId: newOwner.userId })
+        .where(eq(pantryHouseholds.id, householdId));
+      await db
+        .update(pantryHouseholdMembers)
+        .set({ role: "owner" })
+        .where(eq(pantryHouseholdMembers.id, newOwner.id));
+    }
+
+    return { ok: true };
+  }
+
   async getRecipesFromPantryItems(
     userId: string,
     options: {
