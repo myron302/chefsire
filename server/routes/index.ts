@@ -5,6 +5,7 @@ import recipesRouter from "./recipes";
 import reviewsRouter from "./reviews";
 import bitesRouter from "./bites";
 import usersRouter from "./users";
+import followsRouter from "./follows";
 import postsRouter from "./posts";
 import pantryRouter from "./pantry";
 import marketplaceRouter from "./marketplace";
@@ -87,6 +88,7 @@ r.use("/bites", bitesRouter);
 
 // Users - prefixed
 r.use("/users", usersRouter);
+r.use("/follows", followsRouter);
 
 // Posts - prefixed
 r.use("/posts", postsRouter);
