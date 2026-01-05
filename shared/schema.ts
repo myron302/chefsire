@@ -400,6 +400,8 @@ export const pantryItems = pgTable(
     category: text("category"),
     quantity: decimal("quantity", { precision: 8, scale: 2 }),
     unit: text("unit"),
+    location: text("location"),
+    isRunningLow: boolean("is_running_low").notNull().default(false),
     expirationDate: timestamp("expiration_date"),
     purchaseDate: timestamp("purchase_date"),
     notes: text("notes"),
