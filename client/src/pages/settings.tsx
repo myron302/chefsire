@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User,
   Lock,
@@ -40,6 +41,7 @@ export default function SettingsPage() {
     displayName: user?.displayName || '',
     bio: user?.bio || '',
     avatar: user?.avatar || '',
+    isPrivate: user?.isPrivate || false,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -96,6 +98,105 @@ export default function SettingsPage() {
     return { strength: 100, label: 'Strong', color: 'bg-green-500' };
   };
 
+
+  const queryClient = useQueryClient();
+
+  function FollowRequestsPanel() {
+    const { data, isLoading, error } = useQuery({
+      queryKey: ["/api/follows/requests/incoming"],
+      enabled: !!user,
+      queryFn: async () => {
+        const res = await fetch("/api/follows/requests/incoming?limit=50", { credentials: "include" });
+        if (!res.ok) throw new Error("Failed to load follow requests");
+        return res.json() as Promise<{ requests: { id: string; createdAt: string; requester: any }[] }>;
+      },
+      retry: false,
+    });
+
+    const accept = useMutation({
+      mutationFn: async (requestId: string) => {
+        const res = await fetch(`/api/follows/requests/${requestId}/accept`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to accept request");
+        return res.json();
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["/api/follows/requests/incoming"] });
+        toast({ title: "Accepted", description: "They can now follow you." });
+      },
+      onError: () => toast({ title: "Error", description: "Could not accept request", variant: "destructive" }),
+    });
+
+    const decline = useMutation({
+      mutationFn: async (requestId: string) => {
+        const res = await fetch(`/api/follows/requests/${requestId}/decline`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to decline request");
+        return res.json();
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["/api/follows/requests/incoming"] });
+        toast({ title: "Declined", description: "Request declined." });
+      },
+      onError: () => toast({ title: "Error", description: "Could not decline request", variant: "destructive" }),
+    });
+
+    const requests = data?.requests || [];
+
+    return (
+      <div>
+        <h4 className="font-semibold mb-2">Follow Requests</h4>
+        <div className="border rounded-lg p-4 bg-white">
+          {isLoading ? (
+            <div className="text-sm text-gray-600">Loading…</div>
+          ) : error ? (
+            <div className="text-sm text-red-600">Could not load requests.</div>
+          ) : requests.length === 0 ? (
+            <div className="text-sm text-gray-600">No pending requests.</div>
+          ) : (
+            <div className="space-y-3">
+              {requests.map((r) => (
+                <div key={r.id} className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={r.requester?.avatar || "/images/placeholder-avatar.svg"}
+                      alt=""
+                      className="w-9 h-9 rounded-full object-cover border"
+                    />
+                    <div>
+                      <div className="font-medium">
+                        {r.requester?.displayName || r.requester?.username || "User"}
+                      </div>
+                      <div className="text-sm text-gray-600">@{r.requester?.username}</div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => accept.mutate(r.id)} disabled={accept.isPending}>
+                      Accept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => decline.mutate(r.id)}
+                      disabled={decline.isPending}
+                    >
+                      Decline
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+
   const passwordStrength = getPasswordStrength(password.new);
 
   const toggleInterest = (category: string) => {
@@ -123,6 +224,7 @@ export default function SettingsPage() {
           displayName: profile.displayName,
           bio: profile.bio,
           avatar: profile.avatar,
+          isPrivate: profile.isPrivate,
         }),
       });
 
@@ -287,6 +389,48 @@ export default function SettingsPage() {
                 <CardDescription>Update your profile information and avatar</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+{/* Private account */}
+                <div>
+                  <h4 className="font-semibold mb-2">Account Privacy</h4>
+                  <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
+                    <div>
+                      <div className="font-medium">Private account</div>
+                      <div className="text-sm text-gray-600">
+                        When enabled, people must request to follow you.
+                      </div>
+                    </div>
+                    <Button
+                      variant={profile.isPrivate ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setProfile({ ...profile, isPrivate: !profile.isPrivate })}
+                    >
+                      {profile.isPrivate ? (
+                        <>
+                          <EyeOff size={16} className="mr-2" />
+                          Private
+                        </>
+                      ) : (
+                        <>
+                          <Eye size={16} className="mr-2" />
+                          Public
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <div className="mt-3">
+                    <Button
+                      onClick={handleSaveProfile}
+                      disabled={isSaving}
+                      className="bg-orange-500 hover:bg-orange-600"
+                    >
+                      {isSaving ? "Saving..." : "Save privacy"}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Follow Requests (incoming) */}
+                <FollowRequestsPanel />
+
                 {/* Avatar */}
                 <div>
                   <Label>Profile Picture</Label>
@@ -382,6 +526,48 @@ export default function SettingsPage() {
                 <CardDescription>Switch between personal and business account</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+{/* Private account */}
+                <div>
+                  <h4 className="font-semibold mb-2">Account Privacy</h4>
+                  <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
+                    <div>
+                      <div className="font-medium">Private account</div>
+                      <div className="text-sm text-gray-600">
+                        When enabled, people must request to follow you.
+                      </div>
+                    </div>
+                    <Button
+                      variant={profile.isPrivate ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setProfile({ ...profile, isPrivate: !profile.isPrivate })}
+                    >
+                      {profile.isPrivate ? (
+                        <>
+                          <EyeOff size={16} className="mr-2" />
+                          Private
+                        </>
+                      ) : (
+                        <>
+                          <Eye size={16} className="mr-2" />
+                          Public
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <div className="mt-3">
+                    <Button
+                      onClick={handleSaveProfile}
+                      disabled={isSaving}
+                      className="bg-orange-500 hover:bg-orange-600"
+                    >
+                      {isSaving ? "Saving..." : "Save privacy"}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Follow Requests (incoming) */}
+                <FollowRequestsPanel />
+
                 {/* Account Type Switcher */}
                 <div className="grid grid-cols-2 gap-4">
                   <Card
@@ -483,6 +669,48 @@ export default function SettingsPage() {
                 <CardDescription>Update your password to keep your account secure</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+{/* Private account */}
+                <div>
+                  <h4 className="font-semibold mb-2">Account Privacy</h4>
+                  <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
+                    <div>
+                      <div className="font-medium">Private account</div>
+                      <div className="text-sm text-gray-600">
+                        When enabled, people must request to follow you.
+                      </div>
+                    </div>
+                    <Button
+                      variant={profile.isPrivate ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setProfile({ ...profile, isPrivate: !profile.isPrivate })}
+                    >
+                      {profile.isPrivate ? (
+                        <>
+                          <EyeOff size={16} className="mr-2" />
+                          Private
+                        </>
+                      ) : (
+                        <>
+                          <Eye size={16} className="mr-2" />
+                          Public
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <div className="mt-3">
+                    <Button
+                      onClick={handleSaveProfile}
+                      disabled={isSaving}
+                      className="bg-orange-500 hover:bg-orange-600"
+                    >
+                      {isSaving ? "Saving..." : "Save privacy"}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Follow Requests (incoming) */}
+                <FollowRequestsPanel />
+
                 {/* Current Password */}
                 <div>
                   <Label htmlFor="currentPassword">Current Password</Label>
@@ -578,6 +806,48 @@ export default function SettingsPage() {
                 <CardDescription>Control who can see your information</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+{/* Private account */}
+                <div>
+                  <h4 className="font-semibold mb-2">Account Privacy</h4>
+                  <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
+                    <div>
+                      <div className="font-medium">Private account</div>
+                      <div className="text-sm text-gray-600">
+                        When enabled, people must request to follow you.
+                      </div>
+                    </div>
+                    <Button
+                      variant={profile.isPrivate ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setProfile({ ...profile, isPrivate: !profile.isPrivate })}
+                    >
+                      {profile.isPrivate ? (
+                        <>
+                          <EyeOff size={16} className="mr-2" />
+                          Private
+                        </>
+                      ) : (
+                        <>
+                          <Eye size={16} className="mr-2" />
+                          Public
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <div className="mt-3">
+                    <Button
+                      onClick={handleSaveProfile}
+                      disabled={isSaving}
+                      className="bg-orange-500 hover:bg-orange-600"
+                    >
+                      {isSaving ? "Saving..." : "Save privacy"}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Follow Requests (incoming) */}
+                <FollowRequestsPanel />
+
                 {[
                   {
                     key: 'profilePublic',
@@ -625,6 +895,48 @@ export default function SettingsPage() {
                 <CardDescription>Choose what notifications you want to receive</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+{/* Private account */}
+                <div>
+                  <h4 className="font-semibold mb-2">Account Privacy</h4>
+                  <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
+                    <div>
+                      <div className="font-medium">Private account</div>
+                      <div className="text-sm text-gray-600">
+                        When enabled, people must request to follow you.
+                      </div>
+                    </div>
+                    <Button
+                      variant={profile.isPrivate ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setProfile({ ...profile, isPrivate: !profile.isPrivate })}
+                    >
+                      {profile.isPrivate ? (
+                        <>
+                          <EyeOff size={16} className="mr-2" />
+                          Private
+                        </>
+                      ) : (
+                        <>
+                          <Eye size={16} className="mr-2" />
+                          Public
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <div className="mt-3">
+                    <Button
+                      onClick={handleSaveProfile}
+                      disabled={isSaving}
+                      className="bg-orange-500 hover:bg-orange-600"
+                    >
+                      {isSaving ? "Saving..." : "Save privacy"}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Follow Requests (incoming) */}
+                <FollowRequestsPanel />
+
                 <div>
                   <h4 className="font-semibold mb-4">Email Notifications</h4>
                   <div className="space-y-4">
@@ -681,6 +993,48 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+{/* Private account */}
+                <div>
+                  <h4 className="font-semibold mb-2">Account Privacy</h4>
+                  <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
+                    <div>
+                      <div className="font-medium">Private account</div>
+                      <div className="text-sm text-gray-600">
+                        When enabled, people must request to follow you.
+                      </div>
+                    </div>
+                    <Button
+                      variant={profile.isPrivate ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setProfile({ ...profile, isPrivate: !profile.isPrivate })}
+                    >
+                      {profile.isPrivate ? (
+                        <>
+                          <EyeOff size={16} className="mr-2" />
+                          Private
+                        </>
+                      ) : (
+                        <>
+                          <Eye size={16} className="mr-2" />
+                          Public
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <div className="mt-3">
+                    <Button
+                      onClick={handleSaveProfile}
+                      disabled={isSaving}
+                      className="bg-orange-500 hover:bg-orange-600"
+                    >
+                      {isSaving ? "Saving..." : "Save privacy"}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Follow Requests (incoming) */}
+                <FollowRequestsPanel />
+
                 <div className="flex flex-wrap gap-2">
                   {FOOD_CATEGORIES.map((category) => (
                     <Badge
