@@ -1,59 +1,78 @@
-import React, { useState } from 'react';
-import { useLocation } from 'wouter';
-import BarcodeScanner from '@/components/BarcodeScanner';
-import { useToast } from '@/hooks/use-toast';
+import React, { useState } from "react";
+import { useLocation } from "wouter";
+import BarcodeScanner from "@/components/BarcodeScanner";
+import { useToast } from "@/hooks/use-toast";
+
+type LookupResult = {
+  name: string;
+  category: string;
+  quantity: number;
+  unit: string;
+  brand?: string;
+  upc?: string;
+  imageUrl?: string;
+};
 
 export default function PantryScanner() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [scannedCode, setScannedCode] = useState<string | null>(null);
+  const [isLookingUp, setIsLookingUp] = useState(false);
 
   const handleBarcodeDetected = async (barcode: string) => {
-    console.log('Barcode scanned:', barcode);
-    setScannedCode(barcode);
-    // Immediately toast the scanned code to let the user know the camera worked
+    if (!barcode || isLookingUp) return;
+
+    setIsLookingUp(true);
+
     toast({
-      title: 'Barcode scanned',
-      description: `Looking up product…`,
+      title: "Barcode scanned",
+      description: "Looking up product info…",
     });
+
     try {
-      const res = await fetch(`/api/lookup/${barcode}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.name) {
-          // Show a toast with the product name
-          toast({
-            title: `Found: ${data.name}`,
-            description: data.brand ? `Brand: ${data.brand}` : undefined,
-          });
-          // Redirect to pantry with product details in query params
-          setLocation(
-            `/pantry?barcode=${barcode}` +
-              `&name=${encodeURIComponent(data.name)}` +
-              `&category=${encodeURIComponent(data.category || '')}` +
-              `&quantity=${data.quantity}` +
-              `&unit=${encodeURIComponent(data.unit || '')}` +
-              `&brand=${encodeURIComponent(data.brand || '')}` +
-              `&imageUrl=${encodeURIComponent(data.imageUrl || '')}`
-          );
-          return;
-        }
+      const res = await fetch(`/api/lookup/${encodeURIComponent(barcode)}`, {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error(`Lookup failed (${res.status})`);
       }
-      // If lookup fails, just navigate with barcode
-      setLocation(`/pantry?barcode=${barcode}`);
+
+      const data = (await res.json()) as LookupResult | null;
+
+      if (!data?.name) {
+        throw new Error("No product info found for that barcode");
+      }
+
+      // Send everything to Pantry page so it can auto-add the item
+      const params = new URLSearchParams();
+      params.set("barcode", barcode);
+      params.set("name", data.name);
+      if (data.category) params.set("category", data.category);
+      if (data.quantity != null) params.set("quantity", String(data.quantity));
+      if (data.unit) params.set("unit", data.unit);
+      if (data.brand) params.set("brand", data.brand);
+      if (data.imageUrl) params.set("imageUrl", data.imageUrl);
+
+      setLocation(`/pantry?${params.toString()}`);
     } catch (err) {
-      setLocation(`/pantry?barcode=${barcode}`);
+      console.warn("Barcode lookup error:", err);
+      toast({
+        variant: "destructive",
+        title: "Couldn’t find that product",
+        description: "Try scanning again or add the item manually in Pantry.",
+      });
+
+      // Back to pantry (no auto-add)
+      setLocation("/pantry");
+    } finally {
+      setIsLookingUp(false);
     }
   };
 
   const handleClose = () => {
-    setLocation('/pantry');
+    setLocation("/pantry");
   };
 
-  return (
-    <BarcodeScanner
-      onDetected={handleBarcodeDetected}
-      onClose={handleClose}
-    />
-  );
+  return <BarcodeScanner onDetected={handleBarcodeDetected} onClose={handleClose} />;
 }
