@@ -77,6 +77,17 @@ r.get(
       offset: number;
       limit: number;
     };
+    // If the profile is private, only the owner or approved followers can view posts
+    const target = await storage.getUser(req.params.userId);
+    if (target?.isPrivate) {
+      const viewerId = currentUserId;
+      const isOwner = viewerId && viewerId === req.params.userId;
+      const canView = isOwner || (viewerId ? await storage.isFollowing(viewerId, req.params.userId) : false);
+      if (!canView) {
+        return res.status(403).json({ message: "This account is private" });
+      }
+    }
+
     const posts = await storage.getUserPosts(req.params.userId, offset, limit, currentUserId);
     res.json(posts);
   })
