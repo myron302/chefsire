@@ -77,6 +77,8 @@ export const users = pgTable(
 export const posts = pgTable("posts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id).notNull(),
+    householdId: varchar("household_id").references(() => pantryHouseholds.id),
+
   caption: text("caption"),
   imageUrl: text("image_url").notNull(),
   tags: jsonb("tags").$type<string[]>().default(sql`'[]'::jsonb`),
@@ -391,6 +393,39 @@ export const creatorAnalytics = pgTable("creator_analytics", {
 });
 
 /* ===== PANTRY ===== */
+
+export const pantryHouseholds = pgTable(
+  "pantry_households",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    name: text("name").notNull(),
+    inviteCode: varchar("invite_code", { length: 16 }).notNull(),
+    ownerId: varchar("owner_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    inviteIdx: uniqueIndex("pantry_households_invite_idx").on(table.inviteCode),
+    ownerIdx: index("pantry_households_owner_idx").on(table.ownerId),
+  })
+);
+
+export const pantryHouseholdMembers = pgTable(
+  "pantry_household_members",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    householdId: varchar("household_id").references(() => pantryHouseholds.id, { onDelete: "cascade" }).notNull(),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    role: text("role").notNull().default("member"), // owner | admin | member
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    householdIdx: index("pantry_household_members_household_idx").on(table.householdId),
+    userIdx: index("pantry_household_members_user_idx").on(table.userId),
+    uniqueMember: uniqueIndex("pantry_household_members_unique_idx").on(table.householdId, table.userId),
+  })
+);
+
+
 export const pantryItems = pgTable(
   "pantry_items",
   {
@@ -401,7 +436,7 @@ export const pantryItems = pgTable(
     quantity: decimal("quantity", { precision: 8, scale: 2 }),
     unit: text("unit"),
     location: text("location"),
-    isRunningLow: boolean("is_running_low").notNull().default(false),
+    isRunningLow: boolean("is_running_low").default(false),
     expirationDate: timestamp("expiration_date"),
     purchaseDate: timestamp("purchase_date"),
     notes: text("notes"),
@@ -1304,6 +1339,12 @@ export type BlueprintVersion = typeof blueprintVersions.$inferSelect;
 export type MealPlanPurchase = typeof mealPlanPurchases.$inferSelect;
 export type MealPlanReview = typeof mealPlanReviews.$inferSelect;
 export type CreatorAnalytics = typeof creatorAnalytics.$inferSelect;
+
+export type PantryHousehold = typeof pantryHouseholds.$inferSelect;
+export type InsertPantryHousehold = typeof pantryHouseholds.$inferInsert;
+export type PantryHouseholdMember = typeof pantryHouseholdMembers.$inferSelect;
+export type InsertPantryHouseholdMember = typeof pantryHouseholdMembers.$inferInsert;
+
 export type PantryItem = typeof pantryItems.$inferSelect;
 export type InsertPantryItem = z.infer<typeof insertPantryItemSchema>;
 export type NutritionLog = typeof nutritionLogs.$inferSelect;
