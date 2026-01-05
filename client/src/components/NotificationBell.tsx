@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { Bell, Check, X } from "lucide-react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -9,9 +9,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { useUser } from "@/contexts/UserContext";
-import { getNotificationSocket } from "@/lib/socket";
 import { formatDistanceToNow } from "date-fns";
-import type { Socket } from "socket.io-client";
 
 type Notification = {
   id: string;
@@ -23,106 +21,125 @@ type Notification = {
   linkUrl?: string | null;
   read: boolean;
   readAt?: string | null;
-  priority: string;
+  priority?: string | null;
   createdAt: string;
 };
 
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, { credentials: "include", ...(init || {}) });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `Request failed: ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
 export default function NotificationBell() {
   const { user, loading } = useUser();
+
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
-  // Connect to notification socket when user is available
-  useEffect(() => {
-    // Only connect if user context has finished loading AND user exists
-    if (loading || !user?.id) return;
+  const canUse = useMemo(() => !loading && !!user?.id, [loading, user?.id]);
 
+  // Prevent overlapping requests (reduces chance of flaky “incomplete response” pages)
+  const inflightRef = useRef<{ unread?: boolean; list?: boolean }>({});
+
+  const loadUnreadCount = useCallback(async () => {
+    if (!canUse || inflightRef.current.unread) return;
+    inflightRef.current.unread = true;
     try {
-      const notifSocket = getNotificationSocket(user.id);
-      setSocket(notifSocket);
-
-      // Listen for new notifications
-      notifSocket.on("notification", (notification: Notification) => {
-        setNotifications((prev) => [notification, ...prev]);
-        if (!notification.read) {
-          setUnreadCount((prev) => prev + 1);
-        }
-      });
-
-      // Listen for unread count updates
-      notifSocket.on("unread_count", ({ count }: { count: number }) => {
-        setUnreadCount(count);
-      });
-
-      // Handle errors
-      notifSocket.on("connect_error", (error: any) => {
-        console.warn("Notification socket connection error:", error);
-      });
-
-      // Request initial data
-      notifSocket.emit("get_recent", { limit: 20 });
-      notifSocket.emit("get_unread_count");
-
-      // Handle recent notifications response
-      notifSocket.on("recent_notifications", (data: Notification[]) => {
-        setNotifications(data);
-      });
-
-      return () => {
-        notifSocket.off("notification");
-        notifSocket.off("unread_count");
-        notifSocket.off("recent_notifications");
-        notifSocket.off("connect_error");
-      };
-    } catch (error) {
-      console.warn("Failed to initialize notification socket:", error);
+      const data = await fetchJson<{ count: number }>("/api/notifications/unread-count");
+      setUnreadCount(typeof data?.count === "number" ? data.count : 0);
+    } catch {
+      // ignore
+    } finally {
+      inflightRef.current.unread = false;
     }
-  }, [user?.id, loading]);
+  }, [canUse]);
+
+  const loadRecent = useCallback(async () => {
+    if (!canUse || inflightRef.current.list) return;
+    inflightRef.current.list = true;
+    try {
+      const data = await fetchJson<{
+        notifications: Notification[];
+        count: number;
+        limit: number;
+        offset: number;
+      }>("/api/notifications?limit=20&offset=0");
+
+      setNotifications(Array.isArray(data?.notifications) ? data.notifications : []);
+    } catch {
+      // ignore
+    } finally {
+      inflightRef.current.list = false;
+    }
+  }, [canUse]);
+
+  // Light polling (no websockets)
+  useEffect(() => {
+    if (!canUse) return;
+
+    loadUnreadCount();
+    loadRecent();
+
+    const unreadTimer = window.setInterval(loadUnreadCount, 30000); // 30s
+    const listTimer = window.setInterval(loadRecent, 60000); // 60s
+
+    return () => {
+      window.clearInterval(unreadTimer);
+      window.clearInterval(listTimer);
+    };
+  }, [canUse, loadUnreadCount, loadRecent]);
+
+  // When dropdown opens, refresh immediately
+  useEffect(() => {
+    if (!canUse) return;
+    if (isOpen) {
+      loadUnreadCount();
+      loadRecent();
+    }
+  }, [isOpen, canUse, loadUnreadCount, loadRecent]);
 
   const markAsRead = useCallback(
-    (notificationId: string) => {
-      if (!socket) return;
-
-      socket.emit("mark_read", { notificationId }, (response: any) => {
-        if (response.ok) {
-          setNotifications((prev) =>
-            prev.map((n) =>
-              n.id === notificationId ? { ...n, read: true, readAt: new Date().toISOString() } : n
-            )
-          );
-          setUnreadCount((prev) => Math.max(0, prev - 1));
-        }
-      });
+    async (notificationId: string) => {
+      if (!canUse) return;
+      try {
+        await fetchJson(`/api/notifications/${notificationId}/read`, { method: "PUT" });
+        setNotifications((prev) =>
+          prev.map((n) =>
+            n.id === notificationId ? { ...n, read: true, readAt: new Date().toISOString() } : n
+          )
+        );
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+      } catch {
+        // ignore
+      }
     },
-    [socket]
+    [canUse]
   );
 
-  const markAllAsRead = useCallback(() => {
-    if (!socket) return;
-
-    socket.emit("mark_all_read", {}, (response: any) => {
-      if (response.ok) {
-        setNotifications((prev) =>
-          prev.map((n) => ({ ...n, read: true, readAt: new Date().toISOString() }))
-        );
-        setUnreadCount(0);
-      }
-    });
-  }, [socket]);
-
-  const handleNotificationClick = (notification: Notification) => {
-    if (!notification.read) {
-      markAsRead(notification.id);
+  const markAllAsRead = useCallback(async () => {
+    if (!canUse) return;
+    try {
+      await fetchJson("/api/notifications/mark-all-read", { method: "PUT" });
+      setNotifications((prev) =>
+        prev.map((n) => ({ ...n, read: true, readAt: n.readAt ?? new Date().toISOString() }))
+      );
+      setUnreadCount(0);
+    } catch {
+      // ignore
     }
-    if (notification.linkUrl) {
-      window.location.href = notification.linkUrl;
-    }
+  }, [canUse]);
+
+  const handleNotificationClick = (n: Notification) => {
+    if (!n.read) markAsRead(n.id);
+    if (n.linkUrl) window.location.href = n.linkUrl;
   };
 
-  const getNotificationIcon = (type: string) => {
-    // Return appropriate emoji based on notification type
+  const iconFor = (type: string) => {
     const icons: Record<string, string> = {
       follow: "👥",
       like: "❤️",
@@ -131,26 +148,19 @@ export default function NotificationBell() {
       quest_completed: "⭐",
       friend_activity: "🎉",
       suggestion: "💡",
+      dm: "✉️",
     };
     return icons[type] || "🔔";
   };
 
-  // Show loading state while user context is loading
   if (loading) {
     return (
-      <Button
-        variant="ghost"
-        size="sm"
-        className="p-2 hover:bg-muted rounded-full"
-        aria-label="Notifications"
-        disabled
-      >
+      <Button variant="ghost" size="sm" className="p-2 rounded-full" disabled aria-label="Notifications">
         <Bell className="h-5 w-5 text-muted-foreground opacity-50" />
       </Button>
     );
   }
 
-  // Don't show if user is logged out
   if (!user) return null;
 
   return (
@@ -170,6 +180,7 @@ export default function NotificationBell() {
           )}
         </Button>
       </DropdownMenuTrigger>
+
       <DropdownMenuContent align="end" className="w-96 max-h-[500px] overflow-y-auto">
         <div className="flex items-center justify-between px-4 py-2 border-b">
           <h3 className="font-semibold text-lg">Notifications</h3>
@@ -192,42 +203,32 @@ export default function NotificationBell() {
           </div>
         ) : (
           <div className="py-2">
-            {notifications.map((notification) => (
+            {notifications.map((n) => (
               <DropdownMenuItem
-                key={notification.id}
-                className={`px-4 py-3 cursor-pointer ${
-                  !notification.read ? "bg-blue-50 dark:bg-blue-950" : ""
-                }`}
-                onClick={() => handleNotificationClick(notification)}
+                key={n.id}
+                className={`px-4 py-3 cursor-pointer ${!n.read ? "bg-blue-50 dark:bg-blue-950" : ""}`}
+                onClick={() => handleNotificationClick(n)}
               >
                 <div className="flex items-start gap-3 w-full">
                   <div className="flex-shrink-0 text-2xl">
-                    {notification.imageUrl ? (
-                      <img
-                        src={notification.imageUrl}
-                        alt=""
-                        className="w-10 h-10 rounded-full object-cover"
-                      />
+                    {n.imageUrl ? (
+                      <img src={n.imageUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
                     ) : (
                       <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                        {getNotificationIcon(notification.type)}
+                        {iconFor(n.type)}
                       </div>
                     )}
                   </div>
+
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{notification.title}</p>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {notification.message}
-                    </p>
+                    <p className="font-medium text-sm">{n.title}</p>
+                    <p className="text-sm text-muted-foreground line-clamp-2">{n.message}</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+                      {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                     </p>
                   </div>
-                  {!notification.read && (
-                    <div className="flex-shrink-0">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                    </div>
-                  )}
+
+                  {!n.read && <div className="w-2 h-2 bg-blue-500 rounded-full" />}
                 </div>
               </DropdownMenuItem>
             ))}
