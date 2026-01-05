@@ -86,58 +86,6 @@ export default function Profile() {
   const queryClient = useQueryClient();
   const profileUserId = userId || currentUser?.id;
   const isOwnProfile = profileUserId === currentUser?.id;
-
-  // Follow status (for viewing other people's profiles)
-  const { data: followStatus } = useQuery<FollowStatus>({
-    queryKey: ["/api/follows/status", profileUserId],
-    enabled: !!profileUserId && !!currentUser && !isOwnProfile,
-    queryFn: async () => {
-      const res = await fetch(`/api/follows/status/${profileUserId}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load follow status");
-      return res.json();
-    },
-    retry: false,
-  });
-
-  const canViewContent =
-    !!isOwnProfile ||
-    !user?.isPrivate ||
-    !!followStatus?.isFollowing;
-
-  const followMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/follows/${profileUserId}`, {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to follow");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/follows/status", profileUserId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/users", profileUserId] });
-      toast({ description: user?.isPrivate ? "Follow request sent" : "Following" });
-    },
-    onError: () => toast({ variant: "destructive", description: "Could not follow" }),
-  });
-
-  const unfollowOrCancelMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/follows/${profileUserId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/follows/status", profileUserId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/users", profileUserId] });
-      toast({ description: "Updated" });
-    },
-    onError: () => toast({ variant: "destructive", description: "Could not update follow" }),
-  });
-
   const [selectedPost, setSelectedPost] = useState<PostWithUser | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingPost, setEditingPost] = useState<PostWithUser | null>(null);
@@ -190,7 +138,7 @@ export default function Profile() {
       }
       return response.json();
     },
-    enabled: !!profileUserId && canViewContent,
+    enabled: !!profileUserId,
   });
 
   // Fetch user posts from API
@@ -206,7 +154,7 @@ export default function Profile() {
       return response.json();
     },
     retry: false,
-    enabled: !!profileUserId && canViewContent,
+    enabled: !!profileUserId,
   });
 
   // Custom drinks (mock)
@@ -240,7 +188,7 @@ export default function Profile() {
         ],
       };
     },
-    enabled: !!profileUserId && canViewContent,
+    enabled: !!profileUserId,
   });
 
   // Drink stats (mock)
@@ -261,14 +209,14 @@ export default function Profile() {
         },
       };
     },
-    enabled: !!profileUserId && canViewContent,
+    enabled: !!profileUserId,
   });
 
   // Saved drinks (mock)
   const { data: savedDrinksData, isLoading: savedDrinksLoading } = useQuery({
     queryKey: ["/api/custom-drinks/saved", profileUserId],
     queryFn: async () => ({ drinks: [] }),
-    enabled: !!profileUserId && canViewContent,
+    enabled: !!profileUserId,
   });
 
   // Competitions / cookoffs (mock)
@@ -304,7 +252,7 @@ export default function Profile() {
         },
       ],
     }),
-    enabled: !!profileUserId && canViewContent,
+    enabled: !!profileUserId,
   });
 
   // Store (mock)
@@ -328,14 +276,14 @@ export default function Profile() {
         updatedAt: new Date().toISOString(),
       },
     }),
-    enabled: !!profileUserId && canViewContent,
+    enabled: !!profileUserId,
   });
 
   // Store products count (mock)
   const { data: storeProductsData } = useQuery({
     queryKey: ["/api/stores/products/count", profileUserId],
     queryFn: async () => ({ count: 3 }),
-    enabled: !!profileUserId && canViewContent,
+    enabled: !!profileUserId,
   });
 
   // Helper function to detect video URLs
@@ -360,8 +308,8 @@ export default function Profile() {
   const displayUser = user;
   const primaryName = displayUser.displayName || displayUser.username;
   const profileHeading = primaryName;
-  const followersCount = displayUser?.followersCount || 0;
-  const followingCount = displayUser?.followingCount || 0;
+  const followersCount = 1200;
+  const followingCount = 450;
   const postCount = posts?.length || 0;
   const bio = displayUser.bio || "The culinary journey starts here.";
   const title = displayUser.title;
@@ -418,24 +366,9 @@ export default function Profile() {
               </div>
             ) : (
               <div className="flex gap-2 mt-3 sm:mt-0">
-                <Button
-                  variant={followStatus?.isFollowing ? "secondary" : "outline"}
-                  onClick={() => {
-                    if (followStatus?.isFollowing || followStatus?.isRequested) {
-                      unfollowOrCancelMutation.mutate();
-                    } else {
-                      followMutation.mutate();
-                    }
-                  }}
-                  disabled={followMutation.isPending || unfollowOrCancelMutation.isPending}
-                  data-testid="button-follow"
-                >
+                <Button variant="outline">
                   <User className="w-4 h-4 mr-2" />
-                  {followStatus?.isFollowing
-                    ? "Following"
-                    : followStatus?.isRequested
-                    ? "Requested"
-                    : "Follow"}
+                  Follow
                 </Button>
                 <Button>
                   <MessageCircle className="w-4 h-4 mr-2" />
@@ -468,22 +401,7 @@ export default function Profile() {
         </div>
       )}
 
-      {!canViewContent && user?.isPrivate && !isOwnProfile ? (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>This account is private</CardTitle>
-            <CardDescription>
-              Follow to see their posts, recipes, and activity.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm text-muted-foreground">
-              Once they accept, you'll be able to view their content.
-            </div>
-          </CardContent>
-        </Card>
       {/* Tabs */}
-      {canViewContent ? (
       <Tabs defaultValue="photos" className="w-full">
         <TabsList className="grid w-full grid-cols-4 md:grid-cols-9">
           <TabsTrigger value="photos" className="flex items-center space-x-2" data-testid="tab-photos">
@@ -1178,8 +1096,6 @@ export default function Profile() {
           </TabsContent>
         )}
       </Tabs>
-      ) : null}
-
 
       {/* Expandable Post Modal */}
       {selectedPost && (
