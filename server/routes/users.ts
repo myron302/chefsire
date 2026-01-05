@@ -76,6 +76,7 @@ r.put("/:id", requireAuth, async (req, res) => {
       displayName: z.string().optional(),
       bio: z.string().max(500).optional(),
       avatar: z.string().optional(),
+      isPrivate: z.boolean().optional(),
       specialty: z.string().optional(),
       isChef: z.boolean().optional(),
       subscription: z.string().optional(),

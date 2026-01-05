@@ -8,6 +8,9 @@ type User = {
   royalTitle?: string | null;
   avatar?: string | null;
   bio?: string | null;
+  isPrivate?: boolean;
+  followersCount?: number;
+  followingCount?: number;
   // Marketplace/Store fields
   subscriptionTier?: string;
   nutritionPremium?: boolean;

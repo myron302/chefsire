@@ -288,12 +288,12 @@ export default function Profile() {
 
   // Check if current user is following this profile
   const { data: followData } = useQuery({
-    queryKey: ["/api/follows", currentUser?.id, profileUserId],
+    queryKey: ["/api/follows/status", profileUserId],
     queryFn: async () => {
-      const response = await fetch(`/api/follows/${currentUser?.id}/${profileUserId}`, {
+      const response = await fetch(`/api/follows/status/${profileUserId}`, {
         credentials: "include",
       });
-      if (!response.ok) return { isFollowing: false };
+      if (!response.ok) return { isFollowing: false, isRequested: false, isPrivate: false };
       return response.json();
     },
     enabled: !!currentUser?.id && !!profileUserId && !isOwnProfile,
@@ -303,33 +303,32 @@ export default function Profile() {
   const followMutation = useMutation({
     mutationFn: async ({ isFollowing }: { isFollowing: boolean }) => {
       if (isFollowing) {
-        // Unfollow
-        const response = await fetch(`/api/follows/${currentUser?.id}/${profileUserId}`, {
+        // Unfollow or cancel request
+        const response = await fetch(`/api/follows/${profileUserId}`, {
           method: "DELETE",
           credentials: "include",
         });
         if (!response.ok) throw new Error("Failed to unfollow");
         return response.json();
       } else {
-        // Follow
-        const response = await fetch(`/api/follows`, {
+        // Follow or request to follow
+        const response = await fetch(`/api/follows/${profileUserId}`, {
           method: "POST",
           credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            followerId: currentUser?.id,
-            followingId: profileUserId,
-          }),
         });
         if (!response.ok) throw new Error("Failed to follow");
         return response.json();
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/follows", currentUser?.id, profileUserId] });
-      toast({
-        description: followData?.isFollowing ? "Unfollowed successfully" : "Following!",
-      });
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/follows/status", profileUserId] });
+      const message =
+        data.status === "following" ? "Following!" :
+        data.status === "requested" ? "Follow request sent" :
+        data.status === "unfollowed" ? "Unfollowed" :
+        data.status === "canceled" ? "Request canceled" :
+        "Success";
+      toast({ description: message });
     },
     onError: () => {
       toast({
@@ -420,8 +419,8 @@ export default function Profile() {
             ) : (
               <div className="flex gap-2 mt-3 sm:mt-0">
                 <Button
-                  variant={followData?.isFollowing ? "outline" : "default"}
-                  onClick={() => followMutation.mutate({ isFollowing: followData?.isFollowing || false })}
+                  variant={followData?.isFollowing || followData?.isRequested ? "outline" : "default"}
+                  onClick={() => followMutation.mutate({ isFollowing: followData?.isFollowing || followData?.isRequested || false })}
                   disabled={followMutation.isPending}
                 >
                   <User className="w-4 h-4 mr-2" />
@@ -429,6 +428,8 @@ export default function Profile() {
                     ? "Loading..."
                     : followData?.isFollowing
                     ? "Unfollow"
+                    : followData?.isRequested
+                    ? "Requested"
                     : "Follow"}
                 </Button>
                 <Button>

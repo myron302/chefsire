@@ -31,6 +31,7 @@ export const users = pgTable(
     showFullName: boolean("show_full_name").default(false),
     bio: text("bio"),
     avatar: text("avatar"),
+    isPrivate: boolean("is_private").default(false),
     specialty: text("specialty"),
     isChef: boolean("is_chef").default(false),
     followersCount: integer("followers_count").default(0),
@@ -198,6 +199,17 @@ export const follows = pgTable("follows", {
   followingId: varchar("following_id").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const followRequests = pgTable("follow_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requesterId: varchar("requester_id").references(() => users.id).notNull(),
+  targetId: varchar("target_id").references(() => users.id).notNull(),
+  status: text("status").notNull().default("pending"), // 'pending' | 'accepted' | 'declined' | 'canceled'
+  createdAt: timestamp("created_at").defaultNow(),
+  respondedAt: timestamp("responded_at"),
+});
+
+
 
 /* ===== CATERING ===== */
 export const cateringInquiries = pgTable("catering_inquiries", {
