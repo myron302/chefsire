@@ -391,26 +391,35 @@ export const creatorAnalytics = pgTable("creator_analytics", {
 });
 
 /* ===== PANTRY ===== */
-export const households = pgTable("households", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  inviteCode: varchar("invite_code", { length: 8 }).notNull().unique(),
-  ownerId: varchar("owner_id").references(() => users.id).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const householdMembers = pgTable(
-  "household_members",
+/* ===== PANTRY HOUSEHOLDS ===== */
+export const pantryHouseholds = pgTable(
+  "pantry_households",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    householdId: varchar("household_id").references(() => households.id, { onDelete: "cascade" }).notNull(),
-    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
-    role: text("role").notNull().default("member"), // 'owner' | 'admin' | 'member'
+    name: text("name").notNull(),
+    inviteCode: varchar("invite_code").notNull(),
+    ownerId: varchar("owner_id").references(() => users.id).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    inviteCodeIdx: uniqueIndex("pantry_households_invite_code_uq").on(t.inviteCode),
+    ownerIdIdx: index("pantry_households_owner_id_idx").on(t.ownerId),
+  })
+);
+
+export const pantryHouseholdMembers = pgTable(
+  "pantry_household_members",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    householdId: varchar("household_id").references(() => pantryHouseholds.id).notNull(),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    role: text("role").notNull().default("member"), // owner | admin | member
     joinedAt: timestamp("joined_at").defaultNow(),
   },
-  (table) => ({
-    householdUserIdx: uniqueIndex("household_user_idx").on(table.householdId, table.userId),
-    userIdx: index("household_members_user_idx").on(table.userId),
+  (t) => ({
+    householdIdIdx: index("pantry_household_members_household_id_idx").on(t.householdId),
+    userIdIdx: index("pantry_household_members_user_id_idx").on(t.userId),
+    householdUserUq: uniqueIndex("pantry_household_members_household_user_uq").on(t.householdId, t.userId),
   })
 );
 
@@ -419,19 +428,19 @@ export const pantryItems = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     userId: varchar("user_id").references(() => users.id).notNull(),
-    householdId: varchar("household_id").references(() => households.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     category: text("category"),
     quantity: decimal("quantity", { precision: 8, scale: 2 }),
     unit: text("unit"),
+    location: text("location"),
     expirationDate: timestamp("expiration_date"),
     purchaseDate: timestamp("purchase_date"),
     notes: text("notes"),
+    isRunningLow: boolean("is_running_low").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
     userIdx: index("pantry_user_idx").on(table.userId),
-    householdIdx: index("pantry_household_idx").on(table.householdId),
     expirationIdx: index("pantry_expiration_idx").on(table.expirationDate),
   })
 );
@@ -474,6 +483,7 @@ export const familyMembers = pgTable(
     dateOfBirth: timestamp("date_of_birth"),
     species: text("species").default("human"),
     notes: text("notes"),
+    isRunningLow: boolean("is_running_low").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
@@ -491,6 +501,7 @@ export const allergenProfiles = pgTable(
     diagnosedBy: text("diagnosed_by"),
     diagnosedDate: timestamp("diagnosed_date"),
     notes: text("notes"),
+    isRunningLow: boolean("is_running_low").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
@@ -1327,8 +1338,6 @@ export type BlueprintVersion = typeof blueprintVersions.$inferSelect;
 export type MealPlanPurchase = typeof mealPlanPurchases.$inferSelect;
 export type MealPlanReview = typeof mealPlanReviews.$inferSelect;
 export type CreatorAnalytics = typeof creatorAnalytics.$inferSelect;
-export type Household = typeof households.$inferSelect;
-export type HouseholdMember = typeof householdMembers.$inferSelect;
 export type PantryItem = typeof pantryItems.$inferSelect;
 export type InsertPantryItem = z.infer<typeof insertPantryItemSchema>;
 export type NutritionLog = typeof nutritionLogs.$inferSelect;
@@ -1676,6 +1685,7 @@ export const mealPrepSchedules = pgTable(
     }[]>().default(sql`'[]'::jsonb`),
     shoppingDay: text("shopping_day"),
     notes: text("notes"),
+    isRunningLow: boolean("is_running_low").default(false),
     reminderEnabled: boolean("reminder_enabled").default(true),
     reminderTime: text("reminder_time"), // HH:MM format
     completed: boolean("completed").default(false),
@@ -1701,6 +1711,7 @@ export const leftovers = pgTable(
     expiryDate: timestamp("expiry_date"),
     storageLocation: text("storage_location"), // fridge, freezer
     notes: text("notes"),
+    isRunningLow: boolean("is_running_low").default(false),
     consumed: boolean("consumed").default(false),
     consumedAt: timestamp("consumed_at"),
     wasted: boolean("wasted").default(false),
@@ -1725,6 +1736,7 @@ export const groceryListItems = pgTable(
     ingredientName: text("ingredient_name").notNull(),
     quantity: text("quantity"),
     unit: text("unit"),
+    location: text("location"),
     category: text("category"), // produce, dairy, meat, pantry, etc.
     estimatedPrice: decimal("estimated_price", { precision: 8, scale: 2 }),
     actualPrice: decimal("actual_price", { precision: 8, scale: 2 }),
@@ -1735,6 +1747,7 @@ export const groceryListItems = pgTable(
     purchased: boolean("purchased").default(false),
     purchasedAt: timestamp("purchased_at"),
     notes: text("notes"),
+    isRunningLow: boolean("is_running_low").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({

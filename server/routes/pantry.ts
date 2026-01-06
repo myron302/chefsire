@@ -1,6 +1,9 @@
 // server/routes/pantry.ts
 import { Router } from "express";
 import { z } from "zod";
+import { sql } from "drizzle-orm";
+import { db } from "../db";
+import { randomBytes, randomUUID } from "crypto";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
 
@@ -137,7 +140,7 @@ r.post("/users/:id/pantry", async (req, res) => {
 });
 
 // Update pantry item
-r.put("/pantry/:itemId", async (req, res) => {
+r.put("/pantry/:itemId", requireAuth, async (req, res) => {
   try {
     const schema = z.object({
       name: z.string().min(1).optional(),
@@ -230,83 +233,313 @@ r.get("/users/:id/pantry/recipe-suggestions", async (req, res) => {
   }
 });
 
-// ---------- Households ----------
-// Get current user's household
+/* =========================
+ * Household pantry (shared pantry)
+ * Used by /pantry/household page
+ * Endpoints:
+ *  - GET    /api/pantry/household
+ *  - POST   /api/pantry/household          { name }
+ *  - POST   /api/pantry/household/join     { inviteCode }
+ *  - POST   /api/pantry/household/leave    { householdId? }  (if omitted, leaves all)
+ * ========================= */
+
+let _householdSchemaReady: Promise<void> | null = null;
+
+async function ensureHouseholdSchema() {
+  if (_householdSchemaReady) return _householdSchemaReady;
+
+  _householdSchemaReady = (async () => {
+    // These tables are created without gen_random_uuid() so we don't depend on pgcrypto.
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS pantry_households (
+        id varchar PRIMARY KEY,
+        name text NOT NULL,
+        owner_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        invite_code text NOT NULL UNIQUE,
+        created_at timestamp DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS pantry_household_members (
+        id varchar PRIMARY KEY,
+        household_id varchar NOT NULL REFERENCES pantry_households(id) ON DELETE CASCADE,
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role text NOT NULL DEFAULT 'member',
+        created_at timestamp DEFAULT now(),
+        UNIQUE (household_id, user_id)
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS pantry_household_members_user_idx
+      ON pantry_household_members(user_id);
+    `);
+
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS pantry_household_members_household_idx
+      ON pantry_household_members(household_id);
+    `);
+
+    // Add household_id to pantry_items if missing (nullable; personal pantry items stay null)
+    await db.execute(sql`
+      ALTER TABLE pantry_items
+      ADD COLUMN IF NOT EXISTS household_id varchar REFERENCES pantry_households(id) ON DELETE SET NULL;
+    `);
+  })();
+
+  return _householdSchemaReady;
+}
+
+function makeInviteCode() {
+  // Short-ish code, URL-safe enough
+  return randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase();
+}
+
+async function getHouseholdInfoForUser(userId: string) {
+  // If the user is in multiple households, return the most recent membership (created_at)
+  const m = await db.execute(sql`
+    SELECT m.household_id, m.role
+    FROM pantry_household_members m
+    WHERE m.user_id = ${userId}
+    ORDER BY m.created_at DESC
+    LIMIT 1;
+  `);
+  const row = (m as any)?.rows?.[0];
+  if (!row?.household_id) return null;
+
+  const householdId = String(row.household_id);
+  const role = String(row.role || "member");
+
+  const h = await db.execute(sql`
+    SELECT id, name, owner_user_id, invite_code, created_at
+    FROM pantry_households
+    WHERE id = ${householdId}
+    LIMIT 1;
+  `);
+  const hh = (h as any)?.rows?.[0];
+  if (!hh?.id) {
+    // Stale membership; clean it up
+    await db.execute(sql`DELETE FROM pantry_household_members WHERE household_id = ${householdId} AND user_id = ${userId};`);
+    return null;
+  }
+
+  const members = await db.execute(sql`
+    SELECT m.user_id, m.role, u.username, u.email
+    FROM pantry_household_members m
+    JOIN users u ON u.id = m.user_id
+    WHERE m.household_id = ${householdId}
+    ORDER BY m.created_at ASC;
+  `);
+
+  return {
+    id: String(hh.id),
+    name: String(hh.name),
+    ownerUserId: String(hh.owner_user_id),
+    inviteCode: String(hh.invite_code),
+    createdAt: hh.created_at,
+    myRole: role,
+    members: ((members as any)?.rows || []).map((r: any) => ({
+      userId: String(r.user_id),
+      role: String(r.role),
+      username: r.username ?? null,
+      email: r.email ?? null,
+    })),
+  };
+}
+
+/**
+ * GET /api/pantry/household
+ * Returns the household for the current user (or null).
+ */
 r.get("/household", requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-    const household = await storage.getHousehold(userId);
+    await ensureHouseholdSchema();
+
+    const household = await getHouseholdInfoForUser(userId);
     res.json({ household });
-  } catch (error) {
-    console.error("pantry/household/get error", error);
-    res.status(500).json({ message: "Failed to fetch household" });
+  } catch (e: any) {
+    console.error("pantry/household get error", e);
+    res.status(500).json({ message: "Failed to load household", details: String(e?.message || e) });
   }
 });
 
-// Create a new household
+/**
+ * POST /api/pantry/household
+ * Create household (current user becomes owner)
+ */
 r.post("/household", requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-    const schema = z.object({
-      name: z.string().min(1).max(100),
-    });
-    const { name } = schema.parse(req.body);
+    await ensureHouseholdSchema();
 
-    // Check if user already has a household
-    const existing = await storage.getHousehold(userId);
-    if (existing) {
-      return res.status(400).json({ message: "You are already in a household" });
+    const schema = z.object({ name: z.string().min(2).max(80) });
+    const body = schema.parse(req.body);
+
+    // Clean up any stale memberships (household deleted but member row still exists)
+    await db.execute(sql`
+      DELETE FROM pantry_household_members m
+      WHERE m.user_id = ${userId}
+        AND NOT EXISTS (SELECT 1 FROM pantry_households h WHERE h.id = m.household_id);
+    `);
+
+    // If user already in a household, block creating another
+    const existing = await db.execute(sql`
+      SELECT household_id FROM pantry_household_members WHERE user_id = ${userId} LIMIT 1;
+    `);
+    if ((existing as any)?.rows?.[0]?.household_id) {
+      return res.status(400).json({
+        message: "Create failed, you are already in a household. leave it before creating a new one",
+      });
     }
 
-    const household = await storage.createHousehold(userId, name);
-    res.status(201).json({ household });
-  } catch (error: any) {
-    if (error?.issues) return res.status(400).json({ message: "Invalid input", errors: error.issues });
-    console.error("pantry/household/create error", error);
-    res.status(500).json({ message: "Failed to create household" });
+    const hid = randomUUID();
+    const inviteCode = makeInviteCode();
+
+    await db.execute(sql`
+      INSERT INTO pantry_households (id, name, owner_user_id, invite_code)
+      VALUES (${hid}, ${body.name}, ${userId}, ${inviteCode});
+    `);
+
+    await db.execute(sql`
+      INSERT INTO pantry_household_members (id, household_id, user_id, role)
+      VALUES (${randomUUID()}, ${hid}, ${userId}, 'owner')
+      ON CONFLICT (household_id, user_id) DO NOTHING;
+    `);
+
+    const household = await getHouseholdInfoForUser(userId);
+    res.json({ household });
+  } catch (e: any) {
+    if (e?.issues) return res.status(400).json({ message: "Invalid input", errors: e.issues });
+    console.error("pantry/household create error", e);
+    res.status(500).json({ message: "Failed to create household", details: String(e?.message || e) });
   }
 });
 
-// Join a household with invite code
+/**
+ * POST /api/pantry/household/join
+ */
 r.post("/household/join", requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-    const schema = z.object({
-      inviteCode: z.string().length(8),
-    });
-    const { inviteCode } = schema.parse(req.body);
+    await ensureHouseholdSchema();
 
-    await storage.joinHousehold(userId, inviteCode);
-    res.json({ message: "Successfully joined household" });
-  } catch (error: any) {
-    if (error?.issues) return res.status(400).json({ message: "Invalid invite code", errors: error.issues });
-    console.error("pantry/household/join error", error);
-    res.status(400).json({ message: error.message || "Failed to join household" });
+    const schema = z.object({ inviteCode: z.string().min(4) });
+    const body = schema.parse(req.body);
+
+    // Clean stale memberships
+    await db.execute(sql`
+      DELETE FROM pantry_household_members m
+      WHERE m.user_id = ${userId}
+        AND NOT EXISTS (SELECT 1 FROM pantry_households h WHERE h.id = m.household_id);
+    `);
+
+    // Block if already in a household
+    const existing = await db.execute(sql`
+      SELECT household_id FROM pantry_household_members WHERE user_id = ${userId} LIMIT 1;
+    `);
+    if ((existing as any)?.rows?.[0]?.household_id) {
+      return res.status(400).json({
+        message: "Join failed, you are already in a household. leave it before joining another one",
+      });
+    }
+
+    const found = await db.execute(sql`
+      SELECT id FROM pantry_households WHERE invite_code = ${body.inviteCode} LIMIT 1;
+    `);
+    const hid = (found as any)?.rows?.[0]?.id;
+    if (!hid) return res.status(404).json({ message: "Invalid invite code" });
+
+    await db.execute(sql`
+      INSERT INTO pantry_household_members (id, household_id, user_id, role)
+      VALUES (${randomUUID()}, ${String(hid)}, ${userId}, 'member')
+      ON CONFLICT (household_id, user_id) DO NOTHING;
+    `);
+
+    const household = await getHouseholdInfoForUser(userId);
+    res.json({ household });
+  } catch (e: any) {
+    if (e?.issues) return res.status(400).json({ message: "Invalid input", errors: e.issues });
+    console.error("pantry/household join error", e);
+    res.status(500).json({ message: "Failed to join household", details: String(e?.message || e) });
   }
 });
 
-// Leave current household
+/**
+ * POST /api/pantry/household/leave
+ * If householdId is omitted, leaves ALL households the user belongs to.
+ * (This fixes cases where multiple membership rows exist.)
+ */
 r.post("/household/leave", requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-    const success = await storage.leaveHousehold(userId);
-    if (!success) {
-      return res.status(404).json({ message: "You are not in a household" });
+    await ensureHouseholdSchema();
+
+    const schema = z.object({ householdId: z.string().optional() }).optional();
+    const body = schema?.parse(req.body ?? {}) as any;
+    const targetHouseholdId = body?.householdId ? String(body.householdId) : null;
+
+    const mems = await db.execute(sql`
+      SELECT m.household_id, m.role
+      FROM pantry_household_members m
+      WHERE m.user_id = ${userId}
+      ${targetHouseholdId ? sql`AND m.household_id = ${targetHouseholdId}` : sql``}
+    `);
+
+    const rows = ((mems as any)?.rows || []) as any[];
+    if (rows.length === 0) return res.json({ ok: true });
+
+    // If user is owner in any household that still has other members, block leaving that household.
+    for (const r0 of rows) {
+      const hid = String(r0.household_id);
+      const role = String(r0.role || "member");
+      if (role === "owner") {
+        const others = await db.execute(sql`
+          SELECT COUNT(*)::int AS c
+          FROM pantry_household_members
+          WHERE household_id = ${hid} AND user_id <> ${userId};
+        `);
+        const c = Number((others as any)?.rows?.[0]?.c || 0);
+        if (c > 0) {
+          return res.status(400).json({
+            message: "Owners can't leave while other members are in the household. Remove members first.",
+          });
+        }
+      }
     }
 
-    res.json({ message: "Successfully left household" });
-  } catch (error) {
-    console.error("pantry/household/leave error", error);
-    res.status(500).json({ message: "Failed to leave household" });
+    // For owner households with no others, delete the household (will cascade members)
+    for (const r0 of rows) {
+      const hid = String(r0.household_id);
+      const role = String(r0.role || "member");
+      if (role === "owner") {
+        await db.execute(sql`DELETE FROM pantry_households WHERE id = ${hid};`);
+      }
+    }
+
+    // Delete membership rows for user (for the target household or all)
+    await db.execute(sql`
+      DELETE FROM pantry_household_members
+      WHERE user_id = ${userId}
+      ${targetHouseholdId ? sql`AND household_id = ${targetHouseholdId}` : sql``}
+    `);
+
+    res.json({ ok: true });
+  } catch (e: any) {
+    if (e?.issues) return res.status(400).json({ message: "Invalid input", errors: e.issues });
+    console.error("pantry/household leave error", e);
+    res.status(500).json({ message: "Failed to leave household", details: String(e?.message || e) });
   }
 });
+
 
 export default r;

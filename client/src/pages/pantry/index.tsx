@@ -117,6 +117,19 @@ export default function PantryDashboard() {
     refetchInterval: 30000, // Refresh every 30s
   });
 
+  // Household membership (so we can share items into a household pantry)
+  const { data: householdInfo } = useQuery<any>({
+    queryKey: ["/api/pantry/household"],
+    queryFn: async () => {
+      const res = await fetch("/api/pantry/household", { credentials: "include" });
+      if (!res.ok) return { household: null };
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const myHouseholdId: string | null = householdInfo?.household?.id ?? null;
+
   // Fetch expiring items
   const { data: expiringData } = useQuery({
     queryKey: ["/api/pantry/expiring-soon", { days: 7 }],
@@ -167,6 +180,8 @@ export default function PantryDashboard() {
           location: data.location,
           expirationDate: data.expirationDate,
           notes: data.notes,
+          isRunningLow: data.isRunningLow,
+          householdId: data.householdId,
         }),
       });
       if (!res.ok) throw new Error("Failed to update item");
@@ -1075,6 +1090,7 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
             unit: data.unit || "",
             category: data.category || "Other",
             notes: data.notes,
+          isRunningLow: data.isRunningLow,
           }),
         });
       }

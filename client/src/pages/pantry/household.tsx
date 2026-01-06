@@ -1,461 +1,441 @@
-import { useState } from "react";
+// client/src/pages/pantry/household.tsx
+import React, { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Users, ArrowLeft, Plus, Copy, LogOut, Crown, Shield, User, Check, AlertCircle, Home } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Users, Copy, Home, LogOut, RefreshCcw, Merge, Trash2 } from "lucide-react";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 
-type HouseholdInfo = {
-  id: string;
-  name: string;
-  inviteCode: string;
-  ownerId: string;
-  userRole: "owner" | "admin" | "member";
-  members: {
-    id: string;
-    username: string;
-    displayName: string | null;
-    role: "owner" | "admin" | "member";
-    joinedAt: string;
-  }[];
-  itemCount: number;
+type HouseholdMember = {
+  userId: string;
+  role: "owner" | "admin" | "member";
+  joinedAt?: string;
+  username?: string | null;
+  displayName?: string | null;
+  avatarUrl?: string | null;
 };
 
-export default function HouseholdPantry() {
+type HouseholdInfo = {
+  household: {
+    id: string;
+    name: string;
+    inviteCode: string;
+    ownerId: string;
+    createdAt?: string;
+  } | null;
+  userRole: "owner" | "admin" | "member" | null;
+  members: HouseholdMember[];
+};
+
+type DuplicatePair = {
+  existing: { id: string; name: string; unit?: string | null; category?: string | null; quantity?: string | null };
+  incoming: { id: string; name: string; unit?: string | null; category?: string | null; quantity?: string | null };
+};
+
+export default function HouseholdPantryPage() {
+  const qc = useQueryClient();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showJoinDialog, setShowJoinDialog] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: "" });
-  const [joinForm, setJoinForm] = useState({ inviteCode: "" });
+  const [createName, setCreateName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
 
-  // Fetch household info
-  const { data: householdData, isLoading } = useQuery({
+  // Duplicate resolution UI
+  const [dupeOpen, setDupeOpen] = useState(false);
+  const [duplicates, setDuplicates] = useState<DuplicatePair[]>([]);
+  const [decisions, setDecisions] = useState<Record<string, "merge" | "keepBoth" | "discardIncoming">>({});
+
+  const { data, isLoading } = useQuery<HouseholdInfo>({
     queryKey: ["/api/pantry/household"],
+    queryFn: async () => {
+      const res = await fetch("/api/pantry/household", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load household");
+      return res.json();
+    },
+    refetchInterval: 30000,
   });
 
-  const household: HouseholdInfo | null = householdData?.household || null;
+  const household = data?.household ?? null;
 
-  // Create household mutation
+  const roleBadge = (role: HouseholdMember["role"]) => {
+    if (role === "owner") return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Owner</Badge>;
+    if (role === "admin") return <Badge className="bg-blue-100 text-blue-800 border-blue-200">Admin</Badge>;
+    return <Badge variant="outline">Member</Badge>;
+  };
+
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string }) => {
+    mutationFn: async () => {
       const res = await fetch("/api/pantry/household", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(data),
+        body: JSON.stringify({ name: createName }),
       });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to create household");
-      }
-      return res.json();
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.message || "Failed to create household");
+      return j as HouseholdInfo;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pantry/household"] });
-      toast({ title: "✓ Household created", description: "Your family pantry is ready!" });
-      setShowCreateDialog(false);
-      setCreateForm({ name: "" });
+      setCreateName("");
+      qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
+      toast({ title: "Household created" });
     },
-    onError: (error: Error) => {
-      toast({ title: "Failed to create household", description: error.message, variant: "destructive" });
-    },
+    onError: (e: any) => toast({ title: "Create failed", description: e.message, variant: "destructive" }),
   });
 
-  // Join household mutation
   const joinMutation = useMutation({
-    mutationFn: async (data: { inviteCode: string }) => {
+    mutationFn: async () => {
       const res = await fetch("/api/pantry/household/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(data),
+        body: JSON.stringify({ inviteCode }),
       });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to join household");
-      }
-      return res.json();
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.message || "Failed to join household");
+      return j as HouseholdInfo;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pantry/household"] });
-      toast({ title: "✓ Joined household", description: "You can now access the shared pantry!" });
-      setShowJoinDialog(false);
-      setJoinForm({ inviteCode: "" });
+      setInviteCode("");
+      qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
+      toast({ title: "Joined household" });
     },
-    onError: (error: Error) => {
-      toast({ title: "Failed to join household", description: error.message, variant: "destructive" });
-    },
+    onError: (e: any) => toast({ title: "Join failed", description: e.message, variant: "destructive" }),
   });
 
-  // Leave household mutation
   const leaveMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/pantry/household/leave", {
         method: "POST",
         credentials: "include",
       });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to leave household");
-      }
-      return res.json();
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.message || "Failed to leave household");
+      return j;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pantry/household"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pantry/items"] });
-      toast({ title: "Left household", description: "You can create or join another household anytime." });
+      qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
+      qc.invalidateQueries({ queryKey: ["/api/pantry/items"] });
+      toast({ title: "Left household" });
     },
-    onError: (error: Error) => {
-      toast({ title: "Failed to leave household", description: error.message, variant: "destructive" });
-    },
+    onError: (e: any) => toast({ title: "Leave failed", description: e.message, variant: "destructive" }),
   });
 
-  // Copy invite code
-  const copyInviteCode = () => {
-    if (household?.inviteCode) {
-      navigator.clipboard.writeText(household.inviteCode);
-      toast({ title: "✓ Copied", description: "Invite code copied to clipboard" });
-    }
-  };
-
-  // Get role icon and color
-  const getRoleIcon = (role: string) => {
-    if (role === "owner") return <Crown className="w-4 h-4 text-yellow-600" />;
-    if (role === "admin") return <Shield className="w-4 h-4 text-blue-600" />;
-    return <User className="w-4 h-4 text-gray-600" />;
-  };
-
-  const getRoleBadge = (role: string) => {
-    if (role === "owner") return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Owner</Badge>;
-    if (role === "admin") return <Badge className="bg-blue-100 text-blue-800 border-blue-200">Admin</Badge>;
-    return <Badge variant="outline">Member</Badge>;
-  };
-
-  // Handle leave confirmation
-  const handleLeave = () => {
-    if (household?.userRole === "owner") {
-      toast({
-        title: "Cannot leave as owner",
-        description: "Transfer ownership or delete the household first.",
-        variant: "destructive",
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/pantry/household/sync", {
+        method: "POST",
+        credentials: "include",
       });
-      return;
-    }
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.message || "Failed to sync pantry");
+      return j as { ok: boolean; moved: number; duplicates: DuplicatePair[] };
+    },
+    onSuccess: (j) => {
+      qc.invalidateQueries({ queryKey: ["/api/pantry/items"] });
+      toast({ title: "Synced pantry", description: `${j.moved} item(s) moved into the household pantry.` });
 
-    if (confirm("Are you sure you want to leave this household? You'll lose access to shared pantry items.")) {
-      leaveMutation.mutate();
+      if (j.duplicates?.length) {
+        setDuplicates(j.duplicates);
+        const initial: Record<string, "merge" | "keepBoth" | "discardIncoming"> = {};
+        for (const d of j.duplicates) initial[d.incoming.id] = "merge";
+        setDecisions(initial);
+        setDupeOpen(true);
+      }
+    },
+    onError: (e: any) => toast({ title: "Sync failed", description: e.message, variant: "destructive" }),
+  });
+
+  const resolveDupesMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        decisions: duplicates.map((d) => ({
+          incomingId: d.incoming.id,
+          existingId: d.existing.id,
+          action: decisions[d.incoming.id] || "merge",
+        })),
+      };
+      const res = await fetch("/api/pantry/household/resolve-duplicates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.message || "Failed to resolve duplicates");
+      return j as { ok: boolean; merged: number; discarded: number; kept: number };
+    },
+    onSuccess: (j) => {
+      setDupeOpen(false);
+      setDuplicates([]);
+      setDecisions({});
+      qc.invalidateQueries({ queryKey: ["/api/pantry/items"] });
+      toast({
+        title: "Duplicates resolved",
+        description: `Merged: ${j.merged} • Discarded: ${j.discarded} • Kept both: ${j.kept}`,
+      });
+    },
+    onError: (e: any) => toast({ title: "Resolve failed", description: e.message, variant: "destructive" }),
+  });
+
+  const canManage = data?.userRole === "owner" || data?.userRole === "admin";
+
+  const copyCode = async () => {
+    if (!household?.inviteCode) return;
+    try {
+      await navigator.clipboard.writeText(household.inviteCode);
+      toast({ title: "Copied invite code" });
+    } catch {
+      toast({ title: "Copy failed", variant: "destructive" });
     }
   };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <Users className="w-12 h-12 mx-auto mb-4 text-gray-400 animate-pulse" />
-          <p className="text-gray-500">Loading household...</p>
-        </div>
+      <div className="max-w-2xl mx-auto p-6">
+        <Card>
+          <CardContent className="p-6">
+            <p>Loading household…</p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <Link href="/pantry">
-          <Button variant="ghost" size="sm" className="mb-4">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Pantry
-          </Button>
-        </Link>
-
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-4xl font-bold flex items-center gap-3">
-              <Users className="w-10 h-10 text-primary" />
-              Household Pantry
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              Share your pantry with family members
-            </p>
+  // Not in a household
+  if (!household) {
+    return (
+      <div className="max-w-2xl mx-auto p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Home className="w-5 h-5" />
+            <h1 className="text-2xl font-bold">Household Pantry</h1>
           </div>
+          <Link href="/pantry">
+            <Button variant="outline">Back to Pantry</Button>
+          </Link>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Create a Household
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Input
+              placeholder="Household name (ex: My Family)"
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+            />
+            <Button
+              onClick={() => createMutation.mutate()}
+              disabled={!createName.trim() || createMutation.isPending}
+              className="w-full"
+            >
+              Create Household
+            </Button>
+            <p className="text-sm text-muted-foreground">
+              After you create one, you’ll get an invite code to share with the people you want to join the same pantry.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Join a Household</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Input
+              placeholder="Invite code"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+            />
+            <Button onClick={() => joinMutation.mutate()} disabled={!inviteCode.trim() || joinMutation.isPending} className="w-full">
+              Join Household
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // In a household
+  return (
+    <div className="max-w-3xl mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Home className="w-5 h-5" />
+          <h1 className="text-2xl font-bold">{household.name}</h1>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/pantry">
+            <Button variant="outline">Back to Pantry</Button>
+          </Link>
         </div>
       </div>
 
-      {/* No Household - Create or Join */}
-      {!household ? (
-        <div className="space-y-6">
-          <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-            <CardContent className="p-6">
-              <div className="flex items-start gap-3">
-                <Home className="w-6 h-6 text-primary shrink-0 mt-1" />
-                <div>
-                  <h3 className="font-semibold text-lg mb-2">What is Household Pantry?</h3>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Share a pantry with your family, roommates, or anyone you live with.
-                    Everyone can add, edit, and track shared ingredients together.
-                  </p>
-                  <ul className="space-y-1 text-sm text-muted-foreground">
-                    <li className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-green-600" />
-                      Track shared ingredients in real-time
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-green-600" />
-                      Everyone sees expiry dates and running low alerts
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-green-600" />
-                      Coordinate grocery shopping and meal planning
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Create Household */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Plus className="w-5 h-5" />
-                  Create Household
-                </CardTitle>
-                <CardDescription>
-                  Start a new shared pantry for your family
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-                  <DialogTrigger asChild>
-                    <Button className="w-full">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create New Household
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Create Household</DialogTitle>
-                      <DialogDescription>
-                        Give your household a name. You'll get an invite code to share with others.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="householdName">Household Name *</Label>
-                        <Input
-                          id="householdName"
-                          placeholder="e.g., Smith Family, Apt 4B"
-                          value={createForm.name}
-                          onChange={(e) => setCreateForm({ name: e.target.value })}
-                        />
-                      </div>
-                      <div className="flex gap-3">
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowCreateDialog(false)}
-                          className="flex-1"
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          onClick={() => createMutation.mutate(createForm)}
-                          disabled={!createForm.name.trim() || createMutation.isPending}
-                          className="flex-1"
-                        >
-                          {createMutation.isPending ? "Creating..." : "Create"}
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </CardContent>
-            </Card>
-
-            {/* Join Household */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="w-5 h-5" />
-                  Join Household
-                </CardTitle>
-                <CardDescription>
-                  Enter an invite code from a family member
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Dialog open={showJoinDialog} onOpenChange={setShowJoinDialog}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full">
-                      <Users className="w-4 h-4 mr-2" />
-                      Join Existing Household
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Join Household</DialogTitle>
-                      <DialogDescription>
-                        Enter the 8-character invite code shared by your household owner.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="inviteCode">Invite Code *</Label>
-                        <Input
-                          id="inviteCode"
-                          placeholder="e.g., ABC12345"
-                          value={joinForm.inviteCode}
-                          onChange={(e) => setJoinForm({ inviteCode: e.target.value.toUpperCase() })}
-                          maxLength={8}
-                        />
-                      </div>
-                      <div className="flex gap-3">
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowJoinDialog(false)}
-                          className="flex-1"
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          onClick={() => joinMutation.mutate(joinForm)}
-                          disabled={joinForm.inviteCode.length !== 8 || joinMutation.isPending}
-                          className="flex-1"
-                        >
-                          {joinMutation.isPending ? "Joining..." : "Join"}
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </CardContent>
-            </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between gap-2">
+            <span>Invite Code</span>
+            <Button variant="outline" size="sm" onClick={copyCode}>
+              <Copy className="w-4 h-4 mr-2" />
+              Copy
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="p-3 rounded border bg-muted/30 font-mono text-lg tracking-wider">
+            {household.inviteCode}
           </div>
-        </div>
-      ) : (
-        /* Household Exists - Show Details */
-        <div className="space-y-6">
-          {/* Household Info */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-2xl flex items-center gap-2">
-                    <Home className="w-6 h-6 text-primary" />
-                    {household.name}
-                  </CardTitle>
-                  <CardDescription className="mt-1">
-                    {household.members.length} {household.members.length === 1 ? "member" : "members"} •{" "}
-                    {household.itemCount} shared {household.itemCount === 1 ? "item" : "items"}
-                  </CardDescription>
-                </div>
-                {getRoleBadge(household.userRole)}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {/* Invite Code */}
-                <div>
-                  <Label className="text-sm font-medium">Invite Code</Label>
-                  <div className="flex gap-2 mt-2">
-                    <div className="flex-1 relative">
-                      <Input
-                        value={household.inviteCode}
-                        readOnly
-                        className="pr-12 font-mono text-lg text-center tracking-wider"
-                      />
-                    </div>
-                    <Button onClick={copyInviteCode} variant="outline">
-                      <Copy className="w-4 h-4 mr-2" />
-                      Copy
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Share this code with family members to invite them to your household
-                  </p>
-                </div>
+          <p className="text-sm text-muted-foreground">
+            Send this code to someone you want to share a pantry with. They can paste it on this page to join.
+          </p>
 
-                {/* Actions */}
-                <div className="flex gap-3 pt-2">
-                  <Link href="/pantry" className="flex-1">
-                    <Button variant="outline" className="w-full">
-                      View Shared Pantry
-                    </Button>
-                  </Link>
-                  {household.userRole !== "owner" && (
+          <div className="pt-2 flex gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+              title="Move your personal pantry items into the household pantry"
+            >
+              <RefreshCcw className="w-4 h-4 mr-2" />
+              Sync my pantry into household
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={() => qc.invalidateQueries({ queryKey: ["/api/pantry/household"] })}
+              title="Refresh"
+            >
+              Refresh
+            </Button>
+
+            {data?.userRole !== "owner" && (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (confirm("Leave this household? You will no longer see shared items.")) leaveMutation.mutate();
+                }}
+                disabled={leaveMutation.isPending}
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Leave
+              </Button>
+            )}
+          </div>
+
+          {data?.userRole === "owner" && (
+            <p className="text-sm text-muted-foreground pt-1">
+              Owners can’t leave yet (this avoids orphaning the household). If you want that later, we can add ownership transfer.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Members</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {data?.members?.length ? (
+            <div className="space-y-2">
+              {data.members.map((m) => (
+                <div key={m.userId} className="flex items-center justify-between border rounded p-3">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">
+                      {m.displayName || m.username || m.userId}
+                    </div>
+                    {m.username && <div className="text-xs text-muted-foreground">@{m.username}</div>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {roleBadge(m.role)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No members yet.</p>
+          )}
+
+          <p className="text-sm text-muted-foreground">
+            Shared pantry items are the ones marked as “Household Item” on the Pantry page.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Duplicate Resolution Dialog */}
+      <Dialog open={dupeOpen} onOpenChange={setDupeOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Duplicate items found</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 max-h-[60vh] overflow-auto">
+            <p className="text-sm text-muted-foreground">
+              Some items already existed in the household pantry. Choose what to do for each duplicate.
+            </p>
+
+            {duplicates.map((d) => {
+              const action = decisions[d.incoming.id] || "merge";
+              return (
+                <div key={d.incoming.id} className="border rounded p-3 space-y-2">
+                  <div className="text-sm">
+                    <div className="font-medium">{d.existing.name}</div>
+                    <div className="text-muted-foreground">
+                      Household: {d.existing.quantity ?? "—"} {d.existing.unit ?? ""} {d.existing.category ? `• ${d.existing.category}` : ""}
+                    </div>
+                    <div className="text-muted-foreground">
+                      Yours: {d.incoming.quantity ?? "—"} {d.incoming.unit ?? ""} {d.incoming.category ? `• ${d.incoming.category}` : ""}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
                     <Button
-                      variant="outline"
-                      onClick={handleLeave}
-                      disabled={leaveMutation.isPending}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      variant={action === "merge" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setDecisions((s) => ({ ...s, [d.incoming.id]: "merge" }))}
                     >
-                      <LogOut className="w-4 h-4 mr-2" />
-                      {leaveMutation.isPending ? "Leaving..." : "Leave"}
+                      <Merge className="w-4 h-4 mr-2" />
+                      Merge quantities
                     </Button>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Members List */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Household Members</CardTitle>
-              <CardDescription>
-                People who have access to this shared pantry
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {household.members.map((member) => (
-                  <div
-                    key={member.id}
-                    className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      {getRoleIcon(member.role)}
-                      <div>
-                        <p className="font-medium">{member.displayName || member.username}</p>
-                        <p className="text-xs text-muted-foreground">
-                          @{member.username} • Joined {new Date(member.joinedAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    {getRoleBadge(member.role)}
+                    <Button
+                      variant={action === "keepBoth" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setDecisions((s) => ({ ...s, [d.incoming.id]: "keepBoth" }))}
+                    >
+                      Keep both
+                    </Button>
+                    <Button
+                      variant={action === "discardIncoming" ? "destructive" : "outline"}
+                      size="sm"
+                      onClick={() => setDecisions((s) => ({ ...s, [d.incoming.id]: "discardIncoming" }))}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Discard mine
+                    </Button>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Tips Card */}
-          <Card className="bg-blue-50 border-blue-200">
-            <CardContent className="p-4">
-              <div className="flex gap-3">
-                <AlertCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-medium text-blue-900 mb-1">Household Tips</p>
-                  <ul className="space-y-1 text-blue-800">
-                    <li>• Items marked as "Household Item" are shared with all members</li>
-                    <li>• Personal items remain private to your account</li>
-                    <li>• All members can add, edit, and remove shared items</li>
-                    <li>• Expiry reminders are sent to all household members</li>
-                  </ul>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+              );
+            })}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDupeOpen(false)}>
+              Close
+            </Button>
+            <Button onClick={() => resolveDupesMutation.mutate()} disabled={resolveDupesMutation.isPending}>
+              Apply choices
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
