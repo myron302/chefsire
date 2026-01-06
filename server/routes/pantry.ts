@@ -843,5 +843,53 @@ r.post("/household/invites/:inviteId/decline", requireAuth, async (req, res) => 
   }
 });
 
+/**
+ * DELETE /api/pantry/household/members/:userId
+ * Remove a member from the household (owner/admin only)
+ */
+r.delete("/household/members/:userId", requireAuth, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id;
+    if (!currentUserId) return res.status(401).json({ message: "Not authenticated" });
+
+    await ensureHouseholdSchema();
+
+    const targetUserId = req.params.userId;
+
+    // Get current user's household and role
+    const myHousehold = await getHouseholdInfoForUser(currentUserId);
+    if (!myHousehold) {
+      return res.status(400).json({ message: "You are not in a household" });
+    }
+
+    // Check if current user is owner or admin
+    if (myHousehold.myRole !== "owner" && myHousehold.myRole !== "admin") {
+      return res.status(403).json({ message: "Only owners and admins can remove members" });
+    }
+
+    // Check if target user is in the same household
+    const targetMember = myHousehold.members.find(m => m.userId === targetUserId);
+    if (!targetMember) {
+      return res.status(404).json({ message: "User is not a member of this household" });
+    }
+
+    // Prevent removing the owner
+    if (targetMember.role === "owner") {
+      return res.status(400).json({ message: "Cannot remove the household owner" });
+    }
+
+    // Remove the member
+    await db.execute(sql`
+      DELETE FROM pantry_household_members
+      WHERE household_id = ${myHousehold.id} AND user_id = ${targetUserId}
+    `);
+
+    res.json({ ok: true, message: "Member removed from household" });
+  } catch (e: any) {
+    console.error("pantry/household/members/remove error", e);
+    res.status(500).json({ message: "Failed to remove member", details: String(e?.message || e) });
+  }
+});
+
 
 export default r;

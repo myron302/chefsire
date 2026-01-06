@@ -284,6 +284,23 @@ export default function HouseholdPantryPage() {
     onError: (e: any) => toast({ title: "Decline failed", description: e.message, variant: "destructive" }),
   });
 
+  const removeMemberMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await fetch(`/api/pantry/household/members/${userId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.message || "Failed to remove member");
+      return j;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
+      toast({ title: "Member removed" });
+    },
+    onError: (e: any) => toast({ title: "Remove failed", description: e.message, variant: "destructive" }),
+  });
+
   const canManage = data?.userRole === "owner" || data?.userRole === "admin";
 
   const copyCode = async () => {
@@ -497,6 +514,20 @@ export default function HouseholdPantryPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {roleBadge(m.role)}
+                    {canManage && m.role !== "owner" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          if (confirm(`Remove ${m.username || m.displayName} from the household?`)) {
+                            removeMemberMutation.mutate(m.userId);
+                          }
+                        }}
+                        disabled={removeMemberMutation.isPending}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
