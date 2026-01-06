@@ -230,4 +230,83 @@ r.get("/users/:id/pantry/recipe-suggestions", async (req, res) => {
   }
 });
 
+// ---------- Households ----------
+// Get current user's household
+r.get("/household", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const household = await storage.getHousehold(userId);
+    res.json({ household });
+  } catch (error) {
+    console.error("pantry/household/get error", error);
+    res.status(500).json({ message: "Failed to fetch household" });
+  }
+});
+
+// Create a new household
+r.post("/household", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const schema = z.object({
+      name: z.string().min(1).max(100),
+    });
+    const { name } = schema.parse(req.body);
+
+    // Check if user already has a household
+    const existing = await storage.getHousehold(userId);
+    if (existing) {
+      return res.status(400).json({ message: "You are already in a household" });
+    }
+
+    const household = await storage.createHousehold(userId, name);
+    res.status(201).json({ household });
+  } catch (error: any) {
+    if (error?.issues) return res.status(400).json({ message: "Invalid input", errors: error.issues });
+    console.error("pantry/household/create error", error);
+    res.status(500).json({ message: "Failed to create household" });
+  }
+});
+
+// Join a household with invite code
+r.post("/household/join", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const schema = z.object({
+      inviteCode: z.string().length(8),
+    });
+    const { inviteCode } = schema.parse(req.body);
+
+    await storage.joinHousehold(userId, inviteCode);
+    res.json({ message: "Successfully joined household" });
+  } catch (error: any) {
+    if (error?.issues) return res.status(400).json({ message: "Invalid invite code", errors: error.issues });
+    console.error("pantry/household/join error", error);
+    res.status(400).json({ message: error.message || "Failed to join household" });
+  }
+});
+
+// Leave current household
+r.post("/household/leave", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const success = await storage.leaveHousehold(userId);
+    if (!success) {
+      return res.status(404).json({ message: "You are not in a household" });
+    }
+
+    res.json({ message: "Successfully left household" });
+  } catch (error) {
+    console.error("pantry/household/leave error", error);
+    res.status(500).json({ message: "Failed to leave household" });
+  }
+});
+
 export default r;

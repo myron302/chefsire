@@ -17,6 +17,8 @@ import {
   products,
   mealPlans,
   mealPlanEntries,
+  households,
+  householdMembers,
   pantryItems,
   nutritionLogs,
   customDrinks,
@@ -242,6 +244,13 @@ export interface IStorage {
   }): Promise<any>;
   deletePantryItem(itemId: string): Promise<boolean>;
   getExpiringItems(userId: string, daysAhead: number): Promise<any[]>;
+
+  // Households
+  createHousehold(ownerId: string, name: string): Promise<any>;
+  getHousehold(userId: string): Promise<any | null>;
+  joinHousehold(userId: string, inviteCode: string): Promise<any>;
+  leaveHousehold(userId: string): Promise<boolean>;
+  getHouseholdMembers(householdId: string): Promise<any[]>;
 
   // Pantry-based suggestions
   getRecipesFromPantryItems(userId: string, options: {
@@ -1363,6 +1372,154 @@ export class DrizzleStorage implements IStorage {
         )
       )
       .orderBy(asc(pantryItems.expirationDate));
+  }
+
+  // ---------- Households ----------
+  async createHousehold(ownerId: string, name: string): Promise<any> {
+    const db = getDb();
+
+    // Generate unique 8-character invite code
+    const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+
+    // Create household
+    const [household] = await db
+      .insert(households)
+      .values({ name, inviteCode, ownerId })
+      .returning();
+
+    // Add owner as first member
+    await db.insert(householdMembers).values({
+      householdId: household.id,
+      userId: ownerId,
+      role: "owner",
+    });
+
+    return household;
+  }
+
+  async getHousehold(userId: string): Promise<any | null> {
+    const db = getDb();
+
+    // Find user's household membership
+    const [membership] = await db
+      .select()
+      .from(householdMembers)
+      .where(eq(householdMembers.userId, userId))
+      .limit(1);
+
+    if (!membership) return null;
+
+    // Get household details
+    const [household] = await db
+      .select()
+      .from(households)
+      .where(eq(households.id, membership.householdId))
+      .limit(1);
+
+    if (!household) return null;
+
+    // Get all members
+    const members = await db
+      .select({
+        id: householdMembers.id,
+        role: householdMembers.role,
+        joinedAt: householdMembers.joinedAt,
+        userId: users.id,
+        username: users.username,
+        displayName: users.displayName,
+      })
+      .from(householdMembers)
+      .innerJoin(users, eq(householdMembers.userId, users.id))
+      .where(eq(householdMembers.householdId, household.id))
+      .orderBy(asc(householdMembers.joinedAt));
+
+    // Count household items
+    const itemCountResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(pantryItems)
+      .where(eq(pantryItems.householdId, household.id));
+
+    const itemCount = Number(itemCountResult[0]?.count || 0);
+
+    return {
+      id: household.id,
+      name: household.name,
+      inviteCode: household.inviteCode,
+      ownerId: household.ownerId,
+      userRole: membership.role,
+      members: members.map((m) => ({
+        id: m.userId,
+        username: m.username,
+        displayName: m.displayName,
+        role: m.role,
+        joinedAt: m.joinedAt,
+      })),
+      itemCount,
+    };
+  }
+
+  async joinHousehold(userId: string, inviteCode: string): Promise<any> {
+    const db = getDb();
+
+    // Find household by invite code
+    const [household] = await db
+      .select()
+      .from(households)
+      .where(eq(households.inviteCode, inviteCode))
+      .limit(1);
+
+    if (!household) {
+      throw new Error("Invalid invite code");
+    }
+
+    // Check if user is already a member
+    const [existing] = await db
+      .select()
+      .from(householdMembers)
+      .where(eq(householdMembers.userId, userId))
+      .limit(1);
+
+    if (existing) {
+      throw new Error("You are already in a household. Leave your current household first.");
+    }
+
+    // Add user to household
+    await db.insert(householdMembers).values({
+      householdId: household.id,
+      userId,
+      role: "member",
+    });
+
+    return household;
+  }
+
+  async leaveHousehold(userId: string): Promise<boolean> {
+    const db = getDb();
+
+    const result = await db
+      .delete(householdMembers)
+      .where(eq(householdMembers.userId, userId))
+      .returning();
+
+    return result.length > 0;
+  }
+
+  async getHouseholdMembers(householdId: string): Promise<any[]> {
+    const db = getDb();
+
+    return db
+      .select({
+        id: householdMembers.id,
+        role: householdMembers.role,
+        joinedAt: householdMembers.joinedAt,
+        userId: users.id,
+        username: users.username,
+        displayName: users.displayName,
+      })
+      .from(householdMembers)
+      .innerJoin(users, eq(householdMembers.userId, users.id))
+      .where(eq(householdMembers.householdId, householdId))
+      .orderBy(asc(householdMembers.joinedAt));
   }
 
   // ---------- Pantry-based recipe suggestions ----------

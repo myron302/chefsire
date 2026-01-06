@@ -391,11 +391,35 @@ export const creatorAnalytics = pgTable("creator_analytics", {
 });
 
 /* ===== PANTRY ===== */
+export const households = pgTable("households", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  inviteCode: varchar("invite_code", { length: 8 }).notNull().unique(),
+  ownerId: varchar("owner_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const householdMembers = pgTable(
+  "household_members",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    householdId: varchar("household_id").references(() => households.id, { onDelete: "cascade" }).notNull(),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    role: text("role").notNull().default("member"), // 'owner' | 'admin' | 'member'
+    joinedAt: timestamp("joined_at").defaultNow(),
+  },
+  (table) => ({
+    householdUserIdx: uniqueIndex("household_user_idx").on(table.householdId, table.userId),
+    userIdx: index("household_members_user_idx").on(table.userId),
+  })
+);
+
 export const pantryItems = pgTable(
   "pantry_items",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     userId: varchar("user_id").references(() => users.id).notNull(),
+    householdId: varchar("household_id").references(() => households.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     category: text("category"),
     quantity: decimal("quantity", { precision: 8, scale: 2 }),
@@ -407,6 +431,7 @@ export const pantryItems = pgTable(
   },
   (table) => ({
     userIdx: index("pantry_user_idx").on(table.userId),
+    householdIdx: index("pantry_household_idx").on(table.householdId),
     expirationIdx: index("pantry_expiration_idx").on(table.expirationDate),
   })
 );
@@ -1302,6 +1327,8 @@ export type BlueprintVersion = typeof blueprintVersions.$inferSelect;
 export type MealPlanPurchase = typeof mealPlanPurchases.$inferSelect;
 export type MealPlanReview = typeof mealPlanReviews.$inferSelect;
 export type CreatorAnalytics = typeof creatorAnalytics.$inferSelect;
+export type Household = typeof households.$inferSelect;
+export type HouseholdMember = typeof householdMembers.$inferSelect;
 export type PantryItem = typeof pantryItems.$inferSelect;
 export type InsertPantryItem = z.infer<typeof insertPantryItemSchema>;
 export type NutritionLog = typeof nutritionLogs.$inferSelect;
