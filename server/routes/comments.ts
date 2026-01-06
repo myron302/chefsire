@@ -1,6 +1,7 @@
 // server/routes/comments.ts
 import { Router } from "express";
 import { storage } from "../storage";
+import { sendCommentNotification, sendReplyNotification } from "../services/notification-service";
 
 const r = Router();
 
@@ -16,8 +17,42 @@ r.get("/post/:postId", async (req, res, next) => {
 r.post("/", async (req, res, next) => {
   try {
     const created = await storage.createComment(req.body);
+
+    // Send notification
+    const post = await storage.getPostById(created.postId);
+    const commenter = await storage.getUserById(created.userId);
+
+    if (post && commenter) {
+      if (created.parentId) {
+        // This is a reply to another comment
+        const parentComment = await storage.getCommentById(created.parentId);
+        if (parentComment && parentComment.userId !== created.userId) {
+          sendReplyNotification(
+            parentComment.userId,
+            created.userId,
+            commenter.username || commenter.displayName || 'Someone',
+            commenter.avatar,
+            post.id,
+            created.text
+          );
+        }
+      } else {
+        // This is a comment on the post
+        if (post.userId !== created.userId) {
+          sendCommentNotification(
+            post.userId,
+            created.userId,
+            commenter.username || commenter.displayName || 'Someone',
+            commenter.avatar,
+            post.id,
+            created.text
+          );
+        }
+      }
+    }
+
     res.status(201).json(created);
-  } catch (error) { next(e); }
+  } catch (error) { next(error); }
 });
 
 // DELETE /api/comments/:id
