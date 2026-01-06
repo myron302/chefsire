@@ -359,8 +359,24 @@ r.get("/household", requireAuth, async (req, res) => {
 
     await ensureHouseholdSchema();
 
-    const household = await getHouseholdInfoForUser(userId);
-    res.json({ household });
+    const householdInfo = await getHouseholdInfoForUser(userId);
+
+    if (!householdInfo) {
+      return res.json({ household: null, userRole: null, members: [] });
+    }
+
+    // Restructure to match frontend expectations
+    res.json({
+      household: {
+        id: householdInfo.id,
+        name: householdInfo.name,
+        inviteCode: householdInfo.inviteCode,
+        ownerId: householdInfo.ownerUserId,
+        createdAt: householdInfo.createdAt,
+      },
+      userRole: householdInfo.myRole,
+      members: householdInfo.members,
+    });
   } catch (e: any) {
     console.error("pantry/household get error", e);
     res.status(500).json({ message: "Failed to load household", details: String(e?.message || e) });
