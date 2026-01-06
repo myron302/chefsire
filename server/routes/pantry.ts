@@ -6,6 +6,10 @@ import { db } from "../db";
 import { randomBytes, randomUUID } from "crypto";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
+import {
+  sendHouseholdInviteNotification,
+  sendHouseholdInviteAcceptedNotification,
+} from "../services/notification-service";
 
 const r = Router();
 
@@ -678,6 +682,22 @@ r.post("/household/invite", requireAuth, async (req, res) => {
       DO UPDATE SET status = 'pending', invited_by_user_id = ${userId}, created_at = now()
     `);
 
+    // Send notification to invited user
+    const inviter = await db.execute(sql`
+      SELECT username, avatar FROM users WHERE id = ${userId} LIMIT 1
+    `);
+    const inviterUser = (inviter as any)?.rows?.[0];
+
+    if (inviterUser) {
+      sendHouseholdInviteNotification(
+        targetUserId,
+        userId,
+        inviterUser.username,
+        inviterUser.avatar,
+        myHousehold.name
+      );
+    }
+
     res.json({
       ok: true,
       message: `Invite sent to ${targetUser.username || targetUser.email}`,
@@ -791,6 +811,32 @@ r.post("/household/invites/:inviteId/accept", requireAuth, async (req, res) => {
       SET status = 'accepted'
       WHERE id = ${inviteId}
     `);
+
+    // Get invite details to send notification to inviter
+    const inviteDetails = await db.execute(sql`
+      SELECT i.invited_by_user_id, h.name as household_name
+      FROM pantry_household_invites i
+      JOIN pantry_households h ON h.id = i.household_id
+      WHERE i.id = ${inviteId}
+      LIMIT 1
+    `);
+    const details = (inviteDetails as any)?.rows?.[0];
+
+    // Get accepter user info
+    const accepter = await db.execute(sql`
+      SELECT username, avatar FROM users WHERE id = ${userId} LIMIT 1
+    `);
+    const accepterUser = (accepter as any)?.rows?.[0];
+
+    if (details && accepterUser) {
+      sendHouseholdInviteAcceptedNotification(
+        details.invited_by_user_id,
+        userId,
+        accepterUser.username,
+        accepterUser.avatar,
+        details.household_name
+      );
+    }
 
     res.json({ ok: true, message: "Invite accepted" });
   } catch (e: any) {

@@ -112,3 +112,126 @@ export async function sendDmNotification(
   }
 }
 
+
+export async function sendFollowRequestNotification(
+  targetUserId: string,
+  requesterId: string,
+  requesterName: string,
+  requesterAvatar: string | null
+) {
+  try {
+    // Don't notify yourself
+    if (targetUserId === requesterId) return;
+
+    await db.insert(notifications).values({
+      userId: targetUserId,
+      type: "follow",
+      title: "New Follow Request",
+      message: `${requesterName} wants to follow you`,
+      imageUrl: requesterAvatar,
+      linkUrl: `/settings`,
+      priority: "normal",
+    });
+  } catch (error) {
+    console.error("Failed to send follow request notification:", error);
+  }
+}
+
+export async function sendFollowAcceptedNotification(
+  requesterId: string,
+  accepterId: string,
+  accepterName: string,
+  accepterAvatar: string | null
+) {
+  try {
+    // Don't notify yourself
+    if (requesterId === accepterId) return;
+
+    await db.insert(notifications).values({
+      userId: requesterId,
+      type: "follow",
+      title: "Follow Request Accepted",
+      message: `${accepterName} accepted your follow request`,
+      imageUrl: accepterAvatar,
+      linkUrl: `/@${accepterName}`,
+      priority: "normal",
+    });
+  } catch (error) {
+    console.error("Failed to send follow accepted notification:", error);
+  }
+}
+
+export async function sendNewFollowerNotification(
+  targetUserId: string,
+  followerId: string,
+  followerName: string,
+  followerAvatar: string | null
+) {
+  try {
+    // Don't notify yourself
+    if (targetUserId === followerId) return;
+
+    await db.insert(notifications).values({
+      userId: targetUserId,
+      type: "follow",
+      title: "New Follower",
+      message: `${followerName} started following you`,
+      imageUrl: followerAvatar,
+      linkUrl: `/@${followerName}`,
+      priority: "normal",
+    });
+  } catch (error) {
+    console.error("Failed to send new follower notification:", error);
+  }
+}
+
+export async function sendHouseholdInviteNotification(
+  invitedUserId: string,
+  inviterUserId: string,
+  inviterName: string,
+  inviterAvatar: string | null,
+  householdName: string
+) {
+  try {
+    // Don't notify yourself
+    if (invitedUserId === inviterUserId) return;
+
+    await db.insert(notifications).values({
+      userId: invitedUserId,
+      type: "household",
+      title: "Household Invite",
+      message: `${inviterName} invited you to join "${householdName}"`,
+      imageUrl: inviterAvatar,
+      linkUrl: `/pantry/household`,
+      priority: "normal",
+    });
+  } catch (error) {
+    console.error("Failed to send household invite notification:", error);
+  }
+}
+
+export async function sendHouseholdInviteAcceptedNotification(
+  inviterUserId: string,
+  accepterUserId: string,
+  accepterName: string,
+  accepterAvatar: string | null,
+  householdName: string
+) {
+  try {
+    // Don't notify yourself
+    if (inviterUserId === accepterUserId) return;
+
+    await db.insert(notifications).values({
+      userId: inviterUserId,
+      type: "household",
+      title: "Household Invite Accepted",
+      message: `${accepterName} accepted your invite to "${householdName}"`,
+      imageUrl: accepterAvatar,
+      linkUrl: `/pantry/household`,
+      priority: "normal",
+    });
+  } catch (error) {
+    console.error("Failed to send household invite accepted notification:", error);
+  }
+}
+
