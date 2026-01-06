@@ -428,8 +428,23 @@ r.post("/household", requireAuth, async (req, res) => {
       ON CONFLICT (household_id, user_id) DO NOTHING;
     `);
 
-    const household = await getHouseholdInfoForUser(userId);
-    res.json({ household });
+    const householdInfo = await getHouseholdInfoForUser(userId);
+    if (!householdInfo) {
+      return res.status(500).json({ message: "Failed to retrieve created household" });
+    }
+
+    // Return same structure as GET /household
+    res.json({
+      household: {
+        id: householdInfo.id,
+        name: householdInfo.name,
+        inviteCode: householdInfo.inviteCode,
+        ownerId: householdInfo.ownerUserId,
+        createdAt: householdInfo.createdAt,
+      },
+      userRole: householdInfo.myRole,
+      members: householdInfo.members,
+    });
   } catch (e: any) {
     if (e?.issues) return res.status(400).json({ message: "Invalid input", errors: e.issues });
     console.error("pantry/household create error", e);
@@ -479,8 +494,23 @@ r.post("/household/join", requireAuth, async (req, res) => {
       ON CONFLICT (household_id, user_id) DO NOTHING;
     `);
 
-    const household = await getHouseholdInfoForUser(userId);
-    res.json({ household });
+    const householdInfo = await getHouseholdInfoForUser(userId);
+    if (!householdInfo) {
+      return res.status(500).json({ message: "Failed to retrieve household after joining" });
+    }
+
+    // Return same structure as GET /household
+    res.json({
+      household: {
+        id: householdInfo.id,
+        name: householdInfo.name,
+        inviteCode: householdInfo.inviteCode,
+        ownerId: householdInfo.ownerUserId,
+        createdAt: householdInfo.createdAt,
+      },
+      userRole: householdInfo.myRole,
+      members: householdInfo.members,
+    });
   } catch (e: any) {
     if (e?.issues) return res.status(400).json({ message: "Invalid input", errors: e.issues });
     console.error("pantry/household join error", e);
