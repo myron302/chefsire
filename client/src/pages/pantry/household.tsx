@@ -76,7 +76,10 @@ export default function HouseholdPantryPage() {
         body: JSON.stringify({ name: createName }),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.message || "Failed to create household");
+      if (!res.ok) {
+        const debugInfo = `Status: ${res.status}\nMessage: ${j.message || "Unknown"}\nDetails: ${j.details || "None"}\nResponse: ${JSON.stringify(j)}`;
+        throw new Error(debugInfo);
+      }
       return j as HouseholdInfo;
     },
     onSuccess: () => {
@@ -84,7 +87,15 @@ export default function HouseholdPantryPage() {
       qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
       toast({ title: "Household created" });
     },
-    onError: (e: any) => toast({ title: "Create failed", description: e.message, variant: "destructive" }),
+    onError: (e: any) => {
+      console.error("Create household error:", e);
+      toast({
+        title: "Create failed",
+        description: e.message || String(e),
+        variant: "destructive",
+        duration: 10000
+      });
+    },
   });
 
   const joinMutation = useMutation({
