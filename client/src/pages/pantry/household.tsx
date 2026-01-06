@@ -37,6 +37,17 @@ type DuplicatePair = {
   incoming: { id: string; name: string; unit?: string | null; category?: string | null; quantity?: string | null };
 };
 
+type HouseholdInvite = {
+  id: string;
+  householdId: string;
+  householdName: string;
+  invitedBy: {
+    username: string | null;
+    email: string | null;
+  };
+  createdAt: string;
+};
+
 export default function HouseholdPantryPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -61,6 +72,19 @@ export default function HouseholdPantryPage() {
   });
 
   const household = data?.household ?? null;
+
+  // Query for pending invites
+  const { data: invitesData } = useQuery<{ invites: HouseholdInvite[] }>({
+    queryKey: ["/api/pantry/household/invites"],
+    queryFn: async () => {
+      const res = await fetch("/api/pantry/household/invites", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load invites");
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  const pendingInvites = invitesData?.invites ?? [];
 
   const roleBadge = (role: HouseholdMember["role"]) => {
     if (role === "owner") return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Owner</Badge>;
@@ -203,7 +227,12 @@ export default function HouseholdPantryPage() {
         body: JSON.stringify({ emailOrUserId }),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.message || "Failed to invite user");
+      if (!res.ok) {
+        const debugInfo = `Status: ${res.status}\nMessage: ${j.message || "Unknown"}\nDetails: ${j.details || "None"}`;
+        const error = new Error(j.message || "Failed to invite user");
+        (error as any).debugInfo = debugInfo;
+        throw error;
+      }
       return j;
     },
     onSuccess: (data) => {
@@ -211,7 +240,48 @@ export default function HouseholdPantryPage() {
       qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
       toast({ title: "User invited", description: data.message });
     },
-    onError: (e: any) => toast({ title: "Invite failed", description: e.message, variant: "destructive" }),
+    onError: (e: any) => {
+      toast({
+        title: "Invite failed",
+        description: e.debugInfo || e.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const acceptInviteMutation = useMutation({
+    mutationFn: async (inviteId: string) => {
+      const res = await fetch(`/api/pantry/household/invites/${inviteId}/accept`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.message || "Failed to accept invite");
+      return j;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
+      qc.invalidateQueries({ queryKey: ["/api/pantry/household/invites"] });
+      toast({ title: "Invite accepted", description: "Welcome to the household!" });
+    },
+    onError: (e: any) => toast({ title: "Accept failed", description: e.message, variant: "destructive" }),
+  });
+
+  const declineInviteMutation = useMutation({
+    mutationFn: async (inviteId: string) => {
+      const res = await fetch(`/api/pantry/household/invites/${inviteId}/decline`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.message || "Failed to decline invite");
+      return j;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/pantry/household/invites"] });
+      toast({ title: "Invite declined" });
+    },
+    onError: (e: any) => toast({ title: "Decline failed", description: e.message, variant: "destructive" }),
   });
 
   const canManage = data?.userRole === "owner" || data?.userRole === "admin";
@@ -293,6 +363,45 @@ export default function HouseholdPantryPage() {
             </Button>
           </CardContent>
         </Card>
+
+        {pendingInvites.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Pending Invites</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {pendingInvites.map((invite) => (
+                <div key={invite.id} className="p-4 border rounded-lg space-y-3">
+                  <div>
+                    <p className="font-medium">{invite.householdName}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Invited by {invite.invitedBy.username || invite.invitedBy.email}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => acceptInviteMutation.mutate(invite.id)}
+                      disabled={acceptInviteMutation.isPending || declineInviteMutation.isPending}
+                      size="sm"
+                      className="flex-1"
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      onClick={() => declineInviteMutation.mutate(invite.id)}
+                      disabled={acceptInviteMutation.isPending || declineInviteMutation.isPending}
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      Decline
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </div>
     );
   }
@@ -398,10 +507,10 @@ export default function HouseholdPantryPage() {
 
           {canManage && (
             <div className="pt-4 border-t space-y-2">
-              <p className="text-sm font-medium">Invite by email or user ID</p>
+              <p className="text-sm font-medium">Invite by email, username, or user ID</p>
               <div className="flex gap-2">
                 <Input
-                  placeholder="email@example.com or user ID"
+                  placeholder="email, username, or user ID"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                 />

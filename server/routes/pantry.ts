@@ -281,6 +281,24 @@ async function ensureHouseholdSchema() {
       ON pantry_household_members(household_id);
     `);
 
+    // Household invites table for pending invitations
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS pantry_household_invites (
+        id varchar PRIMARY KEY,
+        household_id varchar NOT NULL REFERENCES pantry_households(id) ON DELETE CASCADE,
+        invited_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        invited_by_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        status text NOT NULL DEFAULT 'pending',
+        created_at timestamp DEFAULT now(),
+        UNIQUE (household_id, invited_user_id)
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS pantry_household_invites_user_idx
+      ON pantry_household_invites(invited_user_id);
+    `);
+
     // Add household_id to pantry_items if missing (nullable; personal pantry items stay null)
     await db.execute(sql`
       ALTER TABLE pantry_items
@@ -614,16 +632,19 @@ r.post("/household/invite", requireAuth, async (req, res) => {
       return res.status(403).json({ message: "Only owners and admins can invite members" });
     }
 
-    // Find the target user by email or userId
+    // Find the target user by email, userId, or username
     const userSearch = await db.execute(sql`
       SELECT id, username, email
       FROM users
-      WHERE id = ${emailOrUserId} OR email = ${emailOrUserId}
+      WHERE id = ${emailOrUserId} OR email = ${emailOrUserId} OR username = ${emailOrUserId}
       LIMIT 1
     `);
     const targetUser = (userSearch as any)?.rows?.[0];
     if (!targetUser?.id) {
-      return res.status(404).json({ message: "User not found with that email or ID" });
+      return res.status(404).json({
+        message: "User not found with that email, username, or ID",
+        details: `Searched for: "${emailOrUserId}"`,
+      });
     }
 
     const targetUserId = String(targetUser.id);
@@ -636,16 +657,30 @@ r.post("/household/invite", requireAuth, async (req, res) => {
       });
     }
 
-    // Add user to household
+    // Check if there's already a pending invite
+    const existingInvite = await db.execute(sql`
+      SELECT id, status FROM pantry_household_invites
+      WHERE household_id = ${myHousehold.id} AND invited_user_id = ${targetUserId}
+      LIMIT 1
+    `);
+    const existing = (existingInvite as any)?.rows?.[0];
+    if (existing && existing.status === 'pending') {
+      return res.status(400).json({
+        message: `${targetUser.username || targetUser.email} already has a pending invite`,
+      });
+    }
+
+    // Create pending invite instead of auto-adding
     await db.execute(sql`
-      INSERT INTO pantry_household_members (id, household_id, user_id, role)
-      VALUES (${randomUUID()}, ${myHousehold.id}, ${targetUserId}, 'member')
-      ON CONFLICT (household_id, user_id) DO NOTHING
+      INSERT INTO pantry_household_invites (id, household_id, invited_user_id, invited_by_user_id, status)
+      VALUES (${randomUUID()}, ${myHousehold.id}, ${targetUserId}, ${userId}, 'pending')
+      ON CONFLICT (household_id, invited_user_id)
+      DO UPDATE SET status = 'pending', invited_by_user_id = ${userId}, created_at = now()
     `);
 
     res.json({
       ok: true,
-      message: `${targetUser.username || targetUser.email} added to household`,
+      message: `Invite sent to ${targetUser.username || targetUser.email}`,
       user: {
         id: targetUser.id,
         username: targetUser.username,
@@ -656,6 +691,155 @@ r.post("/household/invite", requireAuth, async (req, res) => {
     if (e?.issues) return res.status(400).json({ message: "Invalid input", errors: e.issues });
     console.error("pantry/household invite error", e);
     res.status(500).json({ message: "Failed to invite user", details: String(e?.message || e) });
+  }
+});
+
+/**
+ * GET /api/pantry/household/invites
+ * Get pending invites for the current user
+ */
+r.get("/household/invites", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    await ensureHouseholdSchema();
+
+    const invites = await db.execute(sql`
+      SELECT
+        i.id,
+        i.household_id,
+        i.status,
+        i.created_at,
+        h.name AS household_name,
+        u.username AS invited_by_username,
+        u.email AS invited_by_email
+      FROM pantry_household_invites i
+      JOIN pantry_households h ON h.id = i.household_id
+      JOIN users u ON u.id = i.invited_by_user_id
+      WHERE i.invited_user_id = ${userId} AND i.status = 'pending'
+      ORDER BY i.created_at DESC
+    `);
+
+    const rows = (invites as any)?.rows || [];
+    res.json({
+      invites: rows.map((r: any) => ({
+        id: String(r.id),
+        householdId: String(r.household_id),
+        householdName: String(r.household_name),
+        invitedBy: {
+          username: r.invited_by_username,
+          email: r.invited_by_email,
+        },
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (e: any) {
+    console.error("pantry/household/invites get error", e);
+    res.status(500).json({ message: "Failed to fetch invites", details: String(e?.message || e) });
+  }
+});
+
+/**
+ * POST /api/pantry/household/invites/:inviteId/accept
+ * Accept a household invite
+ */
+r.post("/household/invites/:inviteId/accept", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    await ensureHouseholdSchema();
+
+    const inviteId = req.params.inviteId;
+
+    // Get the invite
+    const inviteResult = await db.execute(sql`
+      SELECT id, household_id, invited_user_id, status
+      FROM pantry_household_invites
+      WHERE id = ${inviteId} AND invited_user_id = ${userId}
+      LIMIT 1
+    `);
+    const invite = (inviteResult as any)?.rows?.[0];
+
+    if (!invite) {
+      return res.status(404).json({ message: "Invite not found" });
+    }
+
+    if (invite.status !== 'pending') {
+      return res.status(400).json({ message: "Invite is no longer pending" });
+    }
+
+    // Check if user is already in a household
+    const existingHousehold = await getHouseholdInfoForUser(userId);
+    if (existingHousehold) {
+      return res.status(400).json({ message: "You are already in a household. Leave it first." });
+    }
+
+    const householdId = String(invite.household_id);
+
+    // Add user to household
+    await db.execute(sql`
+      INSERT INTO pantry_household_members (id, household_id, user_id, role)
+      VALUES (${randomUUID()}, ${householdId}, ${userId}, 'member')
+      ON CONFLICT (household_id, user_id) DO NOTHING
+    `);
+
+    // Mark invite as accepted
+    await db.execute(sql`
+      UPDATE pantry_household_invites
+      SET status = 'accepted'
+      WHERE id = ${inviteId}
+    `);
+
+    res.json({ ok: true, message: "Invite accepted" });
+  } catch (e: any) {
+    console.error("pantry/household/invites/accept error", e);
+    res.status(500).json({ message: "Failed to accept invite", details: String(e?.message || e) });
+  }
+});
+
+/**
+ * POST /api/pantry/household/invites/:inviteId/decline
+ * Decline a household invite
+ */
+r.post("/household/invites/:inviteId/decline", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    await ensureHouseholdSchema();
+
+    const inviteId = req.params.inviteId;
+
+    // Verify the invite exists and belongs to this user
+    const inviteResult = await db.execute(sql`
+      SELECT id, invited_user_id, status
+      FROM pantry_household_invites
+      WHERE id = ${inviteId} AND invited_user_id = ${userId}
+      LIMIT 1
+    `);
+    const invite = (inviteResult as any)?.rows?.[0];
+
+    if (!invite) {
+      return res.status(404).json({ message: "Invite not found" });
+    }
+
+    if (invite.status !== 'pending') {
+      return res.status(400).json({ message: "Invite is no longer pending" });
+    }
+
+    // Mark invite as declined
+    await db.execute(sql`
+      UPDATE pantry_household_invites
+      SET status = 'declined'
+      WHERE id = ${inviteId}
+    `);
+
+    res.json({ ok: true, message: "Invite declined" });
+  } catch (e: any) {
+    console.error("pantry/household/invites/decline error", e);
+    res.status(500).json({ message: "Failed to decline invite", details: String(e?.message || e) });
   }
 });
 
