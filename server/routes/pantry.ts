@@ -891,5 +891,180 @@ r.delete("/household/members/:userId", requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/pantry/household/sync
+ * Move user's personal pantry items into the household pantry
+ */
+r.post("/household/sync", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    await ensureHouseholdSchema();
+
+    // Get user's household
+    const myHousehold = await getHouseholdInfoForUser(userId);
+    if (!myHousehold) {
+      return res.status(400).json({ message: "You are not in a household" });
+    }
+
+    // Get user's personal pantry items (not already in a household)
+    const personalItems = await db.execute(sql`
+      SELECT id, name, category, quantity, unit
+      FROM pantry_items
+      WHERE user_id = ${userId} AND household_id IS NULL
+    `);
+
+    const items = (personalItems as any)?.rows || [];
+
+    if (items.length === 0) {
+      return res.json({ ok: true, moved: 0, duplicates: [] });
+    }
+
+    // Check for duplicates (items with same name already in household)
+    const householdItems = await db.execute(sql`
+      SELECT id, name, category, quantity, unit
+      FROM pantry_items
+      WHERE household_id = ${myHousehold.id}
+    `);
+
+    const existingItems = (householdItems as any)?.rows || [];
+    const duplicates: any[] = [];
+    const itemsToMove: any[] = [];
+
+    for (const item of items) {
+      const existing = existingItems.find((e: any) =>
+        e.name.toLowerCase().trim() === item.name.toLowerCase().trim()
+      );
+
+      if (existing) {
+        duplicates.push({
+          existing: {
+            id: String(existing.id),
+            name: existing.name,
+            category: existing.category,
+            quantity: existing.quantity,
+            unit: existing.unit,
+          },
+          incoming: {
+            id: String(item.id),
+            name: item.name,
+            category: item.category,
+            quantity: item.quantity,
+            unit: item.unit,
+          },
+        });
+      } else {
+        itemsToMove.push(item.id);
+      }
+    }
+
+    // Move non-duplicate items to household
+    if (itemsToMove.length > 0) {
+      for (const itemId of itemsToMove) {
+        await db.execute(sql`
+          UPDATE pantry_items
+          SET household_id = ${myHousehold.id}
+          WHERE id = ${itemId}
+        `);
+      }
+    }
+
+    res.json({
+      ok: true,
+      moved: itemsToMove.length,
+      duplicates,
+    });
+  } catch (e: any) {
+    console.error("pantry/household/sync error", e);
+    res.status(500).json({ message: "Failed to sync pantry", details: String(e?.message || e) });
+  }
+});
+
+/**
+ * POST /api/pantry/household/resolve-duplicates
+ * Resolve duplicate items after sync
+ * Body: { decisions: [{ incomingId, existingId, action: "merge" | "keepBoth" | "discardIncoming" }] }
+ */
+r.post("/household/resolve-duplicates", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    await ensureHouseholdSchema();
+
+    const myHousehold = await getHouseholdInfoForUser(userId);
+    if (!myHousehold) {
+      return res.status(400).json({ message: "You are not in a household" });
+    }
+
+    const schema = z.object({
+      decisions: z.array(
+        z.object({
+          incomingId: z.string(),
+          existingId: z.string(),
+          action: z.enum(["merge", "keepBoth", "discardIncoming"]),
+        })
+      ),
+    });
+
+    const body = schema.parse(req.body);
+
+    let merged = 0;
+    let discarded = 0;
+    let kept = 0;
+
+    for (const decision of body.decisions) {
+      if (decision.action === "merge") {
+        // Merge quantities if both have them
+        const existing = await db.execute(sql`
+          SELECT quantity, unit FROM pantry_items WHERE id = ${decision.existingId} LIMIT 1
+        `);
+        const incoming = await db.execute(sql`
+          SELECT quantity, unit FROM pantry_items WHERE id = ${decision.incomingId} LIMIT 1
+        `);
+
+        const existingRow = (existing as any)?.rows?.[0];
+        const incomingRow = (incoming as any)?.rows?.[0];
+
+        if (existingRow && incomingRow && existingRow.quantity && incomingRow.quantity) {
+          const newQuantity = Number(existingRow.quantity) + Number(incomingRow.quantity);
+          await db.execute(sql`
+            UPDATE pantry_items
+            SET quantity = ${newQuantity}
+            WHERE id = ${decision.existingId}
+          `);
+        }
+
+        // Delete the incoming item
+        await db.execute(sql`
+          DELETE FROM pantry_items WHERE id = ${decision.incomingId}
+        `);
+        merged++;
+      } else if (decision.action === "keepBoth") {
+        // Move incoming item to household
+        await db.execute(sql`
+          UPDATE pantry_items
+          SET household_id = ${myHousehold.id}
+          WHERE id = ${decision.incomingId}
+        `);
+        kept++;
+      } else if (decision.action === "discardIncoming") {
+        // Delete the incoming item
+        await db.execute(sql`
+          DELETE FROM pantry_items WHERE id = ${decision.incomingId}
+        `);
+        discarded++;
+      }
+    }
+
+    res.json({ ok: true, merged, discarded, kept });
+  } catch (e: any) {
+    if (e?.issues) return res.status(400).json({ message: "Invalid input", errors: e.issues });
+    console.error("pantry/household/resolve-duplicates error", e);
+    res.status(500).json({ message: "Failed to resolve duplicates", details: String(e?.message || e) });
+  }
+});
+
 
 export default r;
