@@ -254,7 +254,7 @@ async function ensureHouseholdSchema() {
       CREATE TABLE IF NOT EXISTS pantry_households (
         id varchar PRIMARY KEY,
         name text NOT NULL,
-        owner_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        owner_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         invite_code text NOT NULL UNIQUE,
         created_at timestamp DEFAULT now()
       );
@@ -312,7 +312,7 @@ async function getHouseholdInfoForUser(userId: string) {
   const role = String(row.role || "member");
 
   const h = await db.execute(sql`
-    SELECT id, name, owner_user_id, invite_code, created_at
+    SELECT id, name, owner_id, invite_code, created_at
     FROM pantry_households
     WHERE id = ${householdId}
     LIMIT 1;
@@ -335,7 +335,7 @@ async function getHouseholdInfoForUser(userId: string) {
   return {
     id: String(hh.id),
     name: String(hh.name),
-    ownerUserId: String(hh.owner_user_id),
+    ownerUserId: String(hh.owner_id),
     inviteCode: String(hh.invite_code),
     createdAt: hh.created_at,
     myRole: role,
@@ -402,7 +402,7 @@ r.post("/household", requireAuth, async (req, res) => {
     const inviteCode = makeInviteCode();
 
     await db.execute(sql`
-      INSERT INTO pantry_households (id, name, owner_user_id, invite_code)
+      INSERT INTO pantry_households (id, name, owner_id, invite_code)
       VALUES (${hid}, ${body.name}, ${userId}, ${inviteCode});
     `);
 
