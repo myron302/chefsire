@@ -614,16 +614,19 @@ r.post("/household/invite", requireAuth, async (req, res) => {
       return res.status(403).json({ message: "Only owners and admins can invite members" });
     }
 
-    // Find the target user by email or userId
+    // Find the target user by email, userId, or username
     const userSearch = await db.execute(sql`
       SELECT id, username, email
       FROM users
-      WHERE id = ${emailOrUserId} OR email = ${emailOrUserId}
+      WHERE id = ${emailOrUserId} OR email = ${emailOrUserId} OR username = ${emailOrUserId}
       LIMIT 1
     `);
     const targetUser = (userSearch as any)?.rows?.[0];
     if (!targetUser?.id) {
-      return res.status(404).json({ message: "User not found with that email or ID" });
+      return res.status(404).json({
+        message: "User not found with that email, username, or ID",
+        details: `Searched for: "${emailOrUserId}"`,
+      });
     }
 
     const targetUserId = String(targetUser.id);

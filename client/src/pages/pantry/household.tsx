@@ -203,7 +203,12 @@ export default function HouseholdPantryPage() {
         body: JSON.stringify({ emailOrUserId }),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.message || "Failed to invite user");
+      if (!res.ok) {
+        const debugInfo = `Status: ${res.status}\nMessage: ${j.message || "Unknown"}\nDetails: ${j.details || "None"}`;
+        const error = new Error(j.message || "Failed to invite user");
+        (error as any).debugInfo = debugInfo;
+        throw error;
+      }
       return j;
     },
     onSuccess: (data) => {
@@ -211,7 +216,13 @@ export default function HouseholdPantryPage() {
       qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
       toast({ title: "User invited", description: data.message });
     },
-    onError: (e: any) => toast({ title: "Invite failed", description: e.message, variant: "destructive" }),
+    onError: (e: any) => {
+      toast({
+        title: "Invite failed",
+        description: e.debugInfo || e.message,
+        variant: "destructive",
+      });
+    },
   });
 
   const canManage = data?.userRole === "owner" || data?.userRole === "admin";
@@ -398,10 +409,10 @@ export default function HouseholdPantryPage() {
 
           {canManage && (
             <div className="pt-4 border-t space-y-2">
-              <p className="text-sm font-medium">Invite by email or user ID</p>
+              <p className="text-sm font-medium">Invite by email, username, or user ID</p>
               <div className="flex gap-2">
                 <Input
-                  placeholder="email@example.com or user ID"
+                  placeholder="email, username, or user ID"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                 />
