@@ -43,6 +43,7 @@ export default function HouseholdPantryPage() {
 
   const [createName, setCreateName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
 
   // Duplicate resolution UI
   const [dupeOpen, setDupeOpen] = useState(false);
@@ -191,6 +192,26 @@ export default function HouseholdPantryPage() {
       });
     },
     onError: (e: any) => toast({ title: "Resolve failed", description: e.message, variant: "destructive" }),
+  });
+
+  const inviteUserMutation = useMutation({
+    mutationFn: async (emailOrUserId: string) => {
+      const res = await fetch("/api/pantry/household/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ emailOrUserId }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.message || "Failed to invite user");
+      return j;
+    },
+    onSuccess: (data) => {
+      setInviteEmail("");
+      qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
+      toast({ title: "User invited", description: data.message });
+    },
+    onError: (e: any) => toast({ title: "Invite failed", description: e.message, variant: "destructive" }),
   });
 
   const canManage = data?.userRole === "owner" || data?.userRole === "admin";
@@ -375,8 +396,27 @@ export default function HouseholdPantryPage() {
             <p className="text-sm text-muted-foreground">No members yet.</p>
           )}
 
+          {canManage && (
+            <div className="pt-4 border-t space-y-2">
+              <p className="text-sm font-medium">Invite by email or user ID</p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="email@example.com or user ID"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                />
+                <Button
+                  onClick={() => inviteUserMutation.mutate(inviteEmail)}
+                  disabled={!inviteEmail.trim() || inviteUserMutation.isPending}
+                >
+                  Invite
+                </Button>
+              </div>
+            </div>
+          )}
+
           <p className="text-sm text-muted-foreground">
-            Shared pantry items are the ones marked as “Household Item” on the Pantry page.
+            Shared pantry items are the ones marked as "Household Item" on the Pantry page.
           </p>
         </CardContent>
       </Card>

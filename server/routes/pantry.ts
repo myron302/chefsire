@@ -541,5 +541,77 @@ r.post("/household/leave", requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/pantry/household/invite
+ * Invite a user by email or userId
+ * Body: { emailOrUserId: string }
+ */
+r.post("/household/invite", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    await ensureHouseholdSchema();
+
+    const schema = z.object({ emailOrUserId: z.string().min(1) });
+    const body = schema.parse(req.body);
+    const emailOrUserId = body.emailOrUserId.trim();
+
+    // Get inviter's household
+    const myHousehold = await getHouseholdInfoForUser(userId);
+    if (!myHousehold) {
+      return res.status(400).json({ message: "You are not in a household" });
+    }
+
+    // Check if inviter is owner or admin
+    if (myHousehold.myRole !== "owner" && myHousehold.myRole !== "admin") {
+      return res.status(403).json({ message: "Only owners and admins can invite members" });
+    }
+
+    // Find the target user by email or userId
+    const userSearch = await db.execute(sql`
+      SELECT id, username, email
+      FROM users
+      WHERE id = ${emailOrUserId} OR email = ${emailOrUserId}
+      LIMIT 1
+    `);
+    const targetUser = (userSearch as any)?.rows?.[0];
+    if (!targetUser?.id) {
+      return res.status(404).json({ message: "User not found with that email or ID" });
+    }
+
+    const targetUserId = String(targetUser.id);
+
+    // Check if target user is already in a household
+    const targetHousehold = await getHouseholdInfoForUser(targetUserId);
+    if (targetHousehold) {
+      return res.status(400).json({
+        message: `${targetUser.username || targetUser.email} is already in a household`,
+      });
+    }
+
+    // Add user to household
+    await db.execute(sql`
+      INSERT INTO pantry_household_members (id, household_id, user_id, role)
+      VALUES (${randomUUID()}, ${myHousehold.id}, ${targetUserId}, 'member')
+      ON CONFLICT (household_id, user_id) DO NOTHING
+    `);
+
+    res.json({
+      ok: true,
+      message: `${targetUser.username || targetUser.email} added to household`,
+      user: {
+        id: targetUser.id,
+        username: targetUser.username,
+        email: targetUser.email,
+      },
+    });
+  } catch (e: any) {
+    if (e?.issues) return res.status(400).json({ message: "Invalid input", errors: e.issues });
+    console.error("pantry/household invite error", e);
+    res.status(500).json({ message: "Failed to invite user", details: String(e?.message || e) });
+  }
+});
+
 
 export default r;
