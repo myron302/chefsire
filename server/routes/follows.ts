@@ -5,6 +5,11 @@ import { db } from "../db";
 import { follows, followRequests, users } from "../../shared/schema";
 import { requireAuth } from "../middleware";
 import { storage } from "../storage";
+import {
+  sendFollowRequestNotification,
+  sendFollowAcceptedNotification,
+  sendNewFollowerNotification,
+} from "../services/notification-service";
 
 const r = Router();
 
@@ -98,12 +103,44 @@ r.post("/:targetId", requireAuth, async (req, res) => {
       )
       .limit(1);
 
+    // Send notification to target user
+    const requester = await db
+      .select({ username: users.username, avatar: users.avatar })
+      .from(users)
+      .where(eq(users.id, followerId))
+      .limit(1);
+
+    if (requester[0]) {
+      sendFollowRequestNotification(
+        targetId,
+        followerId,
+        requester[0].username,
+        requester[0].avatar
+      );
+    }
+
     return res.json({ status: "requested", requestId: pending[0]?.id || null });
   }
 
   // Public account → follow immediately
   try {
     await storage.followUser(followerId, targetId);
+
+    // Send notification to target user
+    const follower = await db
+      .select({ username: users.username, avatar: users.avatar })
+      .from(users)
+      .where(eq(users.id, followerId))
+      .limit(1);
+
+    if (follower[0]) {
+      sendNewFollowerNotification(
+        targetId,
+        followerId,
+        follower[0].username,
+        follower[0].avatar
+      );
+    }
   } catch {
     // ignore duplicate follows
   }
@@ -202,6 +239,22 @@ r.post("/requests/:requestId/accept", requireAuth, async (req, res) => {
     await storage.followUser(fr.requesterId, fr.targetId);
   } catch {
     // ignore if already following
+  }
+
+  // Send notification to requester that their request was accepted
+  const accepter = await db
+    .select({ username: users.username, avatar: users.avatar })
+    .from(users)
+    .where(eq(users.id, targetUserId))
+    .limit(1);
+
+  if (accepter[0]) {
+    sendFollowAcceptedNotification(
+      fr.requesterId,
+      targetUserId,
+      accepter[0].username,
+      accepter[0].avatar
+    );
   }
 
   return res.json({ status: "accepted" });

@@ -4,6 +4,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, userDrinkStats, questProgress, posts, notifications } from "../../shared/schema";
 import { requireAuth } from "../middleware";
+import { sendAchievementUnlockedNotification } from "../services/notification-service";
 
 const router = Router();
 

@@ -17,6 +17,7 @@ import multer from "multer";
 import path from "path";
 import { requireAuth } from "../middleware/auth";
 import { RecipeService } from "../services/recipe.service";
+import { sendRecipeReviewNotification } from "../services/notification-service";
 
 const router = Router();
 
@@ -220,6 +221,26 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       .where(eq(recipeReviews.id, review.id));
 
     console.log("✅ Complete review fetched:", completeReview.id);
+
+    // Send notification to recipe author
+    const [recipe] = await db
+      .select({ userId: recipes.userId, title: recipes.title })
+      .from(recipes)
+      .where(eq(recipes.id, recipeId))
+      .limit(1);
+
+    if (recipe && recipe.userId && recipe.userId !== userId && completeReview.user) {
+      sendRecipeReviewNotification(
+        recipe.userId,
+        userId,
+        completeReview.user.username || completeReview.user.displayName || 'Someone',
+        completeReview.user.avatar,
+        recipeId,
+        recipe.title || 'your recipe',
+        rating
+      );
+    }
+
     console.log("📝 ============ CREATE REVIEW SUCCESS ============");
     res.status(201).json({ ...completeReview, photos: [] });
   } catch (error: any) {
