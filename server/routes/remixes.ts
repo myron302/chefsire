@@ -4,6 +4,7 @@ import { and, eq, desc, sql } from "drizzle-orm";
 import { db } from "../db";
 import { recipeRemixes, recipes, users } from "../../shared/schema";
 import { requireAuth } from "../middleware";
+import { sendRemixNotification } from "../services/notification-service";
 
 const router = Router();
 
@@ -164,6 +165,26 @@ router.post("/", requireAuth, async (req, res) => {
       SET remix_count = remix_count + 1
       WHERE original_recipe_id = ${originalRecipeId}
     `);
+
+    // Send notification to original recipe author
+    if (originalRecipe.userId && originalRecipe.userId !== userId) {
+      const [remixer] = await db
+        .select({ username: users.username, avatar: users.avatar })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      if (remixer) {
+        sendRemixNotification(
+          originalRecipe.userId,
+          userId,
+          remixer.username || 'Someone',
+          remixer.avatar,
+          remixedRecipeId,
+          originalRecipe.title || 'your recipe'
+        );
+      }
+    }
 
     return res.json({ remix });
   } catch (error: any) {

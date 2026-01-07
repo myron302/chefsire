@@ -4,6 +4,7 @@ import { eq, and, gte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { userDrinkStats, notifications } from "../../shared/schema";
 import { requireAuth } from "../middleware";
+import { sendStreakMilestoneNotification } from "../services/notification-service";
 
 const router = Router();
 

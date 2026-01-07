@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
+import { sendDuetNotification } from "../services/notification-service";
 
 const router = Router();
 
@@ -177,25 +178,22 @@ router.post("/create", requireAuth, async (req, res) => {
 
     const duet = result.rows[0];
 
-    // Create notification for original recipe creator
+    // Send notification to original recipe creator
     if (data.originalUserId !== userId) {
-      await db.execute(sql`
-        INSERT INTO notifications (
-          user_id,
-          type,
-          title,
-          message,
-          link_url,
-          metadata
-        ) VALUES (
-          ${data.originalUserId},
-          'duet',
-          'Someone dueted your recipe!',
-          ${`${(req as any).user?.displayName || 'A user'} created a duet of your recipe`},
-          ${`/duets/${duet.id}`},
-          ${JSON.stringify({ duetId: duet.id, recipeId: data.originalRecipeId })}
-        )
+      const [dueter] = await db.execute(sql`
+        SELECT username, avatar FROM users WHERE id = ${userId} LIMIT 1
       `);
+      const dueterUser = dueter.rows?.[0];
+
+      if (dueterUser) {
+        sendDuetNotification(
+          data.originalUserId,
+          userId,
+          dueterUser.username || (req as any).user?.displayName || 'Someone',
+          dueterUser.avatar,
+          duet.id
+        );
+      }
     }
 
     res.json({ duet });
