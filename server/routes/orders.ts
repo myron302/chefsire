@@ -7,6 +7,7 @@ import { eq, and, or, desc } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
 import { calculateSellerPayout, DeliveryMethod, ProductCategory } from "../lib/commissions";
+import { sendOrderPlacedNotification, sendOrderStatusNotification } from "../services/notification-service";
 
 const router = Router();
 
@@ -131,13 +132,31 @@ router.post("/checkout", requireAuth, async (req, res) => {
     }
 
     // Update seller's monthly revenue
-    const currentRevenue = parseFloat((seller as any).monthlyRevenue || "0");
+    const currentRevenue = parseFloat((sellerStore as any)?.monthlyRevenue || "0");
     await db
       .update(users)
       .set({
         monthlyRevenue: (currentRevenue + sellerAmount).toFixed(2)
       })
       .where(eq(users.id, product.sellerId));
+
+    // Send notification to seller
+    const [buyer] = await db
+      .select({ username: users.username, displayName: users.displayName, avatar: users.avatar })
+      .from(users)
+      .where(eq(users.id, buyerId))
+      .limit(1);
+
+    if (buyer) {
+      sendOrderPlacedNotification(
+        product.sellerId,
+        buyer.username || buyer.displayName || 'A customer',
+        buyer.avatar,
+        newOrder.id,
+        product.name,
+        parseFloat(newOrder.totalAmount)
+      );
+    }
 
     res.json({
       ok: true,
@@ -325,6 +344,22 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
       })
       .where(eq(orders.id, orderId))
       .returning();
+
+    // Send notification to buyer about status change
+    const [product] = await db
+      .select({ name: products.name })
+      .from(products)
+      .where(eq(products.id, order.productId))
+      .limit(1);
+
+    if (product) {
+      sendOrderStatusNotification(
+        order.buyerId,
+        status,
+        orderId,
+        product.name
+      );
+    }
 
     res.json({
       ok: true,
