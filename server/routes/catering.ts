@@ -1,6 +1,10 @@
 // server/routes/catering.ts
 import { Router } from "express";
 import { storage } from "../storage";
+import { sendCateringRequestNotification } from "../services/notification-service";
+import { db } from "../db";
+import { users } from "../../shared/schema";
+import { eq } from "drizzle-orm";
 
 const r = Router();
 
@@ -65,6 +69,24 @@ r.get("/chefs/search", async (req, res, next) => {
 r.post("/inquiries", async (req, res, next) => {
   try {
     const inquiry = await storage.createCateringInquiry(req.body);
+
+    // Send notification to chef about new catering request
+    const [customer] = await db
+      .select({ username: users.username, displayName: users.displayName, avatar: users.avatar })
+      .from(users)
+      .where(eq(users.id, inquiry.customerId))
+      .limit(1);
+
+    if (customer) {
+      sendCateringRequestNotification(
+        inquiry.chefId,
+        customer.username || customer.displayName || 'A customer',
+        customer.avatar,
+        new Date(inquiry.eventDate),
+        inquiry.guestCount || 0
+      );
+    }
+
     res.status(201).json({ message: "Catering inquiry sent successfully", inquiry });
   } catch (error) { next(e); }
 });

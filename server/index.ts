@@ -3,6 +3,7 @@ import "dotenv/config";
 import app from "./app";
 import { attachDmRealtime } from "./realtime/dmSocket";
 import { attachNotificationRealtime } from "./realtime/notificationSocket";
+import { initializeCronJobs } from "./cron";
 
 const HAS_PASSENGER_PORT = !!process.env.PORT;
 const PORT = Number(process.env.PORT || 3001);
@@ -31,6 +32,9 @@ const server = app.listen(PORT, HOST, () => {
 // Attach WebSocket handlers
 attachDmRealtime(server);
 const notificationHelper = attachNotificationRealtime(server);
+
+// Initialize cron jobs for periodic tasks
+initializeCronJobs();
 
 // Export notification helper for use in other parts of the app
 export { notificationHelper };
