@@ -308,7 +308,10 @@ export default function Profile() {
           method: "DELETE",
           credentials: "include",
         });
-        if (!response.ok) throw new Error("Failed to unfollow");
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ message: "Failed to unfollow" }));
+          throw new Error(errorData.message || "Failed to unfollow");
+        }
         return response.json();
       } else {
         // Follow or request to follow
@@ -316,7 +319,10 @@ export default function Profile() {
           method: "POST",
           credentials: "include",
         });
-        if (!response.ok) throw new Error("Failed to follow");
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ message: "Failed to follow" }));
+          throw new Error(errorData.message || "Failed to follow");
+        }
         return response.json();
       }
     },
@@ -330,10 +336,10 @@ export default function Profile() {
         "Success";
       toast({ description: message });
     },
-    onError: () => {
+    onError: (error: Error) => {
       toast({
         variant: "destructive",
-        description: "Failed to update follow status",
+        description: error.message || "Failed to update follow status",
       });
     },
   });
