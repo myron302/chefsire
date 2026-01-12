@@ -16,6 +16,7 @@ import AISuggestions from "@/components/AISuggestions";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import CommentsSection from "./CommentsSection";
 import { useUser } from "@/contexts/UserContext";
+import { Link } from "wouter";
 
 const demoTrendingRecipes = [
   {
@@ -386,17 +387,23 @@ function SimpleRecipeCard({
       </div>
       <CardContent className="p-6">
         <div className="flex items-center space-x-3 mb-4">
-          <Avatar className="w-10 h-10">
-            <AvatarImage
-              src={post.user?.avatar || ""}
-              alt={post.user?.displayName}
-            />
-            <AvatarFallback>
-              {post.user?.displayName?.[0] || "U"}
-            </AvatarFallback>
-          </Avatar>
+          <Link href={`/profile/${post.user?.id}`}>
+            <a>
+              <Avatar className="w-10 h-10 cursor-pointer hover:opacity-80 transition-opacity">
+                <AvatarImage
+                  src={post.user?.avatar || ""}
+                  alt={post.user?.displayName}
+                />
+                <AvatarFallback>
+                  {post.user?.displayName?.[0] || "U"}
+                </AvatarFallback>
+              </Avatar>
+            </a>
+          </Link>
           <div>
-            <p className="font-medium">{post.user?.displayName || "Unknown Chef"}</p>
+            <Link href={`/profile/${post.user?.id}`}>
+              <a className="font-medium hover:underline cursor-pointer">{post.user?.displayName || "Unknown Chef"}</a>
+            </Link>
             <p className="text-sm text-gray-500">Recipe</p>
           </div>
         </div>
@@ -576,14 +583,22 @@ export default function Feed() {
               {displaySuggestedUsers.slice(0, 5).map((user) => (
                 <div key={user.id} className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarImage src={user.avatar || ""} alt={user.displayName} />
-                      <AvatarFallback>{user.displayName[0]}</AvatarFallback>
-                    </Avatar>
+                    <Link href={`/profile/${user.id}`}>
+                      <a>
+                        <Avatar className="w-10 h-10 cursor-pointer hover:opacity-80 transition-opacity">
+                          <AvatarImage src={user.avatar || ""} alt={user.displayName} />
+                          <AvatarFallback>{user.displayName[0]}</AvatarFallback>
+                        </Avatar>
+                      </a>
+                    </Link>
                     <div>
-                      <p className="text-sm font-medium" data-testid={`text-suggested-chef-${user.id}`}>
-                        {user.displayName}
-                      </p>
+                      <Link href={`/profile/${user.id}`}>
+                        <a>
+                          <p className="text-sm font-medium cursor-pointer hover:underline" data-testid={`text-suggested-chef-${user.id}`}>
+                            {user.displayName}
+                          </p>
+                        </a>
+                      </Link>
                       <p className="text-xs text-muted-foreground">
                         {(user as any).specialty || "Expert Chef"}
                       </p>
@@ -617,7 +632,12 @@ export default function Feed() {
                   />
                   <div className="flex-1">
                     <p className="text-sm font-medium">{recipe.title}</p>
-                    <p className="text-xs text-muted-foreground">by {recipe.post.user.displayName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      by{" "}
+                      <Link href={`/profile/${recipe.post.user.id}`}>
+                        <a className="hover:underline cursor-pointer">{recipe.post.user.displayName}</a>
+                      </Link>
+                    </p>
                     <div className="flex items-center space-x-2 mt-1">
                       <span className="text-xs text-destructive">♥ {recipe.post.likesCount}</span>
                       <span className="text-xs text-muted-foreground">• {recipe.cookTime} min</span>
@@ -687,19 +707,25 @@ export default function Feed() {
               <div className="md:w-1/3 p-6 overflow-y-auto">
                 {/* User info */}
                 <div className="flex items-center space-x-3 mb-4">
-                  <Avatar className="w-10 h-10">
-                    <AvatarImage
-                      src={selectedPost.user.avatar || ""}
-                      alt={selectedPost.user.displayName}
-                    />
-                    <AvatarFallback>
-                      {(selectedPost.user.displayName || "U")[0]}
-                    </AvatarFallback>
-                  </Avatar>
+                  <Link href={`/profile/${selectedPost.user.id}`}>
+                    <a>
+                      <Avatar className="w-10 h-10 cursor-pointer hover:opacity-80 transition-opacity">
+                        <AvatarImage
+                          src={selectedPost.user.avatar || ""}
+                          alt={selectedPost.user.displayName}
+                        />
+                        <AvatarFallback>
+                          {(selectedPost.user.displayName || "U")[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                    </a>
+                  </Link>
                   <div>
-                    <h3 className="font-semibold text-sm">
-                      {selectedPost.user.displayName}
-                    </h3>
+                    <Link href={`/profile/${selectedPost.user.id}`}>
+                      <a className="font-semibold text-sm hover:underline cursor-pointer">
+                        {selectedPost.user.displayName}
+                      </a>
+                    </Link>
                     {selectedPost.isRecipe && (
                       <Badge variant="secondary" className="mt-1">
                         Recipe
@@ -736,7 +762,15 @@ export default function Feed() {
                   </div>
                   {selectedPostLikes.length > 0 && (
                     <span className="text-xs text-muted-foreground">
-                      Liked by {selectedPostLikes.slice(0, 2).map((u) => u.displayName).join(", ")}
+                      Liked by{" "}
+                      {selectedPostLikes.slice(0, 2).map((u, index) => (
+                        <span key={u.id}>
+                          {index > 0 && ", "}
+                          <Link href={`/profile/${u.id}`}>
+                            <a className="hover:underline cursor-pointer">{u.displayName}</a>
+                          </Link>
+                        </span>
+                      ))}
                       {selectedPostLikes.length > 2 && ` and ${selectedPostLikes.length - 2} others`}
                     </span>
                   )}

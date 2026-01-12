@@ -7,6 +7,7 @@ import type { PostWithUser } from "@shared/schema";
 import { MoreHorizontal } from "lucide-react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { shareContent, getPostShareUrl } from "@/lib/share";
+import { Link } from "wouter";
 
 // Import UI primitives from their individual modules (do not import the directory)
 import { Card } from "@/components/ui/card";
@@ -243,14 +244,22 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
       {/* Post Header */}
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center space-x-3">
-          <Avatar className="w-10 h-10">
-            <AvatarImage src={post.user.avatar || ""} alt={post.user.displayName} />
-            <AvatarFallback>{(post.user.displayName || "U")[0]}</AvatarFallback>
-          </Avatar>
+          <Link href={`/profile/${post.user.id}`}>
+            <a>
+              <Avatar className="w-10 h-10 cursor-pointer hover:opacity-80 transition-opacity">
+                <AvatarImage src={post.user.avatar || ""} alt={post.user.displayName} />
+                <AvatarFallback>{(post.user.displayName || "U")[0]}</AvatarFallback>
+              </Avatar>
+            </a>
+          </Link>
           <div>
-            <h3 className="font-semibold text-sm" data-testid={`text-username-${post.id}`}>
-              {post.user.displayName}
-            </h3>
+            <Link href={`/profile/${post.user.id}`}>
+              <a>
+                <h3 className="font-semibold text-sm cursor-pointer hover:underline" data-testid={`text-username-${post.id}`}>
+                  {post.user.displayName}
+                </h3>
+              </a>
+            </Link>
             <p className="text-xs text-muted-foreground" data-testid={`text-timestamp-${post.id}`}>
               {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
             </p>
@@ -361,7 +370,9 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
       {/* Post body / caption */}
       <div className="px-4 pt-3 pb-2">
         <div className="text-sm">
-          <span className="font-semibold">{post.user.displayName}</span>{" "}
+          <Link href={`/profile/${post.user.id}`}>
+            <a className="font-semibold hover:underline cursor-pointer">{post.user.displayName}</a>
+          </Link>{" "}
           <span>{post.caption}</span>
         </div>
       </div>
@@ -528,7 +539,9 @@ function CommentPreview({ postId, totalComments, onViewAll }: CommentPreviewProp
       {/* Show first comment preview on single line */}
       {comments.length > 0 && comments[0] && (
         <div className="text-sm truncate">
-          <span className="font-semibold">{comments[0].user.displayName}</span>{" "}
+          <Link href={`/profile/${comments[0].user.id}`}>
+            <a className="font-semibold hover:underline cursor-pointer">{comments[0].user.displayName}</a>
+          </Link>{" "}
           <span className="text-muted-foreground">{comments[0].content}</span>
         </div>
       )}
