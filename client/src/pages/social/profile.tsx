@@ -302,31 +302,74 @@ export default function Profile() {
   // Follow/Unfollow mutation
   const followMutation = useMutation({
     mutationFn: async ({ isFollowing }: { isFollowing: boolean }) => {
+      console.log("=== FOLLOW MUTATION DEBUG ===");
+      console.log("Profile User ID:", profileUserId);
+      console.log("Current User ID:", currentUser?.id);
+      console.log("Is Following:", isFollowing);
+      console.log("Action:", isFollowing ? "UNFOLLOW" : "FOLLOW");
+
       if (isFollowing) {
         // Unfollow or cancel request
-        const response = await fetch(`/api/follows/${profileUserId}`, {
+        const url = `/api/follows/${profileUserId}`;
+        console.log("DELETE URL:", url);
+
+        const response = await fetch(url, {
           method: "DELETE",
           credentials: "include",
         });
+
+        console.log("Response status:", response.status);
+        console.log("Response ok:", response.ok);
+
+        const responseText = await response.text();
+        console.log("Response text:", responseText);
+
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ message: "Failed to unfollow" }));
-          throw new Error(errorData.message || "Failed to unfollow");
+          let errorMessage = "Failed to unfollow";
+          try {
+            const errorData = JSON.parse(responseText);
+            errorMessage = errorData.message || errorMessage;
+          } catch {
+            errorMessage = responseText || errorMessage;
+          }
+          console.error("Unfollow error:", errorMessage);
+          throw new Error(errorMessage);
         }
-        return response.json();
+
+        return JSON.parse(responseText);
       } else {
         // Follow or request to follow
-        const response = await fetch(`/api/follows/${profileUserId}`, {
+        const url = `/api/follows/${profileUserId}`;
+        console.log("POST URL:", url);
+
+        const response = await fetch(url, {
           method: "POST",
           credentials: "include",
         });
+
+        console.log("Response status:", response.status);
+        console.log("Response ok:", response.ok);
+
+        const responseText = await response.text();
+        console.log("Response text:", responseText);
+
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ message: "Failed to follow" }));
-          throw new Error(errorData.message || "Failed to follow");
+          let errorMessage = "Failed to follow";
+          try {
+            const errorData = JSON.parse(responseText);
+            errorMessage = errorData.message || errorMessage;
+          } catch {
+            errorMessage = responseText || errorMessage;
+          }
+          console.error("Follow error:", errorMessage);
+          throw new Error(errorMessage);
         }
-        return response.json();
+
+        return JSON.parse(responseText);
       }
     },
     onSuccess: (data) => {
+      console.log("Follow mutation success:", data);
       queryClient.invalidateQueries({ queryKey: ["/api/follows/status", profileUserId] });
       const message =
         data.status === "following" ? "Following!" :
@@ -337,6 +380,7 @@ export default function Profile() {
       toast({ description: message });
     },
     onError: (error: Error) => {
+      console.error("Follow mutation error:", error);
       toast({
         variant: "destructive",
         description: error.message || "Failed to update follow status",
