@@ -302,82 +302,33 @@ export default function Profile() {
   // Follow/Unfollow mutation
   const followMutation = useMutation({
     mutationFn: async ({ isFollowing }: { isFollowing: boolean }) => {
-      console.log("=== FOLLOW MUTATION DEBUG ===");
-      console.log("Profile User ID:", profileUserId);
-      console.log("Current User ID:", currentUser?.id);
-      console.log("Is Following:", isFollowing);
-      console.log("Action:", isFollowing ? "UNFOLLOW" : "FOLLOW");
-
       if (isFollowing) {
         // Unfollow or cancel request
-        const url = `/api/follows/${profileUserId}`;
-        console.log("DELETE URL:", url);
-
-        const response = await fetch(url, {
+        const response = await fetch(`/api/follows/${profileUserId}`, {
           method: "DELETE",
           credentials: "include",
         });
 
-        console.log("Response status:", response.status);
-        console.log("Response ok:", response.ok);
-
-        const responseText = await response.text();
-        console.log("Response text:", responseText);
-
         if (!response.ok) {
-          let errorMessage = "Failed to unfollow";
-          try {
-            const errorData = JSON.parse(responseText);
-            errorMessage = errorData.message || errorMessage;
-          } catch {
-            errorMessage = responseText || errorMessage;
-          }
-          console.error("Unfollow error:", errorMessage);
-          const debugError = new Error(errorMessage);
-          (debugError as any).status = response.status;
-          (debugError as any).url = url;
-          (debugError as any).responseText = responseText;
-          throw debugError;
+          const errorData = await response.json().catch(() => ({ message: "Failed to unfollow" }));
+          throw new Error(errorData.message || "Failed to unfollow");
         }
-
-        return JSON.parse(responseText);
+        return response.json();
       } else {
         // Follow or request to follow
-        const url = `/api/follows/${profileUserId}`;
-        console.log("POST URL:", url);
-
-        const response = await fetch(url, {
+        const response = await fetch(`/api/follows/${profileUserId}`, {
           method: "POST",
           credentials: "include",
         });
 
-        console.log("Response status:", response.status);
-        console.log("Response ok:", response.ok);
-
-        const responseText = await response.text();
-        console.log("Response text:", responseText);
-
         if (!response.ok) {
-          let errorMessage = "Failed to follow";
-          try {
-            const errorData = JSON.parse(responseText);
-            errorMessage = errorData.message || errorMessage;
-          } catch {
-            errorMessage = responseText || errorMessage;
-          }
-          console.error("Follow error:", errorMessage);
-          const debugError = new Error(errorMessage);
-          (debugError as any).status = response.status;
-          (debugError as any).url = url;
-          (debugError as any).responseText = responseText;
-          throw debugError;
+          const errorData = await response.json().catch(() => ({ message: "Failed to follow" }));
+          throw new Error(errorData.message || "Failed to follow");
         }
-
-        return JSON.parse(responseText);
+        return response.json();
       }
     },
     onSuccess: (data) => {
-      console.log("Follow mutation success:", data);
       queryClient.invalidateQueries({ queryKey: ["/api/follows/status", profileUserId] });
       const message =
         data.status === "following" ? "Following!" :
@@ -387,23 +338,10 @@ export default function Profile() {
         "Success";
       toast({ description: message });
     },
-    onError: (error: any) => {
-      console.error("Follow mutation error:", error);
-
-      // Create detailed debug message
-      const debugInfo = [
-        `Error: ${error.message || "Unknown error"}`,
-        `Status: ${error.status || "N/A"}`,
-        `URL: ${error.url || "N/A"}`,
-        `Profile ID: ${profileUserId}`,
-        `Current User: ${currentUser?.id || "Not logged in"}`,
-        error.responseText ? `Response: ${error.responseText.substring(0, 100)}` : ""
-      ].filter(Boolean).join("\n");
-
+    onError: (error: Error) => {
       toast({
         variant: "destructive",
-        title: "Follow Error - Debug Info",
-        description: debugInfo,
+        description: error.message || "Failed to update follow status",
       });
     },
   });
