@@ -50,10 +50,15 @@ router.post("/family-members", requireAuth, async (req: Request, res: Response) 
     const userId = req.user!.id;
     const { name, relationship, dateOfBirth, species } = req.body;
 
+    console.log("=== ADD FAMILY MEMBER SERVER DEBUG ===");
+    console.log("User ID:", userId);
+    console.log("Request body:", req.body);
+
     if (!name || !name.trim()) {
       return res.status(400).json({ message: "Name is required" });
     }
 
+    console.log("Inserting into database...");
     const [newMember] = await db
       .insert(familyMembers)
       .values({
@@ -65,10 +70,18 @@ router.post("/family-members", requireAuth, async (req: Request, res: Response) 
       })
       .returning();
 
+    console.log("Successfully created family member:", newMember);
     res.json({ member: newMember });
   } catch (error) {
-    console.error("Error adding family member:", error);
-    res.status(500).json({ message: "Failed to add family member" });
+    console.error("=== ERROR ADDING FAMILY MEMBER ===");
+    console.error("Error details:", error);
+    console.error("Error message:", error instanceof Error ? error.message : String(error));
+    console.error("Error stack:", error instanceof Error ? error.stack : "N/A");
+    res.status(500).json({
+      message: "Failed to add family member",
+      error: error instanceof Error ? error.message : String(error),
+      details: process.env.NODE_ENV === "development" ? error : undefined
+    });
   }
 });
 
