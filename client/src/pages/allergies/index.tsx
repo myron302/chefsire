@@ -90,17 +90,39 @@ export default function AllergiesDashboard() {
   // Add family member mutation
   const addMemberMutation = useMutation({
     mutationFn: async (data: typeof memberForm) => {
+      console.log("=== ADD FAMILY MEMBER DEBUG ===");
+      console.log("Form data:", data);
+
       const res = await fetch("/api/allergies/family-members", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify(data),
       });
+
+      console.log("Response status:", res.status);
+      console.log("Response ok:", res.ok);
+
+      const responseText = await res.text();
+      console.log("Response text:", responseText);
+
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to add family member");
+        let errorMessage = "Failed to add family member";
+        try {
+          const error = JSON.parse(responseText);
+          errorMessage = error.message || errorMessage;
+        } catch {
+          errorMessage = responseText || errorMessage;
+        }
+
+        const debugError = new Error(errorMessage);
+        (debugError as any).status = res.status;
+        (debugError as any).responseText = responseText;
+        (debugError as any).formData = data;
+        throw debugError;
       }
-      return res.json();
+
+      return JSON.parse(responseText);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/allergies/family-members"] });
@@ -108,8 +130,21 @@ export default function AllergiesDashboard() {
       setShowAddMemberDialog(false);
       setMemberForm({ name: "", relationship: "", dateOfBirth: "", species: "human", notes: "" });
     },
-    onError: (error: Error) => {
-      toast({ title: "Failed to add family member", description: error.message, variant: "destructive" });
+    onError: (error: any) => {
+      console.error("Add family member error:", error);
+
+      const debugInfo = [
+        `Error: ${error.message || "Unknown error"}`,
+        `Status: ${error.status || "N/A"}`,
+        `Form Data: ${JSON.stringify(error.formData || {})}`,
+        error.responseText ? `Response: ${error.responseText.substring(0, 150)}` : ""
+      ].filter(Boolean).join("\n");
+
+      toast({
+        title: "Failed to add family member - Debug Info",
+        description: debugInfo,
+        variant: "destructive"
+      });
     },
   });
 
