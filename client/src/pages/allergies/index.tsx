@@ -61,6 +61,13 @@ export default function AllergiesDashboard() {
   // Fetch family members
   const { data: membersData, isLoading } = useQuery({
     queryKey: ["/api/allergies/family-members"],
+    queryFn: async () => {
+      const res = await fetch("/api/allergies/family-members", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch family members");
+      return res.json();
+    },
   });
 
   const members: FamilyMember[] = membersData?.members || [];
@@ -68,6 +75,13 @@ export default function AllergiesDashboard() {
   // Fetch allergen profiles for selected member
   const { data: profilesData } = useQuery({
     queryKey: ["/api/allergies/profiles", selectedMember?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/allergies/profiles/${selectedMember?.id}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch allergen profiles");
+      return res.json();
+    },
     enabled: !!selectedMember,
   });
 
