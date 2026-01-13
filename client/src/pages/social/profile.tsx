@@ -333,7 +333,11 @@ export default function Profile() {
             errorMessage = responseText || errorMessage;
           }
           console.error("Unfollow error:", errorMessage);
-          throw new Error(errorMessage);
+          const debugError = new Error(errorMessage);
+          (debugError as any).status = response.status;
+          (debugError as any).url = url;
+          (debugError as any).responseText = responseText;
+          throw debugError;
         }
 
         return JSON.parse(responseText);
@@ -362,7 +366,11 @@ export default function Profile() {
             errorMessage = responseText || errorMessage;
           }
           console.error("Follow error:", errorMessage);
-          throw new Error(errorMessage);
+          const debugError = new Error(errorMessage);
+          (debugError as any).status = response.status;
+          (debugError as any).url = url;
+          (debugError as any).responseText = responseText;
+          throw debugError;
         }
 
         return JSON.parse(responseText);
@@ -379,11 +387,23 @@ export default function Profile() {
         "Success";
       toast({ description: message });
     },
-    onError: (error: Error) => {
+    onError: (error: any) => {
       console.error("Follow mutation error:", error);
+
+      // Create detailed debug message
+      const debugInfo = [
+        `Error: ${error.message || "Unknown error"}`,
+        `Status: ${error.status || "N/A"}`,
+        `URL: ${error.url || "N/A"}`,
+        `Profile ID: ${profileUserId}`,
+        `Current User: ${currentUser?.id || "Not logged in"}`,
+        error.responseText ? `Response: ${error.responseText.substring(0, 100)}` : ""
+      ].filter(Boolean).join("\n");
+
       toast({
         variant: "destructive",
-        description: error.message || "Failed to update follow status",
+        title: "Follow Error - Debug Info",
+        description: debugInfo,
       });
     },
   });
