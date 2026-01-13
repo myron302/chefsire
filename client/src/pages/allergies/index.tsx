@@ -108,9 +108,11 @@ export default function AllergiesDashboard() {
 
       if (!res.ok) {
         let errorMessage = "Failed to add family member";
+        let serverError = "";
         try {
           const error = JSON.parse(responseText);
           errorMessage = error.message || errorMessage;
+          serverError = error.error || "";
         } catch {
           errorMessage = responseText || errorMessage;
         }
@@ -118,6 +120,7 @@ export default function AllergiesDashboard() {
         const debugError = new Error(errorMessage);
         (debugError as any).status = res.status;
         (debugError as any).responseText = responseText;
+        (debugError as any).serverError = serverError;
         (debugError as any).formData = data;
         throw debugError;
       }
@@ -136,8 +139,9 @@ export default function AllergiesDashboard() {
       const debugInfo = [
         `Error: ${error.message || "Unknown error"}`,
         `Status: ${error.status || "N/A"}`,
+        error.serverError ? `Server Error: ${error.serverError}` : "",
         `Form Data: ${JSON.stringify(error.formData || {})}`,
-        error.responseText ? `Response: ${error.responseText.substring(0, 150)}` : ""
+        error.responseText ? `Response: ${error.responseText.substring(0, 200)}` : ""
       ].filter(Boolean).join("\n");
 
       toast({
