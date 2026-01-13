@@ -58,6 +58,16 @@ router.post("/family-members", requireAuth, async (req: Request, res: Response) 
       return res.status(400).json({ message: "Name is required" });
     }
 
+    // Convert dateOfBirth string to Date object if provided
+    let dobValue = null;
+    if (dateOfBirth) {
+      dobValue = new Date(dateOfBirth);
+      // Validate the date
+      if (isNaN(dobValue.getTime())) {
+        return res.status(400).json({ message: "Invalid date of birth" });
+      }
+    }
+
     console.log("Inserting into database...");
     const [newMember] = await db
       .insert(familyMembers)
@@ -65,7 +75,7 @@ router.post("/family-members", requireAuth, async (req: Request, res: Response) 
         userId,
         name: name.trim(),
         relationship: relationship || null,
-        dateOfBirth: dateOfBirth || null,
+        dateOfBirth: dobValue,
         species: species || "human",
       })
       .returning();
@@ -103,12 +113,25 @@ router.put("/family-members/:id", requireAuth, async (req: Request, res: Respons
       return res.status(404).json({ message: "Family member not found" });
     }
 
+    // Convert dateOfBirth string to Date object if provided
+    let dobValue = existing.dateOfBirth;
+    if (dateOfBirth !== undefined) {
+      if (dateOfBirth === null || dateOfBirth === "") {
+        dobValue = null;
+      } else {
+        dobValue = new Date(dateOfBirth);
+        if (isNaN(dobValue.getTime())) {
+          return res.status(400).json({ message: "Invalid date of birth" });
+        }
+      }
+    }
+
     const [updated] = await db
       .update(familyMembers)
       .set({
         name: name?.trim() || existing.name,
         relationship: relationship !== undefined ? relationship : existing.relationship,
-        dateOfBirth: dateOfBirth !== undefined ? dateOfBirth : existing.dateOfBirth,
+        dateOfBirth: dobValue,
         species: species || existing.species,
         notes: notes !== undefined ? notes : existing.notes,
       })
@@ -223,6 +246,15 @@ router.post("/profiles", requireAuth, async (req: Request, res: Response) => {
       return res.status(400).json({ message: "This allergen is already tracked for this family member" });
     }
 
+    // Convert diagnosedDate string to Date object if provided
+    let diagnosedDateValue = null;
+    if (diagnosedDate) {
+      diagnosedDateValue = new Date(diagnosedDate);
+      if (isNaN(diagnosedDateValue.getTime())) {
+        return res.status(400).json({ message: "Invalid diagnosis date" });
+      }
+    }
+
     const [profile] = await db
       .insert(allergenProfiles)
       .values({
@@ -230,7 +262,7 @@ router.post("/profiles", requireAuth, async (req: Request, res: Response) => {
         allergen: allergen.toLowerCase().trim(),
         severity,
         diagnosedBy: diagnosedBy || null,
-        diagnosedDate: diagnosedDate || null,
+        diagnosedDate: diagnosedDateValue,
         notes: notes || null,
       })
       .returning();
@@ -264,12 +296,25 @@ router.put("/profiles/:id", requireAuth, async (req: Request, res: Response) => 
       return res.status(404).json({ message: "Allergen profile not found" });
     }
 
+    // Convert diagnosedDate string to Date object if provided
+    let diagnosedDateValue = profile.profile.diagnosedDate;
+    if (diagnosedDate !== undefined) {
+      if (diagnosedDate === null || diagnosedDate === "") {
+        diagnosedDateValue = null;
+      } else {
+        diagnosedDateValue = new Date(diagnosedDate);
+        if (isNaN(diagnosedDateValue.getTime())) {
+          return res.status(400).json({ message: "Invalid diagnosis date" });
+        }
+      }
+    }
+
     const [updated] = await db
       .update(allergenProfiles)
       .set({
         severity: severity || profile.profile.severity,
         diagnosedBy: diagnosedBy !== undefined ? diagnosedBy : profile.profile.diagnosedBy,
-        diagnosedDate: diagnosedDate !== undefined ? diagnosedDate : profile.profile.diagnosedDate,
+        diagnosedDate: diagnosedDateValue,
         notes: notes !== undefined ? notes : profile.profile.notes,
       })
       .where(eq(allergenProfiles.id, profileId))
