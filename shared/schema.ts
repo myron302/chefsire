@@ -483,7 +483,6 @@ export const familyMembers = pgTable(
     dateOfBirth: timestamp("date_of_birth"),
     species: text("species").default("human"),
     notes: text("notes"),
-    isRunningLow: boolean("is_running_low").default(false),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
