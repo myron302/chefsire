@@ -109,16 +109,26 @@ router.get("/family-members", requireAuth, async (req: Request, res: Response) =
     // Get allergen profiles for each member
     const membersWithAllergens = await Promise.all(
       members.map(async (member) => {
-        const allergens = await db
-          .select()
-          .from(allergenProfiles)
-          .where(eq(allergenProfiles.familyMemberId, member.id));
+        try {
+          const allergens = await db
+            .select()
+            .from(allergenProfiles)
+            .where(eq(allergenProfiles.familyMemberId, member.id));
 
-        return {
-          ...member,
-          allergenCount: allergens.length,
-          severeCases: allergens.filter(a => ["severe", "life-threatening"].includes(a.severity)).length,
-        };
+          return {
+            ...member,
+            allergenCount: allergens.length,
+            severeCases: allergens.filter(a => ["severe", "life-threatening"].includes(a.severity)).length,
+          };
+        } catch (allergenError) {
+          console.error(`Error fetching allergens for member ${member.id}:`, allergenError);
+          // Return member with zero allergens on error
+          return {
+            ...member,
+            allergenCount: 0,
+            severeCases: 0,
+          };
+        }
       })
     );
 
