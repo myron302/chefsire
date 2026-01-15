@@ -105,7 +105,7 @@ export default function AllergiesDashboard() {
 
   // Add family member mutation
   const addMemberMutation = useMutation({
-    mutationFn: async (data: typeof memberForm & { householdMemberId: string }) => {
+    mutationFn: async (data: typeof memberForm & { householdMemberId: string | null }) => {
       console.log("=== ADD FAMILY MEMBER DEBUG ===");
       console.log("Form data:", data);
 
@@ -306,67 +306,18 @@ export default function AllergiesDashboard() {
               <DialogHeader>
                 <DialogTitle>Add Family Member</DialogTitle>
                 <DialogDescription>
-                  Select a household member to track their allergen profiles
+                  {memberForm.species === "human"
+                    ? "Select a household member to track their allergen profiles"
+                    : "Add a pet to track their allergen profiles"}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
-                {householdMembers.length === 0 ? (
-                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <p className="text-sm text-yellow-800">
-                      You need to join a household first. Go to <Link href="/pantry/household" className="underline font-semibold">Household Pantry</Link> to create or join one.
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    <Label htmlFor="householdMember">Household Member *</Label>
-                    <Select
-                      value={selectedHouseholdMemberId}
-                      onValueChange={(val) => {
-                        setSelectedHouseholdMemberId(val);
-                        const member = householdMembers.find((m: any) => m.userId === val);
-                        if (member) {
-                          setMemberForm({
-                            ...memberForm,
-                            name: member.username || member.email || "Household Member"
-                          });
-                        }
-                      }}
-                    >
-                      <SelectTrigger id="householdMember">
-                        <SelectValue placeholder="Select a household member" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {householdMembers.map((member: any) => (
-                          <SelectItem key={member.userId} value={member.userId}>
-                            {member.username || member.email} {member.role === 'owner' ? '(Owner)' : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
                 <div>
-                  <Label htmlFor="relationship">Relationship</Label>
-                  <Select value={memberForm.relationship} onValueChange={(val) => setMemberForm({ ...memberForm, relationship: val })}>
-                    <SelectTrigger id="relationship">
-                      <SelectValue placeholder="Select relationship" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="self">Self</SelectItem>
-                      <SelectItem value="spouse">Spouse/Partner</SelectItem>
-                      <SelectItem value="child">Child</SelectItem>
-                      <SelectItem value="parent">Parent</SelectItem>
-                      <SelectItem value="sibling">Sibling</SelectItem>
-                      <SelectItem value="pet">Pet</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="species">Species</Label>
-                  <Select value={memberForm.species} onValueChange={(val) => setMemberForm({ ...memberForm, species: val })}>
+                  <Label htmlFor="species">Type *</Label>
+                  <Select value={memberForm.species} onValueChange={(val) => {
+                    setMemberForm({ ...memberForm, species: val, name: "" });
+                    setSelectedHouseholdMemberId("");
+                  }}>
                     <SelectTrigger id="species">
                       <SelectValue />
                     </SelectTrigger>
@@ -374,10 +325,73 @@ export default function AllergiesDashboard() {
                       <SelectItem value="human">Human</SelectItem>
                       <SelectItem value="dog">Dog</SelectItem>
                       <SelectItem value="cat">Cat</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
+                      <SelectItem value="other">Other Pet</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
+                {memberForm.species === "human" ? (
+                  householdMembers.length === 0 ? (
+                    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-sm text-yellow-800">
+                        You need to join a household first. Go to <Link href="/pantry/household" className="underline font-semibold">Household Pantry</Link> to create or join one.
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <Label htmlFor="householdMember">Household Member *</Label>
+                      <Select
+                        value={selectedHouseholdMemberId}
+                        onValueChange={(val) => {
+                          setSelectedHouseholdMemberId(val);
+                          const member = householdMembers.find((m: any) => m.userId === val);
+                          if (member) {
+                            setMemberForm({
+                              ...memberForm,
+                              name: member.username || member.email || "Household Member"
+                            });
+                          }
+                        }}
+                      >
+                        <SelectTrigger id="householdMember">
+                          <SelectValue placeholder="Select a household member" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {householdMembers.map((member: any) => (
+                            <SelectItem key={member.userId} value={member.userId}>
+                              {member.username || member.email} {member.role === 'owner' ? '(Owner)' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )
+                ) : (
+                  <div>
+                    <Label htmlFor="petName">Pet Name *</Label>
+                    <Input
+                      id="petName"
+                      placeholder="e.g., Max, Buddy, Fluffy"
+                      value={memberForm.name}
+                      onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })}
+                    />
+                  </div>
+                )}
+
+                {memberForm.species !== "human" && (
+                  <div>
+                    <Label htmlFor="relationship">Relationship</Label>
+                    <Select value={memberForm.relationship} onValueChange={(val) => setMemberForm({ ...memberForm, relationship: val })}>
+                      <SelectTrigger id="relationship">
+                        <SelectValue placeholder="Select relationship" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pet">Pet</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <div>
                   <Label htmlFor="dob">Date of Birth (optional)</Label>
@@ -398,8 +412,15 @@ export default function AllergiesDashboard() {
                     Cancel
                   </Button>
                   <Button
-                    onClick={() => addMemberMutation.mutate({ ...memberForm, householdMemberId: selectedHouseholdMemberId })}
-                    disabled={!selectedHouseholdMemberId || !memberForm.name.trim() || addMemberMutation.isPending}
+                    onClick={() => addMemberMutation.mutate({
+                      ...memberForm,
+                      householdMemberId: memberForm.species === "human" ? selectedHouseholdMemberId : null
+                    })}
+                    disabled={
+                      !memberForm.name.trim() ||
+                      (memberForm.species === "human" && !selectedHouseholdMemberId) ||
+                      addMemberMutation.isPending
+                    }
                     className="flex-1"
                   >
                     {addMemberMutation.isPending ? "Adding..." : "Add Member"}

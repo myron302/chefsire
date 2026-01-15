@@ -54,37 +54,40 @@ router.post("/family-members", requireAuth, async (req: Request, res: Response) 
     console.log("User ID:", userId);
     console.log("Request body:", req.body);
 
-    if (!householdMemberId) {
-      return res.status(400).json({ message: "Household member is required" });
-    }
-
     if (!name || !name.trim()) {
       return res.status(400).json({ message: "Name is required" });
     }
 
-    // Verify that the household member exists in the user's household
-    const householdCheck = await db.execute(sql`
-      SELECT 1 FROM pantry_household_members phm1
-      INNER JOIN pantry_household_members phm2
-        ON phm1.household_id = phm2.household_id
-      WHERE phm1.user_id = ${userId}
-        AND phm2.user_id = ${householdMemberId}
-      LIMIT 1
-    `);
+    // For humans, validate household membership
+    if (species === "human") {
+      if (!householdMemberId) {
+        return res.status(400).json({ message: "Household member is required for humans" });
+      }
 
-    if (!householdCheck || !(householdCheck as any)?.rows?.[0]) {
-      return res.status(403).json({ message: "This person is not in your household" });
-    }
+      // Verify that the household member exists in the user's household
+      const householdCheck = await db.execute(sql`
+        SELECT 1 FROM pantry_household_members phm1
+        INNER JOIN pantry_household_members phm2
+          ON phm1.household_id = phm2.household_id
+        WHERE phm1.user_id = ${userId}
+          AND phm2.user_id = ${householdMemberId}
+        LIMIT 1
+      `);
 
-    // Check if this household member already has a family member record
-    const [existing] = await db
-      .select()
-      .from(familyMembers)
-      .where(and(eq(familyMembers.userId, userId), eq(familyMembers.householdMemberId, householdMemberId)))
-      .limit(1);
+      if (!householdCheck || !(householdCheck as any)?.rows?.[0]) {
+        return res.status(403).json({ message: "This person is not in your household" });
+      }
 
-    if (existing) {
-      return res.status(400).json({ message: "This household member is already added" });
+      // Check if this household member already has a family member record
+      const [existing] = await db
+        .select()
+        .from(familyMembers)
+        .where(and(eq(familyMembers.userId, userId), eq(familyMembers.householdMemberId, householdMemberId)))
+        .limit(1);
+
+      if (existing) {
+        return res.status(400).json({ message: "This household member is already added" });
+      }
     }
 
     // Convert dateOfBirth string to Date object if provided
@@ -98,16 +101,24 @@ router.post("/family-members", requireAuth, async (req: Request, res: Response) 
     }
 
     console.log("Inserting into database...");
+
+    // Build values object - only include householdMemberId if species is human
+    const values: any = {
+      userId,
+      name: name.trim(),
+      relationship: relationship || null,
+      dateOfBirth: dobValue,
+      species: species || "human",
+    };
+
+    // Only add householdMemberId for humans (to avoid inserting null for pets)
+    if (species === "human" && householdMemberId) {
+      values.householdMemberId = householdMemberId;
+    }
+
     const [newMember] = await db
       .insert(familyMembers)
-      .values({
-        userId,
-        householdMemberId,
-        name: name.trim(),
-        relationship: relationship || null,
-        dateOfBirth: dobValue,
-        species: species || "human",
-      })
+      .values(values)
       .returning();
 
     console.log("Successfully created family member:", newMember);
