@@ -14,12 +14,17 @@ const router = express.Router();
 router.get("/family-members", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
+    console.log("=== FETCHING FAMILY MEMBERS ===");
+    console.log("User ID:", userId);
 
     const members = await db
       .select()
       .from(familyMembers)
       .where(eq(familyMembers.userId, userId))
       .orderBy(familyMembers.createdAt);
+
+    console.log("Members fetched:", members.length);
+    console.log("Members data:", JSON.stringify(members, null, 2));
 
     // Get allergen profiles for each member
     const membersWithAllergens = await Promise.all(
@@ -37,10 +42,18 @@ router.get("/family-members", requireAuth, async (req: Request, res: Response) =
       })
     );
 
+    console.log("Members with allergen counts:", membersWithAllergens.length);
     res.json({ members: membersWithAllergens });
   } catch (error) {
-    console.error("Error fetching family members:", error);
-    res.status(500).json({ message: "Failed to fetch family members" });
+    console.error("=== ERROR FETCHING FAMILY MEMBERS ===");
+    console.error("Error details:", error);
+    console.error("Error message:", error instanceof Error ? error.message : String(error));
+    console.error("Error stack:", error instanceof Error ? error.stack : "N/A");
+    res.status(500).json({
+      message: "Failed to fetch family members",
+      error: error instanceof Error ? error.message : String(error),
+      details: process.env.NODE_ENV === "development" ? error : undefined
+    });
   }
 });
 
