@@ -341,7 +341,11 @@ export default function AllergiesDashboard() {
 
     const dataToSend = {
       familyMemberId: selectedMember.id,
-      ...allergenForm,
+      allergen: allergenForm.allergen,
+      severity: allergenForm.severity,
+      diagnosedBy: allergenForm.diagnosedBy || null,
+      diagnosedDate: allergenForm.diagnosedDate || null,
+      notes: allergenForm.notes || null,
     };
 
     console.log("Data to send:", dataToSend);
