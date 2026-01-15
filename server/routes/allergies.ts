@@ -48,14 +48,43 @@ router.get("/family-members", requireAuth, async (req: Request, res: Response) =
 router.post("/family-members", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { name, relationship, dateOfBirth, species } = req.body;
+    const { householdMemberId, name, relationship, dateOfBirth, species } = req.body;
 
     console.log("=== ADD FAMILY MEMBER SERVER DEBUG ===");
     console.log("User ID:", userId);
     console.log("Request body:", req.body);
 
+    if (!householdMemberId) {
+      return res.status(400).json({ message: "Household member is required" });
+    }
+
     if (!name || !name.trim()) {
       return res.status(400).json({ message: "Name is required" });
+    }
+
+    // Verify that the household member exists in the user's household
+    const householdCheck = await db.execute(sql`
+      SELECT 1 FROM pantry_household_members phm1
+      INNER JOIN pantry_household_members phm2
+        ON phm1.household_id = phm2.household_id
+      WHERE phm1.user_id = ${userId}
+        AND phm2.user_id = ${householdMemberId}
+      LIMIT 1
+    `);
+
+    if (!householdCheck || !(householdCheck as any)?.rows?.[0]) {
+      return res.status(403).json({ message: "This person is not in your household" });
+    }
+
+    // Check if this household member already has a family member record
+    const [existing] = await db
+      .select()
+      .from(familyMembers)
+      .where(and(eq(familyMembers.userId, userId), eq(familyMembers.householdMemberId, householdMemberId)))
+      .limit(1);
+
+    if (existing) {
+      return res.status(400).json({ message: "This household member is already added" });
     }
 
     // Convert dateOfBirth string to Date object if provided
@@ -73,6 +102,7 @@ router.post("/family-members", requireAuth, async (req: Request, res: Response) 
       .insert(familyMembers)
       .values({
         userId,
+        householdMemberId,
         name: name.trim(),
         relationship: relationship || null,
         dateOfBirth: dobValue,

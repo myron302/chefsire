@@ -478,6 +478,7 @@ export const familyMembers = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     userId: varchar("user_id").references(() => users.id).notNull(),
+    householdMemberId: varchar("household_member_id").references(() => users.id),
     name: text("name").notNull(),
     relationship: text("relationship"),
     dateOfBirth: timestamp("date_of_birth"),
@@ -487,6 +488,7 @@ export const familyMembers = pgTable(
   },
   (table) => ({
     userIdx: index("family_members_user_idx").on(table.userId),
+    householdMemberIdx: index("family_members_household_member_idx").on(table.householdMemberId),
   })
 );
 

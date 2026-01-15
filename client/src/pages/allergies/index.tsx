@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import {
   Heart, Plus, AlertTriangle, Shield, User, Crown, Edit, Trash2,
   Calendar, Stethoscope, FileText, ChevronRight
@@ -41,6 +42,7 @@ export default function AllergiesDashboard() {
   const [showAddMemberDialog, setShowAddMemberDialog] = useState(false);
   const [showAllergenDialog, setShowAllergenDialog] = useState(false);
   const [selectedMember, setSelectedMember] = useState<FamilyMember | null>(null);
+  const [selectedHouseholdMemberId, setSelectedHouseholdMemberId] = useState("");
 
   const [memberForm, setMemberForm] = useState({
     name: "",
@@ -58,7 +60,21 @@ export default function AllergiesDashboard() {
     notes: "",
   });
 
-  // Fetch family members
+  // Fetch household info and members
+  const { data: householdData } = useQuery({
+    queryKey: ["/api/pantry/household"],
+    queryFn: async () => {
+      const res = await fetch("/api/pantry/household", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch household");
+      return res.json();
+    },
+  });
+
+  const householdMembers = householdData?.members || [];
+
+  // Fetch family members (for allergies)
   const { data: membersData, isLoading } = useQuery({
     queryKey: ["/api/allergies/family-members"],
     queryFn: async () => {
@@ -89,7 +105,7 @@ export default function AllergiesDashboard() {
 
   // Add family member mutation
   const addMemberMutation = useMutation({
-    mutationFn: async (data: typeof memberForm) => {
+    mutationFn: async (data: typeof memberForm & { householdMemberId: string }) => {
       console.log("=== ADD FAMILY MEMBER DEBUG ===");
       console.log("Form data:", data);
 
@@ -131,6 +147,7 @@ export default function AllergiesDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/allergies/family-members"] });
       toast({ title: "✓ Family member added", description: "You can now add allergen profiles." });
       setShowAddMemberDialog(false);
+      setSelectedHouseholdMemberId("");
       setMemberForm({ name: "", relationship: "", dateOfBirth: "", species: "human", notes: "" });
     },
     onError: (error: any) => {
@@ -289,19 +306,45 @@ export default function AllergiesDashboard() {
               <DialogHeader>
                 <DialogTitle>Add Family Member</DialogTitle>
                 <DialogDescription>
-                  Add a family member to track their allergen profiles
+                  Select a household member to track their allergen profiles
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
-                <div>
-                  <Label htmlFor="memberName">Name *</Label>
-                  <Input
-                    id="memberName"
-                    placeholder="e.g., Sarah, Max (dog)"
-                    value={memberForm.name}
-                    onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })}
-                  />
-                </div>
+                {householdMembers.length === 0 ? (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-sm text-yellow-800">
+                      You need to join a household first. Go to <Link href="/pantry/household" className="underline font-semibold">Household Pantry</Link> to create or join one.
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <Label htmlFor="householdMember">Household Member *</Label>
+                    <Select
+                      value={selectedHouseholdMemberId}
+                      onValueChange={(val) => {
+                        setSelectedHouseholdMemberId(val);
+                        const member = householdMembers.find((m: any) => m.userId === val);
+                        if (member) {
+                          setMemberForm({
+                            ...memberForm,
+                            name: member.username || member.email || "Household Member"
+                          });
+                        }
+                      }}
+                    >
+                      <SelectTrigger id="householdMember">
+                        <SelectValue placeholder="Select a household member" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {householdMembers.map((member: any) => (
+                          <SelectItem key={member.userId} value={member.userId}>
+                            {member.username || member.email} {member.role === 'owner' ? '(Owner)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <div>
                   <Label htmlFor="relationship">Relationship</Label>
@@ -347,12 +390,16 @@ export default function AllergiesDashboard() {
                 </div>
 
                 <div className="flex gap-3">
-                  <Button variant="outline" onClick={() => setShowAddMemberDialog(false)} className="flex-1">
+                  <Button variant="outline" onClick={() => {
+                    setShowAddMemberDialog(false);
+                    setSelectedHouseholdMemberId("");
+                    setMemberForm({ name: "", relationship: "", dateOfBirth: "", species: "human", notes: "" });
+                  }} className="flex-1">
                     Cancel
                   </Button>
                   <Button
-                    onClick={() => addMemberMutation.mutate(memberForm)}
-                    disabled={!memberForm.name.trim() || addMemberMutation.isPending}
+                    onClick={() => addMemberMutation.mutate({ ...memberForm, householdMemberId: selectedHouseholdMemberId })}
+                    disabled={!selectedHouseholdMemberId || !memberForm.name.trim() || addMemberMutation.isPending}
                     className="flex-1"
                   >
                     {addMemberMutation.isPending ? "Adding..." : "Add Member"}
