@@ -60,6 +60,7 @@ export default function AllergiesDashboard() {
     notes: "",
   });
 
+  const [selectedAllergenValue, setSelectedAllergenValue] = useState("");
   const [customAllergen, setCustomAllergen] = useState("");
   const [showCustomAllergen, setShowCustomAllergen] = useState(false);
 
@@ -266,6 +267,7 @@ export default function AllergiesDashboard() {
       toast({ title: "✓ Allergen added" });
       setShowAllergenDialog(false);
       setAllergenForm({ allergen: "", severity: "moderate", diagnosedBy: "", diagnosedDate: "", notes: "" });
+      setSelectedAllergenValue("");
       setShowCustomAllergen(false);
       setCustomAllergen("");
     },
@@ -604,8 +606,9 @@ export default function AllergiesDashboard() {
                               <div>
                                 <Label htmlFor="allergen">Allergen *</Label>
                                 <Select
-                                  value={showCustomAllergen ? "custom" : allergenForm.allergen}
+                                  value={selectedAllergenValue}
                                   onValueChange={(val) => {
+                                    setSelectedAllergenValue(val);
                                     if (val === "custom") {
                                       setShowCustomAllergen(true);
                                       setAllergenForm({ ...allergenForm, allergen: "" });
@@ -695,6 +698,7 @@ export default function AllergiesDashboard() {
                               <div className="flex gap-3">
                                 <Button variant="outline" onClick={() => {
                                   setShowAllergenDialog(false);
+                                  setSelectedAllergenValue("");
                                   setShowCustomAllergen(false);
                                   setCustomAllergen("");
                                 }} className="flex-1">
