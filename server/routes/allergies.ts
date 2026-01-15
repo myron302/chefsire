@@ -10,6 +10,86 @@ const router = express.Router();
 // FAMILY MEMBERS MANAGEMENT
 // ============================================================
 
+// Debug endpoint to check database and schema
+router.get("/family-members/debug", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const debugInfo: any = {
+      userId,
+      timestamp: new Date().toISOString(),
+      checks: []
+    };
+
+    // Check 1: Try raw SQL query
+    try {
+      const rawResult = await db.execute(sql`SELECT * FROM family_members WHERE user_id = ${userId} LIMIT 5`);
+      debugInfo.checks.push({
+        name: "Raw SQL Query",
+        success: true,
+        rowCount: (rawResult as any)?.rows?.length || 0,
+        data: (rawResult as any)?.rows || []
+      });
+    } catch (error) {
+      debugInfo.checks.push({
+        name: "Raw SQL Query",
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+
+    // Check 2: Try Drizzle query
+    try {
+      const drizzleResult = await db
+        .select()
+        .from(familyMembers)
+        .where(eq(familyMembers.userId, userId))
+        .limit(5);
+      debugInfo.checks.push({
+        name: "Drizzle Query",
+        success: true,
+        rowCount: drizzleResult.length,
+        data: drizzleResult
+      });
+    } catch (error) {
+      debugInfo.checks.push({
+        name: "Drizzle Query",
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+    }
+
+    // Check 3: Describe table structure
+    try {
+      const tableInfo = await db.execute(sql`
+        SELECT column_name, data_type, is_nullable
+        FROM information_schema.columns
+        WHERE table_name = 'family_members'
+        ORDER BY ordinal_position
+      `);
+      debugInfo.checks.push({
+        name: "Table Structure",
+        success: true,
+        columns: (tableInfo as any)?.rows || []
+      });
+    } catch (error) {
+      debugInfo.checks.push({
+        name: "Table Structure",
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+
+    res.json(debugInfo);
+  } catch (error) {
+    res.status(500).json({
+      error: "Debug endpoint failed",
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+  }
+});
+
 // Get all family members for current user
 router.get("/family-members", requireAuth, async (req: Request, res: Response) => {
   try {
