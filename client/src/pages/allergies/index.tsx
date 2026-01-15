@@ -75,18 +75,35 @@ export default function AllergiesDashboard() {
   const householdMembers = householdData?.members || [];
 
   // Fetch family members (for allergies)
-  const { data: membersData, isLoading } = useQuery({
+  const { data: membersData, isLoading, error: membersError } = useQuery({
     queryKey: ["/api/allergies/family-members"],
     queryFn: async () => {
+      console.log("Fetching family members...");
       const res = await fetch("/api/allergies/family-members", {
         credentials: "include",
       });
+      console.log("Family members response status:", res.status);
       if (!res.ok) throw new Error("Failed to fetch family members");
-      return res.json();
+      const data = await res.json();
+      console.log("Family members data received:", data);
+      return data;
     },
+    staleTime: 0, // Always fetch fresh data
+    refetchOnMount: true,
   });
 
+  if (membersError) {
+    console.error("Error fetching members:", membersError);
+  }
+
   const members: FamilyMember[] = membersData?.members || [];
+
+  console.log("=== ALLERGIES PAGE DEBUG ===");
+  console.log("Is loading:", isLoading);
+  console.log("Members data:", membersData);
+  console.log("Members array:", members);
+  console.log("Members count:", members.length);
+  console.log("Selected member:", selectedMember);
 
   // Fetch allergen profiles for selected member
   const { data: profilesData } = useQuery({
