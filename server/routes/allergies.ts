@@ -1,7 +1,7 @@
 import express, { type Request, type Response } from "express";
 import { db } from "../db/index.js";
 import { eq, and, or, inArray, sql } from "drizzle-orm";
-import { familyMembers, allergenProfiles, recipeAllergens, userSubstitutionPreferences, productAllergens, recipes } from "../../shared/schema.js";
+import { familyMembers, allergenProfiles, recipeAllergens, userSubstitutionPreferences, productAllergens, recipes, pantryItems } from "../../shared/schema.js";
 import { requireAuth } from "../middleware/index";
 
 const router = express.Router();
@@ -825,6 +825,79 @@ router.delete("/substitutions/:id", requireAuth, async (req: Request, res: Respo
   } catch (error) {
     console.error("Error deleting substitution preference:", error);
     res.status(500).json({ message: "Failed to delete substitution preference" });
+  }
+});
+
+// ============================================================
+// PANTRY ALLERGEN CHECKING
+// ============================================================
+
+// Check pantry items for allergens
+router.get("/pantry/check", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    // Get all family members and their allergens
+    const members = await db
+      .select()
+      .from(familyMembers)
+      .where(eq(familyMembers.userId, userId));
+
+    if (members.length === 0) {
+      return res.json({ warnings: [] });
+    }
+
+    // Get all allergen profiles for these members
+    const memberIds = members.map(m => m.id);
+    const allergenProfs = await db
+      .select()
+      .from(allergenProfiles)
+      .where(inArray(allergenProfiles.familyMemberId, memberIds));
+
+    if (allergenProfs.length === 0) {
+      return res.json({ warnings: [] });
+    }
+
+    // Get all pantry items for the user
+    const items = await db
+      .select()
+      .from(pantryItems)
+      .where(eq(pantryItems.userId, userId));
+
+    // Check each pantry item for allergens
+    const warnings: any[] = [];
+
+    items.forEach(item => {
+      const itemNameLower = item.name.toLowerCase();
+      const itemNotesLower = (item.notes || "").toLowerCase();
+
+      allergenProfs.forEach(allergen => {
+        const allergenLower = allergen.allergen.toLowerCase();
+        const allergenParts = allergenLower.split(/[\s\/,()]+/).filter(p => p.length > 2);
+
+        // Check if item name or notes contain the allergen or any of its parts
+        const matches = allergenParts.some(part =>
+          itemNameLower.includes(part) || itemNotesLower.includes(part)
+        );
+
+        if (matches) {
+          const member = members.find(m => m.id === allergen.familyMemberId);
+          warnings.push({
+            itemId: item.id,
+            itemName: item.name,
+            allergen: allergen.allergen,
+            severity: allergen.severity,
+            memberName: member?.name,
+            memberId: member?.id,
+          });
+        }
+      });
+    });
+
+    res.json({ warnings });
+  } catch (error) {
+    console.error("Error checking pantry for allergens:", error);
+    res.status(500).json({ message: "Failed to check pantry items" });
   }
 });
 
