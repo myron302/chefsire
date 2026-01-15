@@ -143,12 +143,21 @@ export default function AllergiesDashboard() {
 
       return JSON.parse(responseText);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/allergies/family-members"] });
       toast({ title: "✓ Family member added", description: "You can now add allergen profiles." });
       setShowAddMemberDialog(false);
       setSelectedHouseholdMemberId("");
       setMemberForm({ name: "", relationship: "", dateOfBirth: "", species: "human", notes: "" });
+
+      // Auto-select the newly added member
+      if (data?.member) {
+        setSelectedMember({
+          ...data.member,
+          allergenCount: 0,
+          severeCases: 0,
+        } as FamilyMember);
+      }
     },
     onError: (error: any) => {
       console.error("Add family member error:", error);
