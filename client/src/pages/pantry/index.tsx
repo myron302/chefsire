@@ -4,7 +4,7 @@ import { Link, useLocation } from "wouter";
 import {
   Package, Plus, Search, Filter, ScanLine, ChefHat,
   Calendar, AlertCircle, CheckCircle, Clock, Home,
-  Trash2, Edit, MapPin, DollarSign, Users, ShoppingCart
+  Trash2, Edit, MapPin, DollarSign, Users, ShoppingCart, AlertTriangle
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -116,6 +116,26 @@ export default function PantryDashboard() {
     queryKey: ["/api/pantry/items"],
     refetchInterval: 30000, // Refresh every 30s
   });
+
+  // Fetch allergen warnings for pantry items
+  const { data: allergenWarningsData } = useQuery({
+    queryKey: ["/api/allergies/pantry/check"],
+    queryFn: async () => {
+      const res = await fetch("/api/allergies/pantry/check", {
+        credentials: "include",
+      });
+      if (!res.ok) return { warnings: [] };
+      return res.json();
+    },
+    refetchInterval: 60000, // Refresh every minute
+  });
+
+  const allergenWarnings = allergenWarningsData?.warnings || [];
+
+  // Helper to get warnings for a specific item
+  const getItemWarnings = (itemId: string) => {
+    return allergenWarnings.filter((w: any) => w.itemId === itemId);
+  };
 
   // Household membership (so we can share items into a household pantry)
   const { data: householdInfo } = useQuery<any>({
@@ -598,6 +618,7 @@ export default function PantryDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredItems.map((item) => {
             const expiryStatus = getExpiryStatus(item.expirationDate);
+            const itemWarnings = getItemWarnings(item.id);
 
             return (
               <Card key={item.id} className="overflow-hidden">
@@ -610,11 +631,27 @@ export default function PantryDashboard() {
                     />
                     <div className="flex-1">
                       <h3 className="font-semibold text-lg mb-1">{item.name}</h3>
-                      {item.category && (
-                        <Badge variant="outline" className="text-xs">
-                          {item.category}
-                        </Badge>
-                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {item.category && (
+                          <Badge variant="outline" className="text-xs">
+                            {item.category}
+                          </Badge>
+                        )}
+                        {itemWarnings.map((warning: any, idx: number) => (
+                          <Badge
+                            key={idx}
+                            variant="outline"
+                            className={`text-xs ${
+                              warning.severity === "life-threatening" || warning.severity === "severe"
+                                ? "bg-red-100 text-red-800 border-red-300"
+                                : "bg-yellow-100 text-yellow-800 border-yellow-300"
+                            }`}
+                          >
+                            <AlertTriangle className="w-3 h-3 mr-1" />
+                            {warning.allergen} ({warning.memberName})
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
                     <div className="flex gap-1">
                       <Button
