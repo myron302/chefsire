@@ -60,6 +60,7 @@ export default function AllergiesDashboard() {
     notes: "",
   });
 
+  const [selectedAllergenValue, setSelectedAllergenValue] = useState("");
   const [customAllergen, setCustomAllergen] = useState("");
   const [showCustomAllergen, setShowCustomAllergen] = useState(false);
 
@@ -266,6 +267,7 @@ export default function AllergiesDashboard() {
       toast({ title: "✓ Allergen added" });
       setShowAllergenDialog(false);
       setAllergenForm({ allergen: "", severity: "moderate", diagnosedBy: "", diagnosedDate: "", notes: "" });
+      setSelectedAllergenValue("");
       setShowCustomAllergen(false);
       setCustomAllergen("");
     },
@@ -586,7 +588,17 @@ export default function AllergiesDashboard() {
                         </CardDescription>
                       </div>
                       <div className="flex gap-2">
-                        <Dialog open={showAllergenDialog} onOpenChange={setShowAllergenDialog}>
+                        <Dialog open={showAllergenDialog} onOpenChange={(open) => {
+                          console.log("Dialog opening:", open);
+                          if (open) {
+                            // Reset state when opening dialog
+                            setSelectedAllergenValue("");
+                            setShowCustomAllergen(false);
+                            setCustomAllergen("");
+                            setAllergenForm({ allergen: "", severity: "moderate", diagnosedBy: "", diagnosedDate: "", notes: "" });
+                          }
+                          setShowAllergenDialog(open);
+                        }}>
                           <DialogTrigger asChild>
                             <Button size="sm">
                               <Plus className="w-4 h-4 mr-2" />
@@ -601,11 +613,21 @@ export default function AllergiesDashboard() {
                               </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4">
+                              {/* Debug info */}
+                              <div className="p-2 bg-gray-100 rounded text-xs">
+                                <div>Selected Value: "{selectedAllergenValue}"</div>
+                                <div>Allergen Form: "{allergenForm.allergen}"</div>
+                                <div>Show Custom: {showCustomAllergen ? "Yes" : "No"}</div>
+                              </div>
+
                               <div>
                                 <Label htmlFor="allergen">Allergen *</Label>
                                 <Select
-                                  value={showCustomAllergen ? "custom" : allergenForm.allergen}
+                                  value={selectedAllergenValue}
                                   onValueChange={(val) => {
+                                    console.log("Allergen dropdown value changed to:", val);
+                                    console.log("Current selectedAllergenValue before update:", selectedAllergenValue);
+                                    setSelectedAllergenValue(val);
                                     if (val === "custom") {
                                       setShowCustomAllergen(true);
                                       setAllergenForm({ ...allergenForm, allergen: "" });
@@ -614,12 +636,16 @@ export default function AllergiesDashboard() {
                                       setCustomAllergen("");
                                       // Set the label as the allergen name
                                       const selected = commonAllergens.find(a => a.value === val);
+                                      console.log("Setting allergen form to:", selected?.label || val);
                                       setAllergenForm({ ...allergenForm, allergen: selected?.label || val });
                                     }
+                                    console.log("selectedAllergenValue updated to:", val);
                                   }}
                                 >
-                                  <SelectTrigger id="allergen">
-                                    <SelectValue placeholder="Select an allergen" />
+                                  <SelectTrigger id="allergen" className="bg-white text-black">
+                                    <SelectValue placeholder="Select an allergen" className="text-black opacity-100">
+                                      {selectedAllergenValue ? commonAllergens.find(a => a.value === selectedAllergenValue)?.label : "Select an allergen"}
+                                    </SelectValue>
                                   </SelectTrigger>
                                   <SelectContent>
                                     {commonAllergens.map((allergen) => (
@@ -695,6 +721,7 @@ export default function AllergiesDashboard() {
                               <div className="flex gap-3">
                                 <Button variant="outline" onClick={() => {
                                   setShowAllergenDialog(false);
+                                  setSelectedAllergenValue("");
                                   setShowCustomAllergen(false);
                                   setCustomAllergen("");
                                 }} className="flex-1">
