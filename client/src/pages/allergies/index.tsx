@@ -642,8 +642,10 @@ export default function AllergiesDashboard() {
                                     console.log("selectedAllergenValue updated to:", val);
                                   }}
                                 >
-                                  <SelectTrigger id="allergen">
-                                    <SelectValue placeholder="Select an allergen" />
+                                  <SelectTrigger id="allergen" className="bg-white text-black">
+                                    <SelectValue placeholder="Select an allergen" className="text-black opacity-100">
+                                      {selectedAllergenValue ? commonAllergens.find(a => a.value === selectedAllergenValue)?.label : "Select an allergen"}
+                                    </SelectValue>
                                   </SelectTrigger>
                                   <SelectContent>
                                     {commonAllergens.map((allergen) => (
