@@ -249,17 +249,21 @@ export default function AllergiesDashboard() {
   // Add allergen profile mutation
   const addAllergenMutation = useMutation({
     mutationFn: async (data: any) => {
+      console.log("=== ADD ALLERGEN MUTATION ===");
+      console.log("Data being sent:", data);
       const res = await fetch("/api/allergies/profiles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify(data),
       });
+      console.log("Response status:", res.status);
+      const responseData = await res.json();
+      console.log("Response data:", responseData);
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to add allergen");
+        throw new Error(responseData.message || "Failed to add allergen");
       }
-      return res.json();
+      return responseData;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/allergies/profiles", selectedMember?.id] });
@@ -272,6 +276,9 @@ export default function AllergiesDashboard() {
       setCustomAllergen("");
     },
     onError: (error: Error) => {
+      console.error("=== ADD ALLERGEN ERROR ===");
+      console.error("Error:", error);
+      console.error("Error message:", error.message);
       toast({ title: "Failed to add allergen", description: error.message, variant: "destructive" });
     },
   });
@@ -316,16 +323,29 @@ export default function AllergiesDashboard() {
 
   // Handle add allergen
   const handleAddAllergen = () => {
-    if (!selectedMember) return;
+    console.log("=== HANDLE ADD ALLERGEN ===");
+    console.log("Selected member:", selectedMember);
+    console.log("Allergen form:", allergenForm);
+    console.log("Selected allergen value:", selectedAllergenValue);
+
+    if (!selectedMember) {
+      console.error("No selected member!");
+      return;
+    }
+
     if (!allergenForm.allergen.trim()) {
+      console.error("Allergen field is empty!");
       toast({ title: "Enter allergen name", variant: "destructive" });
       return;
     }
 
-    addAllergenMutation.mutate({
+    const dataToSend = {
       familyMemberId: selectedMember.id,
       ...allergenForm,
-    });
+    };
+
+    console.log("Data to send:", dataToSend);
+    addAllergenMutation.mutate(dataToSend);
   };
 
   if (isLoading) {
