@@ -588,7 +588,17 @@ export default function AllergiesDashboard() {
                         </CardDescription>
                       </div>
                       <div className="flex gap-2">
-                        <Dialog open={showAllergenDialog} onOpenChange={setShowAllergenDialog}>
+                        <Dialog open={showAllergenDialog} onOpenChange={(open) => {
+                          console.log("Dialog opening:", open);
+                          if (open) {
+                            // Reset state when opening dialog
+                            setSelectedAllergenValue("");
+                            setShowCustomAllergen(false);
+                            setCustomAllergen("");
+                            setAllergenForm({ allergen: "", severity: "moderate", diagnosedBy: "", diagnosedDate: "", notes: "" });
+                          }
+                          setShowAllergenDialog(open);
+                        }}>
                           <DialogTrigger asChild>
                             <Button size="sm">
                               <Plus className="w-4 h-4 mr-2" />
@@ -603,11 +613,20 @@ export default function AllergiesDashboard() {
                               </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4">
+                              {/* Debug info */}
+                              <div className="p-2 bg-gray-100 rounded text-xs">
+                                <div>Selected Value: "{selectedAllergenValue}"</div>
+                                <div>Allergen Form: "{allergenForm.allergen}"</div>
+                                <div>Show Custom: {showCustomAllergen ? "Yes" : "No"}</div>
+                              </div>
+
                               <div>
                                 <Label htmlFor="allergen">Allergen *</Label>
                                 <Select
                                   value={selectedAllergenValue}
                                   onValueChange={(val) => {
+                                    console.log("Allergen dropdown value changed to:", val);
+                                    console.log("Current selectedAllergenValue before update:", selectedAllergenValue);
                                     setSelectedAllergenValue(val);
                                     if (val === "custom") {
                                       setShowCustomAllergen(true);
@@ -617,8 +636,10 @@ export default function AllergiesDashboard() {
                                       setCustomAllergen("");
                                       // Set the label as the allergen name
                                       const selected = commonAllergens.find(a => a.value === val);
+                                      console.log("Setting allergen form to:", selected?.label || val);
                                       setAllergenForm({ ...allergenForm, allergen: selected?.label || val });
                                     }
+                                    console.log("selectedAllergenValue updated to:", val);
                                   }}
                                 >
                                   <SelectTrigger id="allergen">
