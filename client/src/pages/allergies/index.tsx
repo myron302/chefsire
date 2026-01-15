@@ -60,6 +60,34 @@ export default function AllergiesDashboard() {
     notes: "",
   });
 
+  const [customAllergen, setCustomAllergen] = useState("");
+  const [showCustomAllergen, setShowCustomAllergen] = useState(false);
+
+  // Common allergens list
+  const commonAllergens = [
+    { value: "peanuts", label: "Peanuts" },
+    { value: "tree-nuts", label: "Tree Nuts (almonds, walnuts, cashews)" },
+    { value: "milk", label: "Milk/Dairy" },
+    { value: "eggs", label: "Eggs" },
+    { value: "wheat", label: "Wheat/Gluten" },
+    { value: "soy", label: "Soy" },
+    { value: "fish", label: "Fish" },
+    { value: "shellfish", label: "Shellfish (shrimp, crab, lobster)" },
+    { value: "sesame", label: "Sesame" },
+    { value: "corn", label: "Corn" },
+    { value: "chicken", label: "Chicken" },
+    { value: "beef", label: "Beef" },
+    { value: "pork", label: "Pork" },
+    { value: "chocolate", label: "Chocolate" },
+    { value: "tomatoes", label: "Tomatoes" },
+    { value: "citrus", label: "Citrus Fruits" },
+    { value: "onions", label: "Onions" },
+    { value: "garlic", label: "Garlic" },
+    { value: "grapes", label: "Grapes/Raisins (toxic to pets)" },
+    { value: "xylitol", label: "Xylitol (toxic to pets)" },
+    { value: "custom", label: "Other (custom)" },
+  ];
+
   // Fetch household info and members
   const { data: householdData } = useQuery({
     queryKey: ["/api/pantry/household"],
@@ -238,6 +266,8 @@ export default function AllergiesDashboard() {
       toast({ title: "✓ Allergen added" });
       setShowAllergenDialog(false);
       setAllergenForm({ allergen: "", severity: "moderate", diagnosedBy: "", diagnosedDate: "", notes: "" });
+      setShowCustomAllergen(false);
+      setCustomAllergen("");
     },
     onError: (error: Error) => {
       toast({ title: "Failed to add allergen", description: error.message, variant: "destructive" });
@@ -573,12 +603,43 @@ export default function AllergiesDashboard() {
                             <div className="space-y-4">
                               <div>
                                 <Label htmlFor="allergen">Allergen *</Label>
-                                <Input
-                                  id="allergen"
-                                  placeholder="e.g., Peanuts, Dairy, Shellfish"
-                                  value={allergenForm.allergen}
-                                  onChange={(e) => setAllergenForm({ ...allergenForm, allergen: e.target.value })}
-                                />
+                                <Select
+                                  value={showCustomAllergen ? "custom" : allergenForm.allergen}
+                                  onValueChange={(val) => {
+                                    if (val === "custom") {
+                                      setShowCustomAllergen(true);
+                                      setAllergenForm({ ...allergenForm, allergen: "" });
+                                    } else {
+                                      setShowCustomAllergen(false);
+                                      setCustomAllergen("");
+                                      // Set the label as the allergen name
+                                      const selected = commonAllergens.find(a => a.value === val);
+                                      setAllergenForm({ ...allergenForm, allergen: selected?.label || val });
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger id="allergen">
+                                    <SelectValue placeholder="Select an allergen" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {commonAllergens.map((allergen) => (
+                                      <SelectItem key={allergen.value} value={allergen.value}>
+                                        {allergen.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                {showCustomAllergen && (
+                                  <Input
+                                    className="mt-2"
+                                    placeholder="Enter custom allergen name"
+                                    value={customAllergen}
+                                    onChange={(e) => {
+                                      setCustomAllergen(e.target.value);
+                                      setAllergenForm({ ...allergenForm, allergen: e.target.value });
+                                    }}
+                                  />
+                                )}
                               </div>
 
                               <div>
@@ -632,7 +693,11 @@ export default function AllergiesDashboard() {
                               </div>
 
                               <div className="flex gap-3">
-                                <Button variant="outline" onClick={() => setShowAllergenDialog(false)} className="flex-1">
+                                <Button variant="outline" onClick={() => {
+                                  setShowAllergenDialog(false);
+                                  setShowCustomAllergen(false);
+                                  setCustomAllergen("");
+                                }} className="flex-1">
                                   Cancel
                                 </Button>
                                 <Button
