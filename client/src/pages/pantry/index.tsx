@@ -927,12 +927,18 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
 
   const addMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
+      // Clean data - remove empty strings for optional fields
+      const cleanedData = {
+        ...data,
+        expirationDate: data.expirationDate ? new Date(data.expirationDate).toISOString() : undefined,
+      };
+
       // Add to pantry
       const res = await fetch("/api/pantry/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(data),
+        body: JSON.stringify(cleanedData),
       });
       if (!res.ok) {
         const error = await res.text();
