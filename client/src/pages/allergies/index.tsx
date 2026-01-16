@@ -363,11 +363,15 @@ export default function AllergiesDashboard() {
 
     const dataToSend = {
       familyMemberId: selectedMember.id,
+<<<<<<< HEAD
       allergen: allergenForm.allergen,
       severity: allergenForm.severity,
       diagnosedBy: allergenForm.diagnosedBy || null,
       diagnosedDate: allergenForm.diagnosedDate || null,
       notes: allergenForm.notes || null,
+=======
+      ...allergenForm,
+>>>>>>> origin/main
     };
 
     console.log("Data to send:", dataToSend);
