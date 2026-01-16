@@ -359,6 +359,10 @@ router.post("/profiles", requireAuth, async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const { familyMemberId, allergen, severity, diagnosedBy, diagnosedDate, notes } = req.body;
 
+    console.log("=== ADD ALLERGEN PROFILE ===");
+    console.log("User ID:", userId);
+    console.log("Request body:", req.body);
+
     if (!familyMemberId || !allergen || !severity) {
       return res.status(400).json({ message: "Family member, allergen, and severity are required" });
     }
@@ -369,6 +373,8 @@ router.post("/profiles", requireAuth, async (req: Request, res: Response) => {
       .from(familyMembers)
       .where(and(eq(familyMembers.id, familyMemberId), eq(familyMembers.userId, userId)))
       .limit(1);
+
+    console.log("Member found:", member);
 
     if (!member) {
       return res.status(404).json({ message: "Family member not found" });
@@ -386,6 +392,8 @@ router.post("/profiles", requireAuth, async (req: Request, res: Response) => {
       )
       .limit(1);
 
+    console.log("Existing allergen profile:", existing);
+
     if (existing) {
       return res.status(400).json({ message: "This allergen is already tracked for this family member" });
     }
@@ -393,28 +401,42 @@ router.post("/profiles", requireAuth, async (req: Request, res: Response) => {
     // Convert diagnosedDate string to Date object if provided
     let diagnosedDateValue = null;
     if (diagnosedDate) {
+      console.log("Converting diagnosedDate:", diagnosedDate, typeof diagnosedDate);
       diagnosedDateValue = new Date(diagnosedDate);
+      console.log("Converted date:", diagnosedDateValue, "isNaN:", isNaN(diagnosedDateValue.getTime()));
       if (isNaN(diagnosedDateValue.getTime())) {
         return res.status(400).json({ message: "Invalid diagnosis date" });
       }
     }
 
+    const valuesToInsert = {
+      familyMemberId,
+      allergen: allergen.toLowerCase().trim(),
+      severity,
+      diagnosedBy: diagnosedBy || null,
+      diagnosedDate: diagnosedDateValue,
+      notes: notes || null,
+    };
+
+    console.log("Values to insert:", valuesToInsert);
+
     const [profile] = await db
       .insert(allergenProfiles)
-      .values({
-        familyMemberId,
-        allergen: allergen.toLowerCase().trim(),
-        severity,
-        diagnosedBy: diagnosedBy || null,
-        diagnosedDate: diagnosedDateValue,
-        notes: notes || null,
-      })
+      .values(valuesToInsert)
       .returning();
 
+    console.log("Successfully created allergen profile:", profile);
     res.json({ profile });
   } catch (error) {
-    console.error("Error adding allergen profile:", error);
-    res.status(500).json({ message: "Failed to add allergen profile" });
+    console.error("=== ERROR ADDING ALLERGEN PROFILE ===");
+    console.error("Error details:", error);
+    console.error("Error message:", error instanceof Error ? error.message : String(error));
+    console.error("Error stack:", error instanceof Error ? error.stack : "N/A");
+    res.status(500).json({
+      message: "Failed to add allergen profile",
+      error: error instanceof Error ? error.message : String(error),
+      details: process.env.NODE_ENV === "development" ? error : undefined
+    });
   }
 });
 

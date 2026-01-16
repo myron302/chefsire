@@ -261,7 +261,13 @@ export default function AllergiesDashboard() {
       const responseData = await res.json();
       console.log("Response data:", responseData);
       if (!res.ok) {
-        throw new Error(responseData.message || "Failed to add allergen");
+        // Throw error with full server response
+        const error: any = new Error(responseData.message || "Failed to add allergen");
+        error.status = res.status;
+        error.serverError = responseData.error;
+        error.details = responseData.details;
+        error.fullResponse = responseData;
+        throw error;
       }
       return responseData;
     },
@@ -275,11 +281,27 @@ export default function AllergiesDashboard() {
       setShowCustomAllergen(false);
       setCustomAllergen("");
     },
-    onError: (error: Error) => {
+    onError: (error: any) => {
       console.error("=== ADD ALLERGEN ERROR ===");
       console.error("Error:", error);
       console.error("Error message:", error.message);
-      toast({ title: "Failed to add allergen", description: error.message, variant: "destructive" });
+      console.error("Server error:", error.serverError);
+      console.error("Full response:", error.fullResponse);
+
+      // Show detailed debug toast
+      const debugDetails = [
+        `Status: ${error.status || 'unknown'}`,
+        `Message: ${error.message}`,
+        error.serverError ? `Server Error: ${error.serverError}` : '',
+        error.details ? `Details: ${JSON.stringify(error.details).substring(0, 200)}` : '',
+      ].filter(Boolean).join('\n');
+
+      toast({
+        title: "DEBUG: Failed to add allergen",
+        description: debugDetails,
+        variant: "destructive",
+        duration: 15000, // Show for 15 seconds
+      });
     },
   });
 
@@ -341,7 +363,15 @@ export default function AllergiesDashboard() {
 
     const dataToSend = {
       familyMemberId: selectedMember.id,
+<<<<<<< HEAD
+      allergen: allergenForm.allergen,
+      severity: allergenForm.severity,
+      diagnosedBy: allergenForm.diagnosedBy || null,
+      diagnosedDate: allergenForm.diagnosedDate || null,
+      notes: allergenForm.notes || null,
+=======
       ...allergenForm,
+>>>>>>> origin/main
     };
 
     console.log("Data to send:", dataToSend);
