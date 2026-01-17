@@ -2,8 +2,10 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LayoutGrid, List, Heart, MessageCircle } from "lucide-react";
 import RecipeCard from "@/components/recipe-card";
+import UserSearchResults from "@/components/UserSearchResults";
 
 type Post = {
   id: string | number;
@@ -234,47 +236,61 @@ export default function ExplorePage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 md:px-6 py-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Explore</h1>
-        <div className="flex gap-2">
-          <Button
-            variant={view === "grid" ? "default" : "outline"}
-            onClick={() => setView("grid")}
-            className="gap-2"
-          >
-            <LayoutGrid className="h-4 w-4" />
-            Grid
-          </Button>
-          <Button
-            variant={view === "list" ? "default" : "outline"}
-            onClick={() => setView("list")}
-            className="gap-2"
-          >
-            <List className="h-4 w-4" />
-            List
-          </Button>
-        </div>
-      </div>
+      <h1 className="text-2xl font-bold">Explore</h1>
 
-      {feed.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
-          <p className="text-sm text-muted-foreground">No posts… yet.</p>
-        </div>
-      ) : view === "grid" ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {feed.map((p) => (
-            <ExploreTile key={p.id} post={p} />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {feed.map((p) => (
-            <div key={p.id}>
-              <ExploreTile post={p} />
+      <Tabs defaultValue="posts" className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="posts">Posts</TabsTrigger>
+          <TabsTrigger value="users">Users</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="posts" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-2">
+              <Button
+                variant={view === "grid" ? "default" : "outline"}
+                onClick={() => setView("grid")}
+                className="gap-2"
+              >
+                <LayoutGrid className="h-4 w-4" />
+                Grid
+              </Button>
+              <Button
+                variant={view === "list" ? "default" : "outline"}
+                onClick={() => setView("list")}
+                className="gap-2"
+              >
+                <List className="h-4 w-4" />
+                List
+              </Button>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+
+          {feed.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
+              <p className="text-sm text-muted-foreground">No posts… yet.</p>
+            </div>
+          ) : view === "grid" ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {feed.map((p) => (
+                <ExploreTile key={p.id} post={p} />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {feed.map((p) => (
+                <div key={p.id}>
+                  <ExploreTile post={p} />
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="users" className="py-4">
+          <UserSearchResults />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
