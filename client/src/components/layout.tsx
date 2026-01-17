@@ -906,22 +906,7 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* Mobile search */}
       <div className="md:hidden px-4 py-2 bg-background border-t border-border">
-        <form onSubmit={onSearchSubmit} className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              type="text"
-              placeholder="Search recipes..."
-              className="w-full pl-10 bg-muted border-border rounded-full"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              aria-label="Search site (mobile)"
-            />
-          </div>
-          <Button type="submit" size="sm" className="shrink-0 rounded-full px-3">
-            Go
-          </Button>
-        </form>
+        <SearchAutocomplete />
       </div>
 
       {user && <MobileNav onCreatePost={handleCreatePost} />}
