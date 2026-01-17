@@ -12,6 +12,7 @@ import marketplaceRouter from "./marketplace";
 import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
 import allergiesRouter from "./allergies";
+import searchRouter from "./search";
 import nutritionRouter from "./nutrition";
 import mealPlansRouter from "./meal-plans";
 import mealPlannerAdvancedRouter from "./meal-planner-advanced";
@@ -102,6 +103,9 @@ r.use("/marketplace", marketplaceRouter);
 
 // Substitutions - prefixed
 r.use("/substitutions", substitutionsRouter);
+
+// Search - prefixed
+r.use("/search", searchRouter);
 
 // Drinks - prefixed
 r.use("/drinks", drinksRouter);

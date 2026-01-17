@@ -15,6 +15,45 @@ const r = Router();
 /* ------------------------------------------------------------------ */
 /* Users & profile basics                                              */
 /* ------------------------------------------------------------------ */
+
+/**
+ * GET /api/users/search
+ * Search for users by username, displayName, bio, or specialty
+ */
+r.get("/search", async (req, res) => {
+  try {
+    const query = typeof req.query.q === "string" ? req.query.q : "";
+    const limit = typeof req.query.limit === "string"
+      ? parseInt(req.query.limit, 10)
+      : 20;
+
+    if (!query || query.trim().length === 0) {
+      return res.json({ users: [] });
+    }
+
+    const users = await storage.searchUsers(query.trim(), limit);
+
+    // Remove sensitive fields
+    const sanitizedUsers = users.map(user => ({
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      bio: user.bio,
+      avatar: user.avatar,
+      specialty: user.specialty,
+      isChef: user.isChef,
+      followersCount: user.followersCount,
+      followingCount: user.followingCount,
+      postsCount: user.postsCount,
+    }));
+
+    res.json({ users: sanitizedUsers });
+  } catch (error) {
+    console.error("GET /users/search error", error);
+    res.status(500).json({ message: "Failed to search users" });
+  }
+});
+
 r.get("/:id", async (req, res) => {
   try {
     const user = await storage.getUser(req.params.id);

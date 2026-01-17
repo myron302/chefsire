@@ -97,6 +97,8 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
   getSuggestedUsers(userId: string, limit?: number): Promise<User[]>;
+  searchUsers(query: string, limit?: number): Promise<User[]>;
+  deleteUser(userId: string): Promise<boolean>;
 
   // Email Verification
   findByEmail(email: string): Promise<User | undefined>;
@@ -360,6 +362,30 @@ export class DrizzleStorage implements IStorage {
       .where(and(sql`${users.id} != ${userId}`, eq(users.isChef, true)))
       .orderBy(desc(users.followersCount))
       .limit(limit);
+  }
+
+  async searchUsers(query: string, limit = 20): Promise<User[]> {
+    const db = getDb();
+    const searchTerm = `%${query}%`;
+    return db
+      .select()
+      .from(users)
+      .where(
+        or(
+          ilike(users.username, searchTerm),
+          ilike(users.displayName, searchTerm),
+          ilike(users.bio, searchTerm),
+          ilike(users.specialty, searchTerm)
+        )!
+      )
+      .orderBy(desc(users.followersCount))
+      .limit(limit);
+  }
+
+  async deleteUser(userId: string): Promise<boolean> {
+    const db = getDb();
+    const result = await db.delete(users).where(eq(users.id, userId)).returning();
+    return result.length > 0;
   }
 
   // ---------- Email Verification ----------

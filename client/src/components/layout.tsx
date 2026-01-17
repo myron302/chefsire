@@ -1,17 +1,17 @@
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useUser } from "@/contexts/UserContext";
 import {
-  Search, MessageCircle, User, ChevronDown, ChevronRight,
+  MessageCircle, User, ChevronDown, ChevronRight,
   Settings, LogOut, Plus,
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
 import NotificationBell from "@/components/NotificationBell";
+import SearchAutocomplete from "@/components/SearchAutocomplete";
 import chefLogo from "../asset/logo.jpg";
 
 interface LayoutProps {
@@ -21,7 +21,6 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const [pathname, setLocation] = useLocation();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [searchText, setSearchText] = useState("");
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
   const { user, logout } = useUser();
 
@@ -50,14 +49,6 @@ export default function Layout({ children }: LayoutProps) {
 
   const handleCreatePost = () => {
     setLocation("/create");
-  };
-
-  const onSearchSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    const q = searchText.trim();
-    setIsDropdownOpen(false);
-    if (q) setLocation(`/recipes?q=${encodeURIComponent(q)}`);
-    else setLocation("/recipes");
   };
 
   const toggleSubmenu = (key: string, e: React.MouseEvent) => {
@@ -97,17 +88,7 @@ export default function Layout({ children }: LayoutProps) {
 
             {/* Search */}
             <div className="hidden md:flex flex-1 max-w-lg mx-8">
-              <form className="relative w-full" onSubmit={onSearchSubmit}>
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                <Input
-                  type="text"
-                  placeholder="Search recipes, chefs, or ingredients..."
-                  className="w-full pl-10 bg-muted border-border rounded-full"
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                  aria-label="Search site"
-                />
-              </form>
+              <SearchAutocomplete />
             </div>
 
             {/* Actions */}
