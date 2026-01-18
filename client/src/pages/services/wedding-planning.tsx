@@ -274,7 +274,7 @@ export default function WeddingPlanning() {
   const { toast } = useToast();
 
   // Get user context and check subscription status
-  const { user } = useUser();
+  const { user, updateUser } = useUser();
   const currentTier = user?.subscriptionTier || 'free';
   const isPremium = currentTier === 'premium' || currentTier === 'elite';
   const isElite = currentTier === 'elite';
@@ -618,9 +618,21 @@ export default function WeddingPlanning() {
     localStorage.setItem('weddingTierSelected', 'true');
     setShowTrialSelector(false);
 
-    // In production, this would update the user's subscription
-    // For now, just show a confirmation
     const plan = couplePlans[tier];
+
+    // Calculate trial end date
+    let subscriptionEndsAt: Date | undefined;
+    if (tier !== 'free' && plan.trialDays) {
+      subscriptionEndsAt = new Date();
+      subscriptionEndsAt.setDate(subscriptionEndsAt.getDate() + plan.trialDays);
+    }
+
+    // Update user's subscription tier in database and local state
+    await updateUser({
+      subscriptionTier: tier,
+      subscriptionStatus: 'active' as any,
+      subscriptionEndsAt: subscriptionEndsAt?.toISOString() as any,
+    });
 
     if (tier === 'free') {
       toast({
@@ -633,7 +645,7 @@ export default function WeddingPlanning() {
         description: `Enjoy all ${plan.name} features for free. No credit card required.`,
       });
     }
-  }, [toast]);
+  }, [updateUser, toast]);
 
   return (
     <div className="max-w-7xl mx-auto px-3 md:px-4 py-4 md:py-8">
