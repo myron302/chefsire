@@ -21,6 +21,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Link } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
 import { useUser } from '@/contexts/UserContext';
+import WeddingTrialSelector from '@/components/WeddingTrialSelector';
+import { couplePlans } from '@/config/wedding-pricing';
 
 // =========================================================
 // STATIC DATA - Moved outside component for performance
@@ -273,7 +275,15 @@ export default function WeddingPlanning() {
 
   // Get user context and check subscription status
   const { user } = useUser();
-  const isPremium = user?.subscriptionTier === 'premium';
+  const currentTier = user?.subscriptionTier || 'free';
+  const isPremium = currentTier === 'premium' || currentTier === 'elite';
+  const isElite = currentTier === 'elite';
+
+  // Trial selector modal
+  const [showTrialSelector, setShowTrialSelector] = useState(() => {
+    // Show modal if user hasn't selected a tier yet
+    return !localStorage.getItem('weddingTierSelected');
+  });
 
   // Simulated dynamic savings data (replace with a real API call if needed)
   const dynamicSavings = 4200;
@@ -603,8 +613,36 @@ export default function WeddingPlanning() {
     });
   }, [toast]);
 
+  const handleTrialSelect = useCallback(async (tier: 'free' | 'premium' | 'elite') => {
+    // Store the selection
+    localStorage.setItem('weddingTierSelected', 'true');
+    setShowTrialSelector(false);
+
+    // In production, this would update the user's subscription
+    // For now, just show a confirmation
+    const plan = couplePlans[tier];
+
+    if (tier === 'free') {
+      toast({
+        title: "Free Plan Activated",
+        description: "You can upgrade to Premium or Elite anytime to unlock more features!",
+      });
+    } else {
+      toast({
+        title: `${plan.trialDays}-Day ${plan.name} Trial Started!`,
+        description: `Enjoy all ${plan.name} features for free. No credit card required.`,
+      });
+    }
+  }, [toast]);
+
   return (
     <div className="max-w-7xl mx-auto px-3 md:px-4 py-4 md:py-8">
+      {/* Trial Selector Modal */}
+      <WeddingTrialSelector
+        open={showTrialSelector}
+        onSelect={handleTrialSelect}
+      />
+
       {showTrialBanner && (
         <Card className="mb-4 md:mb-6 border-2 border-purple-500 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
           <CardContent className="p-3 md:p-4">
@@ -804,21 +842,21 @@ export default function WeddingPlanning() {
           </Card>
 
           {/* Dynamic Budget Advisor Card */}
-          <Card className={isPremium ? 'border-green-500/50' : 'border-gray-200'}>
+          <Card className={isElite ? 'border-amber-500/50' : 'border-gray-200'}>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className={isPremium ? 'text-green-700' : 'text-gray-500'}>
-                {isPremium
-                  ? 'Dynamic Budget Advisor'
-                  : 'Budget Optimization (Premium)'}
+              <CardTitle className={isElite ? 'text-amber-700' : 'text-gray-500'}>
+                {isElite
+                  ? 'AI-Powered Budget Optimizer'
+                  : 'Budget Optimization (Elite)'}
               </CardTitle>
-              {isPremium ? (
-                <TrendingUp className="w-6 h-6 text-green-600" />
+              {isElite ? (
+                <TrendingUp className="w-6 h-6 text-amber-600" />
               ) : (
                 <Lock className="w-6 h-6 text-gray-400" />
               )}
             </CardHeader>
             <CardContent>
-              {isPremium ? (
+              {isElite ? (
                 <div className="space-y-3">
                   <p className="text-4xl font-bold text-green-600">
                     <DollarSign className="w-6 h-6 inline mr-1" />
@@ -834,18 +872,18 @@ export default function WeddingPlanning() {
                 <div className="space-y-3">
                   <p className="text-4xl font-bold text-gray-400">Locked</p>
                   <p className="text-sm text-muted-foreground">
-                    Unlock the Dynamic Budget Advisor to find an average of
-                    <span className="font-bold text-pink-600"> $4,200</span> in hidden
-                    savings based on your criteria.
+                    Unlock the AI-Powered Budget Optimizer (Elite tier) to find an average of
+                    <span className="font-bold text-amber-600"> $4,200</span> in hidden
+                    savings based on your criteria and AI recommendations.
                   </p>
                   <Button
                     size="sm"
                     variant="outline"
-                    className="bg-pink-100 border-pink-300"
+                    className="bg-amber-100 border-amber-300"
                     onClick={handleGoPremium}
                   >
-                    <Heart className="w-4 h-4 mr-2" />
-                    Go Premium
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                    Upgrade to Elite
                   </Button>
                 </div>
               )}
