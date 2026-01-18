@@ -51,16 +51,16 @@ router.post("/send-invitations", async (req, res) => {
       return res.status(400).json({ ok: false, error: "guests array is required" });
     }
 
-    // Check if user has premium subscription
+    // Check if user has premium or elite subscription
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!user) {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
 
-    if (user.subscriptionTier !== "premium") {
+    if (user.subscriptionTier !== "premium" && user.subscriptionTier !== "elite") {
       return res.status(403).json({
         ok: false,
-        error: "Premium subscription required to send wedding invitations",
+        error: "Premium or Elite subscription required to send wedding invitations",
       });
     }
 
