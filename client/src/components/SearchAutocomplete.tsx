@@ -4,6 +4,7 @@ import { Search, User, ChefHat, Utensils } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/use-toast";
 
 interface AutocompleteResult {
   users: Array<{
@@ -43,6 +44,17 @@ export default function SearchAutocomplete() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimer = useRef<NodeJS.Timeout>();
+  const { toast } = useToast();
+
+  // Debug: Log component mount
+  useEffect(() => {
+    console.log("[SearchAutocomplete] Component mounted");
+    toast({
+      title: "Search Ready",
+      description: "SearchAutocomplete component loaded successfully",
+      duration: 2000,
+    });
+  }, []);
 
   // Flatten results for keyboard navigation
   const allResults = results
@@ -106,6 +118,12 @@ export default function SearchAutocomplete() {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+    console.log("[SearchAutocomplete] Form submitted with query:", searchText);
+    toast({
+      title: "Search Submitted",
+      description: `Searching for: ${searchText || "(empty)"}`,
+      duration: 2000,
+    });
     const q = searchText.trim();
     setIsOpen(false);
     if (q) {
@@ -116,6 +134,7 @@ export default function SearchAutocomplete() {
   };
 
   const handleResultClick = (item: any) => {
+    console.log("[SearchAutocomplete] Result clicked:", item);
     setIsOpen(false);
     setSearchText("");
 
