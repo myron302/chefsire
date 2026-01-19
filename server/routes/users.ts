@@ -120,6 +120,8 @@ r.put("/:id", requireAuth, async (req, res) => {
       isChef: z.boolean().optional(),
       subscription: z.string().optional(),
       subscriptionTier: z.string().optional(),
+      subscriptionStatus: z.string().optional(),
+      subscriptionEndsAt: z.string().optional().nullable(),
       trialEndDate: z.string().optional().nullable(),
     });
     const body = schema.parse(req.body);
