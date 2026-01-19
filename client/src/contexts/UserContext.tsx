@@ -13,6 +13,8 @@ type User = {
   followingCount?: number;
   // Marketplace/Store fields
   subscriptionTier?: string;
+  subscriptionStatus?: string;
+  subscriptionEndsAt?: string;
   nutritionPremium?: boolean;
   nutritionTrialEndsAt?: string;
   subscription?: 'free' | 'starter' | 'professional' | 'enterprise' | 'premium_plus' | string;
@@ -68,6 +70,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
                 avatar: data.user.avatar ?? null,
                 bio: data.user.bio ?? null,
                 subscriptionTier: data.user.subscriptionTier,
+                subscriptionStatus: data.user.subscriptionStatus,
+                subscriptionEndsAt: data.user.subscriptionEndsAt,
                 nutritionPremium: data.user.nutritionPremium,
                 nutritionTrialEndsAt: data.user.nutritionTrialEndsAt,
                 subscription: data.user.subscription || data.user.subscriptionTier || 'free',
@@ -149,6 +153,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
         avatar: data.user.avatar ?? null,
         bio: data.user.bio ?? null,
         subscriptionTier: data.user.subscriptionTier,
+        subscriptionStatus: data.user.subscriptionStatus,
+        subscriptionEndsAt: data.user.subscriptionEndsAt,
         nutritionPremium: data.user.nutritionPremium,
         nutritionTrialEndsAt: data.user.nutritionTrialEndsAt,
         subscription: data.user.subscription || data.user.subscriptionTier || 'free',
@@ -225,9 +231,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
   };
 
   const updateUser = async (updates: Partial<User>) => {
+    console.log('[UserContext] updateUser called with:', updates);
+
     setUser((prev) => {
-      if (!prev) return prev;
+      if (!prev) {
+        console.log('[UserContext] No previous user, skipping update');
+        return prev;
+      }
       const merged = { ...prev, ...updates };
+      console.log('[UserContext] User updated in state:', merged);
       localStorage.setItem("user", JSON.stringify(merged));
       return merged;
     });
@@ -235,6 +247,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     // Persist to server
     try {
       if (user?.id) {
+        console.log('[UserContext] Persisting to server for user:', user.id);
         const response = await fetch(`/api/users/${user.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -243,11 +256,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
         });
 
         if (!response.ok) {
-          console.error("Failed to update user on server:", await response.text());
+          console.error("[UserContext] Failed to update user on server:", await response.text());
+        } else {
+          console.log('[UserContext] Server update successful');
         }
       }
     } catch (error) {
-      console.error("Error updating user on server:", error);
+      console.error("[UserContext] Error updating user on server:", error);
     }
   };
 
