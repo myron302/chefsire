@@ -614,9 +614,7 @@ export default function WeddingPlanning() {
   }, [toast]);
 
   const handleTrialSelect = useCallback(async (tier: 'free' | 'premium' | 'elite') => {
-    // Store the selection
-    localStorage.setItem('weddingTierSelected', 'true');
-    setShowTrialSelector(false);
+    console.log('[Wedding Planning] Trial selected:', tier);
 
     const plan = couplePlans[tier];
 
@@ -627,12 +625,19 @@ export default function WeddingPlanning() {
       subscriptionEndsAt.setDate(subscriptionEndsAt.getDate() + plan.trialDays);
     }
 
-    // Update user's subscription tier in database and local state
+    // Update user's subscription tier in database and local state FIRST
+    console.log('[Wedding Planning] Updating user tier to:', tier);
     await updateUser({
       subscriptionTier: tier,
       subscriptionStatus: 'active' as any,
       subscriptionEndsAt: subscriptionEndsAt?.toISOString() as any,
     });
+
+    console.log('[Wedding Planning] User updated successfully');
+
+    // Store the selection and close modal AFTER update completes
+    localStorage.setItem('weddingTierSelected', 'true');
+    setShowTrialSelector(false);
 
     if (tier === 'free') {
       toast({
