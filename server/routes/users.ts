@@ -125,7 +125,17 @@ r.put("/:id", requireAuth, async (req, res) => {
       trialEndDate: z.string().optional().nullable(),
     });
     const body = schema.parse(req.body);
-    const updated = await storage.updateUser(req.params.id, body as any);
+
+    // Convert date strings to Date objects for Drizzle timestamp fields
+    const updates: any = { ...body };
+    if (body.subscriptionEndsAt) {
+      updates.subscriptionEndsAt = new Date(body.subscriptionEndsAt);
+    }
+    if (body.trialEndDate) {
+      updates.trialEndDate = new Date(body.trialEndDate);
+    }
+
+    const updated = await storage.updateUser(req.params.id, updates);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Profile updated successfully", user: updated });
   } catch (error: any) {

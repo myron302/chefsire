@@ -619,18 +619,19 @@ export default function WeddingPlanning() {
     const plan = couplePlans[tier];
 
     // Calculate trial end date
-    let subscriptionEndsAt: Date | undefined;
+    let subscriptionEndsAt: string | null = null;
     if (tier !== 'free' && plan.trialDays) {
-      subscriptionEndsAt = new Date();
-      subscriptionEndsAt.setDate(subscriptionEndsAt.getDate() + plan.trialDays);
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + plan.trialDays);
+      subscriptionEndsAt = endDate.toISOString();
     }
 
     // Update user's subscription tier in database and local state FIRST
-    console.log('[Wedding Planning] Updating user tier to:', tier);
+    console.log('[Wedding Planning] Updating user tier to:', tier, 'ends at:', subscriptionEndsAt);
     await updateUser({
       subscriptionTier: tier,
       subscriptionStatus: 'active' as any,
-      subscriptionEndsAt: subscriptionEndsAt?.toISOString() as any,
+      subscriptionEndsAt: subscriptionEndsAt as any,
     });
 
     console.log('[Wedding Planning] User updated successfully');
