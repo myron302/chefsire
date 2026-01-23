@@ -301,6 +301,36 @@ export default function WeddingPlanning() {
     }
   }, [currentTier]);
 
+  // Load guest list from backend on mount
+  useEffect(() => {
+    const fetchGuestList = async () => {
+      if (!user?.id) return;
+
+      try {
+        const response = await fetch('/api/wedding/guest-list', {
+          credentials: 'include',
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.ok && data.guests) {
+            setGuestList(data.guests.map((g: any) => ({
+              id: g.id,
+              name: g.name,
+              email: g.email,
+              rsvp: g.rsvp,
+              plusOne: g.plusOne,
+            })));
+          }
+        }
+      } catch (error) {
+        console.error('[Wedding Planning] Failed to fetch guest list:', error);
+      }
+    };
+
+    fetchGuestList();
+  }, [user?.id]);
+
   // Simulated dynamic savings data (replace with a real API call if needed)
   const dynamicSavings = 4200;
 
@@ -334,38 +364,22 @@ export default function WeddingPlanning() {
     { id: 3, name: 'Zola', url: '', icon: '💑' }
   ]);
 
-  const [calendarEvents, setCalendarEvents] = useState([
-    {
-      id: 1,
-      date: '2025-03-15',
-      title: 'Venue Tour - Grand Ballroom',
-      type: 'appointment',
-      reminder: true
-    },
-    { id: 2, date: '2025-03-20', title: 'Cake Tasting', type: 'appointment', reminder: true },
-    {
-      id: 3,
-      date: '2025-04-01',
-      title: 'Catering Deposit Due',
-      type: 'payment',
-      reminder: true
-    },
-    {
-      id: 4,
-      date: '2025-04-15',
-      title: 'Send Save the Dates',
-      type: 'task',
-      reminder: false
-    }
-  ]);
+  const [calendarEvents, setCalendarEvents] = useState<Array<{
+    id: number;
+    date: string;
+    title: string;
+    type: string;
+    reminder: boolean;
+  }>>([]);
 
   // Email Invitations State
-  const [guestList, setGuestList] = useState([
-    { id: 1, name: 'John & Mary Smith', email: 'john.smith@email.com', rsvp: 'accepted', plusOne: true },
-    { id: 2, name: 'Sarah Johnson', email: 'sarah.j@email.com', rsvp: 'pending', plusOne: false },
-    { id: 3, name: 'Mike & Lisa Brown', email: 'mike.brown@email.com', rsvp: 'declined', plusOne: true },
-    { id: 4, name: 'Tom Davis', email: 'tom.davis@email.com', rsvp: 'pending', plusOne: false }
-  ]);
+  const [guestList, setGuestList] = useState<Array<{
+    id: number;
+    name: string;
+    email: string;
+    rsvp: string;
+    plusOne: boolean;
+  }>>([]);
   const [newGuestName, setNewGuestName] = useState('');
   const [newGuestEmail, setNewGuestEmail] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState('elegant');
@@ -594,18 +608,28 @@ export default function WeddingPlanning() {
   const handleShareRegistry = useCallback((platform: string) => {
     // Generate registry URL from user's username
     const registrySlug = user?.username || user?.id || 'my-registry';
-    const url = `chefsire.com/registry/${registrySlug}`;
+    const url = `https://chefsire.com/registry/${registrySlug}`;
 
     if (platform === 'copy') {
-      navigator.clipboard.writeText(`https://${url}`);
+      navigator.clipboard.writeText(url);
       toast({
         title: "Link Copied!",
         description: "Registry link copied to clipboard.",
       });
-    } else {
+    } else if (platform === 'Email') {
+      // Actually open email client with pre-filled subject and body
+      const subject = encodeURIComponent('Check out our wedding registry!');
+      const body = encodeURIComponent(`We've created a wedding registry to help us start our new life together.\n\nView our registry here: ${url}\n\nThank you for your love and support!`);
+      window.location.href = `mailto:?subject=${subject}&body=${body}`;
+    } else if (platform === 'Facebook') {
+      // Open Facebook share dialog
+      window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
+    } else if (platform === 'Instagram') {
+      // Instagram doesn't support direct link sharing, copy to clipboard instead
+      navigator.clipboard.writeText(url);
       toast({
-        title: `Share on ${platform}`,
-        description: `Opening ${platform} to share your registry...`,
+        title: "Link Copied!",
+        description: "Paste this link in your Instagram bio or story.",
       });
     }
   }, [user, toast]);
@@ -617,19 +641,6 @@ export default function WeddingPlanning() {
     });
   }, [toast]);
 
-  const handleLearnMore = useCallback(() => {
-    toast({
-      title: "Vendor Information",
-      description: "Learn more about joining our wedding marketplace...",
-    });
-  }, [toast]);
-
-  const handleListBusiness = useCallback(() => {
-    toast({
-      title: "List Your Business",
-      description: "Opening vendor registration form...",
-    });
-  }, [toast]);
 
   const handleTrialSelect = useCallback(async (tier: 'free' | 'premium' | 'elite') => {
     console.log('[Wedding Planning] Trial selected:', tier);
@@ -1439,35 +1450,6 @@ export default function WeddingPlanning() {
           )}
         </CardContent>
       </Card>
-
-      <Card className="bg-gradient-to-r from-pink-50 to-purple-50 dark:from-pink-950 dark:to-purple-950 border-pink-200 dark:border-pink-800">
-        <CardContent className="p-8 text-center">
-          <Sparkles className="w-12 h-12 mx-auto mb-4 text-pink-600" />
-          <h3 className="text-2xl font-bold mb-2">Are You a Wedding Vendor?</h3>
-          <p className="text-muted-foreground mb-6 max-w-2xl mx-auto">
-            Join ChefSire&apos;s wedding marketplace and connect with thousands of
-            engaged couples. Get more bookings, manage your calendar, and grow
-            your business.
-          </p>
-          <div className="flex gap-4 justify-center">
-            <Button size="lg" variant="outline" onClick={handleLearnMore}>
-              Learn More
-            </Button>
-            <Button size="lg" className="bg-gradient-to-r from-pink-600 to-purple-600" onClick={handleListBusiness}>
-              <TrendingUp className="w-4 h-4 mr-2" />
-              List Your Business
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Alert className="mt-6">
-        <TrendingUp className="h-4 w-4" />
-        <AlertDescription>
-          <strong>Trending:</strong> Barn venues are 40% more popular this season.
-          Book early for Fall 2025 dates!
-        </AlertDescription>
-      </Alert>
     </div>
   );
 }
