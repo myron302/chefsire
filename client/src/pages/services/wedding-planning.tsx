@@ -283,7 +283,7 @@ export default function WeddingPlanning() {
   console.log('[Wedding Planning] Current user:', user);
   console.log('[Wedding Planning] Current tier:', currentTier);
   console.log('[Wedding Planning] isPremium:', isPremium);
-  console.log('[Wedding Planning] isElite:', isElite');
+  console.log('[Wedding Planning] isElite:', isElite);
 
   // Trial selector modal
   const [showTrialSelector, setShowTrialSelector] = useState(() => {
