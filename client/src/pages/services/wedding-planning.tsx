@@ -1,4 +1,4 @@
-import { useState, useMemo, memo, useCallback } from 'react';
+import { useState, useMemo, memo, useCallback, useEffect } from 'react';
 import {
   Calendar, MapPin, Users, DollarSign, Clock, Heart,
   ChefHat, Camera, Music, Flower, Sparkles, Star,
@@ -279,11 +279,27 @@ export default function WeddingPlanning() {
   const isPremium = currentTier === 'premium' || currentTier === 'elite';
   const isElite = currentTier === 'elite';
 
+  // Debug logging
+  console.log('[Wedding Planning] Current user:', user);
+  console.log('[Wedding Planning] Current tier:', currentTier);
+  console.log('[Wedding Planning] isPremium:', isPremium);
+  console.log('[Wedding Planning] isElite:', isElite');
+
   // Trial selector modal
   const [showTrialSelector, setShowTrialSelector] = useState(() => {
     // Show modal if user hasn't selected a tier yet
     return !localStorage.getItem('weddingTierSelected');
   });
+
+  // Reshow selector if tier update failed (still free after selection)
+  useEffect(() => {
+    const hasSelected = localStorage.getItem('weddingTierSelected');
+    if (hasSelected && currentTier === 'free') {
+      console.log('[Wedding Planning] Tier is still free after selection - reshowing selector');
+      localStorage.removeItem('weddingTierSelected');
+      setShowTrialSelector(true);
+    }
+  }, [currentTier]);
 
   // Simulated dynamic savings data (replace with a real API call if needed)
   const dynamicSavings = 4200;
@@ -576,7 +592,9 @@ export default function WeddingPlanning() {
   }, [toast]);
 
   const handleShareRegistry = useCallback((platform: string) => {
-    const url = 'chefsire.com/registry/sarah-john-2025';
+    // Generate registry URL from user's username
+    const registrySlug = user?.username || user?.id || 'my-registry';
+    const url = `chefsire.com/registry/${registrySlug}`;
 
     if (platform === 'copy') {
       navigator.clipboard.writeText(`https://${url}`);
@@ -590,7 +608,7 @@ export default function WeddingPlanning() {
         description: `Opening ${platform} to share your registry...`,
       });
     }
-  }, [toast]);
+  }, [user, toast]);
 
   const handleAddCalendarEvent = useCallback(() => {
     toast({
@@ -618,37 +636,49 @@ export default function WeddingPlanning() {
 
     const plan = couplePlans[tier];
 
-    // Calculate trial end date
-    let subscriptionEndsAt: string | null = null;
-    if (tier !== 'free' && plan.trialDays) {
-      const endDate = new Date();
-      endDate.setDate(endDate.getDate() + plan.trialDays);
-      subscriptionEndsAt = endDate.toISOString();
-    }
+    try {
+      // Calculate trial end date
+      let subscriptionEndsAt: string | null = null;
+      if (tier !== 'free' && plan.trialDays) {
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + plan.trialDays);
+        subscriptionEndsAt = endDate.toISOString();
+      }
 
-    // Update user's subscription tier in database and local state FIRST
-    console.log('[Wedding Planning] Updating user tier to:', tier, 'ends at:', subscriptionEndsAt);
-    await updateUser({
-      subscriptionTier: tier,
-      subscriptionStatus: 'active' as any,
-      subscriptionEndsAt: subscriptionEndsAt as any,
-    });
-
-    console.log('[Wedding Planning] User updated successfully');
-
-    // Store the selection and close modal AFTER update completes
-    localStorage.setItem('weddingTierSelected', 'true');
-    setShowTrialSelector(false);
-
-    if (tier === 'free') {
-      toast({
-        title: "Free Plan Activated",
-        description: "You can upgrade to Premium or Elite anytime to unlock more features!",
+      // Update user's subscription tier in database and local state FIRST
+      console.log('[Wedding Planning] Updating user tier to:', tier, 'ends at:', subscriptionEndsAt);
+      await updateUser({
+        subscriptionTier: tier,
+        subscriptionStatus: 'active' as any,
+        subscriptionEndsAt: subscriptionEndsAt as any,
       });
-    } else {
+
+      console.log('[Wedding Planning] User updated successfully');
+
+      // Wait a moment for state to update
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Store the selection and close modal AFTER update completes
+      localStorage.setItem('weddingTierSelected', 'true');
+      setShowTrialSelector(false);
+
+      if (tier === 'free') {
+        toast({
+          title: "Free Plan Activated",
+          description: "You can upgrade to Premium or Elite anytime to unlock more features!",
+        });
+      } else {
+        toast({
+          title: `${plan.trialDays}-Day ${plan.name} Trial Started!`,
+          description: `Enjoy all ${plan.name} features for free. Features should unlock immediately!`,
+        });
+      }
+    } catch (error) {
+      console.error('[Wedding Planning] Failed to update tier:', error);
       toast({
-        title: `${plan.trialDays}-Day ${plan.name} Trial Started!`,
-        description: `Enjoy all ${plan.name} features for free. No credit card required.`,
+        title: "Update Failed",
+        description: "Failed to activate trial. Please try again or refresh the page.",
+        variant: "destructive",
       });
     }
   }, [updateUser, toast]);
@@ -1138,7 +1168,7 @@ export default function WeddingPlanning() {
                 <Info className="h-3 w-3 md:h-4 md:w-4" />
                 <AlertDescription className="text-xs md:text-sm break-all">
                   Your unique registry page:{' '}
-                  <strong>chefsire.com/registry/sarah-john-2025</strong>
+                  <strong>chefsire.com/registry/{user?.username || user?.id || 'my-registry'}</strong>
                 </AlertDescription>
               </Alert>
             </div>
