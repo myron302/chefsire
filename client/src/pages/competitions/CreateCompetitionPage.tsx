@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import { ChefHat, Sparkles, Timer, Users, Lock, Globe, Zap, Star, Trophy, Flame, ArrowRight, Wand2 } from 'lucide-react';
 
 const THEMES = [
@@ -37,6 +38,7 @@ const THEMES = [
 const DURATIONS = [30, 45, 60, 90, 120];
 
 export default function CreateCompetitionPage() {
+  const [, setLocation] = useLocation();
   const [title, setTitle] = useState('');
   const [selectedTheme, setSelectedTheme] = useState(null);
   const [duration, setDuration] = useState(60);
@@ -44,11 +46,45 @@ export default function CreateCompetitionPage() {
   const [minVoters, setMinVoters] = useState(3);
   const [step, setStep] = useState(1);
   const [hoveredTheme, setHoveredTheme] = useState(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState(null);
 
-  const handleCreate = () => {
-    console.log('Creating competition:', { title, theme: selectedTheme, duration, isPrivate, minVoters });
-    // TODO: Call API to create competition
-    alert('Competition created! (API integration needed)');
+  const handleCreate = async () => {
+    if (!selectedTheme) return;
+
+    setIsCreating(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/competitions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: title || null,
+          themeName: selectedTheme.id,
+          recipeId: null,
+          isPrivate,
+          timeLimitMinutes: duration,
+          minOfficialVoters: minVoters,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to create competition');
+      }
+
+      const data = await response.json();
+
+      // Navigate to the created competition
+      setLocation(`/competitions/${data.id}`);
+    } catch (err) {
+      console.error('Error creating competition:', err);
+      setError(err.message || 'Failed to create competition. Please try again.');
+      setIsCreating(false);
+    }
   };
 
   const totalSteps = 3;
@@ -413,22 +449,35 @@ export default function CreateCompetitionPage() {
               </div>
             </div>
 
+            {/* Error Message */}
+            {error && (
+              <div className="max-w-2xl mx-auto mt-4">
+                <div className="bg-red-100 border-2 border-red-300 rounded-2xl p-4 text-red-800 font-medium text-center">
+                  {error}
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-center gap-4 mt-8">
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                className="flex items-center gap-2 px-8 py-4 bg-white hover:bg-gray-50 rounded-full text-gray-900 font-semibold border-2 border-gray-300 transition-all duration-300 hover:scale-105 shadow-md"
+                disabled={isCreating}
+                className="flex items-center gap-2 px-8 py-4 bg-white hover:bg-gray-50 rounded-full text-gray-900 font-semibold border-2 border-gray-300 transition-all duration-300 hover:scale-105 shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 Back
               </button>
               <button
                 type="button"
                 onClick={handleCreate}
-                className="relative group flex items-center gap-3 px-12 py-6 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-full text-white font-bold text-xl transition-all duration-300 hover:scale-110 shadow-2xl overflow-hidden"
+                disabled={isCreating}
+                className="relative group flex items-center gap-3 px-12 py-6 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-full text-white font-bold text-xl transition-all duration-300 hover:scale-110 shadow-2xl overflow-hidden disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 <div className="absolute inset-0 shimmer-effect"></div>
                 <Trophy className="w-7 h-7 relative z-10" />
-                <span className="relative z-10">Launch Competition!</span>
+                <span className="relative z-10">
+                  {isCreating ? 'Creating...' : 'Launch Competition!'}
+                </span>
               </button>
             </div>
           </div>
