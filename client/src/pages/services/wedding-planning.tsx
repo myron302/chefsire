@@ -317,7 +317,7 @@ export default function WeddingPlanning() {
     return true;
   });
 
-  // Hide selector if user already has premium/elite tier (in case state updates after mount)
+  // Hide selector if user already has premium/elite tier
   useEffect(() => {
     if (currentTier === 'premium' || currentTier === 'elite') {
       setShowTrialSelector(false);
