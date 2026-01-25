@@ -242,9 +242,13 @@ export async function sendWeddingRsvpEmail(
     throw new Error(error);
   }
 
+  // Set Reply-To address for guest responses (if configured)
+  const replyTo = process.env.WEDDING_REPLY_TO || undefined;
+
   const info = await weddingTransport.sendMail({
     from,
     to,
+    replyTo,
     subject: `💍 You're Invited to ${coupleName}!`,
     html,
   });
