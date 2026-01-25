@@ -318,12 +318,13 @@ export default function WeddingPlanning() {
     }
   }, [currentTier]);
 
-  // Load guest list from backend on mount
+  // Load guest list from backend and localStorage on mount
   useEffect(() => {
     const fetchGuestList = async () => {
       if (!user?.id) return;
 
       try {
+        // Load sent invitations from backend
         const response = await fetch('/api/wedding/guest-list', {
           credentials: 'include',
         });
@@ -331,17 +332,33 @@ export default function WeddingPlanning() {
         if (response.ok) {
           const data = await response.json();
           if (data.ok && data.guests) {
-            setGuestList(data.guests.map((g: any) => ({
+            const sentGuests = data.guests.map((g: any) => ({
               id: g.id,
               name: g.name,
               email: g.email,
               rsvp: g.rsvp,
               plusOne: g.plusOne,
-            })));
+            }));
+
+            // Also load unsent guests from localStorage
+            const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
+            const unsentGuests = JSON.parse(localStorage.getItem(unsentGuestsKey) || '[]');
+
+            // Combine both lists (sent guests from DB + unsent from localStorage)
+            setGuestList([...sentGuests, ...unsentGuests]);
           }
+        } else {
+          // If API fails, still load unsent guests from localStorage
+          const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
+          const unsentGuests = JSON.parse(localStorage.getItem(unsentGuestsKey) || '[]');
+          setGuestList(unsentGuests);
         }
       } catch (error) {
         console.error('[Wedding Planning] Failed to fetch guest list:', error);
+        // On error, still load unsent guests from localStorage
+        const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
+        const unsentGuests = JSON.parse(localStorage.getItem(unsentGuestsKey) || '[]');
+        setGuestList(unsentGuests);
       }
     };
 
@@ -462,30 +479,54 @@ export default function WeddingPlanning() {
   }, []);
 
   // Email Invitation Handlers
-  const addGuest = useCallback(() => {
+  const addGuest = useCallback(async () => {
     if (newGuestName && newGuestEmail) {
-      setGuestList(prev => [
-        ...prev,
-        {
-          id: Date.now(),
-          name: newGuestName,
-          email: newGuestEmail,
-          rsvp: 'pending',
-          plusOne: false
+      const tempGuest = {
+        id: Date.now(),
+        name: newGuestName,
+        email: newGuestEmail,
+        rsvp: 'pending',
+        plusOne: false
+      };
+
+      // Update state
+      setGuestList(prev => {
+        const updated = [...prev, tempGuest];
+
+        // Persist unsent guests to localStorage
+        if (user?.id) {
+          const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
+          const unsentGuests = updated.filter(g => typeof g.id === 'number'); // temp IDs are numbers, DB IDs are strings
+          localStorage.setItem(unsentGuestsKey, JSON.stringify(unsentGuests));
         }
-      ]);
+
+        return updated;
+      });
+
       setNewGuestName('');
       setNewGuestEmail('');
+
       toast({
         title: "Guest Added",
         description: `${newGuestName} has been added to your guest list.`,
       });
     }
-  }, [newGuestName, newGuestEmail, toast]);
+  }, [newGuestName, newGuestEmail, user?.id, toast]);
 
   const removeGuest = useCallback((guestId: number) => {
-    setGuestList(prev => prev.filter(g => g.id !== guestId));
-  }, []);
+    setGuestList(prev => {
+      const updated = prev.filter(g => g.id !== guestId);
+
+      // Update localStorage
+      if (user?.id) {
+        const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
+        const unsentGuests = updated.filter(g => typeof g.id === 'number');
+        localStorage.setItem(unsentGuestsKey, JSON.stringify(unsentGuests));
+      }
+
+      return updated;
+    });
+  }, [user?.id]);
 
   const sendInvitations = useCallback(async () => {
     if (!isPremium) {
@@ -529,12 +570,18 @@ export default function WeddingPlanning() {
       const data = await response.json();
 
       if (data.ok) {
+        // Clear unsent guests from localStorage since they're now saved to database
+        if (user?.id) {
+          const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
+          localStorage.removeItem(unsentGuestsKey);
+        }
+
         toast({
           title: "Invitations Sent!",
           description: `${data.sent} of ${data.total} invitations sent successfully.`,
         });
 
-        // Refresh the guest list to show updated status
+        // Refresh the guest list to show updated status from database
         const listResponse = await fetch('/api/wedding/guest-list', {
           credentials: 'include'
         });
@@ -542,7 +589,13 @@ export default function WeddingPlanning() {
         if (listResponse.ok) {
           const listData = await listResponse.json();
           if (listData.ok) {
-            setGuestList(listData.guests);
+            setGuestList(listData.guests.map((g: any) => ({
+              id: g.id,
+              name: g.name,
+              email: g.email,
+              rsvp: g.rsvp,
+              plusOne: g.plusOne,
+            })));
           }
         }
       } else {
