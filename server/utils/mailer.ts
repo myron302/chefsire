@@ -13,12 +13,28 @@ type Health = {
     appUrl: string | undefined;
     nodeEnv: string | undefined;
   };
+  wedding?: {
+    verifyOK: boolean;
+    verifyError?: string;
+    env: {
+      host: string | undefined;
+      port: number | undefined;
+      userSet: boolean;
+      passSet: boolean;
+      from: string | undefined;
+      separateCredentials: boolean;
+    };
+  };
 };
 
 let transport: nodemailer.Transporter | null = null;
 let initError: string | null = null;
 
-// Create transport once
+// Wedding-specific transport (separate email account for invitations)
+let weddingTransport: nodemailer.Transporter | null = null;
+let weddingInitError: string | null = null;
+
+// Create transport once (for verification emails)
 try {
   transport = nodemailer.createTransport({
     host: process.env.MAIL_HOST || "smtp.ionos.com",
@@ -35,10 +51,39 @@ try {
     debug: process.env.NODE_ENV !== "production",
     logger: process.env.NODE_ENV !== "production",
   });
-  console.log("✅ Mailer: transport created");
+  console.log("✅ Mailer: verification transport created");
 } catch (e: any) {
   initError = e?.message || String(e);
-  console.error("❌ Mailer: failed to create transport:", initError);
+  console.error("❌ Mailer: failed to create verification transport:", initError);
+}
+
+// Create wedding transport (separate credentials for wedding invitations)
+try {
+  // Only create if separate credentials are provided, otherwise fall back to main transport
+  if (process.env.WEDDING_MAIL_USER && process.env.WEDDING_MAIL_PASS) {
+    weddingTransport = nodemailer.createTransport({
+      host: process.env.WEDDING_MAIL_HOST || process.env.MAIL_HOST || "smtp.ionos.com",
+      port: Number(process.env.WEDDING_MAIL_PORT || process.env.MAIL_PORT || 587),
+      secure: false, // STARTTLS on 587
+      auth: {
+        user: process.env.WEDDING_MAIL_USER,
+        pass: process.env.WEDDING_MAIL_PASS,
+      },
+      tls: {
+        rejectUnauthorized: true,
+      },
+      debug: process.env.NODE_ENV !== "production",
+      logger: process.env.NODE_ENV !== "production",
+    });
+    console.log("✅ Mailer: wedding transport created with separate credentials");
+  } else {
+    // Fall back to main transport if no separate wedding credentials
+    weddingTransport = transport;
+    console.log("ℹ️  Mailer: using main transport for wedding emails (no separate credentials)");
+  }
+} catch (e: any) {
+  weddingInitError = e?.message || String(e);
+  console.error("❌ Mailer: failed to create wedding transport:", weddingInitError);
 }
 
 /**
@@ -97,7 +142,7 @@ export async function sendWeddingRsvpEmail(
   }
 ) {
   const from =
-    process.env.MAIL_FROM || "ChefSire Weddings <weddings@notify.chefsire.com>";
+    process.env.WEDDING_MAIL_FROM || process.env.MAIL_FROM || "ChefSire Weddings <weddings@notify.chefsire.com>";
 
   const coupleName = eventDetails?.coupleName || "Our Wedding";
   const eventDate = eventDetails?.eventDate
@@ -188,15 +233,16 @@ export async function sendWeddingRsvpEmail(
     </div>
   `;
 
-  if (initError || !transport) {
-    console.error("❌ Cannot send email:", initError || "No transport");
+  if (weddingInitError || !weddingTransport) {
+    const error = weddingInitError || "Wedding email transport not available";
+    console.error("❌ Cannot send wedding email:", error);
     console.log("📧 Fallback — RSVP links for", to);
     console.log("   Accept:", acceptLink);
     console.log("   Decline:", declineLink);
-    throw new Error(initError || "Email transport not available");
+    throw new Error(error);
   }
 
-  const info = await transport.sendMail({
+  const info = await weddingTransport.sendMail({
     from,
     to,
     subject: `💍 You're Invited to ${coupleName}!`,
@@ -222,22 +268,77 @@ export async function mailHealth(): Promise<Health> {
     nodeEnv: process.env.NODE_ENV,
   };
 
+  const result: Health = {
+    verifyOK: false,
+    env,
+  };
+
+  // Check main transport
   if (initError || !transport) {
-    return {
-      verifyOK: false,
-      verifyError: initError || "Transport not initialized",
-      env,
+    result.verifyError = initError || "Transport not initialized";
+  } else {
+    try {
+      await transport.verify(); // real SMTP handshake + auth check
+      result.verifyOK = true;
+    } catch (e: any) {
+      result.verifyError = e?.message || String(e);
+    }
+  }
+
+  // Check wedding transport (if separate credentials exist)
+  const hasSeparateWeddingCredentials = !!(
+    process.env.WEDDING_MAIL_USER && process.env.WEDDING_MAIL_PASS
+  );
+
+  if (hasSeparateWeddingCredentials) {
+    const weddingEnv = {
+      host: process.env.WEDDING_MAIL_HOST || process.env.MAIL_HOST,
+      port: process.env.WEDDING_MAIL_PORT
+        ? Number(process.env.WEDDING_MAIL_PORT)
+        : process.env.MAIL_PORT
+        ? Number(process.env.MAIL_PORT)
+        : undefined,
+      userSet: !!process.env.WEDDING_MAIL_USER,
+      passSet: !!process.env.WEDDING_MAIL_PASS,
+      from: process.env.WEDDING_MAIL_FROM,
+      separateCredentials: true,
+    };
+
+    if (weddingInitError || !weddingTransport) {
+      result.wedding = {
+        verifyOK: false,
+        verifyError: weddingInitError || "Wedding transport not initialized",
+        env: weddingEnv,
+      };
+    } else {
+      try {
+        await weddingTransport.verify();
+        result.wedding = {
+          verifyOK: true,
+          env: weddingEnv,
+        };
+      } catch (e: any) {
+        result.wedding = {
+          verifyOK: false,
+          verifyError: e?.message || String(e),
+          env: weddingEnv,
+        };
+      }
+    }
+  } else {
+    result.wedding = {
+      verifyOK: result.verifyOK,
+      verifyError: result.verifyError,
+      env: {
+        host: env.host,
+        port: env.port,
+        userSet: env.userSet,
+        passSet: env.passSet,
+        from: process.env.WEDDING_MAIL_FROM || process.env.MAIL_FROM,
+        separateCredentials: false,
+      },
     };
   }
 
-  try {
-    await transport.verify(); // real SMTP handshake + auth check
-    return { verifyOK: true, env };
-  } catch (e: any) {
-    return {
-      verifyOK: false,
-      verifyError: e?.message || String(e),
-      env,
-    };
-  }
+  return result;
 }
