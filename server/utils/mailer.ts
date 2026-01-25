@@ -139,6 +139,7 @@ export async function sendWeddingRsvpEmail(
     eventLocation?: string;
     message?: string;
     template?: string;
+    coupleEmail?: string; // The couple's email for replies
   }
 ) {
   const from =
@@ -242,8 +243,8 @@ export async function sendWeddingRsvpEmail(
     throw new Error(error);
   }
 
-  // Set Reply-To address for guest responses (if configured)
-  const replyTo = process.env.WEDDING_REPLY_TO || undefined;
+  // Set Reply-To address: prioritize couple's email, then fallback to generic rsvp address
+  const replyTo = eventDetails?.coupleEmail || process.env.WEDDING_REPLY_TO || undefined;
 
   const info = await weddingTransport.sendMail({
     from,
@@ -255,6 +256,85 @@ export async function sendWeddingRsvpEmail(
 
   console.log("✅ RSVP invitation sent to", to, "— messageId:", info.messageId);
   return info;
+}
+
+/**
+ * Send RSVP response notification to couple
+ */
+export async function sendRsvpNotificationEmail(
+  coupleEmail: string,
+  guestName: string,
+  response: 'accepted' | 'declined',
+  eventDetails?: {
+    coupleName?: string;
+    eventDate?: string;
+  }
+) {
+  const from =
+    process.env.WEDDING_MAIL_FROM || process.env.MAIL_FROM || "ChefSire Weddings <invitations@chefsire.com>";
+
+  const coupleName = eventDetails?.coupleName || "Your Wedding";
+  const responseIcon = response === 'accepted' ? '✓' : '✗';
+  const responseColor = response === 'accepted' ? '#27ae60' : '#95a5a6';
+  const responseText = response === 'accepted' ? 'Accepted' : 'Declined';
+
+  const html = `
+    <div style="font-family:system-ui,-apple-system,sans-serif;line-height:1.6;max-width:600px;margin:0 auto;">
+      <div style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:white;padding:30px 20px;text-align:center;border-radius:10px 10px 0 0;">
+        <h1 style="margin:0;font-size:24px;">💍 RSVP Update</h1>
+        <p style="margin:10px 0 0 0;font-size:16px;">${coupleName}</p>
+      </div>
+
+      <div style="background:#ffffff;padding:30px;border:2px solid #eee;border-top:none;border-radius:0 0 10px 10px;">
+        <div style="text-align:center;margin-bottom:20px;">
+          <div style="font-size:48px;color:${responseColor};margin-bottom:10px;">${responseIcon}</div>
+          <h2 style="margin:0;color:${responseColor};">${responseText}</h2>
+        </div>
+
+        <p style="font-size:16px;color:#333;text-align:center;">
+          <strong>${guestName}</strong> has ${response} your wedding invitation.
+        </p>
+
+        ${eventDetails?.eventDate ? `
+          <p style="font-size:14px;color:#666;text-align:center;margin-top:20px;">
+            Event Date: ${eventDetails.eventDate}
+          </p>
+        ` : ''}
+
+        <div style="text-align:center;margin-top:30px;">
+          <a href="${process.env.APP_URL || 'https://chefsire.com'}/wedding-planning" style="display:inline-block;background:#667eea;color:white;padding:12px 30px;border-radius:8px;text-decoration:none;font-weight:bold;">
+            View Guest List
+          </a>
+        </div>
+      </div>
+
+      <div style="text-align:center;padding:20px;color:#999;font-size:12px;">
+        <p>ChefSire Wedding Planning</p>
+      </div>
+    </div>
+  `;
+
+  if (initError || !transport) {
+    console.error("❌ Cannot send notification email:", initError || "No transport");
+    // Don't throw - notification emails are nice-to-have
+    return null;
+  }
+
+  try {
+    const info = await transport.sendMail({
+      from,
+      to: coupleEmail,
+      subject: `${responseIcon} ${guestName} ${responseText} Your Wedding Invitation`,
+      html,
+    });
+
+    console.log("✅ RSVP notification sent to", coupleEmail, "— messageId:", info.messageId);
+    return info;
+  } catch (error) {
+    console.error("❌ Failed to send RSVP notification:", error);
+    // Don't throw - notification emails are nice-to-have
+    return null;
+  }
 }
 
 /**
