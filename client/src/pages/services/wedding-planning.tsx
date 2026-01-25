@@ -285,19 +285,36 @@ export default function WeddingPlanning() {
   console.log('[Wedding Planning] isPremium:', isPremium);
   console.log('[Wedding Planning] isElite:', isElite);
 
-  // Trial selector modal
+  // Trial selector modal - only show once if user is on free tier
   const [showTrialSelector, setShowTrialSelector] = useState(() => {
-    // Show modal if user hasn't selected a tier yet
-    return !localStorage.getItem('weddingTierSelected');
+    // Check if user already selected a tier
+    const hasSelected = localStorage.getItem('weddingTierSelected');
+    if (hasSelected) return false;
+
+    // Check if user already has a subscription tier
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const userData = JSON.parse(storedUser);
+        if (userData.subscriptionTier === 'premium' || userData.subscriptionTier === 'elite') {
+          // User already has a tier, don't show modal
+          localStorage.setItem('weddingTierSelected', 'true');
+          return false;
+        }
+      } catch (e) {
+        console.error('[Wedding Planning] Failed to parse user from localStorage:', e);
+      }
+    }
+
+    // User is on free tier and hasn't selected, show modal
+    return true;
   });
 
-  // Reshow selector if tier update failed (still free after selection)
+  // Hide selector if user already has premium/elite tier (in case state updates after mount)
   useEffect(() => {
-    const hasSelected = localStorage.getItem('weddingTierSelected');
-    if (hasSelected && currentTier === 'free') {
-      console.log('[Wedding Planning] Tier is still free after selection - reshowing selector');
-      localStorage.removeItem('weddingTierSelected');
-      setShowTrialSelector(true);
+    if (currentTier === 'premium' || currentTier === 'elite') {
+      setShowTrialSelector(false);
+      localStorage.setItem('weddingTierSelected', 'true');
     }
   }, [currentTier]);
 
@@ -645,6 +662,16 @@ export default function WeddingPlanning() {
   const handleTrialSelect = useCallback(async (tier: 'free' | 'premium' | 'elite') => {
     console.log('[Wedding Planning] Trial selected:', tier);
 
+    // Prevent selecting trial if already have premium/elite
+    if (currentTier === 'premium' || currentTier === 'elite') {
+      toast({
+        title: "Already Subscribed",
+        description: "You already have an active subscription!",
+      });
+      setShowTrialSelector(false);
+      return;
+    }
+
     const plan = couplePlans[tier];
 
     try {
@@ -692,7 +719,7 @@ export default function WeddingPlanning() {
         variant: "destructive",
       });
     }
-  }, [updateUser, toast]);
+  }, [updateUser, toast, currentTier]);
 
   return (
     <div className="max-w-7xl mx-auto px-3 md:px-4 py-4 md:py-8">
