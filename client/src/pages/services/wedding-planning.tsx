@@ -287,15 +287,33 @@ export default function WeddingPlanning() {
 
   // Trial selector modal - only show once if user is on free tier
   const [showTrialSelector, setShowTrialSelector] = useState(() => {
-    // Show modal if user hasn't selected a tier yet
-    return !localStorage.getItem('weddingTierSelected');
+    // Check if user already selected a tier
+    const hasSelected = localStorage.getItem('weddingTierSelected');
+    if (hasSelected) return false;
+
+    // Check if user already has a subscription tier
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const userData = JSON.parse(storedUser);
+        if (userData.subscriptionTier === 'premium' || userData.subscriptionTier === 'elite') {
+          // User already has a tier, don't show modal
+          localStorage.setItem('weddingTierSelected', 'true');
+          return false;
+        }
+      } catch (e) {
+        console.error('[Wedding Planning] Failed to parse user from localStorage:', e);
+      }
+    }
+
+    // User is on free tier and hasn't selected, show modal
+    return true;
   });
 
-  // Hide selector if user already has premium/elite tier
+  // Hide selector if user already has premium/elite tier (in case state updates after mount)
   useEffect(() => {
     if (currentTier === 'premium' || currentTier === 'elite') {
       setShowTrialSelector(false);
-      // Mark as selected so it doesn't show again
       localStorage.setItem('weddingTierSelected', 'true');
     }
   }, [currentTier]);
