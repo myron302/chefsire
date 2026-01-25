@@ -576,10 +576,23 @@ export default function WeddingPlanning() {
           localStorage.removeItem(unsentGuestsKey);
         }
 
-        toast({
-          title: "Invitations Sent!",
-          description: `${data.sent} of ${data.total} invitations sent successfully.`,
-        });
+        // Check if there were any errors
+        if (data.errors && data.errors.length > 0) {
+          const errorMessages = data.errors.map((err: any) =>
+            `${err.email}: ${err.error}`
+          ).join('\n');
+
+          toast({
+            title: data.sent > 0 ? "Partial Success" : "Failed to Send Invitations",
+            description: `${data.sent} of ${data.total} invitations sent successfully.\n\nErrors:\n${errorMessages}`,
+            variant: data.sent > 0 ? "default" : "destructive",
+          });
+        } else {
+          toast({
+            title: "Invitations Sent!",
+            description: `${data.sent} of ${data.total} invitations sent successfully.`,
+          });
+        }
 
         // Refresh the guest list to show updated status from database
         const listResponse = await fetch('/api/wedding/guest-list', {

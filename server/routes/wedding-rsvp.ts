@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import { db } from "../db";
 import { eq, and, gt, isNull } from "drizzle-orm";
 import { weddingRsvpInvitations, users } from "../../shared/schema";
-import { sendWeddingRsvpEmail } from "../utils/mailer";
+import { sendWeddingRsvpEmail, sendRsvpNotificationEmail } from "../utils/mailer";
 import { requireAuth } from "../middleware/auth";
 
 const router = Router();
@@ -111,6 +111,7 @@ router.post("/send-invitations", requireAuth, async (req, res) => {
           eventLocation: eventDetails?.eventLocation,
           message: eventDetails?.message,
           template: eventDetails?.template,
+          coupleEmail: user.email, // Replies go to the couple's email
         });
 
         sentInvitations.push({
@@ -203,6 +204,30 @@ router.get("/rsvp", async (req, res) => {
         respondedAt: now,
       })
       .where(eq(weddingRsvpInvitations.id, invitation.id));
+
+    // Send notification email to the couple
+    try {
+      const [coupleUser] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, invitation.userId))
+        .limit(1);
+
+      if (coupleUser?.email) {
+        await sendRsvpNotificationEmail(
+          coupleUser.email,
+          invitation.guestName,
+          response === "accept" ? "accepted" : "declined",
+          {
+            coupleName: coupleUser.displayName ? `${coupleUser.displayName}'s Wedding` : undefined,
+            eventDate: invitation.eventDate ? invitation.eventDate.toLocaleDateString() : undefined,
+          }
+        );
+      }
+    } catch (notificationError) {
+      // Don't fail the RSVP if notification fails
+      console.error("Failed to send RSVP notification:", notificationError);
+    }
 
     // Show success page
     const statusColor = response === "accept" ? "#27ae60" : "#95a5a6";

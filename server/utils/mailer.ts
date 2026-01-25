@@ -13,12 +13,28 @@ type Health = {
     appUrl: string | undefined;
     nodeEnv: string | undefined;
   };
+  wedding?: {
+    verifyOK: boolean;
+    verifyError?: string;
+    env: {
+      host: string | undefined;
+      port: number | undefined;
+      userSet: boolean;
+      passSet: boolean;
+      from: string | undefined;
+      separateCredentials: boolean;
+    };
+  };
 };
 
 let transport: nodemailer.Transporter | null = null;
 let initError: string | null = null;
 
-// Create transport once
+// Wedding-specific transport (separate email account for invitations)
+let weddingTransport: nodemailer.Transporter | null = null;
+let weddingInitError: string | null = null;
+
+// Create transport once (for verification emails)
 try {
   transport = nodemailer.createTransport({
     host: process.env.MAIL_HOST || "smtp.ionos.com",
@@ -35,10 +51,39 @@ try {
     debug: process.env.NODE_ENV !== "production",
     logger: process.env.NODE_ENV !== "production",
   });
-  console.log("✅ Mailer: transport created");
+  console.log("✅ Mailer: verification transport created");
 } catch (e: any) {
   initError = e?.message || String(e);
-  console.error("❌ Mailer: failed to create transport:", initError);
+  console.error("❌ Mailer: failed to create verification transport:", initError);
+}
+
+// Create wedding transport (separate credentials for wedding invitations)
+try {
+  // Only create if separate credentials are provided, otherwise fall back to main transport
+  if (process.env.WEDDING_MAIL_USER && process.env.WEDDING_MAIL_PASS) {
+    weddingTransport = nodemailer.createTransport({
+      host: process.env.WEDDING_MAIL_HOST || process.env.MAIL_HOST || "smtp.ionos.com",
+      port: Number(process.env.WEDDING_MAIL_PORT || process.env.MAIL_PORT || 587),
+      secure: false, // STARTTLS on 587
+      auth: {
+        user: process.env.WEDDING_MAIL_USER,
+        pass: process.env.WEDDING_MAIL_PASS,
+      },
+      tls: {
+        rejectUnauthorized: true,
+      },
+      debug: process.env.NODE_ENV !== "production",
+      logger: process.env.NODE_ENV !== "production",
+    });
+    console.log("✅ Mailer: wedding transport created with separate credentials");
+  } else {
+    // Fall back to main transport if no separate wedding credentials
+    weddingTransport = transport;
+    console.log("ℹ️  Mailer: using main transport for wedding emails (no separate credentials)");
+  }
+} catch (e: any) {
+  weddingInitError = e?.message || String(e);
+  console.error("❌ Mailer: failed to create wedding transport:", weddingInitError);
 }
 
 /**
@@ -94,10 +139,11 @@ export async function sendWeddingRsvpEmail(
     eventLocation?: string;
     message?: string;
     template?: string;
+    coupleEmail?: string; // The couple's email for replies
   }
 ) {
   const from =
-    process.env.MAIL_FROM || "ChefSire Weddings <weddings@notify.chefsire.com>";
+    process.env.WEDDING_MAIL_FROM || process.env.MAIL_FROM || "ChefSire Weddings <invitations@chefsire.com>";
 
   const coupleName = eventDetails?.coupleName || "Our Wedding";
   const eventDate = eventDetails?.eventDate
@@ -188,23 +234,107 @@ export async function sendWeddingRsvpEmail(
     </div>
   `;
 
-  if (initError || !transport) {
-    console.error("❌ Cannot send email:", initError || "No transport");
+  if (weddingInitError || !weddingTransport) {
+    const error = weddingInitError || "Wedding email transport not available";
+    console.error("❌ Cannot send wedding email:", error);
     console.log("📧 Fallback — RSVP links for", to);
     console.log("   Accept:", acceptLink);
     console.log("   Decline:", declineLink);
-    throw new Error(initError || "Email transport not available");
+    throw new Error(error);
   }
 
-  const info = await transport.sendMail({
+  // Set Reply-To address: prioritize couple's email, then fallback to generic rsvp address
+  const replyTo = eventDetails?.coupleEmail || process.env.WEDDING_REPLY_TO || undefined;
+
+  const info = await weddingTransport.sendMail({
     from,
     to,
+    replyTo,
     subject: `💍 You're Invited to ${coupleName}!`,
     html,
   });
 
   console.log("✅ RSVP invitation sent to", to, "— messageId:", info.messageId);
   return info;
+}
+
+/**
+ * Send RSVP response notification to couple
+ */
+export async function sendRsvpNotificationEmail(
+  coupleEmail: string,
+  guestName: string,
+  response: 'accepted' | 'declined',
+  eventDetails?: {
+    coupleName?: string;
+    eventDate?: string;
+  }
+) {
+  const from =
+    process.env.WEDDING_MAIL_FROM || process.env.MAIL_FROM || "ChefSire Weddings <invitations@chefsire.com>";
+
+  const coupleName = eventDetails?.coupleName || "Your Wedding";
+  const responseIcon = response === 'accepted' ? '✓' : '✗';
+  const responseColor = response === 'accepted' ? '#27ae60' : '#95a5a6';
+  const responseText = response === 'accepted' ? 'Accepted' : 'Declined';
+
+  const html = `
+    <div style="font-family:system-ui,-apple-system,sans-serif;line-height:1.6;max-width:600px;margin:0 auto;">
+      <div style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:white;padding:30px 20px;text-align:center;border-radius:10px 10px 0 0;">
+        <h1 style="margin:0;font-size:24px;">💍 RSVP Update</h1>
+        <p style="margin:10px 0 0 0;font-size:16px;">${coupleName}</p>
+      </div>
+
+      <div style="background:#ffffff;padding:30px;border:2px solid #eee;border-top:none;border-radius:0 0 10px 10px;">
+        <div style="text-align:center;margin-bottom:20px;">
+          <div style="font-size:48px;color:${responseColor};margin-bottom:10px;">${responseIcon}</div>
+          <h2 style="margin:0;color:${responseColor};">${responseText}</h2>
+        </div>
+
+        <p style="font-size:16px;color:#333;text-align:center;">
+          <strong>${guestName}</strong> has ${response} your wedding invitation.
+        </p>
+
+        ${eventDetails?.eventDate ? `
+          <p style="font-size:14px;color:#666;text-align:center;margin-top:20px;">
+            Event Date: ${eventDetails.eventDate}
+          </p>
+        ` : ''}
+
+        <div style="text-align:center;margin-top:30px;">
+          <a href="${process.env.APP_URL || 'https://chefsire.com'}/wedding-planning" style="display:inline-block;background:#667eea;color:white;padding:12px 30px;border-radius:8px;text-decoration:none;font-weight:bold;">
+            View Guest List
+          </a>
+        </div>
+      </div>
+
+      <div style="text-align:center;padding:20px;color:#999;font-size:12px;">
+        <p>ChefSire Wedding Planning</p>
+      </div>
+    </div>
+  `;
+
+  if (initError || !transport) {
+    console.error("❌ Cannot send notification email:", initError || "No transport");
+    // Don't throw - notification emails are nice-to-have
+    return null;
+  }
+
+  try {
+    const info = await transport.sendMail({
+      from,
+      to: coupleEmail,
+      subject: `${responseIcon} ${guestName} ${responseText} Your Wedding Invitation`,
+      html,
+    });
+
+    console.log("✅ RSVP notification sent to", coupleEmail, "— messageId:", info.messageId);
+    return info;
+  } catch (error) {
+    console.error("❌ Failed to send RSVP notification:", error);
+    // Don't throw - notification emails are nice-to-have
+    return null;
+  }
 }
 
 /**
@@ -222,22 +352,77 @@ export async function mailHealth(): Promise<Health> {
     nodeEnv: process.env.NODE_ENV,
   };
 
+  const result: Health = {
+    verifyOK: false,
+    env,
+  };
+
+  // Check main transport
   if (initError || !transport) {
-    return {
-      verifyOK: false,
-      verifyError: initError || "Transport not initialized",
-      env,
+    result.verifyError = initError || "Transport not initialized";
+  } else {
+    try {
+      await transport.verify(); // real SMTP handshake + auth check
+      result.verifyOK = true;
+    } catch (e: any) {
+      result.verifyError = e?.message || String(e);
+    }
+  }
+
+  // Check wedding transport (if separate credentials exist)
+  const hasSeparateWeddingCredentials = !!(
+    process.env.WEDDING_MAIL_USER && process.env.WEDDING_MAIL_PASS
+  );
+
+  if (hasSeparateWeddingCredentials) {
+    const weddingEnv = {
+      host: process.env.WEDDING_MAIL_HOST || process.env.MAIL_HOST,
+      port: process.env.WEDDING_MAIL_PORT
+        ? Number(process.env.WEDDING_MAIL_PORT)
+        : process.env.MAIL_PORT
+        ? Number(process.env.MAIL_PORT)
+        : undefined,
+      userSet: !!process.env.WEDDING_MAIL_USER,
+      passSet: !!process.env.WEDDING_MAIL_PASS,
+      from: process.env.WEDDING_MAIL_FROM,
+      separateCredentials: true,
+    };
+
+    if (weddingInitError || !weddingTransport) {
+      result.wedding = {
+        verifyOK: false,
+        verifyError: weddingInitError || "Wedding transport not initialized",
+        env: weddingEnv,
+      };
+    } else {
+      try {
+        await weddingTransport.verify();
+        result.wedding = {
+          verifyOK: true,
+          env: weddingEnv,
+        };
+      } catch (e: any) {
+        result.wedding = {
+          verifyOK: false,
+          verifyError: e?.message || String(e),
+          env: weddingEnv,
+        };
+      }
+    }
+  } else {
+    result.wedding = {
+      verifyOK: result.verifyOK,
+      verifyError: result.verifyError,
+      env: {
+        host: env.host,
+        port: env.port,
+        userSet: env.userSet,
+        passSet: env.passSet,
+        from: process.env.WEDDING_MAIL_FROM || process.env.MAIL_FROM,
+        separateCredentials: false,
+      },
     };
   }
 
-  try {
-    await transport.verify(); // real SMTP handshake + auth check
-    return { verifyOK: true, env };
-  } catch (e: any) {
-    return {
-      verifyOK: false,
-      verifyError: e?.message || String(e),
-      env,
-    };
-  }
+  return result;
 }
