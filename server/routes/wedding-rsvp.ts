@@ -5,6 +5,7 @@ import { db } from "../db";
 import { eq, and, gt, isNull } from "drizzle-orm";
 import { weddingRsvpInvitations, users } from "../../shared/schema";
 import { sendWeddingRsvpEmail } from "../utils/mailer";
+import { requireAuth } from "../middleware/auth";
 
 const router = Router();
 
@@ -37,7 +38,7 @@ function hashToken(token: string): string {
  *   }
  * }
  */
-router.post("/send-invitations", async (req, res) => {
+router.post("/send-invitations", requireAuth, async (req, res) => {
   try {
     // Check if user is authenticated
     if (!req.user?.id) {
@@ -265,7 +266,7 @@ router.get("/rsvp", async (req, res) => {
  * GET /api/wedding/guest-list
  * Get the RSVP guest list for the authenticated user
  */
-router.get("/guest-list", async (req, res) => {
+router.get("/guest-list", requireAuth, async (req, res) => {
   try {
     if (!req.user?.id) {
       return res.status(401).json({ ok: false, error: "Not authenticated" });
