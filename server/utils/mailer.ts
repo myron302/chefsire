@@ -142,7 +142,7 @@ export async function sendWeddingRsvpEmail(
   }
 ) {
   const from =
-    process.env.WEDDING_MAIL_FROM || process.env.MAIL_FROM || "ChefSire Weddings <weddings@notify.chefsire.com>";
+    process.env.WEDDING_MAIL_FROM || process.env.MAIL_FROM || "ChefSire Weddings <rsvp@chefsire.com>";
 
   const coupleName = eventDetails?.coupleName || "Our Wedding";
   const eventDate = eventDetails?.eventDate
