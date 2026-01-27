@@ -418,6 +418,13 @@ export default function WeddingPlanning() {
   const [newGuestEmail, setNewGuestEmail] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState('elegant');
 
+  // Wedding Event Details State
+  const [partner1Name, setPartner1Name] = useState('');
+  const [partner2Name, setPartner2Name] = useState('');
+  const [weddingTime, setWeddingTime] = useState('');
+  const [weddingLocation, setWeddingLocation] = useState('');
+  const [customMessage, setCustomMessage] = useState('We would be honored to have you celebrate with us!');
+
   // Memoized budget breakdown - only recalculates when budgetRange changes
   const budgetBreakdown = useMemo(
     () => [
@@ -559,9 +566,16 @@ export default function WeddingPlanning() {
             plusOne: g.plusOne
           })),
           eventDetails: {
-            coupleName: user?.displayName ? `${user.displayName}'s Wedding` : 'Our Wedding',
-            eventDate: selectedDate || undefined,
-            message: 'We would be honored to have you celebrate with us!',
+            coupleName: partner1Name && partner2Name
+              ? `${partner1Name} & ${partner2Name}`
+              : (partner1Name || partner2Name || user?.displayName)
+              ? `${partner1Name || partner2Name || user?.displayName}'s Wedding`
+              : 'Our Wedding',
+            eventDate: selectedDate && weddingTime
+              ? `${selectedDate}T${weddingTime}`
+              : selectedDate || undefined,
+            eventLocation: weddingLocation || undefined,
+            message: customMessage || 'We would be honored to have you celebrate with us!',
             template: selectedTemplate
           }
         })
@@ -626,7 +640,7 @@ export default function WeddingPlanning() {
         variant: "destructive",
       });
     }
-  }, [isPremium, guestList, selectedDate, selectedTemplate, user, toast]);
+  }, [isPremium, guestList, selectedDate, weddingTime, weddingLocation, partner1Name, partner2Name, customMessage, selectedTemplate, user, toast]);
 
   const rsvpStats = useMemo(() => {
     const accepted = guestList.filter(g => g.rsvp === 'accepted').length;
@@ -1409,6 +1423,63 @@ export default function WeddingPlanning() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 md:p-6">
+          {/* Event Details Form */}
+          <div className="mb-6 p-4 bg-muted rounded-lg">
+            <h4 className="font-medium mb-3 text-sm flex items-center gap-2">
+              <Heart className="w-4 h-4" />
+              Wedding Details
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <Input
+                placeholder="Partner 1 Name (e.g., Sarah)"
+                value={partner1Name}
+                onChange={(e) => setPartner1Name(e.target.value)}
+                className="text-sm"
+                disabled={!isPremium}
+              />
+              <Input
+                placeholder="Partner 2 Name (e.g., John)"
+                value={partner2Name}
+                onChange={(e) => setPartner2Name(e.target.value)}
+                className="text-sm"
+                disabled={!isPremium}
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <Input
+                type="date"
+                placeholder="Wedding Date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="text-sm"
+                disabled={!isPremium}
+              />
+              <Input
+                type="time"
+                placeholder="Wedding Time"
+                value={weddingTime}
+                onChange={(e) => setWeddingTime(e.target.value)}
+                className="text-sm"
+                disabled={!isPremium}
+              />
+            </div>
+            <Input
+              placeholder="Wedding Location (e.g., Grand Ballroom, 123 Main St, New York, NY)"
+              value={weddingLocation}
+              onChange={(e) => setWeddingLocation(e.target.value)}
+              className="text-sm mb-3"
+              disabled={!isPremium}
+            />
+            <textarea
+              placeholder="Custom message for your guests..."
+              value={customMessage}
+              onChange={(e) => setCustomMessage(e.target.value)}
+              className="w-full p-3 text-sm border rounded-md resize-none"
+              rows={3}
+              disabled={!isPremium}
+            />
+          </div>
+
           {/* RSVP Stats */}
           <div className="grid grid-cols-4 gap-3 md:gap-4 mb-6">
             <div className="text-center p-3 bg-muted rounded-lg">
