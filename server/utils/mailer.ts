@@ -134,9 +134,13 @@ export async function sendWeddingRsvpEmail(
   acceptLink: string,
   declineLink: string,
   eventDetails?: {
+    partner1Name?: string;
+    partner2Name?: string;
     coupleName?: string;
     eventDate?: string;
     eventLocation?: string;
+    receptionDate?: string;
+    receptionLocation?: string;
     message?: string;
     template?: string;
     coupleEmail?: string; // The couple's email for replies
@@ -172,6 +176,35 @@ export async function sendWeddingRsvpEmail(
   }
 
   const eventLocation = eventDetails?.eventLocation || "Location TBD";
+
+  // Format reception date and time
+  let receptionDate = "";
+  let receptionTime = "";
+  if (eventDetails?.receptionDate) {
+    const date = new Date(eventDetails.receptionDate);
+    receptionDate = date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    const timeString = date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+    if (date.getHours() !== 0 || date.getMinutes() !== 0) {
+      receptionTime = ` at ${timeString}`;
+    }
+  }
+
+  const receptionLocation = eventDetails?.receptionLocation || eventDetails?.eventLocation || "";
+  const hasReception = !!eventDetails?.receptionDate || !!eventDetails?.receptionLocation;
+
+  const partner1 = eventDetails?.partner1Name || "";
+  const partner2 = eventDetails?.partner2Name || "";
+
   const customMessage = eventDetails?.message || "";
   const template = eventDetails?.template || "elegant";
 
@@ -199,11 +232,23 @@ export async function sendWeddingRsvpEmail(
 
   const style = templateStyles[template as keyof typeof templateStyles] || templateStyles.elegant;
 
+  // Generate RSVP button links (use the base acceptLink without response param)
+  const baseUrl = acceptLink.split('&response=')[0];
+  const acceptBothLink = `${baseUrl}&response=accept-both`;
+  const ceremonyOnlyLink = `${baseUrl}&response=ceremony-only`;
+  const receptionOnlyLink = `${baseUrl}&response=reception-only`;
+  const declineBothLink = `${baseUrl}&response=decline`;
+
   const html = `
     <div style="font-family:${style.fontFamily};line-height:1.6;max-width:600px;margin:0 auto;">
       <div style="background:${style.headerBg};color:white;padding:40px 20px;text-align:center;border-radius:10px 10px 0 0;">
         <h1 style="margin:0;font-size:32px;">💍 You're Invited!</h1>
-        <p style="margin:10px 0 0 0;font-size:18px;">${coupleName}</p>
+        ${partner1 && partner2 ? `
+          <p style="margin:20px 0 10px 0;font-size:28px;font-weight:bold;">${partner1} & ${partner2}</p>
+          <p style="margin:5px 0 0 0;font-size:16px;opacity:0.9;">are getting married!</p>
+        ` : `
+          <p style="margin:10px 0 0 0;font-size:18px;">${coupleName}</p>
+        `}
       </div>
 
       <div style="background:#ffffff;padding:40px 30px;border:2px solid #eee;border-top:none;border-radius:0 0 10px 10px;">
@@ -220,23 +265,48 @@ export async function sendWeddingRsvpEmail(
         ` : ''}
 
         <div style="background:#f5f5f5;padding:20px;border-radius:8px;margin:30px 0;">
-          <h3 style="margin:0 0 15px 0;color:${style.secondaryColor};">Event Details</h3>
+          <h3 style="margin:0 0 15px 0;color:${style.secondaryColor};">💒 Wedding Ceremony</h3>
           <p style="margin:8px 0;"><strong>📅 Date & Time:</strong> ${eventDate}${eventTime}</p>
           <p style="margin:8px 0;"><strong>📍 Location:</strong> ${eventLocation}</p>
         </div>
 
-        <p style="font-size:16px;color:#555;margin-bottom:30px;">
+        ${hasReception ? `
+          <div style="background:#f5f5f5;padding:20px;border-radius:8px;margin:30px 0;">
+            <h3 style="margin:0 0 15px 0;color:${style.secondaryColor};">🎉 Reception</h3>
+            ${receptionDate ? `<p style="margin:8px 0;"><strong>📅 Date & Time:</strong> ${receptionDate}${receptionTime}</p>` : ''}
+            <p style="margin:8px 0;"><strong>📍 Location:</strong> ${receptionLocation || 'Same as ceremony'}</p>
+          </div>
+        ` : ''}
+
+        <p style="font-size:16px;color:#555;margin-bottom:20px;text-align:center;">
           Please let us know if you can attend:
         </p>
 
-        <div style="text-align:center;margin:30px 0;">
-          <a href="${acceptLink}" style="display:inline-block;background:${style.primaryColor};color:white;padding:15px 40px;border-radius:8px;text-decoration:none;font-weight:bold;margin:10px;font-size:16px;">
-            ✓ Accept Invitation
-          </a>
-          <a href="${declineLink}" style="display:inline-block;background:#999;color:white;padding:15px 40px;border-radius:8px;text-decoration:none;font-weight:bold;margin:10px;font-size:16px;">
-            ✗ Decline
-          </a>
-        </div>
+        ${hasReception ? `
+          <div style="text-align:center;margin:30px 0;">
+            <a href="${acceptBothLink}" style="display:inline-block;background:${style.primaryColor};color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin:8px;font-size:14px;">
+              ✓ Accept Both
+            </a>
+            <a href="${ceremonyOnlyLink}" style="display:inline-block;background:#4ecdc4;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin:8px;font-size:14px;">
+              Ceremony Only
+            </a>
+            <a href="${receptionOnlyLink}" style="display:inline-block;background:#95a5a6;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin:8px;font-size:14px;">
+              Reception Only
+            </a>
+            <a href="${declineBothLink}" style="display:inline-block;background:#e74c3c;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin:8px;font-size:14px;">
+              ✗ Decline
+            </a>
+          </div>
+        ` : `
+          <div style="text-align:center;margin:30px 0;">
+            <a href="${acceptLink}" style="display:inline-block;background:${style.primaryColor};color:white;padding:15px 40px;border-radius:8px;text-decoration:none;font-weight:bold;margin:10px;font-size:16px;">
+              ✓ Accept Invitation
+            </a>
+            <a href="${declineLink}" style="display:inline-block;background:#999;color:white;padding:15px 40px;border-radius:8px;text-decoration:none;font-weight:bold;margin:10px;font-size:16px;">
+              ✗ Decline
+            </a>
+          </div>
+        `}
 
         <p style="font-size:14px;color:#888;margin-top:40px;text-align:center;">
           We hope you can join us on this special day!<br/>
