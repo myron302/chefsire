@@ -408,7 +408,7 @@ export default function WeddingPlanning() {
 
   // Email Invitations State
   const [guestList, setGuestList] = useState<Array<{
-    id: number;
+    id: number | string;
     name: string;
     email: string;
     rsvp: string;
@@ -523,11 +523,43 @@ export default function WeddingPlanning() {
     }
   }, [newGuestName, newGuestEmail, user?.id, toast]);
 
-  const removeGuest = useCallback((guestId: number) => {
+  const removeGuest = useCallback(async (guestId: number | string) => {
+    // Check if this is a sent guest (from database) or unsent guest (from localStorage)
+    const guest = guestList.find(g => g.id === guestId);
+    const isSentGuest = typeof guestId === 'string';
+
+    // If it's a sent guest, delete from database
+    if (isSentGuest && user?.id) {
+      try {
+        const response = await fetch(`/api/wedding/guest/${guestId}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          toast({
+            title: "Error",
+            description: "Failed to remove guest from database.",
+            variant: "destructive",
+          });
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to delete guest:', error);
+        toast({
+          title: "Error",
+          description: "Failed to remove guest. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    // Update local state
     setGuestList(prev => {
       const updated = prev.filter(g => g.id !== guestId);
 
-      // Update localStorage
+      // Update localStorage for unsent guests
       if (user?.id) {
         const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
         const unsentGuests = updated.filter(g => typeof g.id === 'number');
@@ -536,7 +568,12 @@ export default function WeddingPlanning() {
 
       return updated;
     });
-  }, [user?.id]);
+
+    toast({
+      title: "Guest Removed",
+      description: guest ? `${guest.name} has been removed from your guest list.` : "Guest removed successfully.",
+    });
+  }, [user?.id, guestList, toast]);
 
   const sendInvitations = useCallback(async () => {
     if (!isPremium) {

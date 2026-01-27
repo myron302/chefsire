@@ -344,4 +344,44 @@ router.get("/guest-list", requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/wedding/guest/:id
+ * Delete a guest from the wedding invitation list
+ */
+router.delete("/guest/:id", requireAuth, async (req, res) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ ok: false, error: "Not authenticated" });
+    }
+
+    const guestId = req.params.id;
+
+    // Verify the guest belongs to this user before deleting
+    const [guest] = await db
+      .select()
+      .from(weddingRsvpInvitations)
+      .where(
+        and(
+          eq(weddingRsvpInvitations.id, guestId),
+          eq(weddingRsvpInvitations.userId, req.user.id)
+        )
+      )
+      .limit(1);
+
+    if (!guest) {
+      return res.status(404).json({ ok: false, error: "Guest not found or unauthorized" });
+    }
+
+    // Delete the guest
+    await db
+      .delete(weddingRsvpInvitations)
+      .where(eq(weddingRsvpInvitations.id, guestId));
+
+    return res.json({ ok: true, message: "Guest deleted successfully" });
+  } catch (error) {
+    console.error("delete-guest error:", error);
+    return res.status(500).json({ ok: false, error: "Internal error" });
+  }
+});
+
 export default router;
