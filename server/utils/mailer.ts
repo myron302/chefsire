@@ -146,14 +146,31 @@ export async function sendWeddingRsvpEmail(
     process.env.WEDDING_MAIL_FROM || process.env.MAIL_FROM || "ChefSire Weddings <invitations@chefsire.com>";
 
   const coupleName = eventDetails?.coupleName || "Our Wedding";
-  const eventDate = eventDetails?.eventDate
-    ? new Date(eventDetails.eventDate).toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })
-    : "Date TBD";
+
+  // Format event date and time
+  let eventDate = "Date TBD";
+  let eventTime = "";
+  if (eventDetails?.eventDate) {
+    const date = new Date(eventDetails.eventDate);
+    eventDate = date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    // Check if time is included (if not midnight UTC)
+    const timeString = date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+    // Only include time if it's not midnight (00:00)
+    if (date.getHours() !== 0 || date.getMinutes() !== 0) {
+      eventTime = ` at ${timeString}`;
+    }
+  }
+
   const eventLocation = eventDetails?.eventLocation || "Location TBD";
   const customMessage = eventDetails?.message || "";
   const template = eventDetails?.template || "elegant";
@@ -204,7 +221,7 @@ export async function sendWeddingRsvpEmail(
 
         <div style="background:#f5f5f5;padding:20px;border-radius:8px;margin:30px 0;">
           <h3 style="margin:0 0 15px 0;color:${style.secondaryColor};">Event Details</h3>
-          <p style="margin:8px 0;"><strong>📅 Date:</strong> ${eventDate}</p>
+          <p style="margin:8px 0;"><strong>📅 Date & Time:</strong> ${eventDate}${eventTime}</p>
           <p style="margin:8px 0;"><strong>📍 Location:</strong> ${eventLocation}</p>
         </div>
 
