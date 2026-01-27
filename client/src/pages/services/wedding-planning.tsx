@@ -423,6 +423,9 @@ export default function WeddingPlanning() {
   const [partner2Name, setPartner2Name] = useState('');
   const [weddingTime, setWeddingTime] = useState('');
   const [weddingLocation, setWeddingLocation] = useState('');
+  const [receptionDate, setReceptionDate] = useState('');
+  const [receptionTime, setReceptionTime] = useState('');
+  const [receptionLocation, setReceptionLocation] = useState('');
   const [customMessage, setCustomMessage] = useState('We would be honored to have you celebrate with us!');
 
   // Memoized budget breakdown - only recalculates when budgetRange changes
@@ -566,6 +569,8 @@ export default function WeddingPlanning() {
             plusOne: g.plusOne
           })),
           eventDetails: {
+            partner1Name: partner1Name || undefined,
+            partner2Name: partner2Name || undefined,
             coupleName: partner1Name && partner2Name
               ? `${partner1Name} & ${partner2Name}`
               : (partner1Name || partner2Name || user?.displayName)
@@ -575,6 +580,10 @@ export default function WeddingPlanning() {
               ? `${selectedDate}T${weddingTime}`
               : selectedDate || undefined,
             eventLocation: weddingLocation || undefined,
+            receptionDate: receptionDate && receptionTime
+              ? `${receptionDate}T${receptionTime}`
+              : receptionDate || undefined,
+            receptionLocation: receptionLocation || undefined,
             message: customMessage || 'We would be honored to have you celebrate with us!',
             template: selectedTemplate
           }
@@ -640,7 +649,7 @@ export default function WeddingPlanning() {
         variant: "destructive",
       });
     }
-  }, [isPremium, guestList, selectedDate, weddingTime, weddingLocation, partner1Name, partner2Name, customMessage, selectedTemplate, user, toast]);
+  }, [isPremium, guestList, selectedDate, weddingTime, weddingLocation, receptionDate, receptionTime, receptionLocation, partner1Name, partner2Name, customMessage, selectedTemplate, user, toast]);
 
   const rsvpStats = useMemo(() => {
     const accepted = guestList.filter(g => g.rsvp === 'accepted').length;
@@ -1464,12 +1473,40 @@ export default function WeddingPlanning() {
               />
             </div>
             <Input
-              placeholder="Wedding Location (e.g., Grand Ballroom, 123 Main St, New York, NY)"
+              placeholder="Ceremony Location (e.g., Grand Ballroom, 123 Main St, New York, NY)"
               value={weddingLocation}
               onChange={(e) => setWeddingLocation(e.target.value)}
               className="text-sm mb-3"
               disabled={!isPremium}
             />
+
+            <h5 className="font-medium text-sm mb-2 mt-4">Reception Details (Optional)</h5>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <Input
+                type="date"
+                placeholder="Reception Date"
+                value={receptionDate}
+                onChange={(e) => setReceptionDate(e.target.value)}
+                className="text-sm"
+                disabled={!isPremium}
+              />
+              <Input
+                type="time"
+                placeholder="Reception Time"
+                value={receptionTime}
+                onChange={(e) => setReceptionTime(e.target.value)}
+                className="text-sm"
+                disabled={!isPremium}
+              />
+            </div>
+            <Input
+              placeholder="Reception Location (leave blank if same as ceremony)"
+              value={receptionLocation}
+              onChange={(e) => setReceptionLocation(e.target.value)}
+              className="text-sm mb-3"
+              disabled={!isPremium}
+            />
+
             <textarea
               placeholder="Custom message for your guests..."
               value={customMessage}

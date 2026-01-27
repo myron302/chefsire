@@ -157,8 +157,9 @@ router.get("/rsvp", async (req, res) => {
       return res.status(400).send("Missing token or response parameter.");
     }
 
-    if (response !== "accept" && response !== "decline") {
-      return res.status(400).send("Invalid response. Must be 'accept' or 'decline'.");
+    const validResponses = ["accept", "decline", "accept-both", "ceremony-only", "reception-only"];
+    if (!validResponses.includes(response)) {
+      return res.status(400).send("Invalid response.");
     }
 
     const tokenHash = hashToken(token);
@@ -196,11 +197,21 @@ router.get("/rsvp", async (req, res) => {
       `);
     }
 
+    // Map response to status
+    let rsvpStatus = "declined";
+    if (response === "accept" || response === "accept-both") {
+      rsvpStatus = "accepted";
+    } else if (response === "ceremony-only") {
+      rsvpStatus = "ceremony-only";
+    } else if (response === "reception-only") {
+      rsvpStatus = "reception-only";
+    }
+
     // Update invitation status
     await db
       .update(weddingRsvpInvitations)
       .set({
-        rsvpStatus: response === "accept" ? "accepted" : "declined",
+        rsvpStatus,
         respondedAt: now,
       })
       .where(eq(weddingRsvpInvitations.id, invitation.id));
@@ -214,10 +225,11 @@ router.get("/rsvp", async (req, res) => {
         .limit(1);
 
       if (coupleUser?.email) {
+        const notificationStatus = response === "decline" ? "declined" : "accepted";
         await sendRsvpNotificationEmail(
           coupleUser.email,
           invitation.guestName,
-          response === "accept" ? "accepted" : "declined",
+          notificationStatus as any,
           {
             coupleName: coupleUser.displayName ? `${coupleUser.displayName}'s Wedding` : undefined,
             eventDate: invitation.eventDate ? invitation.eventDate.toLocaleDateString() : undefined,
@@ -229,10 +241,20 @@ router.get("/rsvp", async (req, res) => {
       console.error("Failed to send RSVP notification:", notificationError);
     }
 
-    // Show success page
-    const statusColor = response === "accept" ? "#27ae60" : "#95a5a6";
-    const statusIcon = response === "accept" ? "✓" : "✗";
-    const statusText = response === "accept" ? "Accepted" : "Declined";
+    // Show success page with appropriate styling
+    const responseMap: Record<string, {color: string; icon: string; text: string; message: string}> = {
+      "accept": { color: "#27ae60", icon: "✓", text: "Accepted", message: "We're thrilled you can join us!" },
+      "accept-both": { color: "#27ae60", icon: "✓", text: "Accepted Both Events", message: "We're thrilled you can join us for both the ceremony and reception!" },
+      "ceremony-only": { color: "#4ecdc4", icon: "✓", text: "Ceremony Only", message: "We're happy you can join us for the ceremony!" },
+      "reception-only": { color: "#95a5a6", icon: "✓", text: "Reception Only", message: "We're happy you can join us for the reception!" },
+      "decline": { color: "#e74c3c", icon: "✗", text: "Declined", message: "Thank you for letting us know. You'll be missed!" }
+    };
+
+    const status = responseMap[response] || responseMap["decline"];
+    const statusColor = status.color;
+    const statusIcon = status.icon;
+    const statusText = status.text;
+    const statusMessage = status.message;
 
     return res.send(`
       <html>
@@ -273,6 +295,7 @@ router.get("/rsvp", async (req, res) => {
             <div class="icon">${statusIcon}</div>
             <h1>RSVP ${statusText}!</h1>
             <p><span class="guest-name">${invitation.guestName}</span></p>
+            <p>${statusMessage}</p>
             <p>Your response has been recorded. The couple has been notified.</p>
             <p style="margin-top: 30px; font-size: 14px; color: #999;">
               Thank you for responding!
