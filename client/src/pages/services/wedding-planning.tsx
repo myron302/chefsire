@@ -286,6 +286,12 @@ export default function WeddingPlanning() {
   console.log('[Wedding Planning] isPremium:', isPremium);
   console.log('[Wedding Planning] isElite:', isElite);
 
+  // Debug: Component mount
+  useEffect(() => {
+    console.log('[Wedding Planning] Component mounted');
+    toast({ title: "Debug: Mount", description: "Wedding Planning loaded" });
+  }, [toast]);
+
   // Trial selector modal - only show once if user is on free tier
   const [showTrialSelector, setShowTrialSelector] = useState(() => {
     // Check if user already selected a tier
@@ -886,29 +892,33 @@ export default function WeddingPlanning() {
 
   // Invitation Preview Component
   const InvitationPreview = () => {
-    // Style configurations
-    const styleTemplates = {
-      elegant: {
-        container: "bg-white font-serif border-double border-pink-200",
-        accent: "text-pink-500",
-        title: "font-light tracking-widest uppercase text-3xl",
-        button: "rounded-full border-pink-200"
-      },
-      rustic: {
-        container: "bg-orange-50 font-sans border-dashed border-amber-300",
-        accent: "text-amber-700",
-        title: "font-bold text-4xl italic text-amber-900",
-        button: "rounded-none border-amber-500 bg-amber-50"
-      },
-      modern: {
-        container: "bg-slate-900 text-white font-sans border-solid border-white/20",
-        accent: "text-cyan-400",
-        title: "font-black tracking-tighter text-5xl uppercase italic",
-        button: "rounded-md border-cyan-400 text-cyan-400 hover:bg-cyan-400/10"
-      }
-    };
+    try {
+      console.log('[InvitationPreview] Rendering, selectedTemplate:', selectedTemplate);
 
-    const styles = styleTemplates[selectedTemplate as 'elegant' | 'rustic' | 'modern'] || styleTemplates.elegant;
+      // Style configurations
+      const styleTemplates = {
+        elegant: {
+          container: "bg-white font-serif border-double border-pink-200",
+          accent: "text-pink-500",
+          title: "font-light tracking-widest uppercase text-3xl",
+          button: "rounded-full border-pink-200"
+        },
+        rustic: {
+          container: "bg-orange-50 font-sans border-dashed border-amber-300",
+          accent: "text-amber-700",
+          title: "font-bold text-4xl italic text-amber-900",
+          button: "rounded-none border-amber-500 bg-amber-50"
+        },
+        modern: {
+          container: "bg-slate-900 text-white font-sans border-solid border-white/20",
+          accent: "text-cyan-400",
+          title: "font-black tracking-tighter text-5xl uppercase italic",
+          button: "rounded-md border-cyan-400 text-cyan-400 hover:bg-cyan-400/10"
+        }
+      };
+
+      const styles = styleTemplates[selectedTemplate as 'elegant' | 'rustic' | 'modern'] || styleTemplates.elegant;
+      console.log('[InvitationPreview] Styles loaded:', styles);
 
     return (
       <div className={`p-8 rounded-lg text-center space-y-6 border-4 shadow-xl transition-all duration-500 ${styles.container}`}>
@@ -963,6 +973,11 @@ export default function WeddingPlanning() {
         </Button>
       </div>
     );
+    } catch (error) {
+      console.error('[InvitationPreview] Error rendering:', error);
+      toast({ title: "Debug Error", description: `Preview error: ${error}`, variant: "destructive" });
+      return <div className="p-8 text-center text-red-500">Error rendering preview</div>;
+    }
   };
 
   return (
