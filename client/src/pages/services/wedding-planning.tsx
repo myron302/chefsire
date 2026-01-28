@@ -284,12 +284,6 @@ export default function WeddingPlanning() {
   const isPremium = currentTier === 'premium' || currentTier === 'elite';
   const isElite = currentTier === 'elite';
 
-  // Debug logging
-  console.log('[Wedding Planning] Current user:', user);
-  console.log('[Wedding Planning] Current tier:', currentTier);
-  console.log('[Wedding Planning] isPremium:', isPremium);
-  console.log('[Wedding Planning] isElite:', isElite);
-
   // =========================================================
   // ALL STATE DECLARATIONS - Must be declared BEFORE useEffects
   // =========================================================
@@ -351,12 +345,6 @@ export default function WeddingPlanning() {
   // Refs for Google Places Autocomplete
   const ceremonyRef = useRef<HTMLInputElement>(null);
   const receptionRef = useRef<HTMLInputElement>(null);
-
-  // Debug: Component mount
-  useEffect(() => {
-    console.log('[Wedding Planning] Component mounted');
-    toast({ title: "Debug: Mount", description: "Wedding Planning loaded" });
-  }, [toast]);
 
   // Trial selector modal - only show once if user is on free tier
   const [showTrialSelector, setShowTrialSelector] = useState(() => {
@@ -441,30 +429,25 @@ export default function WeddingPlanning() {
   // Google Places Autocomplete initialization
   useEffect(() => {
     if (!isGoogleMapsLoaded || !window.google?.maps?.places) {
-      console.log('[Wedding Planning] Google Maps not loaded yet, waiting...');
       return;
     }
 
     if (!isPremium) {
-      console.log('[Wedding Planning] Premium required for autocomplete');
       return;
     }
 
-    console.log('[Wedding Planning] Initializing Google Places Autocomplete');
-
+    // Options for autocomplete - use 'establishment' for venues/businesses
     const options = {
-      types: ['address', 'establishment'],
-      fields: ['formatted_address', 'name']
+      types: ['establishment'],
+      fields: ['formatted_address', 'name', 'place_id']
     };
 
     // Ceremony Autocomplete
     if (ceremonyRef.current) {
-      console.log('[Wedding Planning] Setting up ceremony autocomplete');
       const ceremonyAutocomplete = new window.google.maps.places.Autocomplete(ceremonyRef.current, options);
       ceremonyAutocomplete.addListener('place_changed', () => {
         const place = ceremonyAutocomplete.getPlace();
         const addr = place.formatted_address || place.name || '';
-        console.log('[Wedding Planning] Ceremony location selected:', addr);
         setWeddingLocation(addr);
         if (useSameLocation) setReceptionLocation(addr);
       });
@@ -472,12 +455,10 @@ export default function WeddingPlanning() {
 
     // Reception Autocomplete
     if (receptionRef.current && !useSameLocation) {
-      console.log('[Wedding Planning] Setting up reception autocomplete');
       const receptionAutocomplete = new window.google.maps.places.Autocomplete(receptionRef.current, options);
       receptionAutocomplete.addListener('place_changed', () => {
         const place = receptionAutocomplete.getPlace();
         const addr = place.formatted_address || place.name || '';
-        console.log('[Wedding Planning] Reception location selected:', addr);
         setReceptionLocation(addr);
       });
     }
