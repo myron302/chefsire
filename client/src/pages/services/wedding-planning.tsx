@@ -1,4 +1,4 @@
-import { useState, useMemo, memo, useCallback, useEffect } from 'react';
+import { useState, useMemo, memo, useCallback, useEffect, useRef } from 'react';
 import {
   Calendar, MapPin, Users, DollarSign, Clock, Heart,
   ChefHat, Camera, Music, Flower, Sparkles, Star,
@@ -18,6 +18,7 @@ import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Link } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
 import { useUser } from '@/contexts/UserContext';
@@ -365,6 +366,36 @@ export default function WeddingPlanning() {
     fetchGuestList();
   }, [user?.id]);
 
+  // Google Places Autocomplete initialization
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.google?.maps?.places) {
+      const options = {
+        types: ['address', 'establishment'],
+        fields: ['formatted_address', 'name']
+      };
+
+      // Ceremony Autocomplete
+      if (ceremonyRef.current) {
+        const ceremonyAutocomplete = new window.google.maps.places.Autocomplete(ceremonyRef.current, options);
+        ceremonyAutocomplete.addListener('place_changed', () => {
+          const place = ceremonyAutocomplete.getPlace();
+          const addr = place.formatted_address || place.name || '';
+          setWeddingLocation(addr);
+          if (useSameLocation) setReceptionLocation(addr);
+        });
+      }
+
+      // Reception Autocomplete
+      if (receptionRef.current && !useSameLocation) {
+        const receptionAutocomplete = new window.google.maps.places.Autocomplete(receptionRef.current, options);
+        receptionAutocomplete.addListener('place_changed', () => {
+          const place = receptionAutocomplete.getPlace();
+          setReceptionLocation(place.formatted_address || place.name || '');
+        });
+      }
+    }
+  }, [useSameLocation, isPremium]);
+
   // Simulated dynamic savings data (replace with a real API call if needed)
   const dynamicSavings = 4200;
 
@@ -427,6 +458,12 @@ export default function WeddingPlanning() {
   const [receptionTime, setReceptionTime] = useState('');
   const [receptionLocation, setReceptionLocation] = useState('');
   const [customMessage, setCustomMessage] = useState('We would be honored to have you celebrate with us!');
+  const [useSameLocation, setUseSameLocation] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // Refs for Google Places Autocomplete
+  const ceremonyRef = useRef<HTMLInputElement>(null);
+  const receptionRef = useRef<HTMLInputElement>(null);
 
   // Memoized budget breakdown - only recalculates when budgetRange changes
   const budgetBreakdown = useMemo(
@@ -846,6 +883,85 @@ export default function WeddingPlanning() {
       });
     }
   }, [updateUser, toast, currentTier]);
+
+  // Invitation Preview Component
+  const InvitationPreview = () => {
+    // Style configurations
+    const styles = {
+      elegant: {
+        container: "bg-white font-serif border-double border-pink-200",
+        accent: "text-pink-500",
+        title: "font-light tracking-widest uppercase text-3xl",
+        button: "rounded-full border-pink-200"
+      },
+      rustic: {
+        container: "bg-orange-50 font-sans border-dashed border-amber-300",
+        accent: "text-amber-700",
+        title: "font-bold text-4xl italic text-amber-900",
+        button: "rounded-none border-amber-500 bg-amber-50"
+      },
+      modern: {
+        container: "bg-slate-900 text-white font-sans border-solid border-white/20",
+        accent: "text-cyan-400",
+        title: "font-black tracking-tighter text-5xl uppercase italic",
+        button: "rounded-md border-cyan-400 text-cyan-400 hover:bg-cyan-400/10"
+      }
+    }[selectedTemplate as 'elegant' | 'rustic' | 'modern'] || styles.elegant;
+
+    return (
+      <div className={`p-8 rounded-lg text-center space-y-6 border-4 shadow-xl transition-all duration-500 ${styles.container}`}>
+
+        {/* Header Section */}
+        <div className="space-y-2">
+          <Sparkles className={`w-6 h-6 mx-auto ${styles.accent}`} />
+          <h2 className={styles.title}>
+            {partner1Name || 'Partner 1'} <span className="text-xl block md:inline">&</span> {partner2Name || 'Partner 2'}
+          </h2>
+          <div className={`h-px w-24 mx-auto opacity-50 ${selectedTemplate === 'modern' ? 'bg-cyan-400' : 'bg-current'}`} />
+        </div>
+
+        {/* Message */}
+        <p className={`text-lg px-4 ${selectedTemplate === 'modern' ? 'text-slate-300' : 'italic text-muted-foreground'}`}>
+          "{customMessage}"
+        </p>
+
+        {/* Event Details Grid */}
+        <div className="space-y-6 py-4">
+          <div className="flex flex-col items-center">
+            <CalendarIcon className={`w-5 h-5 mb-1 ${styles.accent}`} />
+            <p className="font-semibold text-lg">{selectedDate || 'Saturday, June 14th'}</p>
+            <p className="text-sm opacity-80">{weddingTime || '4:00 PM'}</p>
+          </div>
+
+          <div className="flex flex-col items-center">
+            <MapPin className={`w-5 h-5 mb-1 ${styles.accent}`} />
+            <p className="font-bold uppercase tracking-widest text-xs mb-1">The Ceremony</p>
+            <p className="text-sm max-w-xs">{weddingLocation || 'The Grand Estate, Main Hall'}</p>
+          </div>
+
+          {/* Sync Logic: Show separate reception or single footer */}
+          {!useSameLocation && receptionLocation ? (
+            <div className="flex flex-col items-center animate-in fade-in zoom-in duration-500 pt-4 border-t border-current/10">
+              <ChefHat className={`w-5 h-5 mb-1 ${styles.accent}`} />
+              <p className="font-bold uppercase tracking-widest text-xs mb-1">The Reception</p>
+              <p className="text-sm max-w-xs">{receptionLocation}</p>
+              {receptionTime && <p className="text-xs opacity-70 mt-1">Dinner served at {receptionTime}</p>}
+            </div>
+          ) : useSameLocation ? (
+            <div className="pt-4 border-t border-current/10">
+              <p className={`text-xs uppercase tracking-[0.2em] font-medium ${styles.accent}`}>
+                Dinner & Dancing to follow at the same venue
+              </p>
+            </div>
+          ) : null}
+        </div>
+
+        <Button variant="outline" className={`pointer-events-none px-10 ${styles.button}`}>
+          RSVP Online
+        </Button>
+      </div>
+    );
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-3 md:px-4 py-4 md:py-8">
@@ -1509,40 +1625,79 @@ export default function WeddingPlanning() {
                 disabled={!isPremium}
               />
             </div>
-            <Input
-              placeholder="Ceremony Location (e.g., Grand Ballroom, 123 Main St, New York, NY)"
-              value={weddingLocation}
-              onChange={(e) => setWeddingLocation(e.target.value)}
-              className="text-sm mb-3"
-              disabled={!isPremium}
-            />
-
-            <h5 className="font-medium text-sm mb-2 mt-4">Reception Details (Optional)</h5>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+            {/* Ceremony Location with Google Places Autocomplete */}
+            <div className="space-y-2 mb-3">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-pink-500" /> Ceremony Location
+              </label>
               <Input
-                type="date"
-                placeholder="Reception Date"
-                value={receptionDate}
-                onChange={(e) => setReceptionDate(e.target.value)}
-                className="text-sm"
-                disabled={!isPremium}
-              />
-              <Input
-                type="time"
-                placeholder="Reception Time"
-                value={receptionTime}
-                onChange={(e) => setReceptionTime(e.target.value)}
+                ref={ceremonyRef}
+                placeholder="Search for ceremony venue..."
+                value={weddingLocation}
+                onChange={(e) => {
+                  setWeddingLocation(e.target.value);
+                  if (useSameLocation) setReceptionLocation(e.target.value);
+                }}
                 className="text-sm"
                 disabled={!isPremium}
               />
             </div>
-            <Input
-              placeholder="Reception Location (leave blank if same as ceremony)"
-              value={receptionLocation}
-              onChange={(e) => setReceptionLocation(e.target.value)}
-              className="text-sm mb-3"
-              disabled={!isPremium}
-            />
+
+            {/* Sync Toggle */}
+            <div className="flex items-center space-x-2 py-2 mb-3">
+              <input
+                type="checkbox"
+                id="sync-location"
+                checked={useSameLocation}
+                onChange={(e) => {
+                  setUseSameLocation(e.target.checked);
+                  if (e.target.checked) setReceptionLocation(weddingLocation);
+                }}
+                className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                disabled={!isPremium}
+              />
+              <label htmlFor="sync-location" className="text-sm text-muted-foreground cursor-pointer">
+                Reception is at the same location
+              </label>
+            </div>
+
+            {/* Reception Details - Only show if not synced */}
+            {!useSameLocation && (
+              <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                <h5 className="font-medium text-sm mb-2 mt-2">Reception Details (Optional)</h5>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Input
+                    type="date"
+                    placeholder="Reception Date"
+                    value={receptionDate}
+                    onChange={(e) => setReceptionDate(e.target.value)}
+                    className="text-sm"
+                    disabled={!isPremium}
+                  />
+                  <Input
+                    type="time"
+                    placeholder="Reception Time"
+                    value={receptionTime}
+                    onChange={(e) => setReceptionTime(e.target.value)}
+                    className="text-sm"
+                    disabled={!isPremium}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    <ChefHat className="w-4 h-4 text-purple-500" /> Reception Location
+                  </label>
+                  <Input
+                    ref={receptionRef}
+                    placeholder="Search for reception venue..."
+                    value={receptionLocation}
+                    onChange={(e) => setReceptionLocation(e.target.value)}
+                    className="text-sm"
+                    disabled={!isPremium}
+                  />
+                </div>
+              </div>
+            )}
 
             <textarea
               placeholder="Custom message for your guests..."
@@ -1660,17 +1815,50 @@ export default function WeddingPlanning() {
             </div>
           </div>
 
-          {/* Send Invitations Button */}
+          {/* Send Invitations & Preview Buttons */}
           <div className="flex flex-col sm:flex-row gap-3">
-            <Button
-              className="flex-1 bg-gradient-to-r from-pink-600 to-purple-600 text-white"
-              onClick={sendInvitations}
-              disabled={guestList.length === 0}
-            >
-              <Mail className="w-4 h-4 mr-2" />
-              Send Invitations ({guestList.length})
-            </Button>
-            {!isPremium && (
+            {isPremium ? (
+              <>
+                <Button
+                  className="flex-1 bg-gradient-to-r from-pink-600 to-purple-600 text-white"
+                  onClick={sendInvitations}
+                  disabled={guestList.length === 0}
+                >
+                  <Mail className="w-4 h-4 mr-2" />
+                  Send Invitations ({guestList.length})
+                </Button>
+
+                {/* Preview Dialog */}
+                <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="flex-1 border-pink-200 hover:bg-pink-50">
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Preview Invitation
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-lg overflow-hidden">
+                    <DialogHeader>
+                      <DialogTitle>Invitation Preview</DialogTitle>
+                      <p className="text-xs text-muted-foreground">This is exactly what your guests will see in their email.</p>
+                    </DialogHeader>
+                    <InvitationPreview />
+                    <div className="flex justify-end gap-2 mt-4">
+                      <Button variant="ghost" onClick={() => setIsPreviewOpen(false)}>Close</Button>
+                      <Button
+                        className="bg-pink-600"
+                        onClick={() => {
+                          setIsPreviewOpen(false);
+                          sendInvitations();
+                        }}
+                        disabled={guestList.length === 0}
+                      >
+                        Confirm & Send
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </>
+            ) : (
               <Button variant="outline" className="flex-1 border-pink-300 bg-pink-50" onClick={handleGoPremium}>
                 <Heart className="w-4 h-4 mr-2" />
                 Upgrade to Premium
