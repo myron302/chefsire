@@ -328,9 +328,8 @@ export default function WeddingPlanning() {
   }>>([]);
   const [newGuestName, setNewGuestName] = useState('');
   const [newGuestEmail, setNewGuestEmail] = useState('');
-  const [selectedTemplate, setSelectedTemplate] = useState('elegant');
 
-  // Wedding Event Details State
+  // Wedding Event Details State - will be loaded from localStorage in useEffect
   const [partner1Name, setPartner1Name] = useState('');
   const [partner2Name, setPartner2Name] = useState('');
   const [weddingTime, setWeddingTime] = useState('');
@@ -340,6 +339,7 @@ export default function WeddingPlanning() {
   const [receptionLocation, setReceptionLocation] = useState('');
   const [customMessage, setCustomMessage] = useState('We would be honored to have you celebrate with us!');
   const [useSameLocation, setUseSameLocation] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState('elegant');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // Refs for Google Places Autocomplete
@@ -379,11 +379,35 @@ export default function WeddingPlanning() {
     }
   }, [currentTier]);
 
-  // Load guest list from backend and localStorage on mount
+  // Load guest list and wedding details from localStorage/backend on mount
   useEffect(() => {
-    const fetchGuestList = async () => {
-      if (!user?.id) return;
+    if (!user?.id) return;
 
+    // Load wedding event details from localStorage
+    const savedPartner1 = localStorage.getItem(`wedding-partner1-${user.id}`);
+    const savedPartner2 = localStorage.getItem(`wedding-partner2-${user.id}`);
+    const savedTime = localStorage.getItem(`wedding-time-${user.id}`);
+    const savedLocation = localStorage.getItem(`wedding-location-${user.id}`);
+    const savedReceptionDate = localStorage.getItem(`wedding-reception-date-${user.id}`);
+    const savedReceptionTime = localStorage.getItem(`wedding-reception-time-${user.id}`);
+    const savedReceptionLocation = localStorage.getItem(`wedding-reception-location-${user.id}`);
+    const savedMessage = localStorage.getItem(`wedding-message-${user.id}`);
+    const savedSameLocation = localStorage.getItem(`wedding-same-location-${user.id}`);
+    const savedTemplateValue = localStorage.getItem(`wedding-template-${user.id}`);
+
+    if (savedPartner1) setPartner1Name(savedPartner1);
+    if (savedPartner2) setPartner2Name(savedPartner2);
+    if (savedTime) setWeddingTime(savedTime);
+    if (savedLocation) setWeddingLocation(savedLocation);
+    if (savedReceptionDate) setReceptionDate(savedReceptionDate);
+    if (savedReceptionTime) setReceptionTime(savedReceptionTime);
+    if (savedReceptionLocation) setReceptionLocation(savedReceptionLocation);
+    if (savedMessage) setCustomMessage(savedMessage);
+    if (savedSameLocation !== null) setUseSameLocation(savedSameLocation === 'true');
+    if (savedTemplateValue) setSelectedTemplate(savedTemplateValue);
+
+    // Load guest list
+    const fetchGuestList = async () => {
       try {
         // Load sent invitations from backend
         const response = await fetch('/api/wedding/guest-list', {
@@ -463,6 +487,57 @@ export default function WeddingPlanning() {
       });
     }
   }, [isGoogleMapsLoaded, useSameLocation, isPremium]);
+
+  // Persist wedding event details to localStorage
+  useEffect(() => {
+    if (!user?.id) return;
+    localStorage.setItem(`wedding-partner1-${user.id}`, partner1Name);
+  }, [partner1Name, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    localStorage.setItem(`wedding-partner2-${user.id}`, partner2Name);
+  }, [partner2Name, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    localStorage.setItem(`wedding-time-${user.id}`, weddingTime);
+  }, [weddingTime, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    localStorage.setItem(`wedding-location-${user.id}`, weddingLocation);
+  }, [weddingLocation, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    localStorage.setItem(`wedding-reception-date-${user.id}`, receptionDate);
+  }, [receptionDate, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    localStorage.setItem(`wedding-reception-time-${user.id}`, receptionTime);
+  }, [receptionTime, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    localStorage.setItem(`wedding-reception-location-${user.id}`, receptionLocation);
+  }, [receptionLocation, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    localStorage.setItem(`wedding-message-${user.id}`, customMessage);
+  }, [customMessage, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    localStorage.setItem(`wedding-same-location-${user.id}`, String(useSameLocation));
+  }, [useSameLocation, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    localStorage.setItem(`wedding-template-${user.id}`, selectedTemplate);
+  }, [selectedTemplate, user?.id]);
 
   const handleStartTrial = () => {
     // Wedding planning features are free - just dismiss the banner permanently
