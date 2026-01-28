@@ -141,6 +141,8 @@ export async function sendWeddingRsvpEmail(
     eventLocation?: string;
     receptionDate?: string;
     receptionLocation?: string;
+    useSameLocation?: boolean;
+    hasReception?: boolean;
     message?: string;
     template?: string;
     coupleEmail?: string; // The couple's email for replies
@@ -199,8 +201,10 @@ export async function sendWeddingRsvpEmail(
     }
   }
 
-  const receptionLocation = eventDetails?.receptionLocation || eventDetails?.eventLocation || "";
-  const hasReception = !!eventDetails?.receptionDate || !!eventDetails?.receptionLocation;
+  // Use explicit flag from frontend, or fallback to checking if reception info exists
+  const hasReception = eventDetails?.hasReception ?? (!!(eventDetails?.receptionDate || eventDetails?.receptionLocation));
+  const useSameLocation = eventDetails?.useSameLocation || false;
+  const receptionLocation = eventDetails?.receptionLocation || (useSameLocation && eventDetails?.eventLocation) || "";
 
   const partner1 = eventDetails?.partner1Name || "";
   const partner2 = eventDetails?.partner2Name || "";
@@ -274,7 +278,8 @@ export async function sendWeddingRsvpEmail(
           <div style="background:#f5f5f5;padding:20px;border-radius:8px;margin:30px 0;">
             <h3 style="margin:0 0 15px 0;color:${style.secondaryColor};">🎉 Reception</h3>
             ${receptionDate ? `<p style="margin:8px 0;"><strong>📅 Date & Time:</strong> ${receptionDate}${receptionTime}</p>` : ''}
-            <p style="margin:8px 0;"><strong>📍 Location:</strong> ${receptionLocation || 'Same as ceremony'}</p>
+            ${receptionLocation ? `<p style="margin:8px 0;"><strong>📍 Location:</strong> ${receptionLocation}</p>` : ''}
+            ${useSameLocation && !receptionDate ? `<p style="margin:8px 0;font-style:italic;color:#666;">Dinner & dancing to follow at the same venue</p>` : ''}
           </div>
         ` : ''}
 

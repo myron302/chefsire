@@ -668,6 +668,9 @@ export default function WeddingPlanning() {
               ? `${receptionDate}T${receptionTime}`
               : receptionDate || undefined,
             receptionLocation: receptionLocation || undefined,
+            useSameLocation: useSameLocation,
+            hasReception: !!(receptionDate || receptionTime || receptionLocation),
+            coupleEmail: user?.email || undefined,
             message: customMessage || 'We would be honored to have you celebrate with us!',
             template: selectedTemplate
           }
