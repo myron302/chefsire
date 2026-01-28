@@ -201,10 +201,19 @@ export async function sendWeddingRsvpEmail(
     }
   }
 
+  // Debug logging
+  console.log('[sendWeddingRsvpEmail] eventDetails:', JSON.stringify(eventDetails, null, 2));
+  console.log('[sendWeddingRsvpEmail] receptionDate:', eventDetails?.receptionDate);
+  console.log('[sendWeddingRsvpEmail] receptionLocation:', eventDetails?.receptionLocation);
+  console.log('[sendWeddingRsvpEmail] hasReception flag:', eventDetails?.hasReception);
+
   // Use explicit flag from frontend, or fallback to checking if reception info exists
   const hasReception = eventDetails?.hasReception ?? (!!(eventDetails?.receptionDate || eventDetails?.receptionLocation));
   const useSameLocation = eventDetails?.useSameLocation || false;
   const receptionLocation = eventDetails?.receptionLocation || (useSameLocation && eventDetails?.eventLocation) || "";
+
+  console.log('[sendWeddingRsvpEmail] Computed hasReception:', hasReception);
+  console.log('[sendWeddingRsvpEmail] Computed receptionLocation:', receptionLocation);
 
   const partner1 = eventDetails?.partner1Name || "";
   const partner2 = eventDetails?.partner2Name || "";

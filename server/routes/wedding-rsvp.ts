@@ -104,11 +104,17 @@ router.post("/send-invitations", requireAuth, async (req, res) => {
         const acceptLink = `${appUrl}/api/wedding/rsvp?token=${token}&response=accept`;
         const declineLink = `${appUrl}/api/wedding/rsvp?token=${token}&response=decline`;
 
-        // Send email
+        // Send email with all event details including reception info
         await sendWeddingRsvpEmail(email, name, acceptLink, declineLink, {
+          partner1Name: eventDetails?.partner1Name,
+          partner2Name: eventDetails?.partner2Name,
           coupleName: eventDetails?.coupleName || `${user.displayName}'s Wedding`,
           eventDate: eventDetails?.eventDate,
           eventLocation: eventDetails?.eventLocation,
+          receptionDate: eventDetails?.receptionDate,
+          receptionLocation: eventDetails?.receptionLocation,
+          useSameLocation: eventDetails?.useSameLocation,
+          hasReception: eventDetails?.hasReception,
           message: eventDetails?.message,
           template: eventDetails?.template,
           coupleEmail: user.email, // Replies go to the couple's email
