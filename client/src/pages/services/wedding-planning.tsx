@@ -740,10 +740,26 @@ export default function WeddingPlanning() {
   }, [isPremium, guestList, selectedDate, weddingTime, weddingLocation, receptionDate, receptionTime, receptionLocation, partner1Name, partner2Name, customMessage, selectedTemplate, user, toast]);
 
   const rsvpStats = useMemo(() => {
-    const accepted = guestList.filter(g => g.rsvp === 'accepted').length;
+    const acceptedBoth = guestList.filter(g => g.rsvp === 'accepted' || g.rsvp === 'accept-both').length;
+    const ceremonyOnly = guestList.filter(g => g.rsvp === 'ceremony-only').length;
+    const receptionOnly = guestList.filter(g => g.rsvp === 'reception-only').length;
     const declined = guestList.filter(g => g.rsvp === 'declined').length;
     const pending = guestList.filter(g => g.rsvp === 'pending').length;
-    return { accepted, declined, pending, total: guestList.length };
+
+    // Calculate totals for ceremony and reception
+    const ceremonyTotal = acceptedBoth + ceremonyOnly;
+    const receptionTotal = acceptedBoth + receptionOnly;
+
+    return {
+      acceptedBoth,
+      ceremonyOnly,
+      receptionOnly,
+      ceremonyTotal,
+      receptionTotal,
+      declined,
+      pending,
+      total: guestList.length
+    };
   }, [guestList]);
 
   // Button Click Handlers
@@ -1735,14 +1751,18 @@ export default function WeddingPlanning() {
           </div>
 
           {/* RSVP Stats */}
-          <div className="grid grid-cols-4 gap-3 md:gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-6">
             <div className="text-center p-3 bg-muted rounded-lg">
               <p className="text-xl md:text-2xl font-bold">{rsvpStats.total}</p>
               <p className="text-xs text-muted-foreground">Total Guests</p>
             </div>
-            <div className="text-center p-3 bg-green-50 dark:bg-green-950 rounded-lg">
-              <p className="text-xl md:text-2xl font-bold text-green-600">{rsvpStats.accepted}</p>
-              <p className="text-xs text-muted-foreground">Accepted</p>
+            <div className="text-center p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+              <p className="text-xl md:text-2xl font-bold text-blue-600">{rsvpStats.ceremonyTotal}</p>
+              <p className="text-xs text-muted-foreground">Ceremony</p>
+            </div>
+            <div className="text-center p-3 bg-purple-50 dark:bg-purple-950 rounded-lg">
+              <p className="text-xl md:text-2xl font-bold text-purple-600">{rsvpStats.receptionTotal}</p>
+              <p className="text-xs text-muted-foreground">Reception</p>
             </div>
             <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg">
               <p className="text-xl md:text-2xl font-bold text-yellow-600">{rsvpStats.pending}</p>
@@ -1753,6 +1773,33 @@ export default function WeddingPlanning() {
               <p className="text-xs text-muted-foreground">Declined</p>
             </div>
           </div>
+
+          {/* Detailed RSVP Breakdown */}
+          {(rsvpStats.acceptedBoth > 0 || rsvpStats.ceremonyOnly > 0 || rsvpStats.receptionOnly > 0) && (
+            <div className="mb-6 p-4 bg-muted/50 rounded-lg">
+              <h4 className="text-sm font-medium mb-3">Response Breakdown</h4>
+              <div className="grid grid-cols-3 gap-3 text-center text-sm">
+                {rsvpStats.acceptedBoth > 0 && (
+                  <div>
+                    <p className="font-bold text-green-600">{rsvpStats.acceptedBoth}</p>
+                    <p className="text-xs text-muted-foreground">Both Events</p>
+                  </div>
+                )}
+                {rsvpStats.ceremonyOnly > 0 && (
+                  <div>
+                    <p className="font-bold text-blue-600">{rsvpStats.ceremonyOnly}</p>
+                    <p className="text-xs text-muted-foreground">Ceremony Only</p>
+                  </div>
+                )}
+                {rsvpStats.receptionOnly > 0 && (
+                  <div>
+                    <p className="font-bold text-purple-600">{rsvpStats.receptionOnly}</p>
+                    <p className="text-xs text-muted-foreground">Reception Only</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Template Selection */}
           <div className="mb-6">
@@ -1816,15 +1863,24 @@ export default function WeddingPlanning() {
                   <div className="flex items-center gap-2">
                     <Badge
                       variant={
-                        guest.rsvp === 'accepted'
+                        guest.rsvp === 'accepted' || guest.rsvp === 'accept-both'
                           ? 'default'
                           : guest.rsvp === 'declined'
                           ? 'destructive'
                           : 'secondary'
                       }
-                      className="text-xs"
+                      className={`text-xs ${
+                        guest.rsvp === 'ceremony-only' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                        guest.rsvp === 'reception-only' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' :
+                        ''
+                      }`}
                     >
-                      {guest.rsvp}
+                      {guest.rsvp === 'accept-both' ? 'Both Events' :
+                       guest.rsvp === 'ceremony-only' ? 'Ceremony Only' :
+                       guest.rsvp === 'reception-only' ? 'Reception Only' :
+                       guest.rsvp === 'accepted' ? 'Accepted' :
+                       guest.rsvp === 'declined' ? 'Declined' :
+                       'Pending'}
                     </Badge>
                     <Button
                       size="sm"
