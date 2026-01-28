@@ -887,7 +887,7 @@ export default function WeddingPlanning() {
   // Invitation Preview Component
   const InvitationPreview = () => {
     // Style configurations
-    const styles = {
+    const styleTemplates = {
       elegant: {
         container: "bg-white font-serif border-double border-pink-200",
         accent: "text-pink-500",
@@ -906,7 +906,9 @@ export default function WeddingPlanning() {
         title: "font-black tracking-tighter text-5xl uppercase italic",
         button: "rounded-md border-cyan-400 text-cyan-400 hover:bg-cyan-400/10"
       }
-    }[selectedTemplate as 'elegant' | 'rustic' | 'modern'] || styles.elegant;
+    };
+
+    const styles = styleTemplates[selectedTemplate as 'elegant' | 'rustic' | 'modern'] || styleTemplates.elegant;
 
     return (
       <div className={`p-8 rounded-lg text-center space-y-6 border-4 shadow-xl transition-all duration-500 ${styles.container}`}>
