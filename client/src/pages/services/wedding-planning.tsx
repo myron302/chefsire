@@ -22,6 +22,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Link } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
 import { useUser } from '@/contexts/UserContext';
+import { useGoogleMaps } from '@/hooks/useGoogleMaps';
 import WeddingTrialSelector from '@/components/WeddingTrialSelector';
 import { couplePlans } from '@/config/wedding-pricing';
 
@@ -274,6 +275,9 @@ VendorCard.displayName = 'VendorCard';
 export default function WeddingPlanning() {
   const { toast } = useToast();
 
+  // Load Google Maps API
+  const isGoogleMapsLoaded = useGoogleMaps();
+
   // Get user context and check subscription status
   const { user, updateUser } = useUser();
   const currentTier = user?.subscriptionTier || 'free';
@@ -436,33 +440,48 @@ export default function WeddingPlanning() {
 
   // Google Places Autocomplete initialization
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.google?.maps?.places) {
-      const options = {
-        types: ['address', 'establishment'],
-        fields: ['formatted_address', 'name']
-      };
-
-      // Ceremony Autocomplete
-      if (ceremonyRef.current) {
-        const ceremonyAutocomplete = new window.google.maps.places.Autocomplete(ceremonyRef.current, options);
-        ceremonyAutocomplete.addListener('place_changed', () => {
-          const place = ceremonyAutocomplete.getPlace();
-          const addr = place.formatted_address || place.name || '';
-          setWeddingLocation(addr);
-          if (useSameLocation) setReceptionLocation(addr);
-        });
-      }
-
-      // Reception Autocomplete
-      if (receptionRef.current && !useSameLocation) {
-        const receptionAutocomplete = new window.google.maps.places.Autocomplete(receptionRef.current, options);
-        receptionAutocomplete.addListener('place_changed', () => {
-          const place = receptionAutocomplete.getPlace();
-          setReceptionLocation(place.formatted_address || place.name || '');
-        });
-      }
+    if (!isGoogleMapsLoaded || !window.google?.maps?.places) {
+      console.log('[Wedding Planning] Google Maps not loaded yet, waiting...');
+      return;
     }
-  }, [useSameLocation, isPremium]);
+
+    if (!isPremium) {
+      console.log('[Wedding Planning] Premium required for autocomplete');
+      return;
+    }
+
+    console.log('[Wedding Planning] Initializing Google Places Autocomplete');
+
+    const options = {
+      types: ['address', 'establishment'],
+      fields: ['formatted_address', 'name']
+    };
+
+    // Ceremony Autocomplete
+    if (ceremonyRef.current) {
+      console.log('[Wedding Planning] Setting up ceremony autocomplete');
+      const ceremonyAutocomplete = new window.google.maps.places.Autocomplete(ceremonyRef.current, options);
+      ceremonyAutocomplete.addListener('place_changed', () => {
+        const place = ceremonyAutocomplete.getPlace();
+        const addr = place.formatted_address || place.name || '';
+        console.log('[Wedding Planning] Ceremony location selected:', addr);
+        setWeddingLocation(addr);
+        if (useSameLocation) setReceptionLocation(addr);
+      });
+    }
+
+    // Reception Autocomplete
+    if (receptionRef.current && !useSameLocation) {
+      console.log('[Wedding Planning] Setting up reception autocomplete');
+      const receptionAutocomplete = new window.google.maps.places.Autocomplete(receptionRef.current, options);
+      receptionAutocomplete.addListener('place_changed', () => {
+        const place = receptionAutocomplete.getPlace();
+        const addr = place.formatted_address || place.name || '';
+        console.log('[Wedding Planning] Reception location selected:', addr);
+        setReceptionLocation(addr);
+      });
+    }
+  }, [isGoogleMapsLoaded, useSameLocation, isPremium]);
 
   const handleStartTrial = () => {
     // Wedding planning features are free - just dismiss the banner permanently
