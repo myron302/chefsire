@@ -286,6 +286,68 @@ export default function WeddingPlanning() {
   console.log('[Wedding Planning] isPremium:', isPremium);
   console.log('[Wedding Planning] isElite:', isElite);
 
+  // =========================================================
+  // ALL STATE DECLARATIONS - Must be declared BEFORE useEffects
+  // =========================================================
+
+  // Simulated dynamic savings data (replace with a real API call if needed)
+  const dynamicSavings = 4200;
+
+  const [selectedVendorType, setSelectedVendorType] = useState('all');
+  const [budgetRange, setBudgetRange] = useState([5000, 50000]);
+  const [guestCount, setGuestCount] = useState([100]);
+  const [selectedDate, setSelectedDate] = useState('');
+  const [savedVendors, setSavedVendors] = useState(new Set<number>());
+  const [activeView, setActiveView] = useState('grid');
+  const [showBudgetCalculator, setShowBudgetCalculator] = useState(false);
+  const [showTrialBanner, setShowTrialBanner] = useState(() => {
+    // Check if user has dismissed the banner before
+    return localStorage.getItem('weddingTrialBannerDismissed') !== 'true';
+  });
+  const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
+
+  const [registryLinks, setRegistryLinks] = useState([
+    { id: 1, name: 'Amazon', url: '', icon: '🎁' },
+    { id: 2, name: 'Target', url: '', icon: '🎯' },
+    { id: 3, name: 'Zola', url: '', icon: '💑' }
+  ]);
+
+  const [calendarEvents, setCalendarEvents] = useState<Array<{
+    id: number;
+    date: string;
+    title: string;
+    type: string;
+    reminder: boolean;
+  }>>([]);
+
+  // Email Invitations State
+  const [guestList, setGuestList] = useState<Array<{
+    id: number | string;
+    name: string;
+    email: string;
+    rsvp: string;
+    plusOne: boolean;
+  }>>([]);
+  const [newGuestName, setNewGuestName] = useState('');
+  const [newGuestEmail, setNewGuestEmail] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState('elegant');
+
+  // Wedding Event Details State
+  const [partner1Name, setPartner1Name] = useState('');
+  const [partner2Name, setPartner2Name] = useState('');
+  const [weddingTime, setWeddingTime] = useState('');
+  const [weddingLocation, setWeddingLocation] = useState('');
+  const [receptionDate, setReceptionDate] = useState('');
+  const [receptionTime, setReceptionTime] = useState('');
+  const [receptionLocation, setReceptionLocation] = useState('');
+  const [customMessage, setCustomMessage] = useState('We would be honored to have you celebrate with us!');
+  const [useSameLocation, setUseSameLocation] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // Refs for Google Places Autocomplete
+  const ceremonyRef = useRef<HTMLInputElement>(null);
+  const receptionRef = useRef<HTMLInputElement>(null);
+
   // Debug: Component mount
   useEffect(() => {
     console.log('[Wedding Planning] Component mounted');
@@ -402,22 +464,6 @@ export default function WeddingPlanning() {
     }
   }, [useSameLocation, isPremium]);
 
-  // Simulated dynamic savings data (replace with a real API call if needed)
-  const dynamicSavings = 4200;
-
-  const [selectedVendorType, setSelectedVendorType] = useState('all');
-  const [budgetRange, setBudgetRange] = useState([5000, 50000]);
-  const [guestCount, setGuestCount] = useState([100]);
-  const [selectedDate, setSelectedDate] = useState('');
-  const [savedVendors, setSavedVendors] = useState(new Set<number>());
-  const [activeView, setActiveView] = useState('grid');
-  const [showBudgetCalculator, setShowBudgetCalculator] = useState(false);
-  const [showTrialBanner, setShowTrialBanner] = useState(() => {
-    // Check if user has dismissed the banner before
-    return localStorage.getItem('weddingTrialBannerDismissed') !== 'true';
-  });
-  const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
-
   const handleStartTrial = () => {
     // Wedding planning features are free - just dismiss the banner permanently
     setShowTrialBanner(false);
@@ -428,48 +474,6 @@ export default function WeddingPlanning() {
       description: '🎉 All wedding planning features are completely free! Enjoy unlimited access.',
     });
   };
-
-  const [registryLinks, setRegistryLinks] = useState([
-    { id: 1, name: 'Amazon', url: '', icon: '🎁' },
-    { id: 2, name: 'Target', url: '', icon: '🎯' },
-    { id: 3, name: 'Zola', url: '', icon: '💑' }
-  ]);
-
-  const [calendarEvents, setCalendarEvents] = useState<Array<{
-    id: number;
-    date: string;
-    title: string;
-    type: string;
-    reminder: boolean;
-  }>>([]);
-
-  // Email Invitations State
-  const [guestList, setGuestList] = useState<Array<{
-    id: number | string;
-    name: string;
-    email: string;
-    rsvp: string;
-    plusOne: boolean;
-  }>>([]);
-  const [newGuestName, setNewGuestName] = useState('');
-  const [newGuestEmail, setNewGuestEmail] = useState('');
-  const [selectedTemplate, setSelectedTemplate] = useState('elegant');
-
-  // Wedding Event Details State
-  const [partner1Name, setPartner1Name] = useState('');
-  const [partner2Name, setPartner2Name] = useState('');
-  const [weddingTime, setWeddingTime] = useState('');
-  const [weddingLocation, setWeddingLocation] = useState('');
-  const [receptionDate, setReceptionDate] = useState('');
-  const [receptionTime, setReceptionTime] = useState('');
-  const [receptionLocation, setReceptionLocation] = useState('');
-  const [customMessage, setCustomMessage] = useState('We would be honored to have you celebrate with us!');
-  const [useSameLocation, setUseSameLocation] = useState(false);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-
-  // Refs for Google Places Autocomplete
-  const ceremonyRef = useRef<HTMLInputElement>(null);
-  const receptionRef = useRef<HTMLInputElement>(null);
 
   // Memoized budget breakdown - only recalculates when budgetRange changes
   const budgetBreakdown = useMemo(
