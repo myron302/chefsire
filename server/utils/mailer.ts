@@ -222,25 +222,28 @@ export async function sendWeddingRsvpEmail(
   const customMessage = eventDetails?.message || "";
   const template = eventDetails?.template || "elegant";
 
-  // Template-based styling
+  // Template-based styling (email-safe with solid colors instead of gradients)
   const templateStyles = {
     elegant: {
       primaryColor: "#d4af37",
       secondaryColor: "#2c3e50",
       fontFamily: "Georgia, serif",
-      headerBg: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      headerBg: "#6b5eb5", // Solid color instead of gradient for email compatibility
+      headerTextColor: "#ffffff",
     },
     rustic: {
       primaryColor: "#8b4513",
       secondaryColor: "#654321",
       fontFamily: "Courier New, monospace",
-      headerBg: "linear-gradient(135deg, #c79081 0%, #dfa579 100%)",
+      headerBg: "#d4a27f", // Solid color instead of gradient
+      headerTextColor: "#ffffff",
     },
     modern: {
       primaryColor: "#ff6b6b",
       secondaryColor: "#4ecdc4",
       fontFamily: "Arial, sans-serif",
-      headerBg: "linear-gradient(135deg, #667eea 0%, #f093fb 100%)",
+      headerBg: "#8b7fea", // Solid color instead of gradient
+      headerTextColor: "#ffffff",
     },
   };
 
@@ -254,14 +257,14 @@ export async function sendWeddingRsvpEmail(
   const declineBothLink = `${baseUrl}&response=decline`;
 
   const html = `
-    <div style="font-family:${style.fontFamily};line-height:1.6;max-width:600px;margin:0 auto;">
-      <div style="background:${style.headerBg};color:white;padding:40px 20px;text-align:center;border-radius:10px 10px 0 0;">
-        <h1 style="margin:0;font-size:32px;">💍 You're Invited!</h1>
+    <div style="font-family:${style.fontFamily};line-height:1.6;max-width:600px;margin:0 auto;background:#ffffff;">
+      <div style="background-color:${style.headerBg};color:${style.headerTextColor};padding:40px 20px;text-align:center;border-radius:10px 10px 0 0;">
+        <h1 style="margin:0;font-size:32px;color:${style.headerTextColor};">💍 You're Invited!</h1>
         ${partner1 && partner2 ? `
-          <p style="margin:20px 0 10px 0;font-size:28px;font-weight:bold;">${partner1} & ${partner2}</p>
-          <p style="margin:5px 0 0 0;font-size:16px;opacity:0.9;">are getting married!</p>
+          <p style="margin:20px 0 10px 0;font-size:28px;font-weight:bold;color:${style.headerTextColor};">${partner1} & ${partner2}</p>
+          <p style="margin:5px 0 0 0;font-size:16px;color:${style.headerTextColor};">are getting married!</p>
         ` : `
-          <p style="margin:10px 0 0 0;font-size:18px;">${coupleName}</p>
+          <p style="margin:10px 0 0 0;font-size:18px;color:${style.headerTextColor};">${coupleName}</p>
         `}
       </div>
 
@@ -300,29 +303,47 @@ export async function sendWeddingRsvpEmail(
         </p>
 
         ${hasReception ? `
-          <div style="text-align:center;margin:30px 0;">
-            <a href="${acceptBothLink}" style="display:inline-block;background:${style.primaryColor};color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin:8px;font-size:14px;">
-              ✓ Accept Both
-            </a>
-            <a href="${ceremonyOnlyLink}" style="display:inline-block;background:#4ecdc4;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin:8px;font-size:14px;">
-              Ceremony Only
-            </a>
-            <a href="${receptionOnlyLink}" style="display:inline-block;background:#95a5a6;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin:8px;font-size:14px;">
-              Reception Only
-            </a>
-            <a href="${declineBothLink}" style="display:inline-block;background:#e74c3c;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin:8px;font-size:14px;">
-              ✗ Decline
-            </a>
-          </div>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:30px auto;">
+            <tr>
+              <td style="padding:8px;">
+                <a href="${acceptBothLink}" style="display:block;background-color:${style.primaryColor};color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;text-align:center;">
+                  ✓ Accept Both
+                </a>
+              </td>
+              <td style="padding:8px;">
+                <a href="${ceremonyOnlyLink}" style="display:block;background-color:#4ecdc4;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;text-align:center;">
+                  Ceremony Only
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:8px;">
+                <a href="${receptionOnlyLink}" style="display:block;background-color:#95a5a6;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;text-align:center;">
+                  Reception Only
+                </a>
+              </td>
+              <td style="padding:8px;">
+                <a href="${declineBothLink}" style="display:block;background-color:#e74c3c;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;text-align:center;">
+                  ✗ Decline
+                </a>
+              </td>
+            </tr>
+          </table>
         ` : `
-          <div style="text-align:center;margin:30px 0;">
-            <a href="${acceptLink}" style="display:inline-block;background:${style.primaryColor};color:white;padding:15px 40px;border-radius:8px;text-decoration:none;font-weight:bold;margin:10px;font-size:16px;">
-              ✓ Accept Invitation
-            </a>
-            <a href="${declineLink}" style="display:inline-block;background:#999;color:white;padding:15px 40px;border-radius:8px;text-decoration:none;font-weight:bold;margin:10px;font-size:16px;">
-              ✗ Decline
-            </a>
-          </div>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:30px auto;">
+            <tr>
+              <td style="padding:10px;">
+                <a href="${acceptLink}" style="display:block;background-color:${style.primaryColor};color:#ffffff;padding:15px 40px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:16px;text-align:center;">
+                  ✓ Accept Invitation
+                </a>
+              </td>
+              <td style="padding:10px;">
+                <a href="${declineLink}" style="display:block;background-color:#999999;color:#ffffff;padding:15px 40px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:16px;text-align:center;">
+                  ✗ Decline
+                </a>
+              </td>
+            </tr>
+          </table>
         `}
 
         <p style="font-size:14px;color:#888;margin-top:40px;text-align:center;">
