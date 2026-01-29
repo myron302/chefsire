@@ -133,6 +133,7 @@ export async function sendWeddingRsvpEmail(
   guestName: string,
   acceptLink: string,
   declineLink: string,
+  partnerName?: string, // Partner/Plus-one name
   eventDetails?: {
     partner1Name?: string;
     partner2Name?: string;
@@ -265,10 +266,12 @@ export async function sendWeddingRsvpEmail(
       </div>
 
       <div style="background:#ffffff;padding:40px 30px;border:2px solid #eee;border-top:none;border-radius:0 0 10px 10px;">
-        <p style="font-size:18px;color:${style.secondaryColor};">Dear ${guestName},</p>
+        <p style="font-size:18px;color:${style.secondaryColor};">
+          Dear ${partnerName ? `${guestName} & ${partnerName}` : guestName},
+        </p>
 
         <p style="font-size:16px;color:#555;">
-          We are delighted to invite you to celebrate our special day with us!
+          ${partnerName ? 'You are both invited to' : 'We are delighted to invite you to'} celebrate our special day with us!
         </p>
 
         ${customMessage ? `

@@ -72,7 +72,7 @@ router.post("/send-invitations", requireAuth, async (req, res) => {
     // Send invitation to each guest
     for (const guest of guests) {
       try {
-        const { name, email, plusOne = false } = guest;
+        const { name, email, plusOne = false, partnerName } = guest;
 
         if (!name || !email) {
           errors.push({ email, error: "Name and email are required" });
@@ -105,7 +105,7 @@ router.post("/send-invitations", requireAuth, async (req, res) => {
         const declineLink = `${appUrl}/api/wedding/rsvp?token=${token}&response=decline`;
 
         // Send email with all event details including reception info
-        await sendWeddingRsvpEmail(email, name, acceptLink, declineLink, {
+        await sendWeddingRsvpEmail(email, name, acceptLink, declineLink, partnerName, {
           partner1Name: eventDetails?.partner1Name,
           partner2Name: eventDetails?.partner2Name,
           coupleName: eventDetails?.coupleName || `${user.displayName}'s Wedding`,
