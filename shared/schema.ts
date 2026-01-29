@@ -1061,6 +1061,42 @@ export const weddingRsvpInvitations = pgTable(
   })
 );
 
+export const weddingEventDetails = pgTable(
+  "wedding_event_details",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+
+    // The user who is planning the wedding
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull().unique(),
+
+    // Partner names
+    partner1Name: varchar("partner1_name", { length: 255 }),
+    partner2Name: varchar("partner2_name", { length: 255 }),
+
+    // Ceremony details
+    ceremonyDate: date("ceremony_date"),
+    ceremonyTime: time("ceremony_time"),
+    ceremonyLocation: text("ceremony_location"),
+
+    // Reception details
+    receptionDate: date("reception_date"),
+    receptionTime: time("reception_time"),
+    receptionLocation: text("reception_location"),
+    useSameLocation: boolean("use_same_location").default(false),
+
+    // Wedding message and template
+    customMessage: text("custom_message"),
+    selectedTemplate: varchar("selected_template", { length: 50 }).default("elegant"),
+
+    // Timestamps
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    userIdx: index("wed_user_idx").on(t.userId),
+  })
+);
+
 /* =========================================================================
    ===== INSERT SCHEMAS
    ========================================================================= */
@@ -1397,6 +1433,7 @@ export type InsertCommentLike = z.infer<typeof insertCommentLikeSchema>;
 /* ===== NEW TYPE ===== */
 export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
 export type WeddingRsvpInvitation = typeof weddingRsvpInvitations.$inferSelect;
+export type WeddingEventDetails = typeof weddingEventDetails.$inferSelect;
 
 /* =========================================================================
    ===== Extended types
