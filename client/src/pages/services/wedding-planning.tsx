@@ -712,10 +712,21 @@ export default function WeddingPlanning() {
       return;
     }
 
+    const unsentGuests = guestList.filter(g => typeof g.id === 'number');
+
     if (guestList.length === 0) {
       toast({
         title: "No Guests",
         description: "Please add guests to your list before sending invitations.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (unsentGuests.length === 0) {
+      toast({
+        title: "No New Guests",
+        description: "All guests have already been sent invitations. Add new guests to send more invitations.",
         variant: "destructive",
       });
       return;
@@ -727,7 +738,7 @@ export default function WeddingPlanning() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          guests: guestList.map(g => ({
+          guests: unsentGuests.map(g => ({
             name: g.name,
             email: g.email,
             plusOne: g.plusOne,
