@@ -325,9 +325,11 @@ export default function WeddingPlanning() {
     email: string;
     rsvp: string;
     plusOne: boolean;
+    partnerName?: string; // Partner or plus-one name
   }>>([]);
   const [newGuestName, setNewGuestName] = useState('');
   const [newGuestEmail, setNewGuestEmail] = useState('');
+  const [newGuestPartner, setNewGuestPartner] = useState(''); // Partner/Plus-one name
 
   // Wedding Event Details State - will be loaded from localStorage in useEffect
   const [partner1Name, setPartner1Name] = useState('');
@@ -618,7 +620,8 @@ export default function WeddingPlanning() {
         name: newGuestName,
         email: newGuestEmail,
         rsvp: 'pending',
-        plusOne: false
+        plusOne: !!newGuestPartner, // True if partner name provided
+        partnerName: newGuestPartner || undefined
       };
 
       // Update state
@@ -637,13 +640,15 @@ export default function WeddingPlanning() {
 
       setNewGuestName('');
       setNewGuestEmail('');
+      setNewGuestPartner('');
 
+      const guestDisplayName = newGuestPartner ? `${newGuestName} & ${newGuestPartner}` : newGuestName;
       toast({
         title: "Guest Added",
-        description: `${newGuestName} has been added to your guest list.`,
+        description: `${guestDisplayName} has been added to your guest list.`,
       });
     }
-  }, [newGuestName, newGuestEmail, user?.id, toast]);
+  }, [newGuestName, newGuestEmail, newGuestPartner, user?.id, toast]);
 
   const removeGuest = useCallback(async (guestId: number | string) => {
     // Check if this is a sent guest (from database) or unsent guest (from localStorage)
@@ -725,7 +730,8 @@ export default function WeddingPlanning() {
           guests: guestList.map(g => ({
             name: g.name,
             email: g.email,
-            plusOne: g.plusOne
+            plusOne: g.plusOne,
+            partnerName: g.partnerName
           })),
           eventDetails: {
             partner1Name: partner1Name || undefined,
@@ -1901,24 +1907,37 @@ export default function WeddingPlanning() {
           {/* Add Guest Form */}
           <div className="mb-6 p-4 bg-muted rounded-lg">
             <h4 className="font-medium mb-3 text-sm">Add Guest</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input
-                placeholder="Guest Name"
-                value={newGuestName}
-                onChange={(e) => setNewGuestName(e.target.value)}
-                className="text-sm"
-              />
-              <Input
-                type="email"
-                placeholder="Email Address"
-                value={newGuestEmail}
-                onChange={(e) => setNewGuestEmail(e.target.value)}
-                className="text-sm"
-              />
-              <Button onClick={addGuest} className="w-full">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Guest
-              </Button>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Input
+                  placeholder="Guest Name (e.g., John Smith)"
+                  value={newGuestName}
+                  onChange={(e) => setNewGuestName(e.target.value)}
+                  className="text-sm"
+                />
+                <Input
+                  type="email"
+                  placeholder="Email Address"
+                  value={newGuestEmail}
+                  onChange={(e) => setNewGuestEmail(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Input
+                  placeholder="Partner/Plus-One Name (optional)"
+                  value={newGuestPartner}
+                  onChange={(e) => setNewGuestPartner(e.target.value)}
+                  className="text-sm"
+                />
+                <Button onClick={addGuest} className="w-full">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Guest
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                💡 Tip: Add a partner/plus-one name to send one invitation to a couple (e.g., "John & Jane Smith")
+              </p>
             </div>
           </div>
 
@@ -1932,7 +1951,9 @@ export default function WeddingPlanning() {
                   className="flex items-center justify-between p-3 bg-muted rounded-lg"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{guest.name}</p>
+                    <p className="font-medium text-sm truncate">
+                      {guest.partnerName ? `${guest.name} & ${guest.partnerName}` : guest.name}
+                    </p>
                     <p className="text-xs text-muted-foreground truncate">{guest.email}</p>
                   </div>
                   <div className="flex items-center gap-2">
