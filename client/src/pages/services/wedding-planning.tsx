@@ -385,28 +385,36 @@ export default function WeddingPlanning() {
   useEffect(() => {
     if (!user?.id) return;
 
-    // Load wedding event details from localStorage
-    const savedPartner1 = localStorage.getItem(`wedding-partner1-${user.id}`);
-    const savedPartner2 = localStorage.getItem(`wedding-partner2-${user.id}`);
-    const savedTime = localStorage.getItem(`wedding-time-${user.id}`);
-    const savedLocation = localStorage.getItem(`wedding-location-${user.id}`);
-    const savedReceptionDate = localStorage.getItem(`wedding-reception-date-${user.id}`);
-    const savedReceptionTime = localStorage.getItem(`wedding-reception-time-${user.id}`);
-    const savedReceptionLocation = localStorage.getItem(`wedding-reception-location-${user.id}`);
-    const savedMessage = localStorage.getItem(`wedding-message-${user.id}`);
-    const savedSameLocation = localStorage.getItem(`wedding-same-location-${user.id}`);
-    const savedTemplateValue = localStorage.getItem(`wedding-template-${user.id}`);
+    // Load wedding event details from database
+    const fetchEventDetails = async () => {
+      try {
+        const response = await fetch('/api/wedding/event-details', {
+          credentials: 'include',
+        });
 
-    if (savedPartner1) setPartner1Name(savedPartner1);
-    if (savedPartner2) setPartner2Name(savedPartner2);
-    if (savedTime) setWeddingTime(savedTime);
-    if (savedLocation) setWeddingLocation(savedLocation);
-    if (savedReceptionDate) setReceptionDate(savedReceptionDate);
-    if (savedReceptionTime) setReceptionTime(savedReceptionTime);
-    if (savedReceptionLocation) setReceptionLocation(savedReceptionLocation);
-    if (savedMessage) setCustomMessage(savedMessage);
-    if (savedSameLocation !== null) setUseSameLocation(savedSameLocation === 'true');
-    if (savedTemplateValue) setSelectedTemplate(savedTemplateValue);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.ok && data.details) {
+            const d = data.details;
+            if (d.partner1Name) setPartner1Name(d.partner1Name);
+            if (d.partner2Name) setPartner2Name(d.partner2Name);
+            if (d.ceremonyDate) setSelectedDate(d.ceremonyDate);
+            if (d.ceremonyTime) setWeddingTime(d.ceremonyTime);
+            if (d.ceremonyLocation) setWeddingLocation(d.ceremonyLocation);
+            if (d.receptionDate) setReceptionDate(d.receptionDate);
+            if (d.receptionTime) setReceptionTime(d.receptionTime);
+            if (d.receptionLocation) setReceptionLocation(d.receptionLocation);
+            if (d.customMessage) setCustomMessage(d.customMessage);
+            if (d.useSameLocation !== null) setUseSameLocation(d.useSameLocation);
+            if (d.selectedTemplate) setSelectedTemplate(d.selectedTemplate);
+          }
+        }
+      } catch (error) {
+        console.error('[Wedding Planning] Failed to fetch event details:', error);
+      }
+    };
+
+    fetchEventDetails();
 
     // Load guest list
     const fetchGuestList = async () => {
@@ -490,56 +498,51 @@ export default function WeddingPlanning() {
     }
   }, [isGoogleMapsLoaded, useSameLocation, isPremium]);
 
-  // Persist wedding event details to localStorage
+  // Persist wedding event details to database (debounced to avoid too many API calls)
   useEffect(() => {
     if (!user?.id) return;
-    localStorage.setItem(`wedding-partner1-${user.id}`, partner1Name);
-  }, [partner1Name, user?.id]);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    localStorage.setItem(`wedding-partner2-${user.id}`, partner2Name);
-  }, [partner2Name, user?.id]);
+    // Debounce: wait 1 second after the last change before saving
+    const timeoutId = setTimeout(async () => {
+      try {
+        await fetch('/api/wedding/event-details', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            partner1Name,
+            partner2Name,
+            ceremonyDate: selectedDate,
+            ceremonyTime: weddingTime,
+            ceremonyLocation: weddingLocation,
+            receptionDate,
+            receptionTime,
+            receptionLocation,
+            useSameLocation,
+            customMessage,
+            selectedTemplate,
+          }),
+        });
+      } catch (error) {
+        console.error('[Wedding Planning] Failed to save event details:', error);
+      }
+    }, 1000);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    localStorage.setItem(`wedding-time-${user.id}`, weddingTime);
-  }, [weddingTime, user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    localStorage.setItem(`wedding-location-${user.id}`, weddingLocation);
-  }, [weddingLocation, user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    localStorage.setItem(`wedding-reception-date-${user.id}`, receptionDate);
-  }, [receptionDate, user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    localStorage.setItem(`wedding-reception-time-${user.id}`, receptionTime);
-  }, [receptionTime, user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    localStorage.setItem(`wedding-reception-location-${user.id}`, receptionLocation);
-  }, [receptionLocation, user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    localStorage.setItem(`wedding-message-${user.id}`, customMessage);
-  }, [customMessage, user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    localStorage.setItem(`wedding-same-location-${user.id}`, String(useSameLocation));
-  }, [useSameLocation, user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    localStorage.setItem(`wedding-template-${user.id}`, selectedTemplate);
-  }, [selectedTemplate, user?.id]);
+    return () => clearTimeout(timeoutId);
+  }, [
+    partner1Name,
+    partner2Name,
+    selectedDate,
+    weddingTime,
+    weddingLocation,
+    receptionDate,
+    receptionTime,
+    receptionLocation,
+    useSameLocation,
+    customMessage,
+    selectedTemplate,
+    user?.id,
+  ]);
 
   const handleStartTrial = () => {
     // Wedding planning features are free - just dismiss the banner permanently
