@@ -779,6 +779,9 @@ export default function WeddingPlanning() {
           localStorage.removeItem(unsentGuestsKey);
         }
 
+        // Force clear local guestList of temporary numeric IDs to prevent duplicates/resends
+        setGuestList(prev => prev.filter(g => typeof g.id === 'string'));
+
         // Check if there were any errors
         if (data.errors && data.errors.length > 0) {
           const errorMessages = data.errors.map((err: any) =>
@@ -2010,10 +2013,10 @@ export default function WeddingPlanning() {
                 <Button
                   className="flex-1 bg-gradient-to-r from-pink-600 to-purple-600 text-white"
                   onClick={sendInvitations}
-                  disabled={guestList.length === 0}
+                  disabled={guestList.filter(g => typeof g.id === 'number').length === 0}
                 >
                   <Mail className="w-4 h-4 mr-2" />
-                  Send Invitations ({guestList.length})
+                  Send Invitations ({guestList.filter(g => typeof g.id === 'number').length})
                 </Button>
 
                 {/* Preview Dialog */}
