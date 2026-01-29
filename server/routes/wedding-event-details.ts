@@ -2,7 +2,9 @@
 // API endpoints for saving/loading wedding event details across devices
 
 import { Router } from 'express';
-import { pool } from '../lib/db';
+import { db } from '../db';
+import { eq, sql } from 'drizzle-orm';
+import { weddingEventDetails } from '../../shared/schema';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
@@ -11,44 +13,34 @@ const router = Router();
 router.get('/wedding/event-details', requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ ok: false, error: 'Not authenticated' });
+    }
 
-    const result = await pool.query(
-      `SELECT
-        partner1_name,
-        partner2_name,
-        ceremony_date,
-        ceremony_time,
-        ceremony_location,
-        reception_date,
-        reception_time,
-        reception_location,
-        use_same_location,
-        custom_message,
-        selected_template
-      FROM wedding_event_details
-      WHERE user_id = $1`,
-      [userId]
-    );
+    const [details] = await db
+      .select()
+      .from(weddingEventDetails)
+      .where(eq(weddingEventDetails.userId, userId))
+      .limit(1);
 
-    if (result.rowCount === 0) {
+    if (!details) {
       return res.json({ ok: true, details: null });
     }
 
-    const row = result.rows[0];
     res.json({
       ok: true,
       details: {
-        partner1Name: row.partner1_name,
-        partner2Name: row.partner2_name,
-        ceremonyDate: row.ceremony_date,
-        ceremonyTime: row.ceremony_time,
-        ceremonyLocation: row.ceremony_location,
-        receptionDate: row.reception_date,
-        receptionTime: row.reception_time,
-        receptionLocation: row.reception_location,
-        useSameLocation: row.use_same_location,
-        customMessage: row.custom_message,
-        selectedTemplate: row.selected_template,
+        partner1Name: details.partner1Name,
+        partner2Name: details.partner2Name,
+        ceremonyDate: details.ceremonyDate,
+        ceremonyTime: details.ceremonyTime,
+        ceremonyLocation: details.ceremonyLocation,
+        receptionDate: details.receptionDate,
+        receptionTime: details.receptionTime,
+        receptionLocation: details.receptionLocation,
+        useSameLocation: details.useSameLocation,
+        customMessage: details.customMessage,
+        selectedTemplate: details.selectedTemplate,
       },
     });
   } catch (error) {
@@ -61,6 +53,10 @@ router.get('/wedding/event-details', requireAuth, async (req, res) => {
 router.post('/wedding/event-details', requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ ok: false, error: 'Not authenticated' });
+    }
+
     const {
       partner1Name,
       partner2Name,
@@ -75,50 +71,40 @@ router.post('/wedding/event-details', requireAuth, async (req, res) => {
       selectedTemplate,
     } = req.body;
 
-    await pool.query(
-      `INSERT INTO wedding_event_details (
-        user_id,
-        partner1_name,
-        partner2_name,
-        ceremony_date,
-        ceremony_time,
-        ceremony_location,
-        reception_date,
-        reception_time,
-        reception_location,
-        use_same_location,
-        custom_message,
-        selected_template,
-        updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
-      ON CONFLICT (user_id) DO UPDATE SET
-        partner1_name = EXCLUDED.partner1_name,
-        partner2_name = EXCLUDED.partner2_name,
-        ceremony_date = EXCLUDED.ceremony_date,
-        ceremony_time = EXCLUDED.ceremony_time,
-        ceremony_location = EXCLUDED.ceremony_location,
-        reception_date = EXCLUDED.reception_date,
-        reception_time = EXCLUDED.reception_time,
-        reception_location = EXCLUDED.reception_location,
-        use_same_location = EXCLUDED.use_same_location,
-        custom_message = EXCLUDED.custom_message,
-        selected_template = EXCLUDED.selected_template,
-        updated_at = now()`,
-      [
+    await db
+      .insert(weddingEventDetails)
+      .values({
         userId,
-        partner1Name || null,
-        partner2Name || null,
-        ceremonyDate || null,
-        ceremonyTime || null,
-        ceremonyLocation || null,
-        receptionDate || null,
-        receptionTime || null,
-        receptionLocation || null,
-        useSameLocation || false,
-        customMessage || null,
-        selectedTemplate || 'elegant',
-      ]
-    );
+        partner1Name: partner1Name || null,
+        partner2Name: partner2Name || null,
+        ceremonyDate: ceremonyDate || null,
+        ceremonyTime: ceremonyTime || null,
+        ceremonyLocation: ceremonyLocation || null,
+        receptionDate: receptionDate || null,
+        receptionTime: receptionTime || null,
+        receptionLocation: receptionLocation || null,
+        useSameLocation: useSameLocation || false,
+        customMessage: customMessage || null,
+        selectedTemplate: selectedTemplate || 'elegant',
+        updatedAt: sql`now()`,
+      })
+      .onConflictDoUpdate({
+        target: weddingEventDetails.userId,
+        set: {
+          partner1Name: partner1Name || null,
+          partner2Name: partner2Name || null,
+          ceremonyDate: ceremonyDate || null,
+          ceremonyTime: ceremonyTime || null,
+          ceremonyLocation: ceremonyLocation || null,
+          receptionDate: receptionDate || null,
+          receptionTime: receptionTime || null,
+          receptionLocation: receptionLocation || null,
+          useSameLocation: useSameLocation || false,
+          customMessage: customMessage || null,
+          selectedTemplate: selectedTemplate || 'elegant',
+          updatedAt: sql`now()`,
+        },
+      });
 
     res.json({ ok: true });
   } catch (error) {
