@@ -1,64 +1,224 @@
-// server/index.ts
-import "dotenv/config";
-import app from "./app";
-import { attachDmRealtime } from "./realtime/dmSocket";
-import { attachNotificationRealtime } from "./realtime/notificationSocket";
-import { initializeCronJobs } from "./cron";
+import { Router } from "express";
 
-const HAS_PASSENGER_PORT = !!process.env.PORT;
-const PORT = Number(process.env.PORT || 3001);
+// Core feature routers
+import recipesRouter from "./recipes";
+import reviewsRouter from "./reviews";
+import bitesRouter from "./bites";
+import usersRouter from "./users";
+import followsRouter from "./follows";
+import postsRouter from "./posts";
+import pantryRouter from "./pantry";
+import marketplaceRouter from "./marketplace";
+import substitutionsRouter from "./substitutions";
+import drinksRouter from "./drinks";
+import allergiesRouter from "./allergies";
+import searchRouter from "./search";
+import nutritionRouter from "./nutrition";
+import mealPlansRouter from "./meal-plans";
+import mealPlannerAdvancedRouter from "./meal-planner-advanced";
+import dmRouter from "./dm";
+import clubsRouter from "./clubs";
 
-// On Plesk/Passenger, bind to 127.0.0.1 (Passenger reverse-proxies to us).
-// For local/dev, 0.0.0.0 is fine.
-const HOST = process.env.HOST || (HAS_PASSENGER_PORT ? "127.0.0.1" : "0.0.0.0");
+// AUTH ROUTES
+import authRouter from "./auth";
 
-console.log(
-  `[ChefSire] Booting… NODE_ENV=${process.env.NODE_ENV || "development"} | HOST=${HOST} | PORT=${PORT}${
-    HAS_PASSENGER_PORT ? " (from Passenger)" : ""
-  }`
-);
+// Integrations
+import lookupRouter from "./lookup";
+import exportRouter from "./exportList";
+import { googleRouter } from "./google";
 
-// Database connection check
-if (!process.env.DATABASE_URL) {
-  console.error("⚠️  WARNING: DATABASE_URL is not set! Database operations will fail.");
-} else {
-  console.log("✓ DATABASE_URL is configured");
+// Competitions
+import competitionsRouter from "./competitions";
+
+// Stores (user storefronts)
+import storesRouter from "./stores-crud";
+
+// Square (subscriptions / checkout links)
+import squareRouter from "./stores";
+
+// Auth middleware
+import { requireAuth } from "../middleware/auth";
+
+// ⚡ Phase 1: Daily Addiction Features
+import notificationsRouter from "./notifications";
+import questsRouter from "./quests";
+import suggestionsRouter from "./suggestions";
+import remixesRouter from "./remixes";
+import leaderboardRouter from "./leaderboard";
+import achievementsRouter from "./achievements";
+import streaksRouter from "./streaks";
+
+// 🎉 Phase 2: Social Explosion Features
+import duetsRouter from "./duets";
+import eventsRouter from "./events";
+import cookTogetherRouter from "./cook-together";
+
+// 📊 Phase 3: Power User Features
+import analyticsRouter from "./analytics";
+
+// 💰 Marketplace & Monetization
+import subscriptionsRouter from "./subscriptions";
+import ordersRouter from "./orders";
+import paymentsRouter from "./payments";
+import payoutsRouter from "./payouts";
+
+// File uploads
+import uploadRouter from "./upload";
+
+// Wedding Planning
+import weddingRsvpRouter from "./wedding-rsvp";
+import weddingEventDetailsRouter from "./wedding-event-details";
+
+const r = Router();
+
+/**
+ * Mounted under `/api` by app.ts:
+ *   app.use("/api", routes)
+ */
+
+// AUTH - mount auth routes
+r.use(authRouter);
+
+// Recipes routes (prefixed)
+r.use("/recipes", recipesRouter);
+
+// Reviews - prefixed
+r.use("/reviews", reviewsRouter);
+
+// Bites (social stories) - prefixed
+r.use("/bites", bitesRouter);
+
+// Users - prefixed
+r.use("/users", usersRouter);
+r.use("/follows", followsRouter);
+
+// Posts - prefixed
+r.use("/posts", postsRouter);
+
+// Pantry - prefixed
+r.use("/pantry", pantryRouter);
+
+// Marketplace - prefixed
+r.use("/marketplace", marketplaceRouter);
+
+// Substitutions - prefixed
+r.use("/substitutions", substitutionsRouter);
+
+// Search - prefixed
+r.use("/search", searchRouter);
+
+// Drinks - prefixed
+r.use("/drinks", drinksRouter);
+
+// Allergies - prefixed
+r.use("/allergies", allergiesRouter);
+
+// Nutrition - prefixed
+r.use("/nutrition", nutritionRouter);
+
+// Meal Plans Marketplace - prefixed
+r.use(mealPlansRouter);
+
+// Advanced Meal Planning Features - prefixed
+r.use("/meal-planner", mealPlannerAdvancedRouter);
+
+// DM (Direct Messages) - prefixed
+r.use("/dm", dmRouter);
+
+// Clubs - prefixed
+r.use("/clubs", clubsRouter);
+
+// Integrations with explicit prefixes
+r.use("/lookup", lookupRouter);
+r.use("/export", exportRouter);
+
+// IMPORTANT: Google router for BiteMap
+r.use("/google", googleRouter);
+
+// Competitions
+r.use("/competitions", competitionsRouter);
+
+// Stores (public viewer + owner writes)
+r.use("/stores", storesRouter);
+
+// Square (payments/subscriptions)
+r.use("/square", squareRouter);
+
+// ⚡ Phase 1: Daily Addiction Features
+r.use("/notifications", notificationsRouter);
+r.use("/quests", questsRouter);
+r.use("/suggestions", suggestionsRouter);
+r.use("/remixes", remixesRouter);
+r.use("/leaderboard", leaderboardRouter);
+r.use("/achievements", achievementsRouter);
+r.use("/streaks", streaksRouter);
+
+// 🎉 Phase 2: Social Explosion Features
+r.use("/duets", duetsRouter);
+r.use("/events", eventsRouter);
+r.use("/cook-together", cookTogetherRouter);
+r.use("/follows", followsRouter);
+
+// 📊 Phase 3: Power User Features
+r.use("/analytics", analyticsRouter);
+
+// 💰 Marketplace & Monetization
+r.use("/subscriptions", subscriptionsRouter);
+r.use("/orders", ordersRouter);
+r.use("/payments", paymentsRouter);
+r.use("/payouts", payoutsRouter);
+
+// File uploads
+r.use("/upload", uploadRouter);
+
+// Wedding Planning
+r.use("/wedding", weddingRsvpRouter);
+r.use("/wedding", weddingEventDetailsRouter);
+
+// Optional: dev-only route list
+if (process.env.NODE_ENV !== "production") {
+  r.get("/_routes", (_req, res) => {
+    res.json({
+      ok: true,
+      mountedAt: "/api",
+      endpoints: [
+        "/auth/*",
+        "/recipes/*",
+        "/bites/*",
+        "/users/*",
+        "/posts/*",
+        "/pantry/*",
+        "/marketplace/*",
+        "/substitutions/*",
+        "/drinks/*",
+        "/allergies/*",
+        "/nutrition/*",
+        "/dm/*",
+        "/clubs/*",
+        "/lookup/*",
+        "/export/*",
+        "/google/*",
+        "/competitions/*",
+        "/stores/*",
+        "/square/*",
+        "/notifications/*", // ⚡ Phase 1
+        "/quests/*",        // ⚡ Phase 1
+        "/suggestions/*",   // ⚡ Phase 1
+        "/remixes/*",       // ⚡ Phase 1
+        "/leaderboard/*",   // ⚡ Phase 1
+        "/achievements/*",  // ⚡ Phase 1
+        "/streaks/*",       // ⚡ Phase 1
+        "/duets/*",         // 🎉 Phase 2
+        "/events/*",        // 🎉 Phase 2
+        "/cook-together/*", // 🎉 Phase 2
+        "/analytics/*",     // 📊 Phase 3
+        "/subscriptions/*", // 💰 Monetization
+        "/orders/*",        // 💰 Monetization
+        "/payments/*",      // 💰 Square payments
+        "/payouts/*"        // 💰 Seller payouts
+      ],
+    });
+  });
 }
 
-const server = app.listen(PORT, HOST, () => {
-  console.log(`[ChefSire] Listening on http://${HOST}:${PORT}`);
-});
-
-// Attach WebSocket handlers
-attachDmRealtime(server);
-const notificationHelper = attachNotificationRealtime(server);
-
-// Initialize cron jobs for periodic tasks
-initializeCronJobs();
-
-// Export notification helper for use in other parts of the app
-export { notificationHelper };
-
-// Robust error handling—exit so Passenger restarts us and shows the real log line
-server.on("error", (err: any) => {
-  if (err && err.code === "EADDRINUSE") {
-    console.error(
-      `[ChefSire] EADDRINUSE on port ${PORT}. In production (Plesk/Passenger) you must use process.env.PORT.`
-    );
-  } else if (err && err.code === "EACCES") {
-    console.error(`[ChefSire] EACCES on port ${PORT}. Try a non-privileged port (>1024).`);
-  } else {
-    console.error("[ChefSire] Server error:", err);
-  }
-  process.exit(1);
-});
-
-process.on("unhandledRejection", (e) => {
-  console.error("[ChefSire] Unhandled promise rejection:", e);
-  process.exit(1);
-});
-
-process.on("uncaughtException", (e) => {
-  console.error("[ChefSire] Uncaught exception:", e);
-  process.exit(1);
-});
+export default r;
