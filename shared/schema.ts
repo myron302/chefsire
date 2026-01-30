@@ -1061,6 +1061,51 @@ export const weddingRsvpInvitations = pgTable(
   })
 );
 
+// ---------------------------------------------------------------------------
+// Wedding Event Details Table
+//
+// Stores ceremony and reception information for each user.  The primary key is
+// the userId to ensure only one event record per user.  This table is
+// intentionally separate from weddingRsvpInvitations so that event details
+// persist independently of individual invitations.
+export const weddingEventDetails = pgTable(
+  "wedding_event_details",
+  {
+    // The user who owns the wedding event details (primary key)
+    userId: varchar("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .primaryKey(),
+
+    // Names of the partners (nullable)
+    partner1Name: text("partner1_name"),
+    partner2Name: text("partner2_name"),
+
+    // Ceremony date/time/location
+    ceremonyDate: timestamp("ceremony_date"),
+    ceremonyTime: varchar("ceremony_time", { length: 10 }),
+    ceremonyLocation: text("ceremony_location"),
+
+    // Reception date/time/location
+    receptionDate: timestamp("reception_date"),
+    receptionTime: varchar("reception_time", { length: 10 }),
+    receptionLocation: text("reception_location"),
+
+    // Whether reception uses same location as ceremony
+    useSameLocation: boolean("use_same_location"),
+
+    // Custom message from the couple and selected invitation template
+    customMessage: text("custom_message"),
+    selectedTemplate: text("selected_template"),
+
+    // Timestamp of last update
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => ({
+    // Index on userId for faster lookups (redundant since it's the primary key)
+    userIdx: index("wedding_event_details_user_idx").on(t.userId),
+  })
+);
+
 /* =========================================================================
    ===== INSERT SCHEMAS
    ========================================================================= */
