@@ -414,8 +414,8 @@ export default function WeddingPlanning() {
       }
     };
 
-    // Temporarily disabled until database route is working
-    // fetchEventDetails();
+    // Load previously saved event details from the backend
+    fetchEventDetails();
 
     // Load guest list
     const fetchGuestList = async () => {
