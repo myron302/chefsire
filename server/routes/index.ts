@@ -68,7 +68,6 @@ import uploadRouter from "./upload";
 
 // Wedding Planning
 import weddingRsvpRouter from "./wedding-rsvp";
-// import weddingEventDetailsRouter from "./wedding-event-details";
 
 const r = Router();
 
@@ -174,7 +173,6 @@ r.use("/upload", uploadRouter);
 
 // Wedding Planning
 r.use("/wedding", weddingRsvpRouter);
-// r.use(weddingEventDetailsRouter);
 
 // Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {
