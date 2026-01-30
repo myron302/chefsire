@@ -500,8 +500,7 @@ export default function WeddingPlanning() {
   }, [isGoogleMapsLoaded, useSameLocation, isPremium]);
 
   // Persist wedding event details to database (debounced to avoid too many API calls)
-  // Temporarily disabled - database route causing issues
-  /* useEffect(() => {
+  useEffect(() => {
     if (!user?.id) return;
 
     // Debounce: wait 1 second after the last change before saving
@@ -544,7 +543,7 @@ export default function WeddingPlanning() {
     customMessage,
     selectedTemplate,
     user?.id,
-  ]); */
+  ]);
 
   const handleStartTrial = () => {
     // Wedding planning features are free - just dismiss the banner permanently
