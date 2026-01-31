@@ -325,7 +325,8 @@ export default function WeddingPlanning() {
     email: string;
     rsvp: string;
     plusOne: boolean;
-    partnerName?: string; // Partner or plus-one name
+    partnerName?: string; // Partner name specified by host when sending invitation
+    plusOneName?: string | null; // Name of guest's plus-one collected via RSVP
   }>>([]);
   const [newGuestName, setNewGuestName] = useState('');
   const [newGuestEmail, setNewGuestEmail] = useState('');
@@ -454,6 +455,7 @@ export default function WeddingPlanning() {
               email: g.email,
               rsvp: g.rsvp,
               plusOne: g.plusOne,
+              plusOneName: g.plusOneName ?? null,
             }));
 
             // Also load unsent guests from localStorage
@@ -885,15 +887,53 @@ export default function WeddingPlanning() {
   }, [user?.id, partner1Name, partner2Name, selectedDate, weddingTime, weddingLocation, receptionDate, receptionTime, receptionLocation, useSameLocation, customMessage, selectedTemplate, toast]);
 
   const rsvpStats = useMemo(() => {
-    const acceptedBoth = guestList.filter(g => g.rsvp === 'accepted' || g.rsvp === 'accept-both').length;
-    const ceremonyOnly = guestList.filter(g => g.rsvp === 'ceremony-only').length;
-    const receptionOnly = guestList.filter(g => g.rsvp === 'reception-only').length;
-    const declined = guestList.filter(g => g.rsvp === 'declined').length;
-    const pending = guestList.filter(g => g.rsvp === 'pending').length;
+    // Count how many guests accepted both, ceremony only, reception only, declined or pending.
+    // Additionally, include any plus-one names as an extra headcount for ceremony and reception.
+    let acceptedBoth = 0;
+    let ceremonyOnly = 0;
+    let receptionOnly = 0;
+    let declined = 0;
+    let pending = 0;
 
-    // Calculate totals for ceremony and reception
-    const ceremonyTotal = acceptedBoth + ceremonyOnly;
-    const receptionTotal = acceptedBoth + receptionOnly;
+    // Total extra seats for ceremony and reception due to plus-ones
+    let ceremonyExtras = 0;
+    let receptionExtras = 0;
+
+    guestList.forEach((g) => {
+      // Determine if this guest has an extra seat – true when the guest provided a plus-one name in their RSVP.
+      const hasPlusOne = !!g.plusOneName;
+      switch (g.rsvp) {
+        case 'accepted':
+        case 'accept-both':
+          acceptedBoth++;
+          if (hasPlusOne) {
+            ceremonyExtras++;
+            receptionExtras++;
+          }
+          break;
+        case 'ceremony-only':
+          ceremonyOnly++;
+          if (hasPlusOne) {
+            ceremonyExtras++;
+          }
+          break;
+        case 'reception-only':
+          receptionOnly++;
+          if (hasPlusOne) {
+            receptionExtras++;
+          }
+          break;
+        case 'declined':
+          declined++;
+          break;
+        default:
+          pending++;
+          break;
+      }
+    });
+
+    const ceremonyTotal = acceptedBoth + ceremonyOnly + ceremonyExtras;
+    const receptionTotal = acceptedBoth + receptionOnly + receptionExtras;
 
     return {
       acceptedBoth,
@@ -2029,7 +2069,11 @@ export default function WeddingPlanning() {
                 >
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm truncate">
-                      {guest.partnerName ? `${guest.name} & ${guest.partnerName}` : guest.name}
+                      {guest.partnerName
+                        ? `${guest.name} & ${guest.partnerName}`
+                        : guest.plusOneName
+                        ? `${guest.name} & ${guest.plusOneName}`
+                        : guest.name}
                     </p>
                     <p className="text-xs text-muted-foreground truncate">{guest.email}</p>
                   </div>
