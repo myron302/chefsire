@@ -408,9 +408,29 @@ export default function WeddingPlanning() {
             if (d.useSameLocation !== null) setUseSameLocation(d.useSameLocation);
             if (d.selectedTemplate) setSelectedTemplate(d.selectedTemplate);
           }
+        } else {
+          // If the fetch fails, attempt to parse an error message and show a toast
+          let errMsg: string;
+          try {
+            const body = await response.json();
+            errMsg = body?.error ?? response.statusText;
+          } catch {
+            errMsg = response.statusText;
+          }
+          console.error('[Wedding Planning] Fetch event details error:', errMsg);
+          toast({
+            title: 'Load Failed',
+            description: `Failed to load wedding details: ${errMsg}`,
+            variant: 'destructive',
+          });
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('[Wedding Planning] Failed to fetch event details:', error);
+        toast({
+          title: 'Load Failed',
+          description: `Failed to load wedding details: ${error?.message ?? String(error)}`,
+          variant: 'destructive',
+        });
       }
     };
 
@@ -838,17 +858,27 @@ export default function WeddingPlanning() {
           description: 'Your wedding details have been saved successfully.',
         });
       } else {
+        // Attempt to parse the error returned from the API for easier debugging
+        let errorMsg: string;
+        try {
+          const data = await response.json();
+          errorMsg = (data && data.error) ? String(data.error) : response.statusText;
+        } catch (err) {
+          errorMsg = response.statusText;
+        }
+        console.error('[Wedding Planning] Save event details error:', errorMsg);
         toast({
           title: 'Save Failed',
-          description: 'Failed to save wedding details. Please try again.',
+          description: `Failed to save wedding details: ${errorMsg}`,
           variant: 'destructive',
         });
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Log the error to the console for debugging
       console.error('[Wedding Planning] Failed to save event details:', error);
       toast({
         title: 'Save Failed',
-        description: 'Failed to save wedding details. Please try again.',
+        description: `Failed to save wedding details: ${error?.message ?? String(error)}`,
         variant: 'destructive',
       });
     }
