@@ -154,6 +154,7 @@ router.post("/send-invitations", requireAuth, async (req, res) => {
  * GET /api/wedding/rsvp?token=RAW&response=accept|decline
  * Handle RSVP response from guest
  */
+// GET handler: Render RSVP page or record RSVP directly
 router.get("/rsvp", async (req, res) => {
   try {
     const token = String(req.query.token || "");
@@ -203,6 +204,82 @@ router.get("/rsvp", async (req, res) => {
       `);
     }
 
+    // If the guest is accepting the invitation (any positive response) and the
+    // invitation allows a plus-one, show a form to collect an optional
+    // companion name. When the user submits the form, a POST request will
+    // handle persisting the RSVP and plus-one details. If the user has
+    // already submitted the RSVP (indicated by the query parameter
+    // `submitted=yes`), skip the form and render the success page below.
+    const acceptingResponses = ["accept", "accept-both", "ceremony-only", "reception-only"];
+    const isAccepting = acceptingResponses.includes(response);
+    const alreadySubmitted = req.query.submitted === "yes";
+    if (isAccepting && invitation.plusOne && !alreadySubmitted) {
+      return res.send(`
+        <html>
+          <head>
+            <title>RSVP for ${invitation.guestName}</title>
+            <style>
+              body {
+                font-family: system-ui, -apple-system, sans-serif;
+                padding: 40px;
+                text-align: center;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+              }
+              .card {
+                background: white;
+                color: #333;
+                padding: 30px;
+                border-radius: 10px;
+                max-width: 500px;
+                margin: 0 auto;
+              }
+              label {
+                display: block;
+                margin-bottom: 10px;
+                text-align: left;
+                color: #333;
+              }
+              input[type="text"] {
+                width: 100%;
+                padding: 10px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 16px;
+              }
+              button {
+                margin-top: 20px;
+                padding: 12px 24px;
+                background-color: #27ae60;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 16px;
+                cursor: pointer;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <h2>RSVP for ${invitation.guestName}</h2>
+              <p>You're welcome to bring a guest. Please let us know their name below (optional).</p>
+              <form method="post" action="/api/wedding/rsvp">
+                <input type="hidden" name="token" value="${token}" />
+                <input type="hidden" name="response" value="${response}" />
+                <label for="plusOneName">Guest's Name (leave blank if none):</label>
+                <input type="text" id="plusOneName" name="plusOneName" placeholder="Enter your guest's full name" />
+                <button type="submit">Submit RSVP</button>
+              </form>
+            </div>
+          </body>
+        </html>
+      `);
+    }
+
+    // For all other cases (decline or no plus-one allowed), record the RSVP immediately
+    // and show the success page. This mirrors the original behaviour for users
+    // who either cannot bring a guest or choose not to.
+
     // Map response to status
     let rsvpStatus = "declined";
     if (response === "accept" || response === "accept-both") {
@@ -213,7 +290,6 @@ router.get("/rsvp", async (req, res) => {
       rsvpStatus = "reception-only";
     }
 
-    // Update invitation status
     await db
       .update(weddingRsvpInvitations)
       .set({
@@ -317,6 +393,121 @@ router.get("/rsvp", async (req, res) => {
 });
 
 /**
+ * POST /api/wedding/rsvp
+ * Handle RSVP submission from guests who may provide a plus-one name.
+ * The form is served when a guest accepts an invitation that allows
+ * a plus-one. Guests can optionally supply a plus-one name, which will
+ * be recorded in the weddingRsvpInvitations table. The response body
+ * should include the token, the original response (accept, ceremony-only,
+ * reception-only, etc.), and an optional plusOneName. The server
+ * validates the token and records the RSVP status, respondedAt, and
+ * plusOneName if provided.
+ */
+router.post("/rsvp", async (req, res) => {
+  try {
+    const token = String(req.body.token || "");
+    const response = String(req.body.response || "");
+    const plusOneName = typeof req.body.plusOneName === "string" && req.body.plusOneName.trim() !== "" ? req.body.plusOneName.trim() : null;
+
+    if (!token || !response) {
+      return res.status(400).send("Missing token or response parameter.");
+    }
+
+    const validResponses = ["accept", "decline", "accept-both", "ceremony-only", "reception-only"];
+    if (!validResponses.includes(response)) {
+      return res.status(400).send("Invalid response.");
+    }
+
+    const tokenHash = hashToken(token);
+    const now = new Date();
+
+    // Find valid invitation
+    const [invitation] = await db
+      .select()
+      .from(weddingRsvpInvitations)
+      .where(
+        and(
+          eq(weddingRsvpInvitations.tokenHash, tokenHash),
+          isNull(weddingRsvpInvitations.respondedAt),
+          gt(weddingRsvpInvitations.expiresAt, now)
+        )
+      )
+      .limit(1);
+
+    if (!invitation) {
+      return res.status(400).send(`
+        <html>
+          <head>
+            <title>RSVP Invalid</title>
+            <style>
+              body { font-family: system-ui; text-align: center; padding: 50px; }
+              h1 { color: #e74c3c; }
+            </style>
+          </head>
+          <body>
+            <h1>Invalid or Expired RSVP Link</h1>
+            <p>This RSVP link is either invalid, expired, or has already been used.</p>
+            <p>Please contact the couple if you need a new invitation.</p>
+          </body>
+        </html>
+      `);
+    }
+
+    // Map response to status
+    let rsvpStatus: string = "declined";
+    if (response === "accept" || response === "accept-both") {
+      rsvpStatus = "accepted";
+    } else if (response === "ceremony-only") {
+      rsvpStatus = "ceremony-only";
+    } else if (response === "reception-only") {
+      rsvpStatus = "reception-only";
+    }
+
+    // Update invitation status and optional plusOneName
+    await db
+      .update(weddingRsvpInvitations)
+      .set({
+        rsvpStatus,
+        respondedAt: now,
+        plusOneName: plusOneName || null,
+      })
+      .where(eq(weddingRsvpInvitations.id, invitation.id));
+
+    // Send notification email to the couple
+    try {
+      const [coupleUser] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, invitation.userId))
+        .limit(1);
+
+      if (coupleUser?.email) {
+        const notificationStatus = response === "decline" ? "declined" : "accepted";
+        await sendRsvpNotificationEmail(
+          coupleUser.email,
+          invitation.guestName,
+          notificationStatus as any,
+          {
+            coupleName: coupleUser.displayName ? `${coupleUser.displayName}'s Wedding` : undefined,
+            eventDate: invitation.eventDate ? invitation.eventDate.toLocaleDateString() : undefined,
+          }
+        );
+      }
+    } catch (notificationError) {
+      // Don't fail the RSVP if notification fails
+      console.error("Failed to send RSVP notification:", notificationError);
+    }
+
+    // After recording the RSVP, redirect to the GET handler with a submitted flag
+    // This allows the GET handler to display the success page without showing the form again
+    return res.redirect(`/api/wedding/rsvp?token=${token}&response=${response}&submitted=yes`);
+  } catch (error) {
+    console.error("rsvp submission error:", error);
+    return res.status(500).send("Internal server error.");
+  }
+});
+
+/**
  * GET /api/wedding/guest-list
  * Get the RSVP guest list for the authenticated user
  */
@@ -340,6 +531,7 @@ router.get("/guest-list", requireAuth, async (req, res) => {
         email: g.guestEmail,
         rsvp: g.rsvpStatus,
         plusOne: g.plusOne,
+        plusOneName: g.plusOneName || null,
         respondedAt: g.respondedAt,
         createdAt: g.createdAt,
       })),
