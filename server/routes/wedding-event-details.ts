@@ -13,6 +13,47 @@ import { requireAuth } from "../middleware/auth";
 
 const router = Router();
 
+// Normalize any date-ish value into YYYY-MM-DD for HTML <input type="date">.
+// Defensive: if an existing DB row contains an invalid Date (or the driver
+// returns an unexpected type), we return null rather than throwing
+// "Invalid time value".
+function normalizeDateToYMD(value: unknown): string | null {
+  if (!value) return null;
+
+  // Drizzle often returns Date for timestamp/date columns
+  if (value instanceof Date) {
+    try {
+      return value.toISOString().split("T")[0];
+    } catch {
+      return null;
+    }
+  }
+
+  // Some drivers return strings for timestamp/date columns
+  if (typeof value === "string") {
+    // Already YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+    // ISO-like string
+    if (value.includes("T")) {
+      const [ymd] = value.split("T");
+      if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd;
+    }
+
+    // Fallback parse
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      try {
+        return parsed.toISOString().split("T")[0];
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  return null;
+}
+
 /**
  * GET /api/wedding/event-details
  * Retrieve the saved event details for the authenticated user.
@@ -40,14 +81,8 @@ router.get("/event-details", requireAuth, async (req, res) => {
     let normalized: any = null;
     if (details) {
       normalized = { ...details };
-      const cd = (details as any).ceremonyDate;
-      const rd = (details as any).receptionDate;
-      if (cd instanceof Date) {
-        normalized.ceremonyDate = cd.toISOString().split("T")[0];
-      }
-      if (rd instanceof Date) {
-        normalized.receptionDate = rd.toISOString().split("T")[0];
-      }
+      normalized.ceremonyDate = normalizeDateToYMD((details as any).ceremonyDate);
+      normalized.receptionDate = normalizeDateToYMD((details as any).receptionDate);
     }
 
     return res.json({ ok: true, details: normalized });
