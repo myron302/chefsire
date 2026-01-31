@@ -1069,6 +1069,41 @@ export const weddingRsvpInvitations = pgTable(
   })
 );
 
+
+// Wedding Event Details (saved per user/couple)
+// Stores partner names, ceremony/reception details, and the chosen email template.
+// One row per user; we use user_id as the primary key so upserts are easy.
+export const weddingEventDetails = pgTable(
+  "wedding_event_details",
+  {
+    userId: varchar("user_id").primaryKey().references(() => users.id).notNull(),
+
+    partner1Name: varchar("partner1_name", { length: 255 }),
+    partner2Name: varchar("partner2_name", { length: 255 }),
+
+    ceremonyDate: timestamp("ceremony_date"),
+    ceremonyTime: varchar("ceremony_time", { length: 20 }),
+    ceremonyLocation: text("ceremony_location"),
+
+    receptionDate: timestamp("reception_date"),
+    receptionTime: varchar("reception_time", { length: 20 }),
+    receptionLocation: text("reception_location"),
+
+    useSameLocation: boolean("use_same_location").default(false),
+
+    customMessage: text("custom_message"),
+    selectedTemplate: varchar("selected_template", { length: 32 }).default("elegant"),
+
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    userIdx: index("wedding_event_details_user_idx").on(t.userId),
+  })
+);
+
+export type WeddingEventDetails = typeof weddingEventDetails.$inferSelect;
+
 /* =========================================================================
    ===== INSERT SCHEMAS
    ========================================================================= */
