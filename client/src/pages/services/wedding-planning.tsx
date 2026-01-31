@@ -414,7 +414,7 @@ export default function WeddingPlanning() {
       }
     };
 
-    // Load previously saved event details from the backend
+    // Load event details on mount
     fetchEventDetails();
 
     // Load guest list
@@ -471,10 +471,11 @@ export default function WeddingPlanning() {
       return;
     }
 
-    // Options for autocomplete - use 'establishment' for venues/businesses
+    // Options for autocomplete - include venue name and address
     const options = {
-      types: ['establishment'],
-      fields: ['formatted_address', 'name', 'place_id']
+      // Include both establishment and geocode results to handle venues/addresses
+      types: ['establishment', 'geocode'],
+      fields: ['name', 'formatted_address', 'geometry']
     };
 
     // Ceremony Autocomplete
@@ -482,9 +483,15 @@ export default function WeddingPlanning() {
       const ceremonyAutocomplete = new window.google.maps.places.Autocomplete(ceremonyRef.current, options);
       ceremonyAutocomplete.addListener('place_changed', () => {
         const place = ceremonyAutocomplete.getPlace();
-        const addr = place.formatted_address || place.name || '';
-        setWeddingLocation(addr);
-        if (useSameLocation) setReceptionLocation(addr);
+        const venueName = place.name;
+        const fullAddress = place.formatted_address;
+        // Combine venue name and address for display; avoid duplication if address starts with name
+        const displayString =
+          venueName && fullAddress && !fullAddress.startsWith(venueName)
+            ? `${venueName}, ${fullAddress}`
+            : fullAddress || venueName || '';
+        setWeddingLocation(displayString);
+        if (useSameLocation) setReceptionLocation(displayString);
       });
     }
 
@@ -493,57 +500,18 @@ export default function WeddingPlanning() {
       const receptionAutocomplete = new window.google.maps.places.Autocomplete(receptionRef.current, options);
       receptionAutocomplete.addListener('place_changed', () => {
         const place = receptionAutocomplete.getPlace();
-        const addr = place.formatted_address || place.name || '';
-        setReceptionLocation(addr);
+        const venueName = place.name;
+        const fullAddress = place.formatted_address;
+        const displayString =
+          venueName && fullAddress && !fullAddress.startsWith(venueName)
+            ? `${venueName}, ${fullAddress}`
+            : fullAddress || venueName || '';
+        setReceptionLocation(displayString);
       });
     }
   }, [isGoogleMapsLoaded, useSameLocation, isPremium]);
 
-  // Persist wedding event details to database (debounced to avoid too many API calls)
-  useEffect(() => {
-    if (!user?.id) return;
-
-    // Debounce: wait 1 second after the last change before saving
-    const timeoutId = setTimeout(async () => {
-      try {
-        await fetch('/api/wedding/event-details', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            partner1Name,
-            partner2Name,
-            ceremonyDate: selectedDate,
-            ceremonyTime: weddingTime,
-            ceremonyLocation: weddingLocation,
-            receptionDate,
-            receptionTime,
-            receptionLocation,
-            useSameLocation,
-            customMessage,
-            selectedTemplate,
-          }),
-        });
-      } catch (error) {
-        console.error('[Wedding Planning] Failed to save event details:', error);
-      }
-    }, 1000);
-
-    return () => clearTimeout(timeoutId);
-  }, [
-    partner1Name,
-    partner2Name,
-    selectedDate,
-    weddingTime,
-    weddingLocation,
-    receptionDate,
-    receptionTime,
-    receptionLocation,
-    useSameLocation,
-    customMessage,
-    selectedTemplate,
-    user?.id,
-  ]);
+  // Remove auto-save for event details. Saving now requires explicit Save button press.
 
   const handleStartTrial = () => {
     // Wedding planning features are free - just dismiss the banner permanently
@@ -837,6 +805,54 @@ export default function WeddingPlanning() {
       });
     }
   }, [isPremium, guestList, selectedDate, weddingTime, weddingLocation, receptionDate, receptionTime, receptionLocation, partner1Name, partner2Name, customMessage, selectedTemplate, user, toast]);
+
+  // State to toggle editing mode for wedding event details
+  const [isEditingEventDetails, setIsEditingEventDetails] = useState(false);
+
+  // Explicitly save wedding event details to database
+  const handleSaveEventDetails = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const response = await fetch('/api/wedding/event-details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          partner1Name,
+          partner2Name,
+          ceremonyDate: selectedDate,
+          ceremonyTime: weddingTime,
+          ceremonyLocation: weddingLocation,
+          receptionDate,
+          receptionTime,
+          receptionLocation,
+          useSameLocation,
+          customMessage,
+          selectedTemplate,
+        }),
+      });
+      if (response.ok) {
+        setIsEditingEventDetails(false);
+        toast({
+          title: 'Event Details Saved',
+          description: 'Your wedding details have been saved successfully.',
+        });
+      } else {
+        toast({
+          title: 'Save Failed',
+          description: 'Failed to save wedding details. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('[Wedding Planning] Failed to save event details:', error);
+      toast({
+        title: 'Save Failed',
+        description: 'Failed to save wedding details. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  }, [user?.id, partner1Name, partner2Name, selectedDate, weddingTime, weddingLocation, receptionDate, receptionTime, receptionLocation, useSameLocation, customMessage, selectedTemplate, toast]);
 
   const rsvpStats = useMemo(() => {
     const acceptedBoth = guestList.filter(g => g.rsvp === 'accepted' || g.rsvp === 'accept-both').length;
@@ -1727,24 +1743,37 @@ export default function WeddingPlanning() {
         <CardContent className="p-4 md:p-6">
           {/* Event Details Form */}
           <div className="mb-6 p-4 bg-muted rounded-lg">
-            <h4 className="font-medium mb-3 text-sm flex items-center gap-2">
-              <Heart className="w-4 h-4" />
-              Wedding Details
-            </h4>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Heart className="w-4 h-4" />
+                Wedding Details
+              </h4>
+              {isPremium && (
+                isEditingEventDetails ? (
+                  <Button size="sm" onClick={handleSaveEventDetails}>
+                    Save
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={() => setIsEditingEventDetails(true)}>
+                    Edit
+                  </Button>
+                )
+              )}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <Input
                 placeholder="Partner 1 Name (e.g., Sarah)"
                 value={partner1Name}
                 onChange={(e) => setPartner1Name(e.target.value)}
                 className="text-sm"
-                disabled={!isPremium}
+                disabled={!isPremium || !isEditingEventDetails}
               />
               <Input
                 placeholder="Partner 2 Name (e.g., John)"
                 value={partner2Name}
                 onChange={(e) => setPartner2Name(e.target.value)}
                 className="text-sm"
-                disabled={!isPremium}
+                disabled={!isPremium || !isEditingEventDetails}
               />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
@@ -1754,7 +1783,7 @@ export default function WeddingPlanning() {
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="text-sm"
-                disabled={!isPremium}
+                disabled={!isPremium || !isEditingEventDetails}
               />
               <Input
                 type="time"
@@ -1762,7 +1791,7 @@ export default function WeddingPlanning() {
                 value={weddingTime}
                 onChange={(e) => setWeddingTime(e.target.value)}
                 className="text-sm"
-                disabled={!isPremium}
+                disabled={!isPremium || !isEditingEventDetails}
               />
             </div>
             {/* Ceremony Location with Google Places Autocomplete */}
@@ -1779,7 +1808,7 @@ export default function WeddingPlanning() {
                   if (useSameLocation) setReceptionLocation(e.target.value);
                 }}
                 className="text-sm"
-                disabled={!isPremium}
+                disabled={!isPremium || !isEditingEventDetails}
               />
             </div>
 
@@ -1794,7 +1823,7 @@ export default function WeddingPlanning() {
                   if (e.target.checked) setReceptionLocation(weddingLocation);
                 }}
                 className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
-                disabled={!isPremium}
+                disabled={!isPremium || !isEditingEventDetails}
               />
               <label htmlFor="sync-location" className="text-sm text-muted-foreground cursor-pointer">
                 Reception is at the same location
@@ -1812,7 +1841,7 @@ export default function WeddingPlanning() {
                     value={receptionDate}
                     onChange={(e) => setReceptionDate(e.target.value)}
                     className="text-sm"
-                    disabled={!isPremium}
+                    disabled={!isPremium || !isEditingEventDetails}
                   />
                   <Input
                     type="time"
@@ -1820,7 +1849,7 @@ export default function WeddingPlanning() {
                     value={receptionTime}
                     onChange={(e) => setReceptionTime(e.target.value)}
                     className="text-sm"
-                    disabled={!isPremium}
+                    disabled={!isPremium || !isEditingEventDetails}
                   />
                 </div>
                 <div className="space-y-2">
@@ -1833,7 +1862,7 @@ export default function WeddingPlanning() {
                     value={receptionLocation}
                     onChange={(e) => setReceptionLocation(e.target.value)}
                     className="text-sm"
-                    disabled={!isPremium}
+                    disabled={!isPremium || !isEditingEventDetails}
                   />
                 </div>
               </div>
@@ -1845,7 +1874,7 @@ export default function WeddingPlanning() {
               onChange={(e) => setCustomMessage(e.target.value)}
               className="w-full p-3 text-sm border rounded-md resize-none"
               rows={3}
-              disabled={!isPremium}
+              disabled={!isPremium || !isEditingEventDetails}
             />
           </div>
 
