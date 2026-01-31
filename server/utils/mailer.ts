@@ -223,27 +223,38 @@ export async function sendWeddingRsvpEmail(
   const template = eventDetails?.template || "elegant";
 
   // Template-based styling (email-safe with solid colors instead of gradients)
+  // The colours and fonts here mirror the styles used in the client-side
+  // invitation preview. Gradients are avoided for better email client
+  // compatibility, but the base hues and typography are retained.
   const templateStyles = {
+    // Elegant theme: soft pinks with serif typography
     elegant: {
-      primaryColor: "#d4af37",
-      secondaryColor: "#2c3e50",
+      // Accent colour used for buttons and highlights
+      primaryColor: "#ec4899", // Tailwind pink-500
+      // Secondary colour for subtext and icons
+      secondaryColor: "#6b5eb5", // Matches the preview header hue
+      // Serif family to evoke classic elegance
       fontFamily: "Georgia, serif",
-      headerBg: "#6b5eb5", // Solid color instead of gradient for email compatibility
-      headerTextColor: "#ffffff",
+      // Light background for the header to reflect the preview’s airy feel
+      headerBg: "#fdf2f8", // Tailwind rose-50
+      // Text colour contrasting with the light header background
+      headerTextColor: "#6b5eb5",
     },
+    // Rustic theme: warm ambers and earthy tones
     rustic: {
-      primaryColor: "#8b4513",
-      secondaryColor: "#654321",
-      fontFamily: "Courier New, monospace",
-      headerBg: "#d4a27f", // Solid color instead of gradient
-      headerTextColor: "#ffffff",
+      primaryColor: "#d97706", // Tailwind amber-600
+      secondaryColor: "#92400e", // Tailwind amber-800
+      fontFamily: "Courier New, monospace", // Rustic, typewriter-esque
+      headerBg: "#fff7ed", // Tailwind orange-50
+      headerTextColor: "#92400e",
     },
+    // Modern theme: dark mode with bright cyan accents
     modern: {
-      primaryColor: "#ff6b6b",
-      secondaryColor: "#4ecdc4",
-      fontFamily: "Arial, sans-serif",
-      headerBg: "#8b7fea", // Solid color instead of gradient
-      headerTextColor: "#ffffff",
+      primaryColor: "#22d3ee", // Tailwind cyan-400
+      secondaryColor: "#0f172a", // Tailwind slate-900
+      fontFamily: "Arial, sans-serif", // Clean, sans-serif typography
+      headerBg: "#020617", // Near black, matches the modern preview background
+      headerTextColor: "#ffffff", // High contrast on dark header
     },
   };
 
@@ -289,12 +300,15 @@ export async function sendWeddingRsvpEmail(
           <p style="margin:8px 0;"><strong>📍 Location:</strong> ${eventLocation}</p>
         </div>
 
-        ${hasReception ? `
+        ${(!hasReception && useSameLocation) ? `
+          <p style="margin:30px 0;font-size:14px;font-style:italic;color:${style.secondaryColor};text-align:center;">
+            Dinner & Dancing to follow at the same venue
+          </p>
+        ` : hasReception ? `
           <div style="background:#f5f5f5;padding:20px;border-radius:8px;margin:30px 0;">
             <h3 style="margin:0 0 15px 0;color:${style.secondaryColor};">🎉 Reception</h3>
             ${receptionDate ? `<p style="margin:8px 0;"><strong>📅 Date & Time:</strong> ${receptionDate}${receptionTime}</p>` : ''}
             ${receptionLocation ? `<p style="margin:8px 0;"><strong>📍 Location:</strong> ${receptionLocation}</p>` : ''}
-            ${useSameLocation && !receptionDate ? `<p style="margin:8px 0;font-style:italic;color:#666;">Dinner & dancing to follow at the same venue</p>` : ''}
           </div>
         ` : ''}
 
