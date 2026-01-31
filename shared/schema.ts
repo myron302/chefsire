@@ -1041,6 +1041,14 @@ export const weddingRsvpInvitations = pgTable(
     // Plus one allowed
     plusOne: boolean("plus_one").default(false),
 
+    // Name of the guest's plus-one (if provided). When a guest RSVP's with a
+    // companion, this field stores the companion's name so the couple can
+    // accurately track attendance. Nullable because many invitations will
+    // either not allow a plus-one or the guest may decline to provide the
+    // name. The frontend should only display this field if the invitation
+    // explicitly allows a plus-one.
+    plusOneName: varchar("plus_one_name", { length: 255 }),
+
     // Optional: Wedding event details
     eventDate: timestamp("event_date"),
     eventLocation: text("event_location"),
@@ -1058,51 +1066,6 @@ export const weddingRsvpInvitations = pgTable(
     userIdx: index("wri_user_idx").on(t.userId),
     tokenIdx: index("wri_token_hash_idx").on(t.tokenHash),
     emailIdx: index("wri_email_idx").on(t.guestEmail),
-  })
-);
-
-// ---------------------------------------------------------------------------
-// Wedding Event Details Table
-//
-// Stores ceremony and reception information for each user.  The primary key is
-// the userId to ensure only one event record per user.  This table is
-// intentionally separate from weddingRsvpInvitations so that event details
-// persist independently of individual invitations.
-export const weddingEventDetails = pgTable(
-  "wedding_event_details",
-  {
-    // The user who owns the wedding event details (primary key)
-    userId: varchar("user_id")
-      .references(() => users.id, { onDelete: "cascade" })
-      .primaryKey(),
-
-    // Names of the partners (nullable)
-    partner1Name: text("partner1_name"),
-    partner2Name: text("partner2_name"),
-
-    // Ceremony date/time/location
-    ceremonyDate: timestamp("ceremony_date"),
-    ceremonyTime: varchar("ceremony_time", { length: 10 }),
-    ceremonyLocation: text("ceremony_location"),
-
-    // Reception date/time/location
-    receptionDate: timestamp("reception_date"),
-    receptionTime: varchar("reception_time", { length: 10 }),
-    receptionLocation: text("reception_location"),
-
-    // Whether reception uses same location as ceremony
-    useSameLocation: boolean("use_same_location"),
-
-    // Custom message from the couple and selected invitation template
-    customMessage: text("custom_message"),
-    selectedTemplate: text("selected_template"),
-
-    // Timestamp of last update
-    updatedAt: timestamp("updated_at").defaultNow(),
-  },
-  (t) => ({
-    // Index on userId for faster lookups (redundant since it's the primary key)
-    userIdx: index("wedding_event_details_user_idx").on(t.userId),
   })
 );
 
