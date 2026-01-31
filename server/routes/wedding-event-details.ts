@@ -79,17 +79,50 @@ router.post("/event-details", requireAuth, async (req, res) => {
       useSameLocation,
       customMessage,
       selectedTemplate,
-    } = req.body;
+    } = req.body as {
+      partner1Name?: string;
+      partner2Name?: string;
+      ceremonyDate?: string | null;
+      ceremonyTime?: string | null;
+      ceremonyLocation?: string | null;
+      receptionDate?: string | null;
+      receptionTime?: string | null;
+      receptionLocation?: string | null;
+      useSameLocation?: boolean | null;
+      customMessage?: string | null;
+      selectedTemplate?: string | null;
+    };
+
+    // Convert date strings (YYYY-MM-DD) to Date objects when provided. Drizzle's
+    // timestamp columns expect either a Date instance or a value with
+    // a toISOString() method. Passing a plain string will cause Drizzle to
+    // attempt to call toISOString on it and throw an error. We convert
+    // valid date strings into Date objects; empty or invalid values become null.
+    let ceremonyDateValue: Date | null = null;
+    if (ceremonyDate) {
+      const parsed = new Date(ceremonyDate);
+      if (!isNaN(parsed.getTime())) {
+        ceremonyDateValue = parsed;
+      }
+    }
+
+    let receptionDateValue: Date | null = null;
+    if (receptionDate) {
+      const parsed = new Date(receptionDate);
+      if (!isNaN(parsed.getTime())) {
+        receptionDateValue = parsed;
+      }
+    }
 
     // Prepare the values object. Undefined properties will be stored as null.
     const values = {
       userId,
       partner1Name: partner1Name || null,
       partner2Name: partner2Name || null,
-      ceremonyDate: ceremonyDate || null,
+      ceremonyDate: ceremonyDateValue,
       ceremonyTime: ceremonyTime || null,
       ceremonyLocation: ceremonyLocation || null,
-      receptionDate: receptionDate || null,
+      receptionDate: receptionDateValue,
       receptionTime: receptionTime || null,
       receptionLocation: receptionLocation || null,
       useSameLocation: typeof useSameLocation === "boolean" ? useSameLocation : null,
