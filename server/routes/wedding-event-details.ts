@@ -32,7 +32,25 @@ router.get("/event-details", requireAuth, async (req, res) => {
       .where(eq(weddingEventDetails.userId, req.user.id))
       .limit(1);
 
-    return res.json({ ok: true, details: details || null });
+    // Normalize date fields to YYYY-MM-DD strings. Without this transformation,
+    // Date objects are serialized to ISO strings with time information
+    // (e.g. "2026-02-29T00:00:00.000Z"), which breaks HTML date inputs
+    // on the client. Convert to plain date strings so the frontend can
+    // display and edit them reliably.
+    let normalized: any = null;
+    if (details) {
+      normalized = { ...details };
+      const cd = (details as any).ceremonyDate;
+      const rd = (details as any).receptionDate;
+      if (cd instanceof Date) {
+        normalized.ceremonyDate = cd.toISOString().split("T")[0];
+      }
+      if (rd instanceof Date) {
+        normalized.receptionDate = rd.toISOString().split("T")[0];
+      }
+    }
+
+    return res.json({ ok: true, details: normalized });
   } catch (error) {
     console.error("fetch-event-details error:", error);
     return res.status(500).json({ ok: false, error: (error as Error).message });
