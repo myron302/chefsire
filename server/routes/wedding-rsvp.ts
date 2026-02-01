@@ -118,6 +118,7 @@ router.post("/send-invitations", requireAuth, async (req, res) => {
           message: eventDetails?.message,
           template: eventDetails?.template,
           coupleEmail: user.email, // Replies go to the couple's email
+          plusOneAllowed: plusOne,
         });
 
         sentInvitations.push({
@@ -262,14 +263,40 @@ router.get("/rsvp", async (req, res) => {
           <body>
             <div class="card">
               <h2>RSVP for ${invitation.guestName}</h2>
-              <p>You're welcome to bring a guest. Please let us know their name below (optional).</p>
-              <form method="post" action="/api/wedding/rsvp">
+              <p>You may bring a guest. Tell us below so the couple can plan accurately.</p>
+              <form method="post" action="/api/wedding/rsvp" onsubmit="return window.__weddingRsvpValidate?.() ?? true;">
                 <input type="hidden" name="token" value="${token}" />
                 <input type="hidden" name="response" value="${response}" />
-                <label for="plusOneName">Guest's Name (leave blank if none):</label>
-                <input type="text" id="plusOneName" name="plusOneName" placeholder="Enter your guest's full name" />
+                <label style="display:flex;align-items:center;gap:10px;margin:16px 0 10px 0;">
+                  <input type="checkbox" id="bringingGuest" name="bringingGuest" />
+                  <span style="color:#333;">I’m bringing a guest</span>
+                </label>
+                <label for="plusOneName">Guest’s Name</label>
+                <input type="text" id="plusOneName" name="plusOneName" placeholder="Enter your guest's full name" disabled />
                 <button type="submit">Submit RSVP</button>
               </form>
+              <script>
+                (function(){
+                  var cb = document.getElementById('bringingGuest');
+                  var inp = document.getElementById('plusOneName');
+                  function sync(){
+                    var on = !!cb && cb.checked;
+                    if (inp) {
+                      inp.disabled = !on;
+                      if (!on) inp.value = '';
+                    }
+                  }
+                  if (cb) cb.addEventListener('change', sync);
+                  sync();
+                  window.__weddingRsvpValidate = function(){
+                    if (cb && cb.checked && inp && !String(inp.value||'').trim()) {
+                      alert('Please enter your guest\'s name, or uncheck “I\'m bringing a guest”.');
+                      return false;
+                    }
+                    return true;
+                  };
+                })();
+              </script>
             </div>
           </body>
         </html>
@@ -407,7 +434,10 @@ router.post("/rsvp", async (req, res) => {
   try {
     const token = String(req.body.token || "");
     const response = String(req.body.response || "");
-    const plusOneName = typeof req.body.plusOneName === "string" && req.body.plusOneName.trim() !== "" ? req.body.plusOneName.trim() : null;
+    const bringingGuest = req.body.bringingGuest === "on" || req.body.bringingGuest === "true";
+    const plusOneName = bringingGuest && typeof req.body.plusOneName === "string" && req.body.plusOneName.trim() !== ""
+      ? req.body.plusOneName.trim()
+      : null;
 
     if (!token || !response) {
       return res.status(400).send("Missing token or response parameter.");
