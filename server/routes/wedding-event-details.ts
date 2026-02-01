@@ -34,6 +34,18 @@ function normalizeDateToYMD(value: unknown): string | null {
     // Already YYYY-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
 
+    // Common Postgres string formats that are NOT strict ISO and may not
+    // parse reliably with `new Date(...)`, e.g.
+    //   "2026-01-31 00:00:00"
+    //   "2026-01-31 00:00:00+00"
+    // In these cases, the first 10 chars are still the YYYY-MM-DD we need.
+    if (/^\d{4}-\d{2}-\d{2}\s/.test(value)) {
+      return value.slice(0, 10);
+    }
+    if (/^\d{4}-\d{2}-\d{2}\+/.test(value)) {
+      return value.slice(0, 10);
+    }
+
     // ISO-like string
     if (value.includes("T")) {
       const [ymd] = value.split("T");
