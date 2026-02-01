@@ -1,137 +1,127 @@
 // server/routes/wedding-event-details.ts
 //
-// This route handles saving and retrieving wedding event details (e.g. partner names,
-// ceremony and reception dates/locations, custom messages, and email template) for
-// the authenticated user. Separating this logic from wedding-rsvp keeps RSVP
-// operations focused on sending invitations and handling responses.
+// Robust Wedding Event Details API (Neon/Postgres)
+//
+// Fixes:
+// - Date not showing after refresh even though DB has it.
+// - Handles Postgres DATE, TIMESTAMP, ISO strings, and even "mashed" strings
+//   that contain a date somewhere inside (extracts YYYY-MM-DD anywhere).
+// - Avoids Drizzle timestamp serialization issues by inserting DATE strings
+//   and casting to DATE in SQL.
+//
+// This file uses raw SQL via drizzle-orm `sql` so it does NOT depend on
+// a Drizzle table export in shared/schema.ts.
 
 import { Router } from "express";
-import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "../db";
-import { weddingEventDetails } from "../../shared/schema";
 import { requireAuth } from "../middleware/auth";
 
 const router = Router();
 
-// Normalize any date-ish value into YYYY-MM-DD for HTML <input type="date">.
-// Defensive: if an existing DB row contains an invalid Date (or the driver
-// returns an unexpected type), we return null rather than throwing
-// "Invalid time value".
+/** Extracts YYYY-MM-DD from many formats (including embedded in a longer string). */
 function normalizeDateToYMD(value: unknown): string | null {
   if (!value) return null;
 
-  // Drizzle often returns Date for timestamp/date columns
+  // Date object
   if (value instanceof Date) {
-    try {
-      return value.toISOString().split("T")[0];
-    } catch {
-      return null;
-    }
+    const t = value.getTime();
+    if (Number.isNaN(t)) return null;
+    return value.toISOString().slice(0, 10);
   }
 
-  // Some drivers return strings for timestamp/date columns
-  if (typeof value === "string") {
-    // Already YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  // String-like
+  const s = String(value).trim();
+  if (!s) return null;
 
-    // Common Postgres string formats that are NOT strict ISO and may not
-    // parse reliably with `new Date(...)`, e.g.
-    //   "2026-01-31 00:00:00"
-    //   "2026-01-31 00:00:00+00"
-    // In these cases, the first 10 chars are still the YYYY-MM-DD we need.
-    if (/^\d{4}-\d{2}-\d{2}\s/.test(value)) {
-      return value.slice(0, 10);
-    }
-    if (/^\d{4}-\d{2}-\d{2}\+/.test(value)) {
-      return value.slice(0, 10);
-    }
+  // Exact YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
-    // ISO-like string
-    if (value.includes("T")) {
-      const [ymd] = value.split("T");
-      if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd;
-    }
+  // ISO with time
+  const isoMatch = s.match(/^(\d{4}-\d{2}-\d{2})T/);
+  if (isoMatch) return isoMatch[1];
 
-    // Fallback parse
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) {
-      try {
-        return parsed.toISOString().split("T")[0];
-      } catch {
-        return null;
-      }
-    }
-  }
+  // Postgres timestamp: "YYYY-MM-DD HH:MM:SS" (optionally with tz)
+  const pgMatch = s.match(/^(\d{4}-\d{2}-\d{2})\s/);
+  if (pgMatch) return pgMatch[1];
+
+  // Embedded date anywhere in the string (handles accidental concatenation)
+  const embedded = s.match(/(\d{4}-\d{2}-\d{2})/);
+  if (embedded) return embedded[1];
+
+  // Last resort: Date parse
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
 
   return null;
 }
 
 /**
+ * Convert YYYY-MM-DD to a safe string for DATE columns.
+ * Returns null for invalid inputs.
+ */
+function normalizeInputDate(value: unknown): string | null {
+  const ymd = normalizeDateToYMD(value);
+  if (!ymd) return null;
+  // Guard: ensure it is really YYYY-MM-DD
+  return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : null;
+}
+
+/**
  * GET /api/wedding/event-details
- * Retrieve the saved event details for the authenticated user.
- *
- * Response: { ok: boolean; details?: object; error?: string }
  */
 router.get("/event-details", requireAuth, async (req, res) => {
   try {
-    if (!req.user?.id) {
-      return res.status(401).json({ ok: false, error: "Not authenticated" });
-    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
 
-    // Fetch the first (and only) event details record for this user
-    const [details] = await db
-      .select()
-      .from(weddingEventDetails)
-      .where(eq(weddingEventDetails.userId, req.user.id))
-      .limit(1);
+    // NOTE: column names below match the CREATE TABLE we discussed earlier.
+    const result: any = await db.execute(sql`
+      SELECT
+        user_id              AS "userId",
+        partner1_name        AS "partner1Name",
+        partner2_name        AS "partner2Name",
+        ceremony_date        AS "ceremonyDate",
+        ceremony_time        AS "ceremonyTime",
+        ceremony_location    AS "ceremonyLocation",
+        reception_date       AS "receptionDate",
+        reception_time       AS "receptionTime",
+        reception_location   AS "receptionLocation",
+        use_same_location    AS "useSameLocation",
+        custom_message       AS "customMessage",
+        selected_template    AS "selectedTemplate",
+        created_at           AS "createdAt",
+        updated_at           AS "updatedAt"
+      FROM wedding_event_details
+      WHERE user_id = ${userId}
+      LIMIT 1
+    `);
 
-    // Normalize date fields to YYYY-MM-DD strings. Without this transformation,
-    // Date objects are serialized to ISO strings with time information
-    // (e.g. "2026-02-29T00:00:00.000Z"), which breaks HTML date inputs
-    // on the client. Convert to plain date strings so the frontend can
-    // display and edit them reliably.
-    let normalized: any = null;
-    if (details) {
-      normalized = { ...details };
-      normalized.ceremonyDate = normalizeDateToYMD((details as any).ceremonyDate);
-      normalized.receptionDate = normalizeDateToYMD((details as any).receptionDate);
-    }
+    const row = result?.rows?.[0] ?? result?.[0] ?? null;
+    if (!row) return res.json({ ok: true, details: null });
 
-    return res.json({ ok: true, details: normalized });
-  } catch (error) {
-    console.error("fetch-event-details error:", error);
-    return res.status(500).json({ ok: false, error: (error as Error).message });
+    // Normalize dates for <input type="date">
+    const details = {
+      ...row,
+      ceremonyDate: normalizeDateToYMD(row.ceremonyDate),
+      receptionDate: normalizeDateToYMD(row.receptionDate),
+    };
+
+    return res.json({ ok: true, details });
+  } catch (err: any) {
+    console.error("[Wedding Planning] fetch event details error:", err);
+    return res.status(500).json({ ok: false, error: err?.message || "Server error" });
   }
 });
 
 /**
  * POST /api/wedding/event-details
- * Save or update wedding event details for the authenticated user. If a record
- * already exists, it will be updated; otherwise a new record will be inserted.
- *
- * Body: {
- *   partner1Name?: string;
- *   partner2Name?: string;
- *   ceremonyDate?: string; // ISO date (YYYY-MM-DD)
- *   ceremonyTime?: string; // HH:MM
- *   ceremonyLocation?: string;
- *   receptionDate?: string;
- *   receptionTime?: string;
- *   receptionLocation?: string;
- *   useSameLocation?: boolean;
- *   customMessage?: string;
- *   selectedTemplate?: string;
- * }
- *
- * Response: { ok: boolean; error?: string }
  */
 router.post("/event-details", requireAuth, async (req, res) => {
   try {
-    if (!req.user?.id) {
-      return res.status(401).json({ ok: false, error: "Not authenticated" });
-    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
 
-    const userId = req.user.id;
     const {
       partner1Name,
       partner2Name,
@@ -144,79 +134,61 @@ router.post("/event-details", requireAuth, async (req, res) => {
       useSameLocation,
       customMessage,
       selectedTemplate,
-    } = req.body as {
-      partner1Name?: string;
-      partner2Name?: string;
-      ceremonyDate?: string | null;
-      ceremonyTime?: string | null;
-      ceremonyLocation?: string | null;
-      receptionDate?: string | null;
-      receptionTime?: string | null;
-      receptionLocation?: string | null;
-      useSameLocation?: boolean | null;
-      customMessage?: string | null;
-      selectedTemplate?: string | null;
-    };
+    } = req.body ?? {};
 
-    // Convert date strings (YYYY-MM-DD) to Date objects when provided. Drizzle's
-    // timestamp columns expect either a Date instance or a value with
-    // a toISOString() method. Passing a plain string will cause Drizzle to
-    // attempt to call toISOString on it and throw an error. We convert
-    // valid date strings into Date objects; empty or invalid values become null.
-    let ceremonyDateValue: Date | null = null;
-    if (ceremonyDate) {
-      const parsed = new Date(ceremonyDate);
-      if (!isNaN(parsed.getTime())) {
-        ceremonyDateValue = parsed;
-      }
-    }
+    // For DATE columns, store YYYY-MM-DD strings and cast to date in SQL.
+    const ceremonyDateYMD = normalizeInputDate(ceremonyDate);
+    const receptionDateYMD = normalizeInputDate(receptionDate);
 
-    let receptionDateValue: Date | null = null;
-    if (receptionDate) {
-      const parsed = new Date(receptionDate);
-      if (!isNaN(parsed.getTime())) {
-        receptionDateValue = parsed;
-      }
-    }
-
-    // Prepare the values object. Undefined properties will be stored as null.
-    const values = {
-      userId,
-      partner1Name: partner1Name || null,
-      partner2Name: partner2Name || null,
-      ceremonyDate: ceremonyDateValue,
-      ceremonyTime: ceremonyTime || null,
-      ceremonyLocation: ceremonyLocation || null,
-      receptionDate: receptionDateValue,
-      receptionTime: receptionTime || null,
-      receptionLocation: receptionLocation || null,
-      useSameLocation: typeof useSameLocation === "boolean" ? useSameLocation : null,
-      customMessage: customMessage || null,
-      selectedTemplate: selectedTemplate || null,
-    };
-
-    // Check if a details record already exists for this user
-    const [existing] = await db
-      .select()
-      .from(weddingEventDetails)
-      .where(eq(weddingEventDetails.userId, userId))
-      .limit(1);
-
-    if (existing) {
-      // Update the existing record
-      await db
-        .update(weddingEventDetails)
-        .set(values)
-        .where(eq(weddingEventDetails.userId, userId));
-    } else {
-      // Insert a new record
-      await db.insert(weddingEventDetails).values(values);
-    }
+    await db.execute(sql`
+      INSERT INTO wedding_event_details (
+        user_id,
+        partner1_name,
+        partner2_name,
+        ceremony_date,
+        ceremony_time,
+        ceremony_location,
+        reception_date,
+        reception_time,
+        reception_location,
+        use_same_location,
+        custom_message,
+        selected_template,
+        updated_at
+      ) VALUES (
+        ${userId},
+        ${partner1Name ?? null},
+        ${partner2Name ?? null},
+        ${ceremonyDateYMD}::date,
+        ${ceremonyTime ?? null},
+        ${ceremonyLocation ?? null},
+        ${receptionDateYMD}::date,
+        ${receptionTime ?? null},
+        ${receptionLocation ?? null},
+        ${typeof useSameLocation === "boolean" ? useSameLocation : null},
+        ${customMessage ?? null},
+        ${selectedTemplate ?? null},
+        NOW()
+      )
+      ON CONFLICT (user_id) DO UPDATE SET
+        partner1_name = EXCLUDED.partner1_name,
+        partner2_name = EXCLUDED.partner2_name,
+        ceremony_date = EXCLUDED.ceremony_date,
+        ceremony_time = EXCLUDED.ceremony_time,
+        ceremony_location = EXCLUDED.ceremony_location,
+        reception_date = EXCLUDED.reception_date,
+        reception_time = EXCLUDED.reception_time,
+        reception_location = EXCLUDED.reception_location,
+        use_same_location = EXCLUDED.use_same_location,
+        custom_message = EXCLUDED.custom_message,
+        selected_template = EXCLUDED.selected_template,
+        updated_at = NOW()
+    `);
 
     return res.json({ ok: true });
-  } catch (error) {
-    console.error("save-event-details error:", error);
-    return res.status(500).json({ ok: false, error: (error as Error).message });
+  } catch (err: any) {
+    console.error("[Wedding Planning] save event details error:", err);
+    return res.status(500).json({ ok: false, error: err?.message || "Server error" });
   }
 });
 
