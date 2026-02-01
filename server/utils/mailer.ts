@@ -147,6 +147,7 @@ export async function sendWeddingRsvpEmail(
     message?: string;
     template?: string;
     coupleEmail?: string; // The couple's email for replies
+    plusOneAllowed?: boolean; // Whether this invitation allows a plus-one
   }
 ) {
   const from =
@@ -229,32 +230,57 @@ export async function sendWeddingRsvpEmail(
   const templateStyles = {
     // Elegant theme: soft pinks with serif typography
     elegant: {
-      // Accent colour used for buttons and highlights
-      primaryColor: "#ec4899", // Tailwind pink-500
-      // Secondary colour for subtext and icons
-      secondaryColor: "#6b5eb5", // Matches the preview header hue
-      // Serif family to evoke classic elegance
-      fontFamily: "Georgia, serif",
-      // Light background for the header to reflect the preview’s airy feel
-      headerBg: "#fdf2f8", // Tailwind rose-50
-      // Text colour contrasting with the light header background
+      primaryColor: "#ec4899", // pink
+      secondaryColor: "#6b5eb5", // soft purple
+      fontFamily: "Georgia, 'Times New Roman', serif",
+      pageBg: "#fff7fb",
+      cardBg: "#ffffff",
+      cardBorder: "#f3e8ff",
+      headerBg: "#fdf2f8",
       headerTextColor: "#6b5eb5",
+      textColor: "#334155",
+      mutedTextColor: "#64748b",
+      sectionBg: "#fff1f2",
+      sectionBorder: "1px solid #fce7f3",
+      buttonAlt1: "#a855f7", // purple
+      buttonAlt2: "#64748b", // slate
+      declineColor: "#ef4444", // red
     },
     // Rustic theme: warm ambers and earthy tones
     rustic: {
-      primaryColor: "#d97706", // Tailwind amber-600
-      secondaryColor: "#92400e", // Tailwind amber-800
-      fontFamily: "Courier New, monospace", // Rustic, typewriter-esque
-      headerBg: "#fff7ed", // Tailwind orange-50
+      primaryColor: "#d97706", // amber
+      secondaryColor: "#92400e",
+      fontFamily: "'Trebuchet MS', Arial, sans-serif",
+      pageBg: "#fffbeb",
+      cardBg: "#ffffff",
+      cardBorder: "#fde68a",
+      headerBg: "#fff7ed",
       headerTextColor: "#92400e",
+      textColor: "#3f2d1f",
+      mutedTextColor: "#6b4f3a",
+      sectionBg: "#ffedd5",
+      sectionBorder: "2px dashed #d97706",
+      buttonAlt1: "#b45309", // darker amber
+      buttonAlt2: "#78716c", // stone
+      declineColor: "#b91c1c",
     },
     // Modern theme: dark mode with bright cyan accents
     modern: {
-      primaryColor: "#22d3ee", // Tailwind cyan-400
-      secondaryColor: "#0f172a", // Tailwind slate-900
-      fontFamily: "Arial, sans-serif", // Clean, sans-serif typography
-      headerBg: "#020617", // Near black, matches the modern preview background
-      headerTextColor: "#ffffff", // High contrast on dark header
+      primaryColor: "#22d3ee", // cyan
+      secondaryColor: "#0f172a", // slate-900
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif",
+      pageBg: "#020617",
+      cardBg: "#0b1220",
+      cardBorder: "#1e293b",
+      headerBg: "#020617",
+      headerTextColor: "#ffffff",
+      textColor: "#e2e8f0",
+      mutedTextColor: "#94a3b8",
+      sectionBg: "#0f172a",
+      sectionBorder: "1px solid #1e293b",
+      buttonAlt1: "#38bdf8", // sky
+      buttonAlt2: "#64748b", // slate
+      declineColor: "#f87171", // soft red
     },
   };
 
@@ -267,9 +293,12 @@ export async function sendWeddingRsvpEmail(
   const receptionOnlyLink = `${baseUrl}&response=reception-only`;
   const declineBothLink = `${baseUrl}&response=decline`;
 
+  const plusOneAllowed = !!eventDetails?.plusOneAllowed;
+
   const html = `
-    <div style="font-family:${style.fontFamily};line-height:1.6;max-width:600px;margin:0 auto;background:#ffffff;">
-      <div style="background-color:${style.headerBg};color:${style.headerTextColor};padding:40px 20px;text-align:center;border-radius:10px 10px 0 0;">
+    <div style="font-family:${style.fontFamily};line-height:1.6;background:${style.pageBg};padding:24px 12px;">
+      <div style="max-width:600px;margin:0 auto;background:${style.cardBg};border:1px solid ${style.cardBorder};border-radius:14px;overflow:hidden;">
+      <div style="background-color:${style.headerBg};color:${style.headerTextColor};padding:40px 20px;text-align:center;">
         <h1 style="margin:0;font-size:32px;color:${style.headerTextColor};">💍 You're Invited!</h1>
         ${partner1 && partner2 ? `
           <p style="margin:20px 0 10px 0;font-size:28px;font-weight:bold;color:${style.headerTextColor};">${partner1} & ${partner2}</p>
@@ -279,25 +308,25 @@ export async function sendWeddingRsvpEmail(
         `}
       </div>
 
-      <div style="background:#ffffff;padding:40px 30px;border:2px solid #eee;border-top:none;border-radius:0 0 10px 10px;">
-        <p style="font-size:18px;color:${style.secondaryColor};">
+      <div style="background:${style.cardBg};padding:36px 28px;color:${style.textColor};">
+        <p style="font-size:18px;color:${style.secondaryColor};margin:0 0 16px 0;">
           Dear ${partnerName ? `${guestName} & ${partnerName}` : guestName},
         </p>
 
-        <p style="font-size:16px;color:#555;">
+        <p style="font-size:16px;color:${style.mutedTextColor};margin:0 0 18px 0;">
           ${partnerName ? 'You are both invited to' : 'We are delighted to invite you to'} celebrate our special day with us!
         </p>
 
         ${customMessage ? `
-          <div style="background:#f9f9f9;border-left:4px solid ${style.primaryColor};padding:15px;margin:20px 0;font-style:italic;color:#555;">
+          <div style="background:${style.sectionBg};${style.sectionBorder ? `border:${style.sectionBorder};` : ''}border-left:4px solid ${style.primaryColor};padding:15px;margin:20px 0;border-radius:10px;font-style:italic;color:${style.textColor};">
             ${customMessage}
           </div>
         ` : ''}
 
-        <div style="background:#f5f5f5;padding:20px;border-radius:8px;margin:30px 0;">
+        <div style="background:${style.sectionBg};${style.sectionBorder ? `border:${style.sectionBorder};` : ''}padding:20px;border-radius:12px;margin:24px 0;">
           <h3 style="margin:0 0 15px 0;color:${style.secondaryColor};">💒 Wedding Ceremony</h3>
-          <p style="margin:8px 0;"><strong>📅 Date & Time:</strong> ${eventDate}${eventTime}</p>
-          <p style="margin:8px 0;"><strong>📍 Location:</strong> ${eventLocation}</p>
+          <p style="margin:8px 0;color:${style.textColor};"><strong>📅 Date & Time:</strong> ${eventDate}${eventTime}</p>
+          <p style="margin:8px 0;color:${style.textColor};"><strong>📍 Location:</strong> ${eventLocation}</p>
         </div>
 
         ${(!hasReception && useSameLocation) ? `
@@ -305,14 +334,20 @@ export async function sendWeddingRsvpEmail(
             Dinner & Dancing to follow at the same venue
           </p>
         ` : hasReception ? `
-          <div style="background:#f5f5f5;padding:20px;border-radius:8px;margin:30px 0;">
+          <div style="background:${style.sectionBg};${style.sectionBorder ? `border:${style.sectionBorder};` : ''}padding:20px;border-radius:12px;margin:24px 0;">
             <h3 style="margin:0 0 15px 0;color:${style.secondaryColor};">🎉 Reception</h3>
-            ${receptionDate ? `<p style="margin:8px 0;"><strong>📅 Date & Time:</strong> ${receptionDate}${receptionTime}</p>` : ''}
-            ${receptionLocation ? `<p style="margin:8px 0;"><strong>📍 Location:</strong> ${receptionLocation}</p>` : ''}
+            ${receptionDate ? `<p style="margin:8px 0;color:${style.textColor};"><strong>📅 Date & Time:</strong> ${receptionDate}${receptionTime}</p>` : ''}
+            ${receptionLocation ? `<p style="margin:8px 0;color:${style.textColor};"><strong>📍 Location:</strong> ${receptionLocation}</p>` : ''}
           </div>
         ` : ''}
 
-        <p style="font-size:16px;color:#555;margin-bottom:20px;text-align:center;">
+        ${plusOneAllowed && !partnerName ? `
+          <div style="margin:14px 0 8px 0;padding:12px 14px;border-radius:12px;border:1px solid ${style.cardBorder};background:${style.cardBg};color:${style.mutedTextColor};font-size:14px;text-align:center;">
+            ✨ You may bring a guest. When you RSVP, you’ll be asked for their name (optional).
+          </div>
+        ` : ''}
+
+        <p style="font-size:16px;color:${style.mutedTextColor};margin-bottom:20px;text-align:center;">
           Please let us know if you can attend:
         </p>
 
@@ -325,19 +360,19 @@ export async function sendWeddingRsvpEmail(
                 </a>
               </td>
               <td style="padding:8px;">
-                <a href="${ceremonyOnlyLink}" style="display:block;background-color:#4ecdc4;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;text-align:center;">
+                <a href="${ceremonyOnlyLink}" style="display:block;background-color:${style.buttonAlt1};color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;text-align:center;">
                   Ceremony Only
                 </a>
               </td>
             </tr>
             <tr>
               <td style="padding:8px;">
-                <a href="${receptionOnlyLink}" style="display:block;background-color:#95a5a6;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;text-align:center;">
+                <a href="${receptionOnlyLink}" style="display:block;background-color:${style.buttonAlt2};color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;text-align:center;">
                   Reception Only
                 </a>
               </td>
               <td style="padding:8px;">
-                <a href="${declineBothLink}" style="display:block;background-color:#e74c3c;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;text-align:center;">
+                <a href="${declineBothLink}" style="display:block;background-color:${style.declineColor};color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;text-align:center;">
                   ✗ Decline
                 </a>
               </td>
@@ -366,9 +401,10 @@ export async function sendWeddingRsvpEmail(
         </p>
       </div>
 
-      <div style="text-align:center;padding:20px;color:#999;font-size:12px;">
+      <div style="text-align:center;padding:20px;color:${style.mutedTextColor};font-size:12px;">
         <p>Sent via ChefSire Wedding Planning</p>
         <p>If you received this email by mistake, please ignore it.</p>
+      </div>
       </div>
     </div>
   `;
