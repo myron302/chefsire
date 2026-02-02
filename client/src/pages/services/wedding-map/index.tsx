@@ -147,6 +147,8 @@ export default function WeddingVendorMap() {
   const [selectedVendor, setSelectedVendor] = useState<PlaceResultLite | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const locationInputRef = useRef<HTMLInputElement | null>(null);
 
   const markers = useMemo(
     () =>
@@ -170,8 +172,322 @@ export default function WeddingVendorMap() {
     });
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    let searchAutocomplete: google.maps.places.Autocomplete | null = null;
+    let locationAutocomplete: google.maps.places.Autocomplete | null = null;
+    let searchListener: google.maps.MapsEventListener | null = null;
+    let locationListener: google.maps.MapsEventListener | null = null;
+
+    const initAutocomplete = async () => {
+      try {
+        await waitForGoogle();
+        if (cancelled) return;
+        const gm = window.google;
+        if (!gm?.maps?.places) return;
+
+        if (searchInputRef.current && !searchAutocomplete) {
+          searchAutocomplete = new gm.maps.places.Autocomplete(searchInputRef.current, {
+            fields: ["name", "formatted_address", "place_id"],
+          });
+          searchListener = searchAutocomplete.addListener("place_changed", () => {
+            const place = searchAutocomplete?.getPlace();
+            if (place?.name) {
+              setSearchQuery(place.name);
+            } else if (place?.formatted_address) {
+              setSearchQuery(place.formatted_address);
+            }
+          });
+        }
+
+        if (locationInputRef.current && !locationAutocomplete) {
+          locationAutocomplete = new gm.maps.places.Autocomplete(locationInputRef.current, {
+            fields: ["formatted_address", "geometry", "place_id"],
+            types: ["(cities)"],
+          });
+          locationListener = locationAutocomplete.addListener("place_changed", () => {
+            const place = locationAutocomplete?.getPlace();
+            if (place?.formatted_address) {
+              setLocationQuery(place.formatted_address);
+            }
+            if (place?.geometry?.location) {
+              setCenter({
+                lat: place.geometry.location.lat(),
+                lng: place.geometry.location.lng(),
+              });
+            }
+          });
+        }
+      } catch {
+        // Autocomplete is optional; map can still function without it.
+      }
+    };
+
+    initAutocomplete();
+
+    return () => {
+      cancelled = true;
+      searchListener?.remove();
+      locationListener?.remove();
+    };
+  }, []);
+
   // Geocode a text location into lat/lng
- client/src/pages/services/wedding-map/index.tsx
+  async function geocodeAddress(address: string): Promise<LatLng | null> {
+    await waitForGoogle().catch(() => {});
+    const gm = window.google;
+    if (!gm?.maps?.Geocoder) return null;
+    const geocoder = new gm.maps.Geocoder();
+    return new Promise((resolve) => {
+      geocoder.geocode({ address }, (results: any, status: any) => {
+        if (status === "OK" && results?.[0]?.geometry?.location) {
+          const loc = results[0].geometry.location;
+          resolve({ lat: loc.lat(), lng: loc.lng() });
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  }
+
+  // MAIN SEARCH (Places Text Search)
+  const searchRef = useRef<number | null>(null);
+  useEffect(() => {
+    // Debounce
+    if (searchRef.current) window.clearTimeout(searchRef.current);
+    searchRef.current = window.setTimeout(async () => {
+      setLoading(true);
+      setErrorMsg(null);
+      try {
+        await waitForGoogle(); // ensure places lib exists
+        const gm = window.google;
+        const loc = (await geocodeAddress(locationQuery)) || center;
+        setCenter(loc);
+
+        const service = new gm.maps.places.PlacesService(document.createElement("div"));
+
+        const qBase = categoryConfig[selectedCategory].query;
+        const q = [qBase, searchQuery].filter(Boolean).join(" ");
+
+        const request: any = {
+          query: q,
+          location: new gm.maps.LatLng(loc.lat, loc.lng),
+          radius: 25000, // ~25km around the location
+        };
+
+        await new Promise<void>((resolve, reject) => {
+          service.textSearch(request, (results: any[], status: string, pagination: any) => {
+            if (status !== gm.maps.places.PlacesServiceStatus.OK || !results) {
+              setVendors([]);
+              if (status !== "ZERO_RESULTS") setErrorMsg(status || "Search failed");
+              return resolve();
+            }
+            const mapped = results
+              .map((p) => placeToVendorLite(p, selectedCategory))
+              .filter(Boolean) as PlaceResultLite[];
+            setVendors(mapped);
+            resolve();
+          });
+        });
+      } catch (e: any) {
+        setErrorMsg(e?.message || "Search failed");
+        setVendors([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 450);
+
+    return () => {
+      if (searchRef.current) window.clearTimeout(searchRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory, searchQuery, locationQuery]);
+
+  // Open details & fetch phone/website on demand
+  const handleViewDetails = async (vendor: PlaceResultLite) => {
+    setSelectedVendor(vendor);
+    setShowDetails(true);
+
+    if (vendor.phone || vendor.website) return; // already enriched
+
+    try {
+      await waitForGoogle();
+      const gm = window.google;
+      const service = new gm.maps.places.PlacesService(document.createElement("div"));
+      setDetailsLoading(true);
+
+      await new Promise<void>((resolve) => {
+        service.getDetails(
+          {
+            placeId: vendor.placeId,
+            fields: [
+              "formatted_phone_number",
+              "website",
+              "opening_hours",
+              "url",
+              "formatted_address",
+              "photo",
+            ],
+          },
+          (place: any, status: string) => {
+            if (status === gm.maps.places.PlacesServiceStatus.OK && place) {
+              setSelectedVendor((prev) =>
+                prev && prev.id === vendor.id
+                  ? {
+                      ...prev,
+                      phone: place.formatted_phone_number || prev.phone,
+                      website: place.website || prev.website,
+                      address: place.formatted_address || prev.address,
+                      image: placePhoto(place) || prev.image,
+                    }
+                  : prev
+              );
+            }
+            resolve();
+          }
+        );
+      });
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const getCategoryIcon = (category: VendorCategoryKey) => {
+    const config = categoryConfig[category];
+    return config ? config.icon : MapPin;
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">
+              Wedding Vendor Map
+            </h1>
+            <p className="text-muted-foreground">
+              Live results pulled from Google Places near your chosen location
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-sm">
+              <MapPinned className="w-4 h-4 mr-1" />
+              {vendors.length} vendors found
+            </Badge>
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Input
+                    placeholder="Filter by name, keyword… (optional)"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                    ref={searchInputRef}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="relative">
+                  <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Input
+                    placeholder="Location (City, State)"
+                    value={locationQuery}
+                    onChange={(e) => setLocationQuery(e.target.value)}
+                    className="pl-10"
+                    ref={locationInputRef}
+                  />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Category Filters */}
+        <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-6">
+          {(
+            Object.keys(categoryConfig) as VendorCategoryKey[]
+          ).map((key) => {
+            const cfg = categoryConfig[key];
+            const Icon = cfg.icon;
+            const isSelected = selectedCategory === key;
+            const count = key === "all" ? vendors.length : vendors.filter((v) => v.category === key).length;
+            return (
+              <Button
+                key={key}
+                variant={isSelected ? "default" : "outline"}
+                onClick={() => setSelectedCategory(key)}
+                className="w-full flex items-center justify-center sm:justify-between px-2"
+              >
+                <div className="flex items-center gap-1 min-w-0">
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  <span className="text-xs sm:text-sm hidden sm:inline truncate">{cfg.label}</span>
+                </div>
+                <Badge variant="secondary" className="text-xs hidden sm:flex flex-shrink-0">
+                  {count}
+                </Badge>
+              </Button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Map + Results (grid/list toggle on the right, like BiteMap) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* Map Section */}
+        <div className="lg:col-span-2">
+          <Card className="h-[600px]">
+            <CardContent className="p-0 h-full">
+              <div className="relative w-full h-full rounded-lg overflow-hidden">
+                <MapView
+                  center={center}
+                  zoom={12}
+                  markers={markers}
+                  onMarkerClick={(m) => handleViewDetails(m.vendor as PlaceResultLite)}
+                  fitToMarkers
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Vendor List Section */}
+        <div className="lg:col-span-1">
+          <Card className="h-[600px] overflow-hidden flex flex-col">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Vendors</CardTitle>
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    variant={viewMode === "list" ? "default" : "ghost"}
+                    onClick={() => setViewMode("list")}
+                  >
+                    <List className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={viewMode === "grid" ? "default" : "ghost"}
+                    onClick={() => setViewMode("grid")}
+                  >
+                    <Grid className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+              {loading && (
+                <p className="text-xs text-muted-foreground mt-1">Loading live results…</p>
+              )}
+              {errorMsg && (
+                <p className="text-xs text-red-500 mt-1">Error: {errorMsg}</p>
+              )}
+            </CardHeader>
 
             <CardContent className={`flex-1 overflow-y-auto ${viewMode === "grid" ? "" : "space-y-3"}`}>
               {vendors.length === 0 && !loading ? (
