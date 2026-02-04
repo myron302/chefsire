@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Link } from "wouter";
 import MapView from "./MapView";
 
 /**
@@ -142,11 +143,22 @@ export default function WeddingVendorMap() {
   const [vendors, setVendors] = useState<PlaceResultLite[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [categoryCounts, setCategoryCounts] = useState<Record<VendorCategoryKey, number>>({
+    all: 0,
+    venue: 0,
+    photographer: 0,
+    dj: 0,
+    florist: 0,
+    dressShop: 0,
+    tuxedoShop: 0,
+  });
 
   // Modal
   const [selectedVendor, setSelectedVendor] = useState<PlaceResultLite | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const locationInputRef = useRef<HTMLInputElement | null>(null);
 
   const markers = useMemo(
     () =>
@@ -169,6 +181,66 @@ export default function WeddingVendorMap() {
       return ns;
     });
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    let searchAutocomplete: google.maps.places.Autocomplete | null = null;
+    let locationAutocomplete: google.maps.places.Autocomplete | null = null;
+    let searchListener: google.maps.MapsEventListener | null = null;
+    let locationListener: google.maps.MapsEventListener | null = null;
+
+    const initAutocomplete = async () => {
+      try {
+        await waitForGoogle();
+        if (cancelled) return;
+        const gm = window.google;
+        if (!gm?.maps?.places) return;
+
+        if (searchInputRef.current && !searchAutocomplete) {
+          searchAutocomplete = new gm.maps.places.Autocomplete(searchInputRef.current, {
+            fields: ["name", "formatted_address", "place_id"],
+          });
+          searchListener = searchAutocomplete.addListener("place_changed", () => {
+            const place = searchAutocomplete?.getPlace();
+            if (place?.name) {
+              setSearchQuery(place.name);
+            } else if (place?.formatted_address) {
+              setSearchQuery(place.formatted_address);
+            }
+          });
+        }
+
+        if (locationInputRef.current && !locationAutocomplete) {
+          locationAutocomplete = new gm.maps.places.Autocomplete(locationInputRef.current, {
+            fields: ["formatted_address", "geometry", "place_id"],
+            types: ["(cities)"],
+          });
+          locationListener = locationAutocomplete.addListener("place_changed", () => {
+            const place = locationAutocomplete?.getPlace();
+            if (place?.formatted_address) {
+              setLocationQuery(place.formatted_address);
+            }
+            if (place?.geometry?.location) {
+              setCenter({
+                lat: place.geometry.location.lat(),
+                lng: place.geometry.location.lng(),
+              });
+            }
+          });
+        }
+      } catch {
+        // Autocomplete is optional; map can still function without it.
+      }
+    };
+
+    initAutocomplete();
+
+    return () => {
+      cancelled = true;
+      searchListener?.remove();
+      locationListener?.remove();
+    };
+  }, []);
 
   // Geocode a text location into lat/lng
   async function geocodeAddress(address: string): Promise<LatLng | null> {
@@ -240,6 +312,77 @@ export default function WeddingVendorMap() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory, searchQuery, locationQuery]);
+
+  // Update category counts without requiring a filter click
+  const countRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (countRef.current) window.clearTimeout(countRef.current);
+    countRef.current = window.setTimeout(async () => {
+      try {
+        await waitForGoogle();
+        const gm = window.google;
+        const loc = (await geocodeAddress(locationQuery)) || center;
+        const service = new gm.maps.places.PlacesService(document.createElement("div"));
+
+        const keys = Object.keys(categoryConfig) as VendorCategoryKey[];
+        const nextCounts: Record<VendorCategoryKey, number> = {
+          all: 0,
+          venue: 0,
+          photographer: 0,
+          dj: 0,
+          florist: 0,
+          dressShop: 0,
+          tuxedoShop: 0,
+        };
+
+        const getFullCount = (key: VendorCategoryKey) =>
+          new Promise<number>((resolve) => {
+            const qBase = categoryConfig[key].query;
+            const q = [qBase, searchQuery].filter(Boolean).join(" ");
+            const request: any = {
+              query: q,
+              location: new gm.maps.LatLng(loc.lat, loc.lng),
+              radius: 25000,
+            };
+
+            let total = 0;
+            const handleResults = (results: any[], status: string, pagination: any) => {
+              if (status === gm.maps.places.PlacesServiceStatus.OK && results) {
+                total += results.length;
+                if (pagination?.hasNextPage) {
+                  pagination.nextPage();
+                  return;
+                }
+              }
+              resolve(total);
+            };
+
+            service.textSearch(request, handleResults);
+          });
+
+        await Promise.all(
+          keys.map(async (key) => {
+            nextCounts[key] = await getFullCount(key);
+          })
+        );
+        nextCounts.all =
+          nextCounts.venue +
+          nextCounts.photographer +
+          nextCounts.dj +
+          nextCounts.florist +
+          nextCounts.dressShop +
+          nextCounts.tuxedoShop;
+
+        setCategoryCounts(nextCounts);
+      } catch {
+        // ignore count errors; main search still works
+      }
+    }, 450);
+
+    return () => {
+      if (countRef.current) window.clearTimeout(countRef.current);
+    };
+  }, [searchQuery, locationQuery]);
 
   // Open details & fetch phone/website on demand
   const handleViewDetails = async (vendor: PlaceResultLite) => {
@@ -328,6 +471,7 @@ export default function WeddingVendorMap() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10"
+                    ref={searchInputRef}
                   />
                 </div>
               </div>
@@ -339,6 +483,7 @@ export default function WeddingVendorMap() {
                     value={locationQuery}
                     onChange={(e) => setLocationQuery(e.target.value)}
                     className="pl-10"
+                    ref={locationInputRef}
                   />
                 </div>
               </div>
@@ -354,7 +499,7 @@ export default function WeddingVendorMap() {
             const cfg = categoryConfig[key];
             const Icon = cfg.icon;
             const isSelected = selectedCategory === key;
-            const count = key === "all" ? vendors.length : vendors.filter((v) => v.category === key).length;
+            const count = categoryCounts[key] ?? 0;
             return (
               <Button
                 key={key}
@@ -728,9 +873,11 @@ export default function WeddingVendorMap() {
           <p className="text-muted-foreground mb-4">
             Save time by requesting quotes from multiple vendors at once. Compare pricing and availability in one place.
           </p>
-          <Button className="bg-gradient-to-r from-pink-600 to-purple-600">
-            <Heart className="w-4 h-4 mr-2" />
-            Start Planning
+          <Button asChild className="bg-gradient-to-r from-pink-600 to-purple-600">
+            <Link href="/catering/wedding-planning">
+              <Heart className="w-4 h-4 mr-2" />
+              Start Planning
+            </Link>
           </Button>
         </CardContent>
       </Card>
