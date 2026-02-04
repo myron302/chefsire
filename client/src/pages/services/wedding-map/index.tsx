@@ -143,6 +143,15 @@ export default function WeddingVendorMap() {
   const [vendors, setVendors] = useState<PlaceResultLite[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [categoryCounts, setCategoryCounts] = useState<Record<VendorCategoryKey, number>>({
+    all: 0,
+    venue: 0,
+    photographer: 0,
+    dj: 0,
+    florist: 0,
+    dressShop: 0,
+    tuxedoShop: 0,
+  });
 
   // Modal
   const [selectedVendor, setSelectedVendor] = useState<PlaceResultLite | null>(null);
@@ -304,6 +313,60 @@ export default function WeddingVendorMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory, searchQuery, locationQuery]);
 
+  // Update category counts without requiring a filter click
+  const countRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (countRef.current) window.clearTimeout(countRef.current);
+    countRef.current = window.setTimeout(async () => {
+      try {
+        await waitForGoogle();
+        const gm = window.google;
+        const loc = (await geocodeAddress(locationQuery)) || center;
+        const service = new gm.maps.places.PlacesService(document.createElement("div"));
+
+        const keys = Object.keys(categoryConfig) as VendorCategoryKey[];
+        const nextCounts: Record<VendorCategoryKey, number> = {
+          all: 0,
+          venue: 0,
+          photographer: 0,
+          dj: 0,
+          florist: 0,
+          dressShop: 0,
+          tuxedoShop: 0,
+        };
+
+        await Promise.all(
+          keys.map(
+            (key) =>
+              new Promise<void>((resolve) => {
+                const qBase = categoryConfig[key].query;
+                const q = [qBase, searchQuery].filter(Boolean).join(" ");
+                const request: any = {
+                  query: q,
+                  location: new gm.maps.LatLng(loc.lat, loc.lng),
+                  radius: 25000,
+                };
+                service.textSearch(request, (results: any[], status: string) => {
+                  if (status === gm.maps.places.PlacesServiceStatus.OK && results) {
+                    nextCounts[key] = results.length;
+                  }
+                  resolve();
+                });
+              })
+          )
+        );
+
+        setCategoryCounts(nextCounts);
+      } catch {
+        // ignore count errors; main search still works
+      }
+    }, 450);
+
+    return () => {
+      if (countRef.current) window.clearTimeout(countRef.current);
+    };
+  }, [searchQuery, locationQuery]);
+
   // Open details & fetch phone/website on demand
   const handleViewDetails = async (vendor: PlaceResultLite) => {
     setSelectedVendor(vendor);
@@ -419,7 +482,7 @@ export default function WeddingVendorMap() {
             const cfg = categoryConfig[key];
             const Icon = cfg.icon;
             const isSelected = selectedCategory === key;
-            const count = key === "all" ? vendors.length : vendors.filter((v) => v.category === key).length;
+            const count = categoryCounts[key] ?? 0;
             return (
               <Button
                 key={key}
