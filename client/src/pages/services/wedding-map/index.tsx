@@ -29,9 +29,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Link } from "wouter";
 import MapView from "./MapView";
 
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-
 /**
  * LIVE Google Places integration
  * - No mock data
@@ -421,52 +418,97 @@ export default function WeddingVendorMap() {
     return config ? config.icon : MapPin;
   };
 
-  // ✅ PDF Export (Saved Vendors)
-  const exportSavedVendorsToPDF = async () => {
+  // ✅ PDF Export (Saved Vendors) — no libraries (Print → Save as PDF)
+  const exportSavedVendorsToPDF = () => {
     const saved = Array.from(savedVendors)
       .map((id) => vendors.find((v) => v.id === id))
       .filter(Boolean) as PlaceResultLite[];
 
     if (!saved.length) return;
 
-    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
+    const escapeHtml = (s: any) =>
+      String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 
-    doc.setFontSize(18);
-    doc.text("Wedding Vendor Shortlist", 40, 50);
+    const rows = saved
+      .map((v) => {
+        const category = categoryConfig?.[v.category]?.label ?? v.category;
+        const rating = v.rating ?? "—";
+        const price = v.priceRange ?? "—";
+        const addr = v.address ?? "—";
+        const phone = v.phone ?? "—";
+        const site = v.website ? `<a href="${escapeHtml(v.website)}">${escapeHtml(v.website)}</a>` : "—";
 
-    doc.setFontSize(10);
-    doc.text(`Location: ${locationQuery}`, 40, 70);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 40, 85);
+        return `
+          <tr>
+            <td>
+              <strong>${escapeHtml(v.name)}</strong><br/>
+              <span class="muted">${escapeHtml(category)}</span>
+            </td>
+            <td>${escapeHtml(rating)}</td>
+            <td>${escapeHtml(price)}</td>
+            <td>${escapeHtml(addr)}</td>
+            <td>${escapeHtml(phone)}</td>
+            <td>${site}</td>
+          </tr>
+        `;
+      })
+      .join("");
 
-    const rows = saved.map((v) => [
-      v.name,
-      categoryConfig[v.category]?.label || v.category,
-      v.rating != null ? `${v.rating}` : "—",
-      v.priceRange || "—",
-      v.address || "—",
-      v.phone || "—",
-      v.website || "—",
-    ]);
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Wedding Vendor Shortlist</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
+    h1 { margin: 0 0 6px; font-size: 22px; }
+    .meta { margin: 0 0 18px; color: #666; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 10px; vertical-align: top; font-size: 12px; }
+    th { background: #fafafa; text-align: left; }
+    .muted { color: #666; font-size: 11px; }
+    @media print { a { color: #111; text-decoration: none; } }
+  </style>
+</head>
+<body>
+  <h1>Wedding Vendor Shortlist</h1>
+  <p class="meta">Location: ${escapeHtml(locationQuery)} • Generated: ${escapeHtml(new Date().toLocaleString())}</p>
 
-    autoTable(doc, {
-      startY: 105,
-      head: [["Name", "Category", "Rating", "Price", "Address", "Phone", "Website"]],
-      body: rows,
-      styles: { fontSize: 8, cellPadding: 4, overflow: "linebreak" },
-      headStyles: { fontSize: 8 },
-      columnStyles: {
-        0: { cellWidth: 120 },
-        1: { cellWidth: 70 },
-        2: { cellWidth: 40 },
-        3: { cellWidth: 40 },
-        4: { cellWidth: 150 },
-        5: { cellWidth: 80 },
-        6: { cellWidth: 90 },
-      },
-    });
+  <table>
+    <thead>
+      <tr>
+        <th>Name / Category</th>
+        <th>Rating</th>
+        <th>Price</th>
+        <th>Address</th>
+        <th>Phone</th>
+        <th>Website</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows}
+    </tbody>
+  </table>
 
-    const safeCity = locationQuery.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase();
-    doc.save(`wedding-vendors-${safeCity || "shortlist"}.pdf`);
+  <script>
+    window.onload = () => { window.print(); };
+  </script>
+</body>
+</html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) {
+      alert("Popup blocked. Please allow popups to export PDF.");
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
   };
 
   return (
@@ -732,9 +774,7 @@ export default function WeddingVendorMap() {
                   <div className="flex items-center gap-1">
                     <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
                     <span className="font-bold text-lg">{selectedVendor.rating ?? "—"}</span>
-                    {selectedVendor.reviews != null && (
-                      <span className="text-muted-foreground">({selectedVendor.reviews} reviews)</span>
-                    )}
+                    {selectedVendor.reviews != null && <span className="text-muted-foreground">({selectedVendor.reviews} reviews)</span>}
                   </div>
                   {selectedVendor.priceRange && (
                     <Badge variant="secondary" className="text-sm">
@@ -828,7 +868,9 @@ export default function WeddingVendorMap() {
                       {v.image ? (
                         <img src={v.image} alt={v.name} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">No image</div>
+                        <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">
+                          No image
+                        </div>
                       )}
                       <Button
                         size="sm"
