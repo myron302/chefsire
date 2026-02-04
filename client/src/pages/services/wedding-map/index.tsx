@@ -335,25 +335,35 @@ export default function WeddingVendorMap() {
           tuxedoShop: 0,
         };
 
+        const getFullCount = (key: VendorCategoryKey) =>
+          new Promise<number>((resolve) => {
+            const qBase = categoryConfig[key].query;
+            const q = [qBase, searchQuery].filter(Boolean).join(" ");
+            const request: any = {
+              query: q,
+              location: new gm.maps.LatLng(loc.lat, loc.lng),
+              radius: 25000,
+            };
+
+            let total = 0;
+            const handleResults = (results: any[], status: string, pagination: any) => {
+              if (status === gm.maps.places.PlacesServiceStatus.OK && results) {
+                total += results.length;
+                if (pagination?.hasNextPage) {
+                  pagination.nextPage();
+                  return;
+                }
+              }
+              resolve(total);
+            };
+
+            service.textSearch(request, handleResults);
+          });
+
         await Promise.all(
-          keys.map(
-            (key) =>
-              new Promise<void>((resolve) => {
-                const qBase = categoryConfig[key].query;
-                const q = [qBase, searchQuery].filter(Boolean).join(" ");
-                const request: any = {
-                  query: q,
-                  location: new gm.maps.LatLng(loc.lat, loc.lng),
-                  radius: 25000,
-                };
-                service.textSearch(request, (results: any[], status: string) => {
-                  if (status === gm.maps.places.PlacesServiceStatus.OK && results) {
-                    nextCounts[key] = results.length;
-                  }
-                  resolve();
-                });
-              })
-          )
+          keys.map(async (key) => {
+            nextCounts[key] = await getFullCount(key);
+          })
         );
 
         setCategoryCounts(nextCounts);
