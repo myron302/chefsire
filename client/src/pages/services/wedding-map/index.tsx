@@ -365,6 +365,13 @@ export default function WeddingVendorMap() {
             nextCounts[key] = await getFullCount(key);
           })
         );
+        nextCounts.all =
+          nextCounts.venue +
+          nextCounts.photographer +
+          nextCounts.dj +
+          nextCounts.florist +
+          nextCounts.dressShop +
+          nextCounts.tuxedoShop;
 
         setCategoryCounts(nextCounts);
       } catch {
