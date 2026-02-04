@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Link } from "wouter";
 import MapView from "./MapView";
 
 /**
@@ -792,9 +793,11 @@ export default function WeddingVendorMap() {
           <p className="text-muted-foreground mb-4">
             Save time by requesting quotes from multiple vendors at once. Compare pricing and availability in one place.
           </p>
-          <Button className="bg-gradient-to-r from-pink-600 to-purple-600">
-            <Heart className="w-4 h-4 mr-2" />
-            Start Planning
+          <Button asChild className="bg-gradient-to-r from-pink-600 to-purple-600">
+            <Link href="/catering/wedding-planning">
+              <Heart className="w-4 h-4 mr-2" />
+              Start Planning
+            </Link>
           </Button>
         </CardContent>
       </Card>
