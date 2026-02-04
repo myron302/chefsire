@@ -1,7 +1,25 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  MapPin, Search, Navigation, List, Grid, Sparkles, Clock, Star, Shield,
-  Heart, X, MapPinned, Phone, Globe, Camera, Users, Music, Flower2, ShoppingBag, Shirt
+  MapPin,
+  Search,
+  Navigation,
+  List,
+  Grid,
+  Sparkles,
+  Clock,
+  Star,
+  Shield,
+  Heart,
+  X,
+  MapPinned,
+  Phone,
+  Globe,
+  Camera,
+  Music,
+  Flower2,
+  ShoppingBag,
+  Shirt,
+  FileDown,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,14 +29,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Link } from "wouter";
 import MapView from "./MapView";
 
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+
 /**
  * LIVE Google Places integration
  * - No mock data
  * - Category-aware Text Search near a geocoded location
  * - Details (phone/website) fetched on demand when opening a vendor
- *
- * This file assumes Google Maps JS is injected either by BiteMap or our MapView.
- * We never touch BiteMap’s files/config.
  */
 
 type LatLng = { lat: number; lng: number };
@@ -33,16 +51,17 @@ type VendorCategoryKey =
   | "tuxedoShop";
 
 type PlaceResultLite = {
-  id: string;                  // place_id
+  id: string; // place_id
   name: string;
-  category: VendorCategoryKey; // best-guess based on selection / types
+  category: VendorCategoryKey;
   address?: string;
   position: LatLng;
   rating?: number;
   reviews?: number;
-  priceRange?: string;         // converted from price_level
+  priceRange?: string;
   image?: string;
   verified?: boolean;
+
   // details (loaded on demand)
   phone?: string;
   website?: string;
@@ -50,13 +69,41 @@ type PlaceResultLite = {
 };
 
 const categoryConfig: Record<VendorCategoryKey, { label: string; icon: any; query: string }> = {
-  all:          { label: "All",           icon: Sparkles,     query: "wedding venue OR photographer OR wedding dj OR florist OR bridal shop OR tuxedo shop" },
-  venue:        { label: "Venues",        icon: MapPin,       query: "wedding venue OR event venue OR banquet hall" },
-  photographer: { label: "Photo",         icon: Camera,       query: "wedding photographer OR photographer" },
-  dj:           { label: "DJ & Music",    icon: Music,        query: "wedding dj OR dj services" },
-  florist:      { label: "Florist",       icon: Flower2,      query: "florist wedding OR florist" },
-  dressShop:    { label: "Dresses",       icon: ShoppingBag,  query: "bridal shop OR wedding dress shop" },
-  tuxedoShop:   { label: "Tuxedos",       icon: Shirt,        query: "tuxedo shop OR formal wear" },
+  all: {
+    label: "All",
+    icon: Sparkles,
+    query: "wedding venue OR photographer OR wedding dj OR florist OR bridal shop OR tuxedo shop",
+  },
+  venue: {
+    label: "Venues",
+    icon: MapPin,
+    query: "wedding venue OR event venue OR banquet hall",
+  },
+  photographer: {
+    label: "Photo",
+    icon: Camera,
+    query: "wedding photographer OR photographer",
+  },
+  dj: {
+    label: "DJ & Music",
+    icon: Music,
+    query: "wedding dj OR dj services",
+  },
+  florist: {
+    label: "Florist",
+    icon: Flower2,
+    query: "florist wedding OR florist",
+  },
+  dressShop: {
+    label: "Dresses",
+    icon: ShoppingBag,
+    query: "bridal shop OR wedding dress shop",
+  },
+  tuxedoShop: {
+    label: "Tuxedos",
+    icon: Shirt,
+    query: "tuxedo shop OR formal wear",
+  },
 };
 
 // ---------- Helpers ----------
@@ -65,18 +112,23 @@ function priceLevelToRange(level?: number): string | undefined {
   return ["$", "$", "$$", "$$$", "$$$$"][level] || undefined;
 }
 
-function pickCategoryFromTypes(
-  selected: VendorCategoryKey,
-  types?: string[]
-): VendorCategoryKey {
+function pickCategoryFromTypes(selected: VendorCategoryKey, types?: string[]): VendorCategoryKey {
+  // If user selected a specific category, we keep it deterministic
   if (selected !== "all") return selected;
   if (!types || !types.length) return "all";
+
   const t = new Set(types);
+
+  // High-confidence
   if (t.has("photographer")) return "photographer";
   if (t.has("florist")) return "florist";
-  // Clothing stores → bridal/tux guesses
-  if (t.has("clothing_store")) return "dressShop";
-  if (t.has("restaurant") || t.has("lodging") || t.has("point_of_interest")) return "venue";
+
+  // Clothing logic (Google often uses these for bridal/formal)
+  if (t.has("clothing_store") || t.has("store")) return "dressShop";
+
+  // Venue-ish logic
+  if (t.has("event_venue") || t.has("banquet_hall") || t.has("restaurant") || t.has("lodging")) return "venue";
+
   return "all";
 }
 
@@ -143,15 +195,6 @@ export default function WeddingVendorMap() {
   const [vendors, setVendors] = useState<PlaceResultLite[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [categoryCounts, setCategoryCounts] = useState<Record<VendorCategoryKey, number>>({
-    all: 0,
-    venue: 0,
-    photographer: 0,
-    dj: 0,
-    florist: 0,
-    dressShop: 0,
-    tuxedoShop: 0,
-  });
 
   // Modal
   const [selectedVendor, setSelectedVendor] = useState<PlaceResultLite | null>(null);
@@ -159,6 +202,26 @@ export default function WeddingVendorMap() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const locationInputRef = useRef<HTMLInputElement | null>(null);
+
+  // ✅ Accurate category counts derived from the actual vendors list (no extra API calls)
+  const categoryCounts = useMemo(() => {
+    const counts: Record<VendorCategoryKey, number> = {
+      all: vendors.length,
+      venue: 0,
+      photographer: 0,
+      dj: 0,
+      florist: 0,
+      dressShop: 0,
+      tuxedoShop: 0,
+    };
+
+    for (const v of vendors) {
+      if (v.category !== "all" && counts[v.category] !== undefined) {
+        counts[v.category] += 1;
+      }
+    }
+    return counts;
+  }, [vendors]);
 
   const markers = useMemo(
     () =>
@@ -229,7 +292,7 @@ export default function WeddingVendorMap() {
           });
         }
       } catch {
-        // Autocomplete is optional; map can still function without it.
+        // Autocomplete is optional
       }
     };
 
@@ -263,30 +326,28 @@ export default function WeddingVendorMap() {
   // MAIN SEARCH (Places Text Search)
   const searchRef = useRef<number | null>(null);
   useEffect(() => {
-    // Debounce
     if (searchRef.current) window.clearTimeout(searchRef.current);
     searchRef.current = window.setTimeout(async () => {
       setLoading(true);
       setErrorMsg(null);
       try {
-        await waitForGoogle(); // ensure places lib exists
+        await waitForGoogle();
         const gm = window.google;
         const loc = (await geocodeAddress(locationQuery)) || center;
         setCenter(loc);
 
         const service = new gm.maps.places.PlacesService(document.createElement("div"));
-
         const qBase = categoryConfig[selectedCategory].query;
         const q = [qBase, searchQuery].filter(Boolean).join(" ");
 
         const request: any = {
           query: q,
           location: new gm.maps.LatLng(loc.lat, loc.lng),
-          radius: 25000, // ~25km around the location
+          radius: 25000,
         };
 
-        await new Promise<void>((resolve, reject) => {
-          service.textSearch(request, (results: any[], status: string, pagination: any) => {
+        await new Promise<void>((resolve) => {
+          service.textSearch(request, (results: any[], status: string) => {
             if (status !== gm.maps.places.PlacesServiceStatus.OK || !results) {
               setVendors([]);
               if (status !== "ZERO_RESULTS") setErrorMsg(status || "Search failed");
@@ -313,83 +374,12 @@ export default function WeddingVendorMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory, searchQuery, locationQuery]);
 
-  // Update category counts without requiring a filter click
-  const countRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (countRef.current) window.clearTimeout(countRef.current);
-    countRef.current = window.setTimeout(async () => {
-      try {
-        await waitForGoogle();
-        const gm = window.google;
-        const loc = (await geocodeAddress(locationQuery)) || center;
-        const service = new gm.maps.places.PlacesService(document.createElement("div"));
-
-        const keys = Object.keys(categoryConfig) as VendorCategoryKey[];
-        const nextCounts: Record<VendorCategoryKey, number> = {
-          all: 0,
-          venue: 0,
-          photographer: 0,
-          dj: 0,
-          florist: 0,
-          dressShop: 0,
-          tuxedoShop: 0,
-        };
-
-        const getFullCount = (key: VendorCategoryKey) =>
-          new Promise<number>((resolve) => {
-            const qBase = categoryConfig[key].query;
-            const q = [qBase, searchQuery].filter(Boolean).join(" ");
-            const request: any = {
-              query: q,
-              location: new gm.maps.LatLng(loc.lat, loc.lng),
-              radius: 25000,
-            };
-
-            let total = 0;
-            const handleResults = (results: any[], status: string, pagination: any) => {
-              if (status === gm.maps.places.PlacesServiceStatus.OK && results) {
-                total += results.length;
-                if (pagination?.hasNextPage) {
-                  pagination.nextPage();
-                  return;
-                }
-              }
-              resolve(total);
-            };
-
-            service.textSearch(request, handleResults);
-          });
-
-        await Promise.all(
-          keys.map(async (key) => {
-            nextCounts[key] = await getFullCount(key);
-          })
-        );
-        nextCounts.all =
-          nextCounts.venue +
-          nextCounts.photographer +
-          nextCounts.dj +
-          nextCounts.florist +
-          nextCounts.dressShop +
-          nextCounts.tuxedoShop;
-
-        setCategoryCounts(nextCounts);
-      } catch {
-        // ignore count errors; main search still works
-      }
-    }, 450);
-
-    return () => {
-      if (countRef.current) window.clearTimeout(countRef.current);
-    };
-  }, [searchQuery, locationQuery]);
-
   // Open details & fetch phone/website on demand
   const handleViewDetails = async (vendor: PlaceResultLite) => {
     setSelectedVendor(vendor);
     setShowDetails(true);
 
-    if (vendor.phone || vendor.website) return; // already enriched
+    if (vendor.phone || vendor.website) return;
 
     try {
       await waitForGoogle();
@@ -401,14 +391,7 @@ export default function WeddingVendorMap() {
         service.getDetails(
           {
             placeId: vendor.placeId,
-            fields: [
-              "formatted_phone_number",
-              "website",
-              "opening_hours",
-              "url",
-              "formatted_address",
-              "photo",
-            ],
+            fields: ["formatted_phone_number", "website", "opening_hours", "url", "formatted_address", "photo"],
           },
           (place: any, status: string) => {
             if (status === gm.maps.places.PlacesServiceStatus.OK && place) {
@@ -438,6 +421,54 @@ export default function WeddingVendorMap() {
     return config ? config.icon : MapPin;
   };
 
+  // ✅ PDF Export (Saved Vendors)
+  const exportSavedVendorsToPDF = async () => {
+    const saved = Array.from(savedVendors)
+      .map((id) => vendors.find((v) => v.id === id))
+      .filter(Boolean) as PlaceResultLite[];
+
+    if (!saved.length) return;
+
+    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
+
+    doc.setFontSize(18);
+    doc.text("Wedding Vendor Shortlist", 40, 50);
+
+    doc.setFontSize(10);
+    doc.text(`Location: ${locationQuery}`, 40, 70);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 40, 85);
+
+    const rows = saved.map((v) => [
+      v.name,
+      categoryConfig[v.category]?.label || v.category,
+      v.rating != null ? `${v.rating}` : "—",
+      v.priceRange || "—",
+      v.address || "—",
+      v.phone || "—",
+      v.website || "—",
+    ]);
+
+    autoTable(doc, {
+      startY: 105,
+      head: [["Name", "Category", "Rating", "Price", "Address", "Phone", "Website"]],
+      body: rows,
+      styles: { fontSize: 8, cellPadding: 4, overflow: "linebreak" },
+      headStyles: { fontSize: 8 },
+      columnStyles: {
+        0: { cellWidth: 120 },
+        1: { cellWidth: 70 },
+        2: { cellWidth: 40 },
+        3: { cellWidth: 40 },
+        4: { cellWidth: 150 },
+        5: { cellWidth: 80 },
+        6: { cellWidth: 90 },
+      },
+    });
+
+    const safeCity = locationQuery.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase();
+    doc.save(`wedding-vendors-${safeCity || "shortlist"}.pdf`);
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Header */}
@@ -447,9 +478,7 @@ export default function WeddingVendorMap() {
             <h1 className="text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">
               Wedding Vendor Map
             </h1>
-            <p className="text-muted-foreground">
-              Live results pulled from Google Places near your chosen location
-            </p>
+            <p className="text-muted-foreground">Live results pulled from Google Places near your chosen location</p>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-sm">
@@ -493,9 +522,7 @@ export default function WeddingVendorMap() {
 
         {/* Category Filters */}
         <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-6">
-          {(
-            Object.keys(categoryConfig) as VendorCategoryKey[]
-          ).map((key) => {
+          {(Object.keys(categoryConfig) as VendorCategoryKey[]).map((key) => {
             const cfg = categoryConfig[key];
             const Icon = cfg.icon;
             const isSelected = selectedCategory === key;
@@ -520,7 +547,7 @@ export default function WeddingVendorMap() {
         </div>
       </div>
 
-      {/* Map + Results (grid/list toggle on the right, like BiteMap) */}
+      {/* Map + Results */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         {/* Map Section */}
         <div className="lg:col-span-2">
@@ -546,28 +573,16 @@ export default function WeddingVendorMap() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg">Vendors</CardTitle>
                 <div className="flex gap-1">
-                  <Button
-                    size="sm"
-                    variant={viewMode === "list" ? "default" : "ghost"}
-                    onClick={() => setViewMode("list")}
-                  >
+                  <Button size="sm" variant={viewMode === "list" ? "default" : "ghost"} onClick={() => setViewMode("list")}>
                     <List className="w-4 h-4" />
                   </Button>
-                  <Button
-                    size="sm"
-                    variant={viewMode === "grid" ? "default" : "ghost"}
-                    onClick={() => setViewMode("grid")}
-                  >
+                  <Button size="sm" variant={viewMode === "grid" ? "default" : "ghost"} onClick={() => setViewMode("grid")}>
                     <Grid className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
-              {loading && (
-                <p className="text-xs text-muted-foreground mt-1">Loading live results…</p>
-              )}
-              {errorMsg && (
-                <p className="text-xs text-red-500 mt-1">Error: {errorMsg}</p>
-              )}
+              {loading && <p className="text-xs text-muted-foreground mt-1">Loading live results…</p>}
+              {errorMsg && <p className="text-xs text-red-500 mt-1">Error: {errorMsg}</p>}
             </CardHeader>
 
             <CardContent className={`flex-1 overflow-y-auto ${viewMode === "grid" ? "" : "space-y-3"}`}>
@@ -580,18 +595,12 @@ export default function WeddingVendorMap() {
                   {vendors.map((v) => {
                     const Icon = getCategoryIcon(v.category);
                     return (
-                      <Card
-                        key={v.id}
-                        className="cursor-pointer hover:shadow-md transition-shadow"
-                        onClick={() => handleViewDetails(v)}
-                      >
+                      <Card key={v.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => handleViewDetails(v)}>
                         <div className="w-full h-28 overflow-hidden">
                           {v.image ? (
                             <img src={v.image} alt={v.name} className="w-full h-full object-cover" />
                           ) : (
-                            <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">
-                              No image
-                            </div>
+                            <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">No image</div>
                           )}
                         </div>
                         <CardContent className="p-3">
@@ -604,7 +613,10 @@ export default function WeddingVendorMap() {
                               size="sm"
                               variant="ghost"
                               className="h-6 w-6 p-0"
-                              onClick={(e) => { e.stopPropagation(); toggleSaveVendor(v.id); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSaveVendor(v.id);
+                              }}
                             >
                               <Heart className={`w-4 h-4 ${savedVendors.has(v.id) ? "fill-red-500 text-red-500" : ""}`} />
                             </Button>
@@ -617,9 +629,7 @@ export default function WeddingVendorMap() {
                             <div className="flex items-center gap-1">
                               <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
                               <span className="text-xs font-medium">{v.rating ?? "—"}</span>
-                              {v.reviews != null && (
-                                <span className="text-xs text-muted-foreground">({v.reviews})</span>
-                              )}
+                              {v.reviews != null && <span className="text-xs text-muted-foreground">({v.reviews})</span>}
                             </div>
                             {v.priceRange && <span className="text-xs font-medium">{v.priceRange}</span>}
                           </div>
@@ -630,24 +640,17 @@ export default function WeddingVendorMap() {
                   })}
                 </div>
               ) : (
-                // list mode
                 vendors.map((v) => {
                   const Icon = getCategoryIcon(v.category);
                   return (
-                    <Card
-                      key={v.id}
-                      className="cursor-pointer hover:shadow-md transition-shadow"
-                      onClick={() => handleViewDetails(v)}
-                    >
+                    <Card key={v.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => handleViewDetails(v)}>
                       <CardContent className="p-3">
                         <div className="flex items-start gap-3">
                           <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
                             {v.image ? (
                               <img src={v.image} alt={v.name} className="w-full h-full object-cover" />
                             ) : (
-                              <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">
-                                No image
-                              </div>
+                              <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">No image</div>
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -660,7 +663,10 @@ export default function WeddingVendorMap() {
                                 size="sm"
                                 variant="ghost"
                                 className="h-6 w-6 p-0"
-                                onClick={(e) => { e.stopPropagation(); toggleSaveVendor(v.id); }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleSaveVendor(v.id);
+                                }}
                               >
                                 <Heart className={`w-4 h-4 ${savedVendors.has(v.id) ? "fill-red-500 text-red-500" : ""}`} />
                               </Button>
@@ -673,15 +679,11 @@ export default function WeddingVendorMap() {
                               <div className="flex items-center gap-1">
                                 <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
                                 <span className="text-xs font-medium">{v.rating ?? "—"}</span>
-                                {v.reviews != null && (
-                                  <span className="text-xs text-muted-foreground">({v.reviews})</span>
-                                )}
+                                {v.reviews != null && <span className="text-xs text-muted-foreground">({v.reviews})</span>}
                               </div>
                               {v.priceRange && <span className="text-xs font-medium">{v.priceRange}</span>}
                             </div>
-                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                              {v.address || "—"}
-                            </p>
+                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{v.address || "—"}</p>
                           </div>
                         </div>
                       </CardContent>
@@ -704,23 +706,15 @@ export default function WeddingVendorMap() {
                   <div>
                     <DialogTitle className="text-2xl flex items-center gap-2">
                       {selectedVendor.name}
-                      {selectedVendor.verified && (
-                        <Shield className="w-5 h-5 text-blue-500" />
-                      )}
+                      {selectedVendor.verified && <Shield className="w-5 h-5 text-blue-500" />}
                     </DialogTitle>
                     <DialogDescription className="flex items-center gap-2 mt-2">
                       <MapPin className="w-4 h-4" />
                       {selectedVendor.address || "—"}
                     </DialogDescription>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => toggleSaveVendor(selectedVendor.id)}
-                  >
-                    <Heart
-                      className={`w-5 h-5 ${savedVendors.has(selectedVendor.id) ? "fill-red-500 text-red-500" : ""}`}
-                    />
+                  <Button size="sm" variant="ghost" onClick={() => toggleSaveVendor(selectedVendor.id)}>
+                    <Heart className={`w-5 h-5 ${savedVendors.has(selectedVendor.id) ? "fill-red-500 text-red-500" : ""}`} />
                   </Button>
                 </div>
               </DialogHeader>
@@ -728,19 +722,12 @@ export default function WeddingVendorMap() {
               <div className="space-y-4">
                 <div className="w-full h-64 rounded-lg overflow-hidden">
                   {selectedVendor.image ? (
-                    <img
-                      src={selectedVendor.image}
-                      alt={selectedVendor.name}
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={selectedVendor.image} alt={selectedVendor.name} className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full bg-muted flex items-center justify-center text-sm text-muted-foreground">
-                      No image
-                    </div>
+                    <div className="w-full h-full bg-muted flex items-center justify-center text-sm text-muted-foreground">No image</div>
                   )}
                 </div>
 
-                {/* Rating and Price */}
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1">
                     <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
@@ -756,7 +743,6 @@ export default function WeddingVendorMap() {
                   )}
                 </div>
 
-                {/* Contact Info */}
                 <div className="border-t pt-4">
                   <h4 className="font-semibold mb-3">Contact Information</h4>
                   <div className="space-y-2">
@@ -771,12 +757,7 @@ export default function WeddingVendorMap() {
                     {selectedVendor.website && (
                       <div className="flex items-center gap-2">
                         <Globe className="w-4 h-4 text-muted-foreground" />
-                        <a
-                          href={selectedVendor.website}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm hover:underline"
-                        >
+                        <a href={selectedVendor.website} target="_blank" rel="noopener noreferrer" className="text-sm hover:underline">
                           {selectedVendor.website}
                         </a>
                       </div>
@@ -789,7 +770,6 @@ export default function WeddingVendorMap() {
                   </div>
                 </div>
 
-                {/* Actions */}
                 <div className="flex gap-2 pt-2">
                   <Button
                     className="flex-1 bg-gradient-to-r from-pink-600 to-purple-600"
@@ -797,12 +777,15 @@ export default function WeddingVendorMap() {
                   >
                     View on Google Maps
                   </Button>
-                  <Button variant="outline" className="flex-1" onClick={() => {
-                    // On-demand details fetch if missing
-                    if (!selectedVendor.phone || !selectedVendor.website) {
-                      handleViewDetails(selectedVendor);
-                    }
-                  }}>
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      if (!selectedVendor.phone || !selectedVendor.website) {
+                        handleViewDetails(selectedVendor);
+                      }
+                    }}
+                  >
                     <Clock className="w-4 h-4 mr-2" />
                     {detailsLoading ? "Fetching…" : "Refresh Details"}
                   </Button>
@@ -817,14 +800,22 @@ export default function WeddingVendorMap() {
       {savedVendors.size > 0 && (
         <Card className="mb-8">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Heart className="w-5 h-5 text-red-500" />
-              Saved Vendors ({savedVendors.size})
-            </CardTitle>
-            <CardDescription>
-              Vendors you've bookmarked for your wedding
-            </CardDescription>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Heart className="w-5 h-5 text-red-500" />
+                  Saved Vendors ({savedVendors.size})
+                </CardTitle>
+                <CardDescription>Vendors you've bookmarked for your wedding</CardDescription>
+              </div>
+
+              <Button variant="outline" size="sm" onClick={exportSavedVendorsToPDF}>
+                <FileDown className="w-4 h-4 mr-2" />
+                Save PDF
+              </Button>
+            </div>
           </CardHeader>
+
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {Array.from(savedVendors).map((vid) => {
@@ -837,9 +828,7 @@ export default function WeddingVendorMap() {
                       {v.image ? (
                         <img src={v.image} alt={v.name} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">
-                          No image
-                        </div>
+                        <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">No image</div>
                       )}
                       <Button
                         size="sm"
