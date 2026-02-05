@@ -123,10 +123,10 @@ export default function MapView({ center, zoom = 12, markers, onMarkerClick, fit
   useEffect(() => {
     if (!mapRef.current || !window.google?.maps) return;
     const gm = window.google;
-    const incomingIds = new Set(markers.map(m => m.id));
+    const incomingIds = new Set(markers.map(m => String(m.id)));
 
     markerObjsRef.current.forEach((obj, id) => {
-      if (!incomingIds.has(id)) {
+      if (!incomingIds.has(String(id))) {
         obj.setMap(null);
         markerObjsRef.current.delete(id);
       }
