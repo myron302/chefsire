@@ -6,12 +6,15 @@ import React, { useEffect, useRef, useState } from "react";
  * - Otherwise tries, in order:
  *   1) window.GMAPS_KEY
  *   2) import.meta.env.VITE_GOOGLE_MAPS_API_KEY
- *   3) GET /api/google/maps-script  (same style BiteMap often uses)
+ *   3) GET /api/google/maps-script
  *
  * Improvements:
  * - Adds `loading=async` to remove the perf warning
  * - Uses importLibrary() and falls back to legacy Marker if no Map ID
  * - Advanced markers only when a valid Map ID is provided
+ *
+ * Added:
+ * - onIdle(map) callback so parent can show "Search this area"
  */
 
 type LatLng = { lat: number; lng: number };
@@ -22,12 +25,14 @@ type MarkerInput = {
   category?: string;
   vendor?: any;
 };
+
 type Props = {
   center: LatLng;
   zoom?: number;
   markers: MarkerInput[];
   onMarkerClick?: (m: MarkerInput) => void;
   fitToMarkers?: boolean;
+  onIdle?: (map: any) => void; // ✅ ADDED
 };
 
 declare global {
@@ -42,19 +47,18 @@ const GMAPS_SCRIPT_SELECTOR = 'script[src*="maps.googleapis.com/maps/api/js"]';
 let gmapsLoadPromise: Promise<void> | null = null;
 
 async function getGmapsKey(): Promise<string | null> {
-  // 1) Global window key (BiteMap sometimes sets this)
   if (typeof window !== "undefined") {
     const k = window.GMAPS_KEY;
     if (k && String(k).trim()) return String(k).trim();
   }
-  // 2) Vite env
+
   try {
     const viteKey = (import.meta as any)?.env?.VITE_GOOGLE_MAPS_API_KEY;
     if (viteKey && String(viteKey).trim()) return String(viteKey).trim();
   } catch {
     /* ignore */
   }
-  // 3) Server endpoint
+
   try {
     const resp = await fetch("/api/google/maps-script");
     if (resp.ok) {
@@ -64,11 +68,11 @@ async function getGmapsKey(): Promise<string | null> {
   } catch {
     /* ignore */
   }
+
   return null;
 }
 
 function getMapId(): string | null {
-  // Prefer global or Vite env (configure this if you want Advanced Markers)
   const winMapId = (typeof window !== "undefined" && window.GMAPS_MAP_ID) || null;
   const envMapId = (import.meta as any)?.env?.VITE_GOOGLE_MAPS_MAP_ID || null;
   const id = (winMapId || envMapId || "").trim();
@@ -78,7 +82,7 @@ function getMapId(): string | null {
 function waitForGoogle(): Promise<void> {
   return new Promise((resolve, reject) => {
     let tries = 0;
-    const maxTries = 200; // ~10s
+    const maxTries = 200;
     const iv = setInterval(() => {
       tries++;
       if (window.google?.maps) {
@@ -95,7 +99,6 @@ function waitForGoogle(): Promise<void> {
 async function ensureGoogleMapsLoaded(): Promise<void> {
   if (window.google?.maps) return;
 
-  // If a Maps <script> already exists (e.g., from BiteMap), just wait for it.
   const existing = document.querySelector<HTMLScriptElement>(GMAPS_SCRIPT_SELECTOR);
   if (existing) {
     await waitForGoogle();
@@ -111,7 +114,6 @@ async function ensureGoogleMapsLoaded(): Promise<void> {
     const key = await getGmapsKey();
     if (!key) throw new Error("Google Maps key not detected");
 
-    // Use recommended async loading param + libraries
     const script = document.createElement("script");
     script.src =
       `https://maps.googleapis.com/maps/api/js` +
@@ -123,14 +125,13 @@ async function ensureGoogleMapsLoaded(): Promise<void> {
 
     await waitForGoogle();
 
-    // Prime importLibrary (modern pattern)
     try {
       await Promise.all([
         window.google.maps.importLibrary("maps"),
         window.google.maps.importLibrary("marker"),
       ]);
     } catch {
-      // older builds still work without importLibrary
+      // ok
     }
   })();
 
@@ -143,10 +144,13 @@ export default function MapView({
   markers,
   onMarkerClick,
   fitToMarkers = true,
+  onIdle,
 }: Props) {
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
   const markerObjsRef = useRef<any[]>([]);
+  const idleListenerRef = useRef<any>(null);
+
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -154,37 +158,44 @@ export default function MapView({
 
     (async () => {
       try {
-        // 1) Ensure Maps loaded (no window.google access before this)
         await ensureGoogleMapsLoaded();
         if (cancelled) return;
 
         const gm = window.google;
         if (!gm?.maps) throw new Error("Google Maps not available");
 
-        // Discover Map ID (required for Advanced Markers on some projects)
         const mapId = getMapId();
 
-        // 2) Create map once
+        // Create map once
         if (!mapRef.current && mapDivRef.current) {
-          // If you have a Map ID, pass it to enable vector map + advanced markers
-          const mapOptions: any = {
-            center,
-            zoom,
-          };
+          const mapOptions: any = { center, zoom };
           if (mapId) mapOptions.mapId = mapId;
 
-          // Prefer the class from importLibrary when available
           let MapCtor: any = gm.maps.Map;
           try {
-            const { Map } = await gm.maps.importLibrary?.("maps");
-            if (Map) MapCtor = Map;
+            const libs = await gm.maps.importLibrary?.("maps");
+            if (libs?.Map) MapCtor = libs.Map;
           } catch {
             /* ignore */
           }
+
           mapRef.current = new MapCtor(mapDivRef.current, mapOptions);
+
+          // ✅ ADD idle listener once, keep ref so we can remove it if needed
+          try {
+            idleListenerRef.current = mapRef.current.addListener("idle", () => {
+              onIdle?.(mapRef.current);
+            });
+          } catch {
+            // ignore
+          }
+        } else if (mapRef.current) {
+          // Keep map centered/zoomed when parent changes center
+          mapRef.current.setCenter(center);
+          mapRef.current.setZoom(zoom);
         }
 
-        // 3) Clear old markers
+        // Clear old markers
         markerObjsRef.current.forEach((mk) => {
           try {
             if (mk.map) mk.map = null;
@@ -195,10 +206,10 @@ export default function MapView({
         });
         markerObjsRef.current = [];
 
-        // 4) Choose marker implementation
-        const hasAdvanced =
-          !!gm.maps.marker?.AdvancedMarkerElement && !!getMapId(); // only if Map ID too
+        // Choose marker implementation
+        const hasAdvanced = !!gm.maps.marker?.AdvancedMarkerElement && !!getMapId();
         let AdvancedMarkerElement: any = null;
+
         if (hasAdvanced) {
           try {
             const libs = await gm.maps.importLibrary?.("marker");
@@ -208,7 +219,7 @@ export default function MapView({
           }
         }
 
-        // 5) Add markers
+        // Add markers
         markers.forEach((m) => {
           if (hasAdvanced && AdvancedMarkerElement) {
             const marker = new AdvancedMarkerElement({
@@ -219,7 +230,6 @@ export default function MapView({
             marker.addListener("gmp-click", () => onMarkerClick?.(m));
             markerObjsRef.current.push(marker);
           } else {
-            // Fallback to legacy Marker (works without Map ID)
             const marker = new gm.maps.Marker({
               map: mapRef.current,
               position: m.position,
@@ -230,7 +240,7 @@ export default function MapView({
           }
         });
 
-        // 6) Fit bounds or default center/zoom
+        // Fit bounds
         if (fitToMarkers && markers.length > 1) {
           const bounds = new gm.maps.LatLngBounds();
           markers.forEach((m) => bounds.extend(new gm.maps.LatLng(m.position.lat, m.position.lng)));
@@ -252,13 +262,24 @@ export default function MapView({
     return () => {
       cancelled = true;
     };
-  }, [center, zoom, markers, onMarkerClick, fitToMarkers]);
+  }, [center, zoom, markers, onMarkerClick, fitToMarkers, onIdle]);
+
+  // Cleanup map listeners on unmount
+  useEffect(() => {
+    return () => {
+      try {
+        idleListenerRef.current?.remove?.();
+      } catch {
+        /* ignore */
+      }
+      idleListenerRef.current = null;
+    };
+  }, []);
 
   return (
     <div className="relative w-full h-full">
       <div ref={mapDivRef} className="w-full h-full" />
 
-      {/* Friendly overlay if key missing / blocked */}
       {error && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-sm">
           <div className="max-w-md text-center p-6 rounded-lg border bg-card shadow-sm">
