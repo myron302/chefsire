@@ -1084,6 +1084,7 @@ export default function WeddingPlanning() {
   }, [calendarEvents, parseCalendarDate]);
 
   const handleAddCalendarEvent = useCallback(async () => {
+    // Persist calendar events to the API.
     if (!calendarDate || !calendarTitle.trim() || !calendarType) {
       toast({
         title: "Missing Details",
