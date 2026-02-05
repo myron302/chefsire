@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapPin,
   Search,
@@ -6,7 +6,6 @@ import {
   List,
   Grid,
   Sparkles,
-  Clock,
   Star,
   Shield,
   Heart,
@@ -21,24 +20,24 @@ import {
   Shirt,
   FileDown,
 } from "lucide-react";
-
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Link } from "wouter";
-
-import MapView from "./MapView";
+import MapView, { MarkerInput } from "./MapView";
 
 /**
- * Wedding Vendor Map
- * - Stable map (no snapping / blinking)
- * - Category-specific search (1 query per click, cheap)
- * - Per-category caching (counts stay meaningful as you browse)
- * - Pagination per category ("Load More" appends without wiping)
- * - "Search this area" (no auto-search on pan)
- * - Safe PDF export (browser print / save as PDF)
+ * Wedding Vendor Map (API-efficient + stable UI)
+ *
+ * ✅ One category search at a time (low cost)
+ * ✅ Cache results per category (counts stay consistent)
+ * ✅ "All" = union of loaded categories (dedup by place_id)
+ * ✅ Load more works per category (no blinking markers)
+ * ✅ Search this area (no snap-back loop)
+ * ✅ Details fetched on click only (phone/website/open-now/photo)
+ * ✅ PDF export uses browser print (no jspdf dependency)
  */
 
 type LatLng = { lat: number; lng: number };
@@ -55,42 +54,36 @@ type VendorCategoryKey =
 type PlaceResultLite = {
   id: string; // place_id
   placeId: string;
+
   name: string;
   category: VendorCategoryKey;
+
   address?: string;
   position: LatLng;
+
   rating?: number;
   reviews?: number;
   priceRange?: string;
   image?: string;
   verified?: boolean;
 
-  // details (loaded on demand)
   phone?: string;
   website?: string;
   isOpenNow?: boolean;
 };
 
-const CATEGORY_ORDER: VendorCategoryKey[] = [
-  "all",
-  "venue",
-  "photographer",
-  "dj",
-  "florist",
-  "dressShop",
-  "tuxedoShop",
-];
-
 const categoryConfig: Record<VendorCategoryKey, { label: string; icon: any; query: string }> = {
   all: {
     label: "All",
     icon: Sparkles,
-    query: "wedding venue OR photographer OR wedding dj OR florist OR bridal shop OR tuxedo shop",
+    // "All" is NOT used for accurate cross-category counts.
+    // It’s only used when user clicks All and nothing is loaded yet.
+    query: "wedding services",
   },
   venue: {
     label: "Venues",
     icon: MapPin,
-    query: "wedding venue OR event venue OR banquet hall OR wedding hall",
+    query: "wedding venue OR event venue OR banquet hall",
   },
   photographer: {
     label: "Photo",
@@ -110,12 +103,12 @@ const categoryConfig: Record<VendorCategoryKey, { label: string; icon: any; quer
   dressShop: {
     label: "Dresses",
     icon: ShoppingBag,
-    query: "bridal shop OR wedding dress shop OR bridal boutique",
+    query: "bridal shop OR wedding dress OR bridal boutique",
   },
   tuxedoShop: {
     label: "Tuxedos",
     icon: Shirt,
-    query: "tuxedo shop OR tuxedo rental OR formal wear OR suit rental",
+    query: "tuxedo shop OR tuxedo rental OR formal wear",
   },
 };
 
@@ -126,20 +119,15 @@ function priceLevelToRange(level?: number): string | undefined {
 }
 
 function pickCategoryFromTypes(selected: VendorCategoryKey, types?: string[]): VendorCategoryKey {
-  // If user selected a specific category, we keep it deterministic
   if (selected !== "all") return selected;
   if (!types || !types.length) return "all";
-
   const t = new Set(types);
 
-  // High-confidence
   if (t.has("photographer")) return "photographer";
   if (t.has("florist")) return "florist";
 
-  // Clothing logic
   if (t.has("clothing_store") || t.has("store")) return "dressShop";
 
-  // Venue-ish logic
   if (t.has("event_venue") || t.has("banquet_hall") || t.has("restaurant") || t.has("lodging")) return "venue";
 
   return "all";
@@ -155,31 +143,7 @@ function placePhoto(place: any, max = 800): string | undefined {
   }
 }
 
-function placeToVendorLite(place: any, selectedCategory: VendorCategoryKey): PlaceResultLite | null {
-  if (!place?.place_id || !place?.geometry?.location) return null;
-  const pos = place.geometry.location;
-  const lat = typeof pos.lat === "function" ? pos.lat() : pos.lat;
-  const lng = typeof pos.lng === "function" ? pos.lng() : pos.lng;
-
-  const forcedCategory =
-    selectedCategory === "all" ? pickCategoryFromTypes("all", place.types) : selectedCategory;
-
-  return {
-    id: place.place_id,
-    placeId: place.place_id,
-    name: place.name || "Untitled",
-    category: forcedCategory,
-    address: place.formatted_address || place.vicinity,
-    position: { lat, lng },
-    rating: place.rating,
-    reviews: place.user_ratings_total,
-    priceRange: priceLevelToRange(place.price_level),
-    image: placePhoto(place),
-    verified: place.business_status === "OPERATIONAL",
-    // NOTE: opening_hours.isOpen() is not reliable off of TextSearch results; we fill this on details fetch
-  };
-}
-
+// Wait for Google (MapView loads script; this just waits for readiness)
 function waitForGoogle(timeoutMs = 10000): Promise<void> {
   return new Promise((resolve, reject) => {
     let waited = 0;
@@ -198,47 +162,21 @@ function waitForGoogle(timeoutMs = 10000): Promise<void> {
   });
 }
 
-function dedupeById<T extends { id: string }>(arr: T[]): T[] {
-  const seen = new Set<string>();
-  const out: T[] = [];
-  for (const item of arr) {
-    if (seen.has(item.id)) continue;
-    seen.add(item.id);
-    out.push(item);
-  }
-  return out;
-}
-
-function safeText(s: string) {
-  return (s || "").replace(/[<>&"]/g, (ch) => {
-    switch (ch) {
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case "&":
-        return "&amp;";
-      case '"':
-        return "&quot;";
-      default:
-        return ch;
-    }
-  });
-}
-
 export default function WeddingVendorMap() {
   // UI state
-  const [selectedCategory, setSelectedCategory] = useState<VendorCategoryKey>("all");
+  const [selectedCategory, setSelectedCategory] = useState<VendorCategoryKey>("venue");
   const [searchQuery, setSearchQuery] = useState("");
   const [locationQuery, setLocationQuery] = useState("Colchester, CT");
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
-  // map state
-  const [center, setCenter] = useState<LatLng>({ lat: 41.5752, lng: -72.332 }); // Colchester-ish default
+  const [savedVendors, setSavedVendors] = useState<Set<string>>(new Set());
+
+  // Map state
+  const [searchCenter, setSearchCenter] = useState<LatLng>({ lat: 41.5754, lng: -72.332 }); // Colchester-ish default
   const [mapBoundsCenter, setMapBoundsCenter] = useState<LatLng | null>(null);
   const [showSearchArea, setShowSearchArea] = useState(false);
 
-  // data state (cached by category)
+  // Data + cache per category
   const [vendorsByCategory, setVendorsByCategory] = useState<Record<VendorCategoryKey, PlaceResultLite[]>>({
     all: [],
     venue: [],
@@ -250,76 +188,78 @@ export default function WeddingVendorMap() {
   });
 
   const [paginationByCategory, setPaginationByCategory] = useState<
-    Partial<Record<VendorCategoryKey, google.maps.places.PlaceSearchPagination | null>>
-  >({});
+    Record<VendorCategoryKey, google.maps.places.PlaceSearchPagination | null>
+  >({
+    all: null,
+    venue: null,
+    photographer: null,
+    dj: null,
+    florist: null,
+    dressShop: null,
+    tuxedoShop: null,
+  });
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Saved + modal
-  const [savedVendors, setSavedVendors] = useState<Set<string>>(new Set());
+  // Details modal
   const [selectedVendor, setSelectedVendor] = useState<PlaceResultLite | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
-  // refs
+  // Input refs (optional autocomplete hookup)
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const locationInputRef = useRef<HTMLInputElement | null>(null);
 
-  const isPaginatingRef = useRef(false);
-  const paginateCategoryRef = useRef<VendorCategoryKey>("all");
+  // Pagination append flag (used by the places callback triggered by nextPage())
+  const appendRef = useRef(false);
 
-  // Active vendor list:
-  // - If user is viewing "all": show union of all category caches (excluding "all") if present,
-  //   otherwise show vendorsByCategory.all (from broad search).
-  // - Else: show the chosen category list.
-  const vendors = useMemo(() => {
-    if (selectedCategory !== "all") return vendorsByCategory[selectedCategory] || [];
+  // Keep these in refs so the Places callback is always correct
+  const activeCategoryRef = useRef<VendorCategoryKey>(selectedCategory);
+  const activeCenterRef = useRef<LatLng>(searchCenter);
 
-    const buckets = ["venue", "photographer", "dj", "florist", "dressShop", "tuxedoShop"] as VendorCategoryKey[];
-    const hasAnyBucket = buckets.some((k) => (vendorsByCategory[k] || []).length > 0);
+  useEffect(() => {
+    activeCategoryRef.current = selectedCategory;
+  }, [selectedCategory]);
 
-    if (!hasAnyBucket) return vendorsByCategory.all || [];
+  useEffect(() => {
+    activeCenterRef.current = searchCenter;
+  }, [searchCenter]);
 
-    const merged: PlaceResultLite[] = [];
-    for (const k of buckets) merged.push(...(vendorsByCategory[k] || []));
-    return dedupeById(merged);
-  }, [vendorsByCategory, selectedCategory]);
-
-  // Counts:
-  // - Per category: show count if that category has been fetched at least once, else null -> UI shows "—"
-  // - All: union count if we have any bucket; else count for the "all" list.
-  const categoryCounts = useMemo(() => {
-    const counts: Record<VendorCategoryKey, number | null> = {
-      all: null,
-      venue: null,
-      photographer: null,
-      dj: null,
-      florist: null,
-      dressShop: null,
-      tuxedoShop: null,
-    };
-
-    // categories except "all" are "known" only if fetched (list has length OR paginationByCategory has key set)
-    (["venue", "photographer", "dj", "florist", "dressShop", "tuxedoShop"] as VendorCategoryKey[]).forEach((k) => {
-      const fetched = Object.prototype.hasOwnProperty.call(paginationByCategory, k) || (vendorsByCategory[k]?.length ?? 0) > 0;
-      counts[k] = fetched ? (vendorsByCategory[k]?.length ?? 0) : null;
-    });
-
-    const buckets = ["venue", "photographer", "dj", "florist", "dressShop", "tuxedoShop"] as VendorCategoryKey[];
-    const hasAnyBucket = buckets.some((k) => (vendorsByCategory[k] || []).length > 0);
-
-    if (hasAnyBucket) {
-      counts.all = vendors.length;
-    } else {
-      const fetchedAll = Object.prototype.hasOwnProperty.call(paginationByCategory, "all") || (vendorsByCategory.all?.length ?? 0) > 0;
-      counts.all = fetchedAll ? (vendorsByCategory.all?.length ?? 0) : null;
+  // Union view for "All" (dedup by id)
+  const unionVendors = useMemo(() => {
+    const map = new Map<string, PlaceResultLite>();
+    const keys: VendorCategoryKey[] = ["venue", "photographer", "dj", "florist", "dressShop", "tuxedoShop"];
+    for (const k of keys) {
+      for (const v of vendorsByCategory[k]) {
+        if (!map.has(v.id)) map.set(v.id, v);
+      }
     }
+    return Array.from(map.values());
+  }, [vendorsByCategory]);
 
+  // Active list
+  const vendors: PlaceResultLite[] =
+    selectedCategory === "all"
+      ? (unionVendors.length ? unionVendors : vendorsByCategory.all)
+      : vendorsByCategory[selectedCategory];
+
+  // Accurate counts = how many you’ve loaded per category (cached)
+  const categoryCounts = useMemo(() => {
+    const counts: Record<VendorCategoryKey, number> = {
+      all: (unionVendors.length || vendorsByCategory.all.length),
+      venue: vendorsByCategory.venue.length,
+      photographer: vendorsByCategory.photographer.length,
+      dj: vendorsByCategory.dj.length,
+      florist: vendorsByCategory.florist.length,
+      dressShop: vendorsByCategory.dressShop.length,
+      tuxedoShop: vendorsByCategory.tuxedoShop.length,
+    };
     return counts;
-  }, [vendorsByCategory, paginationByCategory, vendors]);
+  }, [vendorsByCategory, unionVendors]);
 
-  const markers = useMemo(
+  // Markers for map
+  const markers: MarkerInput[] = useMemo(
     () =>
       vendors.map((v) => ({
         id: v.id,
@@ -331,217 +271,236 @@ export default function WeddingVendorMap() {
     [vendors]
   );
 
-  const toggleSaveVendor = useCallback((vendorId: string) => {
+  // Toggle save
+  const toggleSaveVendor = (vendorId: string) => {
     setSavedVendors((prev) => {
       const ns = new Set(prev);
       if (ns.has(vendorId)) ns.delete(vendorId);
       else ns.add(vendorId);
       return ns;
     });
-  }, []);
+  };
 
-  // Geocode a text location into lat/lng
-  const geocodeAddress = useCallback(async (address: string): Promise<LatLng | null> => {
+  // Geocode city -> LatLng
+  async function geocodeAddress(address: string): Promise<LatLng | null> {
+    await waitForGoogle().catch(() => {});
+    const gm = window.google;
+    if (!gm?.maps?.Geocoder) return null;
+    const geocoder = new gm.maps.Geocoder();
+    return new Promise((resolve) => {
+      geocoder.geocode({ address }, (results: any, status: any) => {
+        if (status === "OK" && results?.[0]?.geometry?.location) {
+          const loc = results[0].geometry.location;
+          resolve({ lat: loc.lat(), lng: loc.lng() });
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  }
+
+  // --- CORE SEARCH (one category at a time, cached) ---
+  const runTextSearch = async (category: VendorCategoryKey, center: LatLng, isPagination: boolean) => {
     try {
       await waitForGoogle();
       const gm = window.google;
-      if (!gm?.maps?.Geocoder) return null;
-      const geocoder = new gm.maps.Geocoder();
-      return await new Promise((resolve) => {
-        geocoder.geocode({ address }, (results: any, status: any) => {
-          if (status === "OK" && results?.[0]?.geometry?.location) {
-            const loc = results[0].geometry.location;
-            resolve({ lat: loc.lat(), lng: loc.lng() });
-          } else {
-            resolve(null);
+      const service = new gm.maps.places.PlacesService(document.createElement("div"));
+
+      const baseQuery = categoryConfig[category].query;
+      const finalQuery = searchQuery ? `${baseQuery} ${searchQuery}` : baseQuery;
+
+      activeCategoryRef.current = category;
+      activeCenterRef.current = center;
+      appendRef.current = isPagination;
+
+      service.textSearch(
+        {
+          query: finalQuery,
+          location: new gm.maps.LatLng(center.lat, center.lng),
+          radius: 10000,
+        },
+        (results: any[], status: string, nextPagination: any) => {
+          if (status !== gm.maps.places.PlacesServiceStatus.OK || !results) {
+            if (status !== "ZERO_RESULTS") setErrorMsg(status || "Search failed");
+            setLoading(false);
+            return;
           }
-        });
-      });
-    } catch {
-      return null;
+
+          const mapped = results
+            .map((p) => {
+              if (!p?.place_id || !p?.geometry?.location) return null;
+              const loc = p.geometry.location;
+              const lat = typeof loc.lat === "function" ? loc.lat() : loc.lat;
+              const lng = typeof loc.lng === "function" ? loc.lng() : loc.lng;
+
+              const cat =
+                category === "all" ? pickCategoryFromTypes("all", p.types) : category;
+
+              const v: PlaceResultLite = {
+                id: p.place_id,
+                placeId: p.place_id,
+                name: p.name || "Untitled",
+                category: cat,
+                address: p.formatted_address || p.vicinity,
+                position: { lat, lng },
+                rating: p.rating,
+                reviews: p.user_ratings_total,
+                priceRange: priceLevelToRange(p.price_level),
+                image: p.photos && p.photos.length ? p.photos[0].getUrl({ maxWidth: 600 }) : undefined,
+                verified: p.business_status === "OPERATIONAL",
+                // NOTE: opening_hours.isOpen() is more reliable from getDetails;
+                // but if it exists here, we can show it.
+                isOpenNow: p.opening_hours?.isOpen ? p.opening_hours.isOpen() : undefined,
+              };
+
+              return v;
+            })
+            .filter(Boolean) as PlaceResultLite[];
+
+          const targetCategory = activeCategoryRef.current;
+
+          setVendorsByCategory((prev) => {
+            const existing = prev[targetCategory] || [];
+            const next = appendRef.current ? mergeDedupById(existing, mapped) : mapped;
+            return { ...prev, [targetCategory]: next };
+          });
+
+          setPaginationByCategory((prev) => ({
+            ...prev,
+            [targetCategory]: nextPagination || null,
+          }));
+
+          setLoading(false);
+          setErrorMsg(null);
+        }
+      );
+    } catch (e: any) {
+      setErrorMsg(e?.message || "Search failed");
+      setLoading(false);
     }
-  }, []);
+  };
 
-  // Autocomplete (optional)
+  function mergeDedupById(a: PlaceResultLite[], b: PlaceResultLite[]) {
+    const map = new Map<string, PlaceResultLite>();
+    for (const x of a) map.set(x.id, x);
+    for (const x of b) map.set(x.id, x);
+    return Array.from(map.values());
+  }
+
+  // Debounced search when category changes (ONLY if that category cache is empty)
   useEffect(() => {
-    let cancelled = false;
-    let searchAutocomplete: google.maps.places.Autocomplete | null = null;
-    let locationAutocomplete: google.maps.places.Autocomplete | null = null;
-    let searchListener: google.maps.MapsEventListener | null = null;
-    let locationListener: google.maps.MapsEventListener | null = null;
+    let t: any = null;
 
-    const initAutocomplete = async () => {
-      try {
-        await waitForGoogle();
-        if (cancelled) return;
-        const gm = window.google;
+    t = setTimeout(async () => {
+      // If we already have cached results for this category at this location, don’t re-hit API
+      const hasCache =
+        selectedCategory === "all"
+          ? (vendorsByCategory.all.length > 0 || unionVendors.length > 0)
+          : vendorsByCategory[selectedCategory].length > 0;
 
-        if (searchInputRef.current && !searchAutocomplete) {
-          searchAutocomplete = new gm.maps.places.Autocomplete(searchInputRef.current, {
-            fields: ["name", "formatted_address", "place_id"],
-          });
-          searchListener = searchAutocomplete.addListener("place_changed", () => {
-            const place = searchAutocomplete?.getPlace();
-            if (place?.name) setSearchQuery(place.name);
-            else if (place?.formatted_address) setSearchQuery(place.formatted_address);
-          });
-        }
-
-        if (locationInputRef.current && !locationAutocomplete) {
-          locationAutocomplete = new gm.maps.places.Autocomplete(locationInputRef.current, {
-            fields: ["formatted_address", "geometry", "place_id"],
-            types: ["(cities)"],
-          });
-          locationListener = locationAutocomplete.addListener("place_changed", () => {
-            const place = locationAutocomplete?.getPlace();
-            if (place?.formatted_address) setLocationQuery(place.formatted_address);
-            if (place?.geometry?.location) {
-              setCenter({
-                lat: place.geometry.location.lat(),
-                lng: place.geometry.location.lng(),
-              });
-            }
-          });
-        }
-      } catch {
-        // optional
-      }
-    };
-
-    initAutocomplete();
-
-    return () => {
-      cancelled = true;
-      searchListener?.remove();
-      locationListener?.remove();
-    };
-  }, []);
-
-  // --- SEARCH (category-specific, cached) ---
-  const performSearch = useCallback(
-    async (loc?: LatLng) => {
-      if (loading) return;
+      if (hasCache) return;
 
       setLoading(true);
       setErrorMsg(null);
 
-      try {
-        await waitForGoogle();
-        const gm = window.google;
+      // If "All" has nothing loaded yet, run the "all" query once
+      const catToSearch = selectedCategory === "all" ? "all" : selectedCategory;
+      await runTextSearch(catToSearch, searchCenter, false);
+    }, 300);
 
-        const targetLoc = loc || center;
-
-        // If locationQuery changed, center should follow (but this does NOT happen on pan)
-        // We only set center when user typed a new city OR clicked "search this area"
-        // (we call setCenter in those flows)
-        const service = new gm.maps.places.PlacesService(document.createElement("div"));
-        const baseQuery = categoryConfig[selectedCategory].query;
-        const finalQuery = [baseQuery, searchQuery].filter(Boolean).join(" ");
-
-        const activeCategory = selectedCategory;
-        paginateCategoryRef.current = activeCategory;
-
-        service.textSearch(
-          {
-            query: finalQuery,
-            location: new gm.maps.LatLng(targetLoc.lat, targetLoc.lng),
-            radius: 10000,
-          },
-          (results: any[], status: string, nextPagination: any) => {
-            const isPaginating = isPaginatingRef.current;
-            isPaginatingRef.current = false;
-
-            if (status !== gm.maps.places.PlacesServiceStatus.OK || !results) {
-              setPaginationByCategory((prev) => ({ ...prev, [activeCategory]: null }));
-              if (!isPaginating) {
-                setVendorsByCategory((prev) => ({ ...prev, [activeCategory]: [] }));
-              }
-              if (status !== "ZERO_RESULTS") setErrorMsg(status || "Search failed");
-              setLoading(false);
-              return;
-            }
-
-            const mapped = results
-              .map((p) => placeToVendorLite(p, activeCategory))
-              .filter(Boolean) as PlaceResultLite[];
-
-            setVendorsByCategory((prev) => {
-              const prevList = prev[activeCategory] || [];
-              const combined = isPaginating ? [...prevList, ...mapped] : mapped;
-              return { ...prev, [activeCategory]: dedupeById(combined) };
-            });
-
-            setPaginationByCategory((prev) => ({ ...prev, [activeCategory]: nextPagination || null }));
-            setLoading(false);
-          }
-        );
-      } catch (e: any) {
-        setErrorMsg(e?.message || "Search failed");
-        setLoading(false);
-      }
-    },
-    [center, loading, searchQuery, selectedCategory]
-  );
-
-  // Debounced search when category/searchQuery/locationQuery changes (typed city triggers geocode)
-  const searchTimerRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
-
-    searchTimerRef.current = window.setTimeout(async () => {
-      // If user typed a new city, geocode it and search there
-      const geo = await geocodeAddress(locationQuery);
-      const loc = geo || center;
-
-      // Only set center from city input (not from pan)
-      setCenter(loc);
-
-      // If user selects "all" and we already have other buckets, don’t auto-wipe them.
-      // But still run an "all" search if nothing is cached yet (so user sees something).
-      const buckets = ["venue", "photographer", "dj", "florist", "dressShop", "tuxedoShop"] as VendorCategoryKey[];
-      const hasAnyBucket = buckets.some((k) => (vendorsByCategory[k] || []).length > 0);
-
-      if (selectedCategory === "all" && hasAnyBucket) {
-        // do nothing: show union
-        return;
-      }
-
-      // Clear pagination flag
-      isPaginatingRef.current = false;
-      await performSearch(loc);
-    }, 500);
-
-    return () => {
-      if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
-    };
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory, searchQuery, locationQuery]);
+  }, [selectedCategory]);
 
-  const loadMore = useCallback(() => {
-    const pag = paginationByCategory[selectedCategory];
-    if (!pag?.hasNextPage) return;
+  // Debounced geocode when locationQuery changes, then clears caches and searches current category
+  useEffect(() => {
+    let t: any = null;
 
-    isPaginatingRef.current = true;
-    paginateCategoryRef.current = selectedCategory;
+    t = setTimeout(async () => {
+      setErrorMsg(null);
 
-    // Google requires waiting internally; nextPage triggers callback again.
-    pag.nextPage();
-  }, [paginationByCategory, selectedCategory]);
+      // Geocode new location
+      setLoading(true);
+      const loc = (await geocodeAddress(locationQuery)) || searchCenter;
 
-  const searchThisArea = useCallback(async () => {
+      // New location => clear caches + pagination
+      setVendorsByCategory({
+        all: [],
+        venue: [],
+        photographer: [],
+        dj: [],
+        florist: [],
+        dressShop: [],
+        tuxedoShop: [],
+      });
+      setPaginationByCategory({
+        all: null,
+        venue: null,
+        photographer: null,
+        dj: null,
+        florist: null,
+        dressShop: null,
+        tuxedoShop: null,
+      });
+
+      setSearchCenter(loc);
+      setShowSearchArea(false);
+
+      // Now run search for current category
+      const catToSearch = selectedCategory === "all" ? "all" : selectedCategory;
+      await runTextSearch(catToSearch, loc, false);
+    }, 650);
+
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationQuery]);
+
+  // “Search this area” (uses current map center, doesn’t fight panning)
+  const searchThisArea = async () => {
     if (!mapBoundsCenter) return;
-    setCenter(mapBoundsCenter);
     setShowSearchArea(false);
-    isPaginatingRef.current = false;
-    await performSearch(mapBoundsCenter);
-  }, [mapBoundsCenter, performSearch]);
 
-  // Details fetch (don’t touch vendor lists except updating the clicked vendor)
-  const handleViewDetails = useCallback(async (vendor: PlaceResultLite) => {
+    // Treat this like a "new location" search (clear caches)
+    setVendorsByCategory({
+      all: [],
+      venue: [],
+      photographer: [],
+      dj: [],
+      florist: [],
+      dressShop: [],
+      tuxedoShop: [],
+    });
+    setPaginationByCategory({
+      all: null,
+      venue: null,
+      photographer: null,
+      dj: null,
+      florist: null,
+      dressShop: null,
+      tuxedoShop: null,
+    });
+
+    setSearchCenter(mapBoundsCenter);
+
+    setLoading(true);
+    const catToSearch = selectedCategory === "all" ? "all" : selectedCategory;
+    await runTextSearch(catToSearch, mapBoundsCenter, false);
+  };
+
+  const loadMore = () => {
+    const p = paginationByCategory[selectedCategory];
+    if (!p?.hasNextPage) return;
+    setLoading(true);
+    appendRef.current = true;
+    p.nextPage(); // this triggers the original callback we stored via runTextSearch closure
+  };
+
+  // Details fetch (phone/website/openNow/photo) - on click only
+  const handleViewDetails = async (vendor: PlaceResultLite) => {
     setSelectedVendor(vendor);
     setShowDetails(true);
 
-    // If already loaded, don’t re-fetch
+    // If already have details, don’t spend extra
     if (vendor.phone || vendor.website || vendor.isOpenNow !== undefined) return;
 
     try {
@@ -553,33 +512,26 @@ export default function WeddingVendorMap() {
       service.getDetails(
         {
           placeId: vendor.placeId,
-          fields: ["formatted_phone_number", "website", "opening_hours", "business_status", "formatted_address", "photos"],
+          fields: ["formatted_phone_number", "website", "opening_hours", "photos", "formatted_address", "business_status"],
         },
         (place: any, status: string) => {
           if (status === gm.maps.places.PlacesServiceStatus.OK && place) {
             const patch: Partial<PlaceResultLite> = {
-              phone: place.formatted_phone_number || undefined,
-              website: place.website || undefined,
-              isOpenNow: place.opening_hours?.isOpen?.(),
-              verified: place.business_status === "OPERATIONAL",
+              phone: place.formatted_phone_number || vendor.phone,
+              website: place.website || vendor.website,
               address: place.formatted_address || vendor.address,
               image: placePhoto(place) || vendor.image,
+              isOpenNow: place.opening_hours?.isOpen ? place.opening_hours.isOpen() : vendor.isOpenNow,
+              verified: place.business_status ? place.business_status === "OPERATIONAL" : vendor.verified,
             };
 
-            // Update selectedVendor (modal)
-            setSelectedVendor((prev) => (prev?.id === vendor.id ? { ...prev, ...patch } : prev));
+            setSelectedVendor((prev) => (prev && prev.id === vendor.id ? { ...prev, ...patch } : prev));
 
-            // Update whichever category bucket contains this vendor
+            // Patch into the cache (whichever category list contains it)
             setVendorsByCategory((prev) => {
               const next = { ...prev };
               (Object.keys(next) as VendorCategoryKey[]).forEach((k) => {
-                const list = next[k] || [];
-                const idx = list.findIndex((v) => v.id === vendor.id);
-                if (idx >= 0) {
-                  const updated = [...list];
-                  updated[idx] = { ...updated[idx], ...patch };
-                  next[k] = updated;
-                }
+                next[k] = next[k].map((v) => (v.id === vendor.id ? { ...v, ...patch } : v));
               });
               return next;
             });
@@ -590,31 +542,25 @@ export default function WeddingVendorMap() {
     } catch {
       setDetailsLoading(false);
     }
-  }, []);
+  };
 
-  // PDF export (safe): print window
-  const exportSavedVendorsToPDF = useCallback(() => {
+  const exportSavedVendorsToPDF = () => {
     const saved = Array.from(savedVendors)
-      .map((id) => vendors.find((v) => v.id === id))
+      .map((id) => {
+        // find in union first
+        const u = unionVendors.find((v) => v.id === id);
+        if (u) return u;
+        // otherwise scan lists
+        const keys: VendorCategoryKey[] = ["venue", "photographer", "dj", "florist", "dressShop", "tuxedoShop", "all"];
+        for (const k of keys) {
+          const found = vendorsByCategory[k].find((v) => v.id === id);
+          if (found) return found;
+        }
+        return null;
+      })
       .filter(Boolean) as PlaceResultLite[];
 
     if (!saved.length) return;
-
-    const rows = saved
-      .map((v) => {
-        return `
-          <tr>
-            <td>${safeText(v.name)}</td>
-            <td>${safeText(categoryConfig[v.category]?.label || v.category)}</td>
-            <td>${v.rating != null ? safeText(String(v.rating)) : "—"}</td>
-            <td>${safeText(v.priceRange || "—")}</td>
-            <td>${safeText(v.address || "—")}</td>
-            <td>${safeText(v.phone || "—")}</td>
-            <td>${v.website ? `<a href="${safeText(v.website)}" target="_blank" rel="noreferrer">${safeText(v.website)}</a>` : "—"}</td>
-          </tr>
-        `;
-      })
-      .join("");
 
     const html = `
       <html>
@@ -622,21 +568,18 @@ export default function WeddingVendorMap() {
           <meta charset="utf-8" />
           <title>Wedding Vendor Shortlist</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 24px; }
-            h1 { margin: 0 0 8px 0; }
-            .meta { color: #666; font-size: 12px; margin-bottom: 14px; }
-            table { width: 100%; border-collapse: collapse; font-size: 12px; }
-            th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
-            th { background: #db2777; color: white; text-align: left; }
-            a { color: #0b57d0; word-break: break-word; }
+            body{font-family:Arial, sans-serif; padding:24px;}
+            h1{margin:0 0 6px 0;}
+            .meta{color:#555; font-size:12px; margin-bottom:14px;}
+            table{width:100%; border-collapse:collapse; font-size:12px;}
+            th,td{border:1px solid #ddd; padding:10px; vertical-align:top;}
+            th{background:#db2777; color:white; text-align:left;}
+            .small{color:#555; font-size:11px;}
           </style>
         </head>
         <body>
           <h1>Wedding Vendor Shortlist</h1>
-          <div class="meta">
-            Location: ${safeText(locationQuery)}<br/>
-            Generated: ${safeText(new Date().toLocaleString())}
-          </div>
+          <div class="meta">Location: ${escapeHtml(locationQuery)}<br/>Generated: ${escapeHtml(new Date().toLocaleString())}</div>
           <table>
             <thead>
               <tr>
@@ -644,12 +587,30 @@ export default function WeddingVendorMap() {
                 <th>Category</th>
                 <th>Rating</th>
                 <th>Price</th>
+                <th>Open</th>
                 <th>Address</th>
                 <th>Phone</th>
                 <th>Website</th>
               </tr>
             </thead>
-            <tbody>${rows}</tbody>
+            <tbody>
+              ${saved
+                .map(
+                  (v) => `
+                <tr>
+                  <td>${escapeHtml(v.name)}</td>
+                  <td>${escapeHtml(categoryConfig[v.category]?.label || v.category)}</td>
+                  <td>${v.rating != null ? escapeHtml(String(v.rating)) : "—"}</td>
+                  <td>${v.priceRange ? escapeHtml(v.priceRange) : "—"}</td>
+                  <td>${v.isOpenNow === undefined ? "—" : v.isOpenNow ? "Open" : "Closed"}</td>
+                  <td>${v.address ? escapeHtml(v.address) : "—"}</td>
+                  <td>${v.phone ? escapeHtml(v.phone) : "—"}</td>
+                  <td>${v.website ? escapeHtml(v.website) : "—"}</td>
+                </tr>
+              `
+                )
+                .join("")}
+            </tbody>
           </table>
           <script>
             window.onload = () => window.print();
@@ -658,32 +619,26 @@ export default function WeddingVendorMap() {
       </html>
     `;
 
-    const w = window.open("", "_blank", "noopener,noreferrer,width=1000,height=700");
+    const w = window.open("", "_blank");
     if (!w) return;
     w.document.open();
     w.document.write(html);
     w.document.close();
-  }, [savedVendors, vendors, locationQuery]);
-
-  // Show "Search this area" when user stops moving the map (but do NOT re-search automatically)
-  const handleMapIdle = useCallback((map: any) => {
-    try {
-      const c = map.getCenter?.();
-      if (!c) return;
-      const next = { lat: c.lat(), lng: c.lng() };
-      setMapBoundsCenter(next);
-      setShowSearchArea(true);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const getCategoryIcon = (category: VendorCategoryKey) => {
-    const cfg = categoryConfig[category];
-    return cfg ? cfg.icon : MapPin;
   };
 
-  const hasMore = !!paginationByCategory[selectedCategory]?.hasNextPage;
+  function escapeHtml(s: string) {
+    return s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  const getCategoryIcon = (category: VendorCategoryKey) => {
+    const config = categoryConfig[category];
+    return config ? config.icon : MapPin;
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -694,15 +649,12 @@ export default function WeddingVendorMap() {
             <h1 className="text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">
               Wedding Vendor Map
             </h1>
-            <p className="text-muted-foreground">
-              Live results pulled from Google Places near your chosen location.
-            </p>
+            <p className="text-muted-foreground">Live results pulled from Google Places near your chosen location</p>
           </div>
-
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-sm">
               <MapPinned className="w-4 h-4 mr-1" />
-              {vendors.length} showing
+              {vendors.length} shown
             </Badge>
           </div>
         </div>
@@ -741,11 +693,12 @@ export default function WeddingVendorMap() {
 
         {/* Category Filters */}
         <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-6">
-          {CATEGORY_ORDER.map((key) => {
+          {(Object.keys(categoryConfig) as VendorCategoryKey[]).map((key) => {
             const cfg = categoryConfig[key];
             const Icon = cfg.icon;
             const isSelected = selectedCategory === key;
-            const count = categoryCounts[key]; // number | null
+            const count = categoryCounts[key] ?? 0;
+
             return (
               <Button
                 key={key}
@@ -758,15 +711,14 @@ export default function WeddingVendorMap() {
                   <span className="text-xs sm:text-sm hidden sm:inline truncate">{cfg.label}</span>
                 </div>
                 <Badge variant="secondary" className="text-xs hidden sm:flex flex-shrink-0">
-                  {count == null ? "—" : count}
+                  {count}
                 </Badge>
               </Button>
             );
           })}
         </div>
 
-        {loading && <p className="text-xs text-muted-foreground">Loading…</p>}
-        {errorMsg && <p className="text-xs text-red-500">Error: {errorMsg}</p>}
+        {errorMsg && <p className="text-sm text-red-500 mb-2">Error: {errorMsg}</p>}
       </div>
 
       {/* Map + Results */}
@@ -776,13 +728,13 @@ export default function WeddingVendorMap() {
           {showSearchArea && (
             <Button
               onClick={searchThisArea}
-              className={`
-                absolute top-6 left-1/2 -translate-x-1/2 z-20 
-                shadow-2xl bg-white text-pink-600 hover:bg-pink-50 
+              className="
+                absolute top-6 left-1/2 -translate-x-1/2 z-20
+                shadow-2xl bg-white text-pink-600 hover:bg-pink-50
                 border-2 border-pink-200 rounded-full px-6 py-5
                 transition-all duration-300 ease-out
                 hover:scale-105 active:scale-95
-              `}
+              "
               size="sm"
             >
               <div className="absolute inset-0 rounded-full bg-pink-400/20 animate-ping -z-10" />
@@ -791,16 +743,22 @@ export default function WeddingVendorMap() {
             </Button>
           )}
 
-          <Card className="h-[600px] overflow-hidden border-2 transition-colors duration-500">
+          <Card className="h-[600px] overflow-hidden">
             <CardContent className="p-0 h-full">
               <div className="relative w-full h-full rounded-lg overflow-hidden">
                 <MapView
-                  center={center}
+                  center={searchCenter}
                   zoom={12}
                   markers={markers}
                   onMarkerClick={(m) => handleViewDetails(m.vendor as PlaceResultLite)}
                   fitToMarkers
-                  onIdle={handleMapIdle}
+                  onIdle={(map) => {
+                    const c = map.getCenter?.();
+                    if (!c) return;
+
+                    setMapBoundsCenter({ lat: c.lat(), lng: c.lng() });
+                    setShowSearchArea(true);
+                  }}
                 />
               </div>
             </CardContent>
@@ -814,49 +772,37 @@ export default function WeddingVendorMap() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg">Vendors</CardTitle>
                 <div className="flex gap-1">
-                  <Button
-                    size="sm"
-                    variant={viewMode === "list" ? "default" : "ghost"}
-                    onClick={() => setViewMode("list")}
-                  >
+                  <Button size="sm" variant={viewMode === "list" ? "default" : "ghost"} onClick={() => setViewMode("list")}>
                     <List className="w-4 h-4" />
                   </Button>
-                  <Button
-                    size="sm"
-                    variant={viewMode === "grid" ? "default" : "ghost"}
-                    onClick={() => setViewMode("grid")}
-                  >
+                  <Button size="sm" variant={viewMode === "grid" ? "default" : "ghost"} onClick={() => setViewMode("grid")}>
                     <Grid className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Tip: counts show what you’ve loaded per category (— means not fetched yet).
-              </p>
+
+              {loading && <p className="text-xs text-muted-foreground mt-1">Loading…</p>}
+              {!loading && paginationByCategory[selectedCategory]?.hasNextPage && (
+                <p className="text-xs text-muted-foreground mt-1">Showing {vendors.length}. More available.</p>
+              )}
             </CardHeader>
 
             <CardContent className={`flex-1 overflow-y-auto ${viewMode === "grid" ? "" : "space-y-3"}`}>
               {vendors.length === 0 && !loading ? (
                 <div className="text-center text-sm text-muted-foreground mt-6">
-                  No vendors loaded yet. Try selecting a category or clicking “Search this area”.
+                  No vendors loaded for this category yet. Try another category or search.
                 </div>
               ) : viewMode === "grid" ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {vendors.map((v) => {
                     const Icon = getCategoryIcon(v.category);
                     return (
-                      <Card
-                        key={v.id}
-                        className="cursor-pointer hover:shadow-md transition-shadow"
-                        onClick={() => handleViewDetails(v)}
-                      >
+                      <Card key={v.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => handleViewDetails(v)}>
                         <div className="w-full h-28 overflow-hidden">
                           {v.image ? (
                             <img src={v.image} alt={v.name} className="w-full h-full object-cover" />
                           ) : (
-                            <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">
-                              No image
-                            </div>
+                            <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">No image</div>
                           )}
                         </div>
                         <CardContent className="p-3">
@@ -884,6 +830,16 @@ export default function WeddingVendorMap() {
                           </div>
 
                           <div className="flex items-center gap-2 mt-1">
+                            {v.isOpenNow !== undefined && (
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] h-4 ${
+                                  v.isOpenNow ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
+                                }`}
+                              >
+                                {v.isOpenNow ? "Open Now" : "Closed"}
+                              </Badge>
+                            )}
                             <div className="flex items-center gap-1">
                               <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
                               <span className="text-xs font-medium">{v.rating ?? "—"}</span>
@@ -902,20 +858,14 @@ export default function WeddingVendorMap() {
                 vendors.map((v) => {
                   const Icon = getCategoryIcon(v.category);
                   return (
-                    <Card
-                      key={v.id}
-                      className="cursor-pointer hover:shadow-md transition-shadow"
-                      onClick={() => handleViewDetails(v)}
-                    >
+                    <Card key={v.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => handleViewDetails(v)}>
                       <CardContent className="p-3">
                         <div className="flex items-start gap-3">
                           <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
                             {v.image ? (
                               <img src={v.image} alt={v.name} className="w-full h-full object-cover" />
                             ) : (
-                              <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">
-                                No image
-                              </div>
+                              <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">No image</div>
                             )}
                           </div>
 
@@ -945,6 +895,16 @@ export default function WeddingVendorMap() {
                             </div>
 
                             <div className="flex items-center gap-2 mt-1">
+                              {v.isOpenNow !== undefined && (
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] h-4 ${
+                                    v.isOpenNow ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
+                                  }`}
+                                >
+                                  {v.isOpenNow ? "Open Now" : "Closed"}
+                                </Badge>
+                              )}
                               <div className="flex items-center gap-1">
                                 <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
                                 <span className="text-xs font-medium">{v.rating ?? "—"}</span>
@@ -962,11 +922,11 @@ export default function WeddingVendorMap() {
                 })
               )}
 
-              {/* Load More */}
-              {hasMore && (
+              {/* Load more */}
+              {paginationByCategory[selectedCategory]?.hasNextPage && (
                 <div className="py-4 flex justify-center">
                   <Button variant="outline" size="sm" onClick={loadMore} disabled={loading}>
-                    {loading ? "Loading..." : "Load More Vendors"}
+                    {loading ? "Loading…" : "Load More Vendors"}
                   </Button>
                 </div>
               )}
@@ -992,7 +952,6 @@ export default function WeddingVendorMap() {
                       {selectedVendor.address || "—"}
                     </DialogDescription>
                   </div>
-
                   <Button size="sm" variant="ghost" onClick={() => toggleSaveVendor(selectedVendor.id)}>
                     <Heart className={`w-5 h-5 ${savedVendors.has(selectedVendor.id) ? "fill-red-500 text-red-500" : ""}`} />
                   </Button>
@@ -1004,19 +963,15 @@ export default function WeddingVendorMap() {
                   {selectedVendor.image ? (
                     <img src={selectedVendor.image} alt={selectedVendor.name} className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full bg-muted flex items-center justify-center text-sm text-muted-foreground">
-                      No image
-                    </div>
+                    <div className="w-full h-full bg-muted flex items-center justify-center text-sm text-muted-foreground">No image</div>
                   )}
                 </div>
 
-                <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-3 flex-wrap">
                   <div className="flex items-center gap-1">
                     <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
                     <span className="font-bold text-lg">{selectedVendor.rating ?? "—"}</span>
-                    {selectedVendor.reviews != null && (
-                      <span className="text-muted-foreground">({selectedVendor.reviews} reviews)</span>
-                    )}
+                    {selectedVendor.reviews != null && <span className="text-muted-foreground">({selectedVendor.reviews} reviews)</span>}
                   </div>
 
                   {selectedVendor.priceRange && (
@@ -1028,11 +983,11 @@ export default function WeddingVendorMap() {
                   {selectedVendor.isOpenNow !== undefined && (
                     <Badge
                       variant="outline"
-                      className={`text-[11px] ${
+                      className={
                         selectedVendor.isOpenNow
-                          ? "text-green-600 border-green-200 bg-green-50"
-                          : "text-red-600 border-red-200 bg-red-50"
-                      }`}
+                          ? "bg-green-50 text-green-700 border-green-200"
+                          : "bg-red-50 text-red-700 border-red-200"
+                      }
                     >
                       {selectedVendor.isOpenNow ? "Open Now" : "Closed"}
                     </Badge>
@@ -1069,20 +1024,9 @@ export default function WeddingVendorMap() {
                 <div className="flex gap-2 pt-2">
                   <Button
                     className="flex-1 bg-gradient-to-r from-pink-600 to-purple-600"
-                    onClick={() =>
-                      window.open(`https://www.google.com/maps/place/?q=place_id:${selectedVendor.placeId}`, "_blank")
-                    }
+                    onClick={() => window.open(`https://www.google.com/maps/place/?q=place_id:${selectedVendor.placeId}`, "_blank")}
                   >
                     View on Google Maps
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => handleViewDetails(selectedVendor)}
-                  >
-                    <Clock className="w-4 h-4 mr-2" />
-                    {detailsLoading ? "Fetching…" : "Refresh Details"}
                   </Button>
                 </div>
               </div>
@@ -1091,7 +1035,7 @@ export default function WeddingVendorMap() {
         </DialogContent>
       </Dialog>
 
-      {/* Saved Vendors */}
+      {/* Saved Vendors Section */}
       {savedVendors.size > 0 && (
         <Card className="mb-8">
           <CardHeader>
@@ -1101,7 +1045,7 @@ export default function WeddingVendorMap() {
                   <Heart className="w-5 h-5 text-red-500" />
                   Saved Vendors ({savedVendors.size})
                 </CardTitle>
-                <CardDescription>Vendors you’ve bookmarked for your wedding.</CardDescription>
+                <CardDescription>Vendors you've bookmarked for your wedding</CardDescription>
               </div>
 
               <Button variant="outline" size="sm" onClick={exportSavedVendorsToPDF}>
@@ -1114,18 +1058,17 @@ export default function WeddingVendorMap() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {Array.from(savedVendors).map((vid) => {
-                const v = vendors.find((x) => x.id === vid) || null;
+                const v = unionVendors.find((x) => x.id === vid) || vendors.find((x) => x.id === vid);
                 if (!v) return null;
                 const Icon = getCategoryIcon(v.category);
+
                 return (
                   <Card key={v.id} className="overflow-hidden">
                     <div className="relative h-32">
                       {v.image ? (
                         <img src={v.image} alt={v.name} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">
-                          No image
-                        </div>
+                        <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">No image</div>
                       )}
                       <Button
                         size="sm"
@@ -1157,7 +1100,7 @@ export default function WeddingVendorMap() {
           <Sparkles className="w-12 h-12 mx-auto mb-3 text-purple-600" />
           <h3 className="text-xl font-bold mb-2">Planning Your Perfect Day?</h3>
           <p className="text-muted-foreground mb-4">
-            Save vendors as you browse and export your shortlist for your partner or planner.
+            Save time by shortlisting vendors and exporting a PDF to share with your partner.
           </p>
           <Button asChild className="bg-gradient-to-r from-pink-600 to-purple-600">
             <Link href="/catering/wedding-planning">
