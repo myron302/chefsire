@@ -19,6 +19,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Calendar as CalendarUI } from '@/components/ui/calendar';
 import { Link } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
 import { useUser } from '@/contexts/UserContext';
@@ -316,7 +317,13 @@ export default function WeddingPlanning() {
     title: string;
     type: string;
     reminder: boolean;
+    notes?: string;
   }>>([]);
+  const [calendarDate, setCalendarDate] = useState<Date | undefined>();
+  const [calendarTitle, setCalendarTitle] = useState('');
+  const [calendarType, setCalendarType] = useState('');
+  const [calendarNotes, setCalendarNotes] = useState('');
+  const [calendarReminder, setCalendarReminder] = useState(false);
 
   // Email Invitations State
   const [guestList, setGuestList] = useState<Array<{
@@ -1029,10 +1036,59 @@ export default function WeddingPlanning() {
     }
   }, [user, toast]);
 
+  const normalizeCalendarDate = useCallback((date: Date) => {
+    return date.toISOString().split('T')[0];
+  }, []);
+
+  const parseCalendarDate = useCallback((dateString: string) => {
+    return new Date(`${dateString}T00:00:00`);
+  }, []);
+
+  const sortedCalendarEvents = useMemo(() => {
+    return [...calendarEvents].sort((a, b) => a.date.localeCompare(b.date));
+  }, [calendarEvents]);
+
+  const calendarEventDates = useMemo(() => {
+    return calendarEvents.map((event) => parseCalendarDate(event.date));
+  }, [calendarEvents, parseCalendarDate]);
+
   const handleAddCalendarEvent = useCallback(() => {
+    if (!calendarDate || !calendarTitle.trim() || !calendarType) {
+      toast({
+        title: "Missing Details",
+        description: "Select a date, title, and event type to add this to your calendar.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setCalendarEvents((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        date: normalizeCalendarDate(calendarDate),
+        title: calendarTitle.trim(),
+        type: calendarType,
+        reminder: calendarReminder,
+        notes: calendarNotes.trim() || undefined
+      }
+    ]);
+    setCalendarTitle('');
+    setCalendarType('');
+    setCalendarNotes('');
+    setCalendarReminder(false);
+    setCalendarDate(undefined);
     toast({
       title: "Event Added",
       description: "Your event has been added to the calendar.",
+    });
+  }, [calendarDate, calendarNotes, calendarReminder, calendarTitle, calendarType, normalizeCalendarDate, toast]);
+
+  const handleRemoveCalendarEvent = useCallback((eventId: number) => {
+    setCalendarEvents((prev) => prev.filter((event) => event.id !== eventId));
+    toast({
+      title: "Event Removed",
+      description: "The event has been removed from your calendar."
     });
   }, [toast]);
 
@@ -1695,61 +1751,110 @@ export default function WeddingPlanning() {
         <CardContent className="p-4 md:p-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
             <div>
+              <div className="mb-4 md:mb-6">
+                <CalendarUI
+                  mode="single"
+                  selected={calendarDate}
+                  onSelect={(date) => setCalendarDate(date ?? undefined)}
+                  modifiers={{ hasEvent: calendarEventDates }}
+                  modifiersClassNames={{
+                    hasEvent:
+                      "relative after:absolute after:bottom-1 after:left-1/2 after:h-1 after:w-1 after:-translate-x-1/2 after:rounded-full after:bg-primary"
+                  }}
+                  className="rounded-md border"
+                />
+              </div>
               <h4 className="font-medium mb-3 text-sm md:text-base">
                 Upcoming Events
               </h4>
               <div className="space-y-2">
-                {calendarEvents.map((event) => (
-                  <div
-                    key={event.id}
-                    className="flex items-start gap-2 md:gap-3 p-2 md:p-3 bg-muted rounded-lg"
-                  >
-                    <div className="text-center min-w-[40px] md:min-w-[50px]">
-                      <div className="text-[10px] md:text-xs text-muted-foreground">
-                        {new Date(event.date).toLocaleDateString('en-US', {
-                          month: 'short'
-                        })}
-                      </div>
-                      <div className="text-base md:text-lg font-bold">
-                        {new Date(event.date).getDate()}
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-xs md:text-sm truncate">
-                        {event.title}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge
-                          variant={
-                            event.type === 'payment'
-                              ? 'destructive'
-                              : event.type === 'appointment'
-                              ? 'default'
-                              : 'secondary'
-                          }
-                          className="text-[10px] md:text-xs"
-                        >
-                          {event.type}
-                        </Badge>
-                        {event.reminder && (
-                          <BellRing className="w-3 h-3 text-muted-foreground" />
-                        )}
-                      </div>
-                    </div>
-                    <Button size="sm" variant="ghost" className="p-1 md:p-2">
-                      <X className="w-3 h-3" />
-                    </Button>
+                {sortedCalendarEvents.length === 0 ? (
+                  <div className="text-xs md:text-sm text-muted-foreground border border-dashed rounded-lg p-3">
+                    No events yet. Pick a date on the calendar and add your first milestone.
                   </div>
-                ))}
+                ) : (
+                  sortedCalendarEvents.map((event) => {
+                    const eventDate = parseCalendarDate(event.date);
+                    return (
+                      <div
+                        key={event.id}
+                        className="flex items-start gap-2 md:gap-3 p-2 md:p-3 bg-muted rounded-lg"
+                      >
+                        <div className="text-center min-w-[40px] md:min-w-[50px]">
+                          <div className="text-[10px] md:text-xs text-muted-foreground">
+                            {eventDate.toLocaleDateString('en-US', {
+                              month: 'short'
+                            })}
+                          </div>
+                          <div className="text-base md:text-lg font-bold">
+                            {eventDate.getDate()}
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-xs md:text-sm truncate">
+                            {event.title}
+                          </p>
+                          {event.notes && (
+                            <p className="text-[10px] md:text-xs text-muted-foreground mt-1 line-clamp-2">
+                              {event.notes}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge
+                              variant={
+                                event.type === 'payment'
+                                  ? 'destructive'
+                                  : event.type === 'appointment'
+                                  ? 'default'
+                                  : 'secondary'
+                              }
+                              className="text-[10px] md:text-xs capitalize"
+                            >
+                              {event.type}
+                            </Badge>
+                            {event.reminder && (
+                              <BellRing className="w-3 h-3 text-muted-foreground" />
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="p-1 md:p-2"
+                          onClick={() => handleRemoveCalendarEvent(event.id)}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 
             <div>
               <h4 className="font-medium mb-3 text-sm md:text-base">Add Event</h4>
               <div className="space-y-2 md:space-y-3">
-                <Input type="date" placeholder="Date" className="text-sm" />
-                <Input placeholder="Event title" className="text-sm" />
-                <Select>
+                <div className="border rounded-md p-3">
+                  <CalendarUI
+                    mode="single"
+                    selected={calendarDate}
+                    onSelect={(date) => setCalendarDate(date ?? undefined)}
+                    modifiers={{ hasEvent: calendarEventDates }}
+                    modifiersClassNames={{
+                      hasEvent:
+                        "relative after:absolute after:bottom-1 after:left-1/2 after:h-1 after:w-1 after:-translate-x-1/2 after:rounded-full after:bg-primary"
+                    }}
+                    className="mx-auto"
+                  />
+                </div>
+                <Input
+                  placeholder="Event title"
+                  className="text-sm"
+                  value={calendarTitle}
+                  onChange={(e) => setCalendarTitle(e.target.value)}
+                />
+                <Select value={calendarType} onValueChange={setCalendarType}>
                   <SelectTrigger className="text-sm">
                     <SelectValue placeholder="Event type" />
                   </SelectTrigger>
@@ -1763,9 +1868,17 @@ export default function WeddingPlanning() {
                 <Textarea
                   placeholder="Notes (optional)"
                   className="h-16 md:h-20 text-sm"
+                  value={calendarNotes}
+                  onChange={(e) => setCalendarNotes(e.target.value)}
                 />
                 <div className="flex items-center gap-2">
-                  <input type="checkbox" id="reminder" className="rounded" />
+                  <input
+                    type="checkbox"
+                    id="reminder"
+                    className="rounded"
+                    checked={calendarReminder}
+                    onChange={(e) => setCalendarReminder(e.target.checked)}
+                  />
                   <label htmlFor="reminder" className="text-xs md:text-sm">
                     Set reminder
                   </label>
