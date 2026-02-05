@@ -8,15 +8,16 @@ import React, { useEffect, useRef, useState } from "react";
  *   2) import.meta.env.VITE_GOOGLE_MAPS_API_KEY
  *   3) GET /api/google/maps-script
  *
- * Improvements:
- * - Adds `loading=async` to remove the perf warning
- * - Uses importLibrary() and falls back to legacy Marker if no Map ID
- * - Advanced markers only when a valid Map ID is provided
+ * IMPORTANT FIXES:
+ * - Map is created ONCE (no reset on rerenders)
+ * - Markers are diff-synced (no blinking on load-more / click)
+ * - onIdle supported (for "Search this area" button)
+ * - Center only pans on "big" center changes (prevents snap-back loop)
  */
 
 type LatLng = { lat: number; lng: number };
 
-type MarkerInput = {
+export type MarkerInput = {
   id: number | string;
   position: LatLng;
   title?: string;
@@ -30,7 +31,7 @@ type Props = {
   markers: MarkerInput[];
   onMarkerClick?: (m: MarkerInput) => void;
   fitToMarkers?: boolean;
-  onIdle?: (map: any) => void; // ✅ ADD
+  onIdle?: (map: any) => void;
 };
 
 declare global {
@@ -52,14 +53,18 @@ async function getGmapsKey(): Promise<string | null> {
   try {
     const viteKey = (import.meta as any)?.env?.VITE_GOOGLE_MAPS_API_KEY;
     if (viteKey && String(viteKey).trim()) return String(viteKey).trim();
-  } catch {}
+  } catch {
+    /* ignore */
+  }
   try {
     const resp = await fetch("/api/google/maps-script");
     if (resp.ok) {
       const txt = (await resp.text()).trim();
       if (txt) return txt;
     }
-  } catch {}
+  } catch {
+    /* ignore */
+  }
   return null;
 }
 
@@ -70,20 +75,20 @@ function getMapId(): string | null {
   return id || null;
 }
 
-function waitForGoogle(): Promise<void> {
+function waitForGoogle(timeoutMs = 10000): Promise<void> {
   return new Promise((resolve, reject) => {
-    let tries = 0;
-    const maxTries = 200; // ~10s
+    let waited = 0;
+    const step = 50;
     const iv = setInterval(() => {
-      tries++;
+      waited += step;
       if (window.google?.maps) {
         clearInterval(iv);
         resolve();
-      } else if (tries > maxTries) {
+      } else if (waited >= timeoutMs) {
         clearInterval(iv);
         reject(new Error("Google Maps failed to load"));
       }
-    }, 50);
+    }, step);
   });
 }
 
@@ -121,16 +126,12 @@ async function ensureGoogleMapsLoaded(): Promise<void> {
         window.google.maps.importLibrary("maps"),
         window.google.maps.importLibrary("marker"),
       ]);
-    } catch {}
+    } catch {
+      /* older builds still work */
+    }
   })();
 
   await gmapsLoadPromise;
-}
-
-/** Small helper: avoid re-centering when user is just panning/zooming */
-function isFar(a: LatLng, b: LatLng, threshold = 0.01) {
-  // ~0.01 degrees ≈ 0.6 miles latitude-ish. Adjust if you want.
-  return Math.abs(a.lat - b.lat) > threshold || Math.abs(a.lng - b.lng) > threshold;
 }
 
 export default function MapView({
@@ -143,11 +144,17 @@ export default function MapView({
 }: Props) {
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
-  const markerObjsRef = useRef<any[]>([]);
+
+  // Marker instances keyed by id (diff sync = no blink)
+  const markerObjsRef = useRef<Map<string, any>>(new Map());
+
   const idleListenerRef = useRef<any>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ Effect A: Create map ONCE + attach idle listener ONCE
+  // Track last center we *accepted* (prevents snap-back loop)
+  const lastAppliedCenterRef = useRef<LatLng | null>(null);
+
+  // 1) Create map ONCE
   useEffect(() => {
     let cancelled = false;
 
@@ -162,24 +169,27 @@ export default function MapView({
         const mapId = getMapId();
 
         if (!mapRef.current && mapDivRef.current) {
+          const mapOptions: any = { center, zoom };
+          if (mapId) mapOptions.mapId = mapId;
+
           let MapCtor: any = gm.maps.Map;
           try {
             const libs = await gm.maps.importLibrary?.("maps");
             if (libs?.Map) MapCtor = libs.Map;
-          } catch {}
-
-          const mapOptions: any = { center, zoom };
-          if (mapId) mapOptions.mapId = mapId;
+          } catch {
+            /* ignore */
+          }
 
           mapRef.current = new MapCtor(mapDivRef.current, mapOptions);
 
-          // idle listener once (no duplication)
+          // Idle listener ONCE (for "Search this area")
           idleListenerRef.current = mapRef.current.addListener("idle", () => {
             onIdle?.(mapRef.current);
           });
-        }
 
-        setError(null);
+          lastAppliedCenterRef.current = { ...center };
+          setError(null);
+        }
       } catch (e: any) {
         setError(e?.message || "Map failed to load");
       }
@@ -187,75 +197,48 @@ export default function MapView({
 
     return () => {
       cancelled = true;
-      try {
-        idleListenerRef.current?.remove?.();
-      } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // ✅ ONLY ONCE
+  }, []);
 
-  // ✅ Effect B: Update markers only when markers list changes (no map reset)
+  // 2) Diff-sync markers (no wipe + redraw)
   useEffect(() => {
     if (!mapRef.current || !window.google?.maps) return;
-
     const gm = window.google;
 
-    // Clear old markers
-    markerObjsRef.current.forEach((mk) => {
-      try {
-        if (mk.map) mk.map = null;
-        if (mk.setMap) mk.setMap(null);
-      } catch {}
-    });
-    markerObjsRef.current = [];
+    const incomingIds = new Set(markers.map((m) => String(m.id)));
 
-    const hasAdvanced = !!gm.maps.marker?.AdvancedMarkerElement && !!getMapId();
-    const AdvancedMarkerElement = hasAdvanced ? gm.maps.marker.AdvancedMarkerElement : null;
-
-    markers.forEach((m) => {
-      if (hasAdvanced && AdvancedMarkerElement) {
-        const marker = new AdvancedMarkerElement({
-          map: mapRef.current,
-          position: m.position,
-          title: m.title || "",
-        });
-        marker.addListener("gmp-click", () => onMarkerClick?.(m));
-        markerObjsRef.current.push(marker);
-      } else {
-        const marker = new gm.maps.Marker({
-          map: mapRef.current,
-          position: m.position,
-          title: m.title || "",
-        });
-        marker.addListener("click", () => onMarkerClick?.(m));
-        markerObjsRef.current.push(marker);
+    // Remove markers not in incoming set
+    markerObjsRef.current.forEach((mk, id) => {
+      if (!incomingIds.has(id)) {
+        try {
+          mk.setMap?.(null);
+          mk.map = null;
+        } catch {
+          /* ignore */
+        }
+        markerObjsRef.current.delete(id);
       }
     });
-  }, [markers, onMarkerClick]);
 
-  // ✅ Effect C: Only pan when center changed *significantly* (new search / new city)
-  useEffect(() => {
-    if (!mapRef.current) return;
+    // Add new markers
+    for (const m of markers) {
+      const id = String(m.id);
+      if (markerObjsRef.current.has(id)) continue;
 
-    const current = mapRef.current.getCenter?.();
-    if (!current) return;
+      const marker = new gm.maps.Marker({
+        map: mapRef.current,
+        position: m.position,
+        title: m.title || "",
+        animation: gm.maps.Animation.DROP,
+      });
 
-    const currentLatLng: LatLng = { lat: current.lat(), lng: current.lng() };
-
-    // Only re-center when it's actually a new location (prevents snap-back while dragging)
-    if (isFar(currentLatLng, center, 0.01)) {
-      mapRef.current.panTo(center);
+      marker.addListener("click", () => onMarkerClick?.(m));
+      markerObjsRef.current.set(id, marker);
     }
-  }, [center]);
 
-  // ✅ Effect D: Fit bounds when results change (optional)
-  useEffect(() => {
-    if (!mapRef.current || !window.google?.maps) return;
-    const gm = window.google;
-
-    if (!fitToMarkers) return;
-
-    if (markers.length > 1) {
+    // Fit bounds only if asked (and only when markers meaningfully change)
+    if (fitToMarkers && markers.length > 1) {
       const bounds = new gm.maps.LatLngBounds();
       markers.forEach((m) => bounds.extend(new gm.maps.LatLng(m.position.lat, m.position.lng)));
       mapRef.current.fitBounds(bounds, { top: 64, bottom: 64, left: 64, right: 64 });
@@ -263,8 +246,25 @@ export default function MapView({
       mapRef.current.setCenter(markers[0].position);
       mapRef.current.setZoom(14);
     }
-    // If 0 markers: do nothing (do NOT snap back)
-  }, [markers, fitToMarkers]);
+  }, [markers, onMarkerClick, fitToMarkers]);
+
+  // 3) Prevent snap-back: only pan when center changed “a lot” (new search)
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    const curr = mapRef.current.getCenter?.();
+    if (!curr) return;
+
+    const latDiff = Math.abs(curr.lat() - center.lat);
+    const lngDiff = Math.abs(curr.lng() - center.lng);
+
+    // Only treat as "new search location" if it's a meaningful move
+    const BIG_MOVE = 0.02; // ~1-2 miles-ish depending on latitude
+    if (latDiff > BIG_MOVE || lngDiff > BIG_MOVE) {
+      mapRef.current.panTo(center);
+      lastAppliedCenterRef.current = { ...center };
+    }
+  }, [center]);
 
   return (
     <div className="relative w-full h-full">
