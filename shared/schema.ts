@@ -6,6 +6,8 @@ import {
   integer,
   boolean,
   timestamp,
+  date,
+  bigserial,
   jsonb,
   decimal,
   index,
@@ -1103,6 +1105,27 @@ export const weddingEventDetails = pgTable(
 );
 
 export type WeddingEventDetails = typeof weddingEventDetails.$inferSelect;
+
+// Wedding Planning Calendar Events (saved per user/couple)
+export const weddingCalendarEvents = pgTable(
+  "wedding_calendar_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    eventDate: date("event_date").notNull(),
+    title: text("title").notNull(),
+    type: varchar("type", { length: 32 }).notNull(),
+    notes: text("notes"),
+    reminder: boolean("reminder").default(false).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    userIdx: index("wedding_calendar_events_user_idx").on(t.userId),
+    dateIdx: index("wedding_calendar_events_date_idx").on(t.eventDate),
+  })
+);
+
+export type WeddingCalendarEvent = typeof weddingCalendarEvents.$inferSelect;
 
 /* =========================================================================
    ===== INSERT SCHEMAS
