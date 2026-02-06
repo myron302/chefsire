@@ -19,6 +19,8 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { ToastAction } from '@/components/ui/toast';
+import { Calendar as CalendarUI } from '@/components/ui/calendar';
 import { Link } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
 import { useUser } from '@/contexts/UserContext';
@@ -316,7 +318,13 @@ export default function WeddingPlanning() {
     title: string;
     type: string;
     reminder: boolean;
+    notes?: string;
   }>>([]);
+  const [calendarDate, setCalendarDate] = useState<Date | undefined>();
+  const [calendarTitle, setCalendarTitle] = useState('');
+  const [calendarType, setCalendarType] = useState('');
+  const [calendarNotes, setCalendarNotes] = useState('');
+  const [calendarReminder, setCalendarReminder] = useState(false);
 
   // Email Invitations State
   const [guestList, setGuestList] = useState<Array<{
@@ -327,10 +335,12 @@ export default function WeddingPlanning() {
     plusOne: boolean;
     partnerName?: string; // Partner name specified by host when sending invitation
     plusOneName?: string | null; // Name of guest's plus-one collected via RSVP
+    respondedAt?: string | null;
   }>>([]);
   const [newGuestName, setNewGuestName] = useState('');
   const [newGuestEmail, setNewGuestEmail] = useState('');
   const [newGuestPartner, setNewGuestPartner] = useState(''); // Partner/Plus-one name
+  const [newGuestPlusOneAllowed, setNewGuestPlusOneAllowed] = useState(false);
 
   // Wedding Event Details State - will be loaded from localStorage in useEffect
   const [partner1Name, setPartner1Name] = useState('');
@@ -456,6 +466,7 @@ export default function WeddingPlanning() {
               rsvp: g.rsvp,
               plusOne: g.plusOne,
               plusOneName: g.plusOneName ?? null,
+              respondedAt: g.respondedAt ?? null,
             }));
 
             // Also load unsent guests from localStorage
@@ -480,7 +491,38 @@ export default function WeddingPlanning() {
       }
     };
 
+    const fetchCalendarEvents = async () => {
+      try {
+        const response = await fetch('/api/wedding/calendar-events', {
+          credentials: 'include',
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.ok && Array.isArray(data.events)) {
+            const events = data.events
+              .filter((event: any) => event?.eventDate)
+              .map((event: any) => ({
+                id: Number(event.id),
+                date: event.eventDate,
+                title: event.title,
+                type: event.type,
+                reminder: Boolean(event.reminder),
+                notes: event.notes || undefined
+              }));
+            setCalendarEvents(events);
+          }
+        } else {
+          const errMsg = await response.text();
+          console.error('[Wedding Planning] Fetch calendar events error:', errMsg);
+        }
+      } catch (error) {
+        console.error('[Wedding Planning] Failed to fetch calendar events:', error);
+      }
+    };
+
     fetchGuestList();
+    fetchCalendarEvents();
   }, [user?.id]);
 
   // Google Places Autocomplete initialization
@@ -609,13 +651,15 @@ export default function WeddingPlanning() {
   // Email Invitation Handlers
   const addGuest = useCallback(async () => {
     if (newGuestName && newGuestEmail) {
+      const plusOneAllowed = newGuestPlusOneAllowed || !!newGuestPartner;
       const tempGuest = {
         id: Date.now(),
         name: newGuestName,
         email: newGuestEmail,
         rsvp: 'pending',
-        plusOne: !!newGuestPartner, // True if partner name provided
-        partnerName: newGuestPartner || undefined
+        plusOne: plusOneAllowed,
+        partnerName: newGuestPartner || undefined,
+        respondedAt: null
       };
 
       // Update state
@@ -635,6 +679,7 @@ export default function WeddingPlanning() {
       setNewGuestName('');
       setNewGuestEmail('');
       setNewGuestPartner('');
+      setNewGuestPlusOneAllowed(false);
 
       const guestDisplayName = newGuestPartner ? `${newGuestName} & ${newGuestPartner}` : newGuestName;
       toast({
@@ -642,7 +687,7 @@ export default function WeddingPlanning() {
         description: `${guestDisplayName} has been added to your guest list.`,
       });
     }
-  }, [newGuestName, newGuestEmail, newGuestPartner, user?.id, toast]);
+  }, [newGuestName, newGuestEmail, newGuestPartner, newGuestPlusOneAllowed, user?.id, toast]);
 
   const removeGuest = useCallback(async (guestId: number | string) => {
     // Check if this is a sent guest (from database) or unsent guest (from localStorage)
@@ -947,6 +992,17 @@ export default function WeddingPlanning() {
     };
   }, [guestList]);
 
+  const respondedGuests = useMemo(() => {
+    return guestList
+      .filter((guest) => guest.rsvp !== 'pending')
+      .slice()
+      .sort((a, b) => {
+        const aTime = a.respondedAt ? new Date(a.respondedAt).getTime() : 0;
+        const bTime = b.respondedAt ? new Date(b.respondedAt).getTime() : 0;
+        return bTime - aTime;
+      });
+  }, [guestList]);
+
   // Button Click Handlers
   const handleStartPlanning = useCallback(() => {
     toast({
@@ -1029,11 +1085,174 @@ export default function WeddingPlanning() {
     }
   }, [user, toast]);
 
-  const handleAddCalendarEvent = useCallback(() => {
-    toast({
-      title: "Event Added",
-      description: "Your event has been added to the calendar.",
-    });
+  const normalizeCalendarDate = useCallback((date: Date) => {
+    return date.toISOString().split('T')[0];
+  }, []);
+
+  const parseCalendarDate = useCallback((dateString: string) => {
+    return new Date(`${dateString}T00:00:00`);
+  }, []);
+
+  const formatGoogleCalendarDate = useCallback((date: Date) => {
+    return date.toISOString().slice(0, 10).replace(/-/g, '');
+  }, []);
+
+  const buildGoogleCalendarUrl = useCallback(
+    (event: { title: string; date: string; notes?: string }) => {
+      const startDate = parseCalendarDate(event.date);
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 1);
+
+      const params = new URLSearchParams({
+        action: 'TEMPLATE',
+        text: event.title,
+        dates: `${formatGoogleCalendarDate(startDate)}/${formatGoogleCalendarDate(endDate)}`,
+      });
+
+      if (event.notes) {
+        params.set('details', event.notes);
+      }
+
+      return `https://calendar.google.com/calendar/render?${params.toString()}`;
+    },
+    [formatGoogleCalendarDate, parseCalendarDate]
+  );
+
+  const sortedCalendarEvents = useMemo(() => {
+    return [...calendarEvents].sort((a, b) => a.date.localeCompare(b.date));
+  }, [calendarEvents]);
+
+  const calendarEventDates = useMemo(() => {
+    return calendarEvents.map((event) => parseCalendarDate(event.date));
+  }, [calendarEvents, parseCalendarDate]);
+
+  const handleAddCalendarEvent = useCallback(async () => {
+    // Persist calendar events to the API.
+    if (!calendarDate || !calendarTitle.trim() || !calendarType) {
+      toast({
+        title: "Missing Details",
+        description: "Select a date, title, and event type to add this to your calendar.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/wedding/calendar-events', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventDate: normalizeCalendarDate(calendarDate),
+          title: calendarTitle.trim(),
+          type: calendarType,
+          notes: calendarNotes.trim() || undefined,
+          reminder: calendarReminder
+        })
+      });
+
+      if (!response.ok) {
+        const errMsg = await response.text();
+        toast({
+          title: "Save Failed",
+          description: errMsg || "Unable to save this event.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const data = await response.json();
+      if (data.ok && data.event) {
+        const savedEvent = {
+          id: Number(data.event.id),
+          date: data.event.eventDate,
+          title: data.event.title,
+          type: data.event.type,
+          reminder: Boolean(data.event.reminder),
+          notes: data.event.notes || undefined
+        };
+
+        setCalendarEvents((prev) => [...prev, savedEvent]);
+
+        const googleCalendarUrl = buildGoogleCalendarUrl({
+          title: savedEvent.title,
+          date: savedEvent.date,
+          notes: savedEvent.notes
+        });
+
+        toast({
+          title: "Event Added",
+          description: "Your event has been added to the calendar.",
+          action: (
+            <ToastAction
+              altText="Add to Google Calendar"
+              onClick={() => window.open(googleCalendarUrl, '_blank', 'noopener,noreferrer')}
+            >
+              Add to Google Calendar
+            </ToastAction>
+          )
+        });
+      } else {
+        toast({
+          title: "Event Added",
+          description: "Your event has been added to the calendar.",
+        });
+      }
+
+      setCalendarTitle('');
+      setCalendarType('');
+      setCalendarNotes('');
+      setCalendarReminder(false);
+      setCalendarDate(undefined);
+    } catch (error) {
+      console.error('[Wedding Planning] Failed to save calendar event:', error);
+      toast({
+        title: "Save Failed",
+        description: "Unable to save this event. Please try again.",
+        variant: "destructive"
+      });
+    }
+  }, [
+    calendarDate,
+    calendarNotes,
+    calendarReminder,
+    calendarTitle,
+    calendarType,
+    buildGoogleCalendarUrl,
+    normalizeCalendarDate,
+    toast
+  ]);
+
+  const handleRemoveCalendarEvent = useCallback(async (eventId: number) => {
+    try {
+      const response = await fetch(`/api/wedding/calendar-events/${eventId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errMsg = await response.text();
+        toast({
+          title: "Delete Failed",
+          description: errMsg || "Unable to remove this event.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setCalendarEvents((prev) => prev.filter((event) => event.id !== eventId));
+      toast({
+        title: "Event Removed",
+        description: "The event has been removed from your calendar."
+      });
+    } catch (error) {
+      console.error('[Wedding Planning] Failed to delete calendar event:', error);
+      toast({
+        title: "Delete Failed",
+        description: "Unable to remove this event. Please try again.",
+        variant: "destructive"
+      });
+    }
   }, [toast]);
 
 
@@ -1695,61 +1914,105 @@ export default function WeddingPlanning() {
         <CardContent className="p-4 md:p-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
             <div>
+              <div className="mb-4 md:mb-6">
+                <CalendarUI
+                  mode="single"
+                  selected={calendarDate}
+                  onSelect={(date) => setCalendarDate(date ?? undefined)}
+                  modifiers={{ hasEvent: calendarEventDates }}
+                  modifiersClassNames={{
+                    hasEvent:
+                      "relative after:absolute after:bottom-1 after:left-1/2 after:h-1 after:w-1 after:-translate-x-1/2 after:rounded-full after:bg-primary"
+                  }}
+                  className="rounded-md border"
+                />
+              </div>
               <h4 className="font-medium mb-3 text-sm md:text-base">
                 Upcoming Events
               </h4>
               <div className="space-y-2">
-                {calendarEvents.map((event) => (
-                  <div
-                    key={event.id}
-                    className="flex items-start gap-2 md:gap-3 p-2 md:p-3 bg-muted rounded-lg"
-                  >
-                    <div className="text-center min-w-[40px] md:min-w-[50px]">
-                      <div className="text-[10px] md:text-xs text-muted-foreground">
-                        {new Date(event.date).toLocaleDateString('en-US', {
-                          month: 'short'
-                        })}
-                      </div>
-                      <div className="text-base md:text-lg font-bold">
-                        {new Date(event.date).getDate()}
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-xs md:text-sm truncate">
-                        {event.title}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge
-                          variant={
-                            event.type === 'payment'
-                              ? 'destructive'
-                              : event.type === 'appointment'
-                              ? 'default'
-                              : 'secondary'
-                          }
-                          className="text-[10px] md:text-xs"
-                        >
-                          {event.type}
-                        </Badge>
-                        {event.reminder && (
-                          <BellRing className="w-3 h-3 text-muted-foreground" />
-                        )}
-                      </div>
-                    </div>
-                    <Button size="sm" variant="ghost" className="p-1 md:p-2">
-                      <X className="w-3 h-3" />
-                    </Button>
+                {sortedCalendarEvents.length === 0 ? (
+                  <div className="text-xs md:text-sm text-muted-foreground border border-dashed rounded-lg p-3">
+                    No events yet. Pick a date on the calendar and add your first milestone.
                   </div>
-                ))}
+                ) : (
+                  sortedCalendarEvents.map((event) => {
+                    const eventDate = parseCalendarDate(event.date);
+                    return (
+                      <div
+                        key={event.id}
+                        className="flex items-start gap-2 md:gap-3 p-2 md:p-3 bg-muted rounded-lg"
+                      >
+                        <div className="text-center min-w-[40px] md:min-w-[50px]">
+                          <div className="text-[10px] md:text-xs text-muted-foreground">
+                            {eventDate.toLocaleDateString('en-US', {
+                              month: 'short'
+                            })}
+                          </div>
+                          <div className="text-base md:text-lg font-bold">
+                            {eventDate.getDate()}
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-xs md:text-sm truncate">
+                            {event.title}
+                          </p>
+                          {event.notes && (
+                            <p className="text-[10px] md:text-xs text-muted-foreground mt-1 line-clamp-2">
+                              {event.notes}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge
+                              variant={
+                                event.type === 'payment'
+                                  ? 'destructive'
+                                  : event.type === 'appointment'
+                                  ? 'default'
+                                  : 'secondary'
+                              }
+                              className="text-[10px] md:text-xs capitalize"
+                            >
+                              {event.type}
+                            </Badge>
+                            {event.reminder && (
+                              <BellRing className="w-3 h-3 text-muted-foreground" />
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="p-1 md:p-2"
+                          onClick={() => handleRemoveCalendarEvent(event.id)}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 
             <div>
               <h4 className="font-medium mb-3 text-sm md:text-base">Add Event</h4>
               <div className="space-y-2 md:space-y-3">
-                <Input type="date" placeholder="Date" className="text-sm" />
-                <Input placeholder="Event title" className="text-sm" />
-                <Select>
+                <Input
+                  type="date"
+                  className="text-sm"
+                  value={calendarDate ? normalizeCalendarDate(calendarDate) : ''}
+                  onChange={(e) =>
+                    setCalendarDate(e.target.value ? parseCalendarDate(e.target.value) : undefined)
+                  }
+                />
+                <Input
+                  placeholder="Event title"
+                  className="text-sm"
+                  value={calendarTitle}
+                  onChange={(e) => setCalendarTitle(e.target.value)}
+                />
+                <Select value={calendarType} onValueChange={setCalendarType}>
                   <SelectTrigger className="text-sm">
                     <SelectValue placeholder="Event type" />
                   </SelectTrigger>
@@ -1763,9 +2026,17 @@ export default function WeddingPlanning() {
                 <Textarea
                   placeholder="Notes (optional)"
                   className="h-16 md:h-20 text-sm"
+                  value={calendarNotes}
+                  onChange={(e) => setCalendarNotes(e.target.value)}
                 />
                 <div className="flex items-center gap-2">
-                  <input type="checkbox" id="reminder" className="rounded" />
+                  <input
+                    type="checkbox"
+                    id="reminder"
+                    className="rounded"
+                    checked={calendarReminder}
+                    onChange={(e) => setCalendarReminder(e.target.checked)}
+                  />
                   <label htmlFor="reminder" className="text-xs md:text-sm">
                     Set reminder
                   </label>
@@ -1999,6 +2270,37 @@ export default function WeddingPlanning() {
             </div>
           )}
 
+          {respondedGuests.length > 0 && (
+            <div className="mb-6 p-4 bg-muted/50 rounded-lg">
+              <h4 className="text-sm font-medium mb-3">Recent Responses</h4>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {respondedGuests.slice(0, 8).map((guest) => (
+                  <div key={guest.id} className="flex items-center justify-between gap-3 text-xs">
+                    <span className="font-medium truncate">
+                      {guest.partnerName
+                        ? `${guest.name} & ${guest.partnerName}`
+                        : guest.plusOneName
+                        ? `${guest.name} & ${guest.plusOneName}`
+                        : guest.name}
+                    </span>
+                    <Badge
+                      variant={
+                        guest.rsvp === 'accepted' || guest.rsvp === 'accept-both'
+                          ? 'default'
+                          : guest.rsvp === 'declined'
+                          ? 'destructive'
+                          : 'secondary'
+                      }
+                      className="text-[10px] capitalize"
+                    >
+                      {guest.rsvp}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Template Selection */}
           <div className="mb-6">
             <label className="text-sm font-medium mb-2 block">Invitation Template</label>
@@ -2047,6 +2349,17 @@ export default function WeddingPlanning() {
                   onChange={(e) => setNewGuestPartner(e.target.value)}
                   className="text-sm"
                 />
+                <label className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="rounded"
+                    checked={newGuestPlusOneAllowed}
+                    onChange={(e) => setNewGuestPlusOneAllowed(e.target.checked)}
+                  />
+                  Allow plus-one even if no name provided
+                </label>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Button onClick={addGuest} className="w-full">
                   <Plus className="w-4 h-4 mr-2" />
                   Add Guest
@@ -2075,7 +2388,14 @@ export default function WeddingPlanning() {
                         ? `${guest.name} & ${guest.plusOneName}`
                         : guest.name}
                     </p>
-                    <p className="text-xs text-muted-foreground truncate">{guest.email}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs text-muted-foreground truncate">{guest.email}</p>
+                      {guest.plusOne && !guest.partnerName && !guest.plusOneName && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          Plus-one allowed
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge
