@@ -902,6 +902,13 @@ export default function WeddingPlanning() {
     weddingLocation,
     receptionDate,
     receptionTime,
+    receptionLocation,
+    useSameLocation,
+    customMessage,
+    selectedTemplate,
+    toast
+  ]);
+
   const rsvpStats = useMemo(() => {
   let acceptedBoth = 0;
   let ceremonyOnly = 0;
