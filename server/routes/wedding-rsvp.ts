@@ -5,6 +5,7 @@ import { db } from "../db";
 import { eq, and, gt, isNull } from "drizzle-orm";
 import { weddingRsvpInvitations, users } from "../../shared/schema";
 import { sendWeddingRsvpEmail, sendRsvpNotificationEmail } from "../utils/mailer";
+import { sendWeddingRSVPNotification } from "../services/notification-service";
 import { requireAuth } from "../middleware/auth";
 
 const router = Router();
@@ -272,7 +273,7 @@ router.get("/rsvp", async (req, res) => {
                   <span style="color:#333;">I’m bringing a guest</span>
                 </label>
                 <label for="plusOneName">Guest’s Name</label>
-                <input type="text" id="plusOneName" name="plusOneName" placeholder="Enter your guest's full name" disabled />
+                <input type="text" id="plusOneName" name="plusOneName" placeholder="Enter your guest's full name" />
                 <button type="submit">Submit RSVP</button>
               </form>
               <script>
@@ -282,11 +283,21 @@ router.get("/rsvp", async (req, res) => {
                   function sync(){
                     var on = !!cb && cb.checked;
                     if (inp) {
-                      inp.disabled = !on;
+                      inp.placeholder = on
+                        ? "Enter your guest's full name"
+                        : "Check ‘I’m bringing a guest’ if you'd like to add a name";
                       if (!on) inp.value = '';
                     }
                   }
                   if (cb) cb.addEventListener('change', sync);
+                  if (inp) {
+                    inp.addEventListener('input', function(){
+                      if (cb && String(inp.value || '').trim()) cb.checked = true;
+                    });
+                    inp.addEventListener('focus', function(){
+                      if (cb) cb.checked = true;
+                    });
+                  }
                   sync();
                   window.__weddingRsvpValidate = function(){
                     if (cb && cb.checked && inp && !String(inp.value||'').trim()) {
@@ -343,6 +354,15 @@ router.get("/rsvp", async (req, res) => {
             coupleName: coupleUser.displayName ? `${coupleUser.displayName}'s Wedding` : undefined,
             eventDate: invitation.eventDate ? invitation.eventDate.toLocaleDateString() : undefined,
           }
+        );
+      }
+
+      if (coupleUser?.id) {
+        await sendWeddingRSVPNotification(
+          coupleUser.id,
+          invitation.guestName,
+          rsvpStatus,
+          1
         );
       }
     } catch (notificationError) {
@@ -521,6 +541,16 @@ router.post("/rsvp", async (req, res) => {
             coupleName: coupleUser.displayName ? `${coupleUser.displayName}'s Wedding` : undefined,
             eventDate: invitation.eventDate ? invitation.eventDate.toLocaleDateString() : undefined,
           }
+        );
+      }
+
+      if (coupleUser?.id) {
+        const guestCount = plusOneName ? 2 : 1;
+        await sendWeddingRSVPNotification(
+          coupleUser.id,
+          invitation.guestName,
+          rsvpStatus,
+          guestCount
         );
       }
     } catch (notificationError) {
