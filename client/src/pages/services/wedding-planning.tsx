@@ -1,32 +1,54 @@
 // client/src/pages/services/wedding-planning.tsx
-import { useState, useMemo, memo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, memo, useCallback, useEffect, useRef } from "react";
 import {
-  Calendar, MapPin, Users, DollarSign, Clock, Heart,
-  ChefHat, Camera, Music, Flower, Sparkles, Star,
-  Info, Mail, ChevronDown, TrendingUp,
-  Shield, Bookmark, Share2,
-  Gift, Calendar as CalendarIcon, Link2, Plus, X, BellRing,
-  AlertCircle, Zap, Lock
-} from 'lucide-react';
+  Calendar,
+  MapPin,
+  Users,
+  DollarSign,
+  Clock,
+  Heart,
+  ChefHat,
+  Camera,
+  Music,
+  Flower,
+  Sparkles,
+  Star,
+  Info,
+  Mail,
+  TrendingUp,
+  Shield,
+  Bookmark,
+  Share2,
+  Gift,
+  Calendar as CalendarIcon,
+  Link2,
+  Plus,
+  X,
+  BellRing,
+  AlertCircle,
+  Zap,
+  Lock,
+} from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Slider } from '@/components/ui/slider';
-import { Progress } from '@/components/ui/progress';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Calendar as CalendarUI } from '@/components/ui/calendar';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ToastAction } from "@/components/ui/toast";
+import { Calendar as CalendarUI } from "@/components/ui/calendar";
 
-import { Link } from 'wouter';
-import { useToast } from '@/hooks/use-toast';
-import { useUser } from '@/contexts/UserContext';
-import { useGoogleMaps } from '@/hooks/useGoogleMaps';
-import WeddingTrialSelector from '@/components/WeddingTrialSelector';
-import { couplePlans } from '@/config/wedding-pricing';
+import { Link } from "wouter";
+import { useToast } from "@/hooks/use-toast";
+import { useUser } from "@/contexts/UserContext";
+import { useGoogleMaps } from "@/hooks/useGoogleMaps";
+import WeddingTrialSelector from "@/components/WeddingTrialSelector";
+import { couplePlans } from "@/config/wedding-pricing";
 
 // =========================================================
 // STATIC DATA
@@ -35,84 +57,84 @@ import { couplePlans } from '@/config/wedding-pricing';
 const VENDORS = [
   {
     id: 1,
-    type: 'caterer',
-    name: 'Bella Vista Catering',
+    type: "caterer",
+    name: "Bella Vista Catering",
     rating: 4.9,
     reviews: 127,
-    priceRange: '$$$',
-    image: 'https://images.unsplash.com/photo-1555244162-803834f70033',
-    specialty: 'Farm-to-Table',
+    priceRange: "$$$",
+    image: "https://images.unsplash.com/photo-1555244162-803834f70033",
+    specialty: "Farm-to-Table",
     verified: true,
     featured: true,
     sponsored: true,
-    availability: 'Available',
+    availability: "Available",
     minGuests: 50,
     maxGuests: 500,
-    description: 'Award-winning catering with locally sourced ingredients',
-    amenities: ['Tastings', 'Custom Menus', 'Dietary Options', 'Bar Service'],
-    responseTime: '2 hours',
-    viewsToday: 23
+    description: "Award-winning catering with locally sourced ingredients",
+    amenities: ["Tastings", "Custom Menus", "Dietary Options", "Bar Service"],
+    responseTime: "2 hours",
+    viewsToday: 23,
   },
   {
     id: 2,
-    type: 'venue',
-    name: 'The Grand Ballroom',
+    type: "venue",
+    name: "The Grand Ballroom",
     rating: 4.8,
     reviews: 89,
-    priceRange: '$$$$',
-    image: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3',
-    capacity: '50-300',
+    priceRange: "$$$$",
+    image: "https://images.unsplash.com/photo-1519167758481-83f550bb49b3",
+    capacity: "50-300",
     verified: true,
     featured: false,
-    availability: 'Limited',
-    description: 'Elegant historic venue with stunning architecture',
-    amenities: ['In-House Catering', 'Parking', 'Bridal Suite', 'Dance Floor'],
-    responseTime: '24 hours'
+    availability: "Limited",
+    description: "Elegant historic venue with stunning architecture",
+    amenities: ["In-House Catering", "Parking", "Bridal Suite", "Dance Floor"],
+    responseTime: "24 hours",
   },
   {
     id: 3,
-    type: 'photographer',
-    name: 'Moments Photography',
+    type: "photographer",
+    name: "Moments Photography",
     rating: 5.0,
     reviews: 203,
-    priceRange: '$$$',
-    image: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b',
-    style: 'Documentary',
+    priceRange: "$$$",
+    image: "https://images.unsplash.com/photo-1537633552985-df8429e8048b",
+    style: "Documentary",
     verified: true,
     featured: false,
-    availability: 'Available',
-    description: 'Capturing authentic moments with artistic flair',
-    packages: ['6 hours', '8 hours', 'Full day'],
-    responseTime: '1 hour'
+    availability: "Available",
+    description: "Capturing authentic moments with artistic flair",
+    packages: ["6 hours", "8 hours", "Full day"],
+    responseTime: "1 hour",
   },
   {
     id: 4,
-    type: 'dj',
-    name: 'Elite Entertainment DJ',
+    type: "dj",
+    name: "Elite Entertainment DJ",
     rating: 4.7,
     reviews: 156,
-    priceRange: '$$',
-    image: 'https://images.unsplash.com/photo-1493676304819-0d7a8d026dcf',
-    specialty: 'All Genres',
+    priceRange: "$$",
+    image: "https://images.unsplash.com/photo-1493676304819-0d7a8d026dcf",
+    specialty: "All Genres",
     verified: false,
     featured: false,
-    availability: 'Available',
-    description: 'Professional DJ services with premium sound systems',
-    amenities: ['MC Services', 'Lighting', 'Dance Floor', 'Wireless Mics'],
-    responseTime: '3 hours'
-  }
+    availability: "Available",
+    description: "Professional DJ services with premium sound systems",
+    amenities: ["MC Services", "Lighting", "Dance Floor", "Wireless Mics"],
+    responseTime: "3 hours",
+  },
 ] as const;
 
 type Vendor = (typeof VENDORS)[number];
 
 const VENDOR_CATEGORIES = [
-  { value: 'all', label: 'All', icon: Sparkles },
-  { value: 'caterer', label: 'Catering', icon: ChefHat },
-  { value: 'venue', label: 'Venues', icon: MapPin },
-  { value: 'photographer', label: 'Photo', icon: Camera },
-  { value: 'dj', label: 'DJ & Music', icon: Music },
-  { value: 'florist', label: 'Florist', icon: Flower },
-  { value: 'planner', label: 'Planner', icon: Heart }
+  { value: "all", label: "All", icon: Sparkles },
+  { value: "caterer", label: "Catering", icon: ChefHat },
+  { value: "venue", label: "Venues", icon: MapPin },
+  { value: "photographer", label: "Photo", icon: Camera },
+  { value: "dj", label: "DJ & Music", icon: Music },
+  { value: "florist", label: "Florist", icon: Flower },
+  { value: "planner", label: "Planner", icon: Heart },
 ] as const;
 
 // =========================================================
@@ -141,7 +163,7 @@ const VendorCard = memo(
             fetchPriority="low"
             crossOrigin="anonymous"
             referrerPolicy="no-referrer"
-            style={{ contentVisibility: 'auto' }}
+            style={{ contentVisibility: "auto" }}
           />
           {(vendor as any).sponsored && (
             <Badge className="absolute top-2 left-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-xs">
@@ -161,16 +183,16 @@ const VendorCard = memo(
             className="absolute top-2 right-2 rounded-full p-1.5 md:p-2"
             onClick={() => onToggleSave(vendor.id)}
           >
-            <Bookmark className={`w-3 h-3 md:w-4 md:h-4 ${isSaved ? 'fill-current' : ''}`} />
+            <Bookmark className={`w-3 h-3 md:w-4 md:h-4 ${isSaved ? "fill-current" : ""}`} />
           </Button>
 
           <Badge
             className={`absolute bottom-2 left-2 text-xs ${
-              (vendor as any).availability === 'Available'
-                ? 'bg-green-500'
-                : (vendor as any).availability === 'Limited'
-                ? 'bg-yellow-500'
-                : 'bg-red-500'
+              (vendor as any).availability === "Available"
+                ? "bg-green-500"
+                : (vendor as any).availability === "Limited"
+                ? "bg-yellow-500"
+                : "bg-red-500"
             }`}
           >
             {(vendor as any).availability}
@@ -181,13 +203,9 @@ const VendorCard = memo(
           <div className="mb-2">
             <h3 className="font-semibold text-base md:text-lg flex items-center gap-1">
               {vendor.name}
-              {(vendor as any).verified && (
-                <Shield className="w-3 h-3 md:w-4 md:h-4 text-blue-500" />
-              )}
+              {(vendor as any).verified && <Shield className="w-3 h-3 md:w-4 md:h-4 text-blue-500" />}
             </h3>
-            <p className="text-xs md:text-sm text-muted-foreground line-clamp-2">
-              {(vendor as any).description}
-            </p>
+            <p className="text-xs md:text-sm text-muted-foreground line-clamp-2">{(vendor as any).description}</p>
           </div>
 
           <div className="flex items-center gap-3 md:gap-4 mb-2 md:mb-3">
@@ -246,10 +264,7 @@ const VendorCard = memo(
                     <span className="sm:hidden">Quote</span>
                   </Button>
                   <Link href="/catering/wedding-map" className="flex-1 sm:flex-none">
-                    <Button
-                      size="sm"
-                      className="bg-gradient-to-r from-pink-600 to-purple-600 w-full text-xs"
-                    >
+                    <Button size="sm" className="bg-gradient-to-r from-pink-600 to-purple-600 w-full text-xs">
                       <span className="hidden sm:inline">View Map</span>
                       <span className="sm:hidden">Map</span>
                     </Button>
@@ -271,7 +286,7 @@ const VendorCard = memo(
   }
 );
 
-VendorCard.displayName = 'VendorCard';
+VendorCard.displayName = "VendorCard";
 
 export default function WeddingPlanning() {
   const { toast } = useToast();
@@ -281,72 +296,75 @@ export default function WeddingPlanning() {
 
   // Get user context and check subscription status
   const { user, updateUser } = useUser();
-  const currentTier = user?.subscriptionTier || 'free';
-  const isPremium = currentTier === 'premium' || currentTier === 'elite';
-  const isElite = currentTier === 'elite';
+  const currentTier = user?.subscriptionTier || "free";
+  const isPremium = currentTier === "premium" || currentTier === "elite";
+  const isElite = currentTier === "elite";
 
   // Simulated dynamic savings data (replace with a real API call if needed)
   const dynamicSavings = 4200;
 
-  const [selectedVendorType, setSelectedVendorType] = useState('all');
+  const [selectedVendorType, setSelectedVendorType] = useState("all");
   const [budgetRange, setBudgetRange] = useState([5000, 50000]);
   const [guestCount, setGuestCount] = useState([100]);
-  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedDate, setSelectedDate] = useState("");
   const [savedVendors, setSavedVendors] = useState(new Set<number>());
-  const [activeView, setActiveView] = useState('grid');
   const [showBudgetCalculator, setShowBudgetCalculator] = useState(false);
   const [showTrialBanner, setShowTrialBanner] = useState(() => {
-    return localStorage.getItem('weddingTrialBannerDismissed') !== 'true';
+    return localStorage.getItem("weddingTrialBannerDismissed") !== "true";
   });
   const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
 
   const [registryLinks, setRegistryLinks] = useState([
-    { id: 1, name: 'Amazon', url: '', icon: '🎁' },
-    { id: 2, name: 'Target', url: '', icon: '🎯' },
-    { id: 3, name: 'Zola', url: '', icon: '💑' }
+    { id: 1, name: "Amazon", url: "", icon: "🎁" },
+    { id: 2, name: "Target", url: "", icon: "🎯" },
+    { id: 3, name: "Zola", url: "", icon: "💑" },
   ]);
 
-  const [calendarEvents, setCalendarEvents] = useState<Array<{
-    id: number;
-    date: string;
-    title: string;
-    type: string;
-    reminder: boolean;
-    notes?: string;
-  }>>([]);
+  const [calendarEvents, setCalendarEvents] = useState<
+    Array<{
+      id: number;
+      date: string;
+      title: string;
+      type: string;
+      reminder: boolean;
+      notes?: string;
+    }>
+  >([]);
   const [calendarDate, setCalendarDate] = useState<Date | undefined>();
-  const [calendarTitle, setCalendarTitle] = useState('');
-  const [calendarType, setCalendarType] = useState('');
-  const [calendarNotes, setCalendarNotes] = useState('');
+  const [calendarTitle, setCalendarTitle] = useState("");
+  const [calendarType, setCalendarType] = useState("");
+  const [calendarNotes, setCalendarNotes] = useState("");
   const [calendarReminder, setCalendarReminder] = useState(false);
 
   // Email Invitations State
-  const [guestList, setGuestList] = useState<Array<{
-    id: number | string;
-    name: string;
-    email: string;
-    rsvp: string;
-    plusOne: boolean;
-    partnerName?: string;
-    plusOneName?: string | null;
-    respondedAt?: string | null;
-  }>>([]);
-  const [newGuestName, setNewGuestName] = useState('');
-  const [newGuestEmail, setNewGuestEmail] = useState('');
-  const [newGuestPartner, setNewGuestPartner] = useState('');
+  const [guestList, setGuestList] = useState<
+    Array<{
+      id: number | string;
+      name: string;
+      email: string;
+      rsvp: string;
+      plusOne: boolean;
+      partnerName?: string; // Partner name specified by host when sending invitation
+      plusOneName?: string | null; // Name of guest's plus-one collected via RSVP
+      respondedAt?: string | null;
+    }>
+  >([]);
+  const [newGuestName, setNewGuestName] = useState("");
+  const [newGuestEmail, setNewGuestEmail] = useState("");
+  const [newGuestPartner, setNewGuestPartner] = useState("");
   const [newGuestPlusOneAllowed, setNewGuestPlusOneAllowed] = useState(false);
 
   // Wedding Event Details State
-  const [partner1Name, setPartner1Name] = useState('');
-  const [partner2Name, setPartner2Name] = useState('');
-  const [weddingTime, setWeddingTime] = useState('');
-  const [weddingLocation, setWeddingLocation] = useState('');
-  const [receptionDate, setReceptionDate] = useState('');
-  const [receptionTime, setReceptionTime] = useState('');
-  const [receptionLocation, setReceptionLocation] = useState('');
-  const [customMessage, setCustomMessage] = useState('We would be honored to have you celebrate with us!');
+  const [partner1Name, setPartner1Name] = useState("");
+  const [partner2Name, setPartner2Name] = useState("");
+  const [weddingTime, setWeddingTime] = useState("");
+  const [weddingLocation, setWeddingLocation] = useState("");
+  const [receptionDate, setReceptionDate] = useState("");
+  const [receptionTime, setReceptionTime] = useState("");
+  const [receptionLocation, setReceptionLocation] = useState("");
+  const [customMessage, setCustomMessage] = useState("We would be honored to have you celebrate with us!");
   const [useSameLocation, setUseSameLocation] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState('elegant');
+  const [selectedTemplate, setSelectedTemplate] = useState("elegant");
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // Refs for Google Places Autocomplete
@@ -355,19 +373,19 @@ export default function WeddingPlanning() {
 
   // Trial selector modal - only show once if user is on free tier
   const [showTrialSelector, setShowTrialSelector] = useState(() => {
-    const hasSelected = localStorage.getItem('weddingTierSelected');
+    const hasSelected = localStorage.getItem("weddingTierSelected");
     if (hasSelected) return false;
 
-    const storedUser = localStorage.getItem('user');
+    const storedUser = localStorage.getItem("user");
     if (storedUser) {
       try {
         const userData = JSON.parse(storedUser);
-        if (userData.subscriptionTier === 'premium' || userData.subscriptionTier === 'elite') {
-          localStorage.setItem('weddingTierSelected', 'true');
+        if (userData.subscriptionTier === "premium" || userData.subscriptionTier === "elite") {
+          localStorage.setItem("weddingTierSelected", "true");
           return false;
         }
       } catch (e) {
-        console.error('[Wedding Planning] Failed to parse user from localStorage:', e);
+        console.error("[Wedding Planning] Failed to parse user from localStorage:", e);
       }
     }
 
@@ -376,9 +394,9 @@ export default function WeddingPlanning() {
 
   // Hide selector if user already has premium/elite tier
   useEffect(() => {
-    if (currentTier === 'premium' || currentTier === 'elite') {
+    if (currentTier === "premium" || currentTier === "elite") {
       setShowTrialSelector(false);
-      localStorage.setItem('weddingTierSelected', 'true');
+      localStorage.setItem("weddingTierSelected", "true");
     }
   }, [currentTier]);
 
@@ -388,7 +406,7 @@ export default function WeddingPlanning() {
 
     const fetchEventDetails = async () => {
       try {
-        const response = await fetch('/api/wedding/event-details', { credentials: 'include' });
+        const response = await fetch("/api/wedding/event-details", { credentials: "include" });
 
         if (response.ok) {
           const data = await response.json();
@@ -403,7 +421,8 @@ export default function WeddingPlanning() {
             if (d.receptionTime) setReceptionTime(d.receptionTime);
             if (d.receptionLocation) setReceptionLocation(d.receptionLocation);
             if (d.customMessage) setCustomMessage(d.customMessage);
-            if (d.useSameLocation !== null && d.useSameLocation !== undefined) setUseSameLocation(Boolean(d.useSameLocation));
+            if (d.useSameLocation !== null && d.useSameLocation !== undefined)
+              setUseSameLocation(Boolean(d.useSameLocation));
             if (d.selectedTemplate) setSelectedTemplate(d.selectedTemplate);
           }
         } else {
@@ -414,26 +433,26 @@ export default function WeddingPlanning() {
           } catch {
             errMsg = response.statusText;
           }
-          console.error('[Wedding Planning] Fetch event details error:', errMsg);
+          console.error("[Wedding Planning] Fetch event details error:", errMsg);
           toast({
-            title: 'Load Failed',
+            title: "Load Failed",
             description: `Failed to load wedding details: ${errMsg}`,
-            variant: 'destructive',
+            variant: "destructive",
           });
         }
       } catch (error: any) {
-        console.error('[Wedding Planning] Failed to fetch event details:', error);
+        console.error("[Wedding Planning] Failed to fetch event details:", error);
         toast({
-          title: 'Load Failed',
+          title: "Load Failed",
           description: `Failed to load wedding details: ${error?.message ?? String(error)}`,
-          variant: 'destructive',
+          variant: "destructive",
         });
       }
     };
 
     const fetchGuestList = async () => {
       try {
-        const response = await fetch('/api/wedding/guest-list', { credentials: 'include' });
+        const response = await fetch("/api/wedding/guest-list", { credentials: "include" });
 
         if (response.ok) {
           const data = await response.json();
@@ -446,11 +465,11 @@ export default function WeddingPlanning() {
               plusOne: g.plusOne,
               plusOneName: g.plusOneName ?? null,
               respondedAt: g.respondedAt ?? null,
-              partnerName: g.partnerName ?? undefined
+              partnerName: g.partnerName ?? undefined,
             }));
 
             const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
-            const unsentGuests = JSON.parse(localStorage.getItem(unsentGuestsKey) || '[]');
+            const unsentGuests = JSON.parse(localStorage.getItem(unsentGuestsKey) || "[]");
 
             setGuestList([...sentGuests, ...unsentGuests]);
             return;
@@ -459,19 +478,19 @@ export default function WeddingPlanning() {
 
         // fallback to unsent only
         const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
-        const unsentGuests = JSON.parse(localStorage.getItem(unsentGuestsKey) || '[]');
+        const unsentGuests = JSON.parse(localStorage.getItem(unsentGuestsKey) || "[]");
         setGuestList(unsentGuests);
       } catch (error) {
-        console.error('[Wedding Planning] Failed to fetch guest list:', error);
+        console.error("[Wedding Planning] Failed to fetch guest list:", error);
         const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
-        const unsentGuests = JSON.parse(localStorage.getItem(unsentGuestsKey) || '[]');
+        const unsentGuests = JSON.parse(localStorage.getItem(unsentGuestsKey) || "[]");
         setGuestList(unsentGuests);
       }
     };
 
     const fetchCalendarEvents = async () => {
       try {
-        const response = await fetch('/api/wedding/calendar-events', { credentials: 'include' });
+        const response = await fetch("/api/wedding/calendar-events", { credentials: "include" });
 
         if (response.ok) {
           const data = await response.json();
@@ -484,16 +503,16 @@ export default function WeddingPlanning() {
                 title: event.title,
                 type: event.type,
                 reminder: Boolean(event.reminder),
-                notes: event.notes || undefined
+                notes: event.notes || undefined,
               }));
             setCalendarEvents(events);
           }
         } else {
           const errMsg = await response.text();
-          console.error('[Wedding Planning] Fetch calendar events error:', errMsg);
+          console.error("[Wedding Planning] Fetch calendar events error:", errMsg);
         }
       } catch (error) {
-        console.error('[Wedding Planning] Failed to fetch calendar events:', error);
+        console.error("[Wedding Planning] Failed to fetch calendar events:", error);
       }
     };
 
@@ -508,20 +527,20 @@ export default function WeddingPlanning() {
     if (!isPremium) return;
 
     const options: any = {
-      types: ['establishment', 'geocode'],
-      fields: ['name', 'formatted_address', 'geometry']
+      types: ["establishment", "geocode"],
+      fields: ["name", "formatted_address", "geometry"],
     };
 
     if (ceremonyRef.current) {
       const ceremonyAutocomplete = new window.google.maps.places.Autocomplete(ceremonyRef.current, options);
-      ceremonyAutocomplete.addListener('place_changed', () => {
+      ceremonyAutocomplete.addListener("place_changed", () => {
         const place = ceremonyAutocomplete.getPlace();
         const venueName = place.name;
         const fullAddress = place.formatted_address;
         const displayString =
           venueName && fullAddress && !fullAddress.startsWith(venueName)
             ? `${venueName}, ${fullAddress}`
-            : fullAddress || venueName || '';
+            : fullAddress || venueName || "";
         setWeddingLocation(displayString);
         if (useSameLocation) setReceptionLocation(displayString);
       });
@@ -529,41 +548,41 @@ export default function WeddingPlanning() {
 
     if (receptionRef.current && !useSameLocation) {
       const receptionAutocomplete = new window.google.maps.places.Autocomplete(receptionRef.current, options);
-      receptionAutocomplete.addListener('place_changed', () => {
+      receptionAutocomplete.addListener("place_changed", () => {
         const place = receptionAutocomplete.getPlace();
         const venueName = place.name;
         const fullAddress = place.formatted_address;
         const displayString =
           venueName && fullAddress && !fullAddress.startsWith(venueName)
             ? `${venueName}, ${fullAddress}`
-            : fullAddress || venueName || '';
+            : fullAddress || venueName || "";
         setReceptionLocation(displayString);
       });
     }
-  }, [isGoogleMapsLoaded, useSameLocation, isPremium]);
+  }, [isGoogleMapsLoaded, useSameLocation, isPremium, isPremium ? weddingLocation : undefined]); // safe-ish dependency
 
   const handleStartTrial = () => {
     setShowTrialBanner(false);
-    localStorage.setItem('weddingTrialBannerDismissed', 'true');
+    localStorage.setItem("weddingTrialBannerDismissed", "true");
     toast({
-      description: '🎉 All wedding planning features are completely free! Enjoy unlimited access.',
+      description: "🎉 All wedding planning features are completely free! Enjoy unlimited access.",
     });
   };
 
   const budgetBreakdown = useMemo(
     () => [
-      { category: 'Catering & Bar', percentage: 40, amount: budgetRange[1] * 0.4, icon: ChefHat },
-      { category: 'Venue', percentage: 20, amount: budgetRange[1] * 0.2, icon: MapPin },
-      { category: 'Photography', percentage: 12, amount: budgetRange[1] * 0.12, icon: Camera },
-      { category: 'Music & Entertainment', percentage: 8, amount: budgetRange[1] * 0.08, icon: Music },
-      { category: 'Flowers & Decor', percentage: 10, amount: budgetRange[1] * 0.1, icon: Flower },
-      { category: 'Other', percentage: 10, amount: budgetRange[1] * 0.1, icon: Sparkles }
+      { category: "Catering & Bar", percentage: 40, amount: budgetRange[1] * 0.4, icon: ChefHat },
+      { category: "Venue", percentage: 20, amount: budgetRange[1] * 0.2, icon: MapPin },
+      { category: "Photography", percentage: 12, amount: budgetRange[1] * 0.12, icon: Camera },
+      { category: "Music & Entertainment", percentage: 8, amount: budgetRange[1] * 0.08, icon: Music },
+      { category: "Flowers & Decor", percentage: 10, amount: budgetRange[1] * 0.1, icon: Flower },
+      { category: "Other", percentage: 10, amount: budgetRange[1] * 0.1, icon: Sparkles },
     ],
     [budgetRange]
   );
 
   const filteredVendors = useMemo(
-    () => (selectedVendorType === 'all' ? VENDORS : VENDORS.filter((v) => v.type === selectedVendorType)),
+    () => (selectedVendorType === "all" ? VENDORS : VENDORS.filter((v) => v.type === selectedVendorType)),
     [selectedVendorType]
   );
 
@@ -583,14 +602,23 @@ export default function WeddingPlanning() {
     if (newGuestName && newGuestEmail) {
       const plusOneAllowed = newGuestPlusOneAllowed || !!newGuestPartner;
 
-      const tempGuest = {
+      const tempGuest: {
+        id: number;
+        name: string;
+        email: string;
+        rsvp: string;
+        plusOne: boolean;
+        partnerName?: string;
+        respondedAt: string | null;
+        plusOneName?: string | null;
+      } = {
         id: Date.now(),
         name: newGuestName,
         email: newGuestEmail,
-        rsvp: 'pending',
+        rsvp: "pending",
         plusOne: plusOneAllowed,
         partnerName: newGuestPartner || undefined,
-        respondedAt: null as any
+        respondedAt: null,
       };
 
       setGuestList((prev) => {
@@ -598,16 +626,16 @@ export default function WeddingPlanning() {
 
         if (user?.id) {
           const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
-          const unsentGuests = updated.filter((g) => typeof g.id === 'number');
+          const unsentGuests = updated.filter((g) => typeof g.id === "number");
           localStorage.setItem(unsentGuestsKey, JSON.stringify(unsentGuests));
         }
 
         return updated;
       });
 
-      setNewGuestName('');
-      setNewGuestEmail('');
-      setNewGuestPartner('');
+      setNewGuestName("");
+      setNewGuestEmail("");
+      setNewGuestPartner("");
       setNewGuestPlusOneAllowed(false);
 
       const guestDisplayName = newGuestPartner ? `${newGuestName} & ${newGuestPartner}` : newGuestName;
@@ -618,53 +646,56 @@ export default function WeddingPlanning() {
     }
   }, [newGuestName, newGuestEmail, newGuestPartner, newGuestPlusOneAllowed, user?.id, toast]);
 
-  const removeGuest = useCallback(async (guestId: number | string) => {
-    const guest = guestList.find((g) => g.id === guestId);
-    const isSentGuest = typeof guestId === 'string';
+  const removeGuest = useCallback(
+    async (guestId: number | string) => {
+      const guest = guestList.find((g) => g.id === guestId);
+      const isSentGuest = typeof guestId === "string";
 
-    if (isSentGuest && user?.id) {
-      try {
-        const response = await fetch(`/api/wedding/guest/${guestId}`, {
-          method: 'DELETE',
-          credentials: 'include',
-        });
+      if (isSentGuest && user?.id) {
+        try {
+          const response = await fetch(`/api/wedding/guest/${guestId}`, {
+            method: "DELETE",
+            credentials: "include",
+          });
 
-        if (!response.ok) {
+          if (!response.ok) {
+            toast({
+              title: "Error",
+              description: "Failed to remove guest from database.",
+              variant: "destructive",
+            });
+            return;
+          }
+        } catch (error) {
+          console.error("Failed to delete guest:", error);
           toast({
             title: "Error",
-            description: "Failed to remove guest from database.",
+            description: "Failed to remove guest. Please try again.",
             variant: "destructive",
           });
           return;
         }
-      } catch (error) {
-        console.error('Failed to delete guest:', error);
-        toast({
-          title: "Error",
-          description: "Failed to remove guest. Please try again.",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
-    setGuestList((prev) => {
-      const updated = prev.filter((g) => g.id !== guestId);
-
-      if (user?.id) {
-        const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
-        const unsentGuests = updated.filter((g) => typeof g.id === 'number');
-        localStorage.setItem(unsentGuestsKey, JSON.stringify(unsentGuests));
       }
 
-      return updated;
-    });
+      setGuestList((prev) => {
+        const updated = prev.filter((g) => g.id !== guestId);
 
-    toast({
-      title: "Guest Removed",
-      description: guest ? `${guest.name} has been removed from your guest list.` : "Guest removed successfully.",
-    });
-  }, [user?.id, guestList, toast]);
+        if (user?.id) {
+          const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
+          const unsentGuests = updated.filter((g) => typeof g.id === "number");
+          localStorage.setItem(unsentGuestsKey, JSON.stringify(unsentGuests));
+        }
+
+        return updated;
+      });
+
+      toast({
+        title: "Guest Removed",
+        description: guest ? `${guest.name} has been removed from your guest list.` : "Guest removed successfully.",
+      });
+    },
+    [user?.id, guestList, toast]
+  );
 
   const sendInvitations = useCallback(async () => {
     if (!isPremium) {
@@ -676,7 +707,7 @@ export default function WeddingPlanning() {
       return;
     }
 
-    const unsentGuests = guestList.filter((g) => typeof g.id === 'number');
+    const unsentGuests = guestList.filter((g) => typeof g.id === "number");
 
     if (guestList.length === 0) {
       toast({
@@ -697,40 +728,38 @@ export default function WeddingPlanning() {
     }
 
     try {
-      const response = await fetch('/api/wedding/send-invitations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+      const response = await fetch("/api/wedding/send-invitations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           guests: unsentGuests.map((g) => ({
             name: g.name,
             email: g.email,
             plusOne: g.plusOne,
-            partnerName: g.partnerName
+            partnerName: g.partnerName,
           })),
           eventDetails: {
             partner1Name: partner1Name || undefined,
             partner2Name: partner2Name || undefined,
-            coupleName: partner1Name && partner2Name
-              ? `${partner1Name} & ${partner2Name}`
-              : (partner1Name || partner2Name || user?.displayName)
-              ? `${partner1Name || partner2Name || user?.displayName}'s Wedding`
-              : 'Our Wedding',
-            eventDate: selectedDate && weddingTime
-              ? `${selectedDate}T${weddingTime}`
-              : selectedDate || undefined,
+            coupleName:
+              partner1Name && partner2Name
+                ? `${partner1Name} & ${partner2Name}`
+                : (partner1Name || partner2Name || user?.displayName)
+                ? `${partner1Name || partner2Name || user?.displayName}'s Wedding`
+                : "Our Wedding",
+            eventDate: selectedDate && weddingTime ? `${selectedDate}T${weddingTime}` : selectedDate || undefined,
             eventLocation: weddingLocation || undefined,
-            receptionDate: receptionDate && receptionTime
-              ? `${receptionDate}T${receptionTime}`
-              : receptionDate || undefined,
+            receptionDate:
+              receptionDate && receptionTime ? `${receptionDate}T${receptionTime}` : receptionDate || undefined,
             receptionLocation: receptionLocation || undefined,
             useSameLocation: useSameLocation,
             hasReception: !!(receptionDate || receptionTime || receptionLocation || useSameLocation),
             coupleEmail: user?.email || undefined,
-            message: customMessage || 'We would be honored to have you celebrate with us!',
-            template: selectedTemplate
-          }
-        })
+            message: customMessage || "We would be honored to have you celebrate with us!",
+            template: selectedTemplate,
+          },
+        }),
       });
 
       const data = await response.json();
@@ -741,10 +770,10 @@ export default function WeddingPlanning() {
           localStorage.removeItem(unsentGuestsKey);
         }
 
-        setGuestList((prev) => prev.filter((g) => typeof g.id === 'string'));
+        setGuestList((prev) => prev.filter((g) => typeof g.id === "string"));
 
         if (data.errors && data.errors.length > 0) {
-          const errorMessages = data.errors.map((err: any) => `${err.email}: ${err.error}`).join('\n');
+          const errorMessages = data.errors.map((err: any) => `${err.email}: ${err.error}`).join("\n");
 
           toast({
             title: data.sent > 0 ? "Partial Success" : "Failed to Send Invitations",
@@ -758,21 +787,23 @@ export default function WeddingPlanning() {
           });
         }
 
-        const listResponse = await fetch('/api/wedding/guest-list', { credentials: 'include' });
+        const listResponse = await fetch("/api/wedding/guest-list", { credentials: "include" });
 
         if (listResponse.ok) {
           const listData = await listResponse.json();
           if (listData.ok) {
-            setGuestList(listData.guests.map((g: any) => ({
-              id: g.id,
-              name: g.name,
-              email: g.email,
-              rsvp: g.rsvp,
-              plusOne: g.plusOne,
-              plusOneName: g.plusOneName ?? null,
-              respondedAt: g.respondedAt ?? null,
-              partnerName: g.partnerName ?? undefined
-            })));
+            setGuestList(
+              listData.guests.map((g: any) => ({
+                id: g.id,
+                name: g.name,
+                email: g.email,
+                rsvp: g.rsvp,
+                plusOne: g.plusOne,
+                plusOneName: g.plusOneName ?? null,
+                respondedAt: g.respondedAt ?? null,
+                partnerName: g.partnerName ?? undefined,
+              }))
+            );
           }
         }
       } else {
@@ -783,7 +814,7 @@ export default function WeddingPlanning() {
         });
       }
     } catch (error) {
-      console.error('Failed to send invitations:', error);
+      console.error("Failed to send invitations:", error);
       toast({
         title: "Error",
         description: "Failed to send invitations. Please try again.",
@@ -804,7 +835,8 @@ export default function WeddingPlanning() {
     customMessage,
     selectedTemplate,
     user,
-    toast
+    toast,
+    useSameLocation,
   ]);
 
   const [isEditingEventDetails, setIsEditingEventDetails] = useState(false);
@@ -812,10 +844,10 @@ export default function WeddingPlanning() {
   const handleSaveEventDetails = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const response = await fetch('/api/wedding/event-details', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+      const response = await fetch("/api/wedding/event-details", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           partner1Name,
           partner2Name,
@@ -834,30 +866,30 @@ export default function WeddingPlanning() {
       if (response.ok) {
         setIsEditingEventDetails(false);
         toast({
-          title: 'Event Details Saved',
-          description: 'Your wedding details have been saved successfully.',
+          title: "Event Details Saved",
+          description: "Your wedding details have been saved successfully.",
         });
       } else {
         let errorMsg: string;
         try {
           const data = await response.json();
-          errorMsg = (data && data.error) ? String(data.error) : response.statusText;
+          errorMsg = data && data.error ? String(data.error) : response.statusText;
         } catch {
           errorMsg = response.statusText;
         }
-        console.error('[Wedding Planning] Save event details error:', errorMsg);
+        console.error("[Wedding Planning] Save event details error:", errorMsg);
         toast({
-          title: 'Save Failed',
+          title: "Save Failed",
           description: `Failed to save wedding details: ${errorMsg}`,
-          variant: 'destructive',
+          variant: "destructive",
         });
       }
     } catch (error: any) {
-      console.error('[Wedding Planning] Failed to save event details:', error);
+      console.error("[Wedding Planning] Failed to save event details:", error);
       toast({
-        title: 'Save Failed',
+        title: "Save Failed",
         description: `Failed to save wedding details: ${error?.message ?? String(error)}`,
-        variant: 'destructive',
+        variant: "destructive",
       });
     }
   }, [
@@ -873,7 +905,7 @@ export default function WeddingPlanning() {
     useSameLocation,
     customMessage,
     selectedTemplate,
-    toast
+    toast,
   ]);
 
   const rsvpStats = useMemo(() => {
@@ -889,23 +921,23 @@ export default function WeddingPlanning() {
     guestList.forEach((g) => {
       const hasPlusOne = !!g.plusOneName;
       switch (g.rsvp) {
-        case 'accepted':
-        case 'accept-both':
+        case "accepted":
+        case "accept-both":
           acceptedBoth++;
           if (hasPlusOne) {
             ceremonyExtras++;
             receptionExtras++;
           }
           break;
-        case 'ceremony-only':
+        case "ceremony-only":
           ceremonyOnly++;
           if (hasPlusOne) ceremonyExtras++;
           break;
-        case 'reception-only':
+        case "reception-only":
           receptionOnly++;
           if (hasPlusOne) receptionExtras++;
           break;
-        case 'declined':
+        case "declined":
           declined++;
           break;
         default:
@@ -925,13 +957,13 @@ export default function WeddingPlanning() {
       receptionTotal,
       declined,
       pending,
-      total: guestList.length
+      total: guestList.length,
     };
   }, [guestList]);
 
   const respondedGuests = useMemo(() => {
     return guestList
-      .filter((guest) => guest.rsvp !== 'pending')
+      .filter((guest) => guest.rsvp !== "pending")
       .slice()
       .sort((a, b) => {
         const aTime = a.respondedAt ? new Date(a.respondedAt).getTime() : 0;
@@ -945,7 +977,7 @@ export default function WeddingPlanning() {
       title: "Let's Start Planning!",
       description: "Scroll down to explore vendors, manage your budget, and track your calendar.",
     });
-    window.scrollTo({ top: 600, behavior: 'smooth' });
+    window.scrollTo({ top: 600, behavior: "smooth" });
   }, [toast]);
 
   const handleViewBudgetReport = useCallback(() => {
@@ -977,7 +1009,7 @@ export default function WeddingPlanning() {
   }, [toast]);
 
   const handleAddRegistry = useCallback(() => {
-    const newRegistry = { id: Date.now(), name: 'Custom Registry', url: '', icon: '🎁' };
+    const newRegistry = { id: Date.now(), name: "Custom Registry", url: "", icon: "🎁" };
     setRegistryLinks((prev) => [...prev, newRegistry]);
     toast({
       title: "Registry Added",
@@ -985,29 +1017,52 @@ export default function WeddingPlanning() {
     });
   }, [toast]);
 
-  const handleShareRegistry = useCallback((platform: string) => {
-    const registrySlug = user?.username || user?.id || 'my-registry';
-    const url = `https://chefsire.com/registry/${registrySlug}`;
+  const handleShareRegistry = useCallback(
+    (platform: string) => {
+      const registrySlug = user?.username || user?.id || "my-registry";
+      const url = `https://chefsire.com/registry/${registrySlug}`;
 
-    if (platform === 'copy') {
-      navigator.clipboard.writeText(url);
-      toast({ title: "Link Copied!", description: "Registry link copied to clipboard." });
-    } else if (platform === 'Email') {
-      const subject = encodeURIComponent('Check out our wedding registry!');
-      const body = encodeURIComponent(
-        `We've created a wedding registry to help us start our new life together.\n\nView our registry here: ${url}\n\nThank you for your love and support!`
-      );
-      window.location.href = `mailto:?subject=${subject}&body=${body}`;
-    } else if (platform === 'Facebook') {
-      window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
-    } else if (platform === 'Instagram') {
-      navigator.clipboard.writeText(url);
-      toast({ title: "Link Copied!", description: "Paste this link in your Instagram bio or story." });
-    }
-  }, [user, toast]);
+      if (platform === "copy") {
+        navigator.clipboard.writeText(url);
+        toast({ title: "Link Copied!", description: "Registry link copied to clipboard." });
+      } else if (platform === "Email") {
+        const subject = encodeURIComponent("Check out our wedding registry!");
+        const body = encodeURIComponent(
+          `We've created a wedding registry to help us start our new life together.\n\nView our registry here: ${url}\n\nThank you for your love and support!`
+        );
+        window.location.href = `mailto:?subject=${subject}&body=${body}`;
+      } else if (platform === "Facebook") {
+        window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, "_blank");
+      } else if (platform === "Instagram") {
+        navigator.clipboard.writeText(url);
+        toast({ title: "Link Copied!", description: "Paste this link in your Instagram bio or story." });
+      }
+    },
+    [user, toast]
+  );
 
-  const normalizeCalendarDate = useCallback((date: Date) => date.toISOString().split('T')[0], []);
+  const normalizeCalendarDate = useCallback((date: Date) => date.toISOString().split("T")[0], []);
   const parseCalendarDate = useCallback((dateString: string) => new Date(`${dateString}T00:00:00`), []);
+  const formatGoogleCalendarDate = useCallback((date: Date) => date.toISOString().slice(0, 10).replace(/-/g, ""), []);
+
+  const buildGoogleCalendarUrl = useCallback(
+    (event: { title: string; date: string; notes?: string }) => {
+      const startDate = parseCalendarDate(event.date);
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 1);
+
+      const params = new URLSearchParams({
+        action: "TEMPLATE",
+        text: event.title,
+        dates: `${formatGoogleCalendarDate(startDate)}/${formatGoogleCalendarDate(endDate)}`,
+      });
+
+      if (event.notes) params.set("details", event.notes);
+
+      return `https://calendar.google.com/calendar/render?${params.toString()}`;
+    },
+    [formatGoogleCalendarDate, parseCalendarDate]
+  );
 
   const sortedCalendarEvents = useMemo(() => {
     return [...calendarEvents].sort((a, b) => a.date.localeCompare(b.date));
@@ -1018,27 +1073,28 @@ export default function WeddingPlanning() {
   }, [calendarEvents, parseCalendarDate]);
 
   const handleAddCalendarEvent = useCallback(async () => {
+    // Persist calendar events to the API.
     if (!calendarDate || !calendarTitle.trim() || !calendarType) {
       toast({
         title: "Missing Details",
         description: "Select a date, title, and event type to add this to your calendar.",
-        variant: "destructive"
+        variant: "destructive",
       });
       return;
     }
 
     try {
-      const response = await fetch('/api/wedding/calendar-events', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/wedding/calendar-events", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventDate: normalizeCalendarDate(calendarDate),
           title: calendarTitle.trim(),
           type: calendarType,
           notes: calendarNotes.trim() || undefined,
-          reminder: calendarReminder
-        })
+          reminder: calendarReminder,
+        }),
       });
 
       if (!response.ok) {
@@ -1046,42 +1102,57 @@ export default function WeddingPlanning() {
         toast({
           title: "Save Failed",
           description: errMsg || "Unable to save this event.",
-          variant: "destructive"
+          variant: "destructive",
         });
         return;
       }
 
       const data = await response.json();
       if (data.ok && data.event) {
-        setCalendarEvents((prev) => [
-          ...prev,
-          {
-            id: Number(data.event.id),
-            date: data.event.eventDate,
-            title: data.event.title,
-            type: data.event.type,
-            reminder: Boolean(data.event.reminder),
-            notes: data.event.notes || undefined
-          }
-        ]);
+        const savedEvent = {
+          id: Number(data.event.id),
+          date: data.event.eventDate,
+          title: data.event.title,
+          type: data.event.type,
+          reminder: Boolean(data.event.reminder),
+          notes: data.event.notes || undefined,
+        };
+
+        setCalendarEvents((prev) => [...prev, savedEvent]);
+
+        const googleCalendarUrl = buildGoogleCalendarUrl({
+          title: savedEvent.title,
+          date: savedEvent.date,
+          notes: savedEvent.notes,
+        });
+
+        toast({
+          title: "Event Added",
+          description: "Your event has been added to the calendar.",
+          action: (
+            <ToastAction altText="Add to Google Calendar" onClick={() => window.open(googleCalendarUrl, "_blank", "noopener,noreferrer")}>
+              Add to Google Calendar
+            </ToastAction>
+          ),
+        });
+      } else {
+        toast({
+          title: "Event Added",
+          description: "Your event has been added to the calendar.",
+        });
       }
 
-      setCalendarTitle('');
-      setCalendarType('');
-      setCalendarNotes('');
+      setCalendarTitle("");
+      setCalendarType("");
+      setCalendarNotes("");
       setCalendarReminder(false);
       setCalendarDate(undefined);
-
-      toast({
-        title: "Event Added",
-        description: "Your event has been added to the calendar.",
-      });
     } catch (error) {
-      console.error('[Wedding Planning] Failed to save calendar event:', error);
+      console.error("[Wedding Planning] Failed to save calendar event:", error);
       toast({
         title: "Save Failed",
         description: "Unable to save this event. Please try again.",
-        variant: "destructive"
+        variant: "destructive",
       });
     }
   }, [
@@ -1090,90 +1161,97 @@ export default function WeddingPlanning() {
     calendarReminder,
     calendarTitle,
     calendarType,
+    buildGoogleCalendarUrl,
     normalizeCalendarDate,
-    toast
+    toast,
   ]);
 
-  const handleRemoveCalendarEvent = useCallback(async (eventId: number) => {
-    try {
-      const response = await fetch(`/api/wedding/calendar-events/${eventId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
+  const handleRemoveCalendarEvent = useCallback(
+    async (eventId: number) => {
+      try {
+        const response = await fetch(`/api/wedding/calendar-events/${eventId}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
 
-      if (!response.ok) {
-        const errMsg = await response.text();
+        if (!response.ok) {
+          const errMsg = await response.text();
+          toast({
+            title: "Delete Failed",
+            description: errMsg || "Unable to remove this event.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        setCalendarEvents((prev) => prev.filter((event) => event.id !== eventId));
+        toast({
+          title: "Event Removed",
+          description: "The event has been removed from your calendar.",
+        });
+      } catch (error) {
+        console.error("[Wedding Planning] Failed to delete calendar event:", error);
         toast({
           title: "Delete Failed",
-          description: errMsg || "Unable to remove this event.",
-          variant: "destructive"
+          description: "Unable to remove this event. Please try again.",
+          variant: "destructive",
         });
+      }
+    },
+    [toast]
+  );
+
+  const handleTrialSelect = useCallback(
+    async (tier: "free" | "premium" | "elite") => {
+      if (currentTier === "premium" || currentTier === "elite") {
+        toast({ title: "Already Subscribed", description: "You already have an active subscription!" });
+        setShowTrialSelector(false);
         return;
       }
 
-      setCalendarEvents((prev) => prev.filter((event) => event.id !== eventId));
-      toast({
-        title: "Event Removed",
-        description: "The event has been removed from your calendar."
-      });
-    } catch (error) {
-      console.error('[Wedding Planning] Failed to delete calendar event:', error);
-      toast({
-        title: "Delete Failed",
-        description: "Unable to remove this event. Please try again.",
-        variant: "destructive"
-      });
-    }
-  }, [toast]);
+      const plan = (couplePlans as any)[tier];
 
-  const handleTrialSelect = useCallback(async (tier: 'free' | 'premium' | 'elite') => {
-    if (currentTier === 'premium' || currentTier === 'elite') {
-      toast({ title: "Already Subscribed", description: "You already have an active subscription!" });
-      setShowTrialSelector(false);
-      return;
-    }
+      try {
+        let subscriptionEndsAt: string | null = null;
+        if (tier !== "free" && plan?.trialDays) {
+          const endDate = new Date();
+          endDate.setDate(endDate.getDate() + plan.trialDays);
+          subscriptionEndsAt = endDate.toISOString();
+        }
 
-    const plan = couplePlans[tier];
-
-    try {
-      let subscriptionEndsAt: string | null = null;
-      if (tier !== 'free' && plan.trialDays) {
-        const endDate = new Date();
-        endDate.setDate(endDate.getDate() + plan.trialDays);
-        subscriptionEndsAt = endDate.toISOString();
-      }
-
-      await updateUser({
-        subscriptionTier: tier,
-        subscriptionStatus: 'active' as any,
-        subscriptionEndsAt: subscriptionEndsAt as any,
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      localStorage.setItem('weddingTierSelected', 'true');
-      setShowTrialSelector(false);
-
-      if (tier === 'free') {
-        toast({
-          title: "Free Plan Activated",
-          description: "You can upgrade to Premium or Elite anytime to unlock more features!",
+        await updateUser({
+          subscriptionTier: tier,
+          subscriptionStatus: "active" as any,
+          subscriptionEndsAt: subscriptionEndsAt as any,
         });
-      } else {
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        localStorage.setItem("weddingTierSelected", "true");
+        setShowTrialSelector(false);
+
+        if (tier === "free") {
+          toast({
+            title: "Free Plan Activated",
+            description: "You can upgrade to Premium or Elite anytime to unlock more features!",
+          });
+        } else {
+          toast({
+            title: `${plan.trialDays}-Day ${plan.name} Trial Started!`,
+            description: `Enjoy all ${plan.name} features for free. Features should unlock immediately!`,
+          });
+        }
+      } catch (error) {
+        console.error("[Wedding Planning] Failed to update tier:", error);
         toast({
-          title: `${plan.trialDays}-Day ${plan.name} Trial Started!`,
-          description: `Enjoy all ${plan.name} features for free. Features should unlock immediately!`,
+          title: "Update Failed",
+          description: "Failed to activate trial. Please try again or refresh the page.",
+          variant: "destructive",
         });
       }
-    } catch (error) {
-      console.error('[Wedding Planning] Failed to update tier:', error);
-      toast({
-        title: "Update Failed",
-        description: "Failed to activate trial. Please try again or refresh the page.",
-        variant: "destructive",
-      });
-    }
-  }, [updateUser, toast, currentTier]);
+    },
+    [updateUser, toast, currentTier]
+  );
 
   const InvitationPreview = () => {
     try {
@@ -1182,20 +1260,20 @@ export default function WeddingPlanning() {
           container: "bg-white font-serif border-double border-pink-200",
           accent: "text-pink-500",
           title: "font-light tracking-widest uppercase text-3xl",
-          button: "rounded-full border-pink-200"
+          button: "rounded-full border-pink-200",
         },
         rustic: {
           container: "bg-orange-50 font-sans border-dashed border-amber-300",
           accent: "text-amber-700",
           title: "font-bold text-4xl italic text-amber-900",
-          button: "rounded-none border-amber-500 bg-amber-50"
+          button: "rounded-none border-amber-500 bg-amber-50",
         },
         modern: {
           container: "bg-slate-900 text-white font-sans border-solid border-white/20",
           accent: "text-cyan-400",
           title: "font-black tracking-tighter text-5xl uppercase italic",
-          button: "rounded-md border-cyan-400 text-cyan-400 hover:bg-cyan-400/10"
-        }
+          button: "rounded-md border-cyan-400 text-cyan-400 hover:bg-cyan-400/10",
+        },
       };
 
       const styles = (styleTemplates as any)[selectedTemplate] || styleTemplates.elegant;
@@ -1205,26 +1283,26 @@ export default function WeddingPlanning() {
           <div className="space-y-2">
             <Sparkles className={`w-6 h-6 mx-auto ${styles.accent}`} />
             <h2 className={styles.title}>
-              {partner1Name || 'Partner 1'} <span className="text-xl block md:inline">&</span> {partner2Name || 'Partner 2'}
+              {partner1Name || "Partner 1"} <span className="text-xl block md:inline">&</span> {partner2Name || "Partner 2"}
             </h2>
-            <div className={`h-px w-24 mx-auto opacity-50 ${selectedTemplate === 'modern' ? 'bg-cyan-400' : 'bg-current'}`} />
+            <div className={`h-px w-24 mx-auto opacity-50 ${selectedTemplate === "modern" ? "bg-cyan-400" : "bg-current"}`} />
           </div>
 
-          <p className={`text-lg px-4 ${selectedTemplate === 'modern' ? 'text-slate-300' : 'italic text-muted-foreground'}`}>
+          <p className={`text-lg px-4 ${selectedTemplate === "modern" ? "text-slate-300" : "italic text-muted-foreground"}`}>
             "{customMessage}"
           </p>
 
           <div className="space-y-6 py-4">
             <div className="flex flex-col items-center">
               <CalendarIcon className={`w-5 h-5 mb-1 ${styles.accent}`} />
-              <p className="font-semibold text-lg">{selectedDate || 'Saturday, June 14th'}</p>
-              <p className="text-sm opacity-80">{weddingTime || '4:00 PM'}</p>
+              <p className="font-semibold text-lg">{selectedDate || "Saturday, June 14th"}</p>
+              <p className="text-sm opacity-80">{weddingTime || "4:00 PM"}</p>
             </div>
 
             <div className="flex flex-col items-center">
               <MapPin className={`w-5 h-5 mb-1 ${styles.accent}`} />
               <p className="font-bold uppercase tracking-widest text-xs mb-1">The Ceremony</p>
-              <p className="text-sm max-w-xs">{weddingLocation || 'The Grand Estate, Main Hall'}</p>
+              <p className="text-sm max-w-xs">{weddingLocation || "The Grand Estate, Main Hall"}</p>
             </div>
 
             {!useSameLocation && receptionLocation ? (
@@ -1249,7 +1327,7 @@ export default function WeddingPlanning() {
         </div>
       );
     } catch (error) {
-      console.error('[InvitationPreview] Error rendering:', error);
+      console.error("[InvitationPreview] Error rendering:", error);
       toast({ title: "Debug Error", description: `Preview error: ${String(error)}`, variant: "destructive" });
       return <div className="p-8 text-center text-red-500">Error rendering preview</div>;
     }
@@ -1283,7 +1361,7 @@ export default function WeddingPlanning() {
                   size="sm"
                   onClick={() => {
                     setShowTrialBanner(false);
-                    localStorage.setItem('weddingTrialBannerDismissed', 'true');
+                    localStorage.setItem("weddingTrialBannerDismissed", "true");
                   }}
                   className="flex-shrink-0"
                 >
@@ -1310,9 +1388,7 @@ export default function WeddingPlanning() {
             <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
               Wedding Planning Hub
             </h1>
-            <p className="text-muted-foreground mt-2 text-sm md:text-base">
-              Find and book the perfect vendors for your special day
-            </p>
+            <p className="text-muted-foreground mt-2 text-sm md:text-base">Find and book the perfect vendors for your special day</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
             <Button
@@ -1331,10 +1407,7 @@ export default function WeddingPlanning() {
                 <span className="sm:hidden">Map</span>
               </Button>
             </Link>
-            <Button
-              className="bg-gradient-to-r from-pink-600 to-purple-600 text-white w-full sm:w-auto"
-              onClick={handleStartPlanning}
-            >
+            <Button className="bg-gradient-to-r from-pink-600 to-purple-600 text-white w-full sm:w-auto" onClick={handleStartPlanning}>
               <Heart className="w-4 h-4 mr-2" />
               Start Planning
             </Button>
@@ -1350,13 +1423,9 @@ export default function WeddingPlanning() {
             </div>
             <Progress value={43} className="mb-4" />
             <div className="grid grid-cols-4 md:grid-cols-7 gap-2 md:gap-3">
-              {['Venue', 'Catering', 'Photo', 'Music', 'Flowers', 'Planner', 'Cake'].map((item, idx) => (
+              {["Venue", "Catering", "Photo", "Music", "Flowers", "Planner", "Cake"].map((item, idx) => (
                 <div key={item} className="text-center">
-                  <div
-                    className={`w-7 h-7 md:w-8 md:h-8 mx-auto rounded-full flex items-center justify-center mb-1 ${
-                      idx < 3 ? 'bg-green-500' : 'bg-gray-200'
-                    }`}
-                  >
+                  <div className={`w-7 h-7 md:w-8 md:h-8 mx-auto rounded-full flex items-center justify-center mb-1 ${idx < 3 ? "bg-green-500" : "bg-gray-200"}`}>
                     {idx < 3 && <span className="text-white text-xs">✓</span>}
                   </div>
                   <span className="text-[10px] md:text-xs">{item}</span>
@@ -1378,23 +1447,13 @@ export default function WeddingPlanning() {
                   <label className="text-sm font-medium">Total Budget</label>
                   <div className="flex items-center gap-4 mt-2">
                     <span className="text-2xl font-bold">${budgetRange[1].toLocaleString()}</span>
-                    <Slider
-                      value={budgetRange}
-                      onValueChange={setBudgetRange}
-                      max={100000}
-                      min={5000}
-                      step={1000}
-                      className="flex-1"
-                    />
+                    <Slider value={budgetRange} onValueChange={setBudgetRange} max={100000} min={5000} step={1000} className="flex-1" />
                   </div>
                 </div>
 
                 <div className="grid gap-3 mt-6">
                   {budgetBreakdown.map((item) => (
-                    <div
-                      key={item.category}
-                      className="flex items-center justify-between p-3 bg-muted rounded-lg"
-                    >
+                    <div key={item.category} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                       <div className="flex items-center gap-3">
                         <item.icon className="w-5 h-5 text-muted-foreground" />
                         <div>
@@ -1427,14 +1486,7 @@ export default function WeddingPlanning() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <Slider
-                  value={budgetRange}
-                  onValueChange={setBudgetRange}
-                  max={100000}
-                  min={5000}
-                  step={1000}
-                  className="flex-1"
-                />
+                <Slider value={budgetRange} onValueChange={setBudgetRange} max={100000} min={5000} step={1000} className="flex-1" />
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>${budgetRange[0].toLocaleString()}</span>
                   <span>${budgetRange[1].toLocaleString()}</span>
@@ -1443,16 +1495,12 @@ export default function WeddingPlanning() {
             </CardContent>
           </Card>
 
-          <Card className={isElite ? 'border-amber-500/50' : 'border-gray-200'}>
+          <Card className={isElite ? "border-amber-500/50" : "border-gray-200"}>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className={isElite ? 'text-amber-700' : 'text-gray-500'}>
-                {isElite ? 'AI-Powered Budget Optimizer' : 'Budget Optimization (Elite)'}
+              <CardTitle className={isElite ? "text-amber-700" : "text-gray-500"}>
+                {isElite ? "AI-Powered Budget Optimizer" : "Budget Optimization (Elite)"}
               </CardTitle>
-              {isElite ? (
-                <TrendingUp className="w-6 h-6 text-amber-600" />
-              ) : (
-                <Lock className="w-6 h-6 text-gray-400" />
-              )}
+              {isElite ? <TrendingUp className="w-6 h-6 text-amber-600" /> : <Lock className="w-6 h-6 text-gray-400" />}
             </CardHeader>
             <CardContent>
               {isElite ? (
@@ -1464,7 +1512,9 @@ export default function WeddingPlanning() {
                   <p className="text-sm text-muted-foreground">
                     Projected savings by optimizing your venue and catering budget against similar couples in your area.
                   </p>
-                  <Button size="sm" onClick={handleViewBudgetReport}>View Detailed Report</Button>
+                  <Button size="sm" onClick={handleViewBudgetReport}>
+                    View Detailed Report
+                  </Button>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1473,12 +1523,7 @@ export default function WeddingPlanning() {
                     Unlock the AI-Powered Budget Optimizer (Elite tier) to find an average of
                     <span className="font-bold text-amber-600"> $4,200</span> in hidden savings based on your criteria and AI recommendations.
                   </p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="bg-amber-100 border-amber-300"
-                    onClick={handleGoPremium}
-                  >
+                  <Button size="sm" variant="outline" className="bg-amber-100 border-amber-300" onClick={handleGoPremium}>
                     <TrendingUp className="w-4 h-4 mr-2" />
                     Upgrade to Elite
                   </Button>
@@ -1494,12 +1539,7 @@ export default function WeddingPlanning() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
               <div>
                 <label className="text-xs md:text-sm font-medium mb-2 block">Event Date</label>
-                <Input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-full"
-                />
+                <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-full" />
               </div>
 
               <div>
@@ -1508,7 +1548,7 @@ export default function WeddingPlanning() {
                   <Input
                     type="number"
                     value={guestCount[0]}
-                    onChange={(e) => setGuestCount([parseInt(e.target.value || '0', 10)])}
+                    onChange={(e) => setGuestCount([parseInt(e.target.value || "0", 10)])}
                     className="w-full"
                   />
                   <Users className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -1555,15 +1595,12 @@ export default function WeddingPlanning() {
         {VENDOR_CATEGORIES.map((category) => {
           const Icon = category.icon as any;
           const isSelected = selectedVendorType === category.value;
-          const count =
-            category.value === 'all'
-              ? VENDORS.length
-              : VENDORS.filter((v) => v.type === category.value).length;
+          const count = category.value === "all" ? VENDORS.length : VENDORS.filter((v) => v.type === category.value).length;
 
           return (
             <Button
               key={category.value}
-              variant={isSelected ? 'default' : 'outline'}
+              variant={isSelected ? "default" : "outline"}
               onClick={() => setSelectedVendorType(category.value)}
               className="w-full flex items-center justify-center sm:justify-between px-2"
               size="sm"
@@ -1588,11 +1625,7 @@ export default function WeddingPlanning() {
             <Badge variant="secondary" className="w-fit">
               <Calendar className="w-3 h-3 mr-1" />
               <span className="text-xs">
-                {new Date(selectedDate).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric'
-                })}
+                {new Date(selectedDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               </span>
             </Badge>
           )}
@@ -1635,9 +1668,7 @@ export default function WeddingPlanning() {
             <Gift className="w-4 h-4 md:w-5 md:h-5" />
             Gift Registry Hub
           </CardTitle>
-          <CardDescription className="text-xs md:text-sm">
-            Manage all your registries in one place and share with guests
-          </CardDescription>
+          <CardDescription className="text-xs md:text-sm">Manage all your registries in one place and share with guests</CardDescription>
         </CardHeader>
         <CardContent className="p-4 md:p-6">
           <div className="space-y-3 md:space-y-4">
@@ -1649,9 +1680,7 @@ export default function WeddingPlanning() {
                     placeholder={`${registry.name} Registry URL`}
                     value={registry.url}
                     onChange={(e) => {
-                      setRegistryLinks((prev) =>
-                        prev.map((r) => (r.id === registry.id ? { ...r, url: e.target.value } : r))
-                      );
+                      setRegistryLinks((prev) => prev.map((r) => (r.id === registry.id ? { ...r, url: e.target.value } : r)));
                     }}
                     className="w-full text-sm"
                   />
@@ -1670,21 +1699,21 @@ export default function WeddingPlanning() {
             <div className="border-t pt-4 mt-4 md:mt-6">
               <h4 className="font-medium mb-3 text-sm md:text-base">Share Your Registries</h4>
               <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-                <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry('Facebook')}>
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry("Facebook")}>
                   <Share2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
                   <span className="hidden sm:inline">Facebook</span>
                   <span className="sm:hidden">FB</span>
                 </Button>
-                <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry('Instagram')}>
-                  <Share2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry("Instagram")}>
+                  <Share2 className="w-3 h-3 md:w-4 h-4 mr-1 md:mr-2" />
                   <span className="hidden sm:inline">Instagram</span>
                   <span className="sm:hidden">IG</span>
                 </Button>
-                <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry('Email')}>
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry("Email")}>
                   <Mail className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
                   Email
                 </Button>
-                <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry('copy')}>
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry("copy")}>
                   <Link2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
                   <span className="hidden sm:inline">Copy Link</span>
                   <span className="sm:hidden">Copy</span>
@@ -1694,8 +1723,7 @@ export default function WeddingPlanning() {
               <Alert className="mt-4">
                 <Info className="h-3 w-3 md:h-4 md:w-4" />
                 <AlertDescription className="text-xs md:text-sm break-all">
-                  Your unique registry page:{' '}
-                  <strong>chefsire.com/registry/{user?.username || user?.id || 'my-registry'}</strong>
+                  Your unique registry page: <strong>chefsire.com/registry/{user?.username || user?.id || "my-registry"}</strong>
                 </AlertDescription>
               </Alert>
             </div>
@@ -1710,9 +1738,7 @@ export default function WeddingPlanning() {
             <CalendarIcon className="w-4 h-4 md:w-5 md:h-5" />
             Planning Calendar
           </CardTitle>
-          <CardDescription className="text-xs md:text-sm">
-            Track important dates, appointments, and deadlines
-          </CardDescription>
+          <CardDescription className="text-xs md:text-sm">Track important dates, appointments, and deadlines</CardDescription>
         </CardHeader>
         <CardContent className="p-4 md:p-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
@@ -1725,7 +1751,7 @@ export default function WeddingPlanning() {
                   modifiers={{ hasEvent: calendarEventDates }}
                   modifiersClassNames={{
                     hasEvent:
-                      "relative after:absolute after:bottom-1 after:left-1/2 after:h-1 after:w-1 after:-translate-x-1/2 after:rounded-full after:bg-primary"
+                      "relative after:absolute after:bottom-1 after:left-1/2 after:h-1 after:w-1 after:-translate-x-1/2 after:rounded-full after:bg-primary",
                   }}
                   className="rounded-md border"
                 />
@@ -1742,33 +1768,20 @@ export default function WeddingPlanning() {
                   sortedCalendarEvents.map((event) => {
                     const eventDate = parseCalendarDate(event.date);
                     return (
-                      <div
-                        key={event.id}
-                        className="flex items-start gap-2 md:gap-3 p-2 md:p-3 bg-muted rounded-lg"
-                      >
+                      <div key={event.id} className="flex items-start gap-2 md:gap-3 p-2 md:p-3 bg-muted rounded-lg">
                         <div className="text-center min-w-[40px] md:min-w-[50px]">
-                          <div className="text-[10px] md:text-xs text-muted-foreground">
-                            {eventDate.toLocaleDateString('en-US', { month: 'short' })}
-                          </div>
+                          <div className="text-[10px] md:text-xs text-muted-foreground">{eventDate.toLocaleDateString("en-US", { month: "short" })}</div>
                           <div className="text-base md:text-lg font-bold">{eventDate.getDate()}</div>
                         </div>
 
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-xs md:text-sm truncate">{event.title}</p>
                           {event.notes && (
-                            <p className="text-[10px] md:text-xs text-muted-foreground mt-1 line-clamp-2">
-                              {event.notes}
-                            </p>
+                            <p className="text-[10px] md:text-xs text-muted-foreground mt-1 line-clamp-2">{event.notes}</p>
                           )}
                           <div className="flex items-center gap-2 mt-1">
                             <Badge
-                              variant={
-                                event.type === 'payment'
-                                  ? 'destructive'
-                                  : event.type === 'appointment'
-                                  ? 'default'
-                                  : 'secondary'
-                              }
+                              variant={event.type === "payment" ? "destructive" : event.type === "appointment" ? "default" : "secondary"}
                               className="text-[10px] md:text-xs capitalize"
                             >
                               {event.type}
@@ -1777,12 +1790,7 @@ export default function WeddingPlanning() {
                           </div>
                         </div>
 
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="p-1 md:p-2"
-                          onClick={() => handleRemoveCalendarEvent(event.id)}
-                        >
+                        <Button size="sm" variant="ghost" className="p-1 md:p-2" onClick={() => handleRemoveCalendarEvent(event.id)}>
                           <X className="w-3 h-3" />
                         </Button>
                       </div>
@@ -1799,10 +1807,8 @@ export default function WeddingPlanning() {
                 <Input
                   type="date"
                   className="text-sm"
-                  value={calendarDate ? normalizeCalendarDate(calendarDate) : ''}
-                  onChange={(e) =>
-                    setCalendarDate(e.target.value ? parseCalendarDate(e.target.value) : undefined)
-                  }
+                  value={calendarDate ? normalizeCalendarDate(calendarDate) : ""}
+                  onChange={(e) => setCalendarDate(e.target.value ? parseCalendarDate(e.target.value) : undefined)}
                 />
 
                 <Input
@@ -1839,7 +1845,9 @@ export default function WeddingPlanning() {
                     checked={calendarReminder}
                     onChange={(e) => setCalendarReminder(e.target.checked)}
                   />
-                  <label htmlFor="reminder" className="text-xs md:text-sm">Set reminder</label>
+                  <label htmlFor="reminder" className="text-xs md:text-sm">
+                    Set reminder
+                  </label>
                 </div>
 
                 <Button className="w-full text-sm" onClick={handleAddCalendarEvent}>
@@ -1860,7 +1868,7 @@ export default function WeddingPlanning() {
       </Card>
 
       {/* Email Invitations Section */}
-      <Card className={`mb-8 ${isPremium ? 'border-purple-500/50' : 'border-gray-300'}`}>
+      <Card className={`mb-8 ${isPremium ? "border-purple-500/50" : "border-gray-300"}`}>
         <CardHeader className="p-4 md:p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -1875,9 +1883,7 @@ export default function WeddingPlanning() {
               </Badge>
             )}
           </div>
-          <CardDescription className="text-xs md:text-sm">
-            Send beautiful wedding invitations and track RSVPs
-          </CardDescription>
+          <CardDescription className="text-xs md:text-sm">Send beautiful wedding invitations and track RSVPs</CardDescription>
         </CardHeader>
 
         <CardContent className="p-4 md:p-6">
@@ -1889,13 +1895,16 @@ export default function WeddingPlanning() {
                 Wedding Details
               </h4>
 
-              {isPremium && (
-                isEditingEventDetails ? (
-                  <Button size="sm" onClick={handleSaveEventDetails}>Save</Button>
+              {isPremium &&
+                (isEditingEventDetails ? (
+                  <Button size="sm" onClick={handleSaveEventDetails}>
+                    Save
+                  </Button>
                 ) : (
-                  <Button size="sm" onClick={() => setIsEditingEventDetails(true)}>Edit</Button>
-                )
-              )}
+                  <Button size="sm" onClick={() => setIsEditingEventDetails(true)}>
+                    Edit
+                  </Button>
+                ))}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
@@ -2082,11 +2091,11 @@ export default function WeddingPlanning() {
                     </span>
                     <Badge
                       variant={
-                        guest.rsvp === 'accepted' || guest.rsvp === 'accept-both'
-                          ? 'default'
-                          : guest.rsvp === 'declined'
-                          ? 'destructive'
-                          : 'secondary'
+                        guest.rsvp === "accepted" || guest.rsvp === "accept-both"
+                          ? "default"
+                          : guest.rsvp === "declined"
+                          ? "destructive"
+                          : "secondary"
                       }
                       className="text-[10px] capitalize"
                     >
@@ -2102,15 +2111,13 @@ export default function WeddingPlanning() {
           <div className="mb-6">
             <label className="text-sm font-medium mb-2 block">Invitation Template</label>
             <div className="grid grid-cols-3 gap-3">
-              {['elegant', 'rustic', 'modern'].map((template) => (
+              {["elegant", "rustic", "modern"].map((template) => (
                 <button
                   key={template}
                   onClick={() => setSelectedTemplate(template)}
                   className={`p-4 border-2 rounded-lg text-center capitalize transition-all ${
-                    selectedTemplate === template
-                      ? 'border-pink-500 bg-pink-50 dark:bg-pink-950'
-                      : 'border-gray-200 hover:border-gray-300'
-                  } ${!isPremium ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    selectedTemplate === template ? "border-pink-500 bg-pink-50 dark:bg-pink-950" : "border-gray-200 hover:border-gray-300"
+                  } ${!isPremium ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
                   disabled={!isPremium}
                 >
                   <Sparkles className="w-6 h-6 mx-auto mb-2" />
@@ -2174,10 +2181,7 @@ export default function WeddingPlanning() {
             <h4 className="font-medium mb-3 text-sm">Guest List ({guestList.length})</h4>
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {guestList.map((guest) => (
-                <div
-                  key={String(guest.id)}
-                  className="flex items-center justify-between p-3 bg-muted rounded-lg"
-                >
+                <div key={String(guest.id)} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm truncate">
                       {guest.partnerName
@@ -2199,34 +2203,34 @@ export default function WeddingPlanning() {
                   <div className="flex items-center gap-2">
                     <Badge
                       variant={
-                        guest.rsvp === 'accepted' || guest.rsvp === 'accept-both'
-                          ? 'default'
-                          : guest.rsvp === 'declined'
-                          ? 'destructive'
-                          : 'secondary'
+                        guest.rsvp === "accepted" || guest.rsvp === "accept-both"
+                          ? "default"
+                          : guest.rsvp === "declined"
+                          ? "destructive"
+                          : "secondary"
                       }
                       className={`text-xs ${
-                        guest.rsvp === 'ceremony-only'
-                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                          : guest.rsvp === 'reception-only'
-                          ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-blue-200'
-                          : ''
+                        guest.rsvp === "ceremony-only"
+                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                          : guest.rsvp === "reception-only"
+                          ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-blue-200"
+                          : ""
                       }`}
                     >
-                      {guest.rsvp === 'accept-both' ? 'Both Events'
-                        : guest.rsvp === 'ceremony-only' ? 'Ceremony Only'
-                        : guest.rsvp === 'reception-only' ? 'Reception Only'
-                        : guest.rsvp === 'accepted' ? 'Accepted'
-                        : guest.rsvp === 'declined' ? 'Declined'
-                        : 'Pending'}
+                      {guest.rsvp === "accept-both"
+                        ? "Both Events"
+                        : guest.rsvp === "ceremony-only"
+                        ? "Ceremony Only"
+                        : guest.rsvp === "reception-only"
+                        ? "Reception Only"
+                        : guest.rsvp === "accepted"
+                        ? "Accepted"
+                        : guest.rsvp === "declined"
+                        ? "Declined"
+                        : "Pending"}
                     </Badge>
 
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => removeGuest(guest.id)}
-                      className="p-1"
-                    >
+                    <Button size="sm" variant="ghost" onClick={() => removeGuest(guest.id)} className="p-1">
                       <X className="w-4 h-4" />
                     </Button>
                   </div>
@@ -2242,10 +2246,10 @@ export default function WeddingPlanning() {
                 <Button
                   className="flex-1 bg-gradient-to-r from-pink-600 to-purple-600 text-white"
                   onClick={sendInvitations}
-                  disabled={guestList.filter((g) => typeof g.id === 'number').length === 0}
+                  disabled={guestList.filter((g) => typeof g.id === "number").length === 0}
                 >
                   <Mail className="w-4 h-4 mr-2" />
-                  Send Invitations ({guestList.filter((g) => typeof g.id === 'number').length})
+                  Send Invitations ({guestList.filter((g) => typeof g.id === "number").length})
                 </Button>
 
                 <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
@@ -2258,15 +2262,15 @@ export default function WeddingPlanning() {
                   <DialogContent className="sm:max-w-lg overflow-hidden">
                     <DialogHeader>
                       <DialogTitle>Invitation Preview</DialogTitle>
-                      <p className="text-xs text-muted-foreground">
-                        This is exactly what your guests will see in their email.
-                      </p>
+                      <p className="text-xs text-muted-foreground">This is exactly what your guests will see in their email.</p>
                     </DialogHeader>
 
                     <InvitationPreview />
 
                     <div className="flex justify-end gap-2 mt-4">
-                      <Button variant="ghost" onClick={() => setIsPreviewOpen(false)}>Close</Button>
+                      <Button variant="ghost" onClick={() => setIsPreviewOpen(false)}>
+                        Close
+                      </Button>
                       <Button
                         className="bg-pink-600"
                         onClick={() => {
