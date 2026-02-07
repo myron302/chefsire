@@ -516,8 +516,10 @@ export async function sendWeddingRSVPNotification(
   guestCount: number
 ) {
   try {
-    const message = rsvpStatus === 'accepted'
-      ? `${guestName} RSVP'd yes (${guestCount} guest${guestCount > 1 ? 's' : ''})`
+    const acceptedStatuses = ["accepted", "accept-both", "ceremony-only", "reception-only"];
+    const statusLabel = rsvpStatus.replace('-', ' ');
+    const message = acceptedStatuses.includes(rsvpStatus)
+      ? `${guestName} RSVP'd ${statusLabel} (${guestCount} guest${guestCount > 1 ? 's' : ''})`
       : `${guestName} declined the invitation`;
 
     await db.insert(notifications).values({
@@ -605,4 +607,3 @@ export async function sendCateringRequestNotification(
     console.error("Failed to send catering request notification:", error);
   }
 }
-

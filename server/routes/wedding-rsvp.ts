@@ -5,6 +5,7 @@ import { db } from "../db";
 import { eq, and, gt, isNull } from "drizzle-orm";
 import { weddingRsvpInvitations, users } from "../../shared/schema";
 import { sendWeddingRsvpEmail, sendRsvpNotificationEmail } from "../utils/mailer";
+import { sendWeddingRSVPNotification } from "../services/notification-service";
 import { requireAuth } from "../middleware/auth";
 
 const router = Router();
@@ -345,6 +346,15 @@ router.get("/rsvp", async (req, res) => {
           }
         );
       }
+
+      if (coupleUser?.id) {
+        await sendWeddingRSVPNotification(
+          coupleUser.id,
+          invitation.guestName,
+          rsvpStatus,
+          1
+        );
+      }
     } catch (notificationError) {
       // Don't fail the RSVP if notification fails
       console.error("Failed to send RSVP notification:", notificationError);
@@ -521,6 +531,16 @@ router.post("/rsvp", async (req, res) => {
             coupleName: coupleUser.displayName ? `${coupleUser.displayName}'s Wedding` : undefined,
             eventDate: invitation.eventDate ? invitation.eventDate.toLocaleDateString() : undefined,
           }
+        );
+      }
+
+      if (coupleUser?.id) {
+        const guestCount = plusOneName ? 2 : 1;
+        await sendWeddingRSVPNotification(
+          coupleUser.id,
+          invitation.guestName,
+          rsvpStatus,
+          guestCount
         );
       }
     } catch (notificationError) {

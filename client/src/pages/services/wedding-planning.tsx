@@ -1,10 +1,10 @@
+// client/src/pages/services/wedding-planning.tsx
 import { useState, useMemo, memo, useCallback, useEffect, useRef } from 'react';
 import {
   Calendar, MapPin, Users, DollarSign, Clock, Heart,
   ChefHat, Camera, Music, Flower, Sparkles, Star,
-  Filter, Search, ArrowRight, Check, Info, Phone,
-  Mail, Instagram, Globe, ChevronDown, TrendingUp,
-  Award, Shield, Bookmark, Share2, MessageCircle,
+  Info, Mail, ChevronDown, TrendingUp,
+  Shield, Bookmark, Share2,
   Gift, Calendar as CalendarIcon, Link2, Plus, X, BellRing,
   AlertCircle, Zap, Lock
 } from 'lucide-react';
@@ -13,7 +13,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
@@ -30,7 +29,7 @@ import WeddingTrialSelector from '@/components/WeddingTrialSelector';
 import { couplePlans } from '@/config/wedding-pricing';
 
 // =========================================================
-// STATIC DATA - Moved outside component for performance
+// STATIC DATA
 // =========================================================
 
 const VENDORS = [
@@ -102,7 +101,9 @@ const VENDORS = [
     amenities: ['MC Services', 'Lighting', 'Dance Floor', 'Wireless Mics'],
     responseTime: '3 hours'
   }
-];
+] as const;
+
+type Vendor = (typeof VENDORS)[number];
 
 const VENDOR_CATEGORIES = [
   { value: 'all', label: 'All', icon: Sparkles },
@@ -112,14 +113,14 @@ const VENDOR_CATEGORIES = [
   { value: 'dj', label: 'DJ & Music', icon: Music },
   { value: 'florist', label: 'Florist', icon: Flower },
   { value: 'planner', label: 'Planner', icon: Heart }
-];
+] as const;
 
 // =========================================================
-// MEMOIZED VENDOR CARD - Prevents re-renders on scroll
+// MEMOIZED VENDOR CARD
 // =========================================================
 
 interface VendorCardProps {
-  vendor: typeof VENDORS[0];
+  vendor: Vendor;
   isSaved: boolean;
   isQuoteRequested: boolean;
   onToggleSave: (id: number) => void;
@@ -142,13 +143,13 @@ const VendorCard = memo(
             referrerPolicy="no-referrer"
             style={{ contentVisibility: 'auto' }}
           />
-          {vendor.sponsored && (
+          {(vendor as any).sponsored && (
             <Badge className="absolute top-2 left-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-xs">
               <TrendingUp className="w-3 h-3 mr-1" />
               <span className="hidden sm:inline">Sponsored</span>
             </Badge>
           )}
-          {vendor.featured && !vendor.sponsored && (
+          {(vendor as any).featured && !(vendor as any).sponsored && (
             <Badge className="absolute top-2 left-2 bg-gradient-to-r from-pink-600 to-purple-600 text-xs">
               <Sparkles className="w-3 h-3 mr-1" />
               <span className="hidden sm:inline">Featured</span>
@@ -162,6 +163,7 @@ const VendorCard = memo(
           >
             <Bookmark className={`w-3 h-3 md:w-4 md:h-4 ${isSaved ? 'fill-current' : ''}`} />
           </Button>
+
           <Badge
             className={`absolute bottom-2 left-2 text-xs ${
               (vendor as any).availability === 'Available'
@@ -192,9 +194,7 @@ const VendorCard = memo(
             <div className="flex items-center gap-1">
               <Star className="w-3 h-3 md:w-4 md:h-4 fill-yellow-400 text-yellow-400" />
               <span className="font-semibold text-sm md:text-base">{vendor.rating}</span>
-              <span className="text-xs md:text-sm text-muted-foreground">
-                ({vendor.reviews})
-              </span>
+              <span className="text-xs md:text-sm text-muted-foreground">({vendor.reviews})</span>
             </div>
             <span className="text-xs md:text-sm font-medium">{vendor.priceRange}</span>
           </div>
@@ -226,9 +226,7 @@ const VendorCard = memo(
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-3 border-t">
             <div className="flex items-center gap-1 text-[10px] md:text-xs text-muted-foreground">
               <Clock className="w-3 h-3" />
-              <span className="hidden sm:inline">
-                Responds in {(vendor as any).responseTime}
-              </span>
+              <span className="hidden sm:inline">Responds in {(vendor as any).responseTime}</span>
               <span className="sm:hidden">{(vendor as any).responseTime}</span>
             </div>
             <div className="flex gap-2 w-full sm:w-auto">
@@ -331,10 +329,12 @@ export default function WeddingPlanning() {
     plusOne: boolean;
     partnerName?: string;
     plusOneName?: string | null;
+    respondedAt?: string | null;
   }>>([]);
   const [newGuestName, setNewGuestName] = useState('');
   const [newGuestEmail, setNewGuestEmail] = useState('');
   const [newGuestPartner, setNewGuestPartner] = useState('');
+  const [newGuestPlusOneAllowed, setNewGuestPlusOneAllowed] = useState(false);
 
   // Wedding Event Details State
   const [partner1Name, setPartner1Name] = useState('');
@@ -388,9 +388,7 @@ export default function WeddingPlanning() {
 
     const fetchEventDetails = async () => {
       try {
-        const response = await fetch('/api/wedding/event-details', {
-          credentials: 'include',
-        });
+        const response = await fetch('/api/wedding/event-details', { credentials: 'include' });
 
         if (response.ok) {
           const data = await response.json();
@@ -435,9 +433,7 @@ export default function WeddingPlanning() {
 
     const fetchGuestList = async () => {
       try {
-        const response = await fetch('/api/wedding/guest-list', {
-          credentials: 'include',
-        });
+        const response = await fetch('/api/wedding/guest-list', { credentials: 'include' });
 
         if (response.ok) {
           const data = await response.json();
@@ -449,6 +445,8 @@ export default function WeddingPlanning() {
               rsvp: g.rsvp,
               plusOne: g.plusOne,
               plusOneName: g.plusOneName ?? null,
+              respondedAt: g.respondedAt ?? null,
+              partnerName: g.partnerName ?? undefined
             }));
 
             const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
@@ -473,9 +471,7 @@ export default function WeddingPlanning() {
 
     const fetchCalendarEvents = async () => {
       try {
-        const response = await fetch('/api/wedding/calendar-events', {
-          credentials: 'include',
-        });
+        const response = await fetch('/api/wedding/calendar-events', { credentials: 'include' });
 
         if (response.ok) {
           const data = await response.json();
@@ -511,7 +507,7 @@ export default function WeddingPlanning() {
     if (!isGoogleMapsLoaded || !window.google?.maps?.places) return;
     if (!isPremium) return;
 
-    const options = {
+    const options: any = {
       types: ['establishment', 'geocode'],
       fields: ['name', 'formatted_address', 'geometry']
     };
@@ -585,13 +581,16 @@ export default function WeddingPlanning() {
 
   const addGuest = useCallback(async () => {
     if (newGuestName && newGuestEmail) {
+      const plusOneAllowed = newGuestPlusOneAllowed || !!newGuestPartner;
+
       const tempGuest = {
         id: Date.now(),
         name: newGuestName,
         email: newGuestEmail,
         rsvp: 'pending',
-        plusOne: !!newGuestPartner,
-        partnerName: newGuestPartner || undefined
+        plusOne: plusOneAllowed,
+        partnerName: newGuestPartner || undefined,
+        respondedAt: null as any
       };
 
       setGuestList((prev) => {
@@ -609,6 +608,7 @@ export default function WeddingPlanning() {
       setNewGuestName('');
       setNewGuestEmail('');
       setNewGuestPartner('');
+      setNewGuestPlusOneAllowed(false);
 
       const guestDisplayName = newGuestPartner ? `${newGuestName} & ${newGuestPartner}` : newGuestName;
       toast({
@@ -616,7 +616,7 @@ export default function WeddingPlanning() {
         description: `${guestDisplayName} has been added to your guest list.`,
       });
     }
-  }, [newGuestName, newGuestEmail, newGuestPartner, user?.id, toast]);
+  }, [newGuestName, newGuestEmail, newGuestPartner, newGuestPlusOneAllowed, user?.id, toast]);
 
   const removeGuest = useCallback(async (guestId: number | string) => {
     const guest = guestList.find((g) => g.id === guestId);
@@ -758,9 +758,7 @@ export default function WeddingPlanning() {
           });
         }
 
-        const listResponse = await fetch('/api/wedding/guest-list', {
-          credentials: 'include'
-        });
+        const listResponse = await fetch('/api/wedding/guest-list', { credentials: 'include' });
 
         if (listResponse.ok) {
           const listData = await listResponse.json();
@@ -772,6 +770,8 @@ export default function WeddingPlanning() {
               rsvp: g.rsvp,
               plusOne: g.plusOne,
               plusOneName: g.plusOneName ?? null,
+              respondedAt: g.respondedAt ?? null,
+              partnerName: g.partnerName ?? undefined
             })));
           }
         }
@@ -929,6 +929,17 @@ export default function WeddingPlanning() {
     };
   }, [guestList]);
 
+  const respondedGuests = useMemo(() => {
+    return guestList
+      .filter((guest) => guest.rsvp !== 'pending')
+      .slice()
+      .sort((a, b) => {
+        const aTime = a.respondedAt ? new Date(a.respondedAt).getTime() : 0;
+        const bTime = b.respondedAt ? new Date(b.respondedAt).getTime() : 0;
+        return bTime - aTime;
+      });
+  }, [guestList]);
+
   const handleStartPlanning = useCallback(() => {
     toast({
       title: "Let's Start Planning!",
@@ -966,12 +977,7 @@ export default function WeddingPlanning() {
   }, [toast]);
 
   const handleAddRegistry = useCallback(() => {
-    const newRegistry = {
-      id: Date.now(),
-      name: 'Custom Registry',
-      url: '',
-      icon: '🎁'
-    };
+    const newRegistry = { id: Date.now(), name: 'Custom Registry', url: '', icon: '🎁' };
     setRegistryLinks((prev) => [...prev, newRegistry]);
     toast({
       title: "Registry Added",
@@ -1000,13 +1006,8 @@ export default function WeddingPlanning() {
     }
   }, [user, toast]);
 
-  const normalizeCalendarDate = useCallback((date: Date) => {
-    return date.toISOString().split('T')[0];
-  }, []);
-
-  const parseCalendarDate = useCallback((dateString: string) => {
-    return new Date(`${dateString}T00:00:00`);
-  }, []);
+  const normalizeCalendarDate = useCallback((date: Date) => date.toISOString().split('T')[0], []);
+  const parseCalendarDate = useCallback((dateString: string) => new Date(`${dateString}T00:00:00`), []);
 
   const sortedCalendarEvents = useMemo(() => {
     return [...calendarEvents].sort((a, b) => a.date.localeCompare(b.date));
@@ -1016,7 +1017,6 @@ export default function WeddingPlanning() {
     return calendarEvents.map((event) => parseCalendarDate(event.date));
   }, [calendarEvents, parseCalendarDate]);
 
-  // ✅ RESOLVED: persist calendar events to API
   const handleAddCalendarEvent = useCallback(async () => {
     if (!calendarDate || !calendarTitle.trim() || !calendarType) {
       toast({
@@ -1127,8 +1127,6 @@ export default function WeddingPlanning() {
   }, [toast]);
 
   const handleTrialSelect = useCallback(async (tier: 'free' | 'premium' | 'elite') => {
-    console.log('[Wedding Planning] Trial selected:', tier);
-
     if (currentTier === 'premium' || currentTier === 'elite') {
       toast({ title: "Already Subscribed", description: "You already have an active subscription!" });
       setShowTrialSelector(false);
@@ -1200,7 +1198,7 @@ export default function WeddingPlanning() {
         }
       };
 
-      const styles = styleTemplates[selectedTemplate as 'elegant' | 'rustic' | 'modern'] || styleTemplates.elegant;
+      const styles = (styleTemplates as any)[selectedTemplate] || styleTemplates.elegant;
 
       return (
         <div className={`p-8 rounded-lg text-center space-y-6 border-4 shadow-xl transition-all duration-500 ${styles.container}`}>
@@ -1252,7 +1250,7 @@ export default function WeddingPlanning() {
       );
     } catch (error) {
       console.error('[InvitationPreview] Error rendering:', error);
-      toast({ title: "Debug Error", description: `Preview error: ${error}`, variant: "destructive" });
+      toast({ title: "Debug Error", description: `Preview error: ${String(error)}`, variant: "destructive" });
       return <div className="p-8 text-center text-red-500">Error rendering preview</div>;
     }
   };
@@ -1352,22 +1350,18 @@ export default function WeddingPlanning() {
             </div>
             <Progress value={43} className="mb-4" />
             <div className="grid grid-cols-4 md:grid-cols-7 gap-2 md:gap-3">
-              {['Venue', 'Catering', 'Photo', 'Music', 'Flowers', 'Planner', 'Cake'].map(
-                (item, idx) => (
-                  <div key={item} className="text-center">
-                    <div
-                      className={`w-7 h-7 md:w-8 md:h-8 mx-auto rounded-full flex items-center justify-center mb-1 ${
-                        idx < 3 ? 'bg-green-500' : 'bg-gray-200'
-                      }`}
-                    >
-                      {idx < 3 && (
-                        <Check className="w-3 h-3 md:w-4 md:h-4 text-white" />
-                      )}
-                    </div>
-                    <span className="text-[10px] md:text-xs">{item}</span>
+              {['Venue', 'Catering', 'Photo', 'Music', 'Flowers', 'Planner', 'Cake'].map((item, idx) => (
+                <div key={item} className="text-center">
+                  <div
+                    className={`w-7 h-7 md:w-8 md:h-8 mx-auto rounded-full flex items-center justify-center mb-1 ${
+                      idx < 3 ? 'bg-green-500' : 'bg-gray-200'
+                    }`}
+                  >
+                    {idx < 3 && <span className="text-white text-xs">✓</span>}
                   </div>
-                )
-              )}
+                  <span className="text-[10px] md:text-xs">{item}</span>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -1376,18 +1370,14 @@ export default function WeddingPlanning() {
           <Card className="mb-6">
             <CardHeader>
               <CardTitle>Smart Budget Calculator</CardTitle>
-              <CardDescription>
-                Optimize your wedding budget across all vendor categories
-              </CardDescription>
+              <CardDescription>Optimize your wedding budget across all vendor categories</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium">Total Budget</label>
                   <div className="flex items-center gap-4 mt-2">
-                    <span className="text-2xl font-bold">
-                      ${budgetRange[1].toLocaleString()}
-                    </span>
+                    <span className="text-2xl font-bold">${budgetRange[1].toLocaleString()}</span>
                     <Slider
                       value={budgetRange}
                       onValueChange={setBudgetRange}
@@ -1409,14 +1399,10 @@ export default function WeddingPlanning() {
                         <item.icon className="w-5 h-5 text-muted-foreground" />
                         <div>
                           <p className="font-medium">{item.category}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {item.percentage}% of budget
-                          </p>
+                          <p className="text-xs text-muted-foreground">{item.percentage}% of budget</p>
                         </div>
                       </div>
-                      <span className="font-semibold">
-                        ${item.amount.toLocaleString()}
-                      </span>
+                      <span className="font-semibold">${item.amount.toLocaleString()}</span>
                     </div>
                   ))}
                 </div>
@@ -1424,8 +1410,7 @@ export default function WeddingPlanning() {
                 <Alert>
                   <Info className="h-4 w-4" />
                   <AlertDescription>
-                    Based on {guestCount[0]} guests. Catering typically represents the
-                    largest portion of your wedding budget.
+                    Based on {guestCount[0]} guests. Catering typically represents the largest portion of your wedding budget.
                   </AlertDescription>
                 </Alert>
               </div>
@@ -1438,9 +1423,7 @@ export default function WeddingPlanning() {
           <Card>
             <CardHeader>
               <CardTitle>Your Current Budget</CardTitle>
-              <CardDescription>
-                Target: ${budgetRange[1].toLocaleString()}
-              </CardDescription>
+              <CardDescription>Target: ${budgetRange[1].toLocaleString()}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
@@ -1479,8 +1462,7 @@ export default function WeddingPlanning() {
                     {dynamicSavings.toLocaleString()}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Projected savings by optimizing your venue and catering budget
-                    against similar couples in your area.
+                    Projected savings by optimizing your venue and catering budget against similar couples in your area.
                   </p>
                   <Button size="sm" onClick={handleViewBudgetReport}>View Detailed Report</Button>
                 </div>
@@ -1489,8 +1471,7 @@ export default function WeddingPlanning() {
                   <p className="text-4xl font-bold text-gray-400">Locked</p>
                   <p className="text-sm text-muted-foreground">
                     Unlock the AI-Powered Budget Optimizer (Elite tier) to find an average of
-                    <span className="font-bold text-amber-600"> $4,200</span> in hidden
-                    savings based on your criteria and AI recommendations.
+                    <span className="font-bold text-amber-600"> $4,200</span> in hidden savings based on your criteria and AI recommendations.
                   </p>
                   <Button
                     size="sm"
@@ -1572,7 +1553,7 @@ export default function WeddingPlanning() {
       {/* Category buttons */}
       <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-6">
         {VENDOR_CATEGORIES.map((category) => {
-          const Icon = category.icon;
+          const Icon = category.icon as any;
           const isSelected = selectedVendorType === category.value;
           const count =
             category.value === 'all'
@@ -1602,9 +1583,7 @@ export default function WeddingPlanning() {
       {/* Vendors header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-          <h2 className="text-lg md:text-xl font-semibold">
-            {filteredVendors.length} Vendors Available
-          </h2>
+          <h2 className="text-lg md:text-xl font-semibold">{filteredVendors.length} Vendors Available</h2>
           {selectedDate && (
             <Badge variant="secondary" className="w-fit">
               <Calendar className="w-3 h-3 mr-1" />
@@ -1671,9 +1650,7 @@ export default function WeddingPlanning() {
                     value={registry.url}
                     onChange={(e) => {
                       setRegistryLinks((prev) =>
-                        prev.map((r) =>
-                          r.id === registry.id ? { ...r, url: e.target.value } : r
-                        )
+                        prev.map((r) => (r.id === registry.id ? { ...r, url: e.target.value } : r))
                       );
                     }}
                     className="w-full text-sm"
@@ -1691,9 +1668,7 @@ export default function WeddingPlanning() {
             </Button>
 
             <div className="border-t pt-4 mt-4 md:mt-6">
-              <h4 className="font-medium mb-3 text-sm md:text-base">
-                Share Your Registries
-              </h4>
+              <h4 className="font-medium mb-3 text-sm md:text-base">Share Your Registries</h4>
               <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
                 <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry('Facebook')}>
                   <Share2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
@@ -1775,9 +1750,7 @@ export default function WeddingPlanning() {
                           <div className="text-[10px] md:text-xs text-muted-foreground">
                             {eventDate.toLocaleDateString('en-US', { month: 'short' })}
                           </div>
-                          <div className="text-base md:text-lg font-bold">
-                            {eventDate.getDate()}
-                          </div>
+                          <div className="text-base md:text-lg font-bold">{eventDate.getDate()}</div>
                         </div>
 
                         <div className="flex-1 min-w-0">
@@ -1800,9 +1773,7 @@ export default function WeddingPlanning() {
                             >
                               {event.type}
                             </Badge>
-                            {event.reminder && (
-                              <BellRing className="w-3 h-3 text-muted-foreground" />
-                            )}
+                            {event.reminder && <BellRing className="w-3 h-3 text-muted-foreground" />}
                           </div>
                         </div>
 
@@ -1825,7 +1796,6 @@ export default function WeddingPlanning() {
               <h4 className="font-medium mb-3 text-sm md:text-base">Add Event</h4>
 
               <div className="space-y-2 md:space-y-3">
-                {/* ✅ RESOLVED: single date input (no duplicate calendar) */}
                 <Input
                   type="date"
                   className="text-sm"
@@ -1869,9 +1839,7 @@ export default function WeddingPlanning() {
                     checked={calendarReminder}
                     onChange={(e) => setCalendarReminder(e.target.checked)}
                   />
-                  <label htmlFor="reminder" className="text-xs md:text-sm">
-                    Set reminder
-                  </label>
+                  <label htmlFor="reminder" className="text-xs md:text-sm">Set reminder</label>
                 </div>
 
                 <Button className="w-full text-sm" onClick={handleAddCalendarEvent}>
@@ -1898,13 +1866,11 @@ export default function WeddingPlanning() {
             <div className="flex items-center gap-2">
               <Mail className="w-4 h-4 md:w-5 md:h-5" />
               <CardTitle className="text-base md:text-lg">Email Invitations</CardTitle>
-              {!isPremium && (
-                <Badge className="bg-pink-500 text-white text-xs">Premium</Badge>
-              )}
+              {!isPremium && <Badge className="bg-pink-500 text-white text-xs">Premium</Badge>}
             </div>
             {isPremium && (
               <Badge className="bg-green-500 text-white text-xs">
-                <Check className="w-3 h-3 mr-1" />
+                <span className="mr-1">✓</span>
                 Active
               </Badge>
             )}
@@ -1925,13 +1891,9 @@ export default function WeddingPlanning() {
 
               {isPremium && (
                 isEditingEventDetails ? (
-                  <Button size="sm" onClick={handleSaveEventDetails}>
-                    Save
-                  </Button>
+                  <Button size="sm" onClick={handleSaveEventDetails}>Save</Button>
                 ) : (
-                  <Button size="sm" onClick={() => setIsEditingEventDetails(true)}>
-                    Edit
-                  </Button>
+                  <Button size="sm" onClick={() => setIsEditingEventDetails(true)}>Edit</Button>
                 )
               )}
             </div>
@@ -2044,7 +2006,7 @@ export default function WeddingPlanning() {
               </div>
             )}
 
-            <textarea
+            <Textarea
               placeholder="Custom message for your guests..."
               value={customMessage}
               onChange={(e) => setCustomMessage(e.target.value)}
@@ -2077,6 +2039,64 @@ export default function WeddingPlanning() {
               <p className="text-xs text-muted-foreground">Declined</p>
             </div>
           </div>
+
+          {/* Detailed RSVP Breakdown */}
+          {(rsvpStats.acceptedBoth > 0 || rsvpStats.ceremonyOnly > 0 || rsvpStats.receptionOnly > 0) && (
+            <div className="mb-6 p-4 bg-muted/50 rounded-lg">
+              <h4 className="text-sm font-medium mb-3">Response Breakdown</h4>
+              <div className="grid grid-cols-3 gap-3 text-center text-sm">
+                {rsvpStats.acceptedBoth > 0 && (
+                  <div>
+                    <p className="font-bold text-green-600">{rsvpStats.acceptedBoth}</p>
+                    <p className="text-xs text-muted-foreground">Both Events</p>
+                  </div>
+                )}
+                {rsvpStats.ceremonyOnly > 0 && (
+                  <div>
+                    <p className="font-bold text-blue-600">{rsvpStats.ceremonyOnly}</p>
+                    <p className="text-xs text-muted-foreground">Ceremony Only</p>
+                  </div>
+                )}
+                {rsvpStats.receptionOnly > 0 && (
+                  <div>
+                    <p className="font-bold text-purple-600">{rsvpStats.receptionOnly}</p>
+                    <p className="text-xs text-muted-foreground">Reception Only</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {respondedGuests.length > 0 && (
+            <div className="mb-6 p-4 bg-muted/50 rounded-lg">
+              <h4 className="text-sm font-medium mb-3">Recent Responses</h4>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {respondedGuests.slice(0, 8).map((guest) => (
+                  <div key={String(guest.id)} className="flex items-center justify-between gap-3 text-xs">
+                    <span className="font-medium truncate">
+                      {guest.partnerName
+                        ? `${guest.name} & ${guest.partnerName}`
+                        : guest.plusOneName
+                        ? `${guest.name} & ${guest.plusOneName}`
+                        : guest.name}
+                    </span>
+                    <Badge
+                      variant={
+                        guest.rsvp === 'accepted' || guest.rsvp === 'accept-both'
+                          ? 'default'
+                          : guest.rsvp === 'declined'
+                          ? 'destructive'
+                          : 'secondary'
+                      }
+                      className="text-[10px] capitalize"
+                    >
+                      {guest.rsvp}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Template Selection */}
           <div className="mb-6">
@@ -2127,11 +2147,21 @@ export default function WeddingPlanning() {
                   onChange={(e) => setNewGuestPartner(e.target.value)}
                   className="text-sm"
                 />
-                <Button onClick={addGuest} className="w-full">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Guest
-                </Button>
+                <label className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="rounded"
+                    checked={newGuestPlusOneAllowed}
+                    onChange={(e) => setNewGuestPlusOneAllowed(e.target.checked)}
+                  />
+                  Allow plus-one even if no name provided
+                </label>
               </div>
+
+              <Button onClick={addGuest} className="w-full">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Guest
+              </Button>
 
               <p className="text-xs text-muted-foreground">
                 💡 Tip: Add a partner/plus-one name to send one invitation to a couple (e.g., "John & Jane Smith")
@@ -2145,7 +2175,7 @@ export default function WeddingPlanning() {
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {guestList.map((guest) => (
                 <div
-                  key={guest.id}
+                  key={String(guest.id)}
                   className="flex items-center justify-between p-3 bg-muted rounded-lg"
                 >
                   <div className="flex-1 min-w-0">
@@ -2156,7 +2186,14 @@ export default function WeddingPlanning() {
                         ? `${guest.name} & ${guest.plusOneName}`
                         : guest.name}
                     </p>
-                    <p className="text-xs text-muted-foreground truncate">{guest.email}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs text-muted-foreground truncate">{guest.email}</p>
+                      {guest.plusOne && !guest.partnerName && !guest.plusOneName && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          Plus-one allowed
+                        </Badge>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -2172,7 +2209,7 @@ export default function WeddingPlanning() {
                         guest.rsvp === 'ceremony-only'
                           ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
                           : guest.rsvp === 'reception-only'
-                          ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                          ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-blue-200'
                           : ''
                       }`}
                     >
