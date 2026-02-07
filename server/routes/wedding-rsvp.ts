@@ -174,17 +174,17 @@ router.get("/rsvp", async (req, res) => {
     const tokenHash = hashToken(token);
     const now = new Date();
 
-    // Find valid invitation
+    // IMPORTANT:
+    // Do NOT record RSVPs on GET.
+    // Many email clients (and security scanners) prefetch links, which would
+    // accidentally consume an RSVP. We only record RSVPs on POST.
+
+    // Always fetch by tokenHash so we can render a useful page even if the
+    // invitation is already responded to.
     const [invitation] = await db
       .select()
       .from(weddingRsvpInvitations)
-      .where(
-        and(
-          eq(weddingRsvpInvitations.tokenHash, tokenHash),
-          isNull(weddingRsvpInvitations.respondedAt),
-          gt(weddingRsvpInvitations.expiresAt, now)
-        )
-      )
+      .where(eq(weddingRsvpInvitations.tokenHash, tokenHash))
       .limit(1);
 
     if (!invitation) {
@@ -199,7 +199,125 @@ router.get("/rsvp", async (req, res) => {
           </head>
           <body>
             <h1>Invalid or Expired RSVP Link</h1>
-            <p>This RSVP link is either invalid, expired, or has already been used.</p>
+            <p>This RSVP link is either invalid or has been removed.</p>
+            <p>Please contact the couple if you need a new invitation.</p>
+          </body>
+        </html>
+      `);
+    }
+
+    const alreadySubmitted = Boolean(invitation.respondedAt);
+    const isExpired = !(invitation.expiresAt instanceof Date) || invitation.expiresAt.getTime() <= now.getTime();
+
+    // If already responded, render the stored status page.
+    if (alreadySubmitted) {
+      const statusKey =
+        invitation.rsvpStatus === "accepted"
+          ? "accept"
+          : invitation.rsvpStatus === "declined"
+          ? "decline"
+          : invitation.rsvpStatus;
+
+      const responseMap: Record<
+        string,
+        { color: string; icon: string; text: string; message: string }
+      > = {
+        accept: {
+          color: "#27ae60",
+          icon: "✓",
+          text: "Accepted",
+          message: "We're thrilled you can join us!",
+        },
+        "accept-both": {
+          color: "#27ae60",
+          icon: "✓",
+          text: "Accepted Both Events",
+          message: "We're thrilled you can join us for both the ceremony and reception!",
+        },
+        "ceremony-only": {
+          color: "#4ecdc4",
+          icon: "✓",
+          text: "Ceremony Only",
+          message: "We're happy you can join us for the ceremony!",
+        },
+        "reception-only": {
+          color: "#95a5a6",
+          icon: "✓",
+          text: "Reception Only",
+          message: "We're happy you can join us for the reception!",
+        },
+        decline: {
+          color: "#e74c3c",
+          icon: "✗",
+          text: "Declined",
+          message: "Thank you for letting us know. You'll be missed!",
+        },
+      };
+
+      const status = responseMap[statusKey] || responseMap.decline;
+
+      return res.send(`
+        <html>
+          <head>
+            <title>RSVP ${status.text}</title>
+            <style>
+              body {
+                font-family: system-ui, -apple-system, sans-serif;
+                text-align: center;
+                padding: 50px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              }
+              .card {
+                background: white;
+                color: #333;
+                padding: 40px;
+                border-radius: 15px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+                max-width: 500px;
+              }
+              .icon {
+                font-size: 72px;
+                margin-bottom: 20px;
+                color: ${status.color};
+              }
+              h1 { color: ${status.color}; margin: 20px 0; }
+              p { font-size: 16px; line-height: 1.6; color: #666; }
+              .guest-name { font-weight: bold; color: #333; }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <div class="icon">${status.icon}</div>
+              <h1>RSVP ${status.text}!</h1>
+              <p><span class="guest-name">${invitation.guestName}</span></p>
+              <p>${status.message}</p>
+              <p>Your response has been recorded. The couple has been notified.</p>
+              <p style="margin-top: 30px; font-size: 14px; color: #999;">Thank you for responding!</p>
+            </div>
+          </body>
+        </html>
+      `);
+    }
+
+    // If expired (and not already responded), show an expired page.
+    if (isExpired) {
+      return res.status(400).send(`
+        <html>
+          <head>
+            <title>RSVP Expired</title>
+            <style>
+              body { font-family: system-ui; text-align: center; padding: 50px; }
+              h1 { color: #e74c3c; }
+            </style>
+          </head>
+          <body>
+            <h1>RSVP Link Expired</h1>
+            <p>Sorry — this RSVP link has expired.</p>
             <p>Please contact the couple if you need a new invitation.</p>
           </body>
         </html>
@@ -214,7 +332,6 @@ router.get("/rsvp", async (req, res) => {
     // `submitted=yes`), skip the form and render the success page below.
     const acceptingResponses = ["accept", "accept-both", "ceremony-only", "reception-only"];
     const isAccepting = acceptingResponses.includes(response);
-    const alreadySubmitted = req.query.submitted === "yes";
     if (isAccepting && invitation.plusOne && !alreadySubmitted) {
       return res.send(`
         <html>
@@ -265,7 +382,7 @@ router.get("/rsvp", async (req, res) => {
             <div class="card">
               <h2>RSVP for ${invitation.guestName}</h2>
               <p>You may bring a guest. Tell us below so the couple can plan accurately.</p>
-              <form method="post" action="/api/wedding/rsvp" onsubmit="return window.__weddingRsvpValidate?.() ?? true;">
+              <form method="post" action="/api/wedding/rsvp">
                 <input type="hidden" name="token" value="${token}" />
                 <input type="hidden" name="response" value="${response}" />
                 <label style="display:flex;align-items:center;gap:10px;margin:16px 0 10px 0;">
@@ -299,13 +416,6 @@ router.get("/rsvp", async (req, res) => {
                     });
                   }
                   sync();
-                  window.__weddingRsvpValidate = function(){
-                    if (cb && cb.checked && inp && !String(inp.value||'').trim()) {
-                      alert('Please enter your guest\'s name, or uncheck “I\'m bringing a guest”.');
-                      return false;
-                    }
-                    return true;
-                  };
                 })();
               </script>
             </div>
@@ -314,121 +424,43 @@ router.get("/rsvp", async (req, res) => {
       `);
     }
 
-    // For all other cases (decline or no plus-one allowed), record the RSVP immediately
-    // and show the success page. This mirrors the original behaviour for users
-    // who either cannot bring a guest or choose not to.
-
-    // Map response to status
-    let rsvpStatus = "declined";
-    if (response === "accept" || response === "accept-both") {
-      rsvpStatus = "accepted";
-    } else if (response === "ceremony-only") {
-      rsvpStatus = "ceremony-only";
-    } else if (response === "reception-only") {
-      rsvpStatus = "reception-only";
-    }
-
-    await db
-      .update(weddingRsvpInvitations)
-      .set({
-        rsvpStatus,
-        respondedAt: now,
-      })
-      .where(eq(weddingRsvpInvitations.id, invitation.id));
-
-    // Send notification email to the couple
-    try {
-      const [coupleUser] = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, invitation.userId))
-        .limit(1);
-
-      if (coupleUser?.email) {
-        const notificationStatus = response === "decline" ? "declined" : "accepted";
-        await sendRsvpNotificationEmail(
-          coupleUser.email,
-          invitation.guestName,
-          notificationStatus as any,
-          {
-            coupleName: coupleUser.displayName ? `${coupleUser.displayName}'s Wedding` : undefined,
-            eventDate: invitation.eventDate ? invitation.eventDate.toLocaleDateString() : undefined,
-          }
-        );
-      }
-
-      if (coupleUser?.id) {
-        await sendWeddingRSVPNotification(
-          coupleUser.id,
-          invitation.guestName,
-          rsvpStatus,
-          1
-        );
-      }
-    } catch (notificationError) {
-      // Don't fail the RSVP if notification fails
-      console.error("Failed to send RSVP notification:", notificationError);
-    }
-
-    // Show success page with appropriate styling
-    const responseMap: Record<string, {color: string; icon: string; text: string; message: string}> = {
-      "accept": { color: "#27ae60", icon: "✓", text: "Accepted", message: "We're thrilled you can join us!" },
-      "accept-both": { color: "#27ae60", icon: "✓", text: "Accepted Both Events", message: "We're thrilled you can join us for both the ceremony and reception!" },
-      "ceremony-only": { color: "#4ecdc4", icon: "✓", text: "Ceremony Only", message: "We're happy you can join us for the ceremony!" },
-      "reception-only": { color: "#95a5a6", icon: "✓", text: "Reception Only", message: "We're happy you can join us for the reception!" },
-      "decline": { color: "#e74c3c", icon: "✗", text: "Declined", message: "Thank you for letting us know. You'll be missed!" }
-    };
-
-    const status = responseMap[response] || responseMap["decline"];
-    const statusColor = status.color;
-    const statusIcon = status.icon;
-    const statusText = status.text;
-    const statusMessage = status.message;
+    // No plus-one flow: show a confirmation page that POSTs the RSVP.
+    // This prevents email link scanners from accidentally recording a response.
+    const prettyResponse =
+      response === "decline"
+        ? "Decline"
+        : response === "accept-both"
+        ? "Accept (Both Events)"
+        : response === "ceremony-only"
+        ? "Accept (Ceremony Only)"
+        : response === "reception-only"
+        ? "Accept (Reception Only)"
+        : "Accept";
 
     return res.send(`
       <html>
         <head>
-          <title>RSVP ${statusText}</title>
+          <title>Confirm RSVP</title>
           <style>
-            body {
-              font-family: system-ui, -apple-system, sans-serif;
-              text-align: center;
-              padding: 50px;
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              color: white;
-              min-height: 100vh;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-            }
-            .card {
-              background: white;
-              color: #333;
-              padding: 40px;
-              border-radius: 15px;
-              box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-              max-width: 500px;
-            }
-            .icon {
-              font-size: 72px;
-              margin-bottom: 20px;
-              color: ${statusColor};
-            }
-            h1 { color: ${statusColor}; margin: 20px 0; }
-            p { font-size: 16px; line-height: 1.6; color: #666; }
-            .guest-name { font-weight: bold; color: #333; }
+            body { font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 50px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+            .card { background: white; color: #333; padding: 34px; border-radius: 15px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); max-width: 520px; }
+            h1 { margin: 0 0 10px 0; }
+            p { color: #555; }
+            button { margin-top: 18px; padding: 12px 22px; background-color: #111827; color: white; border: none; border-radius: 10px; font-size: 16px; cursor: pointer; }
+            .muted { font-size: 12px; color: #8b8b8b; margin-top: 14px; }
           </style>
         </head>
         <body>
           <div class="card">
-            <div class="icon">${statusIcon}</div>
-            <h1>RSVP ${statusText}!</h1>
-            <p><span class="guest-name">${invitation.guestName}</span></p>
-            <p>${statusMessage}</p>
-            <p>Your response has been recorded. The couple has been notified.</p>
-            <p style="margin-top: 30px; font-size: 14px; color: #999;">
-              Thank you for responding!
-            </p>
+            <h1>Confirm your RSVP</h1>
+            <p><strong>${invitation.guestName}</strong></p>
+            <p>You selected: <strong>${prettyResponse}</strong></p>
+            <form method="post" action="/api/wedding/rsvp">
+              <input type="hidden" name="token" value="${token}" />
+              <input type="hidden" name="response" value="${response}" />
+              <button type="submit">Confirm RSVP</button>
+            </form>
+            <p class="muted">Tip: If you already responded, refreshing this page will show your recorded response.</p>
           </div>
         </body>
       </html>
@@ -455,9 +487,14 @@ router.post("/rsvp", async (req, res) => {
     const token = String(req.body.token || "");
     const response = String(req.body.response || "");
     const bringingGuest = req.body.bringingGuest === "on" || req.body.bringingGuest === "true";
-    const plusOneName = bringingGuest && typeof req.body.plusOneName === "string" && req.body.plusOneName.trim() !== ""
-      ? req.body.plusOneName.trim()
-      : null;
+    // If the invitee indicates they're bringing a guest but doesn't provide a name,
+    // store a placeholder so counts update correctly.
+    const plusOneName =
+      bringingGuest && typeof req.body.plusOneName === "string" && req.body.plusOneName.trim() !== ""
+        ? req.body.plusOneName.trim()
+        : bringingGuest
+          ? "(Plus One)"
+          : null;
 
     if (!token || !response) {
       return res.status(400).send("Missing token or response parameter.");
@@ -545,7 +582,7 @@ router.post("/rsvp", async (req, res) => {
       }
 
       if (coupleUser?.id) {
-        const guestCount = plusOneName ? 2 : 1;
+        const guestCount = bringingGuest ? 2 : 1;
         await sendWeddingRSVPNotification(
           coupleUser.id,
           invitation.guestName,
