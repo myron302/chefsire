@@ -344,8 +344,8 @@ export default function WeddingPlanning() {
       email: string;
       rsvp: string;
       plusOne: boolean;
-      partnerName?: string;
-      plusOneName?: string | null;
+      partnerName?: string; // Partner name specified by host when sending invitation
+      plusOneName?: string | null; // Name of guest's plus-one collected via RSVP
       respondedAt?: string | null;
     }>
   >([]);
@@ -421,7 +421,8 @@ export default function WeddingPlanning() {
             if (d.receptionTime) setReceptionTime(d.receptionTime);
             if (d.receptionLocation) setReceptionLocation(d.receptionLocation);
             if (d.customMessage) setCustomMessage(d.customMessage);
-            if (d.useSameLocation !== null && d.useSameLocation !== undefined) setUseSameLocation(Boolean(d.useSameLocation));
+            if (d.useSameLocation !== null && d.useSameLocation !== undefined)
+              setUseSameLocation(Boolean(d.useSameLocation));
             if (d.selectedTemplate) setSelectedTemplate(d.selectedTemplate);
           }
         } else {
@@ -489,9 +490,7 @@ export default function WeddingPlanning() {
 
     const fetchCalendarEvents = async () => {
       try {
-        const response = await fetch("/api/wedding/calendar-events", {
-          credentials: "include",
-        });
+        const response = await fetch("/api/wedding/calendar-events", { credentials: "include" });
 
         if (response.ok) {
           const data = await response.json();
@@ -539,7 +538,9 @@ export default function WeddingPlanning() {
         const venueName = place.name;
         const fullAddress = place.formatted_address;
         const displayString =
-          venueName && fullAddress && !fullAddress.startsWith(venueName) ? `${venueName}, ${fullAddress}` : fullAddress || venueName || "";
+          venueName && fullAddress && !fullAddress.startsWith(venueName)
+            ? `${venueName}, ${fullAddress}`
+            : fullAddress || venueName || "";
         setWeddingLocation(displayString);
         if (useSameLocation) setReceptionLocation(displayString);
       });
@@ -552,11 +553,13 @@ export default function WeddingPlanning() {
         const venueName = place.name;
         const fullAddress = place.formatted_address;
         const displayString =
-          venueName && fullAddress && !fullAddress.startsWith(venueName) ? `${venueName}, ${fullAddress}` : fullAddress || venueName || "";
+          venueName && fullAddress && !fullAddress.startsWith(venueName)
+            ? `${venueName}, ${fullAddress}`
+            : fullAddress || venueName || "";
         setReceptionLocation(displayString);
       });
     }
-  }, [isGoogleMapsLoaded, useSameLocation, isPremium, useSameLocation, isPremium]);
+  }, [isGoogleMapsLoaded, useSameLocation, isPremium, isPremium ? weddingLocation : undefined]); // safe-ish dependency
 
   const handleStartTrial = () => {
     setShowTrialBanner(false);
@@ -599,14 +602,23 @@ export default function WeddingPlanning() {
     if (newGuestName && newGuestEmail) {
       const plusOneAllowed = newGuestPlusOneAllowed || !!newGuestPartner;
 
-      const tempGuest = {
+      const tempGuest: {
+        id: number;
+        name: string;
+        email: string;
+        rsvp: string;
+        plusOne: boolean;
+        partnerName?: string;
+        respondedAt: string | null;
+        plusOneName?: string | null;
+      } = {
         id: Date.now(),
         name: newGuestName,
         email: newGuestEmail,
         rsvp: "pending",
         plusOne: plusOneAllowed,
         partnerName: newGuestPartner || undefined,
-        respondedAt: null as any,
+        respondedAt: null,
       };
 
       setGuestList((prev) => {
@@ -738,7 +750,8 @@ export default function WeddingPlanning() {
                 : "Our Wedding",
             eventDate: selectedDate && weddingTime ? `${selectedDate}T${weddingTime}` : selectedDate || undefined,
             eventLocation: weddingLocation || undefined,
-            receptionDate: receptionDate && receptionTime ? `${receptionDate}T${receptionTime}` : receptionDate || undefined,
+            receptionDate:
+              receptionDate && receptionTime ? `${receptionDate}T${receptionTime}` : receptionDate || undefined,
             receptionLocation: receptionLocation || undefined,
             useSameLocation: useSameLocation,
             hasReception: !!(receptionDate || receptionTime || receptionLocation || useSameLocation),
@@ -1030,10 +1043,7 @@ export default function WeddingPlanning() {
 
   const normalizeCalendarDate = useCallback((date: Date) => date.toISOString().split("T")[0], []);
   const parseCalendarDate = useCallback((dateString: string) => new Date(`${dateString}T00:00:00`), []);
-
-  const formatGoogleCalendarDate = useCallback((date: Date) => {
-    return date.toISOString().slice(0, 10).replace(/-/g, "");
-  }, []);
+  const formatGoogleCalendarDate = useCallback((date: Date) => date.toISOString().slice(0, 10).replace(/-/g, ""), []);
 
   const buildGoogleCalendarUrl = useCallback(
     (event: { title: string; date: string; notes?: string }) => {
@@ -1047,9 +1057,7 @@ export default function WeddingPlanning() {
         dates: `${formatGoogleCalendarDate(startDate)}/${formatGoogleCalendarDate(endDate)}`,
       });
 
-      if (event.notes) {
-        params.set("details", event.notes);
-      }
+      if (event.notes) params.set("details", event.notes);
 
       return `https://calendar.google.com/calendar/render?${params.toString()}`;
     },
@@ -1201,11 +1209,11 @@ export default function WeddingPlanning() {
         return;
       }
 
-      const plan = couplePlans[tier];
+      const plan = (couplePlans as any)[tier];
 
       try {
         let subscriptionEndsAt: string | null = null;
-        if (tier !== "free" && plan.trialDays) {
+        if (tier !== "free" && plan?.trialDays) {
           const endDate = new Date();
           endDate.setDate(endDate.getDate() + plan.trialDays);
           subscriptionEndsAt = endDate.toISOString();
@@ -1306,7 +1314,9 @@ export default function WeddingPlanning() {
               </div>
             ) : useSameLocation ? (
               <div className="pt-4 border-t border-current/10">
-                <p className={`text-xs uppercase tracking-[0.2em] font-medium ${styles.accent}`}>Dinner & Dancing to follow at the same venue</p>
+                <p className={`text-xs uppercase tracking-[0.2em] font-medium ${styles.accent}`}>
+                  Dinner & Dancing to follow at the same venue
+                </p>
               </div>
             ) : null}
           </div>
@@ -1357,7 +1367,11 @@ export default function WeddingPlanning() {
                 >
                   <X className="w-3 h-3 md:w-4 md:h-4" />
                 </Button>
-                <Button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white flex-1 sm:flex-none" size="sm" onClick={handleStartTrial}>
+                <Button
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 text-white flex-1 sm:flex-none"
+                  size="sm"
+                  onClick={handleStartTrial}
+                >
                   <Zap className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
                   <span className="text-xs md:text-sm">Start Free Trial</span>
                 </Button>
@@ -1377,7 +1391,11 @@ export default function WeddingPlanning() {
             <p className="text-muted-foreground mt-2 text-sm md:text-base">Find and book the perfect vendors for your special day</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={() => setShowBudgetCalculator(!showBudgetCalculator)} className="w-full sm:w-auto">
+            <Button
+              variant="outline"
+              onClick={() => setShowBudgetCalculator(!showBudgetCalculator)}
+              className="w-full sm:w-auto"
+            >
               <DollarSign className="w-4 h-4 mr-2" />
               <span className="hidden sm:inline">Budget Calculator</span>
               <span className="sm:hidden">Budget</span>
@@ -1450,7 +1468,9 @@ export default function WeddingPlanning() {
 
                 <Alert>
                   <Info className="h-4 w-4" />
-                  <AlertDescription>Based on {guestCount[0]} guests. Catering typically represents the largest portion of your wedding budget.</AlertDescription>
+                  <AlertDescription>
+                    Based on {guestCount[0]} guests. Catering typically represents the largest portion of your wedding budget.
+                  </AlertDescription>
                 </Alert>
               </div>
             </CardContent>
@@ -1605,11 +1625,7 @@ export default function WeddingPlanning() {
             <Badge variant="secondary" className="w-fit">
               <Calendar className="w-3 h-3 mr-1" />
               <span className="text-xs">
-                {new Date(selectedDate).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
+                {new Date(selectedDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               </span>
             </Badge>
           )}
@@ -1689,7 +1705,7 @@ export default function WeddingPlanning() {
                   <span className="sm:hidden">FB</span>
                 </Button>
                 <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry("Instagram")}>
-                  <Share2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                  <Share2 className="w-3 h-3 md:w-4 h-4 mr-1 md:mr-2" />
                   <span className="hidden sm:inline">Instagram</span>
                   <span className="sm:hidden">IG</span>
                 </Button>
@@ -1760,7 +1776,9 @@ export default function WeddingPlanning() {
 
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-xs md:text-sm truncate">{event.title}</p>
-                          {event.notes && <p className="text-[10px] md:text-xs text-muted-foreground mt-1 line-clamp-2">{event.notes}</p>}
+                          {event.notes && (
+                            <p className="text-[10px] md:text-xs text-muted-foreground mt-1 line-clamp-2">{event.notes}</p>
+                          )}
                           <div className="flex items-center gap-2 mt-1">
                             <Badge
                               variant={event.type === "payment" ? "destructive" : event.type === "appointment" ? "default" : "secondary"}
@@ -2065,10 +2083,20 @@ export default function WeddingPlanning() {
                 {respondedGuests.slice(0, 8).map((guest) => (
                   <div key={String(guest.id)} className="flex items-center justify-between gap-3 text-xs">
                     <span className="font-medium truncate">
-                      {guest.partnerName ? `${guest.name} & ${guest.partnerName}` : guest.plusOneName ? `${guest.name} & ${guest.plusOneName}` : guest.name}
+                      {guest.partnerName
+                        ? `${guest.name} & ${guest.partnerName}`
+                        : guest.plusOneName
+                        ? `${guest.name} & ${guest.plusOneName}`
+                        : guest.name}
                     </span>
                     <Badge
-                      variant={guest.rsvp === "accepted" || guest.rsvp === "accept-both" ? "default" : guest.rsvp === "declined" ? "destructive" : "secondary"}
+                      variant={
+                        guest.rsvp === "accepted" || guest.rsvp === "accept-both"
+                          ? "default"
+                          : guest.rsvp === "declined"
+                          ? "destructive"
+                          : "secondary"
+                      }
                       className="text-[10px] capitalize"
                     >
                       {guest.rsvp}
@@ -2104,7 +2132,12 @@ export default function WeddingPlanning() {
             <h4 className="font-medium mb-3 text-sm">Add Guest</h4>
             <div className="space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Input placeholder="Guest Name (e.g., John Smith)" value={newGuestName} onChange={(e) => setNewGuestName(e.target.value)} className="text-sm" />
+                <Input
+                  placeholder="Guest Name (e.g., John Smith)"
+                  value={newGuestName}
+                  onChange={(e) => setNewGuestName(e.target.value)}
+                  className="text-sm"
+                />
                 <Input
                   type="email"
                   placeholder="Email Address"
@@ -2122,7 +2155,12 @@ export default function WeddingPlanning() {
                   className="text-sm"
                 />
                 <label className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
-                  <input type="checkbox" className="rounded" checked={newGuestPlusOneAllowed} onChange={(e) => setNewGuestPlusOneAllowed(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    className="rounded"
+                    checked={newGuestPlusOneAllowed}
+                    onChange={(e) => setNewGuestPlusOneAllowed(e.target.checked)}
+                  />
                   Allow plus-one even if no name provided
                 </label>
               </div>
@@ -2132,7 +2170,9 @@ export default function WeddingPlanning() {
                 Add Guest
               </Button>
 
-              <p className="text-xs text-muted-foreground">💡 Tip: Add a partner/plus-one name to send one invitation to a couple (e.g., "John & Jane Smith")</p>
+              <p className="text-xs text-muted-foreground">
+                💡 Tip: Add a partner/plus-one name to send one invitation to a couple (e.g., "John & Jane Smith")
+              </p>
             </div>
           </div>
 
@@ -2144,7 +2184,11 @@ export default function WeddingPlanning() {
                 <div key={String(guest.id)} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm truncate">
-                      {guest.partnerName ? `${guest.name} & ${guest.partnerName}` : guest.plusOneName ? `${guest.name} & ${guest.plusOneName}` : guest.name}
+                      {guest.partnerName
+                        ? `${guest.name} & ${guest.partnerName}`
+                        : guest.plusOneName
+                        ? `${guest.name} & ${guest.plusOneName}`
+                        : guest.name}
                     </p>
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-xs text-muted-foreground truncate">{guest.email}</p>
@@ -2158,7 +2202,13 @@ export default function WeddingPlanning() {
 
                   <div className="flex items-center gap-2">
                     <Badge
-                      variant={guest.rsvp === "accepted" || guest.rsvp === "accept-both" ? "default" : guest.rsvp === "declined" ? "destructive" : "secondary"}
+                      variant={
+                        guest.rsvp === "accepted" || guest.rsvp === "accept-both"
+                          ? "default"
+                          : guest.rsvp === "declined"
+                          ? "destructive"
+                          : "secondary"
+                      }
                       className={`text-xs ${
                         guest.rsvp === "ceremony-only"
                           ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
