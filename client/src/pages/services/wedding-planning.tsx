@@ -34,6 +34,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
@@ -901,60 +902,69 @@ export default function WeddingPlanning() {
     weddingLocation,
     receptionDate,
     receptionTime,
-    receptionLocation,
-    useSameLocation,
-    customMessage,
-    selectedTemplate,
-    toast,
-  ]);
-
   const rsvpStats = useMemo(() => {
-    let acceptedBoth = 0;
-    let ceremonyOnly = 0;
-    let receptionOnly = 0;
-    let declined = 0;
-    let pending = 0;
+  let acceptedBoth = 0;
+  let ceremonyOnly = 0;
+  let receptionOnly = 0;
+  let declined = 0;
+  let pending = 0;
 
-    let ceremonyExtras = 0;
-    let receptionExtras = 0;
+  // "Extras" = additional people beyond the primary invitee:
+  // - partnerName (host-defined couple invite)
+  // - plusOneName (invitee-added plus-one)
+  let ceremonyExtras = 0;
+  let receptionExtras = 0;
 
-    guestList.forEach((g) => {
-      const hasPlusOne = !!g.plusOneName;
-      switch (g.rsvp) {
-        case "accepted":
-        case "accept-both":
-          acceptedBoth++;
-          if (hasPlusOne) {
-            ceremonyExtras++;
-            receptionExtras++;
-          }
-          break;
-        case "ceremony-only":
-          ceremonyOnly++;
-          if (hasPlusOne) ceremonyExtras++;
-          break;
-        case "reception-only":
-          receptionOnly++;
-          if (hasPlusOne) receptionExtras++;
-          break;
-        case "declined":
-          declined++;
-          break;
-        default:
-          pending++;
-          break;
-      }
-    });
+  // Total people invited (counts partnerName always; counts plusOneName only if provided)
+  let invitedPeople = 0;
 
-    const ceremonyTotal = acceptedBoth + ceremonyOnly + ceremonyExtras;
-    const receptionTotal = acceptedBoth + receptionOnly + receptionExtras;
+  guestList.forEach((g) => {
+    const partnerExtra = g.partnerName ? 1 : 0;
+    const plusOneExtra = g.plusOneName ? 1 : 0;
 
-    return {
-      acceptedBoth,
-      ceremonyOnly,
-      receptionOnly,
-      ceremonyTotal,
-      receptionTotal,
+    invitedPeople += 1 + partnerExtra + plusOneExtra;
+
+    const extraCount = partnerExtra + plusOneExtra;
+
+    switch (g.rsvp) {
+      case "accepted":
+      case "accept-both":
+        acceptedBoth++;
+        ceremonyExtras += extraCount;
+        receptionExtras += extraCount;
+        break;
+      case "ceremony-only":
+        ceremonyOnly++;
+        ceremonyExtras += extraCount;
+        break;
+      case "reception-only":
+        receptionOnly++;
+        receptionExtras += extraCount;
+        break;
+      case "declined":
+        declined++;
+        break;
+      default:
+        pending++;
+        break;
+    }
+  });
+
+  const ceremonyTotal = acceptedBoth + ceremonyOnly + ceremonyExtras;
+  const receptionTotal = acceptedBoth + receptionOnly + receptionExtras;
+
+  return {
+    acceptedBoth,
+    ceremonyOnly,
+    receptionOnly,
+    ceremonyTotal,
+    receptionTotal,
+    declined,
+    pending,
+    invitedPeople,
+    invitations: guestList.length
+  };
+}, [guestList]);receptionTotal,
       declined,
       pending,
       total: guestList.length,
@@ -2028,7 +2038,7 @@ export default function WeddingPlanning() {
           {/* RSVP Stats */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-6">
             <div className="text-center p-3 bg-muted rounded-lg">
-              <p className="text-xl md:text-2xl font-bold">{rsvpStats.total}</p>
+              <p className="text-xl md:text-2xl font-bold">{rsvpStats.invitedPeople}</p>
               <p className="text-xs text-muted-foreground">Total Guests</p>
             </div>
             <div className="text-center p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
@@ -2077,35 +2087,94 @@ export default function WeddingPlanning() {
           )}
 
           {respondedGuests.length > 0 && (
-            <div className="mb-6 p-4 bg-muted/50 rounded-lg">
-              <h4 className="text-sm font-medium mb-3">Recent Responses</h4>
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                {respondedGuests.slice(0, 8).map((guest) => (
-                  <div key={String(guest.id)} className="flex items-center justify-between gap-3 text-xs">
-                    <span className="font-medium truncate">
-                      {guest.partnerName
-                        ? `${guest.name} & ${guest.partnerName}`
-                        : guest.plusOneName
-                        ? `${guest.name} & ${guest.plusOneName}`
-                        : guest.name}
-                    </span>
-                    <Badge
-                      variant={
-                        guest.rsvp === "accepted" || guest.rsvp === "accept-both"
-                          ? "default"
-                          : guest.rsvp === "declined"
-                          ? "destructive"
-                          : "secondary"
-                      }
-                      className="text-[10px] capitalize"
-                    >
-                      {guest.rsvp}
-                    </Badge>
+  <div className="mb-6 p-4 bg-muted/50 rounded-lg">
+    <div className="flex items-center justify-between mb-3">
+      <h4 className="text-sm font-medium">Latest RSVP Activity</h4>
+      <Badge variant="secondary" className="text-[11px]">
+        {respondedGuests.length} response{respondedGuests.length === 1 ? "" : "s"}
+      </Badge>
+    </div>
+
+    <div className="rounded-lg border overflow-hidden bg-background">
+      <Table>
+        <TableHeader className="bg-muted/40">
+          <TableRow>
+            <TableHead>Guest</TableHead>
+            <TableHead>RSVP</TableHead>
+            <TableHead className="hidden sm:table-cell">Responded</TableHead>
+          </TableRow>
+        </TableHeader>
+
+        <TableBody>
+          {respondedGuests.slice(0, 10).map((guest) => {
+            const displayName = guest.partnerName
+              ? `${guest.name} & ${guest.partnerName}`
+              : guest.plusOneName
+              ? `${guest.name} & ${guest.plusOneName}`
+              : guest.name;
+
+            const label =
+              guest.rsvp === "accept-both" ? "Both Events"
+              : guest.rsvp === "ceremony-only" ? "Ceremony Only"
+              : guest.rsvp === "reception-only" ? "Reception Only"
+              : guest.rsvp === "accepted" ? "Accepted"
+              : guest.rsvp === "declined" ? "Declined"
+              : guest.rsvp;
+
+            const respondedText = guest.respondedAt
+              ? new Date(guest.respondedAt).toLocaleString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit"
+                })
+              : "—";
+
+            return (
+              <TableRow key={String(guest.id)}>
+                <TableCell className="font-medium">
+                  <div className="min-w-0">
+                    <div className="truncate">{displayName}</div>
+                    {guest.plusOneName && !guest.partnerName && (
+                      <div className="text-[11px] text-muted-foreground truncate">
+                        +1: {guest.plusOneName}
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                </TableCell>
+
+                <TableCell>
+                  <Badge
+                    variant={
+                      guest.rsvp === "accepted" || guest.rsvp === "accept-both"
+                        ? "default"
+                        : guest.rsvp === "declined"
+                        ? "destructive"
+                        : "secondary"
+                    }
+                    className="text-[10px] capitalize"
+                  >
+                    {label}
+                  </Badge>
+                </TableCell>
+
+                <TableCell className="hidden sm:table-cell text-muted-foreground text-xs">
+                  {respondedText}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+
+    {respondedGuests.length > 10 && (
+      <p className="text-xs text-muted-foreground mt-2">
+        Showing 10 most recent. More will appear as guests respond.
+      </p>
+    )}
+  </div>
+)}
 
           {/* Template Selection */}
           <div className="mb-6">
@@ -2176,31 +2245,83 @@ export default function WeddingPlanning() {
             </div>
           </div>
 
-          {/* Guest List */}
-          <div className="mb-6">
-            <h4 className="font-medium mb-3 text-sm">Guest List ({guestList.length})</h4>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {guestList.map((guest) => (
-                <div key={String(guest.id)} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">
-                      {guest.partnerName
-                        ? `${guest.name} & ${guest.partnerName}`
-                        : guest.plusOneName
-                        ? `${guest.name} & ${guest.plusOneName}`
-                        : guest.name}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-xs text-muted-foreground truncate">{guest.email}</p>
-                      {guest.plusOne && !guest.partnerName && !guest.plusOneName && (
-                        <Badge variant="secondary" className="text-[10px]">
-                          Plus-one allowed
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
+{/* Guest List */}
+<div className="mb-6">
+  <div className="flex items-center justify-between mb-3">
+    <h4 className="font-medium text-sm">Invited Guests</h4>
+    <div className="flex items-center gap-2">
+      <Badge variant="secondary" className="text-[11px]">
+        {guestList.length} invitation{guestList.length === 1 ? "" : "s"}
+      </Badge>
+      <Badge variant="secondary" className="text-[11px]">
+        {rsvpStats.invitedPeople} people
+      </Badge>
+    </div>
+  </div>
 
-                  <div className="flex items-center gap-2">
+  <div className="rounded-lg border overflow-hidden bg-background">
+    <div className="max-h-72 overflow-y-auto">
+      <Table>
+        <TableHeader className="bg-muted/40 sticky top-0 z-10">
+          <TableRow>
+            <TableHead>Guest</TableHead>
+            <TableHead className="hidden sm:table-cell">Email</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="hidden md:table-cell">Plus-one</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+
+        <TableBody>
+          {guestList.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={5} className="text-sm text-muted-foreground py-6 text-center">
+                No guests yet. Add someone above.
+              </TableCell>
+            </TableRow>
+          ) : (
+            guestList.map((guest) => {
+              const displayName =
+                guest.partnerName
+                  ? `${guest.name} & ${guest.partnerName}`
+                  : guest.plusOneName
+                  ? `${guest.name} & ${guest.plusOneName}`
+                  : guest.name;
+
+              const statusLabel =
+                guest.rsvp === "accept-both" ? "Both Events"
+                : guest.rsvp === "ceremony-only" ? "Ceremony Only"
+                : guest.rsvp === "reception-only" ? "Reception Only"
+                : guest.rsvp === "accepted" ? "Accepted"
+                : guest.rsvp === "declined" ? "Declined"
+                : "Pending";
+
+              const isUnsent = typeof guest.id === "number";
+
+              return (
+                <TableRow key={String(guest.id)}>
+                  <TableCell className="font-medium">
+                    <div className="min-w-0">
+                      <div className="truncate flex items-center gap-2">
+                        <span className="truncate">{displayName}</span>
+                        {isUnsent && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            Unsent
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="sm:hidden text-[11px] text-muted-foreground truncate">
+                        {guest.email}
+                      </div>
+                    </div>
+                  </TableCell>
+
+                  <TableCell className="hidden sm:table-cell text-muted-foreground">
+                    {guest.email}
+                  </TableCell>
+
+                  <TableCell>
                     <Badge
                       variant={
                         guest.rsvp === "accepted" || guest.rsvp === "accept-both"
@@ -2209,36 +2330,53 @@ export default function WeddingPlanning() {
                           ? "destructive"
                           : "secondary"
                       }
-                      className={`text-xs ${
-                        guest.rsvp === "ceremony-only"
-                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-                          : guest.rsvp === "reception-only"
-                          ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-blue-200"
-                          : ""
-                      }`}
+                      className="text-[10px]"
                     >
-                      {guest.rsvp === "accept-both"
-                        ? "Both Events"
-                        : guest.rsvp === "ceremony-only"
-                        ? "Ceremony Only"
-                        : guest.rsvp === "reception-only"
-                        ? "Reception Only"
-                        : guest.rsvp === "accepted"
-                        ? "Accepted"
-                        : guest.rsvp === "declined"
-                        ? "Declined"
-                        : "Pending"}
+                      {statusLabel}
                     </Badge>
+                  </TableCell>
 
-                    <Button size="sm" variant="ghost" onClick={() => removeGuest(guest.id)} className="p-1">
+                  <TableCell className="hidden md:table-cell">
+                    {guest.partnerName ? (
+                      <Badge variant="secondary" className="text-[10px]">
+                        Couple invite
+                      </Badge>
+                    ) : guest.plusOneName ? (
+                      <Badge variant="secondary" className="text-[10px]">
+                        +1: {guest.plusOneName}
+                      </Badge>
+                    ) : guest.plusOne ? (
+                      <Badge variant="secondary" className="text-[10px]">
+                        Allowed
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+
+                  <TableCell className="text-right">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeGuest(guest.id)}
+                      className="h-8 px-2"
+                    >
                       <X className="w-4 h-4" />
                     </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  </div>
 
+  <p className="text-xs text-muted-foreground mt-2">
+    Tip: “Unsent” means it’s saved locally until you send invitations.
+  </p>
+</div>
           {/* Send + Preview */}
           <div className="flex flex-col sm:flex-row gap-3">
             {isPremium ? (
