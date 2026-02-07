@@ -971,12 +971,7 @@ export default function WeddingPlanning() {
     invitedPeople,
     invitations: guestList.length
   };
-}, [guestList]);receptionTotal,
-      declined,
-      pending,
-      total: guestList.length,
-    };
-  }, [guestList]);
+}, [guestList]);
 
   const respondedGuests = useMemo(() => {
     return guestList
