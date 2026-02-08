@@ -324,6 +324,7 @@ export default function WeddingPlanning() {
     Array<{
       id: number;
       date: string;
+      time?: string;
       title: string;
       type: string;
       reminder: boolean;
@@ -331,6 +332,7 @@ export default function WeddingPlanning() {
     }>
   >([]);
   const [calendarDate, setCalendarDate] = useState<Date | undefined>();
+  const [calendarTime, setCalendarTime] = useState<string>("");
   const [calendarTitle, setCalendarTitle] = useState("");
   const [calendarType, setCalendarType] = useState("");
   const [calendarNotes, setCalendarNotes] = useState("");
@@ -915,18 +917,10 @@ export default function WeddingPlanning() {
     let declined = 0;
     let pending = 0;
 
-    let invitationTotal = 0;
-    let attendeeTotal = 0;
-
     let ceremonyExtras = 0;
     let receptionExtras = 0;
 
     guestList.forEach((g) => {
-      invitationTotal++;
-      const plusOneCount = g.plusOneName ? 1 : 0;
-      const isConfirmed = g.rsvp !== 'pending';
-      if (isConfirmed) attendeeTotal += 1 + plusOneCount;
-
       const hasPlusOne = !!g.plusOneName;
       switch (g.rsvp) {
         case "accepted":
@@ -965,8 +959,6 @@ export default function WeddingPlanning() {
       receptionTotal,
       declined,
       pending,
-      invitationTotal,
-      attendeeTotal,
       total: guestList.length,
     };
   }, [guestList]);
@@ -1052,61 +1044,86 @@ export default function WeddingPlanning() {
   );
 
   const normalizeCalendarDate = useCallback((date: Date) => date.toISOString().split("T")[0], []);
-  const parseCalendarDate = useCallback((dateString: string) => new Date(`${dateString}T00:00:00`), []);
-
-  const paymentTypes = useMemo(() => new Set(['payment', 'deposit-due', 'final-payment', 'contract-due']), []);
-  const appointmentTypes = useMemo(() => new Set(['appointment', 'venue-tour', 'vendor-meeting', 'tasting', 'final-walkthrough', 'fitting', 'hair-makeup-trial']), []);
-  const milestoneTypes = useMemo(() => new Set(['milestone', 'rsvp-deadline', 'day-of', 'rehearsal']), []);
-  const neutralTypes = useMemo(() => new Set(['task', 'save-the-dates', 'invitations', 'seating-chart', 'license', 'misc']), []);
-
-  const calendarTypeLabel = useCallback((type: string) => {
-    const labels: Record<string, string> = {
-      appointment: 'Appointment',
-      payment: 'Payment Due',
-      task: 'Task',
-      milestone: 'Milestone',
-
-      'venue-tour': 'Venue Tour',
-      'vendor-meeting': 'Vendor Meeting',
-      tasting: 'Tasting',
-      'final-walkthrough': 'Final Walkthrough',
-
-      'deposit-due': 'Deposit Due',
-      'final-payment': 'Final Payment',
-      'contract-due': 'Contract Due',
-
-      'save-the-dates': 'Save-the-Dates',
-      invitations: 'Invitations',
-      'rsvp-deadline': 'RSVP Deadline',
-      'seating-chart': 'Seating Chart',
-      license: 'Marriage License',
-
-      fitting: 'Fitting',
-      'hair-makeup-trial': 'Hair/Makeup Trial',
-
-      misc: 'Misc'
-    };
-    return labels[type] ?? type;
+  const parseCalendarDate = useCallback((dateString: string, time?: string) => {
+    // If no time is provided, treat as all-day style event.
+    if (!time) return new Date(`${dateString}T00:00:00`);
+    // time expected "HH:MM"
+    return new Date(`${dateString}T${time}:00`);
   }, []);
   const formatGoogleCalendarDate = useCallback((date: Date) => date.toISOString().slice(0, 10).replace(/-/g, ""), []);
 
   const buildGoogleCalendarUrl = useCallback(
-    (event: { title: string; date: string; notes?: string }) => {
-      const startDate = parseCalendarDate(event.date);
+    (event: { title: string; date: string; time?: string; notes?: string }) => {
+      const startDate = parseCalendarDate(event.date, event.time);
       const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 1);
 
+      // If a time is present, treat it as a timed event (default duration 60 minutes)
+      if (event.time) {
+        endDate.setMinutes(endDate.getMinutes() + 60);
+      } else {
+        // Otherwise, treat it as an all-day style event
+        endDate.setDate(endDate.getDate() + 1);
+      }
+
+      const pad2 = (n: number) => String(n).padStart(2, "0");
+
+      const formatForGoogle = (d: Date, timed: boolean) => {
+        const yyyy = d.getFullYear();
+        const mm = pad2(d.getMonth() + 1);
+        const dd = pad2(d.getDate());
+        if (!timed) return `${yyyy}${mm}${dd}`;
+
+        const hh = pad2(d.getHours());
+        const mi = pad2(d.getMinutes());
+        // Local time format (no trailing Z) works well for "Add to Calendar" links.
+        return `${yyyy}${mm}${dd}T${hh}${mi}00`;
+      };
+
+      const isTimed = Boolean(event.time);
       const params = new URLSearchParams({
         action: "TEMPLATE",
         text: event.title,
-        dates: `${formatGoogleCalendarDate(startDate)}/${formatGoogleCalendarDate(endDate)}`,
+        dates: `${formatForGoogle(startDate, isTimed)}/${formatForGoogle(endDate, isTimed)}`,
       });
 
       if (event.notes) params.set("details", event.notes);
 
       return `https://calendar.google.com/calendar/render?${params.toString()}`;
     },
-    [formatGoogleCalendarDate, parseCalendarDate]
+    [parseCalendarDate]
+  );
+
+      // If a time is present, treat it as a timed event (default duration 60 minutes)
+      if (event.time) {
+        endDate.setMinutes(endDate.getMinutes() + 60);
+      } else {
+        // Otherwise, treat it as an all-day style event
+        endDate.setDate(endDate.getDate() + 1);
+      }
+
+      const formatForGoogle = (d: Date, isTimed: boolean) => {
+        const pad = (n: number) => String(n).padStart(2, "0");
+        const yyyy = d.getFullYear();
+        const mm = pad(d.getMonth() + 1);
+        const dd = pad(d.getDate());
+        if (!isTimed) return `${yyyy}${mm}${dd}`;
+        const hh = pad(d.getHours());
+        const mi = pad(d.getMinutes());
+        return `${yyyy}${mm}${dd}T${hh}${mi}00`;
+      };
+
+      const isTimed = Boolean(event.time);
+      const params = new URLSearchParams({
+        action: "TEMPLATE",
+        text: event.title,
+        dates: `${formatForGoogle(startDate, isTimed)}/${formatForGoogle(endDate, isTimed)}`,
+      });
+
+      if (event.notes) params.set("details", event.notes);
+
+      return `https://calendar.google.com/calendar/render?${params.toString()}`;
+    },
+    [parseCalendarDate]
   );
 
   const sortedCalendarEvents = useMemo(() => {
@@ -1157,6 +1174,7 @@ export default function WeddingPlanning() {
         const savedEvent = {
           id: Number(data.event.id),
           date: data.event.eventDate,
+          time: data.event.eventTime || undefined,
           title: data.event.title,
           type: data.event.type,
           reminder: Boolean(data.event.reminder),
@@ -1168,6 +1186,7 @@ export default function WeddingPlanning() {
         const googleCalendarUrl = buildGoogleCalendarUrl({
           title: savedEvent.title,
           date: savedEvent.date,
+          time: savedEvent.time,
           notes: savedEvent.notes,
         });
 
@@ -1192,6 +1211,7 @@ export default function WeddingPlanning() {
       setCalendarNotes("");
       setCalendarReminder(false);
       setCalendarDate(undefined);
+      setCalendarTime("");
     } catch (error) {
       console.error("[Wedding Planning] Failed to save calendar event:", error);
       toast({
@@ -1645,9 +1665,8 @@ export default function WeddingPlanning() {
           return (
             <Button
               key={category.value}
-              variant={isSelected ? "default" : "outline"}
-              onClick={() => setSelectedVendorType(category.value)}
-              className="w-full flex items-center justify-center sm:justify-between px-2"
+              variant={isActive ? "default" : "outline"}
+                              className="w-full flex items-center justify-center sm:justify-between px-2"
               size="sm"
             >
               <div className="flex items-center gap-1 min-w-0">
@@ -1811,7 +1830,7 @@ export default function WeddingPlanning() {
                   </div>
                 ) : (
                   sortedCalendarEvents.map((event) => {
-                    const eventDate = parseCalendarDate(event.date);
+                    const eventDate = parseCalendarDate(event.date, event.time);
                     return (
                       <div key={event.id} className="flex items-start gap-2 md:gap-3 p-2 md:p-3 bg-muted rounded-lg">
                         <div className="text-center min-w-[40px] md:min-w-[50px]">
@@ -1827,23 +1846,23 @@ export default function WeddingPlanning() {
                           <div className="flex items-center gap-2 mt-1">
                             <Badge
                               variant={
-                                paymentTypes.has(event.type)
+                                event.type === "payment" || event.type === "deadline"
                                   ? "destructive"
-                                  : appointmentTypes.has(event.type)
+                                  : event.type === "milestone"
+                                  ? "outline"
+                                  : event.type === "appointment" ||
+                                    event.type === "vendor" ||
+                                    event.type === "venue" ||
+                                    event.type === "tasting" ||
+                                    event.type === "license" ||
+                                    event.type === "rehearsal"
                                   ? "default"
                                   : "secondary"
                               }
-                              className={`text-[10px] md:text-xs ${
-                                paymentTypes.has(event.type)
-                                  ? "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200"
-                                  : appointmentTypes.has(event.type)
-                                  ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200"
-                                  : milestoneTypes.has(event.type)
-                                  ? "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200"
-                                  : "bg-muted"
-                              }`}
+                              className="text-[10px] md:text-xs capitalize"
                             >
-                              {calendarTypeLabel(event.type)}</Badge>
+                              {event.type}
+                            </Badge>
                             {event.reminder && <BellRing className="w-3 h-3 text-muted-foreground" />}
                           </div>
                         </div>
@@ -1870,6 +1889,14 @@ export default function WeddingPlanning() {
                 />
 
                 <Input
+                  type="time"
+                  className="text-sm"
+                  value={calendarTime}
+                  onChange={(e) => setCalendarTime(e.target.value)}
+                />
+
+
+                <Input
                   placeholder="Event title"
                   className="text-sm"
                   value={calendarTitle}
@@ -1881,26 +1908,20 @@ export default function WeddingPlanning() {
                     <SelectValue placeholder="Event type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="venue-tour">Venue Tour / Walkthrough</SelectItem>
-                    <SelectItem value="vendor-meeting">Vendor Meeting / Call</SelectItem>
-                    <SelectItem value="tasting">Catering Tasting</SelectItem>
-                    <SelectItem value="final-walkthrough">Final Venue Walkthrough</SelectItem>
-
-                    <SelectItem value="deposit-due">Deposit Due</SelectItem>
-                    <SelectItem value="final-payment">Final Payment Due</SelectItem>
-                    <SelectItem value="contract-due">Contract Due / Sign</SelectItem>
-
-                    <SelectItem value="save-the-dates">Send Save-the-Dates</SelectItem>
-                    <SelectItem value="invitations">Send Invitations</SelectItem>
-                    <SelectItem value="rsvp-deadline">RSVP Deadline</SelectItem>
-                    <SelectItem value="seating-chart">Seating Chart</SelectItem>
-                    <SelectItem value="license">Marriage License</SelectItem>
-
-                    <SelectItem value="fitting">Fitting (Dress/Suit)</SelectItem>
-                    <SelectItem value="hair-makeup-trial">Hair & Makeup Trial</SelectItem>
-
-                    <SelectItem value="misc">Misc</SelectItem>
-                  </SelectContent>
+                  <SelectItem value="appointment">Appointment</SelectItem>
+                  <SelectItem value="vendor">Vendor Meeting</SelectItem>
+                  <SelectItem value="venue">Venue Tour</SelectItem>
+                  <SelectItem value="tasting">Tasting</SelectItem>
+                  <SelectItem value="fitting">Fitting</SelectItem>
+                  <SelectItem value="alterations">Alterations</SelectItem>
+                  <SelectItem value="license">Marriage License</SelectItem>
+                  <SelectItem value="rehearsal">Rehearsal</SelectItem>
+                  <SelectItem value="deadline">Deadline</SelectItem>
+                  <SelectItem value="payment">Payment</SelectItem>
+                  <SelectItem value="task">Task</SelectItem>
+                  <SelectItem value="milestone">Milestone</SelectItem>
+                  <SelectItem value="misc">Misc</SelectItem>
+</SelectContent>
                 </Select>
 
                 <Textarea
@@ -2098,71 +2119,11 @@ export default function WeddingPlanning() {
             />
           </div>
 
-          {/* Add to Google Calendar (Couple) */}
-          <div className="mt-4 flex flex-col sm:flex-row gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1 border-pink-200 hover:bg-pink-50"
-              disabled={!selectedDate}
-              onClick={() => {
-                const startISO = selectedDate
-                  ? `${selectedDate}T${weddingTime ? `${weddingTime}:00` : '00:00:00'}`
-                  : undefined;
-                const url = buildGoogleCalendarUrlTimed({
-                  title: `${(partner1Name || 'Partner 1')} & ${(partner2Name || 'Partner 2')} - Ceremony`,
-                  startISO,
-                  durationMinutes: 60,
-                  location: weddingLocation || undefined,
-                  details: customMessage || undefined,
-                });
-                window.open(url, '_blank', 'noopener,noreferrer');
-              }}
-            >
-              <CalendarIcon className="w-4 h-4 mr-2" />
-              Add Ceremony to Google Calendar
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1 border-purple-200 hover:bg-purple-50"
-              disabled={
-                !(useSameLocation || receptionLocation || receptionDate || receptionTime) ||
-                !(receptionDate || selectedDate)
-              }
-              onClick={() => {
-                const date = receptionDate || selectedDate;
-                const time = receptionTime || (useSameLocation ? weddingTime : '');
-                const startISO = date
-                  ? `${date}T${time ? `${time}:00` : '00:00:00'}`
-                  : undefined;
-
-                const url = buildGoogleCalendarUrlTimed({
-                  title: `${(partner1Name || 'Partner 1')} & ${(partner2Name || 'Partner 2')} - Reception`,
-                  startISO,
-                  durationMinutes: 180,
-                  location: (useSameLocation ? weddingLocation : receptionLocation) || weddingLocation || undefined,
-                  details: customMessage || undefined,
-                });
-                window.open(url, '_blank', 'noopener,noreferrer');
-              }}
-            >
-              <CalendarIcon className="w-4 h-4 mr-2" />
-              Add Reception to Google Calendar
-            </Button>
-          </div>
-
-{/* RSVP Stats */}
+          {/* RSVP Stats */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-6">
             <div className="text-center p-3 bg-muted rounded-lg">
               <p className="text-xl md:text-2xl font-bold">{rsvpStats.total}</p>
-              <p className="text-xs text-muted-foreground">Invitations</p>
-            </div>
-            <div className="text-center p-3 bg-emerald-50 dark:bg-emerald-950 rounded-lg">
-              <p className="text-xl md:text-2xl font-bold text-emerald-600">{rsvpStats.attendeeTotal}</p>
-              <p className="text-xs text-muted-foreground">Attendees</p>
-              <p className="text-[10px] text-muted-foreground mt-1">Confirmed + plus-ones</p>
+              <p className="text-xs text-muted-foreground">Total Guests</p>
             </div>
             <div className="text-center p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
               <p className="text-xl md:text-2xl font-bold text-blue-600">{rsvpStats.ceremonyTotal}</p>
