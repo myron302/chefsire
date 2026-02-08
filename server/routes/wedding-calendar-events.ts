@@ -57,6 +57,7 @@ router.get("/calendar-events", requireAuth, async (req, res) => {
       SELECT
         id,
         event_date AS "eventDate",
+        event_time AS "eventTime",
         title,
         type,
         notes,
@@ -88,7 +89,7 @@ router.post("/calendar-events", requireAuth, async (req, res) => {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
 
-    const { eventDate, title, type, notes, reminder } = req.body ?? {};
+    const { eventDate, eventTime, title, type, notes, reminder } = req.body ?? {};
 
     const eventDateYMD = normalizeInputDate(eventDate);
     if (!eventDateYMD) {
@@ -101,10 +102,19 @@ router.post("/calendar-events", requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: "Type is required" });
     }
 
+    // Optional time (HH:MM). Leave empty for all-day style tasks.
+    if (eventTime != null && String(eventTime).trim() !== "") {
+      const t = String(eventTime).trim();
+      if (!/^\d{2}:\d{2}$/.test(t)) {
+        return res.status(400).json({ ok: false, error: "Invalid event time" });
+      }
+    }
+
     const insertResult: any = await db.execute(sql`
       INSERT INTO wedding_calendar_events (
         user_id,
         event_date,
+        event_time,
         title,
         type,
         notes,
@@ -112,6 +122,7 @@ router.post("/calendar-events", requireAuth, async (req, res) => {
       ) VALUES (
         ${userId},
         ${eventDateYMD}::date,
+        ${eventTime != null && String(eventTime).trim() !== "" ? String(eventTime).trim() : null},
         ${String(title).trim()},
         ${String(type).trim()},
         ${notes ? String(notes).trim() : null},
@@ -120,6 +131,7 @@ router.post("/calendar-events", requireAuth, async (req, res) => {
       RETURNING
         id,
         event_date AS "eventDate",
+        event_time AS "eventTime",
         title,
         type,
         notes,
