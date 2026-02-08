@@ -332,7 +332,7 @@ export default function WeddingPlanning() {
     }>
   >([]);
   const [calendarDate, setCalendarDate] = useState<Date | undefined>();
-  const [calendarTime, setCalendarTime] = useState<string>("");
+  const [calendarEventTime, setCalendarEventTime] = useState<string>("");
   const [calendarTitle, setCalendarTitle] = useState("");
   const [calendarType, setCalendarType] = useState("");
   const [calendarNotes, setCalendarNotes] = useState("");
@@ -502,6 +502,7 @@ export default function WeddingPlanning() {
               .map((event: any) => ({
                 id: Number(event.id),
                 date: event.eventDate,
+                time: (event.eventTime as string | undefined) || "",
                 title: event.title,
                 type: event.type,
                 reminder: Boolean(event.reminder),
@@ -1044,53 +1045,61 @@ export default function WeddingPlanning() {
   );
 
   const normalizeCalendarDate = useCallback((date: Date) => date.toISOString().split("T")[0], []);
-  const parseCalendarDate = useCallback((dateString: string, time?: string) => {
-    // If no time is provided, treat as all-day style event.
-    if (!time) return new Date(`${dateString}T00:00:00`);
-    // time expected "HH:MM"
-    return new Date(`${dateString}T${time}:00`);
-  }, []);
+  const parseCalendarDate = useCallback((dateString: string) => new Date(`${dateString}T00:00:00`), []);
   const formatGoogleCalendarDate = useCallback((date: Date) => date.toISOString().slice(0, 10).replace(/-/g, ""), []);
 
   const buildGoogleCalendarUrl = useCallback(
-    (event: { title: string; date: string; time?: string; notes?: string }) => {
-      const startDate = parseCalendarDate(event.date, event.time);
-      const endDate = new Date(startDate);
+    (event: { title: string; date: Date; time?: string; notes?: string }) => {
+      // Google Calendar "render" URLs support either:
+      //  - all-day events: dates=YYYYMMDD/YYYYMMDD
+      //  - timed events:   dates=YYYYMMDDTHHMMSS/YYYYMMDDTHHMMSS
+      const y = event.date.getFullYear();
+      const m = String(event.date.getMonth() + 1).padStart(2, "0");
+      const d = String(event.date.getDate()).padStart(2, "0");
+      const ymd = `${y}${m}${d}`;
 
-      // If a time is present, treat it as a timed event (default duration 60 minutes)
-      if (event.time) {
-        endDate.setMinutes(endDate.getMinutes() + 60);
-      } else {
-        // Otherwise, treat it as an all-day style event
-        endDate.setDate(endDate.getDate() + 1);
-      }
-
-      const pad2 = (n: number) => String(n).padStart(2, "0");
-
-      const formatForGoogle = (d: Date, timed: boolean) => {
-        const yyyy = d.getFullYear();
-        const mm = pad2(d.getMonth() + 1);
-        const dd = pad2(d.getDate());
-        if (!timed) return `${yyyy}${mm}${dd}`;
-
-        const hh = pad2(d.getHours());
-        const mi = pad2(d.getMinutes());
-        // Local time format (no trailing Z) works well for "Add to Calendar" links.
-        return `${yyyy}${mm}${dd}T${hh}${mi}00`;
+      const fmtDateTime = (dt: Date) => {
+        const yy = dt.getFullYear();
+        const mm = String(dt.getMonth() + 1).padStart(2, "0");
+        const dd = String(dt.getDate()).padStart(2, "0");
+        const hh = String(dt.getHours()).padStart(2, "0");
+        const mi = String(dt.getMinutes()).padStart(2, "0");
+        return `${yy}${mm}${dd}T${hh}${mi}00`;
       };
 
-      const isTimed = Boolean(event.time);
+      let datesParam: string;
+
+      const time = (event.time || "").trim();
+      if (time) {
+        // time expected "HH:MM"
+        const [hhRaw, mmRaw] = time.split(":");
+        const hh = Number(hhRaw);
+        const mi = Number(mmRaw);
+
+        const start = new Date(event.date);
+        start.setHours(Number.isFinite(hh) ? hh : 0, Number.isFinite(mi) ? mi : 0, 0, 0);
+
+        const end = new Date(start.getTime() + 60 * 60 * 1000); // default 1 hour
+        datesParam = `${fmtDateTime(start)}/${fmtDateTime(end)}`;
+      } else {
+        const endDate = new Date(event.date);
+        endDate.setDate(endDate.getDate() + 1); // all-day end is next day
+        const y2 = endDate.getFullYear();
+        const m2 = String(endDate.getMonth() + 1).padStart(2, "0");
+        const d2 = String(endDate.getDate()).padStart(2, "0");
+        datesParam = `${ymd}/${y2}${m2}${d2}`;
+      }
+
       const params = new URLSearchParams({
         action: "TEMPLATE",
         text: event.title,
-        dates: `${formatForGoogle(startDate, isTimed)}/${formatForGoogle(endDate, isTimed)}`,
+        dates: datesParam,
+        details: event.notes || "",
       });
-
-      if (event.notes) params.set("details", event.notes);
 
       return `https://calendar.google.com/calendar/render?${params.toString()}`;
     },
-    [parseCalendarDate]
+    []
   );
 
   const sortedCalendarEvents = useMemo(() => {
@@ -1123,6 +1132,7 @@ export default function WeddingPlanning() {
           type: calendarType,
           notes: calendarNotes.trim() || undefined,
           reminder: calendarReminder,
+          eventTime: calendarEventTime.trim() || undefined,
         }),
       });
 
@@ -1141,7 +1151,7 @@ export default function WeddingPlanning() {
         const savedEvent = {
           id: Number(data.event.id),
           date: data.event.eventDate,
-          time: data.event.eventTime || undefined,
+          time: (data.event.eventTime as string | undefined) || "",
           title: data.event.title,
           type: data.event.type,
           reminder: Boolean(data.event.reminder),
@@ -1177,8 +1187,8 @@ export default function WeddingPlanning() {
       setCalendarType("");
       setCalendarNotes("");
       setCalendarReminder(false);
+      setCalendarEventTime("");
       setCalendarDate(undefined);
-      setCalendarTime("");
     } catch (error) {
       console.error("[Wedding Planning] Failed to save calendar event:", error);
       toast({
@@ -1634,7 +1644,7 @@ export default function WeddingPlanning() {
               key={category.value}
               variant={isSelected ? "default" : "outline"}
               onClick={() => setSelectedVendorType(category.value)}
-                              className="w-full flex items-center justify-center sm:justify-between px-2"
+              className="w-full flex items-center justify-center sm:justify-between px-2"
               size="sm"
             >
               <div className="flex items-center gap-1 min-w-0">
@@ -1798,7 +1808,7 @@ export default function WeddingPlanning() {
                   </div>
                 ) : (
                   sortedCalendarEvents.map((event) => {
-                    const eventDate = parseCalendarDate(event.date, event.time);
+                    const eventDate = parseCalendarDate(event.date);
                     return (
                       <div key={event.id} className="flex items-start gap-2 md:gap-3 p-2 md:p-3 bg-muted rounded-lg">
                         <div className="text-center min-w-[40px] md:min-w-[50px]">
@@ -1808,25 +1818,15 @@ export default function WeddingPlanning() {
 
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-xs md:text-sm truncate">{event.title}</p>
+                          {event.time && (
+                            <p className="text-[10px] md:text-xs text-muted-foreground mt-0.5">🕒 {event.time}</p>
+                          )}
                           {event.notes && (
                             <p className="text-[10px] md:text-xs text-muted-foreground mt-1 line-clamp-2">{event.notes}</p>
                           )}
                           <div className="flex items-center gap-2 mt-1">
                             <Badge
-                              variant={
-                                event.type === "payment" || event.type === "deadline"
-                                  ? "destructive"
-                                  : event.type === "milestone"
-                                  ? "outline"
-                                  : event.type === "appointment" ||
-                                    event.type === "vendor" ||
-                                    event.type === "venue" ||
-                                    event.type === "tasting" ||
-                                    event.type === "license" ||
-                                    event.type === "rehearsal"
-                                  ? "default"
-                                  : "secondary"
-                              }
+                              variant={event.type === "payment" ? "destructive" : event.type === "appointment" ? "default" : "secondary"}
                               className="text-[10px] md:text-xs capitalize"
                             >
                               {event.type}
@@ -1835,9 +1835,80 @@ export default function WeddingPlanning() {
                           </div>
                         </div>
 
-                        <Button size="sm" variant="ghost" className="p-1 md:p-2" onClick={() => handleRemoveCalendarEvent(event.id)}>
-                          <X className="w-3 h-3" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="p-1 md:p-2"
+                            title="Add to Google Calendar"
+                            onClick={() => {
+                              const url = buildGoogleCalendarUrl({
+                                title: event.title,
+                                date: parseCalendarDate(event.date),
+                                time: event.time,
+                                notes: event.notes,
+                              });
+                              window.open(url, "_blank", "noopener,noreferrer");
+                            }}
+                          >
+                            <Calendar className="w-3 h-3" />
+                          </Button>
+
+                          <Button
+
+
+                            size="sm"
+
+
+                            variant="ghost"
+
+
+                            className="p-1 md:p-2"
+
+
+                            title="Add to Google Calendar"
+
+
+                            onClick={() => {
+
+
+                              const url = buildGoogleCalendarUrl({
+
+
+                                title: event.title,
+
+
+                                date: parseCalendarDate(event.date),
+
+
+                                time: event.time,
+
+
+                                notes: event.notes,
+
+
+                              });
+
+
+                              window.open(url, "_blank", "noopener,noreferrer");
+
+
+                            }}
+
+
+                          >
+
+
+                            <CalendarIcon className="w-3 h-3" />
+
+
+                          </Button>
+
+
+                          <Button size="sm" variant="ghost" className="p-1 md:p-2" onClick={() => handleRemoveCalendarEvent(event.id)}>
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
                       </div>
                     );
                   })
@@ -1859,10 +1930,9 @@ export default function WeddingPlanning() {
                 <Input
                   type="time"
                   className="text-sm"
-                  value={calendarTime}
-                  onChange={(e) => setCalendarTime(e.target.value)}
+                  value={calendarEventTime}
+                  onChange={(e) => setCalendarEventTime(e.target.value)}
                 />
-
 
                 <Input
                   placeholder="Event title"
@@ -1876,20 +1946,11 @@ export default function WeddingPlanning() {
                     <SelectValue placeholder="Event type" />
                   </SelectTrigger>
                   <SelectContent>
-                  <SelectItem value="appointment">Appointment</SelectItem>
-                  <SelectItem value="vendor">Vendor Meeting</SelectItem>
-                  <SelectItem value="venue">Venue Tour</SelectItem>
-                  <SelectItem value="tasting">Tasting</SelectItem>
-                  <SelectItem value="fitting">Fitting</SelectItem>
-                  <SelectItem value="alterations">Alterations</SelectItem>
-                  <SelectItem value="license">Marriage License</SelectItem>
-                  <SelectItem value="rehearsal">Rehearsal</SelectItem>
-                  <SelectItem value="deadline">Deadline</SelectItem>
-                  <SelectItem value="payment">Payment</SelectItem>
-                  <SelectItem value="task">Task</SelectItem>
-                  <SelectItem value="milestone">Milestone</SelectItem>
-                  <SelectItem value="misc">Misc</SelectItem>
-</SelectContent>
+                    <SelectItem value="appointment">Appointment</SelectItem>
+                    <SelectItem value="payment">Payment Due</SelectItem>
+                    <SelectItem value="task">Task</SelectItem>
+                    <SelectItem value="milestone">Milestone</SelectItem>
+                  </SelectContent>
                 </Select>
 
                 <Textarea
