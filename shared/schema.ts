@@ -1113,6 +1113,7 @@ export const weddingCalendarEvents = pgTable(
     id: bigserial("id", { mode: "number" }).primaryKey(),
     userId: varchar("user_id").references(() => users.id).notNull(),
     eventDate: date("event_date").notNull(),
+    eventTime: varchar("event_time", { length: 20 }),
     title: text("title").notNull(),
     type: varchar("type", { length: 32 }).notNull(),
     notes: text("notes"),
