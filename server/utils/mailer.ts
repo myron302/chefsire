@@ -295,7 +295,61 @@ export async function sendWeddingRsvpEmail(
 
   const plusOneAllowed = !!eventDetails?.plusOneAllowed;
 
-  const html = `
+  
+  const buildGoogleCalendarLink = (args: { title: string; startISO?: string; durationMinutes?: number; location?: string; details?: string }) => {
+    if (!args.startISO) return "https://calendar.google.com/calendar/u/0/r";
+    const start = new Date(args.startISO);
+    const hasTime = !(start.getHours() === 0 && start.getMinutes() === 0);
+
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    const fmtDT = (d: Date) =>
+      d.getFullYear().toString() +
+      pad2(d.getMonth() + 1) +
+      pad2(d.getDate()) +
+      "T" +
+      pad2(d.getHours()) +
+      pad2(d.getMinutes()) +
+      "00";
+    const fmtD = (d: Date) => d.getFullYear().toString() + pad2(d.getMonth() + 1) + pad2(d.getDate());
+
+    const params = new URLSearchParams();
+    params.set("action", "TEMPLATE");
+    params.set("text", args.title);
+
+    if (hasTime) {
+      const dur = Math.max(15, Number(args.durationMinutes || 60));
+      const end = new Date(start.getTime() + dur * 60_000);
+      params.set("dates", `${fmtDT(start)}/${fmtDT(end)}`);
+    } else {
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+      params.set("dates", `${fmtD(start)}/${fmtD(end)}`);
+    }
+
+    if (args.location) params.set("location", args.location);
+    if (args.details) params.set("details", args.details);
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+  };
+
+  const ceremonyCalendarLink = buildGoogleCalendarLink({
+    title: `${coupleName} - Wedding Ceremony`,
+    startISO: eventDetails?.eventDate,
+    durationMinutes: 60,
+    location: eventLocation,
+    details: eventDetails?.message || undefined,
+  });
+
+  const receptionCalendarLink = hasReception
+    ? buildGoogleCalendarLink({
+        title: `${coupleName} - Reception`,
+        startISO: eventDetails?.receptionDate || eventDetails?.eventDate,
+        durationMinutes: 180,
+        location: receptionLocation || eventLocation,
+        details: eventDetails?.message || undefined,
+      })
+    : null;
+
+const html = `
     <div style="font-family:${style.fontFamily};line-height:1.6;background:${style.pageBg};padding:24px 12px;">
       <div style="max-width:600px;margin:0 auto;background:${style.cardBg};border:1px solid ${style.cardBorder};border-radius:14px;overflow:hidden;">
       <div style="background-color:${style.headerBg};color:${style.headerTextColor};padding:40px 20px;text-align:center;">
@@ -327,6 +381,10 @@ export async function sendWeddingRsvpEmail(
           <h3 style="margin:0 0 15px 0;color:${style.secondaryColor};">💒 Wedding Ceremony</h3>
           <p style="margin:8px 0;color:${style.textColor};"><strong>📅 Date & Time:</strong> ${eventDate}${eventTime}</p>
           <p style="margin:8px 0;color:${style.textColor};"><strong>📍 Location:</strong> ${eventLocation}</p>
+          <div style="margin-top:14px;">
+            <a href="${ceremonyCalendarLink}" target="_blank" rel="noopener noreferrer"
+              style="display:inline-block;padding:10px 14px;border-radius:10px;text-decoration:none;background:#111827;color:white;font-weight:600;font-size:14px;">📅 Add Ceremony to Google Calendar</a>
+          </div>
         </div>
 
         ${(!hasReception && useSameLocation) ? `
