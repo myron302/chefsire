@@ -43,6 +43,21 @@ function normalizeInputDate(value: unknown): string | null {
   const ymd = normalizeDateToYMD(value);
   if (!ymd) return null;
   return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : null;
+
+
+
+function normalizeTimeHHMM(value: unknown): string | null {
+  if (value == null) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  // Accept "HH:MM" 24h
+  if (!/^\d{2}:\d{2}$/.test(s)) return null;
+  const [hh, mm] = s.split(":").map(Number);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  if (hh < 0 || hh > 23) return null;
+  if (mm < 0 || mm > 59) return null;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
 }
 
 /**
@@ -89,7 +104,7 @@ router.post("/calendar-events", requireAuth, async (req, res) => {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
 
-    const { eventDate, eventTime, title, type, notes, reminder } = req.body ?? {};
+    const { eventDate, title, type, notes, reminder } = req.body ?? {};
 
     const eventDateYMD = normalizeInputDate(eventDate);
     if (!eventDateYMD) {
@@ -102,19 +117,10 @@ router.post("/calendar-events", requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: "Type is required" });
     }
 
-    // Optional time (HH:MM). Leave empty for all-day style tasks.
-    if (eventTime != null && String(eventTime).trim() !== "") {
-      const t = String(eventTime).trim();
-      if (!/^\d{2}:\d{2}$/.test(t)) {
-        return res.status(400).json({ ok: false, error: "Invalid event time" });
-      }
-    }
-
     const insertResult: any = await db.execute(sql`
       INSERT INTO wedding_calendar_events (
         user_id,
         event_date,
-        event_time,
         title,
         type,
         notes,
@@ -122,7 +128,6 @@ router.post("/calendar-events", requireAuth, async (req, res) => {
       ) VALUES (
         ${userId},
         ${eventDateYMD}::date,
-        ${eventTime != null && String(eventTime).trim() !== "" ? String(eventTime).trim() : null},
         ${String(title).trim()},
         ${String(type).trim()},
         ${notes ? String(notes).trim() : null},
