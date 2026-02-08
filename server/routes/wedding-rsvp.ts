@@ -47,14 +47,7 @@ router.post("/send-invitations", requireAuth, async (req, res) => {
     }
 
     const userId = req.user.id;
-    const { guests, eventDetails, plusOneName}
-
-    const normalizedPlusOneName =
-      typeof plusOneName === 'string' && plusOneName.trim().length > 0
-        ? plusOneName.trim()
-        : null;
-    const plusOneAccepted = Boolean(normalizedPlusOneName);
- = req.body;
+    const { guests, eventDetails } = req.body;
 
     if (!guests || !Array.isArray(guests) || guests.length === 0) {
       return res.status(400).json({ ok: false, error: "guests array is required" });
