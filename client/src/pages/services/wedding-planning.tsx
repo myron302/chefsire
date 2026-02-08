@@ -1632,7 +1632,8 @@ export default function WeddingPlanning() {
           return (
             <Button
               key={category.value}
-              variant={isActive ? "default" : "outline"}
+              variant={isSelected ? "default" : "outline"}
+              onClick={() => setSelectedVendorType(category.value)}
                               className="w-full flex items-center justify-center sm:justify-between px-2"
               size="sm"
             >
