@@ -2153,7 +2153,7 @@ export default function WeddingPlanning() {
             </Button>
           </div>
 
-/* RSVP Stats */}
+{/* RSVP Stats */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-6">
             <div className="text-center p-3 bg-muted rounded-lg">
               <p className="text-xl md:text-2xl font-bold">{rsvpStats.total}</p>
