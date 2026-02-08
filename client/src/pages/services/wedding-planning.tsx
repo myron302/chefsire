@@ -1093,39 +1093,6 @@ export default function WeddingPlanning() {
     [parseCalendarDate]
   );
 
-      // If a time is present, treat it as a timed event (default duration 60 minutes)
-      if (event.time) {
-        endDate.setMinutes(endDate.getMinutes() + 60);
-      } else {
-        // Otherwise, treat it as an all-day style event
-        endDate.setDate(endDate.getDate() + 1);
-      }
-
-      const formatForGoogle = (d: Date, isTimed: boolean) => {
-        const pad = (n: number) => String(n).padStart(2, "0");
-        const yyyy = d.getFullYear();
-        const mm = pad(d.getMonth() + 1);
-        const dd = pad(d.getDate());
-        if (!isTimed) return `${yyyy}${mm}${dd}`;
-        const hh = pad(d.getHours());
-        const mi = pad(d.getMinutes());
-        return `${yyyy}${mm}${dd}T${hh}${mi}00`;
-      };
-
-      const isTimed = Boolean(event.time);
-      const params = new URLSearchParams({
-        action: "TEMPLATE",
-        text: event.title,
-        dates: `${formatForGoogle(startDate, isTimed)}/${formatForGoogle(endDate, isTimed)}`,
-      });
-
-      if (event.notes) params.set("details", event.notes);
-
-      return `https://calendar.google.com/calendar/render?${params.toString()}`;
-    },
-    [parseCalendarDate]
-  );
-
   const sortedCalendarEvents = useMemo(() => {
     return [...calendarEvents].sort((a, b) => a.date.localeCompare(b.date));
   }, [calendarEvents]);
