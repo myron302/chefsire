@@ -43,8 +43,15 @@ export default function ClubsPage() {
   });
 
   // Fetch clubs
+  const params = new URLSearchParams();
+  if (searchQuery.trim()) params.set("search", searchQuery.trim());
+  if (categoryFilter !== "all") params.set("category", categoryFilter);
+  if (sortBy !== "newest") params.set("sort", sortBy);
+
+  const clubsApiPath = `/api/clubs${params.toString() ? `?${params.toString()}` : ""}`;
+
   const { data: clubsData, isLoading } = useQuery({
-    queryKey: ["/api/clubs", { search: searchQuery, category: categoryFilter, sort: sortBy }],
+    queryKey: [clubsApiPath],
   });
 
   const clubs: Club[] = clubsData?.clubs || [];

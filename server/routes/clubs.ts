@@ -21,7 +21,7 @@ const router = express.Router();
 // ============================================================
 
 // Browse clubs
-router.get("/clubs", async (req: Request, res: Response) => {
+router.get("/", async (req: Request, res: Response) => {
   try {
     const { category, search, sort } = req.query;
 
@@ -68,7 +68,7 @@ router.get("/clubs", async (req: Request, res: Response) => {
 });
 
 // Get club details
-router.get("/clubs/:id", async (req: Request, res: Response) => {
+router.get("/:id", async (req: Request, res: Response) => {
   try {
     const clubId = req.params.id;
 
@@ -109,7 +109,7 @@ router.get("/clubs/:id", async (req: Request, res: Response) => {
 });
 
 // Create club
-router.post("/clubs", requireAuth, async (req: Request, res: Response) => {
+router.post("/", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const { name, description, category, rules, isPublic } = req.body;
@@ -144,7 +144,7 @@ router.post("/clubs", requireAuth, async (req: Request, res: Response) => {
 });
 
 // Join club
-router.post("/clubs/:id/join", requireAuth, async (req: Request, res: Response) => {
+router.post("/:id/join", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const clubId = req.params.id;
@@ -186,7 +186,7 @@ router.post("/clubs/:id/join", requireAuth, async (req: Request, res: Response) 
 });
 
 // Leave club
-router.post("/clubs/:id/leave", requireAuth, async (req: Request, res: Response) => {
+router.post("/:id/leave", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const clubId = req.params.id;
@@ -242,7 +242,7 @@ router.get("/my-clubs", requireAuth, async (req: Request, res: Response) => {
 });
 
 // Get club posts
-router.get("/clubs/:id/posts", async (req: Request, res: Response) => {
+router.get("/:id/posts", async (req: Request, res: Response) => {
   try {
     const clubId = req.params.id;
     const { limit = 20, offset = 0 } = req.query;
@@ -271,7 +271,7 @@ router.get("/clubs/:id/posts", async (req: Request, res: Response) => {
 });
 
 // Create club post
-router.post("/clubs/:id/posts", requireAuth, async (req: Request, res: Response) => {
+router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const clubId = req.params.id;
