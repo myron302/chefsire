@@ -44,7 +44,23 @@ export default function ClubsPage() {
 
   // Fetch clubs
   const { data: clubsData, isLoading } = useQuery({
-    queryKey: ["/api/clubs", { search: searchQuery, category: categoryFilter, sort: sortBy }],
+    queryKey: ["/api/clubs", searchQuery, categoryFilter, sortBy],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (searchQuery.trim()) params.set("search", searchQuery.trim());
+      if (categoryFilter !== "all") params.set("category", categoryFilter);
+      if (sortBy !== "newest") params.set("sort", sortBy);
+
+      const url = `/api/clubs${params.toString() ? `?${params.toString()}` : ""}`;
+      const res = await fetch(url, { credentials: "include" });
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({ message: "Failed to load clubs" }));
+        throw new Error(payload.message || "Failed to load clubs");
+      }
+
+      return res.json();
+    },
   });
 
   const clubs: Club[] = clubsData?.clubs || [];
