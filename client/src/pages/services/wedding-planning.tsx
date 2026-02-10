@@ -137,6 +137,7 @@ const VENDOR_CATEGORIES = [
   { value: "planner", label: "Planner", icon: Heart },
 ] as const;
 
+
 interface PlanningTask {
   id: string;
   label: string;
@@ -152,6 +153,32 @@ const DEFAULT_PLANNING_TASKS: PlanningTask[] = [
   { id: "planner", label: "Planner", completed: false },
   { id: "cake", label: "Cake", completed: false },
 ];
+
+const parsePlanningTasks = (rawValue: string | null): PlanningTask[] => {
+  if (!rawValue) return DEFAULT_PLANNING_TASKS;
+
+  try {
+    const parsedTasks = JSON.parse(rawValue);
+    if (!Array.isArray(parsedTasks)) return DEFAULT_PLANNING_TASKS;
+
+    const normalizedTasks = parsedTasks.filter(
+      (task): task is PlanningTask =>
+        task &&
+        typeof task.id === "string" &&
+        typeof task.label === "string" &&
+        typeof task.completed === "boolean"
+    );
+
+    return normalizedTasks.length > 0 ? normalizedTasks : DEFAULT_PLANNING_TASKS;
+  } catch (error) {
+    console.error("[Wedding Planning] Failed to parse saved planning tasks", error);
+    return DEFAULT_PLANNING_TASKS;
+  }
+};
+
+const getWeddingPlanningTasksStorageKey = (userId?: string | number) =>
+  userId ? `weddingPlanningTasks:${userId}` : "weddingPlanningTasks:guest";
+
 
 // =========================================================
 // MEMOIZED VENDOR CARD
@@ -329,30 +356,13 @@ export default function WeddingPlanning() {
     return localStorage.getItem("weddingTrialBannerDismissed") !== "true";
   });
   const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
-  const [planningTasks, setPlanningTasks] = useState<PlanningTask[]>(() => {
-    const storedTasks = localStorage.getItem("weddingPlanningTasks");
-    if (!storedTasks) {
-      return DEFAULT_PLANNING_TASKS;
-    }
 
-    try {
-      const parsedTasks = JSON.parse(storedTasks);
-      if (!Array.isArray(parsedTasks)) {
-        return DEFAULT_PLANNING_TASKS;
-      }
+  const [planningTasks, setPlanningTasks] = useState<PlanningTask[]>(DEFAULT_PLANNING_TASKS);
+  const [isProgressEditorOpen, setIsProgressEditorOpen] = useState(false);
+  const [progressEditorTasks, setProgressEditorTasks] = useState<PlanningTask[]>([]);
+  const [newPlanningTaskLabel, setNewPlanningTaskLabel] = useState("");
+  const [hasLoadedPlanningTasks, setHasLoadedPlanningTasks] = useState(false);
 
-      const normalizedTasks = parsedTasks.filter(
-        (task): task is PlanningTask =>
-          task && typeof task.id === "string" && typeof task.label === "string" && typeof task.completed === "boolean"
-      );
-
-      return normalizedTasks.length > 0 ? normalizedTasks : DEFAULT_PLANNING_TASKS;
-    } catch (error) {
-      console.error("[Wedding Planning] Failed to parse saved planning tasks", error);
-      return DEFAULT_PLANNING_TASKS;
-    }
-  });
-  const [newPlanningTask, setNewPlanningTask] = useState("");
 
   const [registryLinks, setRegistryLinks] = useState([
     { id: 1, name: "Amazon", url: "", icon: "🎁" },
@@ -442,9 +452,41 @@ export default function WeddingPlanning() {
     }
   }, [currentTier]);
 
+
+  // Load + persist wedding planning checklist (per-user, with legacy migration)
   useEffect(() => {
-    localStorage.setItem("weddingPlanningTasks", JSON.stringify(planningTasks));
-  }, [planningTasks]);
+    setHasLoadedPlanningTasks(false);
+
+    const storageKey = getWeddingPlanningTasksStorageKey(user?.id);
+    const userScopedTasks = localStorage.getItem(storageKey);
+
+    if (userScopedTasks) {
+      setPlanningTasks(parsePlanningTasks(userScopedTasks));
+      setHasLoadedPlanningTasks(true);
+      return;
+    }
+
+    // migrate legacy key -> per-user key
+    const legacyTasks = localStorage.getItem("weddingPlanningTasks");
+    if (legacyTasks) {
+      const parsedLegacyTasks = parsePlanningTasks(legacyTasks);
+      setPlanningTasks(parsedLegacyTasks);
+      localStorage.setItem(storageKey, JSON.stringify(parsedLegacyTasks));
+      localStorage.removeItem("weddingPlanningTasks");
+      setHasLoadedPlanningTasks(true);
+      return;
+    }
+
+    setPlanningTasks(DEFAULT_PLANNING_TASKS);
+    setHasLoadedPlanningTasks(true);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!hasLoadedPlanningTasks) return;
+
+    const storageKey = getWeddingPlanningTasksStorageKey(user?.id);
+    localStorage.setItem(storageKey, JSON.stringify(planningTasks));
+  }, [planningTasks, user?.id, hasLoadedPlanningTasks]);
 
   // Load guest list and wedding details from backend on mount
   useEffect(() => {
@@ -645,37 +687,63 @@ export default function WeddingPlanning() {
     setRequestedQuotes((prev) => new Set(prev).add(vendorId));
   }, []);
 
+
   const completedTasks = useMemo(() => planningTasks.filter((task) => task.completed).length, [planningTasks]);
   const planningProgress = planningTasks.length === 0 ? 0 : Math.round((completedTasks / planningTasks.length) * 100);
 
-  const togglePlanningTask = useCallback((taskId: string) => {
-    setPlanningTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, completed: !task.completed } : task)));
-  }, []);
+  const openProgressEditor = useCallback(() => {
+    setProgressEditorTasks(planningTasks);
+    setNewPlanningTaskLabel("");
+    setIsProgressEditorOpen(true);
+  }, [planningTasks]);
 
-  const updatePlanningTaskLabel = useCallback((taskId: string, label: string) => {
-    setPlanningTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, label } : task)));
-  }, []);
-
-  const addPlanningTask = useCallback(() => {
-    const trimmedTask = newPlanningTask.trim();
-    if (!trimmedTask) {
-      return;
+  const handleProgressEditorOpenChange = useCallback((open: boolean) => {
+    setIsProgressEditorOpen(open);
+    if (!open) {
+      setProgressEditorTasks([]);
+      setNewPlanningTaskLabel("");
     }
-
-    setPlanningTasks((prev) => [
-      ...prev,
-      {
-        id: `custom-${Date.now()}`,
-        label: trimmedTask,
-        completed: false,
-      },
-    ]);
-    setNewPlanningTask("");
-  }, [newPlanningTask]);
-
-  const removePlanningTask = useCallback((taskId: string) => {
-    setPlanningTasks((prev) => prev.filter((task) => task.id !== taskId));
   }, []);
+
+  const toggleEditorTask = useCallback((taskId: string) => {
+    setProgressEditorTasks((prev) =>
+      prev.map((task) => (task.id === taskId ? { ...task, completed: !task.completed } : task))
+    );
+  }, []);
+
+  const updateEditorTaskLabel = useCallback((taskId: string, label: string) => {
+    setProgressEditorTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, label } : task)));
+  }, []);
+
+  const addEditorTask = useCallback(() => {
+    const trimmedTask = newPlanningTaskLabel.trim();
+    if (!trimmedTask) return;
+
+    setProgressEditorTasks((prev) => [
+      ...prev,
+      { id: `custom-${Date.now()}`, label: trimmedTask, completed: false },
+    ]);
+    setNewPlanningTaskLabel("");
+  }, [newPlanningTaskLabel]);
+
+  const removeEditorTask = useCallback((taskId: string) => {
+    setProgressEditorTasks((prev) => prev.filter((task) => task.id !== taskId));
+  }, []);
+
+  const savePlanningTasks = useCallback(() => {
+    const sanitizedTasks = progressEditorTasks
+      .map((task) => ({ ...task, label: task.label.trim() }))
+      .filter((task) => task.label.length > 0);
+
+    setPlanningTasks(sanitizedTasks.length > 0 ? sanitizedTasks : DEFAULT_PLANNING_TASKS);
+    setIsProgressEditorOpen(false);
+    setNewPlanningTaskLabel("");
+    toast({
+      title: "Progress Saved",
+      description: "Your planning checklist has been updated.",
+    });
+  }, [progressEditorTasks, toast]);
+
 
   const addGuest = useCallback(async () => {
     if (newGuestName && newGuestEmail) {
@@ -1537,64 +1605,84 @@ export default function WeddingPlanning() {
           <CardContent className="p-4 md:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
               <h3 className="font-semibold text-sm md:text-base">Your Wedding Planning Progress</h3>
-              <span className="text-xs md:text-sm text-muted-foreground">
-                {completedTasks} of {planningTasks.length} items completed
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs md:text-sm text-muted-foreground">
+                  {completedTasks} of {planningTasks.length} items completed
+                </span>
+                <Button variant="outline" size="sm" onClick={openProgressEditor}>
+                  Edit
+                </Button>
+              </div>
             </div>
 
             <Progress value={planningProgress} className="mb-4" />
 
-            <div className="flex flex-col sm:flex-row gap-2 mb-4">
-              <Input
-                value={newPlanningTask}
-                onChange={(event) => setNewPlanningTask(event.target.value)}
-                placeholder="Add a planning item (e.g. officiant, transportation)"
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    addPlanningTask();
-                  }
-                }}
-              />
-              <Button variant="outline" onClick={addPlanningTask} className="sm:w-auto">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Item
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 md:gap-3">
+            <div className="grid grid-cols-4 md:grid-cols-7 gap-2 md:gap-3">
               {planningTasks.map((task) => (
                 <div key={task.id} className="text-center">
-                  <button
-                    type="button"
-                    onClick={() => togglePlanningTask(task.id)}
-                    className={`w-7 h-7 md:w-8 md:h-8 mx-auto rounded-full flex items-center justify-center mb-2 transition-colors ${
+                  <div
+                    className={`w-7 h-7 md:w-8 md:h-8 mx-auto rounded-full flex items-center justify-center mb-1 ${
                       task.completed ? "bg-green-500 text-white" : "bg-gray-200 text-gray-500"
                     }`}
-                    aria-label={`Mark ${task.label} as ${task.completed ? "incomplete" : "complete"}`}
                   >
-                    {task.completed ? <span className="text-xs">✓</span> : <span className="text-xs">•</span>}
-                  </button>
-
-                  <Input
-                    value={task.label}
-                    onChange={(event) => updatePlanningTaskLabel(task.id, event.target.value)}
-                    className="h-7 text-[10px] md:text-xs text-center"
-                    aria-label="Planning item label"
-                  />
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-1 h-6 px-2 text-[10px]"
-                    onClick={() => removePlanningTask(task.id)}
-                  >
-                    <X className="w-3 h-3 mr-1" />
-                    Remove
-                  </Button>
+                    {task.completed && <span className="text-xs">✓</span>}
+                  </div>
+                  <span className="text-[10px] md:text-xs line-clamp-2">{task.label}</span>
                 </div>
               ))}
             </div>
+
+            <Dialog open={isProgressEditorOpen} onOpenChange={handleProgressEditorOpenChange}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Edit Wedding Progress</DialogTitle>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      value={newPlanningTaskLabel}
+                      onChange={(event) => setNewPlanningTaskLabel(event.target.value)}
+                      placeholder="Add a planning item (e.g. officiant, transportation)"
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addEditorTask();
+                        }
+                      }}
+                    />
+                    <Button variant="outline" onClick={addEditorTask} className="sm:w-auto">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Item
+                    </Button>
+                  </div>
+
+                  <div className="max-h-[420px] overflow-y-auto space-y-2 pr-1">
+                    {progressEditorTasks.map((task) => (
+                      <div key={task.id} className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => toggleEditorTask(task.id)}>
+                          {task.completed ? "✓" : "○"}
+                        </Button>
+                        <Input
+                          value={task.label}
+                          onChange={(event) => updateEditorTaskLabel(task.id, event.target.value)}
+                        />
+                        <Button variant="ghost" size="sm" onClick={() => removeEditorTask(task.id)}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => handleProgressEditorOpenChange(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={savePlanningTasks}>Save</Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </CardContent>
         </Card>
 
@@ -1973,56 +2061,6 @@ export default function WeddingPlanning() {
                             }}
                           >
                             <Calendar className="w-3 h-3" />
-                          </Button>
-
-                          <Button
-
-
-                            size="sm"
-
-
-                            variant="ghost"
-
-
-                            className="p-1 md:p-2"
-
-
-                            title="Add to Google Calendar"
-
-
-                            onClick={() => {
-
-
-                              const url = buildGoogleCalendarUrl({
-
-
-                                title: event.title,
-
-
-                                date: parseCalendarDate(event.date),
-
-
-                                time: event.time,
-
-
-                                notes: event.notes,
-
-
-                              });
-
-
-                              window.open(url, "_blank", "noopener,noreferrer");
-
-
-                            }}
-
-
-                          >
-
-
-                            <CalendarIcon className="w-3 h-3" />
-
-
                           </Button>
 
 
