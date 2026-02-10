@@ -153,6 +153,32 @@ const DEFAULT_PLANNING_TASKS: PlanningTask[] = [
   { id: "cake", label: "Cake", completed: false },
 ];
 
+const parsePlanningTasks = (rawValue: string | null): PlanningTask[] => {
+  if (!rawValue) {
+    return DEFAULT_PLANNING_TASKS;
+  }
+
+  try {
+    const parsedTasks = JSON.parse(rawValue);
+    if (!Array.isArray(parsedTasks)) {
+      return DEFAULT_PLANNING_TASKS;
+    }
+
+    const normalizedTasks = parsedTasks.filter(
+      (task): task is PlanningTask =>
+        task && typeof task.id === "string" && typeof task.label === "string" && typeof task.completed === "boolean"
+    );
+
+    return normalizedTasks.length > 0 ? normalizedTasks : DEFAULT_PLANNING_TASKS;
+  } catch (error) {
+    console.error("[Wedding Planning] Failed to parse saved planning tasks", error);
+    return DEFAULT_PLANNING_TASKS;
+  }
+};
+
+const getWeddingPlanningTasksStorageKey = (userId?: string | number) =>
+  userId ? `weddingPlanningTasks:${userId}` : "weddingPlanningTasks:guest";
+
 // =========================================================
 // MEMOIZED VENDOR CARD
 // =========================================================
@@ -329,32 +355,11 @@ export default function WeddingPlanning() {
     return localStorage.getItem("weddingTrialBannerDismissed") !== "true";
   });
   const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
-  const [planningTasks, setPlanningTasks] = useState<PlanningTask[]>(() => {
-    const storedTasks = localStorage.getItem("weddingPlanningTasks");
-    if (!storedTasks) {
-      return DEFAULT_PLANNING_TASKS;
-    }
-
-    try {
-      const parsedTasks = JSON.parse(storedTasks);
-      if (!Array.isArray(parsedTasks)) {
-        return DEFAULT_PLANNING_TASKS;
-      }
-
-      const normalizedTasks = parsedTasks.filter(
-        (task): task is PlanningTask =>
-          task && typeof task.id === "string" && typeof task.label === "string" && typeof task.completed === "boolean"
-      );
-
-      return normalizedTasks.length > 0 ? normalizedTasks : DEFAULT_PLANNING_TASKS;
-    } catch (error) {
-      console.error("[Wedding Planning] Failed to parse saved planning tasks", error);
-      return DEFAULT_PLANNING_TASKS;
-    }
-  });
+  const [planningTasks, setPlanningTasks] = useState<PlanningTask[]>(DEFAULT_PLANNING_TASKS);
   const [isProgressEditorOpen, setIsProgressEditorOpen] = useState(false);
   const [progressEditorTasks, setProgressEditorTasks] = useState<PlanningTask[]>([]);
   const [newPlanningTaskLabel, setNewPlanningTaskLabel] = useState("");
+  const [hasLoadedPlanningTasks, setHasLoadedPlanningTasks] = useState(false);
 
   const [registryLinks, setRegistryLinks] = useState([
     { id: 1, name: "Amazon", url: "", icon: "🎁" },
@@ -445,8 +450,39 @@ export default function WeddingPlanning() {
   }, [currentTier]);
 
   useEffect(() => {
-    localStorage.setItem("weddingPlanningTasks", JSON.stringify(planningTasks));
-  }, [planningTasks]);
+    setHasLoadedPlanningTasks(false);
+
+    const storageKey = getWeddingPlanningTasksStorageKey(user?.id);
+    const userScopedTasks = localStorage.getItem(storageKey);
+
+    if (userScopedTasks) {
+      setPlanningTasks(parsePlanningTasks(userScopedTasks));
+      setHasLoadedPlanningTasks(true);
+      return;
+    }
+
+    const legacyTasks = localStorage.getItem("weddingPlanningTasks");
+    if (legacyTasks) {
+      const parsedLegacyTasks = parsePlanningTasks(legacyTasks);
+      setPlanningTasks(parsedLegacyTasks);
+      localStorage.setItem(storageKey, JSON.stringify(parsedLegacyTasks));
+      localStorage.removeItem("weddingPlanningTasks");
+      setHasLoadedPlanningTasks(true);
+      return;
+    }
+
+    setPlanningTasks(DEFAULT_PLANNING_TASKS);
+    setHasLoadedPlanningTasks(true);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!hasLoadedPlanningTasks) {
+      return;
+    }
+
+    const storageKey = getWeddingPlanningTasksStorageKey(user?.id);
+    localStorage.setItem(storageKey, JSON.stringify(planningTasks));
+  }, [planningTasks, user?.id, hasLoadedPlanningTasks]);
 
   // Load guest list and wedding details from backend on mount
   useEffect(() => {
