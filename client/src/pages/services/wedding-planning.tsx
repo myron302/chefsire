@@ -137,6 +137,7 @@ const VENDOR_CATEGORIES = [
   { value: "planner", label: "Planner", icon: Heart },
 ] as const;
 
+
 interface PlanningTask {
   id: string;
   label: string;
@@ -154,19 +155,18 @@ const DEFAULT_PLANNING_TASKS: PlanningTask[] = [
 ];
 
 const parsePlanningTasks = (rawValue: string | null): PlanningTask[] => {
-  if (!rawValue) {
-    return DEFAULT_PLANNING_TASKS;
-  }
+  if (!rawValue) return DEFAULT_PLANNING_TASKS;
 
   try {
     const parsedTasks = JSON.parse(rawValue);
-    if (!Array.isArray(parsedTasks)) {
-      return DEFAULT_PLANNING_TASKS;
-    }
+    if (!Array.isArray(parsedTasks)) return DEFAULT_PLANNING_TASKS;
 
     const normalizedTasks = parsedTasks.filter(
       (task): task is PlanningTask =>
-        task && typeof task.id === "string" && typeof task.label === "string" && typeof task.completed === "boolean"
+        task &&
+        typeof task.id === "string" &&
+        typeof task.label === "string" &&
+        typeof task.completed === "boolean"
     );
 
     return normalizedTasks.length > 0 ? normalizedTasks : DEFAULT_PLANNING_TASKS;
@@ -178,6 +178,7 @@ const parsePlanningTasks = (rawValue: string | null): PlanningTask[] => {
 
 const getWeddingPlanningTasksStorageKey = (userId?: string | number) =>
   userId ? `weddingPlanningTasks:${userId}` : "weddingPlanningTasks:guest";
+
 
 // =========================================================
 // MEMOIZED VENDOR CARD
@@ -355,11 +356,13 @@ export default function WeddingPlanning() {
     return localStorage.getItem("weddingTrialBannerDismissed") !== "true";
   });
   const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
+
   const [planningTasks, setPlanningTasks] = useState<PlanningTask[]>(DEFAULT_PLANNING_TASKS);
   const [isProgressEditorOpen, setIsProgressEditorOpen] = useState(false);
   const [progressEditorTasks, setProgressEditorTasks] = useState<PlanningTask[]>([]);
   const [newPlanningTaskLabel, setNewPlanningTaskLabel] = useState("");
   const [hasLoadedPlanningTasks, setHasLoadedPlanningTasks] = useState(false);
+
 
   const [registryLinks, setRegistryLinks] = useState([
     { id: 1, name: "Amazon", url: "", icon: "🎁" },
@@ -449,6 +452,8 @@ export default function WeddingPlanning() {
     }
   }, [currentTier]);
 
+
+  // Load + persist wedding planning checklist (per-user, with legacy migration)
   useEffect(() => {
     setHasLoadedPlanningTasks(false);
 
@@ -461,6 +466,7 @@ export default function WeddingPlanning() {
       return;
     }
 
+    // migrate legacy key -> per-user key
     const legacyTasks = localStorage.getItem("weddingPlanningTasks");
     if (legacyTasks) {
       const parsedLegacyTasks = parsePlanningTasks(legacyTasks);
@@ -476,9 +482,7 @@ export default function WeddingPlanning() {
   }, [user?.id]);
 
   useEffect(() => {
-    if (!hasLoadedPlanningTasks) {
-      return;
-    }
+    if (!hasLoadedPlanningTasks) return;
 
     const storageKey = getWeddingPlanningTasksStorageKey(user?.id);
     localStorage.setItem(storageKey, JSON.stringify(planningTasks));
@@ -683,6 +687,7 @@ export default function WeddingPlanning() {
     setRequestedQuotes((prev) => new Set(prev).add(vendorId));
   }, []);
 
+
   const completedTasks = useMemo(() => planningTasks.filter((task) => task.completed).length, [planningTasks]);
   const planningProgress = planningTasks.length === 0 ? 0 : Math.round((completedTasks / planningTasks.length) * 100);
 
@@ -712,17 +717,11 @@ export default function WeddingPlanning() {
 
   const addEditorTask = useCallback(() => {
     const trimmedTask = newPlanningTaskLabel.trim();
-    if (!trimmedTask) {
-      return;
-    }
+    if (!trimmedTask) return;
 
     setProgressEditorTasks((prev) => [
       ...prev,
-      {
-        id: `custom-${Date.now()}`,
-        label: trimmedTask,
-        completed: false,
-      },
+      { id: `custom-${Date.now()}`, label: trimmedTask, completed: false },
     ]);
     setNewPlanningTaskLabel("");
   }, [newPlanningTaskLabel]);
@@ -744,6 +743,7 @@ export default function WeddingPlanning() {
       description: "Your planning checklist has been updated.",
     });
   }, [progressEditorTasks, toast]);
+
 
   const addGuest = useCallback(async () => {
     if (newGuestName && newGuestEmail) {
@@ -1663,7 +1663,10 @@ export default function WeddingPlanning() {
                         <Button variant="outline" size="sm" onClick={() => toggleEditorTask(task.id)}>
                           {task.completed ? "✓" : "○"}
                         </Button>
-                        <Input value={task.label} onChange={(event) => updateEditorTaskLabel(task.id, event.target.value)} />
+                        <Input
+                          value={task.label}
+                          onChange={(event) => updateEditorTaskLabel(task.id, event.target.value)}
+                        />
                         <Button variant="ghost" size="sm" onClick={() => removeEditorTask(task.id)}>
                           <X className="w-4 h-4" />
                         </Button>
@@ -2058,56 +2061,6 @@ export default function WeddingPlanning() {
                             }}
                           >
                             <Calendar className="w-3 h-3" />
-                          </Button>
-
-                          <Button
-
-
-                            size="sm"
-
-
-                            variant="ghost"
-
-
-                            className="p-1 md:p-2"
-
-
-                            title="Add to Google Calendar"
-
-
-                            onClick={() => {
-
-
-                              const url = buildGoogleCalendarUrl({
-
-
-                                title: event.title,
-
-
-                                date: parseCalendarDate(event.date),
-
-
-                                time: event.time,
-
-
-                                notes: event.notes,
-
-
-                              });
-
-
-                              window.open(url, "_blank", "noopener,noreferrer");
-
-
-                            }}
-
-
-                          >
-
-
-                            <CalendarIcon className="w-3 h-3" />
-
-
                           </Button>
 
 
