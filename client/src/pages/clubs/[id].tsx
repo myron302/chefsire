@@ -60,12 +60,12 @@ export default function ClubDetailPage() {
 
   // Fetch club details
   const { data: clubData, isLoading: clubLoading } = useQuery<Club>({
-    queryKey: [`/api/clubs/clubs/${id}`],
+    queryKey: [`/api/clubs/${id}`],
   });
 
   // Fetch club posts
   const { data: postsData, isLoading: postsLoading } = useQuery<{ posts: Post[] }>({
-    queryKey: [`/api/clubs/clubs/${id}/posts`],
+    queryKey: [`/api/clubs/${id}/posts`],
   });
 
   // Check membership status
@@ -81,7 +81,7 @@ export default function ClubDetailPage() {
   // Join club mutation
   const joinClubMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/clubs/clubs/${id}/join`, {
+      const res = await fetch(`/api/clubs/${id}/join`, {
         method: "POST",
         credentials: "include",
       });
@@ -93,7 +93,7 @@ export default function ClubDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/clubs/my-clubs"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/clubs/${id}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${id}`] });
       toast({ title: "✓ Joined club", description: "Welcome to the club!" });
     },
     onError: (error: Error) => {
@@ -104,7 +104,7 @@ export default function ClubDetailPage() {
   // Leave club mutation
   const leaveClubMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/clubs/clubs/${id}/leave`, {
+      const res = await fetch(`/api/clubs/${id}/leave`, {
         method: "POST",
         credentials: "include",
       });
@@ -116,7 +116,7 @@ export default function ClubDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/clubs/my-clubs"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/clubs/${id}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${id}`] });
       toast({ title: "✓ Left club" });
     },
     onError: (error: Error) => {
@@ -127,7 +127,7 @@ export default function ClubDetailPage() {
   // Create post mutation
   const createPostMutation = useMutation({
     mutationFn: async (content: string) => {
-      const res = await fetch(`/api/clubs/clubs/${id}/posts`, {
+      const res = await fetch(`/api/clubs/${id}/posts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -140,8 +140,8 @@ export default function ClubDetailPage() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/clubs/${id}/posts`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/clubs/${id}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${id}/posts`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${id}`] });
       toast({ title: "✓ Post created" });
       setNewPostContent("");
     },
