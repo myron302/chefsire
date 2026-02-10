@@ -137,6 +137,22 @@ const VENDOR_CATEGORIES = [
   { value: "planner", label: "Planner", icon: Heart },
 ] as const;
 
+interface PlanningTask {
+  id: string;
+  label: string;
+  completed: boolean;
+}
+
+const DEFAULT_PLANNING_TASKS: PlanningTask[] = [
+  { id: "venue", label: "Venue", completed: false },
+  { id: "catering", label: "Catering", completed: false },
+  { id: "photo", label: "Photo", completed: false },
+  { id: "music", label: "Music", completed: false },
+  { id: "flowers", label: "Flowers", completed: false },
+  { id: "planner", label: "Planner", completed: false },
+  { id: "cake", label: "Cake", completed: false },
+];
+
 // =========================================================
 // MEMOIZED VENDOR CARD
 // =========================================================
@@ -313,6 +329,30 @@ export default function WeddingPlanning() {
     return localStorage.getItem("weddingTrialBannerDismissed") !== "true";
   });
   const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
+  const [planningTasks, setPlanningTasks] = useState<PlanningTask[]>(() => {
+    const storedTasks = localStorage.getItem("weddingPlanningTasks");
+    if (!storedTasks) {
+      return DEFAULT_PLANNING_TASKS;
+    }
+
+    try {
+      const parsedTasks = JSON.parse(storedTasks);
+      if (!Array.isArray(parsedTasks)) {
+        return DEFAULT_PLANNING_TASKS;
+      }
+
+      const normalizedTasks = parsedTasks.filter(
+        (task): task is PlanningTask =>
+          task && typeof task.id === "string" && typeof task.label === "string" && typeof task.completed === "boolean"
+      );
+
+      return normalizedTasks.length > 0 ? normalizedTasks : DEFAULT_PLANNING_TASKS;
+    } catch (error) {
+      console.error("[Wedding Planning] Failed to parse saved planning tasks", error);
+      return DEFAULT_PLANNING_TASKS;
+    }
+  });
+  const [newPlanningTask, setNewPlanningTask] = useState("");
 
   const [registryLinks, setRegistryLinks] = useState([
     { id: 1, name: "Amazon", url: "", icon: "🎁" },
@@ -401,6 +441,10 @@ export default function WeddingPlanning() {
       localStorage.setItem("weddingTierSelected", "true");
     }
   }, [currentTier]);
+
+  useEffect(() => {
+    localStorage.setItem("weddingPlanningTasks", JSON.stringify(planningTasks));
+  }, [planningTasks]);
 
   // Load guest list and wedding details from backend on mount
   useEffect(() => {
@@ -599,6 +643,38 @@ export default function WeddingPlanning() {
 
   const requestQuote = useCallback((vendorId: number) => {
     setRequestedQuotes((prev) => new Set(prev).add(vendorId));
+  }, []);
+
+  const completedTasks = useMemo(() => planningTasks.filter((task) => task.completed).length, [planningTasks]);
+  const planningProgress = planningTasks.length === 0 ? 0 : Math.round((completedTasks / planningTasks.length) * 100);
+
+  const togglePlanningTask = useCallback((taskId: string) => {
+    setPlanningTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, completed: !task.completed } : task)));
+  }, []);
+
+  const updatePlanningTaskLabel = useCallback((taskId: string, label: string) => {
+    setPlanningTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, label } : task)));
+  }, []);
+
+  const addPlanningTask = useCallback(() => {
+    const trimmedTask = newPlanningTask.trim();
+    if (!trimmedTask) {
+      return;
+    }
+
+    setPlanningTasks((prev) => [
+      ...prev,
+      {
+        id: `custom-${Date.now()}`,
+        label: trimmedTask,
+        completed: false,
+      },
+    ]);
+    setNewPlanningTask("");
+  }, [newPlanningTask]);
+
+  const removePlanningTask = useCallback((taskId: string) => {
+    setPlanningTasks((prev) => prev.filter((task) => task.id !== taskId));
   }, []);
 
   const addGuest = useCallback(async () => {
@@ -1461,16 +1537,61 @@ export default function WeddingPlanning() {
           <CardContent className="p-4 md:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
               <h3 className="font-semibold text-sm md:text-base">Your Wedding Planning Progress</h3>
-              <span className="text-xs md:text-sm text-muted-foreground">3 of 7 vendors booked</span>
+              <span className="text-xs md:text-sm text-muted-foreground">
+                {completedTasks} of {planningTasks.length} items completed
+              </span>
             </div>
-            <Progress value={43} className="mb-4" />
-            <div className="grid grid-cols-4 md:grid-cols-7 gap-2 md:gap-3">
-              {["Venue", "Catering", "Photo", "Music", "Flowers", "Planner", "Cake"].map((item, idx) => (
-                <div key={item} className="text-center">
-                  <div className={`w-7 h-7 md:w-8 md:h-8 mx-auto rounded-full flex items-center justify-center mb-1 ${idx < 3 ? "bg-green-500" : "bg-gray-200"}`}>
-                    {idx < 3 && <span className="text-white text-xs">✓</span>}
-                  </div>
-                  <span className="text-[10px] md:text-xs">{item}</span>
+
+            <Progress value={planningProgress} className="mb-4" />
+
+            <div className="flex flex-col sm:flex-row gap-2 mb-4">
+              <Input
+                value={newPlanningTask}
+                onChange={(event) => setNewPlanningTask(event.target.value)}
+                placeholder="Add a planning item (e.g. officiant, transportation)"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addPlanningTask();
+                  }
+                }}
+              />
+              <Button variant="outline" onClick={addPlanningTask} className="sm:w-auto">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Item
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 md:gap-3">
+              {planningTasks.map((task) => (
+                <div key={task.id} className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => togglePlanningTask(task.id)}
+                    className={`w-7 h-7 md:w-8 md:h-8 mx-auto rounded-full flex items-center justify-center mb-2 transition-colors ${
+                      task.completed ? "bg-green-500 text-white" : "bg-gray-200 text-gray-500"
+                    }`}
+                    aria-label={`Mark ${task.label} as ${task.completed ? "incomplete" : "complete"}`}
+                  >
+                    {task.completed ? <span className="text-xs">✓</span> : <span className="text-xs">•</span>}
+                  </button>
+
+                  <Input
+                    value={task.label}
+                    onChange={(event) => updatePlanningTaskLabel(task.id, event.target.value)}
+                    className="h-7 text-[10px] md:text-xs text-center"
+                    aria-label="Planning item label"
+                  />
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 h-6 px-2 text-[10px]"
+                    onClick={() => removePlanningTask(task.id)}
+                  >
+                    <X className="w-3 h-3 mr-1" />
+                    Remove
+                  </Button>
                 </div>
               ))}
             </div>
