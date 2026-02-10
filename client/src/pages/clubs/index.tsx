@@ -1,16 +1,23 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Users, Plus, TrendingUp, MessageSquare, Crown, Search, Filter } from "lucide-react";
+import { Users, Plus, TrendingUp, MessageSquare, Search, Filter } from "lucide-react";
 
 type Club = {
   club: {
@@ -30,6 +37,9 @@ export default function ClubsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const [backendUnavailable, setBackendUnavailable] = useState(false);
+  const [fallbackClubs, setFallbackClubs] = useState<Club[]>([]);
+
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -42,16 +52,43 @@ export default function ClubsPage() {
     rules: "",
   });
 
+  useEffect(() => {
+    const saved = localStorage.getItem("royal_clubs_fallback");
+    if (!saved) return;
+
+    try {
+      const parsed = JSON.parse(saved) as Club[];
+      if (Array.isArray(parsed)) setFallbackClubs(parsed);
+    } catch {
+      localStorage.removeItem("royal_clubs_fallback");
+    }
+  }, []);
+
+  // Build api path based on filters
+  const clubsApiPath = useMemo(() => {
+    const params = new URLSearchParams();
+    if (searchQuery.trim()) params.set("search", searchQuery.trim());
+    if (categoryFilter !== "all") params.set("category", categoryFilter);
+    if (sortBy !== "newest") params.set("sort", sortBy);
+    return `/api/clubs${params.toString() ? `?${params.toString()}` : ""}`;
+  }, [searchQuery, categoryFilter, sortBy]);
+
   // Fetch clubs
-  const params = new URLSearchParams();
-  if (searchQuery.trim()) params.set("search", searchQuery.trim());
-  if (categoryFilter !== "all") params.set("category", categoryFilter);
-  if (sortBy !== "newest") params.set("sort", sortBy);
-
-  const clubsApiPath = `/api/clubs${params.toString() ? `?${params.toString()}` : ""}`;
-
   const { data: clubsData, isLoading } = useQuery({
     queryKey: [clubsApiPath],
+    queryFn: async () => {
+      const res = await fetch(clubsApiPath, { credentials: "include" });
+
+      if (!res.ok) {
+        setBackendUnavailable(true);
+        return { clubs: fallbackClubs };
+      }
+
+      setBackendUnavailable(false);
+      return res.json();
+    },
+    // If backend is down, don't constantly hammer it
+    retry: backendUnavailable ? 0 : 2,
   });
 
   const clubs: Club[] = clubsData?.clubs || [];
@@ -65,20 +102,60 @@ export default function ClubsPage() {
         credentials: "include",
         body: JSON.stringify(data),
       });
+
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to create club");
+        let errorMessage = "Failed to create club";
+        try {
+          const error = await res.json();
+          errorMessage = error.message || errorMessage;
+        } catch {
+          // ignore
+        }
+        throw new Error(errorMessage);
       }
+
       return res.json();
     },
     onSuccess: () => {
+      // refresh list regardless of filters
       queryClient.invalidateQueries({ queryKey: ["/api/clubs"] });
+      queryClient.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && String(q.queryKey[0]).startsWith("/api/clubs") });
+
       toast({ title: "✓ Club created", description: "Your club has been created successfully!" });
       setShowCreateDialog(false);
       setClubForm({ name: "", description: "", category: "general", rules: "" });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to create club", description: error.message, variant: "destructive" });
+      // Local fallback save
+      const fallbackClub: Club = {
+        club: {
+          id: `local-${crypto.randomUUID()}`,
+          name: clubForm.name,
+          description: clubForm.description || null,
+          category: clubForm.category,
+          coverImage: null,
+          isPublic: true,
+          createdAt: new Date().toISOString(),
+        },
+        memberCount: 1,
+        postCount: 0,
+      };
+
+      const updatedFallbackClubs = [fallbackClub, ...fallbackClubs];
+      setFallbackClubs(updatedFallbackClubs);
+      localStorage.setItem("royal_clubs_fallback", JSON.stringify(updatedFallbackClubs));
+
+      setShowCreateDialog(false);
+      setClubForm({ name: "", description: "", category: "general", rules: "" });
+      setBackendUnavailable(true);
+
+      toast({
+        title: "Backend unavailable: saved locally",
+        description: `${error.message}. Club saved in local mode until Neon/backend is configured.`,
+      });
+
+      // Update current view data
+      queryClient.setQueryData([clubsApiPath], { clubs: updatedFallbackClubs });
     },
   });
 
@@ -109,6 +186,11 @@ export default function ClubsPage() {
             🏛️ Royal Clubs
           </h1>
           <p className="text-slate-600">Join communities, participate in challenges, and earn badges!</p>
+          {backendUnavailable && (
+            <p className="mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 inline-block">
+              Backend is currently unavailable. Royal Clubs is running in local mode (saved in this browser).
+            </p>
+          )}
         </div>
 
         {/* Actions Bar */}
@@ -156,13 +238,13 @@ export default function ClubsPage() {
                 Create Club
               </Button>
             </DialogTrigger>
+
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Create a New Club</DialogTitle>
-                <DialogDescription>
-                  Start a community around your favorite cooking topics!
-                </DialogDescription>
+                <DialogDescription>Start a community around your favorite cooking topics!</DialogDescription>
               </DialogHeader>
+
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="name">Club Name</Label>
@@ -173,6 +255,7 @@ export default function ClubsPage() {
                     placeholder="e.g., Vegan Bakers United"
                   />
                 </div>
+
                 <div>
                   <Label htmlFor="description">Description</Label>
                   <Textarea
@@ -183,21 +266,28 @@ export default function ClubsPage() {
                     rows={3}
                   />
                 </div>
+
                 <div>
                   <Label htmlFor="category">Category</Label>
-                  <Select value={clubForm.category} onValueChange={(value) => setClubForm({ ...clubForm, category: value })}>
+                  <Select
+                    value={clubForm.category}
+                    onValueChange={(value) => setClubForm({ ...clubForm, category: value })}
+                  >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {categories.filter(c => c.value !== "all").map((cat) => (
-                        <SelectItem key={cat.value} value={cat.value}>
-                          {cat.label}
-                        </SelectItem>
-                      ))}
+                      {categories
+                        .filter((c) => c.value !== "all")
+                        .map((cat) => (
+                          <SelectItem key={cat.value} value={cat.value}>
+                            {cat.label}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
+
                 <div>
                   <Label htmlFor="rules">Club Rules (Optional)</Label>
                   <Textarea
@@ -208,6 +298,7 @@ export default function ClubsPage() {
                     rows={3}
                   />
                 </div>
+
                 <Button
                   onClick={handleCreateClub}
                   disabled={createClubMutation.isPending}
@@ -254,15 +345,9 @@ export default function ClubsPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between">
                       <span className="truncate">{club.name}</span>
-                      {club.isPublic ? (
-                        <Badge variant="outline">Public</Badge>
-                      ) : (
-                        <Badge variant="secondary">Private</Badge>
-                      )}
+                      {club.isPublic ? <Badge variant="outline">Public</Badge> : <Badge variant="secondary">Private</Badge>}
                     </CardTitle>
-                    <CardDescription className="line-clamp-2">
-                      {club.description || "No description"}
-                    </CardDescription>
+                    <CardDescription className="line-clamp-2">{club.description || "No description"}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="flex items-center justify-between text-sm text-slate-600">
