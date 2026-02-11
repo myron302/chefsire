@@ -142,6 +142,9 @@ interface PlanningTask {
   id: string;
   label: string;
   completed: boolean;
+  /** Optional: tie a task to a budget category + cost so "Current Budget" can auto-calculate spend. */
+  budgetKey?: BudgetAllocation["key"];
+  cost?: number;
 }
 
 interface BudgetAllocation {
@@ -177,13 +180,30 @@ const parsePlanningTasks = (rawValue: string | null): PlanningTask[] => {
     const parsedTasks = JSON.parse(rawValue);
     if (!Array.isArray(parsedTasks)) return DEFAULT_PLANNING_TASKS;
 
-    const normalizedTasks = parsedTasks.filter(
-      (task): task is PlanningTask =>
-        task &&
-        typeof task.id === "string" &&
-        typeof task.label === "string" &&
-        typeof task.completed === "boolean"
-    );
+    const allowedBudgetKeys = new Set(DEFAULT_BUDGET_ALLOCATIONS.map((a) => a.key));
+
+    const normalizedTasks: PlanningTask[] = parsedTasks
+      .filter(
+        (task: any) =>
+          task && typeof task.id === "string" && typeof task.label === "string" && typeof task.completed === "boolean"
+      )
+      .map((task: any) => {
+        const costNum = task.cost === null || task.cost === undefined ? undefined : Number(task.cost);
+        const cleanedCost = Number.isFinite(costNum) ? Math.max(0, Math.round(costNum)) : undefined;
+
+        const budgetKeyRaw = typeof task.budgetKey === "string" ? task.budgetKey : "";
+        const cleanedBudgetKey = allowedBudgetKeys.has(budgetKeyRaw as any)
+          ? (budgetKeyRaw as BudgetAllocation["key"])
+          : undefined;
+
+        return {
+          id: task.id,
+          label: task.label,
+          completed: task.completed,
+          cost: cleanedCost,
+          budgetKey: cleanedBudgetKey,
+        };
+      });
 
     return normalizedTasks.length > 0 ? normalizedTasks : DEFAULT_PLANNING_TASKS;
   } catch (error) {
@@ -532,17 +552,23 @@ export default function WeddingPlanning() {
               setPlanningTasks(data.tasks);
               setHasLoadedPlanningTasks(true);
             }
-            // Clear legacy key (we no longer store per-user wedding tasks locally)
-            try { localStorage.removeItem("weddingPlanningTasks"); } catch {}
+            // Cache locally for faster boot/offline; keep legacy key clean.
+            try {
+              localStorage.setItem(getWeddingPlanningTasksStorageKey(user.id), JSON.stringify(data.tasks));
+              localStorage.removeItem("weddingPlanningTasks");
+            } catch {}
             return;
           }
         }
       } catch (error) {
         console.error("[Wedding Planning] Failed to fetch planning tasks from DB:", error);
       }
-      // Fallback: legacy local cache (one-time migration) and/or defaults.
+
+      // Fallback: local cache (and seed DB best-effort once).
+      const storageKey = getWeddingPlanningTasksStorageKey(user.id);
+      const userScoped = localStorage.getItem(storageKey);
       const legacy = localStorage.getItem("weddingPlanningTasks");
-      const localTasks = parsePlanningTasks(legacy);
+      const localTasks = parsePlanningTasks(userScoped ?? legacy);
 
       if (!cancelled) {
         setPlanningTasks(localTasks);
@@ -560,9 +586,11 @@ export default function WeddingPlanning() {
       } catch (error) {
         console.error("[Wedding Planning] Failed to seed planning tasks to DB:", error);
       }
-      // Clear legacy key after migration
+
+      // Migrate legacy key -> per-user cache
       try {
         if (legacy) localStorage.removeItem("weddingPlanningTasks");
+        if (!userScoped) localStorage.setItem(storageKey, JSON.stringify(localTasks));
       } catch {}
     };
 
@@ -575,7 +603,8 @@ export default function WeddingPlanning() {
 
   useEffect(() => {
     if (!hasLoadedPlanningTasks) return;
-    // Guests (logged out) keep local storage only.
+
+    // Guest-only cache. Signed-in users rely on Neon (cross-device sync).
     if (!user?.id) {
       try {
         const storageKey = getWeddingPlanningTasksStorageKey(undefined);
@@ -647,10 +676,57 @@ export default function WeddingPlanning() {
             ]);
             setGuestCount([Math.max(1, Math.min(2000, Math.round(Number(settings.guestCount) || 100)))]);
             setBudgetAllocations(normalizeBudgetAllocations(settings.allocations));
+
+            try {
+              localStorage.setItem(
+                getWeddingBudgetSettingsStorageKey(user.id),
+                JSON.stringify({
+                  budgetMin: settings.budgetMin,
+                  budgetMax: settings.budgetMax,
+                  guestCount: settings.guestCount,
+                  allocations: settings.allocations,
+                })
+              );
+            } catch {}
           }
         }
       } catch (error) {
         console.error("[Wedding Planning] Failed to fetch budget settings:", error);
+      }
+
+      const storageKey = getWeddingBudgetSettingsStorageKey(user.id);
+      const localRaw = localStorage.getItem(storageKey);
+      if (!loadedFromServer && localRaw) {
+        try {
+          const parsed = JSON.parse(localRaw);
+          if (!cancelled) {
+            setBudgetRange([
+              Math.max(5000, Math.min(100000, Math.round(Number(parsed?.budgetMin) || 5000))),
+              Math.max(5000, Math.min(100000, Math.round(Number(parsed?.budgetMax) || 50000))),
+            ]);
+            setGuestCount([Math.max(1, Math.min(2000, Math.round(Number(parsed?.guestCount) || 100)))]);
+            setBudgetAllocations(normalizeBudgetAllocations(parsed?.allocations));
+          }
+
+          // Best effort sync local -> DB if endpoint had no row / failed.
+          await fetch("/api/wedding/budget-settings", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              budgetMin: parsed?.budgetMin,
+              budgetMax: parsed?.budgetMax,
+              guestCount: parsed?.guestCount,
+              allocations: normalizeBudgetAllocations(parsed?.allocations).map((a) => ({
+                key: a.key,
+                label: a.category,
+                percentage: a.percentage,
+              })),
+            }),
+          });
+        } catch (error) {
+          console.error("[Wedding Planning] Failed to load/sync local budget settings:", error);
+        }
       }
 
       if (!cancelled) setHasLoadedBudgetSettings(true);
@@ -673,6 +749,13 @@ export default function WeddingPlanning() {
       guestCount: guestCount[0],
       allocations: budgetAllocations.map((a) => ({ key: a.key, label: a.category, percentage: a.percentage })),
     };
+
+    // Keep guest-only settings in localStorage. Signed-in users rely on Neon (cross-device sync).
+    if (!user?.id) {
+      try {
+        localStorage.setItem(getWeddingBudgetSettingsStorageKey(undefined), JSON.stringify(payload));
+      } catch {}
+    }
 
     if (!user?.id) return;
 
@@ -872,19 +955,16 @@ export default function WeddingPlanning() {
     [budgetAllocations, budgetRange]
   );
 
+  // Keep "Smart Budget Calculator" and "Your Current Budget" in sync with a single, normalized handler.
   const handleBudgetRangeChange = useCallback((nextRange: number[]) => {
     if (!Array.isArray(nextRange) || nextRange.length < 2) return;
 
     const rawMin = Number(nextRange[0]);
     const rawMax = Number(nextRange[1]);
-
-    // Keep the slider sane + prevent min > max
-    const normalizedMin = Math.max(5000, Math.min(100000, Math.round(Math.min(rawMin, rawMax))));
+    const normalizedMin = Math.max(0, Math.min(100000, Math.round(Math.min(rawMin, rawMax))));
     const normalizedMax = Math.max(normalizedMin, Math.min(100000, Math.round(Math.max(rawMin, rawMax))));
-
     setBudgetRange([normalizedMin, normalizedMax]);
   }, []);
-
 
   const updateBudgetAllocation = useCallback((key: BudgetAllocation["key"], nextPercentage: number) => {
     setBudgetAllocations((prev) => {
@@ -930,6 +1010,33 @@ export default function WeddingPlanning() {
   const completedTasks = useMemo(() => planningTasks.filter((task) => task.completed).length, [planningTasks]);
   const planningProgress = planningTasks.length === 0 ? 0 : Math.round((completedTasks / planningTasks.length) * 100);
 
+  // --- Budget spend tracking (optional per-task costs) ---
+  const spendByCategory = useMemo(() => {
+    const out = new Map<BudgetAllocation["key"], number>();
+    for (const key of DEFAULT_BUDGET_ALLOCATIONS.map((a) => a.key)) out.set(key, 0);
+
+    for (const t of planningTasks) {
+      if (!t?.completed) continue;
+      const cost = Number((t as any).cost);
+      if (!Number.isFinite(cost) || cost <= 0) continue;
+      const key = (t as any).budgetKey as BudgetAllocation["key"] | undefined;
+      const safeKey: BudgetAllocation["key"] = (key && out.has(key) ? key : "other");
+      out.set(safeKey, (out.get(safeKey) || 0) + cost);
+    }
+    return out;
+  }, [planningTasks]);
+
+  const totalSpent = useMemo(() => {
+    let s = 0;
+    for (const v of spendByCategory.values()) s += v;
+    return s;
+  }, [spendByCategory]);
+
+  const budgetUsedPct = useMemo(() => {
+    const total = Math.max(1, Number(budgetRange?.[1]) || 1);
+    return Math.max(0, Math.min(100, Math.round((totalSpent / total) * 100)));
+  }, [totalSpent, budgetRange]);
+
   const openProgressEditor = useCallback(() => {
     setProgressEditorTasks(planningTasks);
     setNewPlanningTaskLabel("");
@@ -954,13 +1061,23 @@ export default function WeddingPlanning() {
     setProgressEditorTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, label } : task)));
   }, []);
 
+  const updateEditorTaskCost = useCallback((taskId: string, nextCost: string) => {
+    const cleaned = nextCost.replace(/[^0-9.]/g, "");
+    const cost = cleaned.trim().length === 0 ? undefined : Math.max(0, Math.round(Number(cleaned) * 100) / 100);
+    setProgressEditorTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, cost } : task)));
+  }, []);
+
+  const updateEditorTaskBudgetKey = useCallback((taskId: string, budgetKey: BudgetAllocation["key"]) => {
+    setProgressEditorTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, budgetKey } : task)));
+  }, []);
+
   const addEditorTask = useCallback(() => {
     const trimmedTask = newPlanningTaskLabel.trim();
     if (!trimmedTask) return;
 
     setProgressEditorTasks((prev) => [
       ...prev,
-      { id: `custom-${Date.now()}`, label: trimmedTask, completed: false },
+      { id: `custom-${Date.now()}`, label: trimmedTask, completed: false, budgetKey: "other" },
     ]);
     setNewPlanningTaskLabel("");
   }, [newPlanningTaskLabel]);
@@ -970,8 +1087,14 @@ export default function WeddingPlanning() {
   }, []);
 
   const savePlanningTasks = useCallback(() => {
+    const allowedBudgetKeys = new Set(DEFAULT_BUDGET_ALLOCATIONS.map((a) => a.key));
     const sanitizedTasks = progressEditorTasks
-      .map((task) => ({ ...task, label: task.label.trim() }))
+      .map((task) => {
+        const trimmedLabel = task.label.trim();
+        const cost = typeof task.cost === "number" && Number.isFinite(task.cost) ? Math.max(0, task.cost) : undefined;
+        const budgetKey = allowedBudgetKeys.has((task.budgetKey as any) ?? "") ? task.budgetKey : "other";
+        return { ...task, label: trimmedLabel, cost, budgetKey };
+      })
       .filter((task) => task.label.length > 0);
 
     setPlanningTasks(sanitizedTasks.length > 0 ? sanitizedTasks : DEFAULT_PLANNING_TASKS);
@@ -1898,17 +2021,43 @@ export default function WeddingPlanning() {
 
                   <div className="max-h-[420px] overflow-y-auto space-y-2 pr-1">
                     {progressEditorTasks.map((task) => (
-                      <div key={task.id} className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={() => toggleEditorTask(task.id)}>
-                          {task.completed ? "✓" : "○"}
-                        </Button>
-                        <Input
-                          value={task.label}
-                          onChange={(event) => updateEditorTaskLabel(task.id, event.target.value)}
-                        />
-                        <Button variant="ghost" size="sm" onClick={() => removeEditorTask(task.id)}>
-                          <X className="w-4 h-4" />
-                        </Button>
+                      <div key={task.id} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm" onClick={() => toggleEditorTask(task.id)}>
+                            {task.completed ? "✓" : "○"}
+                          </Button>
+                          <Input
+                            value={task.label}
+                            onChange={(event) => updateEditorTaskLabel(task.id, event.target.value)}
+                            className="w-full sm:w-[280px]"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Input
+                            inputMode="decimal"
+                            placeholder="$0"
+                            value={typeof task.cost === "number" ? String(task.cost) : ""}
+                            onChange={(event) => updateEditorTaskCost(task.id, event.target.value)}
+                            className="w-[110px]"
+                          />
+                          <Select value={(task.budgetKey as any) || "other"} onValueChange={(v) => updateEditorTaskBudgetKey(task.id, v as any)}>
+                            <SelectTrigger className="w-[170px]">
+                              <SelectValue placeholder="Category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {budgetAllocations.map((a) => (
+                                <SelectItem key={a.key} value={a.key}>
+                                  {a.category}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          <Button variant="ghost" size="sm" onClick={() => removeEditorTask(task.id)}>
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1984,10 +2133,20 @@ export default function WeddingPlanning() {
           <Card>
             <CardHeader>
               <CardTitle>Your Current Budget</CardTitle>
-              <CardDescription>Target: ${budgetRange[1].toLocaleString()}</CardDescription>
+	              <CardDescription>
+	                Target: ${budgetRange[1].toLocaleString()} • Spent: ${totalSpent.toLocaleString()}
+	              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
+	              <div className="space-y-4">
+	                <div className="space-y-2">
+	                  <Progress value={budgetUsedPct} />
+	                  <div className="flex justify-between text-xs text-muted-foreground">
+	                    <span>${totalSpent.toLocaleString()} spent</span>
+	                    <span>${Math.max(0, budgetRange[1] - totalSpent).toLocaleString()} remaining</span>
+	                  </div>
+	                </div>
+
                 <Slider value={budgetRange} onValueChange={handleBudgetRangeChange} max={100000} min={5000} step={1000} className="flex-1" />
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>${budgetRange[0].toLocaleString()}</span>
