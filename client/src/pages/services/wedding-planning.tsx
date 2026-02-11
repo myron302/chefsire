@@ -144,6 +144,22 @@ interface PlanningTask {
   completed: boolean;
 }
 
+interface BudgetAllocation {
+  key: "catering" | "venue" | "photography" | "music" | "flowers" | "other";
+  category: string;
+  percentage: number;
+  icon: any;
+}
+
+const DEFAULT_BUDGET_ALLOCATIONS: BudgetAllocation[] = [
+  { key: "catering", category: "Catering & Bar", percentage: 40, icon: ChefHat },
+  { key: "venue", category: "Venue", percentage: 20, icon: MapPin },
+  { key: "photography", category: "Photography", percentage: 12, icon: Camera },
+  { key: "music", category: "Music & Entertainment", percentage: 8, icon: Music },
+  { key: "flowers", category: "Flowers & Decor", percentage: 10, icon: Flower },
+  { key: "other", category: "Other", percentage: 10, icon: Sparkles },
+];
+
 const DEFAULT_PLANNING_TASKS: PlanningTask[] = [
   { id: "venue", label: "Venue", completed: false },
   { id: "catering", label: "Catering", completed: false },
@@ -178,6 +194,37 @@ const parsePlanningTasks = (rawValue: string | null): PlanningTask[] => {
 
 const getWeddingPlanningTasksStorageKey = (userId?: string | number) =>
   userId ? `weddingPlanningTasks:${userId}` : "weddingPlanningTasks:guest";
+
+const getWeddingBudgetSettingsStorageKey = (userId?: string | number) =>
+  userId ? `weddingBudgetSettings:${userId}` : "weddingBudgetSettings:guest";
+
+const normalizeBudgetAllocations = (input: any): BudgetAllocation[] => {
+  if (!Array.isArray(input)) return DEFAULT_BUDGET_ALLOCATIONS;
+
+  const allowed = new Set(DEFAULT_BUDGET_ALLOCATIONS.map((a) => a.key));
+  const incomingByKey = new Map<string, { category: string; percentage: number }>();
+
+  for (const item of input) {
+    if (!item || typeof item !== "object") continue;
+    const key = String(item.key || "");
+    if (!allowed.has(key as BudgetAllocation["key"])) continue;
+
+    const defaultItem = DEFAULT_BUDGET_ALLOCATIONS.find((a) => a.key === key);
+    if (!defaultItem) continue;
+
+    incomingByKey.set(key, {
+      category: typeof item.category === "string" && item.category.trim().length > 0 ? item.category.trim() : defaultItem.category,
+      percentage: Math.max(0, Math.min(100, Math.round(Number(item.percentage) || 0))),
+    });
+  }
+
+  return DEFAULT_BUDGET_ALLOCATIONS.map((defaultItem) => {
+    const incoming = incomingByKey.get(defaultItem.key);
+    return incoming
+      ? { ...defaultItem, category: incoming.category, percentage: incoming.percentage }
+      : defaultItem;
+  });
+};
 
 
 // =========================================================
@@ -348,6 +395,7 @@ export default function WeddingPlanning() {
 
   const [selectedVendorType, setSelectedVendorType] = useState("all");
   const [budgetRange, setBudgetRange] = useState([5000, 50000]);
+  const [budgetAllocations, setBudgetAllocations] = useState<BudgetAllocation[]>(DEFAULT_BUDGET_ALLOCATIONS);
   const [guestCount, setGuestCount] = useState([100]);
   const [selectedDate, setSelectedDate] = useState("");
   const [savedVendors, setSavedVendors] = useState(new Set<number>());
@@ -362,6 +410,7 @@ export default function WeddingPlanning() {
   const [progressEditorTasks, setProgressEditorTasks] = useState<PlanningTask[]>([]);
   const [newPlanningTaskLabel, setNewPlanningTaskLabel] = useState("");
   const [hasLoadedPlanningTasks, setHasLoadedPlanningTasks] = useState(false);
+  const [hasLoadedBudgetSettings, setHasLoadedBudgetSettings] = useState(false);
 
 
   const [registryLinks, setRegistryLinks] = useState([
@@ -562,6 +611,145 @@ export default function WeddingPlanning() {
     }, 400);
   }, [planningTasks, user?.id, hasLoadedPlanningTasks]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadBudgetSettings = async () => {
+      setHasLoadedBudgetSettings(false);
+      let loadedFromServer = false;
+
+      if (!user?.id) {
+        const guestKey = getWeddingBudgetSettingsStorageKey(undefined);
+        const raw = localStorage.getItem(guestKey);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (!cancelled) {
+              setBudgetRange([
+                Math.max(5000, Math.min(100000, Math.round(Number(parsed?.budgetMin) || 5000))),
+                Math.max(5000, Math.min(100000, Math.round(Number(parsed?.budgetMax) || 50000))),
+              ]);
+              setGuestCount([Math.max(1, Math.min(2000, Math.round(Number(parsed?.guestCount) || 100)))]);
+              setBudgetAllocations(normalizeBudgetAllocations(parsed?.allocations));
+            }
+          } catch (error) {
+            console.error("[Wedding Planning] Failed to parse guest budget settings:", error);
+          }
+        }
+
+        if (!cancelled) setHasLoadedBudgetSettings(true);
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/wedding/budget-settings", { credentials: "include" });
+        if (response.ok) {
+          const data = await response.json();
+          const settings = data?.settings;
+          if (settings && !cancelled) {
+            loadedFromServer = true;
+            setBudgetRange([
+              Math.max(5000, Math.min(100000, Math.round(Number(settings.budgetMin) || 5000))),
+              Math.max(5000, Math.min(100000, Math.round(Number(settings.budgetMax) || 50000))),
+            ]);
+            setGuestCount([Math.max(1, Math.min(2000, Math.round(Number(settings.guestCount) || 100)))]);
+            setBudgetAllocations(normalizeBudgetAllocations(settings.allocations));
+
+            try {
+              localStorage.setItem(
+                getWeddingBudgetSettingsStorageKey(user.id),
+                JSON.stringify({
+                  budgetMin: settings.budgetMin,
+                  budgetMax: settings.budgetMax,
+                  guestCount: settings.guestCount,
+                  allocations: settings.allocations,
+                })
+              );
+            } catch {}
+          }
+        }
+      } catch (error) {
+        console.error("[Wedding Planning] Failed to fetch budget settings:", error);
+      }
+
+      const storageKey = getWeddingBudgetSettingsStorageKey(user.id);
+      const localRaw = localStorage.getItem(storageKey);
+      if (!loadedFromServer && localRaw) {
+        try {
+          const parsed = JSON.parse(localRaw);
+          if (!cancelled) {
+            setBudgetRange([
+              Math.max(5000, Math.min(100000, Math.round(Number(parsed?.budgetMin) || 5000))),
+              Math.max(5000, Math.min(100000, Math.round(Number(parsed?.budgetMax) || 50000))),
+            ]);
+            setGuestCount([Math.max(1, Math.min(2000, Math.round(Number(parsed?.guestCount) || 100)))]);
+            setBudgetAllocations(normalizeBudgetAllocations(parsed?.allocations));
+          }
+
+          // Best effort sync local -> DB if endpoint had no row / failed.
+          await fetch("/api/wedding/budget-settings", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              budgetMin: parsed?.budgetMin,
+              budgetMax: parsed?.budgetMax,
+              guestCount: parsed?.guestCount,
+              allocations: normalizeBudgetAllocations(parsed?.allocations).map((a) => ({
+                key: a.key,
+                label: a.category,
+                percentage: a.percentage,
+              })),
+            }),
+          });
+        } catch (error) {
+          console.error("[Wedding Planning] Failed to load/sync local budget settings:", error);
+        }
+      }
+
+      if (!cancelled) setHasLoadedBudgetSettings(true);
+    };
+
+    loadBudgetSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!hasLoadedBudgetSettings) return;
+
+    const [budgetMin, budgetMax] = budgetRange;
+    const payload = {
+      budgetMin,
+      budgetMax,
+      guestCount: guestCount[0],
+      allocations: budgetAllocations.map((a) => ({ key: a.key, label: a.category, percentage: a.percentage })),
+    };
+
+    try {
+      localStorage.setItem(getWeddingBudgetSettingsStorageKey(user?.id), JSON.stringify(payload));
+    } catch {}
+
+    if (!user?.id) return;
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        await fetch("/api/wedding/budget-settings", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } catch (error) {
+        console.error("[Wedding Planning] Failed to save budget settings:", error);
+      }
+    }, 400);
+
+    return () => window.clearTimeout(timeout);
+  }, [budgetRange, guestCount, budgetAllocations, user?.id, hasLoadedBudgetSettings]);
+
 
   // Load guest list and wedding details from backend on mount
   useEffect(() => {
@@ -734,16 +922,36 @@ export default function WeddingPlanning() {
   };
 
   const budgetBreakdown = useMemo(
-    () => [
-      { category: "Catering & Bar", percentage: 40, amount: budgetRange[1] * 0.4, icon: ChefHat },
-      { category: "Venue", percentage: 20, amount: budgetRange[1] * 0.2, icon: MapPin },
-      { category: "Photography", percentage: 12, amount: budgetRange[1] * 0.12, icon: Camera },
-      { category: "Music & Entertainment", percentage: 8, amount: budgetRange[1] * 0.08, icon: Music },
-      { category: "Flowers & Decor", percentage: 10, amount: budgetRange[1] * 0.1, icon: Flower },
-      { category: "Other", percentage: 10, amount: budgetRange[1] * 0.1, icon: Sparkles },
-    ],
-    [budgetRange]
+    () =>
+      budgetAllocations.map((item) => ({
+        ...item,
+        amount: budgetRange[1] * (item.percentage / 100),
+      })),
+    [budgetAllocations, budgetRange]
   );
+
+  const updateBudgetAllocation = useCallback((key: BudgetAllocation["key"], nextPercentage: number) => {
+    setBudgetAllocations((prev) => {
+      const base = prev.map((item) => ({ ...item }));
+      const targetIndex = base.findIndex((item) => item.key === key);
+      const otherIndex = base.findIndex((item) => item.key === "other");
+      if (targetIndex < 0 || otherIndex < 0) return prev;
+
+      const clamped = Math.max(0, Math.min(100, Math.round(nextPercentage)));
+      const nonTargetNonOtherTotal = base
+        .filter((item) => item.key !== key && item.key !== "other")
+        .reduce((sum, item) => sum + item.percentage, 0);
+
+      const maxForTarget = Math.max(0, 100 - nonTargetNonOtherTotal);
+      const finalTarget = Math.min(clamped, maxForTarget);
+      const nextOther = Math.max(0, 100 - (nonTargetNonOtherTotal + finalTarget));
+
+      base[targetIndex].percentage = finalTarget;
+      base[otherIndex].percentage = nextOther;
+
+      return base;
+    });
+  }, []);
 
   const filteredVendors = useMemo(
     () => (selectedVendorType === "all" ? VENDORS : VENDORS.filter((v) => v.type === selectedVendorType)),
@@ -1779,15 +1987,27 @@ export default function WeddingPlanning() {
 
                 <div className="grid gap-3 mt-6">
                   {budgetBreakdown.map((item) => (
-                    <div key={item.category} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <item.icon className="w-5 h-5 text-muted-foreground" />
-                        <div>
-                          <p className="font-medium">{item.category}</p>
-                          <p className="text-xs text-muted-foreground">{item.percentage}% of budget</p>
+                    <div key={item.key} className="p-3 bg-muted rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <item.icon className="w-5 h-5 text-muted-foreground" />
+                          <div>
+                            <p className="font-medium">{item.category}</p>
+                            <p className="text-xs text-muted-foreground">{item.percentage}% of budget</p>
+                          </div>
                         </div>
+                        <span className="font-semibold">${item.amount.toLocaleString()}</span>
                       </div>
-                      <span className="font-semibold">${item.amount.toLocaleString()}</span>
+
+                      {item.key !== "other" && (
+                        <Slider
+                          value={[item.percentage]}
+                          onValueChange={(value) => updateBudgetAllocation(item.key, value[0] ?? item.percentage)}
+                          max={100}
+                          min={0}
+                          step={1}
+                        />
+                      )}
                     </div>
                   ))}
                 </div>

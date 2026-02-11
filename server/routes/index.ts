@@ -71,6 +71,7 @@ import weddingRsvpRouter from "./wedding-rsvp";
 import weddingEventDetailsRouter from "./wedding-event-details"; // <-- Added import
 import weddingCalendarEventsRouter from "./wedding-calendar-events";
 import weddingBudgetSettingsRouter from "./wedding-budget-settings";
+import weddingPlanningTasksRouter from "./wedding-planning-tasks";
 
 const r = Router();
 
@@ -179,6 +180,7 @@ r.use("/wedding", weddingRsvpRouter);
 r.use("/wedding", weddingEventDetailsRouter); // <-- Added mounting
 r.use("/wedding", weddingCalendarEventsRouter);
 r.use("/wedding", weddingBudgetSettingsRouter);
+r.use("/wedding", weddingPlanningTasksRouter);
 
 // Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {
