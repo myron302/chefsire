@@ -13,6 +13,8 @@ type PlanningTask = {
   id: string;
   label: string;
   completed: boolean;
+  budgetKey?: string;
+  cost?: number;
 };
 
 function sanitizeTasks(input: unknown): PlanningTask[] {
@@ -25,8 +27,16 @@ function sanitizeTasks(input: unknown): PlanningTask[] {
     const id = typeof t.id === "string" ? t.id.trim() : "";
     const label = typeof t.label === "string" ? t.label.trim() : "";
     const completed = typeof t.completed === "boolean" ? t.completed : false;
+    const budgetKey = typeof t.budgetKey === "string" ? t.budgetKey.trim() : "";
+    const cost = typeof t.cost === "number" && Number.isFinite(t.cost) && t.cost >= 0 ? t.cost : undefined;
     if (!id || !label) continue;
-    out.push({ id, label, completed });
+    out.push({
+      id,
+      label,
+      completed,
+      ...(budgetKey ? { budgetKey } : null),
+      ...(typeof cost === "number" ? { cost } : null),
+    });
     if (out.length >= 200) break; // safety cap
   }
   return out;
