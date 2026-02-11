@@ -1037,6 +1037,10 @@ export default function WeddingPlanning() {
     return Math.max(0, Math.min(100, Math.round((totalSpent / total) * 100)));
   }, [totalSpent, budgetRange]);
 
+  const budgetDelta = useMemo(() => (Number(budgetRange?.[1]) || 0) - totalSpent, [budgetRange, totalSpent]);
+  const isOverBudget = budgetDelta < 0;
+  const budgetStatusLabel = isOverBudget ? "Over budget" : "Under budget";
+
   const openProgressEditor = useCallback(() => {
     setProgressEditorTasks(planningTasks);
     setNewPlanningTaskLabel("");
@@ -2139,11 +2143,18 @@ export default function WeddingPlanning() {
             </CardHeader>
             <CardContent>
 	              <div className="space-y-4">
+	                <Alert className={isOverBudget ? "border-red-300 bg-red-50 text-red-700" : "border-green-300 bg-green-50 text-green-700"}>
+	                  <AlertCircle className="h-4 w-4" />
+	                  <AlertDescription className="font-medium">
+	                    {budgetStatusLabel}: ${Math.abs(budgetDelta).toLocaleString()}
+	                  </AlertDescription>
+	                </Alert>
+
 	                <div className="space-y-2">
 	                  <Progress value={budgetUsedPct} />
 	                  <div className="flex justify-between text-xs text-muted-foreground">
 	                    <span>${totalSpent.toLocaleString()} spent</span>
-	                    <span>${Math.max(0, budgetRange[1] - totalSpent).toLocaleString()} remaining</span>
+	                    <span>{isOverBudget ? `${Math.abs(budgetDelta).toLocaleString()} over` : `${budgetDelta.toLocaleString()} remaining`}</span>
 	                  </div>
 	                </div>
 
