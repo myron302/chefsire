@@ -453,40 +453,115 @@ export default function WeddingPlanning() {
   }, [currentTier]);
 
 
-  // Load + persist wedding planning checklist (per-user, with legacy migration)
+  // Load + persist wedding planning checklist (DB-first for signed-in users)
+  const savePlanningTasksTimeoutRef = useRef<number | null>(null);
+
   useEffect(() => {
-    setHasLoadedPlanningTasks(false);
+    let cancelled = false;
 
-    const storageKey = getWeddingPlanningTasksStorageKey(user?.id);
-    const userScopedTasks = localStorage.getItem(storageKey);
+    const loadPlanningTasks = async () => {
+      setHasLoadedPlanningTasks(false);
 
-    if (userScopedTasks) {
-      setPlanningTasks(parsePlanningTasks(userScopedTasks));
-      setHasLoadedPlanningTasks(true);
-      return;
-    }
+      // Logged-out guests: keep using localStorage only.
+      if (!user?.id) {
+        const guestKey = getWeddingPlanningTasksStorageKey(undefined);
+        const raw = localStorage.getItem(guestKey) ?? localStorage.getItem("weddingPlanningTasks");
+        if (!cancelled) {
+          setPlanningTasks(parsePlanningTasks(raw));
+          setHasLoadedPlanningTasks(true);
+        }
+        return;
+      }
 
-    // migrate legacy key -> per-user key
-    const legacyTasks = localStorage.getItem("weddingPlanningTasks");
-    if (legacyTasks) {
-      const parsedLegacyTasks = parsePlanningTasks(legacyTasks);
-      setPlanningTasks(parsedLegacyTasks);
-      localStorage.setItem(storageKey, JSON.stringify(parsedLegacyTasks));
-      localStorage.removeItem("weddingPlanningTasks");
-      setHasLoadedPlanningTasks(true);
-      return;
-    }
+      // Signed-in users: try DB first.
+      try {
+        const resp = await fetch("/api/wedding/planning-tasks", { credentials: "include" });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data?.ok && Array.isArray(data.tasks) && data.tasks.length > 0) {
+            if (!cancelled) {
+              setPlanningTasks(data.tasks);
+              setHasLoadedPlanningTasks(true);
+            }
+            // Cache locally for faster boot/offline; keep legacy key clean.
+            try {
+              localStorage.setItem(getWeddingPlanningTasksStorageKey(user.id), JSON.stringify(data.tasks));
+              localStorage.removeItem("weddingPlanningTasks");
+            } catch {}
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("[Wedding Planning] Failed to fetch planning tasks from DB:", error);
+      }
 
-    setPlanningTasks(DEFAULT_PLANNING_TASKS);
-    setHasLoadedPlanningTasks(true);
+      // Fallback: local cache (and seed DB best-effort once).
+      const storageKey = getWeddingPlanningTasksStorageKey(user.id);
+      const userScoped = localStorage.getItem(storageKey);
+      const legacy = localStorage.getItem("weddingPlanningTasks");
+      const localTasks = parsePlanningTasks(userScoped ?? legacy);
+
+      if (!cancelled) {
+        setPlanningTasks(localTasks);
+        setHasLoadedPlanningTasks(true);
+      }
+
+      // Best-effort: seed DB so tasks follow the user across devices.
+      try {
+        await fetch("/api/wedding/planning-tasks", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tasks: localTasks }),
+        });
+      } catch (error) {
+        console.error("[Wedding Planning] Failed to seed planning tasks to DB:", error);
+      }
+
+      // Migrate legacy key -> per-user cache
+      try {
+        if (legacy) localStorage.removeItem("weddingPlanningTasks");
+        if (!userScoped) localStorage.setItem(storageKey, JSON.stringify(localTasks));
+      } catch {}
+    };
+
+    loadPlanningTasks();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user?.id]);
 
   useEffect(() => {
     if (!hasLoadedPlanningTasks) return;
 
-    const storageKey = getWeddingPlanningTasksStorageKey(user?.id);
-    localStorage.setItem(storageKey, JSON.stringify(planningTasks));
+    // Always keep a local cache for quick load/offline.
+    try {
+      const storageKey = getWeddingPlanningTasksStorageKey(user?.id);
+      localStorage.setItem(storageKey, JSON.stringify(planningTasks));
+    } catch {}
+
+    // If signed in, sync to DB (debounced).
+    if (!user?.id) return;
+
+    if (savePlanningTasksTimeoutRef.current) {
+      window.clearTimeout(savePlanningTasksTimeoutRef.current);
+    }
+
+    savePlanningTasksTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        await fetch("/api/wedding/planning-tasks", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tasks: planningTasks }),
+        });
+      } catch (error) {
+        console.error("[Wedding Planning] Failed to save planning tasks to DB:", error);
+      }
+    }, 400);
   }, [planningTasks, user?.id, hasLoadedPlanningTasks]);
+
 
   // Load guest list and wedding details from backend on mount
   useEffect(() => {
