@@ -532,23 +532,17 @@ export default function WeddingPlanning() {
               setPlanningTasks(data.tasks);
               setHasLoadedPlanningTasks(true);
             }
-            // Cache locally for faster boot/offline; keep legacy key clean.
-            try {
-              localStorage.setItem(getWeddingPlanningTasksStorageKey(user.id), JSON.stringify(data.tasks));
-              localStorage.removeItem("weddingPlanningTasks");
-            } catch {}
+            // Clear legacy key (we no longer store per-user wedding tasks locally)
+            try { localStorage.removeItem("weddingPlanningTasks"); } catch {}
             return;
           }
         }
       } catch (error) {
         console.error("[Wedding Planning] Failed to fetch planning tasks from DB:", error);
       }
-
-      // Fallback: local cache (and seed DB best-effort once).
-      const storageKey = getWeddingPlanningTasksStorageKey(user.id);
-      const userScoped = localStorage.getItem(storageKey);
+      // Fallback: legacy local cache (one-time migration) and/or defaults.
       const legacy = localStorage.getItem("weddingPlanningTasks");
-      const localTasks = parsePlanningTasks(userScoped ?? legacy);
+      const localTasks = parsePlanningTasks(legacy);
 
       if (!cancelled) {
         setPlanningTasks(localTasks);
@@ -566,11 +560,9 @@ export default function WeddingPlanning() {
       } catch (error) {
         console.error("[Wedding Planning] Failed to seed planning tasks to DB:", error);
       }
-
-      // Migrate legacy key -> per-user cache
+      // Clear legacy key after migration
       try {
         if (legacy) localStorage.removeItem("weddingPlanningTasks");
-        if (!userScoped) localStorage.setItem(storageKey, JSON.stringify(localTasks));
       } catch {}
     };
 
@@ -583,12 +575,13 @@ export default function WeddingPlanning() {
 
   useEffect(() => {
     if (!hasLoadedPlanningTasks) return;
-
-    // Always keep a local cache for quick load/offline.
-    try {
-      const storageKey = getWeddingPlanningTasksStorageKey(user?.id);
-      localStorage.setItem(storageKey, JSON.stringify(planningTasks));
-    } catch {}
+    // Guests (logged out) keep local storage only.
+    if (!user?.id) {
+      try {
+        const storageKey = getWeddingPlanningTasksStorageKey(undefined);
+        localStorage.setItem(storageKey, JSON.stringify(planningTasks));
+      } catch {}
+    }
 
     // If signed in, sync to DB (debounced).
     if (!user?.id) return;
@@ -654,57 +647,10 @@ export default function WeddingPlanning() {
             ]);
             setGuestCount([Math.max(1, Math.min(2000, Math.round(Number(settings.guestCount) || 100)))]);
             setBudgetAllocations(normalizeBudgetAllocations(settings.allocations));
-
-            try {
-              localStorage.setItem(
-                getWeddingBudgetSettingsStorageKey(user.id),
-                JSON.stringify({
-                  budgetMin: settings.budgetMin,
-                  budgetMax: settings.budgetMax,
-                  guestCount: settings.guestCount,
-                  allocations: settings.allocations,
-                })
-              );
-            } catch {}
           }
         }
       } catch (error) {
         console.error("[Wedding Planning] Failed to fetch budget settings:", error);
-      }
-
-      const storageKey = getWeddingBudgetSettingsStorageKey(user.id);
-      const localRaw = localStorage.getItem(storageKey);
-      if (!loadedFromServer && localRaw) {
-        try {
-          const parsed = JSON.parse(localRaw);
-          if (!cancelled) {
-            setBudgetRange([
-              Math.max(5000, Math.min(100000, Math.round(Number(parsed?.budgetMin) || 5000))),
-              Math.max(5000, Math.min(100000, Math.round(Number(parsed?.budgetMax) || 50000))),
-            ]);
-            setGuestCount([Math.max(1, Math.min(2000, Math.round(Number(parsed?.guestCount) || 100)))]);
-            setBudgetAllocations(normalizeBudgetAllocations(parsed?.allocations));
-          }
-
-          // Best effort sync local -> DB if endpoint had no row / failed.
-          await fetch("/api/wedding/budget-settings", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              budgetMin: parsed?.budgetMin,
-              budgetMax: parsed?.budgetMax,
-              guestCount: parsed?.guestCount,
-              allocations: normalizeBudgetAllocations(parsed?.allocations).map((a) => ({
-                key: a.key,
-                label: a.category,
-                percentage: a.percentage,
-              })),
-            }),
-          });
-        } catch (error) {
-          console.error("[Wedding Planning] Failed to load/sync local budget settings:", error);
-        }
       }
 
       if (!cancelled) setHasLoadedBudgetSettings(true);
@@ -727,10 +673,6 @@ export default function WeddingPlanning() {
       guestCount: guestCount[0],
       allocations: budgetAllocations.map((a) => ({ key: a.key, label: a.category, percentage: a.percentage })),
     };
-
-    try {
-      localStorage.setItem(getWeddingBudgetSettingsStorageKey(user?.id), JSON.stringify(payload));
-    } catch {}
 
     if (!user?.id) return;
 
@@ -929,6 +871,20 @@ export default function WeddingPlanning() {
       })),
     [budgetAllocations, budgetRange]
   );
+
+  const handleBudgetRangeChange = useCallback((nextRange: number[]) => {
+    if (!Array.isArray(nextRange) || nextRange.length < 2) return;
+
+    const rawMin = Number(nextRange[0]);
+    const rawMax = Number(nextRange[1]);
+
+    // Keep the slider sane + prevent min > max
+    const normalizedMin = Math.max(5000, Math.min(100000, Math.round(Math.min(rawMin, rawMax))));
+    const normalizedMax = Math.max(normalizedMin, Math.min(100000, Math.round(Math.max(rawMin, rawMax))));
+
+    setBudgetRange([normalizedMin, normalizedMax]);
+  }, []);
+
 
   const updateBudgetAllocation = useCallback((key: BudgetAllocation["key"], nextPercentage: number) => {
     setBudgetAllocations((prev) => {
@@ -1981,7 +1937,7 @@ export default function WeddingPlanning() {
                   <label className="text-sm font-medium">Total Budget</label>
                   <div className="flex items-center gap-4 mt-2">
                     <span className="text-2xl font-bold">${budgetRange[1].toLocaleString()}</span>
-                    <Slider value={budgetRange} onValueChange={setBudgetRange} max={100000} min={5000} step={1000} className="flex-1" />
+                    <Slider value={budgetRange} onValueChange={handleBudgetRangeChange} max={100000} min={5000} step={1000} className="flex-1" />
                   </div>
                 </div>
 
@@ -2032,7 +1988,7 @@ export default function WeddingPlanning() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <Slider value={budgetRange} onValueChange={setBudgetRange} max={100000} min={5000} step={1000} className="flex-1" />
+                <Slider value={budgetRange} onValueChange={handleBudgetRangeChange} max={100000} min={5000} step={1000} className="flex-1" />
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>${budgetRange[0].toLocaleString()}</span>
                   <span>${budgetRange[1].toLocaleString()}</span>
