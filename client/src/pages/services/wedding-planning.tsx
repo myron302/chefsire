@@ -1583,50 +1583,88 @@ export default function WeddingPlanning() {
   const cancelEditRegistryLinks = useCallback(() => {
     setRegistryDraft(registryLinks);
     setIsEditingRegistryLinks(false);
-  }, [registryLinks]);
-
   const saveRegistryLinks = useCallback(async () => {
     const saved = normalizeRegistryLinks(registryDraft);
+
+    // Always persist locally first so the user never loses work (offline-safe).
+    try {
+      localStorage.setItem(
+        getWeddingRegistryLinksStorageKey(user?.id),
+        JSON.stringify(saved.map((l) => ({ id: l.id, name: l.name, url: l.url, icon: l.icon })))
+      );
+      // Keep a guest copy too (handy if a user signs out / loses session)
+      localStorage.setItem(getWeddingRegistryLinksStorageKey(undefined), JSON.stringify(saved));
+    } catch {}
+
+    // Update UI immediately (optimistic UI). We'll still surface API errors below.
     setRegistryLinks(saved);
     setRegistryDraft(saved);
     setIsEditingRegistryLinks(false);
 
-    // Persist locally for both guests and signed-in users (fallback if API is down).
-    try {
-      localStorage.setItem(getWeddingRegistryLinksStorageKey(user?.id), JSON.stringify(saved));
-      if (user?.id) localStorage.setItem(getWeddingRegistryLinksStorageKey(undefined), JSON.stringify(saved));
-    } catch {}
+    // Guests: local-only.
+    if (!user?.id) {
+      toast({ title: "Saved", description: "Your registry links were saved on this device." });
+      return;
+    }
 
-    // Persist to backend for signed-in users.
-    if (user?.id) {
+    // Signed-in users: save to DB so it works across devices.
+    try {
+      const response = await fetch("/api/wedding/registry-links", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          registryLinks: saved.map((l) => ({ id: l.id, name: l.name, url: l.url, icon: l.icon })),
+        }),
+      });
+
+      let data: any = null;
       try {
-        const response = await fetch("/api/wedding/registry-links", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ registryLinks: saved }),
-        });
-        if (!response.ok) {
-          const err = await response.text();
-          console.error("[Wedding Planning] Failed to save registry links:", err);
-          toast({
-            title: "Saved Locally",
-            description: "We saved your registries on this device, but the server save failed. They'll still appear here on refresh.",
-          });
-          return;
-        }
-      } catch (error) {
-        console.error("[Wedding Planning] Failed to save registry links:", error);
+        data = await response.json();
+      } catch {}
+
+      if (!response.ok || !data?.ok) {
+        const msg = data?.error || response.statusText || "Failed to save registry links";
+        console.error("[Wedding Planning] Registry save failed:", msg, data);
         toast({
-          title: "Saved Locally",
-          description: "We saved your registries on this device, but the server save failed. They'll still appear here on refresh.",
+          title: "Saved locally, but not to your account",
+          description:
+            "We saved your registry links on this device, but couldn't save them to the database. " +
+            "That’s why they don’t show on other devices. " +
+            "Check your server logs for /api/wedding/registry-links and make sure the Neon table exists.",
+          variant: "destructive",
         });
         return;
       }
-    }
 
-    toast({ title: "Registry Saved", description: "Your registry links have been saved." });
-  }, [registryDraft, toast, user?.id, registryLinks]);
+      // Server may normalize/overwrite; trust DB copy for cross-device consistency.
+      if (Array.isArray(data.registryLinks)) {
+        const fromServer = normalizeRegistryLinks(data.registryLinks);
+        setRegistryLinks(fromServer);
+        setRegistryDraft(fromServer);
+        try {
+          localStorage.setItem(
+            getWeddingRegistryLinksStorageKey(user?.id),
+            JSON.stringify(fromServer.map((l) => ({ id: l.id, name: l.name, url: l.url, icon: l.icon })))
+          );
+        } catch {}
+      }
+
+      toast({
+        title: "Saved",
+        description: "Your registry links were saved to your account (works on all devices).",
+      });
+    } catch (error) {
+      console.error("[Wedding Planning] Failed to save registry links to DB:", error);
+      toast({
+        title: "Saved locally, but not to your account",
+        description:
+          "We saved your registry links on this device, but couldn't reach the server to save them to the database. " +
+          "That’s why they don’t show on other devices.",
+        variant: "destructive",
+      });
+    }
+  }, [registryDraft, user?.id, toast]);
 
   // Backwards-compatible handler names (older JSX referenced these)
   const handleStartRegistryEdit = beginEditRegistryLinks;
