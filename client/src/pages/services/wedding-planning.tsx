@@ -1628,6 +1628,11 @@ export default function WeddingPlanning() {
     toast({ title: "Registry Saved", description: "Your registry links have been saved." });
   }, [registryDraft, toast, user?.id, registryLinks]);
 
+  // Backwards-compatible handler names (older JSX referenced these)
+  const handleStartRegistryEdit = beginEditRegistryLinks;
+  const handleCancelRegistryEdit = cancelEditRegistryLinks;
+  const handleSaveRegistryLinks = saveRegistryLinks;
+
   const handleAddRegistry = useCallback(() => {
     const newRegistry = { id: Date.now(), name: "Custom Registry", url: "", icon: "🎁" };
     if (!isEditingRegistryLinks) {
