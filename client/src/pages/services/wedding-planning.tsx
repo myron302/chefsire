@@ -455,6 +455,10 @@ export default function WeddingPlanning() {
 
   const [registryLinks, setRegistryLinks] = useState<RegistryLink[]>(DEFAULT_REGISTRY_LINKS);
   const [hasLoadedRegistryLinks, setHasLoadedRegistryLinks] = useState(false);
+  // Registry editing is explicit (Edit → Save). This prevents links from disappearing on refresh
+  // if the backend endpoint is temporarily unavailable.
+  const [isEditingRegistryLinks, setIsEditingRegistryLinks] = useState(false);
+  const [registryDraft, setRegistryDraft] = useState<RegistryLink[]>(DEFAULT_REGISTRY_LINKS);
 
   const [calendarEvents, setCalendarEvents] = useState<
     Array<{
@@ -742,7 +746,11 @@ export default function WeddingPlanning() {
           const guestRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(undefined));
           if (guestRaw) {
             const parsed = JSON.parse(guestRaw);
-            if (!cancelled) setRegistryLinks(normalizeRegistryLinks(parsed));
+            if (!cancelled) {
+              const normalized = normalizeRegistryLinks(parsed);
+              setRegistryLinks(normalized);
+              setRegistryDraft(normalized);
+            }
           }
         } catch {}
 
@@ -754,13 +762,40 @@ export default function WeddingPlanning() {
         const response = await fetch("/api/wedding/registry-links", { credentials: "include" });
         if (response.ok) {
           const data = await response.json();
-          if (data?.ok && Array.isArray(data.registryLinks) && !cancelled) {
-            setRegistryLinks(normalizeRegistryLinks(data.registryLinks));
+          const fromServer = data?.ok && Array.isArray(data.registryLinks) ? normalizeRegistryLinks(data.registryLinks) : null;
+
+          // If server returns links, use them. If server is empty/failed, fall back to local cache.
+          if (!cancelled) {
+            if (fromServer && fromServer.length > 0) {
+              setRegistryLinks(fromServer);
+              setRegistryDraft(fromServer);
+              return;
+            }
           }
         }
       } catch (error) {
         console.error("[Wedding Planning] Failed to load registry links:", error);
       } finally {
+        // Fallback: local cache for signed-in users (so refresh doesn't wipe links if API is down)
+        if (!cancelled) {
+          try {
+            const localRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(user.id));
+            const guestRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(undefined));
+            const raw = localRaw || guestRaw;
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              const normalized = normalizeRegistryLinks(parsed);
+              setRegistryLinks(normalized);
+              setRegistryDraft(normalized);
+            } else {
+              setRegistryLinks(DEFAULT_REGISTRY_LINKS);
+              setRegistryDraft(DEFAULT_REGISTRY_LINKS);
+            }
+          } catch {
+            setRegistryLinks(DEFAULT_REGISTRY_LINKS);
+            setRegistryDraft(DEFAULT_REGISTRY_LINKS);
+          }
+        }
         if (!cancelled) setHasLoadedRegistryLinks(true);
       }
     };
@@ -774,34 +809,18 @@ export default function WeddingPlanning() {
 
   useEffect(() => {
     if (!hasLoadedRegistryLinks) return;
-
+    // Persist locally (guests + signed-in users). Server persistence happens only when user taps Save.
     try {
-      localStorage.setItem(
-        getWeddingRegistryLinksStorageKey(user?.id),
-        JSON.stringify(registryLinks.map((link) => ({ id: link.id, name: link.name, url: link.url, icon: link.icon })))
-      );
-
-      if (user?.id) {
-        localStorage.setItem(getWeddingRegistryLinksStorageKey(undefined), JSON.stringify(registryLinks));
-      }
+      const safe = registryLinks.map((link) => ({ id: link.id, name: link.name, url: link.url, icon: link.icon }));
+      localStorage.setItem(getWeddingRegistryLinksStorageKey(user?.id), JSON.stringify(safe));
+      // Also keep a guest-key backup for cross-session resilience.
+      localStorage.setItem(getWeddingRegistryLinksStorageKey(undefined), JSON.stringify(safe));
     } catch {}
 
-    if (!user?.id) return;
-
-    const timeout = window.setTimeout(async () => {
-      try {
-        await fetch("/api/wedding/registry-links", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ registryLinks }),
-        });
-      } catch (error) {
-        console.error("[Wedding Planning] Failed to save registry links:", error);
-      }
-    }, 500);
-
-    return () => window.clearTimeout(timeout);
+    // Keep draft in sync when not actively editing.
+    if (!isEditingRegistryLinks) {
+      setRegistryDraft(registryLinks);
+    }
   }, [registryLinks, user?.id, hasLoadedRegistryLinks]);
 
   // Load guest list and wedding details from backend on mount
@@ -1556,19 +1575,74 @@ export default function WeddingPlanning() {
     }, 1000);
   }, [toast]);
 
+  const beginEditRegistryLinks = useCallback(() => {
+    setRegistryDraft(registryLinks);
+    setIsEditingRegistryLinks(true);
+  }, [registryLinks]);
+
+  const cancelEditRegistryLinks = useCallback(() => {
+    setRegistryDraft(registryLinks);
+    setIsEditingRegistryLinks(false);
+  }, [registryLinks]);
+
+  const saveRegistryLinks = useCallback(async () => {
+    const saved = normalizeRegistryLinks(registryDraft);
+    setRegistryLinks(saved);
+    setRegistryDraft(saved);
+    setIsEditingRegistryLinks(false);
+
+    // Persist locally for both guests and signed-in users (fallback if API is down).
+    try {
+      localStorage.setItem(getWeddingRegistryLinksStorageKey(user?.id), JSON.stringify(saved));
+      if (user?.id) localStorage.setItem(getWeddingRegistryLinksStorageKey(undefined), JSON.stringify(saved));
+    } catch {}
+
+    // Persist to backend for signed-in users.
+    if (user?.id) {
+      try {
+        const response = await fetch("/api/wedding/registry-links", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ registryLinks: saved }),
+        });
+        if (!response.ok) {
+          const err = await response.text();
+          console.error("[Wedding Planning] Failed to save registry links:", err);
+          toast({
+            title: "Saved Locally",
+            description: "We saved your registries on this device, but the server save failed. They'll still appear here on refresh.",
+          });
+          return;
+        }
+      } catch (error) {
+        console.error("[Wedding Planning] Failed to save registry links:", error);
+        toast({
+          title: "Saved Locally",
+          description: "We saved your registries on this device, but the server save failed. They'll still appear here on refresh.",
+        });
+        return;
+      }
+    }
+
+    toast({ title: "Registry Saved", description: "Your registry links have been saved." });
+  }, [registryDraft, toast, user?.id, registryLinks]);
+
   const handleAddRegistry = useCallback(() => {
     const newRegistry = { id: Date.now(), name: "Custom Registry", url: "", icon: "🎁" };
-    setRegistryLinks((prev) => [...prev, newRegistry]);
-    toast({
-      title: "Registry Added",
-      description: "Add your registry URL to share with guests.",
-    });
-  }, [toast]);
+    if (!isEditingRegistryLinks) {
+      setRegistryDraft([...registryLinks, newRegistry]);
+      setIsEditingRegistryLinks(true);
+    } else {
+      setRegistryDraft((prev) => [...prev, newRegistry]);
+    }
+    toast({ title: "Registry Added", description: "Add your registry URL, then press Save." });
+  }, [isEditingRegistryLinks, registryLinks, toast]);
 
   const handleRemoveRegistry = useCallback(
     (registryId: number) => {
-      setRegistryLinks((prev) => prev.filter((r) => r.id !== registryId));
-      toast({ title: "Registry Removed", description: "Registry removed." });
+      setRegistryDraft((prev) => prev.filter((r) => r.id !== registryId));
+      toast({ title: "Registry Removed", description: "Registry removed (press Save to keep changes)." });
     },
     [toast]
   );
@@ -2334,15 +2408,38 @@ export default function WeddingPlanning() {
       {/* Gift Registry */}
       <Card className="mb-8">
         <CardHeader className="p-4 md:p-6">
-          <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-            <Gift className="w-4 h-4 md:w-5 md:h-5" />
-            Gift Registry Hub
-          </CardTitle>
-          <CardDescription className="text-xs md:text-sm">Manage all your registries in one place and share with guests</CardDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                <Gift className="w-4 h-4 md:w-5 md:h-5" />
+                Gift Registry Hub
+              </CardTitle>
+              <CardDescription className="text-xs md:text-sm">
+                Manage all your registries in one place and share with guests
+              </CardDescription>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {isEditingRegistryLinks ? (
+                <>
+                  <Button size="sm" variant="outline" onClick={handleCancelRegistryEdit}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={handleSaveRegistryLinks}>
+                    Save
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" variant="outline" onClick={handleStartRegistryEdit}>
+                  Edit
+                </Button>
+              )}
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-4 md:p-6">
           <div className="space-y-3 md:space-y-4">
-            {registryLinks.map((registry) => (
+            {(isEditingRegistryLinks ? registryDraft : registryLinks).map((registry) => (
               <div key={registry.id} className="flex items-center gap-2 md:gap-3">
                 <span className="text-xl md:text-2xl flex-shrink-0">{registry.icon}</span>
                 <div className="flex-1 min-w-0">
@@ -2350,14 +2447,26 @@ export default function WeddingPlanning() {
                     placeholder={`${registry.name} Registry URL`}
                     value={registry.url}
                     onChange={(e) => {
-                      setRegistryLinks((prev) => prev.map((r) => (r.id === registry.id ? { ...r, url: e.target.value } : r)));
+                      if (!isEditingRegistryLinks) return;
+                      setRegistryDraft((prev) =>
+                        prev.map((r) => (r.id === registry.id ? { ...r, url: e.target.value } : r))
+                      );
                     }}
                     className="w-full text-sm"
+                    disabled={!isEditingRegistryLinks}
                   />
                 </div>
-                <Button size="sm" variant="ghost" className="flex-shrink-0" onClick={() => handleRemoveRegistry(registry.id)}>
-                  <X className="w-3 h-3 md:w-4 md:h-4" />
-                </Button>
+                {isEditingRegistryLinks && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="flex-shrink-0"
+                    onClick={() => handleRemoveRegistry(registry.id)}
+                    title="Remove"
+                  >
+                    <X className="w-3 h-3 md:w-4 md:h-4" />
+                  </Button>
+                )}
               </div>
             ))}
 
@@ -2365,6 +2474,12 @@ export default function WeddingPlanning() {
               <Plus className="w-4 h-4 mr-2" />
               Add Another Registry
             </Button>
+
+            {!isEditingRegistryLinks && (
+              <p className="text-xs text-muted-foreground">
+                Tap <span className="font-medium">Edit</span> to add or change registry links, then <span className="font-medium">Save</span>.
+              </p>
+            )}
 
             <div className="border-t pt-4 mt-4 md:mt-6">
               <h4 className="font-medium mb-3 text-sm md:text-base">Share Your Registries</h4>
