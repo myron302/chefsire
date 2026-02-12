@@ -3124,4 +3124,4 @@ export default function WeddingPlanning() {
       </Card>
     </div>
   );
-}
+)}
