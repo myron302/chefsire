@@ -417,104 +417,7 @@ export default function WeddingPlanning() {
   // Simulated dynamic savings data (replace with a real API call if needed)
   const dynamicSavings = 4200;
 
-  
-  // -------------------- Smart tips (dynamic) --------------------
-  const totalBudget = budgetRange?.[1] ?? 0;
-  const guestCountNum = Number(guestCount?.[0] ?? 0);
-
-  const topBudgetItems = useMemo(() => {
-    const items = budgetAllocations.map((a) => {
-      const target = Math.round((totalBudget * (a.percentage / 100)) || 0);
-      const spent = Number(trackedSpend?.[a.key] ?? 0);
-      const remaining = target - spent;
-      return { ...a, target, spent, remaining };
-    });
-
-    return items
-      .sort((x, y) => {
-        const xOver = x.remaining < 0 ? 1 : 0;
-        const yOver = y.remaining < 0 ? 1 : 0;
-        if (xOver !== yOver) return yOver - xOver;
-        return x.remaining - y.remaining;
-      })
-      .slice(0, 3);
-  }, [budgetAllocations, totalBudget, trackedSpend]);
-
-  const nextBestActions = useMemo(() => {
-    const actions: { label: string; done: boolean }[] = [];
-
-    actions.push({ label: "Confirm your wedding date", done: !!selectedDate });
-    actions.push({ label: "Lock your guest count range", done: guestCountNum > 0 });
-
-    const hasVenueTask = planningTasks.some((t) => t.id === "venue" && t.completed);
-    const hasCateringTask = planningTasks.some((t) => t.id === "catering" && t.completed);
-
-    actions.push({ label: "Shortlist 3 venues", done: hasVenueTask });
-    actions.push({ label: "Request 2–3 catering quotes", done: hasCateringTask });
-    actions.push({ label: "Request at least 2 vendor quotes", done: requestedQuotes.size >= 2 });
-
-    return actions.slice(0, 5);
-  }, [selectedDate, guestCountNum, planningTasks, requestedQuotes.size]);
-
-  const smartTips = useMemo(() => {
-    const tips: { title: string; detail: string }[] = [];
-
-    if (!selectedDate) {
-      tips.push({
-        title: "Pick a date first",
-        detail: "Vendors quote more accurately when they know the exact date and season.",
-      });
-    }
-
-    if (guestCountNum >= 150) {
-      tips.push({
-        title: "Big guest list = book early",
-        detail: "Venue + catering fill up first for 150+ guests. Lock those before smaller vendors.",
-      });
-    } else if (guestCountNum > 0 && guestCountNum <= 60) {
-      tips.push({
-        title: "Smaller wedding advantage",
-        detail: "You can often upgrade photography or food quality without raising the total budget.",
-      });
-    }
-
-    if (totalBudget > 0 && totalBudget < 20000) {
-      tips.push({
-        title: "Budget feels tight — protect the essentials",
-        detail: "Venue + catering drive most costs. Cut guest count before cutting core vendor quality.",
-      });
-    } else if (totalBudget >= 50000) {
-      tips.push({
-        title: "Use your budget to reduce stress",
-        detail: "Consider a planner/day-of coordinator and simplify logistics to protect your timeline.",
-      });
-    }
-
-    if (requestedQuotes.size === 0) {
-      tips.push({
-        title: "Quotes unlock momentum",
-        detail: "Request quotes from 2–3 vendors in each key category to compare real numbers.",
-      });
-    }
-
-    const risk = topBudgetItems[0];
-    if (risk) {
-      if (risk.remaining < 0) {
-        tips.push({
-          title: `Budget watch: ${risk.category} is over target`,
-          detail: `You're about $${Math.abs(risk.remaining).toLocaleString()} over the target for this category.`,
-        });
-      } else {
-        tips.push({
-          title: `Budget watch: ${risk.category}`,
-          detail: `You have about $${risk.remaining.toLocaleString()} remaining in this category versus your target.`,
-        });
-      }
-    }
-
-    return tips.slice(0, 6);
-  }, [selectedDate, guestCountNum, totalBudget, requestedQuotes.size, topBudgetItems]);
-const [selectedVendorType, setSelectedVendorType] = useState("all");
+  const [selectedVendorType, setSelectedVendorType] = useState("all");
   const [budgetRange, setBudgetRange] = useState([5000, 50000]);
   const [budgetAllocations, setBudgetAllocations] = useState<BudgetAllocation[]>(DEFAULT_BUDGET_ALLOCATIONS);
   const [guestCount, setGuestCount] = useState([100]);
@@ -526,6 +429,22 @@ const [selectedVendorType, setSelectedVendorType] = useState("all");
     return localStorage.getItem("weddingTrialBannerDismissed") !== "true";
   });
   const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
+
+  // Quote request dialog state (Get a Quote)
+  const [isQuoteDialogOpen, setIsQuoteDialogOpen] = useState(false);
+  const [quoteVendorId, setQuoteVendorId] = useState<number | null>(null);
+  const [quoteForm, setQuoteForm] = useState<{
+    eventDate: string;
+    guestCount: number;
+    contactEmail: string;
+    message: string;
+  }>({
+    eventDate: "",
+    guestCount: 0,
+    contactEmail: "",
+    message: "",
+  });
+
 
   const [planningTasks, setPlanningTasks] = useState<PlanningTask[]>(DEFAULT_PLANNING_TASKS);
   const [isProgressEditorOpen, setIsProgressEditorOpen] = useState(false);
@@ -1176,6 +1095,90 @@ const [selectedVendorType, setSelectedVendorType] = useState("all");
     setRequestedQuotes((prev) => new Set(prev).add(vendorId));
   }, []);
 
+
+  const quoteVendor = useMemo(() => {
+    if (!quoteVendorId) return null;
+    return VENDORS.find((v) => v.id === quoteVendorId) || null;
+  }, [quoteVendorId]);
+
+  // Load existing quote requests so "Quote Requested" persists across refresh/devices
+  useEffect(() => {
+    if (!user?.id) return;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/wedding/vendor-quotes", { credentials: "include" });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+
+        // Accept a few possible response shapes to be resilient:
+        // { quotes: [{ vendorId: number }] } OR { vendorIds: number[] } OR [{ vendorId }]
+        const vendorIds: number[] =
+          (Array.isArray(data?.vendorIds) ? data.vendorIds : []) ||
+          (Array.isArray(data?.quotes) ? data.quotes.map((q: any) => Number(q?.vendorId)).filter((n: any) => Number.isFinite(n)) : []) ||
+          (Array.isArray(data) ? data.map((q: any) => Number(q?.vendorId)).filter((n: any) => Number.isFinite(n)) : []);
+
+        if (vendorIds.length) {
+          setRequestedQuotes(new Set<number>(vendorIds));
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, [user?.id]);
+
+  const submitQuoteRequest = useCallback(async () => {
+    if (!quoteVendorId) return;
+
+    // Basic validation
+    if (!quoteForm.eventDate) {
+      toast({ title: "Add a date", description: "Vendors need your wedding date to quote accurately.", variant: "destructive" });
+      return;
+    }
+    if (!quoteForm.guestCount || quoteForm.guestCount < 1) {
+      toast({ title: "Guest count needed", description: "Please enter an estimated guest count.", variant: "destructive" });
+      return;
+    }
+    if (!quoteForm.contactEmail || !quoteForm.contactEmail.includes("@")) {
+      toast({ title: "Email needed", description: "Please enter a valid email so the vendor can reply.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/wedding/vendor-quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          vendorId: quoteVendorId,
+          eventDate: quoteForm.eventDate,
+          guestCount: quoteForm.guestCount,
+          contactEmail: quoteForm.contactEmail,
+          message: quoteForm.message,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.message || "Failed to request quote");
+      }
+
+      setRequestedQuotes((prev) => new Set<number>(prev).add(quoteVendorId));
+      setIsQuoteDialogOpen(false);
+
+      toast({
+        title: "Quote requested",
+        description: "We sent your request. The vendor will contact you soon.",
+      });
+    } catch (e: any) {
+      toast({
+        title: "Quote request failed",
+        description: e?.message || "Please try again in a moment.",
+        variant: "destructive",
+      });
+    }
+  }, [quoteVendorId, quoteForm, toast]);
+
   const completedTasks = useMemo(() => planningTasks.filter((task) => task.completed).length, [planningTasks]);
   const planningProgress = planningTasks.length === 0 ? 0 : Math.round((completedTasks / planningTasks.length) * 100);
 
@@ -1209,6 +1212,105 @@ const [selectedVendorType, setSelectedVendorType] = useState("all");
   const budgetDelta = useMemo(() => (Number(budgetRange?.[1]) || 0) - totalSpent, [budgetRange, totalSpent]);
   const isOverBudget = budgetDelta < 0;
   const budgetStatusLabel = isOverBudget ? "Over budget" : "Under budget";
+
+
+  // -------------------- Smart Tips & Next Steps (dynamic) --------------------
+  const totalBudget = Number(budgetRange?.[1] ?? 0);
+  const guestCountNum = Number(guestCount?.[0] ?? 0);
+
+  const topBudgetItems = useMemo(() => {
+    const items = budgetAllocations.map((a) => {
+      const target = Math.round((totalBudget * (a.percentage / 100)) || 0);
+      const spent = Number(spendByCategory.get(a.key) || 0);
+      const remaining = target - spent;
+      return { ...a, target, spent, remaining };
+    });
+
+    return items
+      .sort((x, y) => {
+        const xOver = x.remaining < 0 ? 1 : 0;
+        const yOver = y.remaining < 0 ? 1 : 0;
+        if (xOver !== yOver) return yOver - xOver;
+        return x.remaining - y.remaining;
+      })
+      .slice(0, 3);
+  }, [budgetAllocations, totalBudget, spendByCategory]);
+
+  const nextBestActions = useMemo(() => {
+    const actions: { label: string; done: boolean }[] = [];
+
+    actions.push({ label: "Confirm your wedding date", done: !!selectedDate });
+    actions.push({ label: "Lock your guest count range", done: guestCountNum > 0 });
+
+    const hasVenueTask = planningTasks.some((t) => t.id === "venue" && t.completed);
+    const hasCateringTask = planningTasks.some((t) => t.id === "catering" && t.completed);
+
+    actions.push({ label: "Shortlist 3 venues", done: hasVenueTask });
+    actions.push({ label: "Request 2–3 catering quotes", done: hasCateringTask });
+    actions.push({ label: "Request at least 2 vendor quotes", done: requestedQuotes.size >= 2 });
+
+    return actions.slice(0, 5);
+  }, [selectedDate, guestCountNum, planningTasks, requestedQuotes.size]);
+
+  const smartTips = useMemo(() => {
+    const tips: { title: string; detail: string }[] = [];
+
+    if (!selectedDate) {
+      tips.push({
+        title: "Pick a date first",
+        detail: "Vendors quote more accurately when they know the exact date and season.",
+      });
+    }
+
+    if (guestCountNum >= 150) {
+      tips.push({
+        title: "Big guest list = book early",
+        detail: "Venue + catering fill up first for 150+ guests. Lock those before smaller vendors.",
+      });
+    } else if (guestCountNum > 0 && guestCountNum <= 60) {
+      tips.push({
+        title: "Smaller wedding advantage",
+        detail: "You can often upgrade photography or food quality without raising the total budget.",
+      });
+    }
+
+    if (totalBudget > 0 && totalBudget < 20000) {
+      tips.push({
+        title: "Budget feels tight — protect the essentials",
+        detail: "Venue + catering drive most costs. Cut guest count before cutting core vendor quality.",
+      });
+    } else if (totalBudget >= 50000) {
+      tips.push({
+        title: "Use your budget to reduce stress",
+        detail: "Consider a planner/day-of coordinator and simplify logistics to protect your timeline.",
+      });
+    }
+
+    if (requestedQuotes.size === 0) {
+      tips.push({
+        title: "Quotes unlock momentum",
+        detail: "Request quotes from 2–3 vendors in each key category to compare real numbers.",
+      });
+    }
+
+    const risk = topBudgetItems[0];
+    if (risk) {
+      if (risk.remaining < 0) {
+        tips.push({
+          title: `Budget watch: ${risk.category} is over target`,
+          detail: `You're about $${Math.abs(risk.remaining).toLocaleString()} over the target for this category.`,
+        });
+      } else {
+        tips.push({
+          title: `Budget watch: ${risk.category}`,
+          detail: `You have about $${risk.remaining.toLocaleString()} remaining in this category versus your target.`,
+        });
+      }
+    }
+
+    return tips.slice(0, 6);
+  }, [selectedDate, guestCountNum, totalBudget, requestedQuotes.size, topBudgetItems]);
+
 
   const openProgressEditor = useCallback(() => {
     setProgressEditorTasks(planningTasks);
@@ -2577,6 +2679,74 @@ const [selectedVendorType, setSelectedVendorType] = useState("all");
           </Select>
         </div>
       </div>
+
+
+      {/* Get a Quote dialog */}
+      <Dialog open={isQuoteDialogOpen} onOpenChange={setIsQuoteDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Request a Quote</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="p-3 rounded-lg bg-muted">
+              <p className="text-sm font-medium">{quoteVendor?.name || "Vendor"}</p>
+              <p className="text-xs text-muted-foreground">
+                Fill this out and we&apos;ll send the vendor your request.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium mb-1 block">Event Date</label>
+                <Input
+                  type="date"
+                  value={quoteForm.eventDate}
+                  onChange={(e) => setQuoteForm((p) => ({ ...p, eventDate: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium mb-1 block">Guest Count</label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={quoteForm.guestCount || ""}
+                  onChange={(e) => setQuoteForm((p) => ({ ...p, guestCount: Number(e.target.value) }))}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium mb-1 block">Your Email</label>
+              <Input
+                type="email"
+                value={quoteForm.contactEmail}
+                onChange={(e) => setQuoteForm((p) => ({ ...p, contactEmail: e.target.value }))}
+                placeholder="you@example.com"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium mb-1 block">Message (optional)</label>
+              <Textarea
+                value={quoteForm.message}
+                onChange={(e) => setQuoteForm((p) => ({ ...p, message: e.target.value }))}
+                placeholder="Any details or questions for the vendor..."
+                rows={4}
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsQuoteDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={submitQuoteRequest}>
+                Send Request
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Vendors grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-8">
