@@ -2503,70 +2503,180 @@ export default function WeddingPlanning() {
           </Card>
         </div>
 
-
         {/* Smart Tips */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Smart Tips & Next Steps</CardTitle>
-            <CardDescription>Personalized suggestions based on your current wedding plan</CardDescription>
+        <Card className="mb-6 border-0 shadow-lg bg-white/80 backdrop-blur-sm overflow-hidden relative">
+          {/* Decorative blobs */}
+          <div className="pointer-events-none absolute -top-28 -right-28 h-72 w-72 rounded-full bg-purple-200/30 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-28 -left-28 h-72 w-72 rounded-full bg-pink-200/20 blur-3xl" />
+
+          <CardHeader className="relative">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center shadow-sm">
+                  <Sparkles className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl md:text-2xl font-bold">Smart Tips & Next Steps</CardTitle>
+                  <CardDescription className="text-sm md:text-base">
+                    Personalized guidance based on your date, guests, budget, and progress.
+                  </CardDescription>
+                </div>
+              </div>
+
+              <Badge className="mt-1">
+                {nextBestActions.filter((a) => a.done).length}/{nextBestActions.length} done
+              </Badge>
+            </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Next best actions</p>
-                <Badge variant="secondary">
-                  {nextBestActions.filter((a) => a.done).length}/{nextBestActions.length} complete
-                </Badge>
-              </div>
-              <div className="space-y-2">
-                {nextBestActions.map((a) => (
-                  <div key={a.label} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                    <p className="text-sm">{a.label}</p>
-                    {a.done ? <Badge>Done</Badge> : <Badge variant="outline">To do</Badge>}
-                  </div>
-                ))}
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Tips that match your plan</p>
-              <div className="space-y-2">
-                {smartTips.map((t) => (
-                  <div key={t.title} className="p-3 border rounded-lg">
-                    <p className="font-medium text-sm">{t.title}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{t.detail}</p>
+          <CardContent className="relative">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Next Best Actions */}
+              <div className="rounded-2xl border bg-white/70 backdrop-blur-sm p-4 md:p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-muted-foreground" />
+                    <p className="font-semibold">Next best actions</p>
                   </div>
-                ))}
-              </div>
-            </div>
+                  <Badge variant="secondary">Plan</Badge>
+                </div>
 
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Budget watch (top categories)</p>
-              <div className="space-y-2">
-                {topBudgetItems.map((b) => (
-                  <div key={b.key} className="p-3 bg-muted rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <b.icon className="w-4 h-4 text-muted-foreground" />
-                        <p className="text-sm font-medium">{b.category}</p>
+                <div className="space-y-2">
+                  {nextBestActions.map((a) => (
+                    <div
+                      key={a.label}
+                      className="flex items-center justify-between gap-3 rounded-xl border bg-white/60 px-3 py-2"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span
+                          className={[
+                            "h-2.5 w-2.5 rounded-full flex-shrink-0",
+                            a.done ? "bg-green-600" : "bg-slate-300",
+                          ].join(" ")}
+                        />
+                        <p className="text-sm font-medium truncate">{a.label}</p>
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        Target ${b.target.toLocaleString()} • Spent ${b.spent.toLocaleString()}
-                      </p>
+
+                      {a.done ? (
+                        <Badge>Done</Badge>
+                      ) : (
+                        <Badge variant="outline" className="whitespace-nowrap">
+                          To do
+                        </Badge>
+                      )}
                     </div>
-                    <div className="flex items-center justify-between mt-2">
-                      <p className="text-xs text-muted-foreground">
-                        {b.remaining < 0 ? "Over by" : "Remaining"}{" "}
-                        <span className={b.remaining < 0 ? "text-red-600 font-medium" : "text-green-600 font-medium"}>
-                          ${Math.abs(b.remaining).toLocaleString()}
-                        </span>
-                      </p>
-                      <Button size="sm" variant="outline" onClick={handleViewBudgetReport}>
-                        View Detailed Report
-                      </Button>
-                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 rounded-xl bg-muted/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">Momentum</p>
+                    <p className="text-xs font-medium">
+                      {Math.round((nextBestActions.filter((a) => a.done).length / Math.max(1, nextBestActions.length)) * 100)}%
+                    </p>
                   </div>
-                ))}
+                  <Progress
+                    value={Math.round((nextBestActions.filter((a) => a.done).length / Math.max(1, nextBestActions.length)) * 100)}
+                    className="mt-2 h-2"
+                  />
+                </div>
+              </div>
+
+              {/* Tips */}
+              <div className="rounded-2xl border bg-white/70 backdrop-blur-sm p-4 md:p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Star className="h-4 w-4 text-muted-foreground" />
+                    <p className="font-semibold">Tips that match your plan</p>
+                  </div>
+                  <Badge variant="secondary">Smart</Badge>
+                </div>
+
+                <div className="space-y-2">
+                  {smartTips.map((t) => (
+                    <div key={t.title} className="rounded-xl border bg-white/60 p-3">
+                      <div className="flex items-start gap-2">
+                        <Info className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold">{t.title}</p>
+                          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{t.detail}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {!selectedDate ? (
+                  <div className="mt-4 flex items-center gap-2 rounded-xl border border-dashed bg-white/60 p-3">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-xs text-muted-foreground">
+                      Set your date to unlock tighter vendor availability + pricing tips.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Budget Watch */}
+              <div className="rounded-2xl border bg-white/70 backdrop-blur-sm p-4 md:p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                    <p className="font-semibold">Budget watch</p>
+                  </div>
+                  <Badge variant="secondary">Top 3</Badge>
+                </div>
+
+                <div className="space-y-3">
+                  {topBudgetItems.map((b) => {
+                    const pct = Math.min(100, Math.round((b.spent / Math.max(1, b.target)) * 100));
+                    const isOver = b.remaining < 0;
+
+                    return (
+                      <div key={b.key} className="rounded-xl border bg-white/60 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <b.icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                            <p className="text-sm font-semibold truncate">{b.category}</p>
+                          </div>
+
+                          <Badge variant={isOver ? "destructive" : "outline"} className="whitespace-nowrap">
+                            {isOver ? "Over" : "On track"}
+                          </Badge>
+                        </div>
+
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>Spent ${b.spent.toLocaleString()}</span>
+                            <span>Target ${b.target.toLocaleString()}</span>
+                          </div>
+                          <Progress value={pct} className="mt-2 h-2" />
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                          <p className="text-xs text-muted-foreground">
+                            {isOver ? "Over by" : "Remaining"}{" "}
+                            <span className={isOver ? "text-red-600 font-semibold" : "text-green-600 font-semibold"}>
+                              ${Math.abs(b.remaining).toLocaleString()}
+                            </span>
+                          </p>
+
+                          <Button size="sm" className="h-8" onClick={handleViewBudgetReport}>
+                            View report
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 rounded-xl bg-muted/60 p-3">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-xs text-muted-foreground">
+                      Pro tip: keep venue + catering aligned with guest count to avoid surprise jumps.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>
