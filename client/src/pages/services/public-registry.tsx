@@ -19,12 +19,24 @@ type PublicRegistryResponse = {
   error?: string;
 };
 
-const isValidHttpUrl = (value: string) => {
+/**
+ * Normalize anything like:
+ *   - "www.amazon.com"  -> "https://www.amazon.com"
+ *   - "http://..." / "https://..." stays as-is
+ * And reject non-http(s) protocols.
+ */
+const normalizeExternalUrl = (value: string) => {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
   try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+    return parsed.toString();
   } catch {
-    return false;
+    return "";
   }
 };
 
@@ -46,7 +58,12 @@ export default function PublicRegistryPage() {
   });
 
   const links = useMemo(
-    () => (Array.isArray(data?.registryLinks) ? data.registryLinks.filter((l) => isValidHttpUrl(l.url)) : []),
+    () =>
+      Array.isArray(data?.registryLinks)
+        ? data.registryLinks
+            .map((l) => ({ ...l, url: normalizeExternalUrl(l.url) }))
+            .filter((l) => !!l.url)
+        : [],
     [data?.registryLinks]
   );
 

@@ -18,7 +18,6 @@ const DEFAULT_REGISTRY_LINKS: RegistryLink[] = [
   { id: 3, name: "Zola", url: "", icon: "💑" },
 ];
 
-
 async function ensureWeddingRegistryLinksTable() {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS wedding_registry_links (
@@ -32,6 +31,18 @@ async function ensureWeddingRegistryLinksTable() {
     CREATE INDEX IF NOT EXISTS wedding_registry_links_user_idx
       ON wedding_registry_links(user_id)
   `);
+}
+
+function parseRegistryLinksPayload(input: unknown): unknown {
+  if (Array.isArray(input)) return input;
+  if (typeof input === "string") {
+    try {
+      return JSON.parse(input);
+    } catch {
+      return input;
+    }
+  }
+  return input;
 }
 
 function normalizeRegistryLinks(input: unknown): RegistryLink[] {
@@ -64,7 +75,9 @@ router.get("/registry-links", requireAuth, async (req, res) => {
     `);
 
     const row = result?.rows?.[0] ?? result?.[0] ?? null;
-    const registryLinks = normalizeRegistryLinks(row?.registryLinks ?? DEFAULT_REGISTRY_LINKS);
+    const registryLinks = normalizeRegistryLinks(
+      parseRegistryLinksPayload(row?.registryLinks ?? DEFAULT_REGISTRY_LINKS)
+    );
 
     return res.json({ ok: true, registryLinks });
   } catch (error: any) {
@@ -80,7 +93,7 @@ router.post("/registry-links", requireAuth, async (req, res) => {
 
     await ensureWeddingRegistryLinksTable();
 
-    const registryLinks = normalizeRegistryLinks(req.body?.registryLinks);
+    const registryLinks = normalizeRegistryLinks(parseRegistryLinksPayload(req.body?.registryLinks));
 
     await db.execute(sql`
       INSERT INTO wedding_registry_links (user_id, registry_links, updated_at)
@@ -121,7 +134,8 @@ router.get("/public-registry/:slug", async (req, res) => {
       return res.status(404).json({ ok: false, error: "Registry not found" });
     }
 
-    const registryLinks = normalizeRegistryLinks(row.registryLinks ?? []);
+    // ✅ Conflict resolved: handle JSONB that may arrive as string or array
+    const registryLinks = normalizeRegistryLinks(parseRegistryLinksPayload(row.registryLinks ?? []));
     const publicLinks = registryLinks.filter((link) => !!link.url?.trim());
 
     return res.json({ ok: true, username: row.username ?? slug, registryLinks: publicLinks });
