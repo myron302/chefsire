@@ -18,6 +18,22 @@ const DEFAULT_REGISTRY_LINKS: RegistryLink[] = [
   { id: 3, name: "Zola", url: "", icon: "💑" },
 ];
 
+
+async function ensureWeddingRegistryLinksTable() {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS wedding_registry_links (
+      user_id VARCHAR PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      registry_links JSONB NOT NULL DEFAULT '[]'::jsonb,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS wedding_registry_links_user_idx
+      ON wedding_registry_links(user_id)
+  `);
+}
+
 function normalizeRegistryLinks(input: unknown): RegistryLink[] {
   if (!Array.isArray(input)) return DEFAULT_REGISTRY_LINKS;
 
@@ -37,6 +53,8 @@ router.get("/registry-links", requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
+
+    await ensureWeddingRegistryLinksTable();
 
     const result: any = await db.execute(sql`
       SELECT registry_links AS "registryLinks"
@@ -59,6 +77,8 @@ router.post("/registry-links", requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
+
+    await ensureWeddingRegistryLinksTable();
 
     const registryLinks = normalizeRegistryLinks(req.body?.registryLinks);
 
