@@ -405,6 +405,34 @@ VendorCard.displayName = "VendorCard";
 export default function WeddingPlanning() {
   const { toast } = useToast();
 
+
+  // Get user context and check subscription status
+  const { user, updateUser } = useUser();
+  const currentTier = user?.subscriptionTier || "free";
+  const isPremium = currentTier === "premium" || currentTier === "elite";
+  const isElite = currentTier === "elite";
+
+
+  // Load Google Maps API
+  const isGoogleMapsLoaded = useGoogleMaps();
+
+  // Simulated dynamic savings data (replace with a real API call if needed)
+  const dynamicSavings = 4200;
+
+  const [selectedVendorType, setSelectedVendorType] = useState("all");
+  const [budgetRange, setBudgetRange] = useState([5000, 50000]);
+  const [budgetAllocations, setBudgetAllocations] = useState<BudgetAllocation[]>(DEFAULT_BUDGET_ALLOCATIONS);
+  const [guestCount, setGuestCount] = useState([100]);
+  const [searchLocation, setSearchLocation] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
+  const [savedVendors, setSavedVendors] = useState(new Set<number>());
+  const [showBudgetCalculator, setShowBudgetCalculator] = useState(false);
+  const [showTrialBanner, setShowTrialBanner] = useState(() => {
+    return localStorage.getItem("weddingTrialBannerDismissed") !== "true";
+  });
+  const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
+
+
   // Load existing quote requests so "Quote Requested" persists across refresh/devices
   useEffect(() => {
     if (!user?.id) return;
@@ -430,30 +458,6 @@ export default function WeddingPlanning() {
     })();
   }, [user?.id]);
 
-  // Load Google Maps API
-  const isGoogleMapsLoaded = useGoogleMaps();
-
-  // Get user context and check subscription status
-  const { user, updateUser } = useUser();
-  const currentTier = user?.subscriptionTier || "free";
-  const isPremium = currentTier === "premium" || currentTier === "elite";
-  const isElite = currentTier === "elite";
-
-  // Simulated dynamic savings data (replace with a real API call if needed)
-  const dynamicSavings = 4200;
-
-  const [selectedVendorType, setSelectedVendorType] = useState("all");
-  const [budgetRange, setBudgetRange] = useState([5000, 50000]);
-  const [budgetAllocations, setBudgetAllocations] = useState<BudgetAllocation[]>(DEFAULT_BUDGET_ALLOCATIONS);
-  const [guestCount, setGuestCount] = useState([100]);
-  const [searchLocation, setSearchLocation] = useState("");
-  const [selectedDate, setSelectedDate] = useState("");
-  const [savedVendors, setSavedVendors] = useState(new Set<number>());
-  const [showBudgetCalculator, setShowBudgetCalculator] = useState(false);
-  const [showTrialBanner, setShowTrialBanner] = useState(() => {
-    return localStorage.getItem("weddingTrialBannerDismissed") !== "true";
-  });
-  const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
 
   // --- Vendor Quote Request Dialog (Get Quote) ---
   const [isQuoteDialogOpen, setIsQuoteDialogOpen] = useState(false);
