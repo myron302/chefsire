@@ -416,12 +416,13 @@ export default function WeddingPlanning() {
 
   // Simulated dynamic savings data (replace with a real API call if needed)
   const dynamicSavings = 4200;
+
+  
   // -------------------- Smart tips (dynamic) --------------------
   const totalBudget = budgetRange?.[1] ?? 0;
   const guestCountNum = Number(guestCount?.[0] ?? 0);
 
   const topBudgetItems = useMemo(() => {
-    // derive target amounts from allocation %
     const items = budgetAllocations.map((a) => {
       const target = Math.round((totalBudget * (a.percentage / 100)) || 0);
       const spent = Number(trackedSpend?.[a.key] ?? 0);
@@ -429,7 +430,6 @@ export default function WeddingPlanning() {
       return { ...a, target, spent, remaining };
     });
 
-    // overspend first (remaining < 0), otherwise least remaining
     return items
       .sort((x, y) => {
         const xOver = x.remaining < 0 ? 1 : 0;
@@ -443,20 +443,14 @@ export default function WeddingPlanning() {
   const nextBestActions = useMemo(() => {
     const actions: { label: string; done: boolean }[] = [];
 
-    // Date first
     actions.push({ label: "Confirm your wedding date", done: !!selectedDate });
-
-    // Guest range
     actions.push({ label: "Lock your guest count range", done: guestCountNum > 0 });
 
-    // Venue / Catering tasks (use planningTasks)
     const hasVenueTask = planningTasks.some((t) => t.id === "venue" && t.completed);
     const hasCateringTask = planningTasks.some((t) => t.id === "catering" && t.completed);
 
     actions.push({ label: "Shortlist 3 venues", done: hasVenueTask });
     actions.push({ label: "Request 2–3 catering quotes", done: hasCateringTask });
-
-    // Quotes requested at least once
     actions.push({ label: "Request at least 2 vendor quotes", done: requestedQuotes.size >= 2 });
 
     return actions.slice(0, 5);
@@ -503,7 +497,6 @@ export default function WeddingPlanning() {
       });
     }
 
-    // One budget watch tip based on topBudgetItems
     const risk = topBudgetItems[0];
     if (risk) {
       if (risk.remaining < 0) {
@@ -521,9 +514,7 @@ export default function WeddingPlanning() {
 
     return tips.slice(0, 6);
   }, [selectedDate, guestCountNum, totalBudget, requestedQuotes.size, topBudgetItems]);
-
-
-  const [selectedVendorType, setSelectedVendorType] = useState("all");
+const [selectedVendorType, setSelectedVendorType] = useState("all");
   const [budgetRange, setBudgetRange] = useState([5000, 50000]);
   const [budgetAllocations, setBudgetAllocations] = useState<BudgetAllocation[]>(DEFAULT_BUDGET_ALLOCATIONS);
   const [guestCount, setGuestCount] = useState([100]);
@@ -2331,79 +2322,7 @@ export default function WeddingPlanning() {
                 </div>
 
                 <Alert>
-                  <Info className="h-
-
-        {/* Smart Tips */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Smart Tips & Next Steps</CardTitle>
-            <CardDescription>Personalized suggestions based on your current wedding plan</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Next best actions */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Next best actions</p>
-                <Badge variant="secondary">
-                  {nextBestActions.filter((a) => a.done).length}/{nextBestActions.length} complete
-                </Badge>
-              </div>
-              <div className="space-y-2">
-                {nextBestActions.map((a) => (
-                  <div key={a.label} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                    <p className="text-sm">{a.label}</p>
-                    {a.done ? <Badge>Done</Badge> : <Badge variant="outline">To do</Badge>}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Tips */}
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Tips that match your plan</p>
-              <div className="space-y-2">
-                {smartTips.map((t) => (
-                  <div key={t.title} className="p-3 border rounded-lg">
-                    <p className="font-medium text-sm">{t.title}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{t.detail}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Budget watch */}
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Budget watch (top categories)</p>
-              <div className="space-y-2">
-                {topBudgetItems.map((b) => (
-                  <div key={b.key} className="p-3 bg-muted rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <b.icon className="w-4 h-4 text-muted-foreground" />
-                        <p className="text-sm font-medium">{b.category}</p>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Target ${b.target.toLocaleString()} • Spent ${b.spent.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between mt-2">
-                      <p className="text-xs text-muted-foreground">
-                        {b.remaining < 0 ? "Over by" : "Remaining"}{" "}
-                        <span className={b.remaining < 0 ? "text-red-600 font-medium" : "text-green-600 font-medium"}>
-                          ${Math.abs(b.remaining).toLocaleString()}
-                        </span>
-                      </p>
-                      <Button size="sm" variant="outline" onClick={handleViewBudgetReport}>
-                        View Detailed Report
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-4 w-4" />
+                  <Info className="h-4 w-4" />
                   <AlertDescription>
                     Based on {guestCount[0]} guests. Catering typically represents the largest portion of your wedding budget.
                   </AlertDescription>
@@ -2481,6 +2400,75 @@ export default function WeddingPlanning() {
             </CardContent>
           </Card>
         </div>
+
+
+        {/* Smart Tips */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Smart Tips & Next Steps</CardTitle>
+            <CardDescription>Personalized suggestions based on your current wedding plan</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">Next best actions</p>
+                <Badge variant="secondary">
+                  {nextBestActions.filter((a) => a.done).length}/{nextBestActions.length} complete
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                {nextBestActions.map((a) => (
+                  <div key={a.label} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                    <p className="text-sm">{a.label}</p>
+                    {a.done ? <Badge>Done</Badge> : <Badge variant="outline">To do</Badge>}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Tips that match your plan</p>
+              <div className="space-y-2">
+                {smartTips.map((t) => (
+                  <div key={t.title} className="p-3 border rounded-lg">
+                    <p className="font-medium text-sm">{t.title}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{t.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Budget watch (top categories)</p>
+              <div className="space-y-2">
+                {topBudgetItems.map((b) => (
+                  <div key={b.key} className="p-3 bg-muted rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <b.icon className="w-4 h-4 text-muted-foreground" />
+                        <p className="text-sm font-medium">{b.category}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Target ${b.target.toLocaleString()} • Spent ${b.spent.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between mt-2">
+                      <p className="text-xs text-muted-foreground">
+                        {b.remaining < 0 ? "Over by" : "Remaining"}{" "}
+                        <span className={b.remaining < 0 ? "text-red-600 font-medium" : "text-green-600 font-medium"}>
+                          ${Math.abs(b.remaining).toLocaleString()}
+                        </span>
+                      </p>
+                      <Button size="sm" variant="outline" onClick={handleViewBudgetReport}>
+                        View Detailed Report
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Filters */}
         <Card className="mb-6">
