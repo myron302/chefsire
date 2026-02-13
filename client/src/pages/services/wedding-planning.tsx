@@ -137,19 +137,19 @@ const VENDOR_CATEGORIES = [
   { value: "planner", label: "Planner", icon: Heart },
 ] as const;
 
+interface BudgetAllocation {
+  key: "catering" | "venue" | "photography" | "music" | "flowers" | "other";
+  category: string;
+  percentage: number;
+  icon: any;
+}
+
 interface PlanningTask {
   id: string;
   label: string;
   completed: boolean;
   cost?: number;
   budgetKey?: BudgetAllocation["key"];
-}
-
-interface BudgetAllocation {
-  key: "catering" | "venue" | "photography" | "music" | "flowers" | "other";
-  category: string;
-  percentage: number;
-  icon: any;
 }
 
 const DEFAULT_BUDGET_ALLOCATIONS: BudgetAllocation[] = [
@@ -405,13 +405,16 @@ VendorCard.displayName = "VendorCard";
 export default function WeddingPlanning() {
   const { toast } = useToast();
 
+  // Load Google Maps API
   const isGoogleMapsLoaded = useGoogleMaps();
 
+  // Get user context and check subscription status
   const { user, updateUser } = useUser();
   const currentTier = user?.subscriptionTier || "free";
   const isPremium = currentTier === "premium" || currentTier === "elite";
   const isElite = currentTier === "elite";
 
+  // Simulated dynamic savings data (replace with a real API call if needed)
   const dynamicSavings = 4200;
 
   const [selectedVendorType, setSelectedVendorType] = useState("all");
@@ -457,6 +460,7 @@ export default function WeddingPlanning() {
   const [calendarNotes, setCalendarNotes] = useState("");
   const [calendarReminder, setCalendarReminder] = useState(false);
 
+  // Email Invitations State
   const [guestList, setGuestList] = useState<
     Array<{
       id: number | string;
@@ -474,6 +478,7 @@ export default function WeddingPlanning() {
   const [newGuestPartner, setNewGuestPartner] = useState("");
   const [newGuestPlusOneAllowed, setNewGuestPlusOneAllowed] = useState(false);
 
+  // Wedding Event Details State
   const [partner1Name, setPartner1Name] = useState("");
   const [partner2Name, setPartner2Name] = useState("");
   const [weddingTime, setWeddingTime] = useState("");
@@ -486,11 +491,13 @@ export default function WeddingPlanning() {
   const [selectedTemplate, setSelectedTemplate] = useState("elegant");
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
+  // Refs for Google Places Autocomplete
   const ceremonyRef = useRef<HTMLInputElement>(null);
   const receptionRef = useRef<HTMLInputElement>(null);
   const vendorLocationRef = useRef<HTMLInputElement>(null);
   const vendorLocationAutocompleteRef = useRef<any>(null);
 
+  // Trial selector modal - only show once if user is on free tier
   const [showTrialSelector, setShowTrialSelector] = useState(() => {
     const hasSelected = localStorage.getItem("weddingTierSelected");
     if (hasSelected) return false;
@@ -511,6 +518,7 @@ export default function WeddingPlanning() {
     return true;
   });
 
+  // Hide selector if user already has premium/elite tier
   useEffect(() => {
     if (currentTier === "premium" || currentTier === "elite") {
       setShowTrialSelector(false);
@@ -518,6 +526,7 @@ export default function WeddingPlanning() {
     }
   }, [currentTier]);
 
+  // Load + persist wedding planning checklist (DB-first for signed-in users)
   const savePlanningTasksTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -526,6 +535,7 @@ export default function WeddingPlanning() {
     const loadPlanningTasks = async () => {
       setHasLoadedPlanningTasks(false);
 
+      // Logged-out guests: keep using localStorage only.
       if (!user?.id) {
         const guestKey = getWeddingPlanningTasksStorageKey(undefined);
         const raw = localStorage.getItem(guestKey) ?? localStorage.getItem("weddingPlanningTasks");
@@ -536,6 +546,7 @@ export default function WeddingPlanning() {
         return;
       }
 
+      // Signed-in users: try DB first.
       try {
         const resp = await fetch("/api/wedding/planning-tasks", { credentials: "include" });
         if (resp.ok) {
@@ -555,6 +566,7 @@ export default function WeddingPlanning() {
         console.error("[Wedding Planning] Failed to fetch planning tasks from DB:", error);
       }
 
+      // Fallback: legacy local cache (one-time migration) and/or defaults.
       const legacy = localStorage.getItem("weddingPlanningTasks");
       const localTasks = parsePlanningTasks(legacy);
 
@@ -563,6 +575,7 @@ export default function WeddingPlanning() {
         setHasLoadedPlanningTasks(true);
       }
 
+      // Best-effort: seed DB so tasks follow the user across devices.
       try {
         await fetch("/api/wedding/planning-tasks", {
           method: "POST",
@@ -589,6 +602,7 @@ export default function WeddingPlanning() {
   useEffect(() => {
     if (!hasLoadedPlanningTasks) return;
 
+    // Guests (logged out) keep local storage only.
     if (!user?.id) {
       try {
         const storageKey = getWeddingPlanningTasksStorageKey(undefined);
@@ -596,6 +610,7 @@ export default function WeddingPlanning() {
       } catch {}
     }
 
+    // If signed in, sync to DB (debounced).
     if (!user?.id) return;
 
     if (savePlanningTasksTimeoutRef.current) {
@@ -729,7 +744,8 @@ export default function WeddingPlanning() {
         const response = await fetch("/api/wedding/registry-links", { credentials: "include" });
         if (response.ok) {
           const data = await response.json();
-          const fromServer = data?.ok && Array.isArray(data.registryLinks) ? normalizeRegistryLinks(data.registryLinks) : null;
+          const fromServer =
+            data?.ok && Array.isArray(data.registryLinks) ? normalizeRegistryLinks(data.registryLinks) : null;
 
           if (!cancelled) {
             if (fromServer && fromServer.length > 0) {
@@ -774,7 +790,6 @@ export default function WeddingPlanning() {
 
   useEffect(() => {
     if (!hasLoadedRegistryLinks) return;
-
     try {
       const safe = registryLinks.map((link) => ({ id: link.id, name: link.name, url: link.url, icon: link.icon }));
       localStorage.setItem(getWeddingRegistryLinksStorageKey(user?.id), JSON.stringify(safe));
@@ -786,6 +801,7 @@ export default function WeddingPlanning() {
     }
   }, [registryLinks, user?.id, hasLoadedRegistryLinks, isEditingRegistryLinks]);
 
+  // Load guest list and wedding details from backend on mount
   useEffect(() => {
     if (!user?.id) return;
 
@@ -905,9 +921,11 @@ export default function WeddingPlanning() {
     fetchCalendarEvents();
   }, [user?.id, toast]);
 
+  // Google Places Autocomplete initialization
   useEffect(() => {
     if (!isGoogleMapsLoaded || !window.google?.maps?.places) return;
 
+    // Vendor search/location input
     if (vendorLocationRef.current && !vendorLocationAutocompleteRef.current) {
       const vendorOptions: any = {
         types: ["(regions)"],
@@ -916,14 +934,19 @@ export default function WeddingPlanning() {
       };
 
       try {
-        vendorLocationAutocompleteRef.current = new window.google.maps.places.Autocomplete(vendorLocationRef.current, vendorOptions);
+        vendorLocationAutocompleteRef.current = new window.google.maps.places.Autocomplete(
+          vendorLocationRef.current,
+          vendorOptions
+        );
 
         vendorLocationAutocompleteRef.current.addListener("place_changed", () => {
           const place = vendorLocationAutocompleteRef.current?.getPlace?.();
           const name = place?.name;
           const fullAddress = place?.formatted_address;
           const display =
-            name && fullAddress && !String(fullAddress).startsWith(String(name)) ? `${name}, ${fullAddress}` : fullAddress || name || "";
+            name && fullAddress && !String(fullAddress).startsWith(String(name))
+              ? `${name}, ${fullAddress}`
+              : fullAddress || name || "";
 
           if (display) setSearchLocation(display);
         });
@@ -932,6 +955,7 @@ export default function WeddingPlanning() {
       }
     }
 
+    // Ceremony + reception location autocomplete is a Premium feature.
     if (!isPremium) return;
 
     const options: any = {
@@ -1036,6 +1060,7 @@ export default function WeddingPlanning() {
   const completedTasks = useMemo(() => planningTasks.filter((task) => task.completed).length, [planningTasks]);
   const planningProgress = planningTasks.length === 0 ? 0 : Math.round((completedTasks / planningTasks.length) * 100);
 
+  // --- Budget spend tracking (optional per-task costs) ---
   const spendByCategory = useMemo(() => {
     const out = new Map<BudgetAllocation["key"], number>();
     for (const key of DEFAULT_BUDGET_ALLOCATIONS.map((a) => a.key)) out.set(key, 0);
@@ -1523,12 +1548,15 @@ export default function WeddingPlanning() {
     }, 1000);
   }, [toast]);
 
+  // ===========================
+  // REGISTRY LINKS (FIXED)
+  // ===========================
+
   const beginEditRegistryLinks = useCallback(() => {
     setRegistryDraft(registryLinks);
     setIsEditingRegistryLinks(true);
   }, [registryLinks]);
 
-  // ✅ FIXED: this function was missing its closing braces in your pasted file
   const cancelEditRegistryLinks = useCallback(() => {
     setRegistryDraft(registryLinks);
     setIsEditingRegistryLinks(false);
@@ -1537,23 +1565,28 @@ export default function WeddingPlanning() {
   const saveRegistryLinks = useCallback(async () => {
     const saved = normalizeRegistryLinks(registryDraft);
 
+    // Always persist locally first so the user never loses work (offline-safe).
     try {
       localStorage.setItem(
         getWeddingRegistryLinksStorageKey(user?.id),
         JSON.stringify(saved.map((l) => ({ id: l.id, name: l.name, url: l.url, icon: l.icon })))
       );
+      // Keep a guest copy too (handy if a user signs out / loses session)
       localStorage.setItem(getWeddingRegistryLinksStorageKey(undefined), JSON.stringify(saved));
     } catch {}
 
+    // Update UI immediately (optimistic UI).
     setRegistryLinks(saved);
     setRegistryDraft(saved);
     setIsEditingRegistryLinks(false);
 
+    // Guests: local-only.
     if (!user?.id) {
       toast({ title: "Saved", description: "Your registry links were saved on this device." });
       return;
     }
 
+    // Signed-in users: save to DB so it works across devices.
     try {
       const response = await fetch("/api/wedding/registry-links", {
         method: "POST",
@@ -1576,13 +1609,13 @@ export default function WeddingPlanning() {
           title: "Saved locally, but not to your account",
           description:
             "We saved your registry links on this device, but couldn't save them to the database. " +
-            "That’s why they don’t show on other devices. " +
-            "Check your server logs for /api/wedding/registry-links and make sure the Neon table exists.",
+            "That’s why they don’t show on other devices. Check your server logs for /api/wedding/registry-links.",
           variant: "destructive",
         });
         return;
       }
 
+      // Server may normalize/overwrite; trust DB copy for cross-device consistency.
       if (Array.isArray(data.registryLinks)) {
         const fromServer = normalizeRegistryLinks(data.registryLinks);
         setRegistryLinks(fromServer);
@@ -1611,6 +1644,7 @@ export default function WeddingPlanning() {
     }
   }, [registryDraft, user?.id, toast]);
 
+  // Backwards-compatible handler names (older JSX referenced these)
   const handleStartRegistryEdit = beginEditRegistryLinks;
   const handleCancelRegistryEdit = cancelEditRegistryLinks;
   const handleSaveRegistryLinks = saveRegistryLinks;
@@ -1986,7 +2020,9 @@ export default function WeddingPlanning() {
               <div className="flex items-start gap-2 md:gap-3 flex-1">
                 <div className="relative flex-shrink-0">
                   <Sparkles className="w-6 h-6 md:w-8 md:h-8 text-purple-600" />
-                  <Badge className="absolute -top-1 -right-1 md:-top-2 md:-right-2 bg-green-500 text-white text-[10px] md:text-xs">FREE</Badge>
+                  <Badge className="absolute -top-1 -right-1 md:-top-2 md:-right-2 bg-green-500 text-white text-[10px] md:text-xs">
+                    FREE
+                  </Badge>
                 </div>
                 <div className="min-w-0">
                   <h3 className="font-bold text-sm md:text-lg">Start Your 14-Day Premium Trial</h3>
@@ -2160,13 +2196,7 @@ export default function WeddingPlanning() {
                       </div>
 
                       {item.key !== "other" && (
-                        <Slider
-                          value={[item.percentage]}
-                          onValueChange={(value) => updateBudgetAllocation(item.key, value[0] ?? item.percentage)}
-                          max={100}
-                          min={0}
-                          step={1}
-                        />
+                        <Slider value={[item.percentage]} onValueChange={(value) => updateBudgetAllocation(item.key, value[0] ?? item.percentage)} max={100} min={0} step={1} />
                       )}
                     </div>
                   ))}
@@ -2218,9 +2248,7 @@ export default function WeddingPlanning() {
 
           <Card className={isElite ? "border-amber-500/50" : "border-gray-200"}>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className={isElite ? "text-amber-700" : "text-gray-500"}>
-                {isElite ? "AI-Powered Budget Optimizer" : "Budget Optimization (Elite)"}
-              </CardTitle>
+              <CardTitle className={isElite ? "text-amber-700" : "text-gray-500"}>{isElite ? "AI-Powered Budget Optimizer" : "Budget Optimization (Elite)"}</CardTitle>
               {isElite ? <TrendingUp className="w-6 h-6 text-amber-600" /> : <Lock className="w-6 h-6 text-gray-400" />}
             </CardHeader>
             <CardContent>
@@ -2280,7 +2308,9 @@ export default function WeddingPlanning() {
                   onChange={(e) => setSearchLocation(e.target.value)}
                   className="w-full"
                 />
-                <p className="mt-1 text-[10px] md:text-xs text-muted-foreground">Start typing any city/state in the US — this is no longer limited to a single state.</p>
+                <p className="mt-1 text-[10px] md:text-xs text-muted-foreground">
+                  Start typing any city/state in the US — this is no longer limited to a single state.
+                </p>
               </div>
 
               <div>
@@ -2898,7 +2928,9 @@ export default function WeddingPlanning() {
                 Add Guest
               </Button>
 
-              <p className="text-xs text-muted-foreground">💡 Tip: Add a partner/plus-one name to send one invitation to a couple (e.g., "John & Jane Smith")</p>
+              <p className="text-xs text-muted-foreground">
+                💡 Tip: Add a partner/plus-one name to send one invitation to a couple (e.g., "John & Jane Smith")
+              </p>
             </div>
           </div>
 
@@ -3017,7 +3049,7 @@ export default function WeddingPlanning() {
 
           {!isPremium && (
             <Alert className="mt-4 border-pink-300 bg-pink-50/50">
-              <Lock className="h-4 w-4 text-pink-600" />
+              <Lock className="h-4 h-4 text-pink-600" />
               <AlertDescription className="text-sm">
                 Upgrade to Premium to send unlimited email invitations with beautiful templates and automatic RSVP tracking.
               </AlertDescription>
