@@ -93,7 +93,7 @@ router.post("/registry-links", requireAuth, async (req, res) => {
 
     await ensureWeddingRegistryLinksTable();
 
-    const registryLinks = normalizeRegistryLinks(req.body?.registryLinks);
+    const registryLinks = normalizeRegistryLinks(parseRegistryLinksPayload(req.body?.registryLinks));
 
     await db.execute(sql`
       INSERT INTO wedding_registry_links (user_id, registry_links, updated_at)

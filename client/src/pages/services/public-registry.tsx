@@ -23,8 +23,15 @@ const normalizeExternalUrl = (value: string) => {
   const trimmed = String(value || "").trim();
   if (!trimmed) return "";
 
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+    return parsed.toString();
+  } catch {
+    return "";
+  }
 };
 
 export default function PublicRegistryPage() {
