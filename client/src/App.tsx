@@ -31,6 +31,7 @@ import DMThreadPage from "@/pages/dm/ThreadPage";
 import CateringMarketplace from "@/pages/services/catering";
 import WeddingPlanning from "@/pages/services/wedding-planning";
 import WeddingVendorMap from "@/pages/services/wedding-map";
+import PublicRegistryPage from "@/pages/services/public-registry";
 
 // Other Pages
 import ExplorePage from "@/pages/explore/ExplorePage";
@@ -408,6 +409,7 @@ function AppRouter() {
         <Route path="/catering" component={CateringMarketplace} />
         <Route path="/catering/wedding-planning" component={WeddingPlanning} />
         <Route path="/catering/wedding-map" component={WeddingVendorMap} />
+        <Route path="/registry/:slug" component={PublicRegistryPage} />
         <Route path="/potent-potables">
           <Redirect to="/drinks/potent-potables" />
         </Route>
