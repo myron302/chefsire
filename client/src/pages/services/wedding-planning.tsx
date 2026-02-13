@@ -742,6 +742,7 @@ export default function WeddingPlanning() {
 
       try {
         const response = await fetch("/api/wedding/registry-links", { credentials: "include" });
+        let loadedFromServer = false;
         if (response.ok) {
           const data = await response.json();
           const fromServer =
@@ -751,13 +752,33 @@ export default function WeddingPlanning() {
             if (fromServer && fromServer.length > 0) {
               setRegistryLinks(fromServer);
               setRegistryDraft(fromServer);
-              return;
+              loadedFromServer = true;
             }
+          }
+        }
+
+        // Only use local fallback when DB data wasn't successfully loaded.
+        if (!loadedFromServer && !cancelled) {
+          try {
+            const localRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(user.id));
+            const guestRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(undefined));
+            const raw = localRaw || guestRaw;
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              const normalized = normalizeRegistryLinks(parsed);
+              setRegistryLinks(normalized);
+              setRegistryDraft(normalized);
+            } else {
+              setRegistryLinks(DEFAULT_REGISTRY_LINKS);
+              setRegistryDraft(DEFAULT_REGISTRY_LINKS);
+            }
+          } catch {
+            setRegistryLinks(DEFAULT_REGISTRY_LINKS);
+            setRegistryDraft(DEFAULT_REGISTRY_LINKS);
           }
         }
       } catch (error) {
         console.error("[Wedding Planning] Failed to load registry links:", error);
-      } finally {
         if (!cancelled) {
           try {
             const localRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(user.id));
@@ -777,6 +798,7 @@ export default function WeddingPlanning() {
             setRegistryDraft(DEFAULT_REGISTRY_LINKS);
           }
         }
+      } finally {
         if (!cancelled) setHasLoadedRegistryLinks(true);
       }
     };
