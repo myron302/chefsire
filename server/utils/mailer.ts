@@ -659,3 +659,112 @@ export async function mailHealth(): Promise<Health> {
 
   return result;
 }
+
+
+/**
+ * Send a vendor quote request email ("Get Quote" from Wedding Planning page).
+ *
+ * Configure:
+ *  - VENDOR_QUOTES_TO: fallback recipient (your inbox) if vendor email isn't known
+ *  - VENDOR_QUOTES_BCC: optional (comma-separated) to always BCC all quote leads
+ */
+export async function sendVendorQuoteRequestEmail(params: {
+  vendorTo?: string;
+  vendorName?: string;
+  vendorType?: string;
+  userEmail?: string;
+  userPhone?: string;
+  weddingDate?: string;
+  guestCount?: number;
+  message?: string;
+  appUrl?: string;
+  quoteId?: number | string;
+}) {
+  const {
+    vendorTo,
+    vendorName,
+    vendorType,
+    userEmail,
+    userPhone,
+    weddingDate,
+    guestCount,
+    message,
+    appUrl,
+    quoteId,
+  } = params;
+
+  const from =
+    process.env.WEDDING_MAIL_FROM ||
+    process.env.MAIL_FROM ||
+    "ChefSire Weddings <invitations@chefsire.com>";
+
+  const fallbackTo =
+    process.env.VENDOR_QUOTES_TO ||
+    process.env.WEDDING_MAIL_USER ||
+    process.env.MAIL_USER;
+
+  const to = (vendorTo && vendorTo.includes("@") ? vendorTo : "") || fallbackTo;
+
+  if (!to) {
+    throw new Error(
+      "No recipient available. Set VENDOR_QUOTES_TO (or MAIL_USER/WEDDING_MAIL_USER)."
+    );
+  }
+
+  const bcc = (process.env.VENDOR_QUOTES_BCC || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const safeVendor = vendorName || "Wedding Vendor";
+  const safeType = vendorType ? ` (${vendorType})` : "";
+  const safeGuest = Number.isFinite(Number(guestCount)) ? String(guestCount) : "N/A";
+  const safeDate = weddingDate || "N/A";
+  const safeEmail = userEmail || "N/A";
+  const safePhone = userPhone || "N/A";
+  const safeMsg = (message || "").trim() || "N/A";
+
+  const viewLink =
+    appUrl && quoteId ? `${appUrl.replace(/\/$/, "")}/admin/vendor-quotes/${quoteId}` : "";
+
+  const html = `
+    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.55">
+      <h2>💍 New Quote Request${escapeHtml(safeType)}</h2>
+      <p><b>Vendor:</b> ${escapeHtml(safeVendor)}</p>
+      <p><b>Wedding date:</b> ${escapeHtml(safeDate)}<br/>
+         <b>Estimated guests:</b> ${escapeHtml(safeGuest)}</p>
+      <p><b>Couple contact:</b><br/>
+         Email: ${escapeHtml(safeEmail)}<br/>
+         Phone: ${escapeHtml(safePhone)}</p>
+      <p><b>Message:</b></p>
+      <div style="background:#f6f7f9;border:1px solid #e5e7eb;padding:12px;border-radius:10px;white-space:pre-wrap">
+        ${escapeHtml(safeMsg)}
+      </div>
+      ${viewLink ? `<p style="margin-top:18px"><a href="${viewLink}">View in dashboard</a></p>` : ""}
+      <hr style="border:none;border-top:1px solid #eee;margin:24px 0" />
+      <p style="font-size:12px;color:#666">ChefSire • Weddings</p>
+    </div>
+  `;
+
+  if (weddingInitError || !weddingTransport) {
+    throw new Error(weddingInitError || "Email transport not available");
+  }
+
+  return weddingTransport.sendMail({
+    from,
+    to,
+    ...(bcc.length ? { bcc } : null),
+    subject: `💍 Quote request for ${safeVendor}`,
+    html,
+    ...(userEmail ? { replyTo: userEmail } : null),
+  });
+}
+
+function escapeHtml(input: string) {
+  return String(input)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
