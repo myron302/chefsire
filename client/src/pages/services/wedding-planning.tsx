@@ -276,6 +276,89 @@ interface VendorCardProps {
 const VendorCard = memo(
   ({ vendor, isSaved, isQuoteRequested, onToggleSave, onRequestQuote }: VendorCardProps) => {
     return (
+
+    <Dialog open={isBudgetReportOpen} onOpenChange={setIsBudgetReportOpen}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>AI-Powered Budget Optimizer Report</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <Alert>
+            <AlertDescription>
+              This is a starter report based on your current budget range and guest count. As you add a venue and caterer,
+              the recommendations will get more precise.
+            </AlertDescription>
+          </Alert>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5" />
+                Projected Savings
+              </CardTitle>
+              <CardDescription>
+                Estimated savings opportunities found by comparing to similar couples in your area.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="text-3xl font-bold text-green-600 flex items-center">
+                <DollarSign className="w-6 h-6 mr-1" />
+                {dynamicSavings.toLocaleString()}
+              </div>
+
+              <div className="text-sm text-muted-foreground">
+                Budget range: <span className="font-medium">${budgetRange[0].toLocaleString()}</span> –{" "}
+                <span className="font-medium">${budgetRange[1].toLocaleString()}</span> • Guests:{" "}
+                <span className="font-medium">{guestCount?.[0] ?? 0}</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Recommended Allocation</CardTitle>
+              <CardDescription>
+                A baseline split many couples land on. Adjust your sliders below to match your priorities.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {budgetAllocations.map((a) => (
+                <div key={a.category} className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium capitalize">{a.category}</span>
+                    <span className="text-muted-foreground">{a.percentage}%</span>
+                  </div>
+                  <Progress value={a.percentage} />
+                </div>
+              ))}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <Alert>
+                  <AlertDescription>
+                    <span className="font-medium">Tip:</span> Venue + catering are the biggest levers. If you trim 5–10% here,
+                    you usually save more than squeezing smaller categories.
+                  </AlertDescription>
+                </Alert>
+                <Alert>
+                  <AlertDescription>
+                    <span className="font-medium">Tip:</span> Ask vendors for “all-in” pricing (fees, gratuity, rentals) to
+                    prevent surprise overages later.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIsBudgetReportOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+
       <Card className="overflow-hidden hover:shadow-lg transition-shadow">
         <div className="relative">
           <img
@@ -405,6 +488,8 @@ VendorCard.displayName = "VendorCard";
 export default function WeddingPlanning() {
   const { toast } = useToast();
 
+  // Load Google Maps API
+  const isGoogleMapsLoaded = useGoogleMaps();
 
   // Get user context and check subscription status
   const { user, updateUser } = useUser();
@@ -412,12 +497,10 @@ export default function WeddingPlanning() {
   const isPremium = currentTier === "premium" || currentTier === "elite";
   const isElite = currentTier === "elite";
 
-
-  // Load Google Maps API
-  const isGoogleMapsLoaded = useGoogleMaps();
-
   // Simulated dynamic savings data (replace with a real API call if needed)
   const dynamicSavings = 4200;
+
+  const [isBudgetReportOpen, setIsBudgetReportOpen] = useState(false);
 
   const [selectedVendorType, setSelectedVendorType] = useState("all");
   const [budgetRange, setBudgetRange] = useState([5000, 50000]);
@@ -431,43 +514,6 @@ export default function WeddingPlanning() {
     return localStorage.getItem("weddingTrialBannerDismissed") !== "true";
   });
   const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
-
-
-  // Load existing quote requests so "Quote Requested" persists across refresh/devices
-  useEffect(() => {
-    if (!user?.id) return;
-
-    (async () => {
-      try {
-        const resp = await fetch("/api/wedding/vendor-quotes", { credentials: "include" });
-        const data = await resp.json().catch(() => null);
-
-        if (resp.ok && data?.ok && Array.isArray(data.vendorIds)) {
-          setRequestedQuotes(
-            new Set<number>(
-              data.vendorIds
-                .map((n: any) => Number(n))
-                .filter((n: any) => Number.isFinite(n))
-            )
-          );
-        }
-      } catch (e) {
-        // Non-fatal: page still works without persisted quote state
-        console.warn("[wedding-planning] Failed to load vendor quote state", e);
-      }
-    })();
-  }, [user?.id]);
-
-
-  // --- Vendor Quote Request Dialog (Get Quote) ---
-  const [isQuoteDialogOpen, setIsQuoteDialogOpen] = useState(false);
-  const [quoteVendor, setQuoteVendor] = useState<Vendor | null>(null);
-  const [quoteWeddingDate, setQuoteWeddingDate] = useState<string>("");
-  const [quoteGuestCount, setQuoteGuestCount] = useState<number>(0);
-  const [quoteMessage, setQuoteMessage] = useState<string>("");
-  const [quoteEmail, setQuoteEmail] = useState<string>("");
-  const [quotePhone, setQuotePhone] = useState<string>("");
-  const [isSubmittingQuote, setIsSubmittingQuote] = useState(false);
 
   const [planningTasks, setPlanningTasks] = useState<PlanningTask[]>(DEFAULT_PLANNING_TASKS);
   const [isProgressEditorOpen, setIsProgressEditorOpen] = useState(false);
@@ -1114,76 +1160,11 @@ export default function WeddingPlanning() {
     });
   }, []);
 
-  
-  const requestQuote = useCallback(
-    (vendorId: number) => {
-      const v = VENDORS.find((x) => x.id === vendorId) || null;
-      setQuoteVendor(v);
+  const requestQuote = useCallback((vendorId: number) => {
+    setRequestedQuotes((prev) => new Set(prev).add(vendorId));
+  }, []);
 
-      // Prefill from current planning selections if available
-      setQuoteWeddingDate(selectedDate || "");
-      // guestCount in this file is a range slider; prefer the first value if present
-      setQuoteGuestCount(Number((guestCount as any)?.[0] ?? 0));
-
-      setQuoteMessage("");
-      setQuoteEmail((user as any)?.email || "");
-      setQuotePhone("");
-      setIsQuoteDialogOpen(true);
-    },
-    [selectedDate, guestCount, user]
-  );
-
-  const submitQuoteRequest = useCallback(async () => {
-    if (!quoteVendor) return;
-
-    try {
-      setIsSubmittingQuote(true);
-
-      const resp = await fetch("/api/wedding/vendor-quotes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          vendorId: quoteVendor.id,
-          vendorName: quoteVendor.name,
-          vendorType: (quoteVendor as any).type,
-          weddingDate: quoteWeddingDate || undefined,
-          guestCount: quoteGuestCount || undefined,
-          message: quoteMessage || undefined,
-          contactEmail: quoteEmail || undefined,
-          contactPhone: quotePhone || undefined,
-        }),
-      });
-
-      const data = await resp.json().catch(() => null);
-
-      if (!resp.ok || !data?.ok) {
-        toast({
-          title: "Quote request failed",
-          description: data?.error || "Please try again.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      setRequestedQuotes((prev) => new Set(prev).add(quoteVendor.id));
-      setIsQuoteDialogOpen(false);
-
-      toast({
-        title: "Quote requested!",
-        description: "We sent your request. The vendor will contact you soon.",
-      });
-    } catch (e) {
-      toast({
-        title: "Quote request failed",
-        description: "Network error. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmittingQuote(false);
-    }
-  }, [quoteVendor, quoteWeddingDate, quoteGuestCount, quoteMessage, quoteEmail, quotePhone, toast]);
-const completedTasks = useMemo(() => planningTasks.filter((task) => task.completed).length, [planningTasks]);
+  const completedTasks = useMemo(() => planningTasks.filter((task) => task.completed).length, [planningTasks]);
   const planningProgress = planningTasks.length === 0 ? 0 : Math.round((completedTasks / planningTasks.length) * 100);
 
   // --- Budget spend tracking (optional per-task costs) ---
@@ -1647,19 +1628,17 @@ const completedTasks = useMemo(() => planningTasks.filter((task) => task.complet
   }, [toast]);
 
   const handleViewBudgetReport = useCallback(() => {
-    if (!isPremium) {
+    // This report is an Elite feature (the card is already shown under isElite)
+    if (!isElite) {
       toast({
-        title: "Premium Feature",
-        description: "Unlock detailed budget reports by upgrading to Premium!",
+        title: "Elite Feature",
+        description: "Unlock detailed budget reports by upgrading to Elite!",
         variant: "destructive",
       });
       return;
     }
-    toast({
-      title: "Budget Report",
-      description: "Opening your detailed budget analysis...",
-    });
-  }, [isPremium, toast]);
+    setIsBudgetReportOpen(true);
+  }, [isElite, toast]);
 
   const handleGoPremium = useCallback(() => {
     toast({
@@ -2515,88 +2494,6 @@ const completedTasks = useMemo(() => planningTasks.filter((task) => task.complet
           </Select>
         </div>
       </div>
-
-
-      {/* Quote request dialog */}
-      <Dialog open={isQuoteDialogOpen} onOpenChange={setIsQuoteDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {quoteVendor ? `Request a quote — ${quoteVendor.name}` : "Request a quote"}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium">Wedding date</label>
-                <Input
-                  type="date"
-                  value={quoteWeddingDate}
-                  onChange={(e) => setQuoteWeddingDate(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Estimated guests</label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={5000}
-                  value={quoteGuestCount}
-                  onChange={(e) => setQuoteGuestCount(Number(e.target.value || 0))}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium">Your email</label>
-                <Input
-                  type="email"
-                  placeholder="you@email.com"
-                  value={quoteEmail}
-                  onChange={(e) => setQuoteEmail(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Phone (optional)</label>
-                <Input
-                  type="tel"
-                  placeholder="(555) 555-5555"
-                  value={quotePhone}
-                  onChange={(e) => setQuotePhone(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium">Message</label>
-              <Textarea
-                placeholder="Tell the vendor what you need (style, budget, venue, travel, etc.)"
-                value={quoteMessage}
-                onChange={(e) => setQuoteMessage(e.target.value)}
-                rows={5}
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setIsQuoteDialogOpen(false)}
-                disabled={isSubmittingQuote}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={submitQuoteRequest}
-                disabled={!quoteVendor || isSubmittingQuote}
-              >
-                {isSubmittingQuote ? "Sending..." : "Send request"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Vendors grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-8">
