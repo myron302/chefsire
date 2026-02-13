@@ -277,88 +277,6 @@ const VendorCard = memo(
   ({ vendor, isSaved, isQuoteRequested, onToggleSave, onRequestQuote }: VendorCardProps) => {
     return (
 
-    <Dialog open={isBudgetReportOpen} onOpenChange={setIsBudgetReportOpen}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>AI-Powered Budget Optimizer Report</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          <Alert>
-            <AlertDescription>
-              This is a starter report based on your current budget range and guest count. As you add a venue and caterer,
-              the recommendations will get more precise.
-            </AlertDescription>
-          </Alert>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5" />
-                Projected Savings
-              </CardTitle>
-              <CardDescription>
-                Estimated savings opportunities found by comparing to similar couples in your area.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="text-3xl font-bold text-green-600 flex items-center">
-                <DollarSign className="w-6 h-6 mr-1" />
-                {dynamicSavings.toLocaleString()}
-              </div>
-
-              <div className="text-sm text-muted-foreground">
-                Budget range: <span className="font-medium">${budgetRange[0].toLocaleString()}</span> –{" "}
-                <span className="font-medium">${budgetRange[1].toLocaleString()}</span> • Guests:{" "}
-                <span className="font-medium">{guestCount?.[0] ?? 0}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Recommended Allocation</CardTitle>
-              <CardDescription>
-                A baseline split many couples land on. Adjust your sliders below to match your priorities.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {budgetAllocations.map((a) => (
-                <div key={a.category} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium capitalize">{a.category}</span>
-                    <span className="text-muted-foreground">{a.percentage}%</span>
-                  </div>
-                  <Progress value={a.percentage} />
-                </div>
-              ))}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                <Alert>
-                  <AlertDescription>
-                    <span className="font-medium">Tip:</span> Venue + catering are the biggest levers. If you trim 5–10% here,
-                    you usually save more than squeezing smaller categories.
-                  </AlertDescription>
-                </Alert>
-                <Alert>
-                  <AlertDescription>
-                    <span className="font-medium">Tip:</span> Ask vendors for “all-in” pricing (fees, gratuity, rentals) to
-                    prevent surprise overages later.
-                  </AlertDescription>
-                </Alert>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsBudgetReportOpen(false)}>
-              Close
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-
       <Card className="overflow-hidden hover:shadow-lg transition-shadow">
         <div className="relative">
           <img
@@ -2464,6 +2382,89 @@ export default function WeddingPlanning() {
           );
         })}
       </div>
+
+
+      <Dialog open={isBudgetReportOpen} onOpenChange={setIsBudgetReportOpen}>
+      <DialogContent className="max-w-2xl">
+      <DialogHeader>
+      <DialogTitle>AI-Powered Budget Optimizer Report</DialogTitle>
+      </DialogHeader>
+      
+      <div className="space-y-4">
+      <Alert>
+      <AlertDescription>
+      This is a starter report based on your current budget range and guest count. As you add a venue and caterer,
+      the recommendations will get more precise.
+      </AlertDescription>
+      </Alert>
+      
+      <Card>
+      <CardHeader>
+      <CardTitle className="flex items-center gap-2">
+      <TrendingUp className="w-5 h-5" />
+      Projected Savings
+      </CardTitle>
+      <CardDescription>
+      Estimated savings opportunities found by comparing to similar couples in your area.
+      </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+      <div className="text-3xl font-bold text-green-600 flex items-center">
+      <DollarSign className="w-6 h-6 mr-1" />
+      {dynamicSavings.toLocaleString()}
+      </div>
+      
+      <div className="text-sm text-muted-foreground">
+      Budget range: <span className="font-medium">${budgetRange[0].toLocaleString()}</span> –{" "}
+      <span className="font-medium">${budgetRange[1].toLocaleString()}</span> • Guests:{" "}
+      <span className="font-medium">{guestCount?.[0] ?? 0}</span>
+      </div>
+      </CardContent>
+      </Card>
+      
+      <Card>
+      <CardHeader>
+      <CardTitle>Recommended Allocation</CardTitle>
+      <CardDescription>
+      A baseline split many couples land on. Adjust your sliders below to match your priorities.
+      </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+      {budgetAllocations.map((a) => (
+      <div key={a.category} className="space-y-1">
+      <div className="flex items-center justify-between text-sm">
+      <span className="font-medium capitalize">{a.category}</span>
+      <span className="text-muted-foreground">{a.percentage}%</span>
+      </div>
+      <Progress value={a.percentage} />
+      </div>
+      ))}
+      
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+      <Alert>
+      <AlertDescription>
+      <span className="font-medium">Tip:</span> Venue + catering are the biggest levers. If you trim 5–10% here,
+      you usually save more than squeezing smaller categories.
+      </AlertDescription>
+      </Alert>
+      <Alert>
+      <AlertDescription>
+      <span className="font-medium">Tip:</span> Ask vendors for “all-in” pricing (fees, gratuity, rentals) to
+      prevent surprise overages later.
+      </AlertDescription>
+      </Alert>
+      </div>
+      </CardContent>
+      </Card>
+      
+      <div className="flex justify-end gap-2">
+      <Button variant="outline" onClick={() => setIsBudgetReportOpen(false)}>
+      Close
+      </Button>
+      </div>
+      </div>
+      </DialogContent>
+      </Dialog>
 
       {/* Vendors header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
