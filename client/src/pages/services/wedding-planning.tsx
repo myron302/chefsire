@@ -405,6 +405,31 @@ VendorCard.displayName = "VendorCard";
 export default function WeddingPlanning() {
   const { toast } = useToast();
 
+  // Load existing quote requests so "Quote Requested" persists across refresh/devices
+  useEffect(() => {
+    if (!user?.id) return;
+
+    (async () => {
+      try {
+        const resp = await fetch("/api/wedding/vendor-quotes", { credentials: "include" });
+        const data = await resp.json().catch(() => null);
+
+        if (resp.ok && data?.ok && Array.isArray(data.vendorIds)) {
+          setRequestedQuotes(
+            new Set<number>(
+              data.vendorIds
+                .map((n: any) => Number(n))
+                .filter((n: any) => Number.isFinite(n))
+            )
+          );
+        }
+      } catch (e) {
+        // Non-fatal: page still works without persisted quote state
+        console.warn("[wedding-planning] Failed to load vendor quote state", e);
+      }
+    })();
+  }, [user?.id]);
+
   // Load Google Maps API
   const isGoogleMapsLoaded = useGoogleMaps();
 
@@ -429,6 +454,16 @@ export default function WeddingPlanning() {
     return localStorage.getItem("weddingTrialBannerDismissed") !== "true";
   });
   const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
+
+  // --- Vendor Quote Request Dialog (Get Quote) ---
+  const [isQuoteDialogOpen, setIsQuoteDialogOpen] = useState(false);
+  const [quoteVendor, setQuoteVendor] = useState<Vendor | null>(null);
+  const [quoteWeddingDate, setQuoteWeddingDate] = useState<string>("");
+  const [quoteGuestCount, setQuoteGuestCount] = useState<number>(0);
+  const [quoteMessage, setQuoteMessage] = useState<string>("");
+  const [quoteEmail, setQuoteEmail] = useState<string>("");
+  const [quotePhone, setQuotePhone] = useState<string>("");
+  const [isSubmittingQuote, setIsSubmittingQuote] = useState(false);
 
   const [planningTasks, setPlanningTasks] = useState<PlanningTask[]>(DEFAULT_PLANNING_TASKS);
   const [isProgressEditorOpen, setIsProgressEditorOpen] = useState(false);
@@ -1075,11 +1110,76 @@ export default function WeddingPlanning() {
     });
   }, []);
 
-  const requestQuote = useCallback((vendorId: number) => {
-    setRequestedQuotes((prev) => new Set(prev).add(vendorId));
-  }, []);
+  
+  const requestQuote = useCallback(
+    (vendorId: number) => {
+      const v = VENDORS.find((x) => x.id === vendorId) || null;
+      setQuoteVendor(v);
 
-  const completedTasks = useMemo(() => planningTasks.filter((task) => task.completed).length, [planningTasks]);
+      // Prefill from current planning selections if available
+      setQuoteWeddingDate(selectedDate || "");
+      // guestCount in this file is a range slider; prefer the first value if present
+      setQuoteGuestCount(Number((guestCount as any)?.[0] ?? 0));
+
+      setQuoteMessage("");
+      setQuoteEmail((user as any)?.email || "");
+      setQuotePhone("");
+      setIsQuoteDialogOpen(true);
+    },
+    [selectedDate, guestCount, user]
+  );
+
+  const submitQuoteRequest = useCallback(async () => {
+    if (!quoteVendor) return;
+
+    try {
+      setIsSubmittingQuote(true);
+
+      const resp = await fetch("/api/wedding/vendor-quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          vendorId: quoteVendor.id,
+          vendorName: quoteVendor.name,
+          vendorType: (quoteVendor as any).type,
+          weddingDate: quoteWeddingDate || undefined,
+          guestCount: quoteGuestCount || undefined,
+          message: quoteMessage || undefined,
+          contactEmail: quoteEmail || undefined,
+          contactPhone: quotePhone || undefined,
+        }),
+      });
+
+      const data = await resp.json().catch(() => null);
+
+      if (!resp.ok || !data?.ok) {
+        toast({
+          title: "Quote request failed",
+          description: data?.error || "Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setRequestedQuotes((prev) => new Set(prev).add(quoteVendor.id));
+      setIsQuoteDialogOpen(false);
+
+      toast({
+        title: "Quote requested!",
+        description: "We sent your request. The vendor will contact you soon.",
+      });
+    } catch (e) {
+      toast({
+        title: "Quote request failed",
+        description: "Network error. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingQuote(false);
+    }
+  }, [quoteVendor, quoteWeddingDate, quoteGuestCount, quoteMessage, quoteEmail, quotePhone, toast]);
+const completedTasks = useMemo(() => planningTasks.filter((task) => task.completed).length, [planningTasks]);
   const planningProgress = planningTasks.length === 0 ? 0 : Math.round((completedTasks / planningTasks.length) * 100);
 
   // --- Budget spend tracking (optional per-task costs) ---
@@ -2411,6 +2511,88 @@ export default function WeddingPlanning() {
           </Select>
         </div>
       </div>
+
+
+      {/* Quote request dialog */}
+      <Dialog open={isQuoteDialogOpen} onOpenChange={setIsQuoteDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {quoteVendor ? `Request a quote — ${quoteVendor.name}` : "Request a quote"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Wedding date</label>
+                <Input
+                  type="date"
+                  value={quoteWeddingDate}
+                  onChange={(e) => setQuoteWeddingDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Estimated guests</label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={5000}
+                  value={quoteGuestCount}
+                  onChange={(e) => setQuoteGuestCount(Number(e.target.value || 0))}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Your email</label>
+                <Input
+                  type="email"
+                  placeholder="you@email.com"
+                  value={quoteEmail}
+                  onChange={(e) => setQuoteEmail(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Phone (optional)</label>
+                <Input
+                  type="tel"
+                  placeholder="(555) 555-5555"
+                  value={quotePhone}
+                  onChange={(e) => setQuotePhone(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Message</label>
+              <Textarea
+                placeholder="Tell the vendor what you need (style, budget, venue, travel, etc.)"
+                value={quoteMessage}
+                onChange={(e) => setQuoteMessage(e.target.value)}
+                rows={5}
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsQuoteDialogOpen(false)}
+                disabled={isSubmittingQuote}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={submitQuoteRequest}
+                disabled={!quoteVendor || isSubmittingQuote}
+              >
+                {isSubmittingQuote ? "Sending..." : "Send request"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Vendors grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-8">
