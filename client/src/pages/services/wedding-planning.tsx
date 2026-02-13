@@ -425,6 +425,7 @@ export default function WeddingPlanning() {
   const [selectedDate, setSelectedDate] = useState("");
   const [savedVendors, setSavedVendors] = useState(new Set<number>());
   const [showBudgetCalculator, setShowBudgetCalculator] = useState(false);
+  const [isBudgetReportOpen, setIsBudgetReportOpen] = useState(false);
   const [showTrialBanner, setShowTrialBanner] = useState(() => {
     return localStorage.getItem("weddingTrialBannerDismissed") !== "true";
   });
@@ -742,6 +743,7 @@ export default function WeddingPlanning() {
 
       try {
         const response = await fetch("/api/wedding/registry-links", { credentials: "include" });
+        let loadedFromServer = false;
         if (response.ok) {
           const data = await response.json();
           const fromServer =
@@ -751,13 +753,33 @@ export default function WeddingPlanning() {
             if (fromServer && fromServer.length > 0) {
               setRegistryLinks(fromServer);
               setRegistryDraft(fromServer);
-              return;
+              loadedFromServer = true;
             }
+          }
+        }
+
+        // Only use local fallback when DB data wasn't successfully loaded.
+        if (!loadedFromServer && !cancelled) {
+          try {
+            const localRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(user.id));
+            const guestRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(undefined));
+            const raw = localRaw || guestRaw;
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              const normalized = normalizeRegistryLinks(parsed);
+              setRegistryLinks(normalized);
+              setRegistryDraft(normalized);
+            } else {
+              setRegistryLinks(DEFAULT_REGISTRY_LINKS);
+              setRegistryDraft(DEFAULT_REGISTRY_LINKS);
+            }
+          } catch {
+            setRegistryLinks(DEFAULT_REGISTRY_LINKS);
+            setRegistryDraft(DEFAULT_REGISTRY_LINKS);
           }
         }
       } catch (error) {
         console.error("[Wedding Planning] Failed to load registry links:", error);
-      } finally {
         if (!cancelled) {
           try {
             const localRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(user.id));
@@ -777,6 +799,7 @@ export default function WeddingPlanning() {
             setRegistryDraft(DEFAULT_REGISTRY_LINKS);
           }
         }
+      } finally {
         if (!cancelled) setHasLoadedRegistryLinks(true);
       }
     };
@@ -1005,6 +1028,16 @@ export default function WeddingPlanning() {
       })),
     [budgetAllocations, budgetRange]
   );
+
+  const budgetReportHighlights = useMemo(() => {
+    const sorted = [...budgetBreakdown].sort((a, b) => b.amount - a.amount);
+    return sorted.slice(0, 3).map((item) => {
+      const spent = spendByCategory.get(item.key) || 0;
+      const remaining = Math.max(0, item.amount - spent);
+      return { ...item, spent, remaining };
+    });
+  }, [budgetBreakdown, spendByCategory]);
+
 
   const handleBudgetRangeChange = useCallback((nextRange: number[]) => {
     if (!Array.isArray(nextRange) || nextRange.length < 2) return;
@@ -1529,10 +1562,8 @@ export default function WeddingPlanning() {
       });
       return;
     }
-    toast({
-      title: "Budget Report",
-      description: "Opening your detailed budget analysis...",
-    });
+
+    setIsBudgetReportOpen(true);
   }, [isPremium, toast]);
 
   const handleGoPremium = useCallback(() => {
@@ -2264,6 +2295,63 @@ export default function WeddingPlanning() {
                   <Button size="sm" onClick={handleViewBudgetReport}>
                     View Detailed Report
                   </Button>
+                  <Dialog open={isBudgetReportOpen} onOpenChange={setIsBudgetReportOpen}>
+                    <DialogContent className="sm:max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>AI Budget Detail Report</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <Alert>
+                          <TrendingUp className="h-4 w-4" />
+                          <AlertDescription>
+                            Estimated optimization savings: <strong>${dynamicSavings.toLocaleString()}</strong> based on guest count,
+                            target budget, and your current category mix.
+                          </AlertDescription>
+                        </Alert>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <Card>
+                            <CardContent className="p-4">
+                              <p className="text-xs text-muted-foreground">Target Budget</p>
+                              <p className="text-xl font-semibold">${budgetRange[1].toLocaleString()}</p>
+                            </CardContent>
+                          </Card>
+                          <Card>
+                            <CardContent className="p-4">
+                              <p className="text-xs text-muted-foreground">Current Spend</p>
+                              <p className="text-xl font-semibold">${totalSpent.toLocaleString()}</p>
+                            </CardContent>
+                          </Card>
+                          <Card>
+                            <CardContent className="p-4">
+                              <p className="text-xs text-muted-foreground">Budget Status</p>
+                              <p className={`text-xl font-semibold ${isOverBudget ? "text-red-600" : "text-green-600"}`}>
+                                {isOverBudget
+                                  ? `$${Math.abs(budgetDelta).toLocaleString()} over`
+                                  : `$${budgetDelta.toLocaleString()} remaining`}
+                              </p>
+                            </CardContent>
+                          </Card>
+                        </div>
+
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium">Top Budget Categories</p>
+                          {budgetReportHighlights.map((item) => (
+                            <div key={item.key} className="rounded-md border p-3">
+                              <div className="flex justify-between text-sm font-medium">
+                                <span>{item.category}</span>
+                                <span>${Math.round(item.amount).toLocaleString()} target</span>
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground flex justify-between">
+                                <span>Spent: ${item.spent.toLocaleString()}</span>
+                                <span>Remaining: ${Math.round(item.remaining).toLocaleString()}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               ) : (
                 <div className="space-y-3">
