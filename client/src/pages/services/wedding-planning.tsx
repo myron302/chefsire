@@ -173,6 +173,34 @@ const DEFAULT_PLANNING_TASKS: PlanningTask[] = [
   { id: "cake", label: "Cake", completed: false },
 ];
 
+interface RegistryLink {
+  id: number;
+  name: string;
+  url: string;
+  icon: string;
+}
+
+const DEFAULT_REGISTRY_LINKS: RegistryLink[] = [
+  { id: 1, name: "Amazon", url: "", icon: "🎁" },
+  { id: 2, name: "Target", url: "", icon: "🎯" },
+  { id: 3, name: "Zola", url: "", icon: "💑" },
+];
+
+const normalizeRegistryLinks = (input: any): RegistryLink[] => {
+  if (!Array.isArray(input)) return DEFAULT_REGISTRY_LINKS;
+
+  const normalized = input
+    .filter((item: any) => item && typeof item === "object")
+    .map((item: any, index: number) => ({
+      id: Number.isFinite(Number(item.id)) ? Number(item.id) : Date.now() + index,
+      name: typeof item.name === "string" && item.name.trim().length > 0 ? item.name.trim() : "Registry",
+      url: typeof item.url === "string" ? item.url : "",
+      icon: typeof item.icon === "string" && item.icon.trim().length > 0 ? item.icon : "🎁",
+    }));
+
+  return normalized.length > 0 ? normalized : DEFAULT_REGISTRY_LINKS;
+};
+
 const parsePlanningTasks = (rawValue: string | null): PlanningTask[] => {
   if (!rawValue) return DEFAULT_PLANNING_TASKS;
 
@@ -217,6 +245,9 @@ const getWeddingPlanningTasksStorageKey = (userId?: string | number) =>
 
 const getWeddingBudgetSettingsStorageKey = (userId?: string | number) =>
   userId ? `weddingBudgetSettings:${userId}` : "weddingBudgetSettings:guest";
+
+const getWeddingRegistryLinksStorageKey = (userId?: string | number) =>
+  userId ? `weddingRegistryLinks:${userId}` : "weddingRegistryLinks:guest";
 
 const normalizeBudgetAllocations = (input: any): BudgetAllocation[] => {
   if (!Array.isArray(input)) return DEFAULT_BUDGET_ALLOCATIONS;
@@ -433,11 +464,10 @@ export default function WeddingPlanning() {
   const [hasLoadedBudgetSettings, setHasLoadedBudgetSettings] = useState(false);
 
 
-  const [registryLinks, setRegistryLinks] = useState([
-    { id: 1, name: "Amazon", url: "", icon: "🎁" },
-    { id: 2, name: "Target", url: "", icon: "🎯" },
-    { id: 3, name: "Zola", url: "", icon: "💑" },
-  ]);
+  const [registryLinks, setRegistryLinks] = useState<RegistryLink[]>(DEFAULT_REGISTRY_LINKS);
+  const [hasLoadedRegistryLinks, setHasLoadedRegistryLinks] = useState(false);
+  const [isSavingRegistryLinks, setIsSavingRegistryLinks] = useState(false);
+  const [registryLinksSavedAt, setRegistryLinksSavedAt] = useState<number | null>(null);
 
   const [calendarEvents, setCalendarEvents] = useState<
     Array<{
@@ -775,6 +805,93 @@ export default function WeddingPlanning() {
     return () => window.clearTimeout(timeout);
   }, [budgetRange, guestCount, budgetAllocations, user?.id, hasLoadedBudgetSettings]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRegistryLinks = async () => {
+      setHasLoadedRegistryLinks(false);
+
+      if (!user?.id) {
+        try {
+          const guestRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(undefined));
+          if (guestRaw) {
+            const parsed = JSON.parse(guestRaw);
+            if (!cancelled) setRegistryLinks(normalizeRegistryLinks(parsed));
+          }
+        } catch {}
+
+        if (!cancelled) setHasLoadedRegistryLinks(true);
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/wedding/registry-links", { credentials: "include" });
+        if (response.ok) {
+          const data = await response.json();
+          if (data?.ok && Array.isArray(data.registryLinks) && !cancelled) {
+            setRegistryLinks(normalizeRegistryLinks(data.registryLinks));
+          }
+        }
+      } catch (error) {
+        console.error("[Wedding Planning] Failed to load registry links:", error);
+      } finally {
+        if (!cancelled) setHasLoadedRegistryLinks(true);
+      }
+    };
+
+    loadRegistryLinks();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!hasLoadedRegistryLinks) return;
+
+    try {
+      localStorage.setItem(
+        getWeddingRegistryLinksStorageKey(user?.id),
+        JSON.stringify(registryLinks.map((link) => ({ id: link.id, name: link.name, url: link.url, icon: link.icon })))
+      );
+
+      if (user?.id) {
+        localStorage.setItem(getWeddingRegistryLinksStorageKey(undefined), JSON.stringify(registryLinks));
+      }
+    } catch {}
+
+    if (!user?.id) return;
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        setIsSavingRegistryLinks(true);
+        const response = await fetch("/api/wedding/registry-links", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ registryLinks }),
+        });
+
+        if (!response.ok) {
+          let errorMsg = response.statusText;
+          try {
+            const body = await response.json();
+            errorMsg = body?.error || errorMsg;
+          } catch {}
+          throw new Error(errorMsg || "Failed to save registry links");
+        }
+
+        setRegistryLinksSavedAt(Date.now());
+      } catch (error) {
+        console.error("[Wedding Planning] Failed to save registry links:", error);
+      } finally {
+        setIsSavingRegistryLinks(false);
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [registryLinks, user?.id, hasLoadedRegistryLinks]);
+
 
   // Load guest list and wedding details from backend on mount
   useEffect(() => {
@@ -1036,6 +1153,10 @@ export default function WeddingPlanning() {
     const total = Math.max(1, Number(budgetRange?.[1]) || 1);
     return Math.max(0, Math.min(100, Math.round((totalSpent / total) * 100)));
   }, [totalSpent, budgetRange]);
+
+  const budgetDelta = useMemo(() => (Number(budgetRange?.[1]) || 0) - totalSpent, [budgetRange, totalSpent]);
+  const isOverBudget = budgetDelta < 0;
+  const budgetStatusLabel = isOverBudget ? "Over budget" : "Under budget";
 
   const openProgressEditor = useCallback(() => {
     setProgressEditorTasks(planningTasks);
@@ -1525,6 +1646,53 @@ export default function WeddingPlanning() {
       description: "Add your registry URL to share with guests.",
     });
   }, [toast]);
+
+  const handleRemoveRegistry = useCallback((registryId: number) => {
+    setRegistryLinks((prev) => {
+      const next = prev.filter((registry) => registry.id !== registryId);
+      return next.length > 0 ? next : DEFAULT_REGISTRY_LINKS;
+    });
+  }, []);
+
+  const handleSaveRegistryLinks = useCallback(async () => {
+    if (!user?.id) {
+      toast({
+        title: "Saved Locally",
+        description: "Registry links are saved in this browser for guest mode.",
+      });
+      setRegistryLinksSavedAt(Date.now());
+      return;
+    }
+
+    try {
+      setIsSavingRegistryLinks(true);
+      const response = await fetch("/api/wedding/registry-links", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ registryLinks }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save registry links");
+      }
+
+      setRegistryLinksSavedAt(Date.now());
+      toast({
+        title: "Registry Links Saved",
+        description: "Your wedding registry links were saved to your account.",
+      });
+    } catch (error) {
+      console.error("[Wedding Planning] Failed to save registry links:", error);
+      toast({
+        title: "Save Failed",
+        description: "We couldn't save registry links right now. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingRegistryLinks(false);
+    }
+  }, [registryLinks, toast, user?.id]);
 
   const handleShareRegistry = useCallback(
     (platform: string) => {
@@ -2139,11 +2307,18 @@ export default function WeddingPlanning() {
             </CardHeader>
             <CardContent>
 	              <div className="space-y-4">
+	                <Alert className={isOverBudget ? "border-red-300 bg-red-50 text-red-700" : "border-green-300 bg-green-50 text-green-700"}>
+	                  <AlertCircle className="h-4 w-4" />
+	                  <AlertDescription className="font-medium">
+	                    {budgetStatusLabel}: ${Math.abs(budgetDelta).toLocaleString()}
+	                  </AlertDescription>
+	                </Alert>
+
 	                <div className="space-y-2">
 	                  <Progress value={budgetUsedPct} />
 	                  <div className="flex justify-between text-xs text-muted-foreground">
 	                    <span>${totalSpent.toLocaleString()} spent</span>
-	                    <span>${Math.max(0, budgetRange[1] - totalSpent).toLocaleString()} remaining</span>
+	                    <span>{isOverBudget ? `${Math.abs(budgetDelta).toLocaleString()} over` : `${budgetDelta.toLocaleString()} remaining`}</span>
 	                  </div>
 	                </div>
 
@@ -2346,16 +2521,33 @@ export default function WeddingPlanning() {
                     className="w-full text-sm"
                   />
                 </div>
-                <Button size="sm" variant="ghost" className="flex-shrink-0">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="flex-shrink-0"
+                  onClick={() => handleRemoveRegistry(registry.id)}
+                  aria-label={`Remove ${registry.name} registry`}
+                >
                   <X className="w-3 h-3 md:w-4 md:h-4" />
                 </Button>
               </div>
             ))}
 
-            <Button variant="outline" className="w-full text-sm" onClick={handleAddRegistry}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Another Registry
-            </Button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Button variant="outline" className="w-full text-sm" onClick={handleAddRegistry}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Another Registry
+              </Button>
+              <Button className="w-full text-sm" onClick={handleSaveRegistryLinks} disabled={isSavingRegistryLinks}>
+                {isSavingRegistryLinks ? "Saving..." : "Save Registry Links"}
+              </Button>
+            </div>
+
+            {registryLinksSavedAt && (
+              <p className="text-xs text-muted-foreground">
+                Last saved {new Date(registryLinksSavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+              </p>
+            )}
 
             <div className="border-t pt-4 mt-4 md:mt-6">
               <h4 className="font-medium mb-3 text-sm md:text-base">Share Your Registries</h4>
