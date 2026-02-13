@@ -34,6 +34,19 @@ async function ensureWeddingRegistryLinksTable() {
   `);
 }
 
+
+function parseRegistryLinksPayload(input: unknown): unknown {
+  if (Array.isArray(input)) return input;
+  if (typeof input === "string") {
+    try {
+      return JSON.parse(input);
+    } catch {
+      return input;
+    }
+  }
+  return input;
+}
+
 function normalizeRegistryLinks(input: unknown): RegistryLink[] {
   if (!Array.isArray(input)) return DEFAULT_REGISTRY_LINKS;
 
@@ -64,7 +77,7 @@ router.get("/registry-links", requireAuth, async (req, res) => {
     `);
 
     const row = result?.rows?.[0] ?? result?.[0] ?? null;
-    const registryLinks = normalizeRegistryLinks(row?.registryLinks ?? DEFAULT_REGISTRY_LINKS);
+    const registryLinks = normalizeRegistryLinks(parseRegistryLinksPayload(row?.registryLinks ?? DEFAULT_REGISTRY_LINKS));
 
     return res.json({ ok: true, registryLinks });
   } catch (error: any) {
@@ -94,6 +107,40 @@ router.post("/registry-links", requireAuth, async (req, res) => {
   } catch (error: any) {
     console.error("[wedding-registry-links] POST error:", error);
     return res.status(500).json({ ok: false, error: error?.message || "Failed to save registry links" });
+  }
+});
+
+router.get("/public-registry/:slug", async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) {
+      return res.status(400).json({ ok: false, error: "Registry slug is required" });
+    }
+
+    await ensureWeddingRegistryLinksTable();
+
+    const result: any = await db.execute(sql`
+      SELECT
+        w.registry_links AS "registryLinks",
+        u.username AS "username"
+      FROM wedding_registry_links w
+      INNER JOIN users u ON u.id = w.user_id
+      WHERE LOWER(u.username) = LOWER(${slug}) OR w.user_id = ${slug}
+      LIMIT 1
+    `);
+
+    const row = result?.rows?.[0] ?? result?.[0] ?? null;
+    if (!row) {
+      return res.status(404).json({ ok: false, error: "Registry not found" });
+    }
+
+    const registryLinks = normalizeRegistryLinks(parseRegistryLinksPayload(row.registryLinks ?? []));
+    const publicLinks = registryLinks.filter((link) => !!link.url?.trim());
+
+    return res.json({ ok: true, username: row.username ?? slug, registryLinks: publicLinks });
+  } catch (error: any) {
+    console.error("[wedding-registry-links] public GET error:", error);
+    return res.status(500).json({ ok: false, error: error?.message || "Failed to load public registry" });
   }
 });
 
