@@ -19,6 +19,12 @@ type PublicRegistryResponse = {
   error?: string;
 };
 
+/**
+ * Normalize anything like:
+ *   - "www.amazon.com"  -> "https://www.amazon.com"
+ *   - "http://..." / "https://..." stays as-is
+ * And reject non-http(s) protocols.
+ */
 const normalizeExternalUrl = (value: string) => {
   const trimmed = String(value || "").trim();
   if (!trimmed) return "";
