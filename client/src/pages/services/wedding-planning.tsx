@@ -1,4 +1,6 @@
 // client/src/pages/services/wedding-planning.tsx
+import { useState, useMemo, memo, useCallback, useEffect, useRef } from "react";
+
 import {
   Calendar,
   MapPin,
