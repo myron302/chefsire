@@ -1733,6 +1733,98 @@ export default function WeddingPlanning() {
       });
   }, [guestList]);
 
+  const rsvpBreakdownRows = useMemo(() => {
+    const total = Math.max(1, rsvpStats.total);
+
+    const rows = [
+      { key: "both", label: "Both Events", count: rsvpStats.acceptedBoth, tone: "green" as const },
+      { key: "ceremony", label: "Ceremony Only", count: rsvpStats.ceremonyOnly, tone: "blue" as const },
+      { key: "reception", label: "Reception Only", count: rsvpStats.receptionOnly, tone: "purple" as const },
+      { key: "declined", label: "Declined", count: rsvpStats.declined, tone: "red" as const },
+      { key: "pending", label: "Pending", count: rsvpStats.pending, tone: "slate" as const },
+    ];
+
+    return rows.map((r) => ({
+      ...r,
+      percent: Math.round((r.count / total) * 100),
+    }));
+  }, [rsvpStats]);
+
+  const handleExportRsvpCsv = useCallback(() => {
+    if (!guestList.length) {
+      toast({
+        title: "Nothing to export",
+        description: "Your guest list is empty.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const escape = (v: any) => {
+      const s = String(v ?? "");
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+
+    const rows = guestList.map((g) => {
+      const status = typeof g.id === "string" ? "sent" : "unsent";
+      const responded = g.rsvp && g.rsvp !== "pending" ? "yes" : "no";
+
+      const event =
+        g.rsvp === "accept-both" || g.rsvp === "accepted"
+          ? "both"
+          : g.rsvp === "ceremony-only"
+          ? "ceremony"
+          : g.rsvp === "reception-only"
+          ? "reception"
+          : "";
+
+      return {
+        id: g.id,
+        status,
+        name: g.name,
+        partnerName: g.partnerName ?? "",
+        email: g.email,
+        rsvp: g.rsvp,
+        event,
+        plusOneAllowed: g.plusOne ? "yes" : "no",
+        plusOneName: g.plusOneName ?? "",
+        respondedAt: g.respondedAt ?? "",
+        responded,
+      };
+    });
+
+    const headers = [
+      "id",
+      "status",
+      "name",
+      "partnerName",
+      "email",
+      "rsvp",
+      "event",
+      "plusOneAllowed",
+      "plusOneName",
+      "respondedAt",
+      "responded",
+    ];
+
+    const csv = [headers.join(",")]
+      .concat(rows.map((r) => headers.map((h) => escape((r as any)[h])).join(",")))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `guest-list-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    toast({ title: "Exported CSV", description: "Your guest list was downloaded." });
+  }, [guestList, toast]);
+
   const handleStartPlanning = useCallback(() => {
     toast({
       title: "Let's Start Planning!",
@@ -3296,65 +3388,185 @@ export default function WeddingPlanning() {
             </div>
           </div>
 
-          {/* Detailed RSVP Breakdown */}
-          {(rsvpStats.acceptedBoth > 0 || rsvpStats.ceremonyOnly > 0 || rsvpStats.receptionOnly > 0) && (
-            <div className="mb-6 p-4 bg-muted/50 rounded-lg">
-              <h4 className="text-sm font-medium mb-3">Response Breakdown</h4>
-              <div className="grid grid-cols-3 gap-3 text-center text-sm">
-                {rsvpStats.acceptedBoth > 0 && (
-                  <div>
-                    <p className="font-bold text-green-600">{rsvpStats.acceptedBoth}</p>
-                    <p className="text-xs text-muted-foreground">Both Events</p>
-                  </div>
-                )}
-                {rsvpStats.ceremonyOnly > 0 && (
-                  <div>
-                    <p className="font-bold text-blue-600">{rsvpStats.ceremonyOnly}</p>
-                    <p className="text-xs text-muted-foreground">Ceremony Only</p>
-                  </div>
-                )}
-                {rsvpStats.receptionOnly > 0 && (
-                  <div>
-                    <p className="font-bold text-purple-600">{rsvpStats.receptionOnly}</p>
-                    <p className="text-xs text-muted-foreground">Reception Only</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          
+          {/* RSVP Insights */}
+          <Card className="mb-6 border-0 shadow-lg bg-white/80 backdrop-blur-sm overflow-hidden relative">
+            <div className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full bg-blue-200/30 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-purple-200/20 blur-3xl" />
 
-          {respondedGuests.length > 0 && (
-            <div className="mb-6 p-4 bg-muted/50 rounded-lg">
-              <h4 className="text-sm font-medium mb-3">Recent Responses</h4>
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                {respondedGuests.slice(0, 8).map((guest) => (
-                  <div key={String(guest.id)} className="flex items-center justify-between gap-3 text-xs">
-                    <span className="font-medium truncate">
-                      {guest.partnerName
-                        ? `${guest.name} & ${guest.partnerName}`
-                        : guest.plusOneName
-                        ? `${guest.name} & ${guest.plusOneName}`
-                        : guest.name}
-                    </span>
-                    <Badge
-                      variant={
-                        guest.rsvp === "accepted" || guest.rsvp === "accept-both"
-                          ? "default"
-                          : guest.rsvp === "declined"
-                          ? "destructive"
-                          : "secondary"
-                      }
-                      className="text-[10px] capitalize"
-                    >
-                      {guest.rsvp}
-                    </Badge>
+            <CardHeader className="relative">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center shadow-sm">
+                    <TrendingUp className="h-5 w-5 text-white" />
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                  <div>
+                    <CardTitle className="text-xl md:text-2xl font-bold">RSVP Insights</CardTitle>
+                    <CardDescription className="text-sm md:text-base">
+                      Breakdown by response type + the latest replies.
+                    </CardDescription>
+                  </div>
+                </div>
 
-          {/* Template Selection */}
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="hidden sm:inline-flex">
+                    {respondedGuests.length} responded
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleExportRsvpCsv}
+                    disabled={guestList.length === 0}
+                    className="h-9"
+                  >
+                    <Share2 className="h-4 w-4 mr-2" />
+                    Export CSV
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="relative">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Response Breakdown (rows/columns) */}
+                <div className="rounded-2xl border bg-white/70 backdrop-blur-sm p-4 md:p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-muted-foreground" />
+                      <p className="font-semibold">Response Breakdown</p>
+                    </div>
+                    <Badge variant="outline">{rsvpStats.total} total</Badge>
+                  </div>
+
+                  <div className="mt-3 overflow-hidden rounded-xl border">
+                    <div className="grid grid-cols-12 bg-muted/60 px-3 py-2 text-xs font-medium">
+                      <div className="col-span-6">Type</div>
+                      <div className="col-span-2 text-right">Count</div>
+                      <div className="col-span-2 text-right">Share</div>
+                      <div className="col-span-2 text-right">Trend</div>
+                    </div>
+
+                    <div className="divide-y bg-white/60">
+                      {rsvpBreakdownRows.map((r) => {
+                        const bar =
+                          r.tone === "green"
+                            ? "bg-green-600"
+                            : r.tone === "blue"
+                            ? "bg-blue-600"
+                            : r.tone === "purple"
+                            ? "bg-purple-600"
+                            : r.tone === "red"
+                            ? "bg-red-600"
+                            : "bg-slate-400";
+
+                        return (
+                          <div key={r.key} className="grid grid-cols-12 items-center px-3 py-2">
+                            <div className="col-span-6 flex items-center gap-2 min-w-0">
+                              <span className={`h-2.5 w-2.5 rounded-full ${bar}`} />
+                              <p className="text-sm font-medium truncate">{r.label}</p>
+                            </div>
+                            <div className="col-span-2 text-right text-sm font-semibold">{r.count}</div>
+                            <div className="col-span-2 text-right text-sm text-muted-foreground">{r.percent}%</div>
+                            <div className="col-span-2">
+                              <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                                <div className={`h-2 ${bar}`} style={{ width: `${Math.min(100, r.percent)}%` }} />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <div className="rounded-xl bg-muted/60 p-3">
+                      <p className="text-xs text-muted-foreground">Accepted</p>
+                      <p className="text-sm font-semibold">
+                        {(rsvpStats.acceptedBoth + rsvpStats.ceremonyOnly + rsvpStats.receptionOnly).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-muted/60 p-3">
+                      <p className="text-xs text-muted-foreground">Declined</p>
+                      <p className="text-sm font-semibold">{rsvpStats.declined.toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/60 p-3">
+                      <p className="text-xs text-muted-foreground">Pending</p>
+                      <p className="text-sm font-semibold">{rsvpStats.pending.toLocaleString()}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recent Responses (rows/columns) */}
+                <div className="rounded-2xl border bg-white/70 backdrop-blur-sm p-4 md:p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <p className="font-semibold">Recent Responses</p>
+                    </div>
+                    <Badge variant="secondary">Latest</Badge>
+                  </div>
+
+                  <div className="mt-3 overflow-hidden rounded-xl border">
+                    <div className="grid grid-cols-12 bg-muted/60 px-3 py-2 text-xs font-medium">
+                      <div className="col-span-6">Guest</div>
+                      <div className="col-span-3">RSVP</div>
+                      <div className="col-span-3 text-right">When</div>
+                    </div>
+
+                    <div className="max-h-60 overflow-y-auto divide-y bg-white/60">
+                      {respondedGuests.length === 0 ? (
+                        <div className="p-4 text-sm text-muted-foreground">No responses yet.</div>
+                      ) : (
+                        respondedGuests.slice(0, 12).map((guest) => (
+                          <div key={String(guest.id)} className="grid grid-cols-12 items-center px-3 py-2">
+                            <div className="col-span-6 min-w-0">
+                              <p className="text-sm font-medium truncate">
+                                {guest.partnerName
+                                  ? `${guest.name} & ${guest.partnerName}`
+                                  : guest.plusOneName
+                                  ? `${guest.name} & ${guest.plusOneName}`
+                                  : guest.name}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground truncate">{guest.email}</p>
+                            </div>
+
+                            <div className="col-span-3">
+                              <Badge
+                                variant={
+                                  guest.rsvp === "accepted" || guest.rsvp === "accept-both"
+                                    ? "default"
+                                    : guest.rsvp === "declined"
+                                    ? "destructive"
+                                    : "secondary"
+                                }
+                                className="text-[10px] capitalize"
+                              >
+                                {guest.rsvp}
+                              </Badge>
+                            </div>
+
+                            <div className="col-span-3 text-right text-[11px] text-muted-foreground">
+                              {guest.respondedAt ? new Date(guest.respondedAt).toLocaleString() : "—"}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-xl bg-muted/60 p-3">
+                    <div className="flex items-center gap-2">
+                      <Info className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-xs text-muted-foreground">
+                        Export Guest CSV (includes pending + unsent guests) to share with your partner or planner.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+{/* Template Selection */}
           <div className="mb-6">
             <label className="text-sm font-medium mb-2 block">Invitation Template</label>
             <div className="grid grid-cols-3 gap-3">
