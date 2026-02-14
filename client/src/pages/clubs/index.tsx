@@ -50,6 +50,7 @@ export default function ClubsPage() {
     description: "",
     category: "general",
     rules: "",
+    firstPost: "",
   });
 
   useEffect(() => {
@@ -100,7 +101,12 @@ export default function ClubsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          name: data.name,
+          description: data.description,
+          category: data.category,
+          rules: data.rules,
+        }),
       });
 
       if (!res.ok) {
@@ -116,14 +122,31 @@ export default function ClubsPage() {
 
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: async (created: { club?: { id?: string } }, data) => {
+      if (data.firstPost.trim() && created?.club?.id) {
+        const postRes = await fetch(`/api/clubs/${created.club.id}/posts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ content: data.firstPost.trim() }),
+        });
+
+        if (!postRes.ok) {
+          toast({
+            title: "Club created, first post failed",
+            description: "Your club is ready, but we couldn't publish the first post.",
+            variant: "destructive",
+          });
+        }
+      }
+
       // refresh list regardless of filters
       queryClient.invalidateQueries({ queryKey: ["/api/clubs"] });
       queryClient.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && String(q.queryKey[0]).startsWith("/api/clubs") });
 
       toast({ title: "✓ Club created", description: "Your club has been created successfully!" });
       setShowCreateDialog(false);
-      setClubForm({ name: "", description: "", category: "general", rules: "" });
+      setClubForm({ name: "", description: "", category: "general", rules: "", firstPost: "" });
     },
     onError: (error: Error) => {
       // Local fallback save
@@ -138,7 +161,7 @@ export default function ClubsPage() {
           createdAt: new Date().toISOString(),
         },
         memberCount: 1,
-        postCount: 0,
+        postCount: clubForm.firstPost.trim() ? 1 : 0,
       };
 
       const updatedFallbackClubs = [fallbackClub, ...fallbackClubs];
@@ -146,7 +169,7 @@ export default function ClubsPage() {
       localStorage.setItem("royal_clubs_fallback", JSON.stringify(updatedFallbackClubs));
 
       setShowCreateDialog(false);
-      setClubForm({ name: "", description: "", category: "general", rules: "" });
+      setClubForm({ name: "", description: "", category: "general", rules: "", firstPost: "" });
       setBackendUnavailable(true);
 
       toast({
@@ -295,6 +318,17 @@ export default function ClubsPage() {
                     value={clubForm.rules}
                     onChange={(e) => setClubForm({ ...clubForm, rules: e.target.value })}
                     placeholder="Guidelines for members..."
+                    rows={3}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="firstPost">First Post (Optional)</Label>
+                  <Textarea
+                    id="firstPost"
+                    value={clubForm.firstPost}
+                    onChange={(e) => setClubForm({ ...clubForm, firstPost: e.target.value })}
+                    placeholder="Kick off the conversation in your new club..."
                     rows={3}
                   />
                 </div>
