@@ -308,6 +308,47 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
+
+
+// Update club post
+router.patch("/:id/posts/:postId", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const clubId = req.params.id;
+    const postId = req.params.postId;
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: "Post content is required" });
+    }
+
+    const [existingPost] = await db
+      .select()
+      .from(clubPosts)
+      .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
+      .limit(1);
+
+    if (!existingPost) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    if (existingPost.userId !== userId) {
+      return res.status(403).json({ message: "You can only edit your own posts" });
+    }
+
+    const [post] = await db
+      .update(clubPosts)
+      .set({ content: content.trim() })
+      .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
+      .returning();
+
+    return res.json({ post });
+  } catch (error) {
+    console.error("Error updating post:", error);
+    return res.status(500).json({ message: "Failed to update post" });
+  }
+});
+
 // ============================================================
 // CHALLENGES
 // ============================================================

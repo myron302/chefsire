@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
-import { Users, MessageSquare, ArrowLeft, Send, Calendar, Crown } from "lucide-react";
+import { Users, MessageSquare, ArrowLeft, Send, Calendar, Crown, Pencil, Save, X } from "lucide-react";
 
 // Server /api/clubs/:id returns: { club: { club: ClubRow, creator: Creator }, stats: Stats }
 type ClubRow = {
@@ -67,6 +67,8 @@ export default function ClubDetailPage() {
   const { user } = useUser();
 
   const [newPostContent, setNewPostContent] = useState("");
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editPostContent, setEditPostContent] = useState("");
 
   // Fetch club details
   const { data: clubData, isLoading: clubLoading } = useQuery<ClubDetailResponse>({
@@ -173,6 +175,55 @@ export default function ClubDetailPage() {
       return;
     }
     createPostMutation.mutate(newPostContent);
+  };
+
+
+  const updatePostMutation = useMutation({
+    mutationFn: async ({ postId, content }: { postId: string; content: string }) => {
+      const res = await fetch(`/api/clubs/${clubId}/posts/${postId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ content }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Failed to update post");
+      }
+
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
+      toast({ title: "✓ Post saved" });
+      setEditingPostId(null);
+      setEditPostContent("");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to save post", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const startEditingPost = (post: Post) => {
+    setEditingPostId(post.post.id);
+    setEditPostContent(post.post.content);
+  };
+
+  const cancelEditingPost = () => {
+    setEditingPostId(null);
+    setEditPostContent("");
+  };
+
+  const saveEditedPost = () => {
+    if (!editingPostId) return;
+
+    if (!editPostContent.trim()) {
+      toast({ title: "Content required", description: "Please enter post content", variant: "destructive" });
+      return;
+    }
+
+    updatePostMutation.mutate({ postId: editingPostId, content: editPostContent.trim() });
   };
 
   if (clubLoading) {
@@ -377,8 +428,38 @@ export default function ClubDetailPage() {
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="pt-0">
-                    <p className="whitespace-pre-wrap text-slate-800">{p.post.content}</p>
+                  <CardContent className="pt-0 space-y-3">
+                    {editingPostId === p.post.id ? (
+                      <>
+                        <Textarea
+                          value={editPostContent}
+                          onChange={(e) => setEditPostContent(e.target.value)}
+                          rows={3}
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button variant="outline" size="sm" onClick={cancelEditingPost}>
+                            <X className="h-4 w-4 mr-1" />
+                            Cancel
+                          </Button>
+                          <Button size="sm" onClick={saveEditedPost} disabled={updatePostMutation.isPending}>
+                            <Save className="h-4 w-4 mr-1" />
+                            {updatePostMutation.isPending ? "Saving..." : "Save"}
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="whitespace-pre-wrap text-slate-800">{p.post.content}</p>
+                        {user?.id === p.post.userId && (
+                          <div className="flex justify-end">
+                            <Button variant="outline" size="sm" onClick={() => startEditingPost(p)}>
+                              <Pencil className="h-4 w-4 mr-1" />
+                              Edit
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </CardContent>
                 </Card>
               ))
