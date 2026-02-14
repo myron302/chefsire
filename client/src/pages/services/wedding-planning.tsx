@@ -161,6 +161,46 @@ const DEFAULT_BUDGET_ALLOCATIONS: BudgetAllocation[] = [
   { key: "other", category: "Other", percentage: 10, icon: Sparkles },
 ];
 
+
+const budgetIconTone = (key: BudgetAllocation["key"]) => {
+  switch (key) {
+    case "catering":
+      return "text-emerald-600";
+    case "venue":
+      return "text-rose-600";
+    case "photography":
+      return "text-indigo-600";
+    case "music":
+      return "text-amber-600";
+    case "flowers":
+      return "text-pink-600";
+    case "other":
+    default:
+      return "text-purple-600";
+  }
+};
+
+const vendorIconTone = (value: string) => {
+  switch (value) {
+    case "caterer":
+      return "text-emerald-600";
+    case "venue":
+      return "text-rose-600";
+    case "photographer":
+      return "text-indigo-600";
+    case "dj":
+      return "text-amber-600";
+    case "florist":
+      return "text-pink-600";
+    case "planner":
+      return "text-purple-600";
+    case "all":
+    default:
+      return "text-slate-700";
+  }
+};
+
+
 const DEFAULT_PLANNING_TASKS: PlanningTask[] = [
   { id: "venue", label: "Venue", completed: false },
   { id: "catering", label: "Catering", completed: false },
@@ -2539,7 +2579,7 @@ export default function WeddingPlanning() {
                     <div key={item.key} className="p-3 bg-muted rounded-lg space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <item.icon className="w-5 h-5 text-muted-foreground" />
+                          <item.icon className={`w-5 h-5 ${budgetIconTone(item.key)}`} />
                           <div>
                             <p className="font-medium">{item.category}</p>
                             <p className="text-xs text-muted-foreground">{item.percentage}% of budget</p>
@@ -2667,7 +2707,7 @@ export default function WeddingPlanning() {
               <div className="rounded-2xl border bg-white/70 backdrop-blur-sm p-4 md:p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <Shield className="h-4 w-4 text-muted-foreground" />
+                    <Shield className="h-4 w-4 text-blue-600" />
                     <p className="font-semibold">Next best actions</p>
                   </div>
                   <Badge variant="secondary">Plan</Badge>
@@ -2718,7 +2758,7 @@ export default function WeddingPlanning() {
               <div className="rounded-2xl border bg-white/70 backdrop-blur-sm p-4 md:p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <Star className="h-4 w-4 text-muted-foreground" />
+                    <Star className="h-4 w-4 text-amber-500" />
                     <p className="font-semibold">Tips that match your plan</p>
                   </div>
                   <Badge variant="secondary">Smart</Badge>
@@ -2740,7 +2780,7 @@ export default function WeddingPlanning() {
 
                 {!selectedDate ? (
                   <div className="mt-4 flex items-center gap-2 rounded-xl border border-dashed bg-white/60 p-3">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <Calendar className="h-4 w-4 text-blue-600" />
                     <p className="text-xs text-muted-foreground">
                       Set your date to unlock tighter vendor availability + pricing tips.
                     </p>
@@ -2752,7 +2792,7 @@ export default function WeddingPlanning() {
               <div className="rounded-2xl border bg-white/70 backdrop-blur-sm p-4 md:p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                    <TrendingUp className="h-4 w-4 text-purple-600" />
                     <p className="font-semibold">Budget watch</p>
                   </div>
                   <Badge variant="secondary">Top 3</Badge>
@@ -2767,7 +2807,7 @@ export default function WeddingPlanning() {
                       <div key={b.key} className="rounded-xl border bg-white/60 p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-center gap-2 min-w-0">
-                            <b.icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                            <b.icon className={`h-4 w-4 ${budgetIconTone(b.key)} flex-shrink-0`} />
                             <p className="text-sm font-semibold truncate">{b.category}</p>
                           </div>
 
@@ -2803,7 +2843,7 @@ export default function WeddingPlanning() {
 
                 <div className="mt-4 rounded-xl bg-muted/60 p-3">
                   <div className="flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-muted-foreground" />
+                    <Zap className="h-4 w-4 text-pink-600" />
                     <p className="text-xs text-muted-foreground">
                       Pro tip: keep venue + catering aligned with guest count to avoid surprise jumps.
                     </p>
@@ -2881,7 +2921,7 @@ export default function WeddingPlanning() {
               size="sm"
             >
               <div className="flex items-center gap-1 min-w-0">
-                <Icon className="w-4 h-4 flex-shrink-0" />
+                <Icon className={`w-4 h-4 flex-shrink-0 ${isSelected ? "text-white" : vendorIconTone(category.value)}`} />
                 <span className="text-xs sm:text-sm hidden sm:inline truncate">{category.label}</span>
               </div>
               <Badge variant="secondary" className="text-xs hidden sm:flex flex-shrink-0">
@@ -3073,13 +3113,13 @@ export default function WeddingPlanning() {
               <div className="rounded-2xl border bg-white/60 p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Shield className="h-4 w-4 text-muted-foreground" />
+                    <Shield className="h-4 w-4 text-blue-600" />
                     <p className="text-sm font-semibold">Category breakdown</p>
                   </div>
 
                   <div className="flex items-center gap-2">
                     <Button size="sm" variant="outline" onClick={handleExportBudgetCsv}>
-                      <Share2 className="h-4 w-4 mr-2" />
+                      <Share2 className="h-4 w-4 mr-2 text-indigo-600" />
                       Export CSV
                     </Button>
                   </div>
@@ -3098,7 +3138,7 @@ export default function WeddingPlanning() {
                     {budgetReportRows.map((r) => (
                       <div key={r.key} className="grid grid-cols-12 items-center px-3 py-2">
                         <div className="col-span-5 flex items-center gap-2 min-w-0">
-                          <r.icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <r.icon className={`h-4 w-4 ${budgetIconTone(r.key)} flex-shrink-0`} />
                           <p className="text-sm font-medium truncate">{r.category}</p>
                           <Badge variant="secondary" className="ml-1 text-[10px]">
                             {r.percentage}%
@@ -3601,7 +3641,7 @@ export default function WeddingPlanning() {
                     disabled={guestList.length === 0}
                     className="h-9"
                   >
-                    <Share2 className="h-4 w-4 mr-2" />
+                    <Share2 className="h-4 w-4 mr-2 text-indigo-600" />
                     Export CSV
                   </Button>
                 </div>
@@ -3614,7 +3654,7 @@ export default function WeddingPlanning() {
                 <div className="rounded-2xl border bg-white/70 backdrop-blur-sm p-4 md:p-5">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-muted-foreground" />
+                      <Shield className="h-4 w-4 text-blue-600" />
                       <p className="font-semibold">Response Breakdown</p>
                     </div>
                     <Badge variant="outline">{rsvpStats.total} total</Badge>
@@ -3682,7 +3722,7 @@ export default function WeddingPlanning() {
                 <div className="rounded-2xl border bg-white/70 backdrop-blur-sm p-4 md:p-5">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <Clock className="h-4 w-4 text-amber-600" />
                       <p className="font-semibold">Recent Responses</p>
                     </div>
                     <Badge variant="secondary">Latest</Badge>
@@ -3738,7 +3778,7 @@ export default function WeddingPlanning() {
 
                   <div className="mt-4 rounded-xl bg-muted/60 p-3">
                     <div className="flex items-center gap-2">
-                      <Info className="h-4 w-4 text-muted-foreground" />
+                      <Info className="h-4 w-4 text-sky-600" />
                       <p className="text-xs text-muted-foreground">
                         Export Guest CSV (includes pending + unsent guests) to share with your partner or planner.
                       </p>
