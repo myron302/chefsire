@@ -67,47 +67,6 @@ router.get("/", async (req: Request, res: Response) => {
   }
 });
 
-// Get club details
-router.get("/:id", async (req: Request, res: Response) => {
-  try {
-    const clubId = req.params.id;
-
-    const [club] = await db
-      .select({
-        club: clubs,
-        creator: {
-          id: users.id,
-          username: users.username,
-          displayName: users.displayName,
-        },
-      })
-      .from(clubs)
-      .innerJoin(users, eq(clubs.creatorId, users.id))
-      .where(eq(clubs.id, clubId))
-      .limit(1);
-
-    if (!club) {
-      return res.status(404).json({ message: "Club not found" });
-    }
-
-    const [stats] = await db
-      .select({
-        memberCount: sql`count(distinct ${clubMemberships.id})`,
-        postCount: sql`count(distinct ${clubPosts.id})`,
-      })
-      .from(clubs)
-      .leftJoin(clubMemberships, eq(clubs.id, clubMemberships.clubId))
-      .leftJoin(clubPosts, eq(clubs.id, clubPosts.clubId))
-      .where(eq(clubs.id, clubId))
-      .groupBy(clubs.id);
-
-    res.json({ club, stats });
-  } catch (error) {
-    console.error("Error fetching club details:", error);
-    res.status(500).json({ message: "Failed to fetch club details" });
-  }
-});
-
 // Create club
 router.post("/", requireAuth, async (req: Request, res: Response) => {
   try {
@@ -241,76 +200,6 @@ router.get("/my-clubs", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// Get club posts
-router.get("/:id/posts", async (req: Request, res: Response) => {
-  try {
-    const clubId = req.params.id;
-    const { limit = 20, offset = 0 } = req.query;
-
-    const posts = await db
-      .select({
-        post: clubPosts,
-        author: {
-          id: users.id,
-          username: users.username,
-          displayName: users.displayName,
-        },
-      })
-      .from(clubPosts)
-      .innerJoin(users, eq(clubPosts.userId, users.id))
-      .where(eq(clubPosts.clubId, clubId))
-      .orderBy(desc(clubPosts.createdAt))
-      .limit(parseInt(limit as string))
-      .offset(parseInt(offset as string));
-
-    res.json({ posts });
-  } catch (error) {
-    console.error("Error fetching club posts:", error);
-    res.status(500).json({ message: "Failed to fetch posts" });
-  }
-});
-
-// Create club post
-router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const clubId = req.params.id;
-    const { content, recipeId } = req.body;
-
-    if (!content || !content.trim()) {
-      return res.status(400).json({ message: "Post content is required" });
-    }
-
-    const [membership] = await db
-      .select()
-      .from(clubMemberships)
-      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)))
-      .limit(1);
-
-    if (!membership) {
-      return res.status(403).json({ message: "You must be a member to post" });
-    }
-
-    const [post] = await db
-      .insert(clubPosts)
-      .values({
-        clubId,
-        userId,
-        content: content.trim(),
-        recipeId: recipeId || null,
-      })
-      .returning();
-
-    res.json({ post });
-  } catch (error) {
-    console.error("Error creating post:", error);
-    res.status(500).json({ message: "Failed to create post" });
-  }
-});
-
-// ============================================================
-// CHALLENGES
-// ============================================================
 
 // Browse challenges
 router.get("/challenges", async (req: Request, res: Response) => {
@@ -378,6 +267,161 @@ router.get("/challenges/:id", async (req: Request, res: Response) => {
     res.status(500).json({ message: "Failed to fetch challenge details" });
   }
 });
+
+
+// Get club details
+router.get("/:id", async (req: Request, res: Response) => {
+  try {
+    const clubId = req.params.id;
+
+    const [club] = await db
+      .select({
+        club: clubs,
+        creator: {
+          id: users.id,
+          username: users.username,
+          displayName: users.displayName,
+        },
+      })
+      .from(clubs)
+      .innerJoin(users, eq(clubs.creatorId, users.id))
+      .where(eq(clubs.id, clubId))
+      .limit(1);
+
+    if (!club) {
+      return res.status(404).json({ message: "Club not found" });
+    }
+
+    const [stats] = await db
+      .select({
+        memberCount: sql`count(distinct ${clubMemberships.id})`,
+        postCount: sql`count(distinct ${clubPosts.id})`,
+      })
+      .from(clubs)
+      .leftJoin(clubMemberships, eq(clubs.id, clubMemberships.clubId))
+      .leftJoin(clubPosts, eq(clubs.id, clubPosts.clubId))
+      .where(eq(clubs.id, clubId))
+      .groupBy(clubs.id);
+
+    res.json({ club, stats });
+  } catch (error) {
+    console.error("Error fetching club details:", error);
+    res.status(500).json({ message: "Failed to fetch club details" });
+  }
+});
+
+
+// Get club posts
+router.get("/:id/posts", async (req: Request, res: Response) => {
+  try {
+    const clubId = req.params.id;
+    const { limit = 20, offset = 0 } = req.query;
+
+    const posts = await db
+      .select({
+        post: clubPosts,
+        author: {
+          id: users.id,
+          username: users.username,
+          displayName: users.displayName,
+        },
+      })
+      .from(clubPosts)
+      .innerJoin(users, eq(clubPosts.userId, users.id))
+      .where(eq(clubPosts.clubId, clubId))
+      .orderBy(desc(clubPosts.createdAt))
+      .limit(parseInt(limit as string))
+      .offset(parseInt(offset as string));
+
+    res.json({ posts });
+  } catch (error) {
+    console.error("Error fetching club posts:", error);
+    res.status(500).json({ message: "Failed to fetch posts" });
+  }
+});
+
+// Create club post
+router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const clubId = req.params.id;
+    const { content, recipeId } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: "Post content is required" });
+    }
+
+    const [membership] = await db
+      .select()
+      .from(clubMemberships)
+      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)))
+      .limit(1);
+
+    if (!membership) {
+      return res.status(403).json({ message: "You must be a member to post" });
+    }
+
+    const [post] = await db
+      .insert(clubPosts)
+      .values({
+        clubId,
+        userId,
+        content: content.trim(),
+        recipeId: recipeId || null,
+      })
+      .returning();
+
+    res.json({ post });
+  } catch (error) {
+    console.error("Error creating post:", error);
+    res.status(500).json({ message: "Failed to create post" });
+  }
+});
+
+
+
+// Update club post
+router.patch("/:id/posts/:postId", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const clubId = req.params.id;
+    const postId = req.params.postId;
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: "Post content is required" });
+    }
+
+    const [existingPost] = await db
+      .select()
+      .from(clubPosts)
+      .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
+      .limit(1);
+
+    if (!existingPost) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    if (existingPost.userId !== userId) {
+      return res.status(403).json({ message: "You can only edit your own posts" });
+    }
+
+    const [post] = await db
+      .update(clubPosts)
+      .set({ content: content.trim() })
+      .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
+      .returning();
+
+    return res.json({ post });
+  } catch (error) {
+    console.error("Error updating post:", error);
+    return res.status(500).json({ message: "Failed to update post" });
+  }
+});
+
+// ============================================================
+// CHALLENGES
+// ============================================================
 
 // Join challenge
 router.post("/challenges/:id/join", requireAuth, async (req: Request, res: Response) => {
