@@ -1,5 +1,4 @@
 // client/src/pages/services/wedding-planning.tsx
-import { useState, useMemo, memo, useCallback, useEffect, useRef } from "react";
 import {
   Calendar,
   MapPin,
@@ -15,6 +14,8 @@ import {
   Star,
   Info,
   Mail,
+  Send,
+  Eye,
   TrendingUp,
   Shield,
   Bookmark,
@@ -2457,13 +2458,13 @@ export default function WeddingPlanning() {
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
             <Button variant="outline" onClick={() => setShowBudgetCalculator(!showBudgetCalculator)} className="w-full sm:w-auto">
-              <DollarSign className="w-4 h-4 mr-2" />
+              <DollarSign className="w-4 h-4 mr-2 text-emerald-600" />
               <span className="hidden sm:inline">Budget Calculator</span>
               <span className="sm:hidden">Budget</span>
             </Button>
             <Link href="/catering/wedding-map" className="w-full sm:w-auto">
               <Button variant="outline" className="w-full">
-                <MapPin className="w-4 h-4 mr-2" />
+                <MapPin className="w-4 h-4 mr-2 text-purple-600" />
                 <span className="hidden sm:inline">Open Vendor Map</span>
                 <span className="sm:hidden">Map</span>
               </Button>
@@ -2596,7 +2597,7 @@ export default function WeddingPlanning() {
                 </div>
 
                 <Alert>
-                  <Info className="h-4 w-4" />
+                  <Info className="h-4 w-4 text-purple-600" />
                   <AlertDescription>
                     Based on {guestCount[0]} guests. Catering typically represents the largest portion of your wedding budget.
                   </AlertDescription>
@@ -2768,7 +2769,7 @@ export default function WeddingPlanning() {
                   {smartTips.map((t) => (
                     <div key={t.title} className="rounded-xl border bg-white/60 p-3">
                       <div className="flex items-start gap-2">
-                        <Info className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                        <Info className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
                         <div className="min-w-0">
                           <p className="text-sm font-semibold">{t.title}</p>
                           <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{t.detail}</p>
@@ -2857,22 +2858,40 @@ export default function WeddingPlanning() {
         {/* Filters */}
         <Card className="mb-6">
           <CardContent className="p-4 md:p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+            
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
               <div>
-                <label className="text-xs md:text-sm font-medium mb-2 block">Event Date</label>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-sm">
+                    <CalendarIcon className="h-4 w-4 text-white" />
+                  </div>
+                  <label className="text-xs md:text-sm font-medium block">Event Date</label>
+                </div>
                 <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-full" />
               </div>
 
               <div>
-                <label className="text-xs md:text-sm font-medium mb-2 block">Guest Count</label>
-                <div className="flex items-center gap-2">
-                  <Input type="number" value={guestCount[0]} onChange={(e) => setGuestCount([parseInt(e.target.value || "0", 10)])} className="w-full" />
-                  <Users className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center shadow-sm">
+                    <Users className="h-4 w-4 text-white" />
+                  </div>
+                  <label className="text-xs md:text-sm font-medium block">Guest Count</label>
                 </div>
+                <Input
+                  type="number"
+                  value={guestCount[0]}
+                  onChange={(e) => setGuestCount([parseInt(e.target.value || "0", 10)])}
+                  className="w-full"
+                />
               </div>
 
               <div>
-                <label className="text-xs md:text-sm font-medium mb-2 block">Location</label>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center shadow-sm">
+                    <MapPin className="h-4 w-4 text-white" />
+                  </div>
+                  <label className="text-xs md:text-sm font-medium block">Location</label>
+                </div>
                 <Input
                   ref={vendorLocationRef}
                   placeholder="City, State (e.g., New York, NY)"
@@ -2886,7 +2905,12 @@ export default function WeddingPlanning() {
               </div>
 
               <div>
-                <label className="text-xs md:text-sm font-medium mb-2 block">Style</label>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-pink-600 to-rose-500 flex items-center justify-center shadow-sm">
+                    <Sparkles className="h-4 w-4 text-white" />
+                  </div>
+                  <label className="text-xs md:text-sm font-medium block">Style</label>
+                </div>
                 <Select>
                   <SelectTrigger>
                     <SelectValue placeholder="Wedding style" />
@@ -2900,7 +2924,7 @@ export default function WeddingPlanning() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
+</div>
           </CardContent>
         </Card>
       </div>
@@ -3192,7 +3216,7 @@ export default function WeddingPlanning() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-                <Gift className="w-4 h-4 md:w-5 md:h-5" />
+                <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-pink-600 to-purple-600 flex items-center justify-center shadow-sm"><Gift className="w-4 h-4 text-white" /></div>
                 Gift Registry Hub
               </CardTitle>
               <CardDescription className="text-xs md:text-sm">Manage all your registries in one place and share with guests</CardDescription>
@@ -3256,28 +3280,28 @@ export default function WeddingPlanning() {
               <h4 className="font-medium mb-3 text-sm md:text-base">Share Your Registries</h4>
               <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
                 <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry("Facebook")}>
-                  <Share2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                  <Share2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2 text-blue-600" />
                   <span className="hidden sm:inline">Facebook</span>
                   <span className="sm:hidden">FB</span>
                 </Button>
                 <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry("Instagram")}>
-                  <Share2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                  <Share2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2 text-pink-600" />
                   <span className="hidden sm:inline">Instagram</span>
                   <span className="sm:hidden">IG</span>
                 </Button>
                 <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry("Email")}>
-                  <Mail className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                  <Mail className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2 text-purple-600" />
                   Email
                 </Button>
                 <Button variant="outline" size="sm" className="text-xs" onClick={() => handleShareRegistry("copy")}>
-                  <Link2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                  <Link2 className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2 text-slate-700" />
                   <span className="hidden sm:inline">Copy Link</span>
                   <span className="sm:hidden">Copy</span>
                 </Button>
               </div>
 
               <Alert className="mt-4">
-                <Info className="h-3 w-3 md:h-4 md:w-4" />
+                <Info className="h-3 w-3 md:h-4 md:w-4 text-purple-600" />
                 <AlertDescription className="text-xs md:text-sm break-all">
                   Your unique registry page: <strong>chefsire.com/registry/{user?.username || user?.id || "my-registry"}</strong>
                 </AlertDescription>
@@ -3291,7 +3315,7 @@ export default function WeddingPlanning() {
       <Card className="mb-8">
         <CardHeader className="p-4 md:p-6">
           <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-            <CalendarIcon className="w-4 h-4 md:w-5 md:h-5" />
+            <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-sm"><CalendarIcon className="w-4 h-4 text-white" /></div>
             Planning Calendar
           </CardTitle>
           <CardDescription className="text-xs md:text-sm">Track important dates, appointments, and deadlines</CardDescription>
@@ -3313,7 +3337,7 @@ export default function WeddingPlanning() {
                 />
               </div>
 
-              <h4 className="font-medium mb-3 text-sm md:text-base">Upcoming Events</h4>
+              <h4 className="font-medium mb-3 text-sm md:text-base flex items-center gap-2"><div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-sm"><Calendar className="h-4 w-4 text-white" /></div>Upcoming Events<BellRing className="h-4 w-4 text-amber-500 ml-1" /></h4>
 
               <div className="space-y-2">
                 {sortedCalendarEvents.length === 0 ? (
@@ -3361,7 +3385,7 @@ export default function WeddingPlanning() {
                               window.open(url, "_blank", "noopener,noreferrer");
                             }}
                           >
-                            <Calendar className="w-3 h-3" />
+                            <Calendar className="w-3 h-3 text-blue-600" />
                           </Button>
 
                           <Button size="sm" variant="ghost" className="p-1 md:p-2" onClick={() => handleRemoveCalendarEvent(event.id)}>
@@ -3376,7 +3400,7 @@ export default function WeddingPlanning() {
             </div>
 
             <div>
-              <h4 className="font-medium mb-3 text-sm md:text-base">Add Event</h4>
+              <h4 className="font-medium mb-3 text-sm md:text-base flex items-center gap-2"><div className="h-7 w-7 rounded-lg bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center shadow-sm"><CalendarIcon className="h-4 w-4 text-white" /></div><div className="h-7 w-7 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-sm"><Clock className="h-4 w-4 text-white" /></div>Add Event</h4>
 
               <div className="space-y-2 md:space-y-3">
                 <Input
@@ -3452,7 +3476,7 @@ export default function WeddingPlanning() {
           <div className="mb-6 p-4 bg-muted rounded-lg">
             <div className="flex items-center justify-between mb-3">
               <h4 className="font-medium text-sm flex items-center gap-2">
-                <Heart className="w-4 h-4" />
+                <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-rose-600 to-pink-500 flex items-center justify-center shadow-sm"><Heart className="w-4 h-4 text-white" /></div>
                 Wedding Details
               </h4>
 
@@ -3790,7 +3814,7 @@ export default function WeddingPlanning() {
           </Card>
 {/* Template Selection */}
           <div className="mb-6">
-            <label className="text-sm font-medium mb-2 block">Invitation Template</label>
+            <div className="flex items-center gap-2 mb-2"><div className="h-8 w-8 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center shadow-sm"><Mail className="h-4 w-4 text-white" /></div><label className="text-sm font-medium block">Invitation Template</label></div>
             <div className="grid grid-cols-3 gap-3">
               {["elegant", "rustic", "modern"].map((template) => (
                 <button
@@ -3904,14 +3928,14 @@ export default function WeddingPlanning() {
                   onClick={sendInvitations}
                   disabled={guestList.filter((g) => typeof g.id === "number").length === 0}
                 >
-                  <Mail className="w-4 h-4 mr-2" />
+                  <Send className="w-4 h-4 mr-2" />
                   Send Invitations ({guestList.filter((g) => typeof g.id === "number").length})
                 </Button>
 
                 <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" className="flex-1 border-pink-200 hover:bg-pink-50">
-                      <Sparkles className="w-4 h-4 mr-2" />
+                      <Eye className="w-4 h-4 mr-2 text-pink-600" />
                       Preview Invitation
                     </Button>
                   </DialogTrigger>
