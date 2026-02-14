@@ -334,13 +334,13 @@ const VendorCard = memo(
           />
           {(vendor as any).sponsored && (
             <Badge className="absolute top-2 left-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-xs">
-              <TrendingUp className="w-3 h-3 mr-1" />
+              <TrendingUp className="w-3 h-3 mr-1 text-white" />
               <span className="hidden sm:inline">Sponsored</span>
             </Badge>
           )}
           {(vendor as any).featured && !(vendor as any).sponsored && (
             <Badge className="absolute top-2 left-2 bg-gradient-to-r from-pink-600 to-purple-600 text-xs">
-              <Sparkles className="w-3 h-3 mr-1" />
+              <Sparkles className="w-3 h-3 mr-1 text-white" />
               <span className="hidden sm:inline">Featured</span>
             </Badge>
           )}
@@ -408,7 +408,7 @@ const VendorCard = memo(
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-3 border-t">
             <div className="flex items-center gap-1 text-[10px] md:text-xs text-muted-foreground">
-              <Clock className="w-3 h-3" />
+              <Clock className="w-3 h-3 text-amber-500" />
               <span className="hidden sm:inline">Responds in {(vendor as any).responseTime}</span>
               <span className="sm:hidden">{(vendor as any).responseTime}</span>
             </div>
@@ -2440,7 +2440,7 @@ export default function WeddingPlanning() {
                   <X className="w-3 h-3 md:w-4 md:h-4" />
                 </Button>
                 <Button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white flex-1 sm:flex-none" size="sm" onClick={handleStartTrial}>
-                  <Zap className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
+                  <Zap className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2 text-white" />
                   <span className="text-xs md:text-sm">Start Free Trial</span>
                 </Button>
               </div>
@@ -2472,7 +2472,7 @@ export default function WeddingPlanning() {
               </Button>
             </Link>
             <Button className="bg-gradient-to-r from-pink-600 to-purple-600 text-white w-full sm:w-auto" onClick={handleStartPlanning}>
-              <Heart className="w-4 h-4 mr-2" />
+              <Heart className="w-4 h-4 mr-2 text-pink-200" />
               Start Planning
             </Button>
           </div>
@@ -2503,7 +2503,7 @@ export default function WeddingPlanning() {
                       task.completed ? "bg-green-500 text-white" : "bg-gray-200 text-gray-500"
                     }`}
                   >
-                    {task.completed && <span className="text-xs">✓</span>}
+                    {task.completed && <span className="text-xs">✅</span>}
                   </div>
                   <span className="text-[10px] md:text-xs line-clamp-2">{task.label}</span>
                 </div>
@@ -2539,7 +2539,7 @@ export default function WeddingPlanning() {
                     {progressEditorTasks.map((task) => (
                       <div key={task.id} className="flex items-center gap-2">
                         <Button variant="outline" size="sm" onClick={() => toggleEditorTask(task.id)}>
-                          {task.completed ? "✓" : "○"}
+                          {task.completed ? "✅" : "⚪️"}
                         </Button>
                         <Input value={task.label} onChange={(event) => updateEditorTaskLabel(task.id, event.target.value)} />
                         <Button variant="ghost" size="sm" onClick={() => removeEditorTask(task.id)}>
@@ -2651,7 +2651,7 @@ export default function WeddingPlanning() {
               {isElite ? (
                 <div className="space-y-3">
                   <p className="text-4xl font-bold text-green-600">
-                    <DollarSign className="w-6 h-6 inline mr-1" />
+                    <DollarSign className="w-6 h-6 inline mr-1 text-green-600" />
                     {dynamicSavings.toLocaleString()}
                   </p>
                   <p className="text-sm text-muted-foreground">
@@ -2669,7 +2669,7 @@ export default function WeddingPlanning() {
                     <span className="font-bold text-amber-600"> $4,200</span> in hidden savings based on your criteria and AI recommendations.
                   </p>
                   <Button size="sm" variant="outline" className="bg-amber-100 border-amber-300" onClick={handleGoPremium}>
-                    <TrendingUp className="w-4 h-4 mr-2" />
+                    <TrendingUp className="w-4 h-4 mr-2 text-amber-600" />
                     Upgrade to Elite
                   </Button>
                 </div>
@@ -2964,7 +2964,7 @@ export default function WeddingPlanning() {
           <h2 className="text-lg md:text-xl font-semibold">{filteredVendors.length} Vendors Available</h2>
           {selectedDate && (
             <Badge variant="secondary" className="w-fit">
-              <Calendar className="w-3 h-3 mr-1" />
+              <Calendar className="w-3 h-3 mr-1 text-blue-600" />
               <span className="text-xs">
                 {new Date(selectedDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               </span>
@@ -3108,7 +3108,7 @@ export default function WeddingPlanning() {
                   Close
                 </Button>
                 <Button onClick={handleGoPremium}>
-                  <Sparkles className="h-4 w-4 mr-2" />
+                  <Sparkles className="h-4 w-4 mr-2 text-white" />
                   Upgrade to Premium
                 </Button>
               </div>
@@ -3446,7 +3446,7 @@ export default function WeddingPlanning() {
           </div>
 
           <Alert className="mt-6">
-            <TrendingUp className="h-4 w-4" />
+            <TrendingUp className="h-4 w-4 text-amber-600" />
             <AlertDescription>
               <strong>Pro tip:</strong> Most couples book venues 10-12 months before their wedding date.
             </AlertDescription>
@@ -3459,13 +3459,13 @@ export default function WeddingPlanning() {
         <CardHeader className="p-4 md:p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Mail className="w-4 h-4 md:w-5 md:h-5" />
+              <Mail className="w-4 h-4 md:w-5 md:h-5 text-purple-600" />
               <CardTitle className="text-base md:text-lg">Email Invitations</CardTitle>
               {!isPremium && <Badge className="bg-pink-500 text-white text-xs">Premium</Badge>}
             </div>
             {isPremium && (
               <Badge className="bg-green-500 text-white text-xs">
-                <span className="mr-1">✓</span>
+                <span className="mr-1">✅</span>
                 Active
               </Badge>
             )}
@@ -3827,7 +3827,7 @@ export default function WeddingPlanning() {
                   } ${!isPremium ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
                   disabled={!isPremium}
                 >
-                  <Sparkles className="w-6 h-6 mx-auto mb-2" />
+                  <Sparkles className="w-6 h-6 mx-auto mb-2 text-purple-600" />
                   <p className="text-sm font-medium">{template}</p>
                 </button>
               ))}
@@ -3969,7 +3969,7 @@ export default function WeddingPlanning() {
               </>
             ) : (
               <Button variant="outline" className="flex-1 border-pink-300 bg-pink-50" onClick={handleGoPremium}>
-                <Heart className="w-4 h-4 mr-2" />
+                <Heart className="w-4 h-4 mr-2 text-pink-200" />
                 Upgrade to Premium
               </Button>
             )}
