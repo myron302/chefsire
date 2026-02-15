@@ -1,7 +1,9 @@
 // server/routes/recipes.ts
 import { Router } from "express";
+import { z } from "zod";
 import { searchRecipes } from "../services/recipes-service";
 import { storage } from "../storage";
+import { requireAuth } from "../middleware/auth";
 
 const router = Router();
 
@@ -26,6 +28,202 @@ function parseList(input: unknown): string[] {
 }
 
 /**
+ * USER-CREATED RECIPES (for social posts / club posts)
+ *
+ * - Regular social recipes are linked to posts via recipes.postId
+ * - Club recipes may have postId = null and are managed via /api/clubs routes
+ */
+
+type IngredientRow = {
+  amount?: string | number;
+  unit?: string;
+  ingredient?: string;
+  name?: string;
+};
+type InstructionRow = { step?: string; text?: string };
+
+function normalizeIngredients(input: unknown): string[] {
+  if (!input) return [];
+  if (Array.isArray(input)) {
+    // Already array of strings
+    if (input.every((x) => typeof x === "string")) {
+      return (input as string[]).map((s) => s.trim()).filter(Boolean);
+    }
+
+    // Array of objects -> join into a nice single string per row
+    return (input as any[])
+      .map((row: IngredientRow) => {
+        const amount = row.amount ?? "";
+        const unit = row.unit ?? "";
+        const name = row.ingredient ?? row.name ?? "";
+        const joined = [amount, unit, name]
+          .map((x) => String(x ?? "").trim())
+          .filter(Boolean)
+          .join(" ");
+        return joined.trim();
+      })
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeInstructions(input: unknown): string[] {
+  if (!input) return [];
+  if (Array.isArray(input)) {
+    // Already array of strings
+    if (input.every((x) => typeof x === "string")) {
+      return (input as string[]).map((s) => s.trim()).filter(Boolean);
+    }
+
+    // Array of objects -> extract text
+    return (input as any[])
+      .map((row: InstructionRow) => String(row.step ?? row.text ?? "").trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+/**
+ * POST /api/recipes
+ * Create a recipe linked to a post you own (recipes.postId = posts.id)
+ */
+router.post("/", requireAuth, async (req, res) => {
+  try {
+    const schema = z.object({
+      postId: z.string().min(1),
+      title: z.string().min(1),
+      imageUrl: z.string().optional().nullable(),
+      ingredients: z.any().optional(),
+      instructions: z.any().optional(),
+      cookTime: z.number().int().positive().optional().nullable(),
+      servings: z.number().int().positive().optional().nullable(),
+      difficulty: z.string().optional().nullable(),
+    });
+
+    const body = schema.parse(req.body);
+
+    const post = await storage.getPost(body.postId);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    // Only the post owner can attach a recipe to their post
+    if (post.userId !== req.user!.id) {
+      return res.status(403).json({ message: "Not allowed" });
+    }
+
+    const ingredients = normalizeIngredients(body.ingredients);
+    const instructions = normalizeInstructions(body.instructions);
+
+    if (!ingredients.length) {
+      return res.status(400).json({ message: "At least one ingredient is required" });
+    }
+    if (!instructions.length) {
+      return res.status(400).json({ message: "At least one instruction step is required" });
+    }
+
+    const recipe = await storage.createRecipe({
+      postId: body.postId,
+      title: body.title.trim(),
+      imageUrl: body.imageUrl ?? null,
+      ingredients,
+      instructions,
+      cookTime: body.cookTime ?? null,
+      servings: body.servings ?? null,
+      difficulty: body.difficulty ?? null,
+    } as any);
+
+    res.status(201).json(recipe);
+  } catch (err: any) {
+    if (err?.issues) return res.status(400).json({ message: "Invalid payload", issues: err.issues });
+    console.error("create recipe error:", err);
+    res.status(500).json({ message: "Failed to create recipe" });
+  }
+});
+
+/**
+ * GET /api/recipes/by-post/:postId
+ * Fetch the recipe attached to a post you own (used for editing).
+ */
+router.get("/by-post/:postId", requireAuth, async (req, res) => {
+  try {
+    const postId = req.params.postId;
+    const post = await storage.getPost(postId);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    if (post.userId !== req.user!.id) return res.status(403).json({ message: "Not allowed" });
+
+    const recipe = await storage.getRecipeByPostId(postId);
+    if (!recipe) return res.status(404).json({ message: "Recipe not found" });
+
+    res.json(recipe);
+  } catch (err: any) {
+    console.error("get recipe by post error:", err);
+    res.status(500).json({ message: "Failed to fetch recipe" });
+  }
+});
+
+/**
+ * PATCH /api/recipes/:id
+ * Update a recipe linked to one of your posts.
+ */
+router.patch("/:id", requireAuth, async (req, res) => {
+  try {
+    const recipeId = req.params.id;
+
+    const schema = z.object({
+      title: z.string().min(1).optional(),
+      imageUrl: z.string().optional().nullable(),
+      ingredients: z.any().optional(),
+      instructions: z.any().optional(),
+      cookTime: z.number().int().positive().optional().nullable(),
+      servings: z.number().int().positive().optional().nullable(),
+      difficulty: z.string().optional().nullable(),
+    });
+
+    const body = schema.parse(req.body);
+
+    const existing = await storage.getRecipe(recipeId);
+    if (!existing) return res.status(404).json({ message: "Recipe not found" });
+
+    // This endpoint is only for post-linked recipes (club recipes are managed by /api/clubs)
+    if (!existing.postId) {
+      return res.status(403).json({ message: "This recipe can only be updated from its club post" });
+    }
+
+    const post = await storage.getPost(existing.postId);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    if (post.userId !== req.user!.id) return res.status(403).json({ message: "Not allowed" });
+
+    const updates: any = {};
+
+    if (typeof body.title === "string") updates.title = body.title.trim();
+    if (body.imageUrl !== undefined) updates.imageUrl = body.imageUrl;
+    if (body.cookTime !== undefined) updates.cookTime = body.cookTime;
+    if (body.servings !== undefined) updates.servings = body.servings;
+    if (body.difficulty !== undefined) updates.difficulty = body.difficulty;
+
+    if (body.ingredients !== undefined) {
+      const ingredients = normalizeIngredients(body.ingredients);
+      if (!ingredients.length) return res.status(400).json({ message: "At least one ingredient is required" });
+      updates.ingredients = ingredients;
+    }
+
+    if (body.instructions !== undefined) {
+      const instructions = normalizeInstructions(body.instructions);
+      if (!instructions.length) return res.status(400).json({ message: "At least one instruction step is required" });
+      updates.instructions = instructions;
+    }
+
+    const updatedRecipe = await storage.updateRecipe(recipeId, updates);
+    if (!updatedRecipe) return res.status(404).json({ message: "Recipe not found" });
+
+    res.json(updatedRecipe);
+  } catch (err: any) {
+    if (err?.issues) return res.status(400).json({ message: "Invalid payload", issues: err.issues });
+    console.error("update recipe error:", err);
+    res.status(500).json({ message: "Failed to update recipe" });
+  }
+});
+
+/**
  * GET /api/recipes/search
  * If q is missing/empty => returns a random page (fresh each request)
  */
@@ -44,29 +242,23 @@ router.get("/search", async (req, res) => {
         ? req.query.pageSize
         : 24;
 
-    const offset =
-      typeof req.query.offset === "string"
-        ? Number(req.query.offset)
-        : typeof req.query.offset === "number"
-        ? req.query.offset
-        : 0;
+    const page =
+      typeof req.query.page === "string"
+        ? Number(req.query.page)
+        : typeof req.query.page === "number"
+        ? req.query.page
+        : undefined;
 
-    const out = await searchRecipes({
-      q, // empty or undefined triggers randomness in the service
-      cuisines: cuisines.length ? cuisines : undefined,
-      diets: diets.length ? diets : undefined,
-      mealTypes: mealTypes.length ? mealTypes : undefined,
-      pageSize,
-      offset,
+    const result = await searchRecipes({
+      q,
+      cuisines,
+      diets,
+      mealTypes,
+      pageSize: Number.isFinite(pageSize) ? pageSize : 24,
+      page: page && Number.isFinite(page) ? page : undefined,
     });
 
-    res.json({
-      ok: true,
-      total: out.total,
-      source: out.source,
-      items: out.results,
-      params: { q, cuisines, diets, mealTypes, pageSize, offset },
-    });
+    res.json({ ok: true, ...result });
   } catch (err: any) {
     console.error("recipes search error:", err);
     res.status(500).json({ ok: false, error: err?.message || "Search failed" });
@@ -74,30 +266,23 @@ router.get("/search", async (req, res) => {
 });
 
 /**
- * GET /api/recipes/random?count=24
- * Always random, ignores q and pagination, and returns 'count' items.
+ * GET /api/recipes/random
+ * Returns a random page of recipes (fresh each request)
  */
-router.get("/random", async (req, res) => {
+router.get("/random", async (_req, res) => {
   noStore(res);
   try {
-    const count =
-      typeof req.query.count === "string"
-        ? Number(req.query.count)
-        : typeof req.query.count === "number"
-        ? req.query.count
-        : 24;
-
-    const out = await searchRecipes({ q: "", pageSize: count, offset: 0 });
-    res.json({ ok: true, items: out.results, total: out.total, source: out.source });
+    const result = await searchRecipes({ pageSize: 24 });
+    res.json({ ok: true, ...result });
   } catch (err: any) {
+    console.error("recipes random error:", err);
     res.status(500).json({ ok: false, error: err?.message || "Random failed" });
   }
 });
 
 /**
  * GET /api/recipes/trending
- * Get trending recipes from the last 7 days
- * Sorted by (likesCount * 2 + commentsCount)
+ * Returns top recipes by likes/reviews (DB-based)
  */
 router.get("/trending", async (req, res) => {
   noStore(res);
@@ -109,10 +294,10 @@ router.get("/trending", async (req, res) => {
         ? req.query.limit
         : 10;
 
-    const trending = await storage.getTrendingRecipes(limit);
-    res.json({ ok: true, recipes: trending });
+    const recipes = await storage.getTrendingRecipes(Number.isFinite(limit) ? limit : 10);
+    res.json({ ok: true, recipes });
   } catch (err: any) {
-    console.error("trending recipes error:", err);
+    console.error("recipes trending error:", err);
     res.status(500).json({ ok: false, error: err?.message || "Trending failed" });
   }
 });
@@ -125,11 +310,11 @@ router.post("/:id/save", async (req, res) => {
   try {
     const { userId } = req.body;
     const recipeId = req.params.id;
-    
+
     if (!userId) {
       return res.status(400).json({ ok: false, error: "userId is required" });
     }
-    
+
     const save = await storage.saveRecipe(userId, recipeId);
     res.status(201).json({ ok: true, save });
   } catch (err: any) {
@@ -146,17 +331,13 @@ router.delete("/:id/save", async (req, res) => {
   try {
     const userId = req.query.userId as string;
     const recipeId = req.params.id;
-    
+
     if (!userId) {
       return res.status(400).json({ ok: false, error: "userId is required" });
     }
-    
-    const success = await storage.unsaveRecipe(userId, recipeId);
-    if (!success) {
-      return res.status(404).json({ ok: false, error: "Save not found" });
-    }
-    
-    res.json({ ok: true, message: "Recipe unsaved successfully" });
+
+    const ok = await storage.unsaveRecipe(userId, recipeId);
+    res.json({ ok });
   } catch (err: any) {
     console.error("recipe unsave error:", err);
     res.status(500).json({ ok: false, error: err?.message || "Unsave failed" });
@@ -164,34 +345,32 @@ router.delete("/:id/save", async (req, res) => {
 });
 
 /**
- * GET /api/recipes/:id/save-status
- * Check if a recipe is saved by the user
+ * GET /api/recipes/:id/save-status?userId=...
  */
 router.get("/:id/save-status", async (req, res) => {
   try {
     const userId = req.query.userId as string;
     const recipeId = req.params.id;
-    
+
     if (!userId) {
       return res.status(400).json({ ok: false, error: "userId is required" });
     }
-    
+
     const isSaved = await storage.isRecipeSaved(userId, recipeId);
     res.json({ ok: true, isSaved });
   } catch (err: any) {
-    console.error("recipe save status error:", err);
-    res.status(500).json({ ok: false, error: err?.message || "Check failed" });
+    console.error("recipe save-status error:", err);
+    res.status(500).json({ ok: false, error: err?.message || "Save-status failed" });
   }
 });
 
 /**
- * GET /api/users/:id/saved-recipes
- * Get all saved recipes for a user
+ * GET /api/recipes/users/:id/saved-recipes
  */
 router.get("/users/:id/saved-recipes", async (req, res) => {
   try {
     const userId = req.params.id;
-    const recipes = await storage.getUserSavedRecipes(userId);
+    const recipes = await storage.getSavedRecipes(userId);
     res.json({ ok: true, recipes });
   } catch (err: any) {
     console.error("get saved recipes error:", err);
