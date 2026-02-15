@@ -96,16 +96,57 @@ r.get(
 r.post("/", async (req, res) => {
   try {
     console.log("📝 Create post attempt with body:", req.body);
+
+    const recipeSchema = z.object({
+      title: z.string().min(1, "Recipe title is required"),
+      imageUrl: z.string().optional(),
+      ingredients: z.array(z.string().min(1)).min(1, "At least 1 ingredient is required"),
+      instructions: z.array(z.string().min(1)).min(1, "At least 1 instruction step is required"),
+      cookTime: z.coerce.number().int().min(0).optional(),
+      servings: z.coerce.number().int().min(1).optional(),
+      difficulty: z.string().optional(),
+    });
+
     const schema = z.object({
       userId: z.string(),
       caption: z.string().optional(),
       imageUrl: z.string().min(1, "Image URL is required"), // Required, allows data URIs
       tags: z.array(z.string()).optional(),
       isRecipe: z.boolean().optional(),
+      recipe: recipeSchema.optional(),
     });
+
     const body = schema.parse(req.body);
+
+    // If it's a recipe post, enforce recipe payload
+    if (body.isRecipe && !body.recipe) {
+      return res.status(400).json({ message: "Recipe details are required for recipe posts" });
+    }
+
     console.log("✅ Validation passed, creating post:", body);
-    const created = await storage.createPost(body as any);
+
+    const created = await storage.createPost({
+      userId: body.userId,
+      caption: body.caption,
+      imageUrl: body.imageUrl,
+      tags: body.tags,
+      isRecipe: body.isRecipe ?? false,
+    } as any);
+
+    // Create the linked recipe record if needed (so feeds can render the recipe template)
+    if (body.isRecipe && body.recipe) {
+      await storage.createRecipe({
+        postId: created.id,
+        title: body.recipe.title,
+        imageUrl: body.recipe.imageUrl ?? created.imageUrl,
+        ingredients: body.recipe.ingredients,
+        instructions: body.recipe.instructions,
+        cookTime: body.recipe.cookTime ?? null,
+        servings: body.recipe.servings ?? null,
+        difficulty: body.recipe.difficulty ?? null,
+      } as any);
+    }
+
     console.log("✅ Post created successfully:", created.id);
     res.status(201).json(created);
   } catch (err: any) {
@@ -114,11 +155,12 @@ r.post("/", async (req, res) => {
       message: err.message,
       issues: err.issues,
       code: err.code,
-      detail: err.detail
+      detail: err.detail,
     });
-    if (err?.issues) return res.status(400).json({ message: "Invalid post data", errors: err.issues });
-    console.error("posts/create error", err);
-    res.status(500).json({ message: "Failed to create post", error: err.message });
+    if (err?.issues) {
+      return res.status(400).json({ message: "Validation error", issues: err.issues });
+    }
+    res.status(500).json({ message: "Failed to create post" });
   }
 });
 
