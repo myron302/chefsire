@@ -37,9 +37,6 @@ export default function ClubsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [backendUnavailable, setBackendUnavailable] = useState(false);
-  const [fallbackClubs, setFallbackClubs] = useState<Club[]>([]);
-
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -51,19 +48,8 @@ export default function ClubsPage() {
     category: "general",
     rules: "",
     firstPost: "",
-  });
-
-  useEffect(() => {
-    const saved = localStorage.getItem("royal_clubs_fallback");
-    if (!saved) return;
-
-    try {
-      const parsed = JSON.parse(saved) as Club[];
-      if (Array.isArray(parsed)) setFallbackClubs(parsed);
-    } catch {
-      localStorage.removeItem("royal_clubs_fallback");
-    }
-  }, []);
+  isPublic: true,
+});
 
   // Build api path based on filters
   const clubsApiPath = useMemo(() => {
@@ -75,24 +61,20 @@ export default function ClubsPage() {
   }, [searchQuery, categoryFilter, sortBy]);
 
   // Fetch clubs
-  const { data: clubsData, isLoading } = useQuery({
+  const { data: clubsData, isLoading, error } = useQuery({
     queryKey: [clubsApiPath],
     queryFn: async () => {
       const res = await fetch(clubsApiPath, { credentials: "include" });
-
       if (!res.ok) {
-        setBackendUnavailable(true);
-        return { clubs: fallbackClubs };
+        const e = await res.json().catch(() => ({} as any));
+        throw new Error(e?.message || "Failed to load clubs");
       }
-
-      setBackendUnavailable(false);
       return res.json();
     },
-    // If backend is down, don't constantly hammer it
-    retry: backendUnavailable ? 0 : 2,
+    retry: 1,
   });
 
-  const clubs: Club[] = clubsData?.clubs || [];
+  const clubs: Club[] = (clubsData?.clubs || []) as Club[];
 
   // Create club mutation
   const createClubMutation = useMutation({
@@ -106,6 +88,7 @@ export default function ClubsPage() {
           description: data.description,
           category: data.category,
           rules: data.rules,
+          isPublic: data.isPublic,
         }),
       });
 
@@ -146,39 +129,10 @@ export default function ClubsPage() {
 
       toast({ title: "✓ Club created", description: "Your club has been created successfully!" });
       setShowCreateDialog(false);
-      setClubForm({ name: "", description: "", category: "general", rules: "", firstPost: "" });
+      setClubForm({ name: "", description: "", category: "general", rules: "", firstPost: "", isPublic: true });
     },
     onError: (error: Error) => {
-      // Local fallback save
-      const fallbackClub: Club = {
-        club: {
-          id: `local-${crypto.randomUUID()}`,
-          name: clubForm.name,
-          description: clubForm.description || null,
-          category: clubForm.category,
-          coverImage: null,
-          isPublic: true,
-          createdAt: new Date().toISOString(),
-        },
-        memberCount: 1,
-        postCount: clubForm.firstPost.trim() ? 1 : 0,
-      };
-
-      const updatedFallbackClubs = [fallbackClub, ...fallbackClubs];
-      setFallbackClubs(updatedFallbackClubs);
-      localStorage.setItem("royal_clubs_fallback", JSON.stringify(updatedFallbackClubs));
-
-      setShowCreateDialog(false);
-      setClubForm({ name: "", description: "", category: "general", rules: "", firstPost: "" });
-      setBackendUnavailable(true);
-
-      toast({
-        title: "Backend unavailable: saved locally",
-        description: `${error.message}. Club saved in local mode until Neon/backend is configured.`,
-      });
-
-      // Update current view data
-      queryClient.setQueryData([clubsApiPath], { clubs: updatedFallbackClubs });
+      toast({ title: "Failed to create club", description: error.message, variant: "destructive" });
     },
   });
 
@@ -209,12 +163,7 @@ export default function ClubsPage() {
             🏛️ Royal Clubs
           </h1>
           <p className="text-slate-600">Join communities, participate in challenges, and earn badges!</p>
-          {backendUnavailable && (
-            <p className="mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 inline-block">
-              Backend is currently unavailable. Royal Clubs is running in local mode (saved in this browser).
-            </p>
-          )}
-        </div>
+                  </div>
 
         {/* Actions Bar */}
         <div className="mb-6 flex flex-col sm:flex-row gap-4">
@@ -307,6 +256,22 @@ export default function ClubsPage() {
                             {cat.label}
                           </SelectItem>
                         ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Visibility</Label>
+                  <Select
+                    value={clubForm.isPublic ? "public" : "private"}
+                    onValueChange={(value) => setClubForm({ ...clubForm, isPublic: value === "public" })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="public">Public (anyone can join)</SelectItem>
+                      <SelectItem value="private">Private (approval required)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
