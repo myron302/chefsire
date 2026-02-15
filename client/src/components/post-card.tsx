@@ -4,7 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import type { PostWithUser } from "@shared/schema";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, ChefHat, Star } from "lucide-react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { shareContent, getPostShareUrl } from "@/lib/share";
 import { Link } from "wouter";
@@ -14,6 +14,8 @@ import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface PostCardProps {
   post: PostWithUser;
@@ -32,6 +34,8 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
   const [isSaved, setIsSaved] = useState(post.isSaved || false);
   // NEW STATE for the Edit Modal
   const [isEditing, setIsEditing] = useState(false);
+  const [recipeOpen, setRecipeOpen] = useState(false);
+  const isReview = Array.isArray((post as any).tags) && (post as any).tags.some((t: string) => String(t).toLowerCase() === "review");
 
   // Menu state for the More button
   const [menuOpen, setMenuOpen] = useState(false);
@@ -271,6 +275,11 @@ export default function PostCard({ post, currentUserId, onCardClick, onDelete }:
             {post.isRecipe && (
               <Badge variant="secondary" className="bg-accent text-accent-foreground">
                 Recipe
+              </Badge>
+            )}
+            {isReview && (
+              <Badge variant="secondary" className="bg-purple-100 text-purple-700 border-purple-200">
+                <Star className="h-3 w-3 mr-1" /> Review
               </Badge>
             )}
 
