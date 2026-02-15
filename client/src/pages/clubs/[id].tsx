@@ -8,11 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
-import { Users, MessageSquare, ArrowLeft, Send, Calendar, Crown, Pencil, Save, X } from "lucide-react";
+import { Users, MessageSquare, ArrowLeft, Send, Calendar, Crown, Pencil, Save, X, Heart, Trash2, UserPlus, Check, XCircle, Shield } from "lucide-react";
 
 // Server /api/clubs/:id returns: { club: { club: ClubRow, creator: Creator }, stats: Stats }
 type ClubRow = {
   id: string;
+  creatorId: string;
   name: string;
   description: string | null;
   category: string;
@@ -57,6 +58,7 @@ type Post = {
     username: string;
     displayName: string | null;
   };
+  likedByMe?: boolean;
 };
 
 export default function ClubDetailPage() {
@@ -88,14 +90,39 @@ export default function ClubDetailPage() {
     enabled: !!user,
   });
 
-  const isMember = useMemo(() => {
+  const myMembership = useMemo(() => {
     const list = myClubsData?.clubs;
-    if (!Array.isArray(list) || !clubId) return false;
+    if (!Array.isArray(list) || !clubId) return null;
 
-    // /api/clubs/my-clubs returns rows like: { club: ClubRow, membership: ..., memberCount: ... }
-    // Be defensive in case of partial/legacy data.
-    return list.some((c: any) => c?.club?.id === clubId || c?.clubId === clubId || c?.id === clubId);
+    // /api/clubs/my-clubs returns rows like: { club: ClubRow, membership: {...}, memberCount: ... }
+    return (
+      list.find((c: any) => c?.club?.id === clubId || c?.clubId === clubId || c?.id === clubId) || null
+    );
   }, [myClubsData?.clubs, clubId]);
+
+  const isMember = !!myMembership;
+
+  const isOwner = useMemo(() => {
+    const role = (myMembership as any)?.membership?.role;
+    if (role === "owner") return true;
+    // extra safety: if clubData loaded, creator can always manage
+    const creatorId = clubData?.club?.club?.creatorId;
+    return !!creatorId && creatorId === user?.id;
+  }, [myMembership, clubData?.club?.club?.creatorId, user?.id]);
+
+
+  // If club is private, check if you already have a pending join request
+  const { data: myJoinRequestData } = useQuery<{ request: any | null }>({
+    queryKey: [`/api/clubs/${clubId}/my-join-request`],
+    enabled: !!user && !!clubId,
+  });
+
+  // Owner-only: pending join requests
+  const { data: joinRequestsData } = useQuery<{ requests: any[] }>({
+    queryKey: [`/api/clubs/${clubId}/join-requests`],
+    enabled: !!user && !!clubId && !!clubData && isOwner,
+  });
+
 
   // Join club mutation
   const joinClubMutation = useMutation({
@@ -110,10 +137,16 @@ export default function ClubDetailPage() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/clubs/my-clubs"] });
       queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
-      toast({ title: "✓ Joined club", description: "Welcome to the club!" });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/my-join-request`] });
+
+      if (data?.status === "pending") {
+        toast({ title: "Request sent", description: "The club owner will review your request shortly." });
+      } else {
+        toast({ title: "✓ Joined club", description: "Welcome to the club!" });
+      }
     },
     onError: (error: Error) => {
       toast({ title: "Failed to join club", description: error.message, variant: "destructive" });
@@ -127,6 +160,95 @@ export default function ClubDetailPage() {
         method: "POST",
         credentials: "include",
       });
+
+
+  // Owner: approve/decline join requests
+  const approveJoinRequestMutation = useMutation({
+    mutationFn: async (requestId: string) => {
+      const res = await fetch(`/api/clubs/${clubId}/join-requests/${requestId}/approve`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Failed to approve request");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/join-requests`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
+      toast({ title: "Approved", description: "User has been added to the club." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Approval failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const declineJoinRequestMutation = useMutation({
+    mutationFn: async (requestId: string) => {
+      const res = await fetch(`/api/clubs/${clubId}/join-requests/${requestId}/decline`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Failed to decline request");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/join-requests`] });
+      toast({ title: "Declined", description: "Request declined." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Decline failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Delete post (author or owner)
+  const deletePostMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      const res = await fetch(`/api/clubs/${clubId}/posts/${postId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Failed to delete post");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
+      toast({ title: "Post deleted" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Like/unlike post
+  const toggleLikeMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      const res = await fetch(`/api/clubs/${clubId}/posts/${postId}/like`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Failed to like post");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Like failed", description: error.message, variant: "destructive" });
+    },
+  });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
         throw new Error(error.message || "Failed to leave club");
@@ -372,7 +494,64 @@ export default function ClubDetailPage() {
           </Card>
         ) : null}
 
-        {/* New Post */}
+        
+        {/* Owner Panel: Join Requests */}
+        {user && isOwner && club && !club.isPublic && (
+          <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Shield className="h-5 w-5 text-purple-600" />
+                Owner Controls
+              </CardTitle>
+              <CardDescription>Approve or decline requests to join your private club.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {joinRequestsData?.requests?.length ? (
+                <div className="space-y-3">
+                  {joinRequestsData.requests.map((r: any) => (
+                    <div key={r.request.id} className="flex items-center justify-between rounded-lg border bg-white p-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9">
+                          <AvatarFallback>{(r.requester?.displayName || r.requester?.username || "?").slice(0, 1).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <div className="leading-tight">
+                          <div className="font-medium text-slate-900">
+                            {r.requester?.displayName || r.requester?.username || "Unknown"}
+                          </div>
+                          <div className="text-xs text-slate-500">Requested {new Date(r.request.createdAt).toLocaleString()}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => approveJoinRequestMutation.mutate(r.request.id)}
+                          disabled={approveJoinRequestMutation.isPending}
+                        >
+                          <Check className="h-4 w-4 mr-1" />
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => declineJoinRequestMutation.mutate(r.request.id)}
+                          disabled={declineJoinRequestMutation.isPending}
+                        >
+                          <XCircle className="h-4 w-4 mr-1" />
+                          Decline
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-slate-600">No pending join requests.</div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+{/* New Post */}
         {user && isMember ? (
           <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
             <CardHeader>
@@ -412,19 +591,51 @@ export default function ClubDetailPage() {
               posts.map((p) => (
                 <Card key={p.post.id} className="border border-slate-200">
                   <CardHeader className="pb-2">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback>
-                          {(p.author.displayName || p.author.username || "U").slice(0, 1).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="leading-tight">
-                        <div className="text-sm font-medium">
-                          {p.author.displayName || p.author.username}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback>
+                            {(p.author.displayName || p.author.username || "U").slice(0, 1).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="leading-tight">
+                          <div className="text-sm font-medium flex flex-wrap items-center gap-2">
+                            <span>{p.author.displayName || p.author.username}</span>
+                            {clubData?.club?.club?.creatorId === p.author.id ? (
+                              <Badge className="bg-gradient-to-r from-amber-500 to-yellow-400 text-black border-0">
+                                <Crown className="h-3 w-3 mr-1" />
+                                Creator
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <div className="text-xs text-slate-500">{new Date(p.post.createdAt).toLocaleString()}</div>
                         </div>
-                        <div className="text-xs text-slate-500">
-                          {new Date(p.post.createdAt).toLocaleString()}
-                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleLikeMutation.mutate(p.post.id)}
+                          disabled={!user || !isMember || toggleLikeMutation.isPending}
+                          className="rounded-full"
+                        >
+                          <Heart className={`h-4 w-4 mr-1 ${p.likedByMe ? "text-pink-600" : "text-slate-600"}`} />
+                          <span className="text-sm">{p.post.likesCount ?? 0}</span>
+                        </Button>
+
+                        {(isOwner || user?.id === p.post.userId) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deletePostMutation.mutate(p.post.id)}
+                            disabled={deletePostMutation.isPending}
+                            className="rounded-full"
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Delete
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardHeader>
