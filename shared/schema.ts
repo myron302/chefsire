@@ -590,6 +590,26 @@ export const clubMemberships = pgTable(
   })
 );
 
+
+export const clubJoinRequests = pgTable(
+  "club_join_requests",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    clubId: varchar("club_id").references(() => clubs.id, { onDelete: "cascade" }).notNull(),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    status: text("status").default("pending").notNull(), // pending, approved, declined
+    createdAt: timestamp("created_at").defaultNow(),
+    decidedAt: timestamp("decided_at"),
+    decidedBy: varchar("decided_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => ({
+    clubIdx: index("club_join_requests_club_idx").on(table.clubId),
+    userIdx: index("club_join_requests_user_idx").on(table.userId),
+    clubUserIdx: index("club_join_requests_club_user_idx").on(table.clubId, table.userId),
+    statusIdx: index("club_join_requests_status_idx").on(table.status),
+  })
+);
+
 export const clubPosts = pgTable(
   "club_posts",
   {
@@ -610,36 +630,20 @@ export const clubPosts = pgTable(
 );
 
 
-export const clubJoinRequests = pgTable(
-  "club_join_requests",
-  {
-    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    clubId: varchar("club_id").references(() => clubs.id, { onDelete: "cascade" }).notNull(),
-    userId: varchar("user_id").references(() => users.id).notNull(),
-    status: text("status").notNull().default("pending"),
-    createdAt: timestamp("created_at").defaultNow(),
-  },
-  (table) => ({
-    clubUserUidx: uniqueIndex("club_join_requests_club_user_uidx").on(table.clubId, table.userId),
-    statusIdx: index("club_join_requests_status_idx").on(table.status),
-  })
-);
-
 export const clubPostLikes = pgTable(
   "club_post_likes",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    clubId: varchar("club_id").references(() => clubs.id, { onDelete: "cascade" }).notNull(),
-    postId: varchar("post_id").references(() => clubPosts.id, { onDelete: "cascade" }).notNull(),
-    userId: varchar("user_id").references(() => users.id).notNull(),
+    clubPostId: varchar("club_post_id").references(() => clubPosts.id, { onDelete: "cascade" }).notNull(),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
-    postUserUidx: uniqueIndex("club_post_likes_post_user_uidx").on(table.postId, table.userId),
-    clubIdx: index("club_post_likes_club_idx").on(table.clubId),
+    postIdx: index("club_post_likes_post_idx").on(table.clubPostId),
+    userIdx: index("club_post_likes_user_idx").on(table.userId),
+    postUserIdx: index("club_post_likes_post_user_idx").on(table.clubPostId, table.userId),
   })
 );
-
 
 export const challenges = pgTable(
   "challenges",
@@ -1377,17 +1381,6 @@ export const insertClubPostSchema = createInsertSchema(clubPosts).omit({
   createdAt: true,
 });
 
-
-export const insertClubJoinRequestSchema = createInsertSchema(clubJoinRequests).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertClubPostLikeSchema = createInsertSchema(clubPostLikes).omit({
-  id: true,
-  createdAt: true,
-});
-
 export const insertChallengeSchema = createInsertSchema(challenges).omit({
   id: true,
   createdAt: true,
@@ -1490,10 +1483,6 @@ export type ClubMembership = typeof clubMemberships.$inferSelect;
 export type InsertClubMembership = z.infer<typeof insertClubMembershipSchema>;
 export type ClubPost = typeof clubPosts.$inferSelect;
 export type InsertClubPost = z.infer<typeof insertClubPostSchema>;
-export type ClubJoinRequest = typeof clubJoinRequests.$inferSelect;
-export type InsertClubJoinRequest = z.infer<typeof insertClubJoinRequestSchema>;
-export type ClubPostLike = typeof clubPostLikes.$inferSelect;
-export type InsertClubPostLike = z.infer<typeof insertClubPostLikeSchema>;
 export type Challenge = typeof challenges.$inferSelect;
 export type InsertChallenge = z.infer<typeof insertChallengeSchema>;
 export type ChallengeProgress = typeof challengeProgress.$inferSelect;
